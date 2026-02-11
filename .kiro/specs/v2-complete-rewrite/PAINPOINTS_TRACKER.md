@@ -346,34 +346,25 @@ tsa search-content --query "SymbolTable" --type py
 
 #### 痛点 #9: API 文档与实际实现不一致
 **发现时间**: 2026-02-03
+**解决时间**: 2026-02-11
 **严重程度**: 🟡 Medium
 **问题**: `V2_DAILY_USE_ACTION_PLAN.md` 文档提到 `extract_code_section` API，但实际 `api/interface.py` 中不存在
 
-**当前行为**:
+**解决方案**:
+- 在 `api/interface.py` 中添加 `extract_code_section` 方法到 `TreeSitterAnalyzerAPI` 类
+- 添加 standalone 函数 `extract_code_section()` 便于直接导入
+- 支持 `output_format="toon"` 或 `"markdown"`
+- 使用 `EncodingDetector` 自动检测编码
+- 在 `api/__init__.py` 中导出
+
+**验证**:
 ```python
 from tree_sitter_analyzer_v2.api.interface import extract_code_section
-# ImportError: cannot import name 'extract_code_section'
+result = extract_code_section("symbols.py", 212, 289, output_format="markdown")
+# result["success"] == True, result["data"] 包含提取的代码
 ```
 
-**期望行为**:
-```python
-# 应该可以这样使用
-result = extract_code_section(
-    file_path="symbols.py",
-    start_line=212,
-    end_line=289,
-    output_format="markdown"
-)
-```
-
-**改进方案**:
-1. 在 `api/interface.py` 中添加 `extract_code_section` 函数
-2. 或者更新文档，说明应该使用 MCP 工具而不是 Python API
-3. 检查所有文档，确保 API 示例与实际实现一致
-
-**优先级**: 🟢 Medium
-**预计工作量**: 1 小时
-**状态**: 🔄 新发现
+**状态**: ✅ 已修复 (2026-02-11)
 
 ---
 

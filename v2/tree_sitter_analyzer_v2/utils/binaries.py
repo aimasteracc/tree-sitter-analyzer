@@ -5,11 +5,13 @@ This module detects and validates external binaries (fd and ripgrep)
 that provide fast file/content search capabilities.
 """
 
+import logging
 import platform
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class BinaryNotFoundError(Exception):
@@ -18,7 +20,7 @@ class BinaryNotFoundError(Exception):
     pass
 
 
-def get_fd_path() -> Optional[Path]:
+def get_fd_path() -> Path | None:
     """
     Get path to fd binary.
 
@@ -29,7 +31,7 @@ def get_fd_path() -> Optional[Path]:
     return Path(fd_path) if fd_path else None
 
 
-def get_ripgrep_path() -> Optional[Path]:
+def get_ripgrep_path() -> Path | None:
     """
     Get path to ripgrep binary.
 
@@ -60,7 +62,7 @@ def check_ripgrep_available() -> bool:
     return get_ripgrep_path() is not None
 
 
-def get_fd_version() -> Optional[str]:
+def get_fd_version() -> str | None:
     """
     Get fd version string.
 
@@ -86,11 +88,12 @@ def get_fd_version() -> Optional[str]:
             if len(parts) >= 2:
                 return parts[1]
         return version_line
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to get fd version: %s", e)
         return None
 
 
-def get_ripgrep_version() -> Optional[str]:
+def get_ripgrep_version() -> str | None:
     """
     Get ripgrep version string.
 
@@ -116,7 +119,8 @@ def get_ripgrep_version() -> Optional[str]:
             if len(parts) >= 2:
                 return parts[1]
         return version_line
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to get ripgrep version: %s", e)
         return None
 
 
@@ -212,7 +216,7 @@ def require_ripgrep() -> Path:
     return rg_path
 
 
-def get_binaries_status() -> dict[str, dict]:
+def get_binaries_status() -> dict[str, dict[str, bool | str]]:
     """
     Get status of all required binaries.
 
@@ -223,29 +227,27 @@ def get_binaries_status() -> dict[str, dict]:
             "ripgrep": {"available": bool, "path": str, "version": str}
         }
     """
-    status = {}
+    status: dict[str, dict[str, bool | str]] = {}
 
     # Check fd
     fd_path = get_fd_path()
-    status["fd"] = {
-        "available": fd_path is not None,
-    }
+    fd_info: dict[str, bool | str] = {"available": fd_path is not None}
     if fd_path:
-        status["fd"]["path"] = str(fd_path)
-        version = get_fd_version()
-        if version:
-            status["fd"]["version"] = version
+        fd_info["path"] = str(fd_path)
+        fd_version = get_fd_version()
+        if fd_version:
+            fd_info["version"] = fd_version
+    status["fd"] = fd_info
 
     # Check ripgrep
     rg_path = get_ripgrep_path()
-    status["ripgrep"] = {
-        "available": rg_path is not None,
-    }
+    rg_info: dict[str, bool | str] = {"available": rg_path is not None}
     if rg_path:
-        status["ripgrep"]["path"] = str(rg_path)
-        version = get_ripgrep_version()
-        if version:
-            status["ripgrep"]["version"] = version
+        rg_info["path"] = str(rg_path)
+        rg_version = get_ripgrep_version()
+        if rg_version:
+            rg_info["version"] = rg_version
+    status["ripgrep"] = rg_info
 
     return status
 
@@ -276,8 +278,7 @@ def require_all_binaries() -> dict[str, dict]:
             instructions.append(get_ripgrep_installation_instructions())
 
         raise BinaryNotFoundError(
-            f"Missing required binaries: {', '.join(missing)}\n\n"
-            + "\n\n".join(instructions)
+            f"Missing required binaries: {', '.join(missing)}\n\n" + "\n\n".join(instructions)
         )
 
     return status

@@ -26,10 +26,7 @@ def authenticate(username, password):
     # Fetch user data
     user_data = fetch_user_data(username)
 
-    if user_data and user_data.get("password") == password:
-        return True
-
-    return False
+    return bool(user_data and user_data.get("password") == password)
 
 
 def logout(user_id):

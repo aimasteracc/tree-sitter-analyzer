@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from tree_sitter_analyzer_v2.core.detector import LanguageDetector
+from tree_sitter_analyzer_v2.core.parser_registry import get_all_parsers
 from tree_sitter_analyzer_v2.formatters import get_default_registry
-from tree_sitter_analyzer_v2.languages import JavaParser, PythonParser, TypeScriptParser
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -22,7 +22,7 @@ class AnalyzeTool(BaseTool):
     (classes, functions, imports, etc.) in TOON or Markdown format.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the analyze tool."""
         self._detector = LanguageDetector()
         self._formatter_registry = get_default_registry()
@@ -31,13 +31,8 @@ class AnalyzeTool(BaseTool):
 
         self._encoding_detector = EncodingDetector()
 
-        # Language parsers
-        self._parsers = {
-            "python": PythonParser(),
-            "typescript": TypeScriptParser(),
-            "javascript": TypeScriptParser(),  # TS parser handles both
-            "java": JavaParser(),
-        }
+        # Resolve parsers via registry (DIP: no hardcoded language imports)
+        self._parsers: dict[str, Any] = get_all_parsers()
 
     def get_name(self) -> str:
         """Get tool name."""
@@ -90,22 +85,19 @@ class AnalyzeTool(BaseTool):
         # Validate output format
         if output_format not in ["toon", "markdown"]:
             return {
-                "success": False,
-                "language": None,
-                "output_format": output_format,
-                "data": None,
-                "error": f"Invalid output format: {output_format}. Must be 'toon' or 'markdown'.",
+                **self._error(
+                    f"Invalid output format: {output_format}. Must be 'toon' or 'markdown'.",
+                    error_code="INVALID_ARGUMENT",
+                ),
+                "language": None, "output_format": output_format, "data": None,
             }
 
         # Check file exists
         file_path_obj = Path(file_path)
         if not file_path_obj.exists():
             return {
-                "success": False,
-                "language": None,
-                "output_format": output_format,
-                "data": None,
-                "error": f"File not found: {file_path}",
+                **self._error(f"File not found: {file_path}", error_code="FILE_NOT_FOUND"),
+                "language": None, "output_format": output_format, "data": None,
             }
 
         try:
@@ -120,11 +112,11 @@ class AnalyzeTool(BaseTool):
             # Check if detection succeeded
             if detection_result is None:
                 return {
-                    "success": False,
-                    "language": None,
-                    "output_format": output_format,
-                    "data": None,
-                    "error": f"Could not detect language for file: {file_path}",
+                    **self._error(
+                        f"Could not detect language for file: {file_path}",
+                        error_code="UNSUPPORTED_LANGUAGE",
+                    ),
+                    "language": None, "output_format": output_format, "data": None,
                 }
 
             # Get language from detection result
@@ -132,11 +124,11 @@ class AnalyzeTool(BaseTool):
             if language not in self._parsers:
                 supported = ", ".join(self._parsers.keys())
                 return {
-                    "success": False,
-                    "language": language,
-                    "output_format": output_format,
-                    "data": None,
-                    "error": f"Unsupported language: {language}. Supported: {supported}",
+                    **self._error(
+                        f"Unsupported language: {language}. Supported: {supported}",
+                        error_code="UNSUPPORTED_LANGUAGE",
+                    ),
+                    "language": language, "output_format": output_format, "data": None,
                 }
 
             # Parse file
@@ -157,9 +149,6 @@ class AnalyzeTool(BaseTool):
 
         except Exception as e:
             return {
-                "success": False,
-                "language": None,
-                "output_format": output_format,
-                "data": None,
-                "error": f"Error analyzing file: {str(e)}",
+                **self._error(f"Error analyzing file: {e}", error_code="ANALYSIS_ERROR"),
+                "language": None, "output_format": output_format, "data": None,
             }

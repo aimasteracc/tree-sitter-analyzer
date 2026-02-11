@@ -259,12 +259,12 @@ def main():
             # Measure incremental update time
             start_incremental = time.time()
             updated_graph = update_graph(initial_graph, temp_path)
-            incremental_time = time.time() - start_incremental
+            _incremental_time = time.time() - start_incremental
 
             # Measure full rebuild time
             start_rebuild = time.time()
             rebuild_graph = builder.build_from_file(temp_path)
-            rebuild_time = time.time() - start_rebuild
+            _rebuild_time = time.time() - start_rebuild
 
             # Note: Performance comparison can be flaky on fast systems
             # The key is that update_graph works correctly

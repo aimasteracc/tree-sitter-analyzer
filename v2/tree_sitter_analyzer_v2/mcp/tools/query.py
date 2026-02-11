@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from tree_sitter_analyzer_v2.core.detector import LanguageDetector
+from tree_sitter_analyzer_v2.core.parser_registry import get_all_parsers
 from tree_sitter_analyzer_v2.formatters import get_default_registry
-from tree_sitter_analyzer_v2.languages import JavaParser, PythonParser, TypeScriptParser
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -23,18 +23,13 @@ class QueryTool(BaseTool):
     and supports filtering by name, visibility, and other attributes.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the query tool."""
         self._detector = LanguageDetector()
         self._formatter_registry = get_default_registry()
 
-        # Language parsers
-        self._parsers = {
-            "python": PythonParser(),
-            "typescript": TypeScriptParser(),
-            "javascript": TypeScriptParser(),  # TS parser handles both
-            "java": JavaParser(),
-        }
+        # Resolve parsers via registry (DIP: no hardcoded language imports)
+        self._parsers: dict[str, Any] = get_all_parsers()
 
     def get_name(self) -> str:
         """Get tool name."""
@@ -123,7 +118,7 @@ class QueryTool(BaseTool):
 
             # Validate file exists
             if not Path(file_path).exists():
-                return {"success": False, "error": f"File not found: {file_path}"}
+                return self._error(f"File not found: {file_path}", error_code="FILE_NOT_FOUND")
 
             # Read file content
             content = Path(file_path).read_text(encoding="utf-8")
@@ -132,10 +127,12 @@ class QueryTool(BaseTool):
             detection_result = self._detector.detect_from_content(
                 filename=file_path, content=content
             )
+            if not detection_result:
+                return self._error(f"Could not detect language for: {file_path}", error_code="UNSUPPORTED_LANGUAGE")
             language = detection_result["language"].lower()
 
             if language not in self._parsers:
-                return {"success": False, "error": f"Unsupported language: {language}"}
+                return self._error(f"Unsupported language: {language}", error_code="UNSUPPORTED_LANGUAGE")
 
             # Parse file
             parser = self._parsers[language]
@@ -171,7 +168,7 @@ class QueryTool(BaseTool):
             }
 
         except Exception as e:
-            return {"success": False, "error": f"Query failed: {str(e)}"}
+            return self._error(f"Query failed: {e}", error_code="QUERY_ERROR")
 
     def _extract_elements(
         self, parse_result: dict[str, Any], element_type: str | None

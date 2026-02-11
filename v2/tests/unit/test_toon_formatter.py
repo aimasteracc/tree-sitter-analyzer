@@ -241,7 +241,7 @@ class TestToonTokenReduction:
 
         # TOON should be at least 30% shorter (aiming for 50%+)
         reduction = 1 - (len(toon_output) / len(json_output))
-        assert reduction > 0.3, f"Only {reduction*100:.1f}% reduction, target >30%"
+        assert reduction > 0.3, f"Only {reduction * 100:.1f}% reduction, target >30%"
 
 
 class TestToonEdgeCases:

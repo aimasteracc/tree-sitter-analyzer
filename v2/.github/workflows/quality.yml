@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         working-directory: v2
         run: |
-          uv pip install -e ".[dev]"
+          uv sync --extra dev --extra languages
 
       - name: Run ruff (linting)
         working-directory: v2

@@ -64,15 +64,15 @@ class TestCrossFileBuilder:
 
         if main_main in graph.nodes() and utils_helper in graph.nodes():
             # Check if main calls helper
-            assert graph.has_edge(
-                main_main, utils_helper
-            ), f"Expected edge from {main_main} to {utils_helper}"
+            assert graph.has_edge(main_main, utils_helper), (
+                f"Expected edge from {main_main} to {utils_helper}"
+            )
 
             # Check edge is marked as cross-file
             edge_data = graph[main_main][utils_helper]
-            assert (
-                edge_data.get("cross_file") is True
-            ), "Cross-file edge should be marked with cross_file=True"
+            assert edge_data.get("cross_file") is True, (
+                "Cross-file edge should be marked with cross_file=True"
+            )
 
     def test_cross_file_resolution_accuracy(self):
         """Test that cross-file resolution correctly identifies targets."""
@@ -84,10 +84,7 @@ class TestCrossFileBuilder:
             (u, v, data) for u, v, data in graph.edges(data=True) if data.get("type") == "CALLS"
         ]
 
-        # Verify we have both intra-file and cross-file calls
-        intra_file_calls = [
-            (u, v) for u, v, data in calls_edges if data.get("cross_file", False) is False
-        ]
+        # Verify we have cross-file calls
         cross_file_calls = [(u, v) for u, v, data in calls_edges if data.get("cross_file") is True]
 
         # Should have some of each type

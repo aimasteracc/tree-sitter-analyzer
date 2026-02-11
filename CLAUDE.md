@@ -533,3 +533,26 @@ Before writing code for a complex feature, Claude MUST:
 5. ✅ Confirm with user if approach is acceptable
 
 This prevents wasted effort and ensures alignment.
+
+## Autonomous Development Protocol
+
+When the user says "全自动开发", "继续开发", "全自动迭代", or any similar trigger phrase,
+the AI MUST follow the complete 8-step closed-loop protocol defined in `V2_AI_AUTONOMOUS_ROLES.md`:
+
+```
+STEP 1: Product Owner  → Scan gaps, define Sprint requirements
+STEP 2: Architect      → Design solution, break down tasks
+STEP 3: Worker TDD #1  → RED (write failing tests) → GREEN (implement) → REFACTOR (ruff+mypy)
+STEP 4: Elite Critic   → Harshest expert criticism, P0/P1/P2 refactoring list
+STEP 5: Worker TDD #2  → Implement Critic's refactoring demands via TDD
+STEP 6: QA Strategist  → Edge case tests + full regression verification
+STEP 7: Tech Writer    → Update spec files (tasks.md, progress.md)
+STEP 8: DevOps         → Full test suite + automated demo on real project
+```
+
+Key rules:
+- **TDD is mandatory**: RED before GREEN, never skip
+- **Critic is mandatory**: Every implementation MUST be criticized before QA
+- **Spec files are mandatory**: All complex features use `.kiro/specs/` structure
+- **No human intervention needed**: AI executes all 8 steps autonomously
+- Read `V2_AI_AUTONOMOUS_ROLES.md` for full protocol details.

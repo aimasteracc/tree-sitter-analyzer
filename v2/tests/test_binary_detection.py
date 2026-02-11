@@ -5,7 +5,6 @@ Following TDD: Write tests FIRST for binary detection.
 This is T0.4: fd + ripgrep Detection
 """
 
-import shutil
 from pathlib import Path
 from unittest.mock import patch
 
@@ -144,8 +143,7 @@ class TestBinaryInfo:
         assert len(fd_instructions) > 0
         # Should mention common package managers
         assert any(
-            pm in fd_instructions.lower()
-            for pm in ["brew", "apt", "chocolatey", "scoop", "cargo"]
+            pm in fd_instructions.lower() for pm in ["brew", "apt", "chocolatey", "scoop", "cargo"]
         )
 
         rg_instructions = get_ripgrep_installation_instructions()
@@ -163,7 +161,7 @@ class TestBinaryInfo:
         assert "ripgrep" in status
 
         # Each binary status should have 'available' and 'path' keys
-        for binary, info in status.items():
+        for _binary, info in status.items():
             assert "available" in info
             assert isinstance(info["available"], bool)
             if info["available"]:

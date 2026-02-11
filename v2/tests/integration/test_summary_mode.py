@@ -92,8 +92,7 @@ class TestSummaryMode:
 
         # Summary should be at least 1.5x faster (accounting for subprocess overhead)
         assert summary_time < full_time * 1.5, (
-            f"Summary ({summary_time:.2f}s) not significantly faster than "
-            f"full ({full_time:.2f}s)"
+            f"Summary ({summary_time:.2f}s) not significantly faster than full ({full_time:.2f}s)"
         )
 
     def test_summary_with_python_file(self) -> None:

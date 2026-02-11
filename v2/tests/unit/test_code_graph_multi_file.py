@@ -100,8 +100,7 @@ def func4():
             graph = builder.build_from_directory(str(tmppath), exclude_patterns=["**/test_*.py"])
 
             # Verify test file was excluded
-            module_nodes = [n for n, d in graph.nodes(data=True) if d["type"] == "MODULE"]
-            module_names = [d["name"] for n, d in graph.nodes(data=True) if d["type"] == "MODULE"]
+            module_names = [d["name"] for _, d in graph.nodes(data=True) if d["type"] == "MODULE"]
 
             assert "app" in module_names
             assert "utils" in module_names

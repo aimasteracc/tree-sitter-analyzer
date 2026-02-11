@@ -30,7 +30,7 @@ def detect_changes(graph: nx.DiGraph, file_path: str) -> list[str]:
 
     # Check if graph has metadata for this file
     # Look for module nodes with this file_path
-    for node_id, node_data in graph.nodes(data=True):
+    for _node_id, node_data in graph.nodes(data=True):
         if node_data.get("type") == "MODULE":
             stored_path = node_data.get("file_path")
             if stored_path and Path(stored_path).resolve() == Path(file_path).resolve():
@@ -81,8 +81,11 @@ def update_graph(graph: nx.DiGraph, file_path: str) -> nx.DiGraph:
 
     # Add edges from old graph (excluding edges involving removed nodes)
     for source, target, edge_data in graph.edges(data=True):
-        if source not in nodes_to_remove and target not in nodes_to_remove:
-            if not updated_graph.has_edge(source, target):
-                updated_graph.add_edge(source, target, **edge_data)
+        if (
+            source not in nodes_to_remove
+            and target not in nodes_to_remove
+            and not updated_graph.has_edge(source, target)
+        ):
+            updated_graph.add_edge(source, target, **edge_data)
 
     return updated_graph

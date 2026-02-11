@@ -110,7 +110,7 @@ class CrossFileCallResolver:
             True
         """
         # Step 1: Combine all file graphs into one unified graph
-        combined = nx.DiGraph()
+        combined: nx.DiGraph = nx.DiGraph()
         for graph in file_graphs.values():
             combined = nx.compose(combined, graph)
 
@@ -264,7 +264,7 @@ class CrossFileCallResolver:
             >>> len(entries)
             2
         """
-        results = []
+        results: list[SymbolEntry] = []
 
         # Get all files imported by from_file
         if from_file not in self.import_graph:
@@ -344,7 +344,7 @@ class CrossFileCallResolver:
             >>> calls
             ['helper', 'validate', 'format']
         """
-        calls = []
+        calls: list[str] = []
 
         # Check if node exists in graph
         if node_id not in graph:

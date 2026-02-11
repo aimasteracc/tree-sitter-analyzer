@@ -194,6 +194,67 @@ class TestSearchContentAPI:
         assert result["success"] is True
 
 
+class TestExtractCodeSectionAPI:
+    """Tests for extract_code_section API (Pain point #9)."""
+
+    def test_extract_code_section_via_api(self, analyze_fixtures_dir):
+        """Test extract_code_section via API class method."""
+        from tree_sitter_analyzer_v2.api import TreeSitterAnalyzerAPI
+
+        api = TreeSitterAnalyzerAPI()
+        sample_py = analyze_fixtures_dir / "sample.py"
+
+        result = api.extract_code_section(
+            file_path=str(sample_py), start_line=1, end_line=5, output_format="toon"
+        )
+
+        assert result["success"] is True
+        assert "content" in result
+        assert result["range"]["start_line"] == 1
+        assert result["range"]["end_line"] == 5
+        assert result["lines_extracted"] == 5
+
+    def test_extract_code_section_standalone_function(self, analyze_fixtures_dir):
+        """Test extract_code_section as standalone function (doc consistency)."""
+        from tree_sitter_analyzer_v2.api.interface import extract_code_section
+
+        sample_py = analyze_fixtures_dir / "sample.py"
+
+        result = extract_code_section(
+            file_path=str(sample_py), start_line=1, end_line=3, output_format="markdown"
+        )
+
+        assert result["success"] is True
+        assert "data" in result
+        assert "markdown" in result["data"].lower() or "```" in result["data"]
+        assert result["output_format"] == "markdown"
+
+    def test_extract_code_section_nonexistent_file(self):
+        """Test extract_code_section with nonexistent file."""
+        from tree_sitter_analyzer_v2.api import TreeSitterAnalyzerAPI
+
+        api = TreeSitterAnalyzerAPI()
+        result = api.extract_code_section("nonexistent.py", start_line=1, end_line=5)
+
+        assert result["success"] is False
+        assert "not found" in result["error"].lower()
+
+    def test_extract_code_section_to_end_of_file(self, analyze_fixtures_dir):
+        """Test extract_code_section with end_line=None reads to end."""
+        from tree_sitter_analyzer_v2.api import TreeSitterAnalyzerAPI
+
+        api = TreeSitterAnalyzerAPI()
+        sample_py = analyze_fixtures_dir / "sample.py"
+        total_lines = len(sample_py.read_text(encoding="utf-8").splitlines())
+
+        result = api.extract_code_section(
+            file_path=str(sample_py), start_line=1, end_line=None
+        )
+
+        assert result["success"] is True
+        assert result["range"]["end_line"] == total_lines
+
+
 class TestAPITypeHints:
     """Tests for API type hints and documentation."""
 
@@ -221,6 +282,10 @@ class TestAPITypeHints:
         sig = inspect.signature(api.search_content)
         assert sig.return_annotation != inspect.Parameter.empty
 
+        # Check extract_code_section has annotations
+        sig = inspect.signature(api.extract_code_section)
+        assert sig.return_annotation != inspect.Parameter.empty
+
     def test_api_has_docstrings(self):
         """Test API methods have docstrings."""
         from tree_sitter_analyzer_v2.api import TreeSitterAnalyzerAPI
@@ -231,6 +296,7 @@ class TestAPITypeHints:
         assert api.analyze_file_raw.__doc__ is not None
         assert api.search_files.__doc__ is not None
         assert api.search_content.__doc__ is not None
+        assert api.extract_code_section.__doc__ is not None
 
 
 @pytest.fixture

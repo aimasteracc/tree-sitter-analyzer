@@ -11,6 +11,7 @@ Components:
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import networkx as nx
 
@@ -122,7 +123,7 @@ class ImportResolver:
         self._traverse_for_imports(parse_result.tree, imports)
         return imports
 
-    def _traverse_for_imports(self, node, imports: list[Import]) -> None:
+    def _traverse_for_imports(self, node: Any, imports: list[Import]) -> None:
         """Recursively traverse AST to find import statements."""
         if node.type == "import_statement":
             # import x, import x as y
@@ -140,7 +141,7 @@ class ImportResolver:
         for child in node.children:
             self._traverse_for_imports(child, imports)
 
-    def _extract_import_statement(self, node) -> Import | None:
+    def _extract_import_statement(self, node: Any) -> Import | None:
         """Extract info from 'import x' or 'import x as y' statement."""
         for child in node.children:
             if child.type == "dotted_name":
@@ -175,7 +176,7 @@ class ImportResolver:
 
         return None
 
-    def _extract_from_import(self, node) -> Import | None:
+    def _extract_from_import(self, node: Any) -> Import | None:
         """Extract info from 'from x import y' or 'from . import y' statement."""
         module_name = ""
         imported_names: list[str] = []
@@ -234,7 +235,7 @@ class ImportResolver:
             wildcard=is_wildcard,
         )
 
-    def _count_relative_level(self, node) -> int:
+    def _count_relative_level(self, node: Any) -> int:
         """Count relative import level (., .., ...) from relative_import node."""
         level = 0
         for child in node.children:
@@ -429,7 +430,7 @@ class ImportResolver:
             >>> graph["main.py"]["utils/helper.py"]["type"]
             'IMPORTS'
         """
-        graph = nx.DiGraph()
+        graph: nx.DiGraph = nx.DiGraph()
 
         # Add all files as nodes first (using absolute paths for consistency)
         for file in files:
@@ -451,7 +452,7 @@ class ImportResolver:
                 # Only create edge if target is in our project and in the file list
                 if target_file and str(target_file) in graph:
                     # Create edge with metadata
-                    edge_data = {
+                    edge_data: dict[str, Any] = {
                         "type": "IMPORTS",
                         "imported_names": import_stmt.names,
                     }

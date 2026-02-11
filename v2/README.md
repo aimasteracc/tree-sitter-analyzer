@@ -1,244 +1,251 @@
 # Tree-Sitter Analyzer v2
 
-> **Status**: 🚧 Alpha Development (v2.0.0-alpha.1)
-> **Goal**: Complete architectural rewrite for simplicity, performance, and AI-first design
+[![Tests](https://github.com/aimasteracc/tree-sitter-analyzer/actions/workflows/test.yml/badge.svg?branch=v2-rewrite)](https://github.com/aimasteracc/tree-sitter-analyzer/actions/workflows/test.yml)
+[![Quality](https://github.com/aimasteracc/tree-sitter-analyzer/actions/workflows/quality.yml/badge.svg?branch=v2-rewrite)](https://github.com/aimasteracc/tree-sitter-analyzer/actions/workflows/quality.yml)
+[![codecov](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/v2-rewrite/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-Enterprise-grade code analysis tool for the AI era. Built for AI assistants (Claude, GPT, Cursor) with token optimization, fast search, and multi-language support.
+> Enterprise-grade code analysis for the AI era. Built for AI assistants with token optimization, fast search, and multi-language support.
 
-## 🎯 Project Vision
+## Why tree-sitter-analyzer?
 
-Tree-Sitter Analyzer v2 is a **ground-up rewrite** focusing on:
+AI assistants need to understand code, but raw source files waste tokens and lose structure. tree-sitter-analyzer solves this:
 
-- **Simplicity**: Clean architecture, no over-engineering
-- **Performance**: Fast analysis with fd/ripgrep integration
-- **Token Efficiency**: TOON format for 70-80% token reduction
-- **AI-First**: Built specifically for AI assistants
+| Problem | Solution |
+|---------|----------|
+| AI context windows are limited | **TOON format**: 50-70% token reduction |
+| AI can't parse code structure | **Tree-sitter parsing**: AST-level understanding |
+| Searching large codebases is slow | **fd + ripgrep**: 10-20x faster than grep |
+| AI tools lack code context | **MCP server**: Seamless AI assistant integration |
 
-## ✨ Key Features
-
-- **17 Language Support**: Python, TypeScript/JavaScript, Java, C/C++, C#, Go, Rust, Kotlin, PHP, Ruby, SQL, HTML, CSS, YAML, Markdown
-- **MCP Integration**: Seamless integration with Claude Desktop, Cursor, Roo Code
-- **Fast Search**: fd (file search) + ripgrep (content search) - 10-20x faster
-- **Token Optimization**: TOON + Markdown output formats
-- **Triple Interface**: CLI (testing) + API (Agent Skills) + MCP (AI integration)
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Python 3.10 or higher
-- [uv](https://github.com/astral-sh/uv) package manager
-- [fd](https://github.com/sharkdp/fd) (optional but recommended)
-- [ripgrep](https://github.com/BurntSushi/ripgrep) (optional but recommended)
+## Quick Start
 
 ### Installation
 
 ```bash
-# Clone the repository
+# Clone and install
 git clone https://github.com/aimasteracc/tree-sitter-analyzer.git
-cd tree-sitter-analyzer
-git checkout v2-rewrite
+cd tree-sitter-analyzer/v2
 
-# Install v2
-cd v2
-uv pip install -e ".[dev]"
+# Install with uv (recommended)
+uv sync --extra dev --extra languages
 
-# Verify installation
-uv run pytest tests/ -v
+# Verify
+uv run pytest tests/ -q --no-cov
 ```
 
-### Basic Usage
+### CLI Usage
+
+```bash
+# Analyze a Python file
+uv run tsa analyze src/main.py
+
+# Get a quick summary
+uv run tsa analyze src/main.py --summary
+
+# TOON format (minimal tokens for AI)
+uv run tsa analyze src/main.py --format toon
+
+# Search files (uses fd)
+uv run tsa search-files . "*.py"
+
+# Search content (uses ripgrep)
+uv run tsa search-content . "def main"
+```
+
+### Python API
 
 ```python
-# Python API
 from tree_sitter_analyzer_v2.api import TreeSitterAnalyzerAPI
 
 api = TreeSitterAnalyzerAPI(project_root="/path/to/project")
 
 # Analyze a file
-result = api.analyze_file("src/main.py", format="toon")
-print(result)
+result = api.analyze_file("src/main.py")
+print(result["classes"])    # List of classes with methods, fields
+print(result["functions"])  # Top-level functions
 
-# Search files
-py_files = api.search_files(extensions=[".py"])
-
-# Search content
-matches = api.search_content("def main")
+# Format for AI consumption
+formatted = api.analyze_file("src/main.py", format="toon")
 ```
 
-## 📊 Development Status
+### MCP Server (for AI Assistants)
 
-### Phase 0: Foundation (Week 1) - **IN PROGRESS**
+Add to your AI assistant's MCP configuration:
 
-- ✅ T0.1: Project Scaffold
-- ✅ T0.2: Testing Framework
-- ✅ T0.3: MCP Hello World
-- ✅ T0.4: fd + ripgrep Detection
-- ✅ T0.5: CI/CD Pipeline
-- ✅ T0.6: Development Documentation
+```json
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uvx",
+      "args": ["--from", "tree-sitter-analyzer[mcp]", "tree-sitter-analyzer-mcp"]
+    }
+  }
+}
+```
 
-**Current Stats:**
-- 38 tests passing
-- 86% code coverage
-- 100% TDD methodology
+**Available MCP Tools:**
+- `check_code_scale` - File metrics: lines, classes, methods, complexity
+- `analyze_code_structure` - Detailed structure table
+- `extract_code_section` - Read specific line ranges
+- `query_code` - Query methods, classes with filters
+- `search_content` - Ripgrep-powered content search
+- `list_files` - fd-powered file discovery
+- `find_and_grep` - Two-stage file find + content search
+- `build_code_graph` - Cross-file dependency analysis
 
-### Upcoming Phases
+## Features
 
-- **Phase 1**: Core Parser + Search Engine (Week 2-3)
-- **Phase 2**: Plugin System (Week 3-4)
-- **Phase 3**: Output Formatters (Week 4)
-- **Phase 4**: MCP Integration (Week 4-5)
-- **Phase 5**: CLI + API (Week 5)
-- **Phase 6**: All 17 Languages (Week 6-7)
-- **Phase 7**: Optimization (Week 7-8)
+### Multi-Language Support
 
-See [tasks.md](../.kiro/specs/v2-complete-rewrite/tasks.md) for detailed plan.
+Currently supported: **Python**, **Java**, **TypeScript/JavaScript**
 
-## 🧪 Testing
+Planned (v2.0 GA): C/C++, C#, Go, Rust, Kotlin, PHP, Ruby, SQL, HTML, CSS, YAML, Markdown
 
-We follow **Test-Driven Development (TDD)** strictly. All code is written **tests-first**.
+### Token-Optimized Output (TOON)
+
+TOON format reduces token usage by 50-70% while preserving all structural information:
+
+```
+# Standard JSON output: ~800 tokens
+{"classes": [{"name": "Calculator", "methods": [{"name": "add", ...}]}]}
+
+# TOON output: ~300 tokens
+CLS Calculator L1-50
+  MTD add(a:int,b:int)->int L5 PUB
+  MTD subtract(a:int,b:int)->int L15 PUB
+  FLD result:int L3 PRI
+```
+
+### Code Graph Analysis
+
+Analyze cross-file dependencies, call chains, and import graphs:
+
+```python
+# Build a code graph for your project
+result = api.build_code_graph(directory="src/", graph_type="calls")
+# Returns: nodes, edges, entry points, complexity metrics
+```
+
+### Fast Search
+
+Powered by [fd](https://github.com/sharkdp/fd) and [ripgrep](https://github.com/BurntSushi/ripgrep):
+
+```bash
+# Find all Python files (fd)
+uv run tsa search-files . --type py
+
+# Search for class definitions (ripgrep)
+uv run tsa search-content . "class.*Service" --type py
+```
+
+## Project Stats
+
+| Metric | Value |
+|--------|-------|
+| Tests | **903 passing** (4 skipped) |
+| Coverage | **91%** |
+| Lint errors | **0** (ruff) |
+| Type errors | **0** (mypy) |
+| Languages | Python, Java, TypeScript/JS |
+| MCP Tools | 8 |
+
+## Development
+
+### Prerequisites
+
+- Python 3.10+
+- [uv](https://github.com/astral-sh/uv) package manager
+- [fd](https://github.com/sharkdp/fd) (optional, for fast file search)
+- [ripgrep](https://github.com/BurntSushi/ripgrep) (optional, for fast content search)
+
+### Setup
+
+```bash
+cd v2
+uv sync --extra dev --extra languages
+```
+
+### Quality Checks
 
 ```bash
 # Run all tests
 uv run pytest tests/ -v
 
-# Run with coverage
-uv run pytest tests/ --cov=tree_sitter_analyzer_v2 --cov-report=html
-
-# Run specific test category
-uv run pytest tests/unit/ -v          # Unit tests
-uv run pytest tests/integration/ -v   # Integration tests
-uv run pytest tests/e2e/ -v           # End-to-end tests
-```
-
-**Coverage Targets:**
-- Overall: 80% minimum
-- Core modules: 90% minimum
-- New code: 100% (all new code must have tests)
-
-See [docs/tdd-workflow.md](docs/tdd-workflow.md) for detailed TDD guide.
-
-## 🛠️ Development
-
-### Project Structure
-
-```
-v2/
-├── tree_sitter_analyzer_v2/     # Source code
-│   ├── core/                    # Core engine
-│   ├── plugins/languages/       # Language plugins
-│   ├── formatters/              # TOON + Markdown
-│   ├── mcp/tools/               # MCP server
-│   ├── cli/                     # CLI interface
-│   └── api/                     # Python API
-├── tests/                       # Test suite
-│   ├── unit/                    # Unit tests
-│   ├── integration/             # Integration tests
-│   ├── e2e/                     # End-to-end tests
-│   └── fixtures/                # Test data
-├── docs/                        # Documentation
-└── examples/                    # Usage examples
-```
-
-### Code Quality
-
-```bash
-# Linting
+# Lint
 uv run ruff check tree_sitter_analyzer_v2/
 
-# Formatting
+# Format
 uv run ruff format tree_sitter_analyzer_v2/
 
-# Type checking
+# Type check
 uv run mypy tree_sitter_analyzer_v2/
 ```
 
-## 📖 Documentation
+### TDD Workflow
 
-- [Contributing Guide](CONTRIBUTING.md)
-- [TDD Workflow](docs/tdd-workflow.md)
-- [Code Conventions](docs/conventions.md)
-- [Architecture Design](../.kiro/specs/v2-complete-rewrite/design.md)
-- [Requirements](../.kiro/specs/v2-complete-rewrite/requirements.md)
-- [Task Plan](../.kiro/specs/v2-complete-rewrite/tasks.md)
+We follow strict Test-Driven Development. See [docs/tdd-workflow.md](docs/tdd-workflow.md).
 
-## 🎓 Design Principles
+```
+1. RED    - Write a failing test
+2. GREEN  - Write minimal code to pass
+3. REFACTOR - Improve while keeping tests green
+```
 
-### 1. Simplicity First
+## Architecture
+
+```
+tree_sitter_analyzer_v2/
+├── core/           # Parser, detector, types, token optimizer
+├── languages/      # Python, Java, TypeScript parsers
+├── formatters/     # TOON, Markdown, Summary formatters
+├── graph/          # Code graph: builder, imports, cross-file analysis
+├── mcp/            # MCP server + 8 tools
+├── api/            # Python API interface
+├── cli/            # Command-line interface
+├── search.py       # fd + ripgrep integration
+└── security/       # Path validation, security checks
+```
+
+**Design Principles:**
 - No file exceeds 300 lines
-- One responsibility per module
-- Real dependency injection or none at all
+- 100% type hints (mypy strict mode)
+- TDD: all code written tests-first
+- AI-first: TOON format by default for MCP
 
-### 2. TDD Methodology
-- Write tests FIRST, always
-- RED → GREEN → REFACTOR
-- 80%+ coverage enforced
+## Roadmap
 
-### 3. Performance by Design
-- fd + ripgrep for fast search
-- Single unified cache
-- Lazy loading where it makes sense
+See [ROADMAP.md](ROADMAP.md) for detailed plans.
 
-### 4. Type Safety
-- 100% type hints
-- No TYPE_CHECKING tricks
-- Types match runtime reality
+**Next milestones:**
+- **v2.0.0-alpha.2**: Project polish, 90%+ coverage, examples
+- **v2.0.0-alpha.3**: 5 more languages (C/C++, Go, Rust, C#, Kotlin)
+- **v2.0.0-beta.1**: MCP production-ready
+- **v2.0.0**: General availability with 17 languages
 
-### 5. AI-First Output
-- TOON format: 70-80% token reduction
-- Markdown format: Human-readable
-- No JSON bloat
+## Contributing
 
-## 🔧 Key Architectural Decisions
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-### What v2 Changes from v1
+**Priority areas:**
+1. Language plugins (add new language support)
+2. Performance optimization
+3. Documentation and examples
+4. Test coverage improvements
 
-**Removed (over-engineered):**
-- ❌ `AnalysisEngine` god object (800+ lines)
-- ❌ Multiple conflicting cache layers
-- ❌ TYPE_CHECKING circular dependency hacks
-- ❌ Fake abstractions (ElementExtractor hierarchy)
-- ❌ JSON output format
-
-**Added (simplified):**
-- ✅ Clean `CodeAnalyzer` (200 lines max)
-- ✅ Single LRU cache strategy
-- ✅ Clear dependency hierarchy
-- ✅ Real plugin base class with 80% shared code
-- ✅ TOON + Markdown output only
-
-### What v2 Preserves from v1
-
-- ✅ 17 language support
-- ✅ Tree-sitter query patterns
-- ✅ fd + ripgrep integration
-- ✅ MCP server capability
-- ✅ TOON format optimization
-- ✅ Security validation
-
-## 🤝 Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-**Before contributing:**
-1. Read the [TDD Workflow](docs/tdd-workflow.md)
-2. Follow [Code Conventions](docs/conventions.md)
-3. Write tests FIRST
-4. Ensure 80%+ coverage
-5. Run quality checks
-
-## 📝 License
+## License
 
 MIT License - see [LICENSE](../LICENSE) for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-- Built with [tree-sitter](https://tree-sitter.github.io/)
-- Fast search powered by [fd](https://github.com/sharkdp/fd) and [ripgrep](https://github.com/BurntSushi/ripgrep)
-- MCP protocol by [Anthropic](https://www.anthropic.com/)
+- [tree-sitter](https://tree-sitter.github.io/) - Incremental parsing
+- [fd](https://github.com/sharkdp/fd) - Fast file finder
+- [ripgrep](https://github.com/BurntSushi/ripgrep) - Fast content search
+- [Anthropic MCP](https://modelcontextprotocol.io/) - AI tool protocol
 
 ---
 
-**Note**: This is v2 alpha - a complete rewrite. For stable production use, see [v1.9.17.1](https://github.com/aimasteracc/tree-sitter-analyzer/releases/tag/v1.9.17.1).
-
-**Goal**: Replace v1.9.17.1 with a cleaner, faster, simpler v2.0 by Week 8.
+> **Note**: v2 is a complete rewrite in alpha. For stable production use, see [v1.9.17.1](https://github.com/aimasteracc/tree-sitter-analyzer/releases/tag/v1.9.17.1).

@@ -13,10 +13,13 @@ Supports:
 - Western European: CP1252, ISO-8859-1
 """
 
+import logging
 import threading
 from collections import OrderedDict
 from collections.abc import Generator
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Try to import chardet for advanced encoding detection
 try:
@@ -223,8 +226,9 @@ class EncodingDetector:
 
             return encoding
 
-        except Exception:
+        except Exception as e:
             # If anything goes wrong, default to UTF-8
+            logger.debug("Encoding detection failed for %s, defaulting to utf-8: %s", file_path, e)
             return "utf-8"
 
     def read_file_safe(
@@ -248,15 +252,17 @@ class EncodingDetector:
         # Detect encoding
         try:
             encoding = self.detect_encoding(file_path)
-        except Exception:
+        except Exception as e:
+            logger.debug("Encoding detection failed for %s, using fallback: %s", file_path, e)
             encoding = fallback_encoding
 
         # Read file with detected encoding
         try:
             with open(file_path, encoding=encoding, errors=errors) as f:
                 return f.read()
-        except Exception:
+        except Exception as e:
             # Fallback to specified encoding
+            logger.debug("Read with %s failed for %s, falling back to %s: %s", encoding, file_path, fallback_encoding, e)
             with open(file_path, encoding=fallback_encoding, errors=errors) as f:
                 return f.read()
 
@@ -284,8 +290,9 @@ class EncodingDetector:
         try:
             with open(file_path, encoding=encoding, errors="replace") as f:
                 yield from f
-        except Exception:
+        except Exception as e:
             # Fallback to UTF-8
+            logger.debug("Streaming with %s failed for %s, falling back to utf-8: %s", encoding, file_path, e)
             with open(file_path, encoding="utf-8", errors="replace") as f:
                 yield from f
 
@@ -342,8 +349,8 @@ class EncodingDetector:
                 encoding = result.get("encoding")
                 if encoding:
                     return encoding.lower()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("chardet detection failed: %s", e)
 
         return None
 

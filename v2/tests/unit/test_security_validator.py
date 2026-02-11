@@ -219,13 +219,14 @@ class TestResourceLimits:
         project_root = tmp_path / "project"
         project_root.mkdir()
 
-        # Create large file (e.g., 20MB)
+        # Create file larger than limit (200KB file, 100KB limit)
+        # Use small sizes to avoid "No space left on device" on CI/limited disks
         large_file = project_root / "large.py"
-        large_file.write_bytes(b"x" * (20 * 1024 * 1024))
+        large_file.write_bytes(b"x" * (200 * 1024))
 
         validator = SecurityValidator(
             project_root=str(project_root),
-            max_file_size=10 * 1024 * 1024,  # 10MB limit
+            max_file_size=100 * 1024,  # 100KB limit
         )
 
         result = validator.validate_file_path(str(large_file))
@@ -246,7 +247,7 @@ class TestResourceLimits:
 
         validator = SecurityValidator(
             project_root=str(project_root),
-            max_file_size=10 * 1024 * 1024,  # 10MB limit
+            max_file_size=100 * 1024,  # 100KB limit
         )
 
         result = validator.validate_file_path(str(small_file))
@@ -320,6 +321,86 @@ class TestSecurityValidatorIntegration:
         # Regex error
         result2 = validator.validate_regex("(a+)+")
         assert len(result2["error"]) > 20  # Should have detailed message
+
+
+class TestRegexWithTestString:
+    """Tests for regex validation with test string execution."""
+
+    def test_safe_regex_with_test_string(self):
+        """Safe regex with test string should pass."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        validator = SecurityValidator(project_root="/tmp")
+        result = validator.validate_regex("[a-z]+", test_string="hello world")
+        assert result["valid"] is True
+
+    def test_safe_regex_with_no_match(self):
+        """Safe regex with non-matching test string should pass."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        validator = SecurityValidator(project_root="/tmp")
+        result = validator.validate_regex("^\\d+$", test_string="no digits here")
+        assert result["valid"] is True
+
+    def test_regex_with_complex_test_string(self):
+        """Regex with complex but safe pattern and test string should pass."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        validator = SecurityValidator(project_root="/tmp")
+        result = validator.validate_regex(
+            r"def\s+\w+\(.*\)\s*->",
+            test_string="def hello(name: str) -> str:",
+        )
+        assert result["valid"] is True
+
+    def test_invalid_regex_syntax_with_test_string(self):
+        """Invalid regex should fail even before test string execution."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        validator = SecurityValidator(project_root="/tmp")
+        result = validator.validate_regex("[", test_string="test")
+        assert result["valid"] is False
+        assert "Invalid regex" in result["error"]
+
+
+class TestPathValidationEdgeCases:
+    """Edge case tests for path validation."""
+
+    def test_path_validation_with_null_bytes(self, tmp_path):
+        """Path with null bytes should fail gracefully."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        validator = SecurityValidator(project_root=str(project_root))
+
+        result = validator.validate_file_path("test\x00.py")
+        # Should handle gracefully (either valid=False or exception caught)
+        assert isinstance(result, dict)
+        assert "valid" in result
+
+    def test_nonexistent_file_path_valid(self, tmp_path):
+        """Nonexistent file within project should be valid (path check only)."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+        validator = SecurityValidator(project_root=str(project_root))
+
+        result = validator.validate_file_path("nonexistent.py")
+        assert result["valid"] is True
+
+    def test_directory_path_within_project(self, tmp_path):
+        """Directory path within project should be valid."""
+        from tree_sitter_analyzer_v2.security.validator import SecurityValidator
+
+        project_root = tmp_path / "project"
+        subdir = project_root / "src"
+        subdir.mkdir(parents=True)
+        validator = SecurityValidator(project_root=str(project_root))
+
+        result = validator.validate_file_path(str(subdir))
+        assert result["valid"] is True
 
 
 class TestSecurityException:

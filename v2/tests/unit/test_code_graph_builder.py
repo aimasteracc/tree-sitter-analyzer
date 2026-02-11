@@ -114,7 +114,7 @@ async def process_data(file_path: str, options: dict) -> dict:
             func_data = graph.nodes[func_nodes[0]]
             assert func_data["type"] == "FUNCTION"
             assert func_data["name"] == "process_data"
-            assert func_data["is_async"] == True
+            assert func_data["is_async"] is True
             assert "file_path" in func_data["params"]
             assert "options" in func_data["params"]
             assert func_data["return_type"] == "dict"

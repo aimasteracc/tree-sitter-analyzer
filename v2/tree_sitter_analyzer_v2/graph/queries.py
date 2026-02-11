@@ -47,7 +47,7 @@ def get_call_chain(graph: nx.DiGraph, start: str, end: str, max_depth: int = 10)
     try:
         # Use NetworkX to find all simple paths
         # We need to use a subgraph with only CALLS edges
-        calls_graph = nx.DiGraph()
+        calls_graph: nx.DiGraph = nx.DiGraph()
 
         # Add only CALLS edges to the subgraph
         for u, v, data in graph.edges(data=True):

@@ -74,9 +74,9 @@ def test_java_cross_file_vs_intra_file(java_builder, java_cross_file_dir):
         (u, v) for u, v, d in graph_with_cross.edges(data=True) if d.get("type") == "CALLS"
     ]
 
-    assert len(calls_with_cross) >= len(
-        calls_no_cross
-    ), "Cross-file resolution should not reduce CALLS edges"
+    assert len(calls_with_cross) >= len(calls_no_cross), (
+        "Cross-file resolution should not reduce CALLS edges"
+    )
 
 
 def test_java_cross_file_edge_attributes(java_builder, java_cross_file_dir):

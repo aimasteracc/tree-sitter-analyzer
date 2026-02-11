@@ -113,10 +113,10 @@ class SymbolTable:
         utils.py
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize an empty symbol table."""
         self._table: dict[str, list[SymbolEntry]] = {}
-        """Internal storage: symbol_name → list of all definitions."""
+        """Internal storage: symbol_name ↁElist of all definitions."""
 
     def add(self, entry: SymbolEntry) -> None:
         """Add a symbol entry to the table.

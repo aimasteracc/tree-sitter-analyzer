@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from tree_sitter_analyzer_v2.core.detector import LanguageDetector
-from tree_sitter_analyzer_v2.languages import JavaParser, PythonParser, TypeScriptParser
+from tree_sitter_analyzer_v2.core.parser_registry import get_all_parsers
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 
 
@@ -25,7 +25,7 @@ class CheckCodeScaleTool(BaseTool):
     - Optional detailed element information
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the check code scale tool."""
         self._detector = LanguageDetector()
         # Initialize encoding detector for multi-encoding support
@@ -33,13 +33,8 @@ class CheckCodeScaleTool(BaseTool):
 
         self._encoding_detector = EncodingDetector()
 
-        # Language parsers
-        self._parsers = {
-            "python": PythonParser(),
-            "typescript": TypeScriptParser(),
-            "javascript": TypeScriptParser(),  # TS parser handles both
-            "java": JavaParser(),
-        }
+        # Resolve parsers via registry (DIP: no hardcoded language imports)
+        self._parsers: dict[str, Any] = get_all_parsers()
 
     def get_name(self) -> str:
         """Get tool name."""
@@ -87,19 +82,6 @@ class CheckCodeScaleTool(BaseTool):
             },
         }
 
-    def get_tool_definition(self) -> dict[str, Any]:
-        """
-        Get the MCP tool definition for check_code_scale.
-
-        Returns:
-            Tool definition dictionary compatible with MCP server
-        """
-        return {
-            "name": self.get_name(),
-            "description": self.get_description(),
-            "inputSchema": self.get_schema(),
-        }
-
     def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute the check_code_scale tool.
@@ -134,7 +116,7 @@ class CheckCodeScaleTool(BaseTool):
         # Validate file exists
         file_path_obj = Path(file_path)
         if not file_path_obj.exists():
-            return {"success": False, "error": f"File not found: {file_path}"}
+            return self._error(f"File not found: {file_path}", error_code="FILE_NOT_FOUND")
 
         try:
             # Calculate file metrics
@@ -190,7 +172,7 @@ class CheckCodeScaleTool(BaseTool):
             return result
 
         except Exception as e:
-            return {"success": False, "error": f"Error analyzing file: {str(e)}"}
+            return self._error(f"Error analyzing file: {e}", error_code="ANALYSIS_ERROR")
 
     def _execute_batch_mode(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """

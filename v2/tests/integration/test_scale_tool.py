@@ -241,6 +241,103 @@ class TestBatchMode:
         assert "total_lines" in file_result["metrics"]
 
 
+class TestSizeCategoryExtended:
+    """Tests for extended size categories."""
+
+    def test_size_category_large(self, tmp_path):
+        """Test size category for large file (500-1500 lines)."""
+        from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
+
+        tool = CheckCodeScaleTool()
+        large_file = tmp_path / "large.py"
+        large_file.write_text("\n".join([f"# Line {i}" for i in range(600)]))
+
+        result = tool.execute({"file_path": str(large_file)})
+        assert result["guidance"]["size_category"] == "large"
+
+    def test_size_category_very_large(self, tmp_path):
+        """Test size category for very large file (>1500 lines)."""
+        from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
+
+        tool = CheckCodeScaleTool()
+        very_large_file = tmp_path / "very_large.py"
+        very_large_file.write_text("\n".join([f"# Line {i}" for i in range(2000)]))
+
+        result = tool.execute({"file_path": str(very_large_file)})
+        assert result["guidance"]["size_category"] == "very_large"
+
+
+class TestUnsupportedLanguage:
+    """Tests for unsupported language handling."""
+
+    def test_unsupported_language_returns_metrics(self, tmp_path):
+        """Unsupported language should return metrics only."""
+        from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
+
+        tool = CheckCodeScaleTool()
+        # .xyz is not a supported language
+        unsupported_file = tmp_path / "test.xyz"
+        unsupported_file.write_text("some content here\nline 2\n")
+
+        result = tool.execute({"file_path": str(unsupported_file)})
+
+        assert result["success"] is True
+        assert result["structure"]["total_classes"] == 0
+        assert result["structure"]["total_functions"] == 0
+
+
+class TestBatchModeExtended:
+    """Extended tests for batch mode."""
+
+    def test_batch_nonexistent_file(self, tmp_path):
+        """Batch mode should handle nonexistent files gracefully."""
+        from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
+
+        tool = CheckCodeScaleTool()
+        result = tool.execute({
+            "file_paths": [str(tmp_path / "nonexistent.py")],
+            "metrics_only": True,
+        })
+
+        assert result["success"] is True
+        assert "error" in result["files"][0]
+
+    def test_batch_with_structure(self, analyze_fixtures_dir):
+        """Batch mode without metrics_only should include structure."""
+        from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
+
+        tool = CheckCodeScaleTool()
+        sample_py = analyze_fixtures_dir / "sample.py"
+
+        result = tool.execute({
+            "file_paths": [str(sample_py)],
+            "metrics_only": False,
+        })
+
+        assert result["success"] is True
+        file_result = result["files"][0]
+        assert "structure" in file_result
+        assert file_result["structure"]["total_classes"] > 0
+
+    def test_batch_mixed_files(self, analyze_fixtures_dir, tmp_path):
+        """Batch mode with mix of valid and invalid files."""
+        from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
+
+        tool = CheckCodeScaleTool()
+        sample_py = analyze_fixtures_dir / "sample.py"
+        nonexistent = tmp_path / "nope.py"
+
+        result = tool.execute({
+            "file_paths": [str(sample_py), str(nonexistent)],
+            "metrics_only": True,
+        })
+
+        assert result["success"] is True
+        assert len(result["files"]) == 2
+        assert "metrics" in result["files"][0]
+        assert "error" in result["files"][1]
+
+
 @pytest.fixture
 def analyze_fixtures_dir():
     """Return path to analyze test fixtures."""

@@ -1,77 +1,15 @@
 """
 Language-specific call extractors for code graph construction.
 
-This module provides protocols and implementations for extracting function/method
+This module provides implementations for extracting function/method
 calls from AST nodes in different programming languages. Each language has its own
 call syntax and AST representation, so extractors encapsulate language-specific logic.
+
+Protocol definition: see core/call_extractor_registry.CallExtractorProtocol
+(single source of truth — DIP: graph/ implements core/ protocol).
 """
 
-from typing import Any, Protocol
-
-
-class CallExtractor(Protocol):
-    """
-    Protocol for language-specific function/method call extraction.
-
-    Implementations must provide logic to traverse AST nodes and extract
-    all function/method call information relevant to building a code graph.
-
-    Example implementations:
-    - PythonCallExtractor: Extracts from 'call' nodes
-    - JavaCallExtractor: Extracts from 'method_invocation' and 'object_creation_expression' nodes
-    """
-
-    def extract_calls(self, ast_node: Any) -> list[dict[str, Any]]:
-        """
-        Extract all function/method calls from an AST tree.
-
-        Args:
-            ast_node: Root AST node to traverse
-
-        Returns:
-            List of call dictionaries, each containing:
-            - name (str): Function/method name being called
-            - line (int): Line number where call occurs (1-indexed)
-            - type (str): Call type - one of:
-                - 'simple': Simple function call (e.g., func())
-                - 'method': Instance/object method call (e.g., obj.method())
-                - 'static': Static/class method call (e.g., Class.method())
-                - 'constructor': Constructor call (e.g., new ClassName())
-                - 'super': Parent class method call (e.g., super.method())
-                - 'this': Self-referencing call (e.g., this.method())
-            - qualifier (Optional[str]): Object/class name for qualified calls
-                - None for simple calls
-                - Object variable name for method calls
-                - Class name for static calls
-
-        Example:
-            >>> extractor = PythonCallExtractor()
-            >>> calls = extractor.extract_calls(ast_node)
-            >>> calls[0]
-            {'name': 'helper', 'line': 10, 'type': 'simple', 'qualifier': None}
-            >>> calls[1]
-            {'name': 'process', 'line': 15, 'type': 'method', 'qualifier': 'user'}
-        """
-        ...
-
-    def get_call_node_types(self) -> list[str]:
-        """
-        Return AST node types that represent calls in this language.
-
-        Different languages use different node types for calls:
-        - Python: ['call']
-        - Java: ['method_invocation', 'object_creation_expression']
-        - TypeScript/JavaScript: ['call_expression', 'new_expression']
-
-        Returns:
-            List of AST node type strings to look for
-
-        Example:
-            >>> extractor = PythonCallExtractor()
-            >>> extractor.get_call_node_types()
-            ['call']
-        """
-        ...
+from typing import Any
 
 
 class PythonCallExtractor:

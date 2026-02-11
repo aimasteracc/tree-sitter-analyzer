@@ -82,7 +82,7 @@ class TestExtractCodeSectionTool:
         assert result["range"]["end_line"] == 10
         assert result["lines_extracted"] == 10
         assert len(result["content"]) > 0
-        assert "import" in result["content"]  # Should contain import statements
+        assert "import" in result["content"]  # Should contain import statements from sample.py
 
     def test_extract_to_end_of_file(self):
         """Test extracting from start_line to end of file (end_line omitted)."""

@@ -29,7 +29,9 @@ def java_builder() -> CodeGraphBuilder:
 # T6.2: End-to-End Integration Tests
 
 
-def test_e2e_build_java_project_graph(java_builder: CodeGraphBuilder, java_project_dir: Path) -> None:
+def test_e2e_build_java_project_graph(
+    java_builder: CodeGraphBuilder, java_project_dir: Path
+) -> None:
     """Test: Build complete graph from Java project fixture."""
     graph = java_builder.build_from_directory(
         str(java_project_dir), pattern="**/*.java", cross_file=True
@@ -41,7 +43,9 @@ def test_e2e_build_java_project_graph(java_builder: CodeGraphBuilder, java_proje
     assert graph.number_of_edges() > 0
 
 
-def test_e2e_verify_all_module_nodes(java_builder: CodeGraphBuilder, java_project_dir: Path) -> None:
+def test_e2e_verify_all_module_nodes(
+    java_builder: CodeGraphBuilder, java_project_dir: Path
+) -> None:
     """Test: Verify all expected module nodes are present."""
     graph = java_builder.build_from_directory(
         str(java_project_dir), pattern="**/*.java", cross_file=True
@@ -57,9 +61,9 @@ def test_e2e_verify_all_module_nodes(java_builder: CodeGraphBuilder, java_projec
 
     # Verify expected modules
     expected_modules = {"App", "UserService", "EmailService", "UserRepository"}
-    assert expected_modules.issubset(
-        module_names
-    ), f"Missing modules: {expected_modules - module_names}"
+    assert expected_modules.issubset(module_names), (
+        f"Missing modules: {expected_modules - module_names}"
+    )
 
     # Should have exactly 4 modules
     assert len(module_nodes) == 4
@@ -81,15 +85,17 @@ def test_e2e_verify_all_class_nodes(java_builder: CodeGraphBuilder, java_project
 
     # Verify expected classes
     expected_classes = {"App", "UserService", "EmailService", "UserRepository"}
-    assert expected_classes.issubset(
-        class_names
-    ), f"Missing classes: {expected_classes - class_names}"
+    assert expected_classes.issubset(class_names), (
+        f"Missing classes: {expected_classes - class_names}"
+    )
 
     # Should have exactly 4 classes
     assert len(class_nodes) == 4
 
 
-def test_e2e_verify_all_method_nodes(java_builder: CodeGraphBuilder, java_project_dir: Path) -> None:
+def test_e2e_verify_all_method_nodes(
+    java_builder: CodeGraphBuilder, java_project_dir: Path
+) -> None:
     """Test: Verify all expected method nodes are present."""
     graph = java_builder.build_from_directory(
         str(java_project_dir), pattern="**/*.java", cross_file=True
@@ -121,9 +127,9 @@ def test_e2e_verify_all_method_nodes(java_builder: CodeGraphBuilder, java_projec
         "delete",
         "findByEmail",
     }
-    assert expected_methods.issubset(
-        method_names
-    ), f"Missing methods: {expected_methods - method_names}"
+    assert expected_methods.issubset(method_names), (
+        f"Missing methods: {expected_methods - method_names}"
+    )
 
     # Should have at least 11 methods (may have constructors too)
     assert len(method_nodes) >= 11
@@ -144,7 +150,7 @@ def test_e2e_verify_contains_edges(java_builder: CodeGraphBuilder, java_project_
     assert len(contains_edges) >= 15
 
     # Verify structure: MODULE → CLASS → FUNCTION
-    for u, v, data in contains_edges:
+    for u, v, _data in contains_edges:
         source_type = graph.nodes[u].get("type")
         target_type = graph.nodes[v].get("type")
 
@@ -170,20 +176,20 @@ def test_e2e_verify_calls_edges(java_builder: CodeGraphBuilder, java_project_dir
     assert len(calls_edges) >= 4, f"Expected at least 4 CALLS edges, got {len(calls_edges)}"
 
     # Verify that source and target are both FUNCTION nodes
-    for u, v, data in calls_edges:
+    for u, v, _data in calls_edges:
         source_type = graph.nodes.get(u, {}).get("type")
-        # Target might not be in graph if it's an external call
-        target_type = graph.nodes.get(v, {}).get("type")
 
         # If both nodes exist in graph, they should be FUNCTIONs
         if u in graph.nodes and v in graph.nodes:
-            assert (
-                source_type == "FUNCTION"
-            ), f"Source of CALLS should be FUNCTION, got {source_type}"
+            assert source_type == "FUNCTION", (
+                f"Source of CALLS should be FUNCTION, got {source_type}"
+            )
             # Note: Target might not be FUNCTION if it's unresolved
 
 
-def test_e2e_verify_cross_file_calls(java_builder: CodeGraphBuilder, java_project_dir: Path) -> None:
+def test_e2e_verify_cross_file_calls(
+    java_builder: CodeGraphBuilder, java_project_dir: Path
+) -> None:
     """Test: Verify cross-file CALLS edges framework is in place."""
     graph = java_builder.build_from_directory(
         str(java_project_dir), pattern="**/*.java", cross_file=True
@@ -202,17 +208,19 @@ def test_e2e_verify_cross_file_calls(java_builder: CodeGraphBuilder, java_projec
     # - UserService.deleteUser -> EmailService.sendGoodbyeEmail
 
     # For now, just verify CALLS edges exist
-    assert (
-        len(calls_edges) >= 4
-    ), f"Expected at least 4 CALLS edges (intra-file), got {len(calls_edges)}"
+    assert len(calls_edges) >= 4, (
+        f"Expected at least 4 CALLS edges (intra-file), got {len(calls_edges)}"
+    )
 
     # Verify cross_file flag exists (even if not accurately set yet)
-    for u, v, data in calls_edges:
+    for _u, _v, data in calls_edges:
         assert "cross_file" in data
         assert isinstance(data["cross_file"], bool)
 
 
-def test_e2e_performance_under_5_seconds(java_builder: CodeGraphBuilder, java_project_dir: Path) -> None:
+def test_e2e_performance_under_5_seconds(
+    java_builder: CodeGraphBuilder, java_project_dir: Path
+) -> None:
     """Test: Graph construction completes in under 5 seconds."""
     start_time = time.time()
 
@@ -235,7 +243,9 @@ def test_e2e_performance_under_5_seconds(java_builder: CodeGraphBuilder, java_pr
     )
 
 
-def test_e2e_impact_analysis_scenario(java_builder: CodeGraphBuilder, java_project_dir: Path) -> None:
+def test_e2e_impact_analysis_scenario(
+    java_builder: CodeGraphBuilder, java_project_dir: Path
+) -> None:
     """Test: Impact analysis scenario - graph structure supports impact analysis."""
     graph = java_builder.build_from_directory(
         str(java_project_dir), pattern="**/*.java", cross_file=True
@@ -264,7 +274,9 @@ def test_e2e_impact_analysis_scenario(java_builder: CodeGraphBuilder, java_proje
     print(f"\nCurrent save() callers: {save_callers} (requires T5.2+T5.3 for cross-file)")
 
 
-def test_e2e_call_chain_tracing_scenario(java_builder: CodeGraphBuilder, java_project_dir: Path) -> None:
+def test_e2e_call_chain_tracing_scenario(
+    java_builder: CodeGraphBuilder, java_project_dir: Path
+) -> None:
     """Test: Call chain tracing - trace path from main() to save()."""
     graph = java_builder.build_from_directory(
         str(java_project_dir), pattern="**/*.java", cross_file=True
@@ -314,7 +326,9 @@ def test_e2e_call_chain_tracing_scenario(java_builder: CodeGraphBuilder, java_pr
         print("\nNo path found from main to save (cross-file resolution limitation)")
 
 
-def test_e2e_no_false_positive_edges(java_builder: CodeGraphBuilder, java_project_dir: Path) -> None:
+def test_e2e_no_false_positive_edges(
+    java_builder: CodeGraphBuilder, java_project_dir: Path
+) -> None:
     """Test: Verify no false positive CALLS edges."""
     graph = java_builder.build_from_directory(
         str(java_project_dir), pattern="**/*.java", cross_file=True
@@ -324,7 +338,7 @@ def test_e2e_no_false_positive_edges(java_builder: CodeGraphBuilder, java_projec
     calls_edges = [(u, v, d) for u, v, d in graph.edges(data=True) if d.get("type") == "CALLS"]
 
     # Verify each CALLS edge has valid source (must be in graph)
-    for u, v, data in calls_edges:
+    for u, _v, data in calls_edges:
         assert u in graph.nodes, f"CALLS edge has invalid source node: {u}"
 
         # Source must be a FUNCTION

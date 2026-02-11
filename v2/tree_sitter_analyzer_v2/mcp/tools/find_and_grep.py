@@ -5,11 +5,14 @@ This module provides the find_and_grep tool that combines fd (file search)
 and ripgrep (content search) for powerful two-stage search capabilities.
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from tree_sitter_analyzer_v2.mcp.tools.base import BaseTool
 from tree_sitter_analyzer_v2.search import SearchEngine
+
+logger = logging.getLogger(__name__)
 
 
 class FindAndGrepTool(BaseTool):
@@ -19,7 +22,7 @@ class FindAndGrepTool(BaseTool):
     Combines fd for fast file discovery with ripgrep for efficient content search.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the find_and_grep tool."""
         self._search_engine = SearchEngine()
         # Initialize encoding detector for multi-encoding support
@@ -82,19 +85,6 @@ class FindAndGrepTool(BaseTool):
             "required": ["roots"],
         }
 
-    def get_tool_definition(self) -> dict[str, Any]:
-        """
-        Get the MCP tool definition for find_and_grep.
-
-        Returns:
-            Tool definition dictionary compatible with MCP server
-        """
-        return {
-            "name": self.get_name(),
-            "description": self.get_description(),
-            "inputSchema": self.get_schema(),
-        }
-
     def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute the find_and_grep tool.
@@ -126,7 +116,7 @@ class FindAndGrepTool(BaseTool):
 
         # Validate roots
         if not roots:
-            return {"success": False, "error": "At least one root directory must be specified"}
+            return self._error("At least one root directory must be specified", error_code="INVALID_ARGUMENT")
 
         try:
             # Stage 1: Find files
@@ -134,7 +124,7 @@ class FindAndGrepTool(BaseTool):
             for root in roots:
                 root_path = Path(root)
                 if not root_path.exists():
-                    return {"success": False, "error": f"Directory does not exist: {root}"}
+                    return self._error(f"Directory does not exist: {root}", error_code="FILE_NOT_FOUND")
 
                 # Determine file type from extensions
                 file_type = None
@@ -159,7 +149,7 @@ class FindAndGrepTool(BaseTool):
                     try:
                         pattern_re = re.compile(query, flags)
                     except re.error:
-                        return {"success": False, "error": f"Invalid regex pattern: {query}"}
+                        return self._error(f"Invalid regex pattern: {query}", error_code="INVALID_ARGUMENT")
 
                 for file_path in all_files:
                     try:
@@ -177,8 +167,9 @@ class FindAndGrepTool(BaseTool):
                             if search_text in content_text:
                                 results.append(file_path)
 
-                    except Exception:
+                    except Exception as e:
                         # Skip files that can't be read
+                        logger.debug("Skipping unreadable file %s: %s", file_path, e)
                         continue
 
                 all_files = results
@@ -186,4 +177,4 @@ class FindAndGrepTool(BaseTool):
             return {"success": True, "files": all_files, "output_format": output_format}
 
         except Exception as e:
-            return {"success": False, "error": f"Search failed: {str(e)}"}
+            return self._error(f"Search failed: {e}", error_code="SEARCH_ERROR")

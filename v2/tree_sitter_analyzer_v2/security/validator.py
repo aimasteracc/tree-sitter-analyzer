@@ -156,18 +156,18 @@ class SecurityValidator:
                 # Test with timeout (Unix-like systems)
                 if hasattr(signal, "SIGALRM"):
 
-                    def timeout_handler(signum, frame):
+                    def timeout_handler(signum: int, frame: Any) -> None:
                         raise TimeoutError("Regex execution timeout")
 
                     # Set timeout
                     old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-                    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+                    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)  # type: ignore[attr-defined]
 
                     try:
                         compiled.search(test_string)
                     finally:
                         # Disable alarm
-                        signal.setitimer(signal.ITIMER_REAL, 0)
+                        signal.setitimer(signal.ITIMER_REAL, 0)  # type: ignore[attr-defined]
                         signal.signal(signal.SIGALRM, old_handler)
                 else:
                     # Windows or other systems - just try and see

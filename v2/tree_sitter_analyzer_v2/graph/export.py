@@ -168,7 +168,7 @@ def _add_call_info(
 
     # Find who this function calls
     calls = []
-    for source, target, edge_data in graph.out_edges(func_id, data=True):
+    for _source, target, edge_data in graph.out_edges(func_id, data=True):
         if edge_data.get("type") == "CALLS":
             target_name = graph.nodes[target].get("name", target)
             calls.append(target_name)
@@ -180,7 +180,7 @@ def _add_call_info(
     # Find who calls this function (only in detailed mode to save tokens)
     if detail_level == "detailed":
         called_by = []
-        for source, target, edge_data in graph.in_edges(func_id, data=True):
+        for source, _target, edge_data in graph.in_edges(func_id, data=True):
             if edge_data.get("type") == "CALLS":
                 source_name = graph.nodes[source].get("name", source)
                 called_by.append(source_name)
@@ -265,12 +265,10 @@ def export_to_mermaid(
     function_ids = {fid for fid, _ in function_nodes}
 
     for source, target, edge_data in graph.edges(data=True):
-        if edge_data.get("type") == "CALLS":
-            # Only include edges between visible nodes
-            if source in function_ids and target in function_ids:
-                source_safe = _safe_node_id(source)
-                target_safe = _safe_node_id(target)
-                lines.append(f"    {source_safe} --> {target_safe}")
+        if edge_data.get("type") == "CALLS" and source in function_ids and target in function_ids:
+            source_safe = _safe_node_id(source)
+            target_safe = _safe_node_id(target)
+            lines.append(f"    {source_safe} --> {target_safe}")
 
     return "\n".join(lines)
 
@@ -327,7 +325,6 @@ def export_to_call_flow(graph: nx.DiGraph, start_function: str, max_depth: int =
         # Find who current calls
         for _, target, edge_data in graph.out_edges(current_id, data=True):
             if edge_data.get("type") == "CALLS":
-                target_name = graph.nodes[target].get("name", "unknown")
                 safe_target = _safe_node_id(target)
 
                 # Add edge

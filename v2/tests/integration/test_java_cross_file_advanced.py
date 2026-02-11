@@ -170,7 +170,9 @@ def test_java_cross_file_resolver_filter_by_imports() -> None:
     assert filtered[0].file_path == "UserRepository.java"
 
 
-def test_java_cross_file_full_project_integration(java_builder: CodeGraphBuilder, java_cross_file_dir: Path) -> None:
+def test_java_cross_file_full_project_integration(
+    java_builder: CodeGraphBuilder, java_cross_file_dir: Path
+) -> None:
     """Test: Full integration with Java project fixture."""
     # Build graph with cross-file resolution
     graph = java_builder.build_from_directory(

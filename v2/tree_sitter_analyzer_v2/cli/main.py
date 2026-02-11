@@ -10,12 +10,11 @@ Provides command-line interface for:
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from tree_sitter_analyzer_v2.core.detector import LanguageDetector
+from tree_sitter_analyzer_v2.core.parser_registry import get_all_parsers
 from tree_sitter_analyzer_v2.formatters import get_default_registry
-from tree_sitter_analyzer_v2.languages.java_parser import JavaParser
-from tree_sitter_analyzer_v2.languages.python_parser import PythonParser
-from tree_sitter_analyzer_v2.languages.typescript_parser import TypeScriptParser
 from tree_sitter_analyzer_v2.search import SearchEngine
 from tree_sitter_analyzer_v2.utils.encoding import EncodingDetector
 
@@ -89,13 +88,8 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
     language = detection["language"].lower()
 
-    # Get appropriate parser
-    parsers = {
-        "python": PythonParser(),
-        "typescript": TypeScriptParser(),
-        "javascript": TypeScriptParser(),  # TS parser handles JS too
-        "java": JavaParser(),
-    }
+    # Get appropriate parser (DIP: resolve via registry)
+    parsers: dict[str, Any] = get_all_parsers()
 
     if language not in parsers:
         print(f"Error: Language '{language}' not supported yet", file=sys.stderr)

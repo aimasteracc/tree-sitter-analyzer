@@ -4,6 +4,9 @@ Sample Python file for testing check_code_scale tool.
 This file contains various Python elements to test metrics and structure extraction.
 """
 
+import os
+from pathlib import Path
+
 
 class Calculator:
     """A simple calculator class."""
@@ -47,11 +50,17 @@ def helper_function(x: int) -> int:
     return x * 2
 
 
+def get_config_path() -> Path:
+    """Get configuration file path."""
+    return Path(os.environ.get("CONFIG_PATH", "config.json"))
+
+
 def main():
     """Main entry point."""
     calc = Calculator()
     result = calc.add(5, 3)
     print(f"Result: {result}")
+    print(f"Config: {get_config_path()}")
 
 
 if __name__ == "__main__":

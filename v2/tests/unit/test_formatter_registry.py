@@ -59,10 +59,11 @@ class TestFormatterRegistration:
         registry = FormatterRegistry()
         formats = registry.list_formats()
 
-        # Should have both formatters
+        # Should have all registered formatters
         assert "toon" in formats
         assert "markdown" in formats
-        assert len(formats) == 2
+        assert "summary" in formats
+        assert len(formats) == 3
 
 
 class TestFormatterRetrieval:

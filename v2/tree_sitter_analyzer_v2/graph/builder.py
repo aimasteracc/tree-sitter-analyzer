@@ -8,13 +8,17 @@ Builds a NetworkX graph representing code structure:
 - CONTAINS edges (Module → Class, Module → Function, Class → Function)
 """
 
-import pickle
+import json
+import logging
 from pathlib import Path
 from typing import Any
 
 import networkx as nx
 
-from tree_sitter_analyzer_v2.languages.python_parser import PythonParser
+from tree_sitter_analyzer_v2.core.call_extractor_registry import get_call_extractor
+from tree_sitter_analyzer_v2.core.parser_registry import get_parser
+
+logger = logging.getLogger(__name__)
 
 
 class CodeGraphBuilder:
@@ -33,19 +37,17 @@ class CodeGraphBuilder:
         self.language = language.lower()
 
         # Initialize language-specific parser and call extractor
-        if self.language == "python":
-            from tree_sitter_analyzer_v2.graph.extractors import PythonCallExtractor
+        self.parser: Any  # PythonParser or JavaParser
+        self.call_extractor: Any  # PythonCallExtractor or JavaCallExtractor
 
-            self.parser = PythonParser()
-            self.call_extractor = PythonCallExtractor()
-        elif self.language == "java":
-            from tree_sitter_analyzer_v2.graph.extractors import JavaCallExtractor
-            from tree_sitter_analyzer_v2.languages.java_parser import JavaParser
-
-            self.parser = JavaParser()
-            self.call_extractor = JavaCallExtractor()  # Will implement in T2.1
-        else:
+        # Resolve parser from registry (DIP)
+        resolved_parser = get_parser(self.language)
+        if not resolved_parser:
             raise ValueError(f"Unsupported language: {language}. Supported languages: python, java")
+        self.parser = resolved_parser
+
+        # Resolve call extractor from registry (DIP — no hardcoded if/elif)
+        self.call_extractor = get_call_extractor(self.language)
 
     def build_from_file(self, file_path: str) -> nx.DiGraph:
         """
@@ -58,7 +60,7 @@ class CodeGraphBuilder:
             NetworkX directed graph with nodes and CONTAINS edges
         """
         path = Path(file_path)
-        graph = nx.DiGraph()
+        graph: nx.DiGraph = nx.DiGraph()
 
         # Parse the file using PythonParser
         result = self.parser.parse(path.read_text(encoding="utf-8"), str(path))
@@ -155,13 +157,13 @@ class CodeGraphBuilder:
 
         if not all_files:
             # Return empty graph with metadata
-            graph = nx.DiGraph()
-            graph.graph["files_analyzed"] = 0
-            graph.graph["directory"] = str(directory_path)
-            return graph
+            empty_graph: nx.DiGraph = nx.DiGraph()
+            empty_graph.graph["files_analyzed"] = 0
+            empty_graph.graph["directory"] = str(directory_path)
+            return empty_graph
 
         # Build unified graph using parallel processing
-        unified_graph = nx.DiGraph()
+        unified_graph: nx.DiGraph = nx.DiGraph()
 
         # Process files in parallel
         with ThreadPoolExecutor(max_workers=4) as executor:
@@ -181,7 +183,7 @@ class CodeGraphBuilder:
                         unified_graph = nx.compose(unified_graph, file_graph)
                 except Exception as e:
                     # Log error but continue processing other files
-                    print(f"Error processing {file_path}: {e}")
+                    logger.warning("Error processing %s: %s", file_path, e)
 
         # Add graph metadata
         unified_graph.graph["files_analyzed"] = len(all_files)
@@ -208,8 +210,8 @@ class CodeGraphBuilder:
         """
         try:
             return self.build_from_file(file_path)
-        except Exception:
-            # Return None on error (will be filtered out)
+        except Exception as e:
+            logger.warning("Failed to build graph for %s: %s", file_path, e)
             return None
 
     def _extract_module_node(self, graph: nx.DiGraph, path: Path, result: dict[str, Any]) -> str:
@@ -348,28 +350,30 @@ class CodeGraphBuilder:
 
     def save_graph(self, graph: nx.DiGraph, output_path: str) -> None:
         """
-        Save graph to a pickle file.
+        Save graph to a JSON file (safe serialization — no pickle).
 
         Args:
             graph: NetworkX graph to save
-            output_path: Path to save .gpickle file
+            output_path: Path to save .json file
         """
-        with open(output_path, "wb") as f:
-            pickle.dump(graph, f, protocol=pickle.HIGHEST_PROTOCOL)
+        data = nx.node_link_data(graph)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, default=str)
 
     def load_graph(self, input_path: str) -> nx.DiGraph:
         """
-        Load graph from a pickle file.
+        Load graph from a JSON file (safe deserialization — no pickle).
 
         Args:
-            input_path: Path to .gpickle file
+            input_path: Path to .json file
 
         Returns:
             NetworkX directed graph
         """
-        with open(input_path, "rb") as f:
-            graph = pickle.load(f)
-        return graph
+        with open(input_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        loaded_graph: nx.DiGraph = nx.node_link_graph(data, directed=True)
+        return loaded_graph
 
     def _build_calls_edges(self, graph: nx.DiGraph, result: dict[str, Any]) -> None:
         """
@@ -380,6 +384,9 @@ class CodeGraphBuilder:
             result: Parser result with AST
         """
         if "ast" not in result or not result["ast"]:
+            return
+
+        if self.call_extractor is None:
             return
 
         # Extract all function calls from AST using language-specific extractor
@@ -397,7 +404,7 @@ class CodeGraphBuilder:
         # For each function call, try to resolve it to a function definition
         for call in function_calls:
             call_name = call.get("name", "")
-            caller_context = call.get("context", "")  # Which function contains this call
+            _caller_context = call.get("context", "")  # Which function contains this call
 
             # Find the caller function node
             caller_nodes = [
@@ -417,10 +424,9 @@ class CodeGraphBuilder:
             if call_name in func_name_to_id:
                 for target_id in func_name_to_id[call_name]:
                     # Avoid self-calls (for now, we'll add them in future iterations)
-                    if target_id != caller_id:
-                        # Add CALLS edge: caller → callee
-                        if not graph.has_edge(caller_id, target_id):
-                            graph.add_edge(caller_id, target_id, type="CALLS")
+                    # Avoid self-calls and duplicate edges
+                    if target_id != caller_id and not graph.has_edge(caller_id, target_id):
+                        graph.add_edge(caller_id, target_id, type="CALLS")
 
     def _extract_function_calls_from_ast(self, ast_node: Any) -> list[dict[str, Any]]:
         """
@@ -487,12 +493,11 @@ class CodeGraphBuilder:
             return self._get_node_text(func_expr)
 
         # Attribute access: obj.method() or Module.function()
-        if func_expr.type == "attribute":
+        if func_expr.type == "attribute" and hasattr(func_expr, "children"):
             # Get the attribute name (method/function name)
-            if hasattr(func_expr, "children"):
-                for child in func_expr.children:
-                    if child.type == "identifier" and child != func_expr.children[0]:
-                        return self._get_node_text(child)
+            for child in func_expr.children:
+                if child.type == "identifier" and child != func_expr.children[0]:
+                    return self._get_node_text(child)
 
         return None
 
@@ -593,20 +598,20 @@ class CodeGraphBuilder:
             parts = node_id.split(":")
             if len(parts) >= 2:
                 module_name = parts[1]  # "main" or "utils"
-                file_path = module_to_file.get(module_name)
+                file_path_str: str | None = module_to_file.get(module_name)
 
-                if file_path:
-                    file_to_module[file_path] = module_name
+                if file_path_str:
+                    file_to_module[file_path_str] = module_name
 
-                    if file_path not in file_graphs:
-                        file_graphs[file_path] = nx.DiGraph()
+                    if file_path_str not in file_graphs:
+                        file_graphs[file_path_str] = nx.DiGraph()
 
                     # Add node and its attributes to file graph (including unresolved_calls)
-                    file_graphs[file_path].add_node(node_id, **unified_graph.nodes[node_id])
+                    file_graphs[file_path_str].add_node(node_id, **unified_graph.nodes[node_id])
 
                     # Add edges
                     for successor in unified_graph.successors(node_id):
-                        file_graphs[file_path].add_edge(
+                        file_graphs[file_path_str].add_edge(
                             node_id, successor, **unified_graph[node_id][successor]
                         )
 
@@ -621,8 +626,64 @@ class CodeGraphBuilder:
         # Log unresolved calls (if any)
         unresolved = cross_file_resolver.get_unresolved_calls()
         if unresolved:
-            print(f"Warning: {len(unresolved)} unresolved calls detected:")
+            logger.warning("%d unresolved cross-file calls detected", len(unresolved))
             for warning in unresolved[:10]:  # Show first 10
-                print(f"  {warning}")
+                logger.warning("  %s", warning)
 
         return enhanced_graph
+
+    @staticmethod
+    def build_from_code_map(code_map_result: Any) -> "nx.DiGraph":
+        """Build a graph from an existing CodeMapResult (avoids re-parsing).
+
+        This bridges the CodeMap and Graph subsystems: instead of parsing
+        files again, it converts already-scanned CodeMapResult data into
+        a NetworkX graph with the same node/edge schema.
+
+        Args:
+            code_map_result: A CodeMapResult instance from ProjectCodeMap.scan()
+
+        Returns:
+            NetworkX DiGraph with Module, Class, Function nodes and
+            CONTAINS, CALLS, IMPORTS edges.
+        """
+        graph: nx.DiGraph = nx.DiGraph()
+
+        for module in code_map_result.modules:
+            module_id = module.path
+            graph.add_node(module_id, type="Module", path=module.path,
+                           language=module.language, lines=module.lines)
+
+            for cls in module.classes:
+                cls_name = cls.get("name", "")
+                cls_id = f"{module_id}::{cls_name}"
+                graph.add_node(cls_id, type="Class", name=cls_name,
+                               line_start=cls.get("line_start", 0),
+                               line_end=cls.get("line_end", 0))
+                graph.add_edge(module_id, cls_id, type="CONTAINS")
+
+                for method in cls.get("methods", []):
+                    m_name = method.get("name", "")
+                    m_id = f"{cls_id}.{m_name}"
+                    graph.add_node(m_id, type="Function", name=m_name,
+                                   line_start=method.get("line_start", 0),
+                                   line_end=method.get("line_end", 0),
+                                   is_method=True,
+                                   parent_class=cls_name)
+                    graph.add_edge(cls_id, m_id, type="CONTAINS")
+
+            for func in module.functions:
+                f_name = func.get("name", "")
+                f_id = f"{module_id}::{f_name}"
+                graph.add_node(f_id, type="Function", name=f_name,
+                               line_start=func.get("line_start", 0),
+                               line_end=func.get("line_end", 0),
+                               is_method=False)
+                graph.add_edge(module_id, f_id, type="CONTAINS")
+
+        # Module dependencies as IMPORTS edges
+        for src, dst in code_map_result.module_dependencies:
+            if graph.has_node(src) and graph.has_node(dst):
+                graph.add_edge(src, dst, type="IMPORTS")
+
+        return graph

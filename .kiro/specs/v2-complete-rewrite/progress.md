@@ -2361,3 +2361,44 @@ Implemented **Milestone 4 of Phase 8** using strict TDD methodology - the **fina
 **Phase 8 (Code Graph System) - COMPLETE** - 2026-02-01
 
 **v2 Project Status**: Core implementation complete, ready for integration testing and documentation
+
+---
+
+## Session 22: Autonomous Development - API Consistency (Pain Point #9)
+
+**Date**: 2026-02-11
+**Session Type**: Full Autonomous Loop (Worker + QA + Technical Writer)
+
+### Objectives
+1. Fix failing test `test_file_size_limit_enforced` (disk space was resolved via C drive cleanup)
+2. Implement `extract_code_section` Python API (Pain point #9 - API/docs consistency)
+
+### Completed
+
+#### 1. test_file_size_limit_enforced
+- **Root cause**: OSError "No space left on device" when creating 20MB test file
+- **Resolution**: C drive cleanup freed ~1.1GB; test now passes
+
+#### 2. extract_code_section API (Pain point #9)
+- **Added** `TreeSitterAnalyzerAPI.extract_code_section()` method
+- **Added** standalone `extract_code_section()` function in `api/interface.py`
+- **Features**: file_path, start_line, end_line (optional), output_format ("toon"|"markdown")
+- **Encoding**: Uses `EncodingDetector` for multi-language files
+- **Exports**: `api/__init__.py` exports `extract_code_section`
+- **Tests**: 4 new integration tests in `test_api.py`
+
+### Files Modified
+- `tree_sitter_analyzer_v2/api/interface.py` (+107 lines)
+- `tree_sitter_analyzer_v2/api/__init__.py` (export added)
+- `tests/integration/test_api.py` (+4 test methods)
+- `CHANGELOG.md`, `PAINPOINTS_TRACKER.md`, `PAINPOINT_FIX_TASKS.md`
+
+### Test Results
+- **Full suite**: All tests passing, 4 skipped (expected)
+- **Coverage**: 91%
+- **New tests**: 4 extract_code_section tests
+
+### Next Priority (from PAINPOINTS)
+- #13: 批量分析功能 (3h)
+- #2: CLI 命令简化 (tsa) - verify if done
+- #7: 增量分析 (graph/incremental already exists)

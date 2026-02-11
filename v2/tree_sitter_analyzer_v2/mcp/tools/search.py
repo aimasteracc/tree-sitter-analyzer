@@ -21,7 +21,7 @@ class FindFilesTool(BaseTool):
     files matching glob patterns.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the find_files tool."""
         self._search_engine = SearchEngine()
 
@@ -81,7 +81,7 @@ class FindFilesTool(BaseTool):
 
             # Validate root directory exists
             if not Path(root_dir).exists():
-                return {"success": False, "error": f"Directory does not exist: {root_dir}"}
+                return self._error(f"Directory does not exist: {root_dir}", error_code="FILE_NOT_FOUND")
 
             # Execute search
             files = self._search_engine.find_files(
@@ -91,11 +91,9 @@ class FindFilesTool(BaseTool):
             return {"success": True, "files": files, "count": len(files)}
 
         except RuntimeError as e:
-            # Binary not found or command failed
-            return {"success": False, "error": str(e)}
+            return self._error(str(e), error_code="BINARY_NOT_FOUND")
         except Exception as e:
-            # Unexpected error
-            return {"success": False, "error": f"Unexpected error: {str(e)}"}
+            return self._error(f"Unexpected error: {e}", error_code="INTERNAL_ERROR")
 
 
 class SearchContentTool(BaseTool):
@@ -106,7 +104,7 @@ class SearchContentTool(BaseTool):
     search for patterns in file contents.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the search_content tool."""
         self._search_engine = SearchEngine()
 
@@ -178,7 +176,7 @@ class SearchContentTool(BaseTool):
 
             # Validate root directory exists
             if not Path(root_dir).exists():
-                return {"success": False, "error": f"Directory does not exist: {root_dir}"}
+                return self._error(f"Directory does not exist: {root_dir}", error_code="FILE_NOT_FOUND")
 
             # Execute search
             raw_matches = self._search_engine.search_content(
@@ -203,8 +201,6 @@ class SearchContentTool(BaseTool):
             return {"success": True, "matches": matches, "count": len(matches)}
 
         except RuntimeError as e:
-            # Binary not found or command failed
-            return {"success": False, "error": str(e)}
+            return self._error(str(e), error_code="BINARY_NOT_FOUND")
         except Exception as e:
-            # Unexpected error
-            return {"success": False, "error": f"Unexpected error: {str(e)}"}
+            return self._error(f"Unexpected error: {e}", error_code="INTERNAL_ERROR")

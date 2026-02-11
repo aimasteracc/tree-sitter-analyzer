@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install build tools
+        run: uv pip install build
+
+      - name: Build package
+        working-directory: v2
+        run: python -m build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: v2/dist/
+
+  test:
+    name: Verify Tests Pass
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        working-directory: v2
+        run: uv sync --extra dev --extra languages
+
+      - name: Run tests
+        working-directory: v2
+        run: uv run pytest tests/ -v --tb=short
+
+  github-release:
+    name: Create GitHub Release
+    needs: [build, test]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Extract version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          name: ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            See [CHANGELOG.md](https://github.com/aimasteracc/tree-sitter-analyzer/blob/v2-rewrite/v2/CHANGELOG.md) for details.
+          files: dist/*
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.VERSION, 'alpha') || contains(steps.get_version.outputs.VERSION, 'beta') || contains(steps.get_version.outputs.VERSION, 'rc') }}
+
+  # Uncomment when ready to publish to PyPI
+  # pypi-publish:
+  #   name: Publish to PyPI
+  #   needs: [build, test, github-release]
+  #   runs-on: ubuntu-latest
+  #   environment: release
+  #   permissions:
+  #     id-token: write
+  #   steps:
+  #     - name: Download artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: dist
+  #         path: dist/
+  #     - name: Publish to PyPI
+  #       uses: pypa/gh-action-pypi-publish@release/v1

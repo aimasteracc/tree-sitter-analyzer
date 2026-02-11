@@ -1,7 +1,16 @@
 """
-Protocol definitions for parser interface.
+Protocol definitions for the structured parser interface.
 
-This module defines the abstract interfaces that parsers must implement.
+This module defines ParserProtocol — the interface for tree-sitter wrapper
+parsers that return strongly-typed ParseResult objects.
+
+NOTE: This is distinct from `parser_registry.LanguageParser`, which is the
+protocol for language-specific parsers that return `dict[str, Any]`
+(unstructured data used by CodeMap). The two serve different layers:
+
+- ParserProtocol: Low-level tree-sitter wrapper → ParseResult (structured)
+- LanguageParser: Language plugin → dict (flexible, schema-defined by TypedDict)
+
 Using protocols (PEP 544) for structural subtyping.
 """
 

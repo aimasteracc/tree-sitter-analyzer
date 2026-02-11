@@ -26,6 +26,7 @@ from tree_sitter_analyzer_v2.mcp.tools.code_graph import (
 )
 from tree_sitter_analyzer_v2.mcp.tools.extract import ExtractCodeSectionTool
 from tree_sitter_analyzer_v2.mcp.tools.find_and_grep import FindAndGrepTool
+from tree_sitter_analyzer_v2.mcp.tools.intelligence import CodeIntelligenceTool
 from tree_sitter_analyzer_v2.mcp.tools.query import QueryTool
 from tree_sitter_analyzer_v2.mcp.tools.registry import ToolRegistry
 from tree_sitter_analyzer_v2.mcp.tools.scale import CheckCodeScaleTool
@@ -45,4 +46,5 @@ __all__ = [
     "FindFunctionCallersTool",
     "QueryCallChainTool",
     "VisualizeCodeGraphTool",
+    "CodeIntelligenceTool",
 ]

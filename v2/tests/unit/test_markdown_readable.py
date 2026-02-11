@@ -111,9 +111,9 @@ class TestMarkdownReadableFormat:
         if param_lines:
             # If we're using bullet lists for params, they should be indented properly
             # Not all on the same line or in a table cell
-            assert any(
-                "x" in line or "y" in line or "operation" in line for line in param_lines
-            ), "Parameters should be listed clearly"
+            assert any("x" in line or "y" in line or "operation" in line for line in param_lines), (
+                "Parameters should be listed clearly"
+            )
 
     def test_method_signature_format(self) -> None:
         """Test that method signatures are formatted as headings."""
@@ -209,9 +209,9 @@ class TestMarkdownReadableFormat:
 
         # Should have at least 2 levels of headings (class + methods)
         heading_levels = {line.count("#") for line in heading_lines if "#" in line}
-        assert (
-            len(heading_levels) >= 2
-        ), "Should have hierarchical headings (class and method levels)"
+        assert len(heading_levels) >= 2, (
+            "Should have hierarchical headings (class and method levels)"
+        )
 
     def test_no_br_tags_in_output(self) -> None:
         """Test that output doesn't contain HTML <br> tags."""

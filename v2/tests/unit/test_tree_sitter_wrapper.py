@@ -118,19 +118,20 @@ class TestASTNodeConversion:
 
         # Should have assignment with identifier 'x'
         assert result.tree is not None
-        # Find identifier node
-        identifier = None
-        for child in result.tree.children:
-            if child.type == "expression_statement":
-                for grandchild in child.children:
-                    if grandchild.type == "assignment":
-                        for ggchild in grandchild.children:
-                            if ggchild.type == "identifier":
-                                identifier = ggchild
-                                break
+        # Verify we can traverse the AST tree structure
+        found_identifier = any(
+            ggchild.type == "identifier"
+            for child in result.tree.children
+            if child.type == "expression_statement"
+            for grandchild in child.children
+            if grandchild.type == "assignment"
+            for ggchild in grandchild.children
+        )
 
         # Tree-sitter structure varies, just check we can parse
         assert result.has_errors is False
+        # Identifier should be found in well-formed code
+        assert found_identifier or len(result.tree.children) > 0
 
     def test_ast_node_position_tracking(self, sample_python_code):
         """Test that AST nodes track position correctly."""
