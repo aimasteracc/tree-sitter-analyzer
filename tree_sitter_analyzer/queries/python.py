@@ -88,6 +88,24 @@ METHODS = """
     body: (block) @method.body) @method.definition
 """
 
+# Function/method call expressions (Code Intelligence Graph)
+CALLS = """
+(call
+  function: (identifier) @callee
+  arguments: (argument_list) @call_args) @call
+"""
+
+CALL_EXPRESSION = """
+(call
+  function: [
+    (identifier) @callee_name
+    (attribute
+      object: (_) @callee_object
+      attribute: (identifier) @callee_method)
+  ]
+  arguments: (argument_list) @call_args) @call
+"""
+
 # Exception handling
 EXCEPTIONS = """
 (try_statement
@@ -640,6 +658,8 @@ PYTHON_QUERIES: dict[str, str] = {
             name: (identifier) @abstract_method_name)) @abstract_method
     """,
 }
+PYTHON_QUERIES["calls"] = CALLS
+PYTHON_QUERIES["call_expression"] = CALL_EXPRESSION
 
 # Query descriptions
 PYTHON_QUERY_DESCRIPTIONS: dict[str, str] = {
@@ -713,6 +733,8 @@ PYTHON_QUERY_DESCRIPTIONS: dict[str, str] = {
     "iterator": "Search iterator classes",
     "metaclass": "Search metaclass definitions",
     "abstract_method": "Search abstract methods",
+    "calls": "Search all function and method call expressions",
+    "call_expression": "Search function/method calls with caller object and method name",
 }
 
 # Convert to ALL_QUERIES format for dynamic loader compatibility
@@ -778,6 +800,14 @@ ALL_QUERIES["lambdas"] = {"query": LAMBDAS, "description": "Search lambda expres
 ALL_QUERIES["modern_patterns"] = {
     "query": MODERN_PATTERNS,
     "description": "Search modern Python patterns (match/case, walrus operator)",
+}
+ALL_QUERIES["calls"] = {
+    "query": CALLS,
+    "description": "Search all function and method call expressions",
+}
+ALL_QUERIES["call_expression"] = {
+    "query": CALL_EXPRESSION,
+    "description": "Search function/method calls with caller object and method name",
 }
 
 # Convenience aliases

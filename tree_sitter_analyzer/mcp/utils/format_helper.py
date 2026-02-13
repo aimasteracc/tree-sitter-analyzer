@@ -220,14 +220,6 @@ def apply_toon_format_to_response(
     if output_format != "toon":
         return result
 
-    # Validate input type
-    if not isinstance(result, dict):
-        logger.warning(
-            f"Expected dict for TOON formatting, got {type(result).__name__}. "
-            f"Returning original value."
-        )
-        return result
-
     try:
         # Format the full result as TOON string
         toon_content = format_as_toon(result)

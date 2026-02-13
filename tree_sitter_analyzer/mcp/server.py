@@ -75,6 +75,19 @@ from .tools.search_content_tool import SearchContentTool
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
 
+# Import Code Intelligence Graph tools
+try:
+    from .tools.trace_symbol_tool import TraceSymbolTool
+    from .tools.assess_change_impact_tool import AssessChangeImpactTool
+    from .tools.check_architecture_health_tool import CheckArchitectureHealthTool
+
+    INTELLIGENCE_TOOLS_AVAILABLE = True
+except ImportError:
+    TraceSymbolTool = None  # type: ignore
+    AssessChangeImpactTool = None  # type: ignore
+    CheckArchitectureHealthTool = None  # type: ignore
+    INTELLIGENCE_TOOLS_AVAILABLE = False
+
 # Import UniversalAnalyzeTool at module level for test compatibility
 try:
     from .tools.universal_analyze_tool import UniversalAnalyzeTool
@@ -137,6 +150,21 @@ class TreeSitterAnalyzerMCPServer:
                 self.universal_analyze_tool = None
         else:
             self.universal_analyze_tool = None
+
+        # Code Intelligence Graph tools (trace_symbol, assess_change_impact, check_architecture_health)
+        if INTELLIGENCE_TOOLS_AVAILABLE:
+            try:
+                self.trace_symbol_tool: TraceSymbolTool | None = TraceSymbolTool(project_root)
+                self.assess_change_impact_tool: AssessChangeImpactTool | None = AssessChangeImpactTool(project_root)
+                self.check_architecture_health_tool: CheckArchitectureHealthTool | None = CheckArchitectureHealthTool(project_root)
+            except Exception:
+                self.trace_symbol_tool = None
+                self.assess_change_impact_tool = None
+                self.check_architecture_health_tool = None
+        else:
+            self.trace_symbol_tool = None
+            self.assess_change_impact_tool = None
+            self.check_architecture_health_tool = None
 
         # Initialize MCP resources
         self.code_file_resource = CodeFileResource()
@@ -426,6 +454,14 @@ class TreeSitterAnalyzerMCPServer:
                 Tool(**self.find_and_grep_tool.get_tool_definition()),
             ]
 
+            # Code Intelligence Graph tools
+            if self.trace_symbol_tool is not None:
+                tools.append(Tool(**self.trace_symbol_tool.get_tool_definition()))
+            if self.assess_change_impact_tool is not None:
+                tools.append(Tool(**self.assess_change_impact_tool.get_tool_definition()))
+            if self.check_architecture_health_tool is not None:
+                tools.append(Tool(**self.check_architecture_health_tool.get_tool_definition()))
+
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
             return tools
 
@@ -545,6 +581,22 @@ class TreeSitterAnalyzerMCPServer:
 
                 elif name == "find_and_grep":
                     result = await self.find_and_grep_tool.execute(arguments)
+
+                # Code Intelligence Graph tools
+                elif name == "trace_symbol":
+                    if self.trace_symbol_tool is None:
+                        raise ValueError("trace_symbol tool is not available")
+                    result = await self.trace_symbol_tool.execute(arguments)
+
+                elif name == "assess_change_impact":
+                    if self.assess_change_impact_tool is None:
+                        raise ValueError("assess_change_impact tool is not available")
+                    result = await self.assess_change_impact_tool.execute(arguments)
+
+                elif name == "check_architecture_health":
+                    if self.check_architecture_health_tool is None:
+                        raise ValueError("check_architecture_health tool is not available")
+                    result = await self.check_architecture_health_tool.execute(arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
