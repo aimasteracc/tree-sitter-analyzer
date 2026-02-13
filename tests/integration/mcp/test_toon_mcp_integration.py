@@ -276,8 +276,8 @@ class TestApplyToonFormatToResponse:
         assert "results" in response
         assert "toon_content" not in response
 
-    def test_toon_format_removes_redundant_fields(self):
-        """Test that TOON format removes redundant data fields."""
+    def test_toon_format_removes_data_fields(self):
+        """Test that TOON format removes data-bearing fields, keeping only whitelisted scalars."""
         result = {
             "success": True,
             "count": 5,
@@ -286,18 +286,18 @@ class TestApplyToonFormatToResponse:
         }
         response = apply_toon_format_to_response(result, "toon")
 
-        # Should NOT contain redundant fields
+        # Should NOT contain data-bearing fields
         assert "results" not in response
 
-        # Should contain metadata and TOON content
+        # Should contain whitelisted scalar metadata and TOON content
         assert response["format"] == "toon"
         assert "toon_content" in response
         assert response["success"] is True
         assert response["count"] == 5
         assert response["elapsed_ms"] == 100
 
-    def test_toon_format_removes_all_redundant_fields(self):
-        """Test that all redundant field types are removed."""
+    def test_toon_format_removes_all_non_whitelisted_fields(self):
+        """Test that all non-whitelisted fields are removed (whitelist approach)."""
         result = {
             "success": True,
             "results": [{"a": 1}],
@@ -309,10 +309,15 @@ class TestApplyToonFormatToResponse:
             "items": [1, 2, 3],
             "files": ["a.py", "b.py"],
             "lines": ["line1", "line2"],
+            "structural_overview": {"classes": [], "methods": []},
+            "file_metrics": {"total_lines": 100},
+            "llm_guidance": {"strategy": "full"},
+            "metadata": {"total": 5},
+            "summary": {"top_files": []},
         }
         response = apply_toon_format_to_response(result, "toon")
 
-        # All redundant fields should be removed
+        # All data-bearing fields should be removed
         assert "results" not in response
         assert "matches" not in response
         assert "content" not in response
@@ -322,6 +327,15 @@ class TestApplyToonFormatToResponse:
         assert "items" not in response
         assert "files" not in response
         assert "lines" not in response
+        # Previously duplicated fields are now also removed
+        assert "structural_overview" not in response
+        assert "file_metrics" not in response
+        assert "llm_guidance" not in response
+        assert "metadata" not in response
+        assert "summary" not in response
+
+        # Whitelisted scalar preserved
+        assert response["success"] is True
 
         # TOON content should be present
         assert "toon_content" in response

@@ -269,15 +269,15 @@ class TestApplyToonFormatToResponse:
         assert "toon_content" not in response
 
     def test_apply_toon_format_toon_with_results(self):
-        """Test apply_toon_format_to_response removes results field."""
+        """Test apply_toon_format_to_response removes data-bearing fields."""
         result = {
             "results": [{"id": 1}, {"id": 2}],
             "metadata": {"total": 2},
         }
         response = apply_toon_format_to_response(result, "toon")
         assert "results" not in response
-        assert "metadata" in response
-        assert response["metadata"] == {"total": 2}
+        # metadata is a dict, so it's excluded by the whitelist (not a scalar)
+        assert "metadata" not in response
         assert "format" in response
         assert response["format"] == "toon"
         assert "toon_content" in response
@@ -308,8 +308,8 @@ class TestApplyToonFormatToResponse:
         assert "format" in response
         assert "toon_content" in response
 
-    def test_apply_toon_format_toon_with_multiple_redundant_fields(self):
-        """Test apply_toon_format_to_response removes multiple redundant fields."""
+    def test_apply_toon_format_toon_with_multiple_fields(self):
+        """Test apply_toon_format_to_response keeps only whitelisted scalar metadata."""
         result = {
             "results": [{"id": 1}],
             "matches": [{"line": 1}],
@@ -321,29 +321,34 @@ class TestApplyToonFormatToResponse:
             "table_output": "table",
             "metadata": {"count": 10},
             "status": "success",
+            "success": True,
+            "count": 5,
         }
         response = apply_toon_format_to_response(result, "toon")
-        # All redundant fields should be removed
+        # All data-bearing fields should be removed (not in whitelist or are dict/list)
         assert "results" not in response
         assert "matches" not in response
-        assert "content" not in response
+        assert "content" not in response  # string but not in whitelist
         assert "data" not in response
         assert "items" not in response
         assert "files" not in response
         assert "lines" not in response
-        assert "table_output" not in response
-        # Metadata fields should be preserved
-        assert "metadata" in response
-        assert response["metadata"] == {"count": 10}
+        assert "table_output" not in response  # string but not in whitelist
+        assert "metadata" not in response  # dict, excluded even if whitelisted
+        # Whitelisted scalar fields should be preserved
         assert "status" in response
         assert response["status"] == "success"
+        assert "success" in response
+        assert response["success"] is True
+        assert "count" in response
+        assert response["count"] == 5
         # TOON-specific fields should be present
         assert "format" in response
         assert response["format"] == "toon"
         assert "toon_content" in response
 
-    def test_apply_toon_format_toon_preserves_all_metadata(self):
-        """Test apply_toon_format_to_response preserves all non-redundant fields."""
+    def test_apply_toon_format_toon_preserves_whitelisted_scalars(self):
+        """Test apply_toon_format_to_response preserves only whitelisted scalar fields."""
         result = {
             "results": [{"id": 1}],
             "query": "test",
@@ -353,16 +358,20 @@ class TestApplyToonFormatToResponse:
             "duration_ms": 50,
             "status": "success",
             "error": None,
+            "success": True,
         }
         response = apply_toon_format_to_response(result, "toon")
         assert "results" not in response
+        # Whitelisted scalar fields
         assert "query" in response
         assert "file_path" in response
         assert "language" in response
-        assert "line_count" in response
-        assert "duration_ms" in response
         assert "status" in response
         assert "error" in response
+        assert "success" in response
+        # Non-whitelisted scalar fields are excluded
+        assert "line_count" not in response
+        assert "duration_ms" not in response
         assert "format" in response
         assert "toon_content" in response
 
@@ -376,23 +385,27 @@ class TestApplyToonFormatToResponse:
 
 
 class TestAttachToonContentToResponse:
-    """Tests for attach_toon_content_to_response function."""
+    """Tests for attach_toon_content_to_response function.
+
+    Since attach_toon_content_to_response now delegates to
+    apply_toon_format_to_response, it behaves identically: only whitelisted
+    scalar metadata fields are preserved alongside toon_content.
+    """
 
     def test_attach_toon_content_success(self):
-        """Test attach_toon_content_to_response adds TOON content."""
-        result = {"key": "value", "number": 42}
+        """Test attach_toon_content_to_response adds TOON content with scalar metadata."""
+        result = {"success": True, "count": 42}
         response = attach_toon_content_to_response(result)
-        assert "key" in response
-        assert response["key"] == "value"
-        assert "number" in response
-        assert response["number"] == 42
+        # Whitelisted scalars are preserved
+        assert response["success"] is True
+        assert response["count"] == 42
         assert "format" in response
         assert response["format"] == "toon"
         assert "toon_content" in response
         assert isinstance(response["toon_content"], str)
 
-    def test_attach_toon_content_preserves_original(self):
-        """Test attach_toon_content_to_response preserves all original fields."""
+    def test_attach_toon_content_strips_data_fields(self):
+        """Test attach_toon_content_to_response strips data-bearing fields."""
         result = {
             "results": [{"id": 1}, {"id": 2}],
             "matches": [{"line": 1}],
@@ -401,15 +414,12 @@ class TestAttachToonContentToResponse:
             "status": "success",
         }
         response = attach_toon_content_to_response(result)
-        # All original fields should be preserved
-        assert "results" in response
-        assert response["results"] == [{"id": 1}, {"id": 2}]
-        assert "matches" in response
-        assert response["matches"] == [{"line": 1}]
-        assert "content" in response
-        assert response["content"] == "file content"
-        assert "metadata" in response
-        assert response["metadata"] == {"total": 2}
+        # Data-bearing fields should NOT be preserved (they are in toon_content)
+        assert "results" not in response
+        assert "matches" not in response
+        assert "content" not in response  # not in whitelist
+        assert "metadata" not in response  # dict type excluded
+        # Whitelisted scalar preserved
         assert "status" in response
         assert response["status"] == "success"
         # TOON fields should be added
@@ -419,7 +429,7 @@ class TestAttachToonContentToResponse:
 
     def test_attach_toon_content_does_not_modify_original(self):
         """Test attach_toon_content_to_response does not modify original dict."""
-        result = {"key": "value"}
+        result = {"success": True, "query": "test"}
         original_result = result.copy()
         response = attach_toon_content_to_response(result)
         assert "format" not in result
@@ -462,7 +472,7 @@ class TestIntegration:
 
     def test_format_workflow_toon(self):
         """Test complete formatting workflow for TOON."""
-        data = {"results": [{"id": 1}], "metadata": {"total": 1}}
+        data = {"results": [{"id": 1}], "metadata": {"total": 1}, "success": True}
 
         # Step 1: Format as TOON string
         toon_string = format_output(data, "toon")
@@ -471,7 +481,8 @@ class TestIntegration:
         # Step 2: Apply TOON format to response
         toon_response = apply_toon_format_to_response(data, "toon")
         assert "results" not in toon_response
-        assert "metadata" in toon_response
+        assert "metadata" not in toon_response  # dict excluded
+        assert "success" in toon_response  # whitelisted scalar
         assert "toon_content" in toon_response
 
         # Step 3: Format for file output
@@ -493,24 +504,27 @@ class TestIntegration:
         toon_result = toon_formatter.format(data)
         assert isinstance(toon_result, str)
 
-    def test_attach_vs_apply_toon_difference(self):
-        """Test difference between attach and apply TOON functions."""
+    def test_attach_and_apply_toon_are_consistent(self):
+        """Test that attach and apply TOON functions behave identically."""
         data = {
             "results": [{"id": 1}],
             "metadata": {"total": 1},
             "status": "success",
+            "success": True,
         }
 
-        # apply_toon_format_to_response removes redundant fields
+        # apply_toon_format_to_response keeps only whitelisted scalars
         applied = apply_toon_format_to_response(data, "toon")
         assert "results" not in applied
-        assert "metadata" in applied
+        assert "metadata" not in applied  # dict excluded
         assert "status" in applied
+        assert "success" in applied
+        assert "toon_content" in applied
 
-        # attach_toon_content_to_response preserves all fields
+        # attach_toon_content_to_response now delegates to apply, same result
         attached = attach_toon_content_to_response(data)
-        assert "results" in attached
-        assert attached["results"] == [{"id": 1}]
-        assert "metadata" in attached
+        assert "results" not in attached
+        assert "metadata" not in attached
         assert "status" in attached
+        assert "success" in attached
         assert "toon_content" in attached

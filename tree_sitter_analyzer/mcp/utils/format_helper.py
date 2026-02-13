@@ -7,11 +7,56 @@ Provides utility functions for formatting MCP tool output in different formats
 """
 
 import json
+import warnings
 from typing import Any
 
 from ...utils import setup_logger
 
 logger = setup_logger(__name__)
+
+# Scalar types allowed in TOON metadata fields
+# Only these types are preserved alongside toon_content to prevent:
+# 1. Data duplication (complex types already in toon_content)
+# 2. Token explosion from nested structures
+# 3. Circular reference issues
+SCALAR_TYPES = (str, int, float, bool, type(None))
+
+# Whitelist of metadata fields preserved in TOON responses
+# Criteria for inclusion:
+# 1. Must be scalar (str, int, float, bool, None)
+# 2. Must be metadata about the operation, not the data itself
+# 3. Must have bounded size (no unbounded strings)
+# 4. Should be useful for client-side logic without parsing toon_content
+_METADATA_WHITELIST = frozenset({
+    # Status / control
+    "success",      # bool: operation success status
+    "error",        # str|None: error message if failed
+    "status",       # str: operation status code
+    # Counts (scalar)
+    "count",        # int: number of results/matches
+    "total_count",  # int: total count across all pages
+    "total_matches",  # int: total search matches
+    "count_only",   # bool: whether only count was requested
+    # Identity
+    "file_path",    # str: file being processed
+    "language",     # str: programming language
+    "query",        # str: search/query pattern
+    "pattern",      # str: search pattern
+    "tool",         # str: tool name
+    "format_type",  # str: format identifier
+    # Flags
+    "truncated",    # bool: whether results were truncated
+    "cache_hit",    # bool: whether result was cached
+    # Timing
+    "elapsed_ms",   # int: operation duration in milliseconds
+    # Process status
+    "returncode",   # int: process return code
+    # File output
+    "output_file",       # str: output file name
+    "output_file_path",  # str: output file path
+    "file_saved",        # bool: whether file was saved
+    "file_save_error",   # str|None: file save error if any
+})
 
 
 def format_output(data: dict[str, Any], output_format: str = "json") -> str:
@@ -153,9 +198,11 @@ def apply_toon_format_to_response(
     """
     Apply TOON format to MCP tool response if requested.
 
-    When output_format is 'toon', formats the result as TOON and removes
-    redundant data fields (results, matches, content, etc.) to maximize
-    token savings. Only metadata fields are preserved alongside toon_content.
+    When output_format is 'toon', formats the result as TOON and preserves
+    only small scalar metadata fields alongside toon_content. All data-bearing
+    fields are omitted because they are already fully represented inside
+    toon_content. This whitelist approach prevents field duplication and
+    token explosion.
 
     Args:
         result: Original result dictionary from MCP tool
@@ -163,61 +210,82 @@ def apply_toon_format_to_response(
 
     Returns:
         Modified result dict with TOON content if requested, otherwise original
+
+    Example:
+        >>> result = {"success": True, "count": 5, "results": [...]}
+        >>> toon_result = apply_toon_format_to_response(result, "toon")
+        >>> # Returns: {"format": "toon", "toon_content": "...", "success": True, "count": 5}
+        >>> # Note: "results" is excluded (not in whitelist, and it's in toon_content)
     """
     if output_format != "toon":
         return result
 
+    # Validate input type
+    if not isinstance(result, dict):
+        logger.warning(
+            f"Expected dict for TOON formatting, got {type(result).__name__}. "
+            f"Returning original value."
+        )
+        return result
+
     try:
-        # Format the full result as TOON
+        # Format the full result as TOON string
         toon_content = format_as_toon(result)
 
-        # Create minimal response with only metadata and TOON content
-        # Remove redundant data fields to maximize token savings
-        # These fields are already included in toon_content, so keeping them
-        # would duplicate data and waste tokens
-        redundant_fields = {
-            "results",  # Search/query results
-            "matches",  # Search matches
-            "content",  # File content
-            "partial_content_result",  # Partial read results
-            "analysis_result",  # Code analysis results
-            "data",  # Generic data field
-            "items",  # List items
-            "files",  # File listings
-            "lines",  # Line content
-            "table_output",  # Formatted table output
-        }
-
+        # Create minimal response with TOON content and whitelisted scalar metadata
         toon_response: dict[str, Any] = {
             "format": "toon",
             "toon_content": toon_content,
         }
 
-        # Preserve only metadata fields (not redundant data)
+        # Preserve only whitelisted scalar metadata fields
+        # Exclude dict/list types even if whitelisted to prevent:
+        # 1. Data duplication (already in toon_content)
+        # 2. Token explosion from nested structures
+        # 3. Circular reference issues
+        # 4. Inconsistent serialization behavior
         for key, value in result.items():
-            if key not in redundant_fields:
+            if key in _METADATA_WHITELIST and isinstance(value, SCALAR_TYPES):
                 toon_response[key] = value
 
         return toon_response
 
     except Exception as e:
-        logger.warning(f"Failed to apply TOON format, returning JSON: {e}")
+        logger.warning(
+            f"Failed to apply TOON format to result with keys "
+            f"{list(result.keys())[:5]}{'...' if len(result) > 5 else ''}, "
+            f"returning original JSON. Error: {e}",
+            exc_info=True
+        )
         return result
 
 
 def attach_toon_content_to_response(result: dict[str, Any]) -> dict[str, Any]:
     """
-    Attach TOON formatted content to a response *without removing* any existing fields.
+    Apply TOON format to a response, keeping only scalar metadata.
 
-    This is useful for structured outputs (e.g. group_by_file) where callers/tests rely
-    on the original JSON structure, while still allowing clients to display TOON.
+    This delegates to apply_toon_format_to_response() to ensure consistent
+    behaviour: toon_content contains the full data and only small scalar
+    metadata fields are preserved alongside it. This prevents the token
+    explosion that occurred when all original fields were kept next to
+    toon_content.
+
+    .. deprecated:: 1.10.5
+        This function now behaves identically to
+        ``apply_toon_format_to_response(result, "toon")``.
+        Use that function directly instead. This function will be
+        removed in version 2.0.0.
+
+    Args:
+        result: Original result dictionary from MCP tool
+
+    Returns:
+        Modified result dict with TOON content and whitelisted scalar metadata
     """
-    try:
-        toon_content = format_as_toon(result)
-        enriched = result.copy()
-        enriched["format"] = "toon"
-        enriched["toon_content"] = toon_content
-        return enriched
-    except Exception as e:
-        logger.warning(f"Failed to attach TOON content, returning JSON: {e}")
-        return result
+    warnings.warn(
+        "attach_toon_content_to_response() is deprecated and will be removed in v2.0.0. "
+        "Use apply_toon_format_to_response(result, 'toon') instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return apply_toon_format_to_response(result, "toon")
