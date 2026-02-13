@@ -78,6 +78,7 @@ dependencies = [
     "tree-sitter-rust>=0.20.0",
     "tree-sitter-kotlin>=0.3.0",
     "detect-secrets>=1.5.0",
+    "python-dotenv>=1.1.1",
 ]
 
 # Add C# to optional dependencies

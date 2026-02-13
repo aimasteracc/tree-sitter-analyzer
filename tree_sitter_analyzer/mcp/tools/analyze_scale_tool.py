@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ...constants import (
+    ELEMENT_TYPE_ANNOTATION,
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,
     ELEMENT_TYPE_IMPORT,
@@ -334,6 +335,11 @@ class AnalyzeScaleTool(BaseMCPTool):
                     "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
                     "default": "toon",
                 },
+                "include_structure": {
+                    "type": "boolean",
+                    "description": "Include full structural_overview (classes, methods, fields). Default false for scale-only output.",
+                    "default": False,
+                },
             },
             "additionalProperties": False,
         }
@@ -365,6 +371,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         # include_complexity = arguments.get("include_complexity", True)  # Not used currently
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
+        include_structure = arguments.get("include_structure", False)
         output_format = arguments.get("output_format", "toon")
 
         # Resolve + security validation with shared caching to avoid redundant checks
@@ -412,6 +419,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                         file_metrics,
                         include_guidance,
                         output_format,
+                        include_structure,
                     )
 
                 # Use appropriate analyzer based on language
@@ -432,27 +440,27 @@ class AnalyzeScaleTool(BaseMCPTool):
                         analysis_result
                     )
                 else:
-                    # Use universal analysis_engine for other languages
+                    # Use unified analysis_engine for all non-Java languages
+                    # Same engine returns AnalysisResult with .elements for Python, JS, etc.
                     request = AnalysisRequest(
                         file_path=resolved_file_path,
                         language=language,
+                        include_complexity=True,
                         include_details=include_details,
                     )
-                    universal_result = await self.analysis_engine.analyze(request)
-                    if not universal_result or not universal_result.success:
+                    analysis_result = await self.analysis_engine.analyze(request)
+                    if not analysis_result or not analysis_result.success:
                         error_msg = (
-                            universal_result.error_message or "Unknown error"
-                            if universal_result
+                            analysis_result.error_message or "Unknown error"
+                            if analysis_result
                             else "Unknown error"
                         )
                         raise RuntimeError(
-                            f"Failed to analyze file with universal engine: {error_msg}"
+                            f"Failed to analyze file: {error_msg}"
                         )
-
-                    # Adapt the result to a compatible structure for report generation
-                    # This part needs careful implementation based on universal_result structure
-                    analysis_result = None  # Placeholder
-                    structural_overview = {}  # Placeholder
+                    structural_overview = self._extract_structural_overview(
+                        analysis_result
+                    )
 
                 # Generate LLM guidance
                 llm_guidance = None
@@ -505,18 +513,24 @@ class AnalyzeScaleTool(BaseMCPTool):
                             ]
                         ),
                         "annotations": len(
-                            getattr(analysis_result, "annotations", [])
-                            if analysis_result
-                            else []
+                            [
+                                e
+                                for e in (
+                                    analysis_result.elements if analysis_result else []
+                                )
+                                if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
+                            ]
                         ),
-                        "package": (
-                            analysis_result.package.name
-                            if analysis_result and analysis_result.package
-                            else None
-                        ),
-                    },
-                    "structural_overview": structural_overview,
+                    "package": (
+                        analysis_result.package.name
+                        if analysis_result and analysis_result.package
+                        else None
+                    ),
+                },
                 }
+
+                if include_structure:
+                    result["structural_overview"] = structural_overview
 
                 if include_guidance:
                     result["llm_guidance"] = llm_guidance
@@ -766,6 +780,11 @@ class AnalyzeScaleTool(BaseMCPTool):
             if not isinstance(include_guidance, bool):
                 raise ValueError("include_guidance must be a boolean")
 
+        if "include_structure" in arguments:
+            include_structure = arguments["include_structure"]
+            if not isinstance(include_structure, bool):
+                raise ValueError("include_structure must be a boolean")
+
         return True
 
     def _create_json_file_analysis(
@@ -774,6 +793,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         file_metrics: dict[str, Any],
         include_guidance: bool,
         output_format: str = "toon",
+        include_structure: bool = False,
     ) -> dict[str, Any]:
         """
         Create analysis result for JSON files.
@@ -783,6 +803,7 @@ class AnalyzeScaleTool(BaseMCPTool):
             file_metrics: Basic file metrics
             include_guidance: Whether to include guidance
             output_format: Output format ('json' or 'toon')
+            include_structure: Whether to include structural_overview (scale-only default: False)
 
         Returns:
             Analysis result for JSON file
@@ -801,11 +822,6 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "max_depth": 0,
                 "avg_complexity": 0.0,
             },
-            "structural_overview": {
-                "classes": [],
-                "methods": [],
-                "fields": [],
-            },
             "scale_category": (
                 "small"
                 if file_metrics["total_lines"] < 100
@@ -819,6 +835,13 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "token_efficiency_notes": "JSON files can be read directly without tree-sitter parsing",
             },
         }
+
+        if include_structure:
+            result["structural_overview"] = {
+                "classes": [],
+                "methods": [],
+                "fields": [],
+            }
 
         if include_guidance:
             result["llm_analysis_guidance"] = {

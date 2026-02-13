@@ -234,7 +234,7 @@ class TestMCPToolSchemaValidation:
         assert properties["output_format"]["enum"] == ["json", "toon"]
 
     def test_analyze_scale_tool_schema(self):
-        """Test check_code_scale tool has output_format parameter."""
+        """Test check_code_scale tool has output_format and include_structure parameters."""
         from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 
         tool = AnalyzeScaleTool()
@@ -243,6 +243,8 @@ class TestMCPToolSchemaValidation:
         assert "properties" in schema
         assert "output_format" in schema["properties"]
         assert schema["properties"]["output_format"]["enum"] == ["json", "toon"]
+        assert "include_structure" in schema["properties"]
+        assert schema["properties"]["include_structure"]["default"] is False
 
     def test_universal_analyze_tool_schema(self):
         """Test analyze_code_universal tool has output_format parameter."""

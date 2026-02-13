@@ -111,6 +111,13 @@ class TestAnalyzeScaleToolGetToolSchema:
         assert "json" in schema["properties"]["output_format"]["enum"]
         assert "toon" in schema["properties"]["output_format"]["enum"]
 
+    def test_get_tool_schema_has_include_structure_property(self, tool):
+        """Test schema has include_structure property for scale-only default."""
+        schema = tool.get_tool_schema()
+        assert "include_structure" in schema["properties"]
+        assert schema["properties"]["include_structure"]["type"] == "boolean"
+        assert schema["properties"]["include_structure"]["default"] is False
+
 
 class TestAnalyzeScaleToolGetToolDefinition:
     """Tests for get_tool_definition method."""
@@ -196,6 +203,12 @@ class TestAnalyzeScaleToolValidateArguments:
         """Test validation fails when include_guidance is not a boolean."""
         arguments = {"file_path": "test.py", "include_guidance": "true"}
         with pytest.raises(ValueError, match="include_guidance must be a boolean"):
+            tool.validate_arguments(arguments)
+
+    def test_validate_arguments_invalid_include_structure_type(self, tool):
+        """Test validation fails when include_structure is not a boolean."""
+        arguments = {"file_path": "test.py", "include_structure": "true"}
+        with pytest.raises(ValueError, match="include_structure must be a boolean"):
             tool.validate_arguments(arguments)
 
     def test_validate_arguments_mutually_exclusive(self, tool):
@@ -654,6 +667,167 @@ class TestAnalyzeScaleToolExecute:
             arguments = {"file_path": "test.py", "include_guidance": True}
             result = await tool.execute(arguments)
             assert "formatted" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_python_structural_counts_in_summary(self, tool):
+        """Non-Java (Python) files must get correct imports/methods in summary."""
+        mock_import = MagicMock()
+        mock_import.imported_name = "json"
+        mock_import.import_statement = "import json"
+        mock_import.line_number = 1
+        mock_import.is_static = False
+        mock_import.is_wildcard = False
+        mock_import.element_type = "import"
+
+        mock_function = MagicMock()
+        mock_function.name = "analyze_coverage"
+        mock_function.start_line = 4
+        mock_function.end_line = 37
+        mock_function.visibility = "public"
+        mock_function.return_type = None
+        mock_function.parameters = []
+        mock_function.complexity_score = 5
+        mock_function.is_constructor = False
+        mock_function.is_static = False
+        mock_function.annotations = []
+        mock_function.element_type = "function"
+
+        mock_analysis_result = MagicMock()
+        mock_analysis_result.elements = [mock_import, mock_function]
+        mock_analysis_result.package = None
+        mock_analysis_result.success = True
+        mock_analysis_result.get_statistics = MagicMock(return_value={})
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/test.py"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.detect_language_from_file",
+                return_value="python",
+            ),
+            patch.object(
+                tool,
+                "_calculate_file_metrics",
+                return_value={
+                    "total_lines": 42,
+                    "code_lines": 28,
+                    "comment_lines": 3,
+                    "blank_lines": 10,
+                    "estimated_tokens": 310,
+                    "file_size_bytes": 1456,
+                },
+            ),
+            patch.object(
+                tool.analysis_engine,
+                "analyze",
+                new_callable=AsyncMock,
+                return_value=mock_analysis_result,
+            ),
+        ):
+            arguments = {
+                "file_path": "test.py",
+                "include_guidance": True,
+                "include_structure": True,
+                "output_format": "json",
+            }
+            result = await tool.execute(arguments)
+            assert result["success"] is True
+            assert result["summary"]["imports"] == 1
+            assert result["summary"]["methods"] == 1
+            assert len(result["structural_overview"]["imports"]) == 1
+            assert len(result["structural_overview"]["methods"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_scale_only_default_excludes_structural_overview(self, tool):
+        """Default (scale-only) excludes structural_overview to save tokens."""
+        mock_analysis_result = MagicMock()
+        mock_analysis_result.elements = []
+        mock_analysis_result.package = None
+        mock_analysis_result.success = True
+        mock_analysis_result.get_statistics = MagicMock(return_value={})
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/test.py"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.detect_language_from_file",
+                return_value="python",
+            ),
+            patch.object(
+                tool,
+                "_calculate_file_metrics",
+                return_value={
+                    "total_lines": 42,
+                    "code_lines": 28,
+                    "estimated_tokens": 310,
+                    "file_size_bytes": 1456,
+                },
+            ),
+            patch.object(
+                tool.analysis_engine,
+                "analyze",
+                new_callable=AsyncMock,
+                return_value=mock_analysis_result,
+            ),
+        ):
+            arguments = {"file_path": "test.py", "output_format": "json"}
+            result = await tool.execute(arguments)
+            assert result["success"] is True
+            assert "file_metrics" in result
+            assert "summary" in result
+            assert "llm_guidance" in result
+            assert "structural_overview" not in result
+
+    @pytest.mark.asyncio
+    async def test_execute_include_structure_true_includes_structural_overview(
+        self, tool
+    ):
+        """include_structure=True includes full structural_overview."""
+        mock_analysis_result = MagicMock()
+        mock_analysis_result.elements = []
+        mock_analysis_result.package = None
+        mock_analysis_result.success = True
+        mock_analysis_result.get_statistics = MagicMock(return_value={})
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/test.py"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.detect_language_from_file",
+                return_value="python",
+            ),
+            patch.object(
+                tool,
+                "_calculate_file_metrics",
+                return_value={
+                    "total_lines": 42,
+                    "code_lines": 28,
+                    "estimated_tokens": 310,
+                },
+            ),
+            patch.object(
+                tool.analysis_engine,
+                "analyze",
+                new_callable=AsyncMock,
+                return_value=mock_analysis_result,
+            ),
+        ):
+            arguments = {
+                "file_path": "test.py",
+                "include_structure": True,
+                "output_format": "json",
+            }
+            result = await tool.execute(arguments)
+            assert result["success"] is True
+            assert "structural_overview" in result
+            assert "classes" in result["structural_overview"]
+            assert "methods" in result["structural_overview"]
 
     @pytest.mark.asyncio
     async def test_execute_with_include_details(self, tool):

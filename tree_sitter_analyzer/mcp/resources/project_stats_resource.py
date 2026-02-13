@@ -356,51 +356,23 @@ class ProjectStatsResource:
                 try:
                     language = self._get_language_from_file(file_path)
 
-                    # Use appropriate analyzer based on language
-                    if language == "java":
-                        # Use analysis engine for Java
-                        file_analysis = await self.analysis_engine.analyze_file_async(
-                            str(file_path)
-                        )
-                        if file_analysis and hasattr(file_analysis, "methods"):
-                            # Extract complexity from methods if available
-                            complexity = sum(
-                                method.complexity_score or 0
-                                for method in file_analysis.methods
-                            )
-                        elif file_analysis and hasattr(file_analysis, "elements"):
-                            # Extract complexity from elements for new architecture
-                            methods = [
-                                e
-                                for e in file_analysis.elements
-                                if hasattr(e, "complexity_score")
-                            ]
-                            complexity = sum(
-                                getattr(method, "complexity_score", 0) or 0
-                                for method in methods
-                            )
-                        else:
-                            complexity = 0
-                    else:
-                        # Use universal analyzer for other languages
-                        request = AnalysisRequest(
-                            file_path=str(file_path), language=language
-                        )
-                        file_analysis_result = await self.analysis_engine.analyze(
-                            request
-                        )
+                    # Unified analysis: same engine for all languages returns AnalysisResult
+                    request = AnalysisRequest(
+                        file_path=str(file_path),
+                        language=language,
+                    )
+                    result = await self.analysis_engine.analyze(request)
 
-                        complexity = 0
-                        if file_analysis_result and file_analysis_result.success:
-                            analysis_dict = file_analysis_result.to_dict()
-                            # Assuming complexity is part of metrics in new structure
-                            if (
-                                "metrics" in analysis_dict
-                                and "complexity" in analysis_dict["metrics"]
-                            ):
-                                complexity = analysis_dict["metrics"]["complexity"].get(
-                                    "total", 0
-                                )
+                    complexity = 0
+                    if result and result.success and getattr(result, "elements", None):
+                        methods = [
+                            e
+                            for e in result.elements
+                            if hasattr(e, "complexity_score")
+                        ]
+                        complexity = sum(
+                            getattr(m, "complexity_score", 0) or 0 for m in methods
+                        )
 
                     if complexity > 0:
                         complexity_data.append(
