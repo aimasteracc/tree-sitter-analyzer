@@ -110,7 +110,7 @@ class TestCppQueriesSyntax:
         all_q = cpp_queries.ALL_QUERIES
         assert len(all_q) > 0
         compiled, failed = 0, 0
-        for name, entry in all_q.items():
+        for _name, entry in all_q.items():
             qstr = entry["query"] if isinstance(entry, dict) else entry
             try:
                 tree_sitter.Query(lang, qstr)

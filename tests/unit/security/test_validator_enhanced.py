@@ -69,8 +69,6 @@ class TestSecurityValidatorEnhanced:
         """validate_file_path with Windows junction/reparse point (platform-specific)."""
         # Create a directory junction on Windows - requires ctypes/admin
         try:
-            import ctypes
-            from ctypes import wintypes
 
             junction_dir = str(Path(self.temp_dir) / "junction_target")
             Path(junction_dir).mkdir(exist_ok=True)
@@ -232,7 +230,7 @@ class TestSecurityValidatorEnhanced:
         # Create a path longer than MAX_PATH (260 on Windows, 4096 on Linux)
         base = Path(self.temp_dir) / "src"
         long_name = "a" * 300
-        long_path = str(base / long_name)
+        str(base / long_name)
         is_valid, error = self.validator.validate_file_path(
             long_name, base_path=str(base)
         )

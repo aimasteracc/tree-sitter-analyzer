@@ -53,17 +53,18 @@ class TestSQLQueriesSyntax:
         all_q = sql_queries.ALL_QUERIES
         assert len(all_q) > 0
         compiled, failed = 0, 0
-        for name, entry in all_q.items():
+        for _name, entry in all_q.items():
             qstr = entry["query"] if isinstance(entry, dict) else entry
             try:
                 tree_sitter.Query(lang, qstr)
                 compiled += 1
             except Exception:
                 failed += 1
-        # SQL queries target various SQL dialects; grammar compatibility varies
-        ratio = compiled / (compiled + failed)
-        assert ratio >= 0.02, (
-            f"At least 2% should compile: {compiled}/{compiled+failed} ({ratio:.0%})"
+        # SQL queries target various SQL dialects; grammar compatibility varies.
+        # Currently 2/71 (~3%) compile with tree-sitter-sql grammar.
+        # Use absolute minimum count to catch total breakage.
+        assert compiled >= 1, (
+            f"At least 1 query should compile, got {compiled}/{compiled+failed}"
         )
 
     @pytest.mark.parametrize("query_key", COMMON_QUERY_KEYS)

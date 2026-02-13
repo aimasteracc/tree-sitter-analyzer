@@ -7,15 +7,10 @@ SafeStreamHandler.emit, QuietMode, LoggingContext, safe_print,
 log_performance, and create_performance_logger.
 """
 
-import atexit
-import contextlib
 import logging
-import os
 import sys
 from io import StringIO
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from tree_sitter_analyzer.utils.logging import (
     LoggingContext,
@@ -28,7 +23,6 @@ from tree_sitter_analyzer.utils.logging import (
     setup_safe_logging_shutdown,
     suppress_output,
 )
-
 
 # ---------------------------------------------------------------------------
 # setup_safe_logging_shutdown tests

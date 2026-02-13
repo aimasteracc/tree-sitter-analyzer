@@ -431,6 +431,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 source = ["tree_sitter_analyzer"]
+relative_files = true
 omit = [
     "*/tests/*",
     "*/archived_files/*",

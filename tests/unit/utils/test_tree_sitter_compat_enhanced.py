@@ -7,7 +7,6 @@ get_node_text_safe, log_api_info, TreeSitterQueryCompat, and error paths.
 """
 
 import logging
-import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,6 +18,7 @@ from tree_sitter_analyzer.utils.tree_sitter_compat import (
     get_node_text_safe,
     log_api_info,
 )
+
 
 # Mock node classes for count_nodes_iterative tests
 class MockNode:
@@ -305,9 +305,10 @@ class TestTreeSitterQueryCompatExecuteReal:
             python_lang, "(identifier) @name", tree.root_node
         )
         assert isinstance(result, list)
-        # Should find "x" at least
+        assert len(result) > 0, "Should find at least one identifier in 'x = 1'"
+        # Should find "x" captured as @name
         names = [r[1] for r in result]
-        assert "name" in names or len(result) >= 0
+        assert "name" in names, f"Expected 'name' capture, got {names}"
 
     def test_execute_query_compilation_failure_returns_empty(self):
         """TreeSitterQueryCompat error path: query compilation failure returns []."""

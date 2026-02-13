@@ -7,7 +7,7 @@ and return expected results for various PHP code constructs.
 import pytest
 
 try:
-    import tree_sitter_php
+    import tree_sitter_php  # noqa: F401
     PHP_AVAILABLE = True
 except ImportError:
     PHP_AVAILABLE = False

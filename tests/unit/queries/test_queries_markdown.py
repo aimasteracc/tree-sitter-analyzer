@@ -226,7 +226,7 @@ class TestMarkdownQueriesHelpers:
     def test_get_query_with_alias(self):
         # QUERY_ALIASES maps aliases to canonical names
         if hasattr(md_queries, "QUERY_ALIASES"):
-            for alias, canonical in md_queries.QUERY_ALIASES.items():
+            for alias, _canonical in md_queries.QUERY_ALIASES.items():
                 result = md_queries.get_query(alias)
                 assert isinstance(result, str)
                 break  # just test one

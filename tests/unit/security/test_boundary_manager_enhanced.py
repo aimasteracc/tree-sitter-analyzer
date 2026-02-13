@@ -203,7 +203,7 @@ class TestProjectBoundaryManagerEnhanced:
     def test_multiple_allowed_directories_access_each(self):
         """Add several allowed dirs and test access to each."""
         dirs = []
-        for i in range(3):
+        for _i in range(3):
             d = tempfile.mkdtemp(dir=Path(self.temp_dir).parent)
             dirs.append(d)
             self.manager.add_allowed_directory(d)

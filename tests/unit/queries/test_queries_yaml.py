@@ -96,7 +96,7 @@ class TestYamlQueriesSyntax:
         lang = _lang()
         all_q = yaml_queries.ALL_QUERIES
         compiled, failed = 0, 0
-        for name, entry in all_q.items():
+        for _name, entry in all_q.items():
             qstr = entry["query"] if isinstance(entry, dict) else entry
             try:
                 tree_sitter.Query(lang, qstr)
