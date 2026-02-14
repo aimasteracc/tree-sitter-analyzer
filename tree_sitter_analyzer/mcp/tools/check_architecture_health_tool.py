@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """check_architecture_health MCP tool."""
 from __future__ import annotations
+
 from typing import Any
-from .base_tool import BaseMCPTool
+
 from ...intelligence.architecture_metrics import ArchitectureMetrics
 from ...intelligence.dependency_graph import DependencyGraphBuilder
-from ...intelligence.symbol_index import SymbolIndex
 from ...intelligence.formatters import format_architecture_report
+from ...intelligence.symbol_index import SymbolIndex
 from ...utils import setup_logger
+from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 

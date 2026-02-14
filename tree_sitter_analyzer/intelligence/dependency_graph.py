@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dependency Graph Builder for Code Intelligence Graph."""
 from __future__ import annotations
-from typing import Any
+
 from .models import DependencyEdge
 
 

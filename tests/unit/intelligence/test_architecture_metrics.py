@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Tests for ArchitectureMetrics."""
 import pytest
+
 from tree_sitter_analyzer.intelligence.architecture_metrics import ArchitectureMetrics
 from tree_sitter_analyzer.intelligence.dependency_graph import DependencyGraphBuilder
+from tree_sitter_analyzer.intelligence.models import (
+    DependencyEdge,
+    SymbolDefinition,
+    SymbolReference,
+)
 from tree_sitter_analyzer.intelligence.symbol_index import SymbolIndex
-from tree_sitter_analyzer.intelligence.models import DependencyEdge, SymbolDefinition, SymbolReference
 
 
 @pytest.fixture

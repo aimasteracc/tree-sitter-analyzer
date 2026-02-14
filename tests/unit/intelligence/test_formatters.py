@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Tests for intelligence output formatters."""
-import pytest
-from tree_sitter_analyzer.intelligence.formatters import format_trace_result, format_impact_result, format_architecture_report
+from tree_sitter_analyzer.intelligence.formatters import (
+    format_architecture_report,
+    format_impact_result,
+    format_trace_result,
+)
 
 
 class TestFormatTraceResult:

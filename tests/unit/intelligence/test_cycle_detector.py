@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for CycleDetector."""
 import pytest
+
 from tree_sitter_analyzer.intelligence.cycle_detector import CycleDetector
 
 

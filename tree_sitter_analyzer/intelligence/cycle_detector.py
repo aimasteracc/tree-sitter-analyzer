@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cycle detector using Tarjan's algorithm."""
 from __future__ import annotations
-from typing import Any
+
 from .models import DependencyCycle
 
 

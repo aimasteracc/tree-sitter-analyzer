@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """trace_symbol MCP tool for Code Intelligence Graph."""
 from __future__ import annotations
+
 from typing import Any
-from .base_tool import BaseMCPTool
-from ...intelligence.symbol_index import SymbolIndex
+
 from ...intelligence.call_graph import CallGraphBuilder
 from ...intelligence.formatters import format_trace_result
+from ...intelligence.symbol_index import SymbolIndex
 from ...utils import setup_logger
+from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 

@@ -2,6 +2,7 @@
 """Tests for Code Intelligence Graph data models."""
 
 import pytest
+
 from tree_sitter_analyzer.intelligence.models import (
     ArchitectureReport,
     CallSite,

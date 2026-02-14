@@ -8,8 +8,6 @@ supporting lookup by name, file, and type.
 
 from __future__ import annotations
 
-from typing import Any
-
 from .models import SymbolDefinition, SymbolReference
 
 

@@ -9,8 +9,8 @@ distinguishing between internal (project) and external (stdlib/third-party) impo
 from __future__ import annotations
 
 from pathlib import Path
-from .models import ResolvedImport
 
+from .models import ResolvedImport
 
 # Common stdlib top-level modules (subset for fast lookup)
 _STDLIB_MODULES = frozenset({

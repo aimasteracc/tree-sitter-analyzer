@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for trace_symbol MCP tool."""
 import pytest
+
 from tree_sitter_analyzer.mcp.tools.trace_symbol_tool import TraceSymbolTool
 
 

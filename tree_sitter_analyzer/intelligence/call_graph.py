@@ -192,7 +192,7 @@ class CallGraphBuilder:
     ) -> list[CallSite]:
         """Find all call sites that call the given symbol."""
         callers: list[CallSite] = []
-        for file_path, sites in self._call_sites.items():
+        for _file_path, sites in self._call_sites.items():
             for site in sites:
                 if site.callee_name == symbol_name:
                     callers.append(site)
@@ -203,7 +203,7 @@ class CallGraphBuilder:
     ) -> list[CallSite]:
         """Find all symbols called by the given function."""
         callees: list[CallSite] = []
-        for file_path, sites in self._call_sites.items():
+        for _file_path, sites in self._call_sites.items():
             for site in sites:
                 if site.caller_function == function_name:
                     callees.append(site)

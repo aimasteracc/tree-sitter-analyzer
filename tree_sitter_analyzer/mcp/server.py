@@ -77,9 +77,9 @@ from .utils.shared_cache import get_shared_cache
 
 # Import Code Intelligence Graph tools
 try:
-    from .tools.trace_symbol_tool import TraceSymbolTool
     from .tools.assess_change_impact_tool import AssessChangeImpactTool
     from .tools.check_architecture_health_tool import CheckArchitectureHealthTool
+    from .tools.trace_symbol_tool import TraceSymbolTool
 
     INTELLIGENCE_TOOLS_AVAILABLE = True
 except ImportError:

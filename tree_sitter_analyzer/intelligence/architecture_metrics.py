@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Architecture metrics for Code Intelligence Graph."""
 from __future__ import annotations
-from typing import Any
+
+import os
+
+from .cycle_detector import CycleDetector
+from .dependency_graph import DependencyGraphBuilder
 from .models import (
     ArchitectureReport,
     DependencyCycle,
@@ -9,10 +13,7 @@ from .models import (
     LayerViolation,
     ModuleMetrics,
 )
-from .dependency_graph import DependencyGraphBuilder
 from .symbol_index import SymbolIndex
-from .cycle_detector import CycleDetector
-import os
 
 
 class ArchitectureMetrics:
@@ -129,7 +130,7 @@ class ArchitectureMetrics:
                 if d.symbol_type == "class":
                     # Count methods for this class
                     method_count = 0
-                    for mname, mdefs in all_defs.items():
+                    for _mname, mdefs in all_defs.items():
                         for md in mdefs:
                             if md.parent_class == name and md.symbol_type in ("method", "function"):
                                 method_count += 1

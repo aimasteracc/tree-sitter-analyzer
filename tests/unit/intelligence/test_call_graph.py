@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Tests for CallGraphBuilder (Code Intelligence Graph)."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 from tree_sitter_analyzer.intelligence.call_graph import CallGraphBuilder
 from tree_sitter_analyzer.intelligence.models import CallSite
 

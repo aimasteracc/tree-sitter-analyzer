@@ -7,28 +7,23 @@ Tests the full pipeline: source code -> parsing -> indexing -> MCP tool executio
 
 from __future__ import annotations
 
-import os
-import tempfile
-
 import pytest
 
-from tree_sitter_analyzer.intelligence.call_graph import CallGraphBuilder
-from tree_sitter_analyzer.intelligence.cycle_detector import CycleDetector
-from tree_sitter_analyzer.intelligence.dependency_graph import DependencyGraphBuilder
-from tree_sitter_analyzer.intelligence.impact_analyzer import ImpactAnalyzer
 from tree_sitter_analyzer.intelligence.architecture_metrics import ArchitectureMetrics
+from tree_sitter_analyzer.intelligence.call_graph import CallGraphBuilder
+from tree_sitter_analyzer.intelligence.dependency_graph import DependencyGraphBuilder
+from tree_sitter_analyzer.intelligence.formatters import (
+    format_architecture_report,
+    format_impact_result,
+    format_trace_result,
+)
+from tree_sitter_analyzer.intelligence.impact_analyzer import ImpactAnalyzer
 from tree_sitter_analyzer.intelligence.models import (
     DependencyEdge,
     SymbolDefinition,
     SymbolReference,
 )
 from tree_sitter_analyzer.intelligence.symbol_index import SymbolIndex
-from tree_sitter_analyzer.intelligence.formatters import (
-    format_trace_result,
-    format_impact_result,
-    format_architecture_report,
-)
-
 
 # ---- Sample project source code for E2E tests ----
 
@@ -318,7 +313,9 @@ class TestMCPToolExecution:
     @pytest.mark.asyncio
     async def test_assess_change_impact_tool_e2e(self):
         """Test assess_change_impact tool with real execution."""
-        from tree_sitter_analyzer.mcp.tools.assess_change_impact_tool import AssessChangeImpactTool
+        from tree_sitter_analyzer.mcp.tools.assess_change_impact_tool import (
+            AssessChangeImpactTool,
+        )
 
         tool = AssessChangeImpactTool(project_root=None)
         result = await tool.execute({
@@ -332,7 +329,9 @@ class TestMCPToolExecution:
     @pytest.mark.asyncio
     async def test_check_architecture_health_tool_e2e(self):
         """Test check_architecture_health tool with real execution."""
-        from tree_sitter_analyzer.mcp.tools.check_architecture_health_tool import CheckArchitectureHealthTool
+        from tree_sitter_analyzer.mcp.tools.check_architecture_health_tool import (
+            CheckArchitectureHealthTool,
+        )
 
         tool = CheckArchitectureHealthTool(project_root=None)
         result = await tool.execute({

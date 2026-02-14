@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Tests for ImpactAnalyzer."""
 import pytest
-from tree_sitter_analyzer.intelligence.impact_analyzer import ImpactAnalyzer
+
 from tree_sitter_analyzer.intelligence.call_graph import CallGraphBuilder
 from tree_sitter_analyzer.intelligence.dependency_graph import DependencyGraphBuilder
+from tree_sitter_analyzer.intelligence.impact_analyzer import ImpactAnalyzer
+from tree_sitter_analyzer.intelligence.models import (
+    CallSite,
+    DependencyEdge,
+    SymbolDefinition,
+)
 from tree_sitter_analyzer.intelligence.symbol_index import SymbolIndex
-from tree_sitter_analyzer.intelligence.models import CallSite, DependencyEdge, SymbolDefinition
 
 
 @pytest.fixture

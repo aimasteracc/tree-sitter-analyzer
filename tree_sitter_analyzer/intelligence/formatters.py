@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Output formatters for Code Intelligence Graph results."""
 from __future__ import annotations
+
 import json
 from typing import Any
 

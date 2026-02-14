@@ -8,16 +8,16 @@ Provides advanced code analysis capabilities including:
 - Architecture health assessment (coupling, cycles, metrics)
 """
 
-from .call_graph import CallGraphBuilder
-from .dependency_graph import DependencyGraphBuilder
-from .impact_analyzer import ImpactAnalyzer
 from .architecture_metrics import ArchitectureMetrics
+from .call_graph import CallGraphBuilder
 from .cycle_detector import CycleDetector
+from .dependency_graph import DependencyGraphBuilder
 from .formatters import (
-    format_trace_result,
-    format_impact_result,
     format_architecture_report,
+    format_impact_result,
+    format_trace_result,
 )
+from .impact_analyzer import ImpactAnalyzer
 from .models import (
     ArchitectureReport,
     CallSite,

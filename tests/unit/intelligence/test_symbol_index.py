@@ -2,8 +2,9 @@
 """Tests for SymbolIndex (Code Intelligence Graph)."""
 
 import pytest
-from tree_sitter_analyzer.intelligence.symbol_index import SymbolIndex
+
 from tree_sitter_analyzer.intelligence.models import SymbolDefinition, SymbolReference
+from tree_sitter_analyzer.intelligence.symbol_index import SymbolIndex
 
 
 @pytest.fixture

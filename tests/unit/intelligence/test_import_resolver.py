@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Tests for PythonImportResolver (Code Intelligence Graph)."""
 
+
 import pytest
-from pathlib import Path
+
 from tree_sitter_analyzer.intelligence.import_resolver import PythonImportResolver
 
 

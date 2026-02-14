@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Impact Analyzer for Code Intelligence Graph."""
 from __future__ import annotations
+
 import os
-from typing import Any
-from .models import ImpactItem, ImpactResult
+
 from .call_graph import CallGraphBuilder
 from .dependency_graph import DependencyGraphBuilder
+from .models import ImpactItem, ImpactResult
 from .symbol_index import SymbolIndex
 
 
@@ -96,7 +97,7 @@ class ImpactAnalyzer:
                             affected_tests.append(dep)
 
         # Calculate risk level
-        total = len(set(i.file_path for i in direct_impacts + transitive_impacts))
+        total = len({i.file_path for i in direct_impacts + transitive_impacts})
         risk_level = self._compute_risk(total, change_type)
 
         return ImpactResult(
