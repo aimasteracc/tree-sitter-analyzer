@@ -2,7 +2,7 @@
 
 **Change ID**: `add-code-intelligence-graph`
 **Spec ID**: `change-impact`
-**Status**: Draft
+**Status**: Implemented (v2 — 2026-02-14)
 
 ---
 
@@ -69,6 +69,32 @@ MCP tool that evaluates the blast radius of a code change, identifying directly 
 
 ---
 
+### Requirement 6: File Path Target Support (v2)
+**ID**: CI-006
+**Priority**: High
+
+#### Scenario: Assess impact of a file change
+**Given** `auth.py` defines `login()` and `AuthService`, and is imported by `api.py` and `cli.py`
+**When** assess_change_impact is called with `{"target": "auth.py"}`
+**Then** direct_impacts includes `api.py` (importer) and `cli.py` (importer)
+
+#### Scenario: File target includes symbol callers
+**Given** `auth.py` defines `login()`, and `handler.py` calls `login()`
+**When** assess_change_impact is called with `{"target": "auth.py"}`
+**Then** direct_impacts includes `handler.py` as a direct_caller
+
+#### Scenario: File path detection
+**Given** target contains `/` or ends with `.py`
+**When** `_is_file_path()` is evaluated
+**Then** returns `True` and triggers file-level analysis instead of symbol lookup
+
+#### Scenario: Symbol target unchanged
+**Given** target is `"AuthService"` (no `/` or `.py`)
+**When** assess_change_impact is called
+**Then** original symbol-based analysis is used (backward compatible)
+
+---
+
 ## Acceptance Criteria
 
 - [x] Direct impacts correctly identified via call graph
@@ -76,3 +102,5 @@ MCP tool that evaluates the blast radius of a code change, identifying directly 
 - [x] Test files identified by naming convention and import analysis
 - [x] Risk levels calculated based on impact count and depth
 - [x] Change type affects severity classification
+- [x] (v2) File path targets correctly identify importers and callers of defined symbols
+- [x] (v2) Symbol targets remain backward compatible

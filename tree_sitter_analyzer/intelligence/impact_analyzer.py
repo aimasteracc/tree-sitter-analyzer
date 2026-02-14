@@ -23,16 +23,52 @@ class ImpactAnalyzer:
         self._dep_graph = dependency_graph
         self._symbol_index = symbol_index
 
-    def assess(
-        self,
-        target: str,
-        change_type: str = "behavior_change",
-        depth: int = 3,
-        include_tests: bool = True,
-    ) -> ImpactResult:
+    @staticmethod
+    def _is_file_path(target: str) -> bool:
+        """Check if the target looks like a file path rather than a symbol name."""
+        return "/" in target or "\\" in target or target.endswith(".py")
+
+    def _assess_file_target(self, target: str) -> list[ImpactItem]:
+        """Assess impacts when target is a file path."""
         direct_impacts: list[ImpactItem] = []
-        transitive_impacts: list[ImpactItem] = []
-        affected_tests: list[str] = []
+
+        # 1. Find all files that import this file
+        dependents = self._dep_graph.get_dependents(target)
+        for dep_file in dependents:
+            if not any(i.file_path == dep_file for i in direct_impacts):
+                direct_impacts.append(ImpactItem(
+                    file_path=dep_file,
+                    symbol_name="",
+                    line=0,
+                    impact_type="importer",
+                    depth=1,
+                ))
+
+        # 2. Find callers of symbols defined in this file
+        all_defs = self._symbol_index.get_all_definitions()
+        for name, defs_list in all_defs.items():
+            for d in defs_list:
+                if d.file_path == target:
+                    # Find callers of this symbol
+                    callers = self._call_graph.find_callers(name, depth=1)
+                    for caller in callers:
+                        if not any(i.file_path == caller.caller_file and i.line == caller.line
+                                   for i in direct_impacts):
+                            direct_impacts.append(ImpactItem(
+                                file_path=caller.caller_file,
+                                symbol_name=caller.caller_function or "",
+                                line=caller.line,
+                                impact_type="direct_caller",
+                                depth=1,
+                            ))
+
+        return direct_impacts
+
+    def _assess_symbol_target(self, target: str) -> tuple[list[ImpactItem], list["SymbolDefinition"]]:
+        """Assess impacts when target is a symbol name."""
+        from .models import SymbolDefinition  # noqa: F811
+
+        direct_impacts: list[ImpactItem] = []
 
         # Find direct callers via call graph
         callers = self._call_graph.find_callers(target, depth=1)
@@ -59,6 +95,27 @@ class ImpactAnalyzer:
                         depth=1,
                     ))
 
+        return direct_impacts, defs
+
+    def assess(
+        self,
+        target: str,
+        change_type: str = "behavior_change",
+        depth: int = 3,
+        include_tests: bool = True,
+    ) -> ImpactResult:
+        direct_impacts: list[ImpactItem] = []
+        transitive_impacts: list[ImpactItem] = []
+        affected_tests: list[str] = []
+
+        if self._is_file_path(target):
+            # File path target: find importers + callers of symbols in the file
+            direct_impacts = self._assess_file_target(target)
+            defs = []  # No single symbol definition for file targets
+        else:
+            # Symbol target: original behavior
+            direct_impacts, defs = self._assess_symbol_target(target)
+
         # Find transitive impacts (depth > 1)
         seen_files: set[str] = {i.file_path for i in direct_impacts}
         frontier = list(seen_files)
@@ -82,7 +139,9 @@ class ImpactAnalyzer:
         # Identify affected tests
         if include_tests:
             all_affected = {i.file_path for i in direct_impacts + transitive_impacts}
-            for f in list(all_affected) + [d.file_path for d in defs]:
+            # For file targets, include the target file itself; for symbol targets, include definition files
+            source_files = [target] if self._is_file_path(target) else [d.file_path for d in defs]
+            for f in list(all_affected) + source_files:
                 base = os.path.basename(f)
                 if base.startswith("test_") or base.endswith("_test.py"):
                     if f not in affected_tests:

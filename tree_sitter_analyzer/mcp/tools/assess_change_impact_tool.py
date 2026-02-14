@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...intelligence.call_graph import CallGraphBuilder
-from ...intelligence.dependency_graph import DependencyGraphBuilder
 from ...intelligence.formatters import format_impact_result
 from ...intelligence.impact_analyzer import ImpactAnalyzer
-from ...intelligence.symbol_index import SymbolIndex
+from ...intelligence.project_indexer import ProjectIndexer
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
@@ -20,10 +18,27 @@ VALID_CHANGE_TYPES = ("signature_change", "behavior_change", "rename", "delete")
 class AssessChangeImpactTool(BaseMCPTool):
     def __init__(self, project_root: str | None = None) -> None:
         super().__init__(project_root)
-        self._call_graph = CallGraphBuilder()
-        self._dep_graph = DependencyGraphBuilder()
-        self._symbol_index = SymbolIndex()
-        self._analyzer = ImpactAnalyzer(self._call_graph, self._dep_graph, self._symbol_index)
+        self._indexer: ProjectIndexer | None = None
+        self._owns_indexer: bool = True
+
+    def set_indexer(self, indexer: ProjectIndexer) -> None:
+        """Set a shared indexer (owned externally, e.g. by the server)."""
+        self._indexer = indexer
+        self._owns_indexer = False
+
+    def _ensure_indexed(self) -> ProjectIndexer:
+        """Lazily create and populate the project indexer."""
+        if self._indexer is None:
+            self._indexer = ProjectIndexer(self.project_root or "")
+            self._owns_indexer = True
+        self._indexer.ensure_indexed()
+        return self._indexer
+
+    def set_project_path(self, project_path: str) -> None:
+        """Override to reset indexer when project path changes."""
+        super().set_project_path(project_path)
+        if self._owns_indexer:
+            self._indexer = None
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -59,8 +74,14 @@ class AssessChangeImpactTool(BaseMCPTool):
         include_tests = arguments.get("include_tests", True)
         output_format = arguments.get("output_format", "summary")
 
+        # Ensure project is indexed before analysis
+        indexer = self._ensure_indexed()
+        analyzer = ImpactAnalyzer(
+            indexer.call_graph, indexer.dep_graph, indexer.symbol_index
+        )
+
         try:
-            result = self._analyzer.assess(target, change_type, depth, include_tests)
+            result = analyzer.assess(target, change_type, depth, include_tests)
             result_data = result.to_dict()
             formatted = format_impact_result(result_data, output_format)
             return {"result": formatted, "data": result_data}

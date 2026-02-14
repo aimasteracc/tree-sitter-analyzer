@@ -2,7 +2,7 @@
 
 **Change ID**: `add-code-intelligence-graph`
 **Spec ID**: `call-graph-extraction`
-**Status**: Draft
+**Status**: Implemented (v2 — 2026-02-14)
 
 ---
 

@@ -32,6 +32,7 @@ from .models import (
     SymbolDefinition,
     SymbolReference,
 )
+from .project_indexer import ProjectIndexer
 from .symbol_index import SymbolIndex
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "ImpactAnalyzer",
     "ArchitectureMetrics",
     "CycleDetector",
+    "ProjectIndexer",
     "format_trace_result",
     "format_impact_result",
     "format_architecture_report",

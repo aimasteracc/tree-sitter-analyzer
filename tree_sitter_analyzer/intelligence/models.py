@@ -90,6 +90,7 @@ class DependencyEdge:
     imported_names: list[str] = field(default_factory=list)
     is_external: bool = False
     line: int = 0
+    is_type_check_only: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -99,6 +100,7 @@ class DependencyEdge:
             "imported_names": self.imported_names,
             "is_external": self.is_external,
             "line": self.line,
+            "is_type_check_only": self.is_type_check_only,
         }
 
 

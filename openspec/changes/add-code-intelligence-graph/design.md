@@ -7,19 +7,23 @@
 ## Architecture Overview
 
 ```
-MCP Tools Layer
+MCP Server Layer
+├── server.py
+│   └── _shared_indexer: ProjectIndexer  ← (v2) shared across tools
+│
 ├── trace_symbol_tool.py          → SymbolIndex + CallGraphBuilder
 ├── assess_change_impact_tool.py  → ImpactAnalyzer + CallGraph + DependencyGraph
 └── check_architecture_health_tool.py → ArchitectureMetrics + DependencyGraph
 
-Intelligence Engine (NEW)
+Intelligence Engine
+├── project_indexer.py     → (v2) Lazy project-wide AST indexer
 ├── models.py              → Data models for all intelligence features
 ├── symbol_index.py        → Project-wide symbol definition/reference index
 ├── call_graph.py          → Call graph builder using tree-sitter queries
 ├── import_resolver.py     → Import path → actual file resolution
 ├── dependency_graph.py    → File/module dependency graph builder
 ├── impact_analyzer.py     → Change impact blast radius calculator
-├── architecture_metrics.py → Coupling, instability, cycle detection
+├── architecture_metrics.py → Coupling, instability, abstractness, cycle detection
 ├── cycle_detector.py      → Tarjan's SCC algorithm
 └── formatters.py          → Output formatting (summary, tree, json)
 
@@ -42,11 +46,28 @@ Call graph is built using AST name matching, not semantic analysis. This means:
 - No type inference: `obj.method()` matches by method name only
 - Trade-off: High recall, moderate precision — acceptable for AI assistant use cases
 
-### 3. Lazy Graph Construction
-Graphs are built on-demand per MCP tool call, not maintained as a persistent index. This avoids complexity of incremental updates while leveraging existing `CacheService` for per-file analysis results.
+### 3. Lazy Graph Construction via ProjectIndexer (v2)
+`ProjectIndexer` performs lazy, on-demand project-wide indexing. All three MCP tools share a single `ProjectIndexer` instance (owned by the MCP server), ensuring that files are parsed only once per `set_project_path` cycle. Indexing is idempotent and respects a configurable file limit (`_MAX_FILES = 500`).
 
 ### 4. Python-First
 All resolvers and queries are implemented for Python first, with extension points for other languages.
+
+### 5. Shared Indexer Pattern (v2)
+```
+server.py
+  └── _shared_indexer: ProjectIndexer
+        ├── symbol_index: SymbolIndex
+        ├── call_graph: CallGraphBuilder
+        └── dep_graph: DependencyGraphBuilder
+              ↑ injected via set_indexer()
+  ├── trace_symbol_tool
+  ├── assess_change_impact_tool
+  └── check_architecture_health_tool
+```
+Each tool calls `_ensure_indexed()` which delegates to the shared indexer. When `set_project_path()` is called, the server recreates the shared indexer and re-injects it.
+
+### 6. TYPE_CHECKING Awareness (v2)
+Imports inside `if TYPE_CHECKING:` blocks are marked with `is_type_check_only=True` on the `DependencyEdge`. Cycle detection in `ArchitectureMetrics._detect_cycles()` filters these edges out when building the adjacency graph. The `CycleDetector` itself remains unmodified (its interface is pure `dict[str, list[str]]`).
 
 ---
 
@@ -101,6 +122,7 @@ class DependencyEdge:
     imported_names: list[str]
     is_external: bool
     line: int
+    is_type_check_only: bool = False  # (v2) True for imports inside `if TYPE_CHECKING:`
 ```
 
 ### ImpactResult
@@ -140,11 +162,16 @@ class ArchitectureReport:
 - Formats: summary, tree, json
 
 ### assess_change_impact
-- Input: `target` (required), `change_type`, `depth`, `include_tests`
+- Input: `target` (required — symbol name **or file path**), `change_type`, `depth`, `include_tests`
 - Output: Direct impacts, transitive impacts, affected tests, risk level
 - Formats: summary, json
+- (v2) File path targets (`/` or `.py`) trigger file-level analysis: importers + callers of defined symbols
 
 ### check_architecture_health
 - Input: `path` (required), `checks[]`, `layer_rules{}`
 - Output: Score, metrics, cycles, violations, god classes, dead symbols
 - Formats: summary, json
+- (v2) `path` parameter now correctly **scopes** all sub-metrics to the specified directory
+- (v2) Score uses per-category capped deductions (max total: -100)
+- (v2) Abstractness computed from ABC/Protocol/abstractmethod ratio in each module
+- (v2) TYPE_CHECKING imports excluded from cycle detection

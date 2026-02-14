@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...intelligence.call_graph import CallGraphBuilder
 from ...intelligence.formatters import format_trace_result
-from ...intelligence.symbol_index import SymbolIndex
+from ...intelligence.project_indexer import ProjectIndexer
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
@@ -21,8 +20,27 @@ class TraceSymbolTool(BaseMCPTool):
 
     def __init__(self, project_root: str | None = None) -> None:
         super().__init__(project_root)
-        self._symbol_index = SymbolIndex()
-        self._call_graph = CallGraphBuilder()
+        self._indexer: ProjectIndexer | None = None
+        self._owns_indexer: bool = True  # True if we created the indexer ourselves
+
+    def set_indexer(self, indexer: ProjectIndexer) -> None:
+        """Set a shared indexer (owned externally, e.g. by the server)."""
+        self._indexer = indexer
+        self._owns_indexer = False
+
+    def _ensure_indexed(self) -> ProjectIndexer:
+        """Lazily create and populate the project indexer."""
+        if self._indexer is None:
+            self._indexer = ProjectIndexer(self.project_root or "")
+            self._owns_indexer = True
+        self._indexer.ensure_indexed()
+        return self._indexer
+
+    def set_project_path(self, project_path: str) -> None:
+        """Override to reset indexer when project path changes."""
+        super().set_project_path(project_path)
+        if self._owns_indexer:
+            self._indexer = None
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -71,6 +89,11 @@ class TraceSymbolTool(BaseMCPTool):
         depth = arguments.get("depth", 2)
         output_format = arguments.get("output_format", "summary")
 
+        # Ensure project is indexed before querying
+        indexer = self._ensure_indexed()
+        symbol_index = indexer.symbol_index
+        call_graph = indexer.call_graph
+
         result_data: dict[str, Any] = {
             "symbol": symbol,
             "definitions": [],
@@ -82,18 +105,18 @@ class TraceSymbolTool(BaseMCPTool):
         try:
             # Definitions
             if trace_type in ("definition", "full"):
-                defs = self._symbol_index.lookup_definition(symbol, file_hint=file_path)
+                defs = symbol_index.lookup_definition(symbol, file_hint=file_path)
                 result_data["definitions"] = [d.to_dict() for d in defs]
 
             # Usages
             if trace_type in ("usages", "full"):
-                refs = self._symbol_index.lookup_references(symbol)
+                refs = symbol_index.lookup_references(symbol)
                 result_data["usages"] = [r.to_dict() for r in refs]
 
             # Call chain
             if trace_type in ("call_chain", "full"):
-                callers = self._call_graph.find_callers(symbol, depth=depth)
-                callees = self._call_graph.find_callees(symbol, depth=depth)
+                callers = call_graph.find_callers(symbol, depth=depth)
+                callees = call_graph.find_callees(symbol, depth=depth)
                 result_data["call_chain"] = {
                     "callers": [c.to_dict() for c in callers],
                     "callees": [c.to_dict() for c in callees],
@@ -101,8 +124,8 @@ class TraceSymbolTool(BaseMCPTool):
 
             # Inheritance - formatter expects list for ' -> '.join()
             if trace_type in ("inheritance", "full"):
-                chain = self._symbol_index.get_inheritance_chain(symbol)
-                subclasses = self._symbol_index.get_subclasses(symbol)
+                chain = symbol_index.get_inheritance_chain(symbol)
+                subclasses = symbol_index.get_subclasses(symbol)
                 inh_list = list(reversed(chain)) + [symbol] + subclasses
                 result_data["inheritance"] = inh_list
 

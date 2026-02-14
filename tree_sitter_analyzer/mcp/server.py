@@ -152,11 +152,15 @@ class TreeSitterAnalyzerMCPServer:
             self.universal_analyze_tool = None
 
         # Code Intelligence Graph tools (trace_symbol, assess_change_impact, check_architecture_health)
+        # All three tools share a single ProjectIndexer for efficiency
+        self._shared_indexer: Any = None  # Lazy-initialized ProjectIndexer
         if INTELLIGENCE_TOOLS_AVAILABLE:
             try:
                 self.trace_symbol_tool: TraceSymbolTool | None = TraceSymbolTool(project_root)
                 self.assess_change_impact_tool: AssessChangeImpactTool | None = AssessChangeImpactTool(project_root)
                 self.check_architecture_health_tool: CheckArchitectureHealthTool | None = CheckArchitectureHealthTool(project_root)
+                # Inject shared indexer into all intelligence tools
+                self._setup_shared_indexer(project_root)
             except Exception:
                 self.trace_symbol_tool = None
                 self.assess_change_impact_tool = None
@@ -198,6 +202,18 @@ class TreeSitterAnalyzerMCPServer:
         except Exception:  # nosec
             # Gracefully handle logging failures during initialization
             pass
+
+    def _setup_shared_indexer(self, project_root: str | None) -> None:
+        """Create a shared ProjectIndexer and inject into intelligence tools."""
+        try:
+            from ..intelligence.project_indexer import ProjectIndexer
+            self._shared_indexer = ProjectIndexer(project_root or "")
+            # Inject into all intelligence tools
+            for tool in (self.trace_symbol_tool, self.assess_change_impact_tool, self.check_architecture_health_tool):
+                if tool is not None:
+                    tool.set_indexer(self._shared_indexer)
+        except Exception:
+            self._shared_indexer = None
 
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
@@ -715,6 +731,16 @@ class TreeSitterAnalyzerMCPServer:
         # Update universal tool if available
         if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
             self.universal_analyze_tool.set_project_path(project_path)
+
+        # Update intelligence tools with a new shared indexer
+        if self.trace_symbol_tool is not None:
+            self.trace_symbol_tool.set_project_path(project_path)
+        if self.assess_change_impact_tool is not None:
+            self.assess_change_impact_tool.set_project_path(project_path)
+        if self.check_architecture_health_tool is not None:
+            self.check_architecture_health_tool.set_project_path(project_path)
+        # Recreate shared indexer for the new project path
+        self._setup_shared_indexer(project_path)
 
         # Update analysis engine and security validator
         self.analysis_engine = get_analysis_engine(project_path)

@@ -95,3 +95,48 @@
 
 ### Task 5.3: Documentation
 - Update `docs/api/mcp_tools_specification.md`
+
+---
+
+## Phase 6: v2 Bug Fixes & Improvements (MCP Self-Analysis Driven)
+
+> All tasks completed 2026-02-14. Bugs identified by running the three MCP tools against their own codebase.
+
+### Task 6.1: ProjectIndexer — Lazy Project-Wide Indexer ✅
+- **File**: `tree_sitter_analyzer/intelligence/project_indexer.py` (NEW)
+- **Deliverable**: Central class that scans, parses, and populates SymbolIndex + CallGraphBuilder + DependencyGraphBuilder
+- **TDD**: Integration tests in `test_code_intelligence_e2e.py`
+
+### Task 6.2: C1 — ImpactAnalyzer File Path Target ✅
+- **File**: `tree_sitter_analyzer/intelligence/impact_analyzer.py`
+- **TDD**: `tests/unit/intelligence/test_impact_analyzer_file_target.py` (7 tests)
+- **Deliverable**: `assess()` detects file path targets (contains `/` or `.py`) and finds importers + callers of defined symbols
+
+### Task 6.3: C2 — Architecture Metrics Path Scoping ✅
+- **File**: `tree_sitter_analyzer/intelligence/architecture_metrics.py`
+- **TDD**: `tests/unit/intelligence/test_architecture_metrics_scoping.py` (6 tests)
+- **Deliverable**: All `_detect_*` and `_compute_*` methods accept `scope` and filter results by path prefix
+
+### Task 6.4: C3 — Abstractness Calculation ✅
+- **File**: `tree_sitter_analyzer/intelligence/architecture_metrics.py`, `project_indexer.py`
+- **TDD**: `tests/unit/intelligence/test_abstractness.py` (5 tests)
+- **Deliverable**: `_compute_coupling()` computes abstractness from ABC/Protocol/abstractmethod in `modifiers`; `_extract_class_def()` detects abstract base classes
+
+### Task 6.5: H1 — TYPE_CHECKING Awareness ✅
+- **Files**: `models.py` (new field), `project_indexer.py` (detection), `architecture_metrics.py` (filtering)
+- **TDD**: `tests/unit/intelligence/test_type_checking_awareness.py` (7 tests)
+- **Deliverable**: `DependencyEdge.is_type_check_only`, `_walk_for_imports()` detects `if TYPE_CHECKING:` blocks, `_detect_cycles()` excludes type-check-only edges
+- **Note**: `cycle_detector.py` NOT modified — filtering happens in `architecture_metrics` when building adjacency
+
+### Task 6.6: H2 — Score Capping ✅
+- **File**: `tree_sitter_analyzer/intelligence/architecture_metrics.py`
+- **TDD**: `tests/unit/intelligence/test_architecture_metrics_scoping.py` (3 score tests)
+- **Deliverable**: `_compute_score()` uses per-category caps (cycles: -25, violations: -20, god classes: -20, dead code: -20, D>0.7: -15)
+
+### Task 6.7: H3 — Shared ProjectIndexer ✅
+- **Files**: `server.py`, 3 tool files
+- **Deliverable**: `_setup_shared_indexer()` creates one indexer, injects via `set_indexer()` into all 3 tools
+
+### Task 6.8: M1 — Import Parsing Fixes ✅
+- **File**: `tree_sitter_analyzer/intelligence/project_indexer.py`
+- **Deliverable**: `wildcard_import` node handling, `is_type_check_only` context propagation

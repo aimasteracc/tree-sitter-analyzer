@@ -1,7 +1,7 @@
 # Proposal: Add Code Intelligence Graph
 
 **Change ID**: `add-code-intelligence-graph`
-**Status**: Draft
+**Status**: Implemented (v2 — 2026-02-14)
 **Priority**: High
 **Author**: aisheng.yu
 **Date**: 2026-02-13
@@ -90,3 +90,26 @@ Expose these through three new MCP tools:
 4. Cycle detection correctly identifies circular dependencies
 5. Impact analysis correctly predicts direct and transitive impacts
 6. Architecture metrics match manual calculation on test projects
+
+---
+
+## v2 Improvements (2026-02-14)
+
+Based on self-analysis using the three MCP tools against their own codebase, the following bugs were identified and fixed:
+
+### Critical Fixes
+- **C1**: `assess_change_impact` now supports **file paths as targets** (not just symbol names)
+- **C2**: `check_architecture_health` `path` parameter now correctly **scopes** all metrics to the specified directory
+- **C3**: **Abstractness** metric now computed from ABC/Protocol/abstractmethod ratio (was always 0.0)
+
+### High-Priority Fixes
+- **H1**: `if TYPE_CHECKING:` imports are now marked as `is_type_check_only` and **excluded from cycle detection**
+- **H2**: Architecture score uses **per-category caps** (cycles: -25, violations: -20, god classes: -20, dead code: -20, D>0.7: -15) to prevent score collapse to 0
+- **H3**: Three intelligence tools now **share a single ProjectIndexer** instead of each creating their own
+
+### Medium-Priority Fixes
+- **M1**: Import parser now handles **wildcard imports** (`from X import *`) and properly passes `is_type_check_only` context
+
+### New Components
+- `ProjectIndexer`: Central class for lazy project-wide indexing (added in v1, enhanced in v2)
+- 4 new test files, 28 new test cases — **123 total tests passing**

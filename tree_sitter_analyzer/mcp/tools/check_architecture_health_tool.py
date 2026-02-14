@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from ...intelligence.architecture_metrics import ArchitectureMetrics
-from ...intelligence.dependency_graph import DependencyGraphBuilder
 from ...intelligence.formatters import format_architecture_report
-from ...intelligence.symbol_index import SymbolIndex
+from ...intelligence.project_indexer import ProjectIndexer
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
@@ -19,9 +18,27 @@ VALID_CHECKS = ("coupling_metrics", "circular_dependencies", "layer_violations",
 class CheckArchitectureHealthTool(BaseMCPTool):
     def __init__(self, project_root: str | None = None) -> None:
         super().__init__(project_root)
-        self._dep_graph = DependencyGraphBuilder()
-        self._symbol_index = SymbolIndex()
-        self._metrics = ArchitectureMetrics(self._dep_graph, self._symbol_index)
+        self._indexer: ProjectIndexer | None = None
+        self._owns_indexer: bool = True
+
+    def set_indexer(self, indexer: ProjectIndexer) -> None:
+        """Set a shared indexer (owned externally, e.g. by the server)."""
+        self._indexer = indexer
+        self._owns_indexer = False
+
+    def _ensure_indexed(self) -> ProjectIndexer:
+        """Lazily create and populate the project indexer."""
+        if self._indexer is None:
+            self._indexer = ProjectIndexer(self.project_root or "")
+            self._owns_indexer = True
+        self._indexer.ensure_indexed()
+        return self._indexer
+
+    def set_project_path(self, project_path: str) -> None:
+        """Override to reset indexer when project path changes."""
+        super().set_project_path(project_path)
+        if self._owns_indexer:
+            self._indexer = None
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -59,8 +76,12 @@ class CheckArchitectureHealthTool(BaseMCPTool):
         layer_rules = arguments.get("layer_rules")
         output_format = arguments.get("output_format", "summary")
 
+        # Ensure project is indexed before computing metrics
+        indexer = self._ensure_indexed()
+        metrics = ArchitectureMetrics(indexer.dep_graph, indexer.symbol_index)
+
         try:
-            report = self._metrics.compute_report(path, checks=checks, layer_rules=layer_rules)
+            report = metrics.compute_report(path, checks=checks, layer_rules=layer_rules)
             report_data = report.to_dict()
             formatted = format_architecture_report(report_data, output_format)
             return {"result": formatted, "data": report_data}
