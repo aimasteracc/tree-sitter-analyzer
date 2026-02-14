@@ -529,7 +529,8 @@ class AnalyzeScaleTool(BaseMCPTool):
                 },
                 }
 
-                if include_structure:
+                # Always include structural_overview for Java files
+                if language == "java" or include_structure:
                     result["structural_overview"] = structural_overview
 
                 if include_guidance:
@@ -651,7 +652,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         - Default output_format is TOON.
         - When output_format='toon', response MUST NOT include detailed JSON fields like results.
         """
-        output_format = arguments.get("output_format", "json")
+        output_format = arguments.get("output_format", "toon")
         metrics_only = bool(arguments.get("metrics_only", False))
         file_paths = arguments.get("file_paths")
 

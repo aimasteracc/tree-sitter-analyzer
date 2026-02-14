@@ -383,7 +383,7 @@ class ReadPartialTool(BaseMCPTool):
         - Default output is TOON for token reduction.
         - When output_format='toon', the response MUST NOT include detailed JSON fields like results/sections/content.
         """
-        output_format = arguments.get("output_format", "json")
+        output_format = arguments.get("output_format", "toon")
         content_format = arguments.get("format", "text")
         allow_truncate = bool(arguments.get("allow_truncate", False))
         fail_fast = bool(arguments.get("fail_fast", False))
