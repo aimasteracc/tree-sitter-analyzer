@@ -4,10 +4,12 @@ Tests for Markdown language queries.
 Validates that Markdown tree-sitter queries are syntactically correct
 and return expected results for various Markdown constructs.
 """
+
 import pytest
 
 try:
     import tree_sitter_markdown
+
     MARKDOWN_AVAILABLE = True
 except ImportError:
     MARKDOWN_AVAILABLE = False
@@ -118,11 +120,13 @@ class TestMarkdownQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed) if (compiled + failed) > 0 else 1.0
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
-    @pytest.mark.parametrize("key", [k for k in MARKDOWN_KEYS_TO_TEST if k in md_queries.MARKDOWN_QUERIES])
+    @pytest.mark.parametrize(
+        "key", [k for k in MARKDOWN_KEYS_TO_TEST if k in md_queries.MARKDOWN_QUERIES]
+    )
     def test_individual_query_compiles(self, key, query_validator):
         qstr = _get_query(key)
         assert qstr is not None and len(qstr.strip()) > 0
@@ -138,7 +142,9 @@ class TestMarkdownQueriesFunctionality:
         assert len(results) >= 2  # Heading 1, Heading 2
 
     def test_code_blocks_query_finds_code_blocks(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_MARKDOWN_CODE, _get_query("code_blocks"))
+        results = query_executor(
+            _lang(), SAMPLE_MARKDOWN_CODE, _get_query("code_blocks")
+        )
         assert len(results) >= 1  # python block
 
     def test_lists_query_finds_lists(self, query_executor):
@@ -146,7 +152,9 @@ class TestMarkdownQueriesFunctionality:
         assert len(results) >= 2  # unordered, ordered, nested
 
     def test_blockquotes_query_finds_blockquotes(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_MARKDOWN_CODE, _get_query("blockquotes"))
+        results = query_executor(
+            _lang(), SAMPLE_MARKDOWN_CODE, _get_query("blockquotes")
+        )
         assert len(results) >= 1  # blockquote
 
     def test_tables_query_finds_tables(self, query_executor):
@@ -154,7 +162,9 @@ class TestMarkdownQueriesFunctionality:
         assert len(results) >= 1  # pipe table
 
     def test_horizontal_rules_query_finds_hr(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_MARKDOWN_CODE, _get_query("horizontal_rules"))
+        results = query_executor(
+            _lang(), SAMPLE_MARKDOWN_CODE, _get_query("horizontal_rules")
+        )
         assert len(results) >= 1  # ---
 
     def test_emphasis_query(self, query_executor):
@@ -162,11 +172,15 @@ class TestMarkdownQueriesFunctionality:
         assert results is not None  # may match inline elements
 
     def test_task_lists_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_MARKDOWN_CODE, _get_query("task_lists"))
+        results = query_executor(
+            _lang(), SAMPLE_MARKDOWN_CODE, _get_query("task_lists")
+        )
         assert len(results) >= 2  # [x] Done, [ ] Todo
 
     def test_text_content_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_MARKDOWN_CODE, _get_query("text_content"))
+        results = query_executor(
+            _lang(), SAMPLE_MARKDOWN_CODE, _get_query("text_content")
+        )
         assert len(results) >= 1
 
     def test_document_query(self, query_executor):
@@ -174,7 +188,9 @@ class TestMarkdownQueriesFunctionality:
         assert len(results) >= 1
 
     def test_all_elements_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_MARKDOWN_CODE, _get_query("all_elements"))
+        results = query_executor(
+            _lang(), SAMPLE_MARKDOWN_CODE, _get_query("all_elements")
+        )
         assert len(results) >= 5  # multiple element types
 
     def test_query_alias_heading_resolves(self):

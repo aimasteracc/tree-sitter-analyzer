@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Dependency Graph Builder for Code Intelligence Graph."""
+
 from __future__ import annotations
 
 from .models import DependencyEdge
@@ -17,7 +18,10 @@ class DependencyGraphBuilder:
         self._edges.append(edge)
         if edge.source_file not in self._adjacency:
             self._adjacency[edge.source_file] = []
-        if edge.target_file and edge.target_file not in self._adjacency[edge.source_file]:
+        if (
+            edge.target_file
+            and edge.target_file not in self._adjacency[edge.source_file]
+        ):
             self._adjacency[edge.source_file].append(edge.target_file)
         if edge.target_file:
             if edge.target_file not in self._reverse_adjacency:

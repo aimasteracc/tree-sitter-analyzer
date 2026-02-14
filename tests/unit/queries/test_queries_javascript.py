@@ -4,6 +4,7 @@ Tests for JavaScript language queries.
 Validates that JavaScript tree-sitter queries are syntactically correct
 and return expected results for various JavaScript code constructs.
 """
+
 import pytest
 
 try:
@@ -65,9 +66,9 @@ class TestJavaScriptQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
 
 @pytest.mark.skipif(
@@ -76,7 +77,7 @@ class TestJavaScriptQueriesSyntax:
 class TestJavaScriptQueriesFunctionality:
     """Test that JavaScript queries return expected results."""
 
-    SAMPLE_CODE = '''
+    SAMPLE_CODE = """
 // Functions
 function calculateSum(a, b) { return a + b; }
 const multiply = (x, y) => x * y;
@@ -106,7 +107,7 @@ const config = { debug: true, port: 3000 };
 // Comments
 // single line comment
 /* multi-line comment */
-'''
+"""
 
     def test_functions_query_finds_definitions(self, query_executor):
         results = query_executor(_lang(), self.SAMPLE_CODE, js_queries.FUNCTIONS)
@@ -218,7 +219,7 @@ class TestJavaScriptQueriesHelpers:
         available = js_queries.get_available_javascript_queries()
         if available:
             result = js_queries.get_javascript_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_javascript_query_invalid_raises(self):
         with pytest.raises(ValueError):

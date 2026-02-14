@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 from .call_graph import CallGraphBuilder
@@ -33,27 +32,29 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 # Directories to skip during scanning
-_SKIP_DIRS = frozenset({
-    "__pycache__",
-    ".git",
-    ".hg",
-    ".svn",
-    "node_modules",
-    ".venv",
-    "venv",
-    "env",
-    ".env",
-    ".tox",
-    ".nox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".hypothesis",
-    "htmlcov",
-    ".eggs",
-    "dist",
-    "build",
-    "*.egg-info",
-})
+_SKIP_DIRS = frozenset(
+    {
+        "__pycache__",
+        ".git",
+        ".hg",
+        ".svn",
+        "node_modules",
+        ".venv",
+        "venv",
+        "env",
+        ".env",
+        ".tox",
+        ".nox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".hypothesis",
+        "htmlcov",
+        ".eggs",
+        "dist",
+        "build",
+        "*.egg-info",
+    }
+)
 
 # Max files to index to avoid performance issues
 _MAX_FILES = 2000
@@ -183,7 +184,9 @@ class ProjectIndexer:
         """
         target = path or self._project_root
         if not target or not os.path.isdir(target):
-            logger.warning(f"Cannot index: path does not exist or is not a directory: {target}")
+            logger.warning(
+                f"Cannot index: path does not exist or is not a directory: {target}"
+            )
             self._indexed = True
             return
 
@@ -218,7 +221,8 @@ class ProjectIndexer:
         for dirpath, dirnames, filenames in os.walk(root):
             # Filter out skip directories in-place
             dirnames[:] = [
-                d for d in dirnames
+                d
+                for d in dirnames
                 if d not in _SKIP_DIRS and not d.endswith(".egg-info")
             ]
 
@@ -249,9 +253,9 @@ class ProjectIndexer:
             return
 
         try:
-            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+            with open(file_path, encoding="utf-8", errors="replace") as f:
                 source_code = f.read()
-        except (OSError, IOError) as e:
+        except OSError as e:
             logger.debug(f"Cannot read {file_path}: {e}")
             return
 
@@ -341,7 +345,9 @@ class ProjectIndexer:
                 # Walk children with class context
                 for child in node.children:
                     self._walk_for_symbols(
-                        child, file_path, source_code,
+                        child,
+                        file_path,
+                        source_code,
                         parent_class=class_info["definition"].name,
                     )
                 return
@@ -391,7 +397,9 @@ class ProjectIndexer:
         abstract_bases = {"ABC", "ABCMeta", "Protocol"}
         for base_name in bases:
             # Handle qualified names like abc.ABC
-            simple_name = base_name.rsplit(".", 1)[-1] if "." in base_name else base_name
+            simple_name = (
+                base_name.rsplit(".", 1)[-1] if "." in base_name else base_name
+            )
             if simple_name in abstract_bases:
                 if simple_name not in modifiers:
                     modifiers.append(simple_name)
@@ -579,7 +587,10 @@ class ProjectIndexer:
         self._walk_for_imports(root_node, file_path, source_code)
 
     def _walk_for_imports(
-        self, node: Any, file_path: str, source_code: str,
+        self,
+        node: Any,
+        file_path: str,
+        source_code: str,
         is_type_check_only: bool = False,
     ) -> None:
         """Recursively walk AST for import nodes.
@@ -598,8 +609,12 @@ class ProjectIndexer:
             # Detect `if TYPE_CHECKING:` blocks
             in_type_checking = self._is_type_checking_guard(node)
             for child in node.children:
-                self._walk_for_imports(child, file_path, source_code,
-                                       is_type_check_only=in_type_checking or is_type_check_only)
+                self._walk_for_imports(
+                    child,
+                    file_path,
+                    source_code,
+                    is_type_check_only=in_type_checking or is_type_check_only,
+                )
             return
 
         for child in node.children:

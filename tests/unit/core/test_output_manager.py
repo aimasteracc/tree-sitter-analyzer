@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for output_manager module - get_output_manager and OutputManager."""
 
-import pytest
-
 from tree_sitter_analyzer.output_manager import (
     OutputManager,
     get_output_manager,

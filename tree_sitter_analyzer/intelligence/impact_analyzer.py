@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Impact Analyzer for Code Intelligence Graph."""
+
 from __future__ import annotations
 
 import os
 
 from .call_graph import CallGraphBuilder
 from .dependency_graph import DependencyGraphBuilder
-from .models import ImpactItem, ImpactResult
+from .models import ImpactItem, ImpactResult, SymbolDefinition
 from .symbol_index import SymbolIndex
 
 
@@ -36,13 +37,15 @@ class ImpactAnalyzer:
         dependents = self._dep_graph.get_dependents(target)
         for dep_file in dependents:
             if not any(i.file_path == dep_file for i in direct_impacts):
-                direct_impacts.append(ImpactItem(
-                    file_path=dep_file,
-                    symbol_name="",
-                    line=0,
-                    impact_type="importer",
-                    depth=1,
-                ))
+                direct_impacts.append(
+                    ImpactItem(
+                        file_path=dep_file,
+                        symbol_name="",
+                        line=0,
+                        impact_type="importer",
+                        depth=1,
+                    )
+                )
 
         # 2. Find callers of symbols defined in this file
         all_defs = self._symbol_index.get_all_definitions()
@@ -52,34 +55,40 @@ class ImpactAnalyzer:
                     # Find callers of this symbol
                     callers = self._call_graph.find_callers(name, depth=1)
                     for caller in callers:
-                        if not any(i.file_path == caller.caller_file and i.line == caller.line
-                                   for i in direct_impacts):
-                            direct_impacts.append(ImpactItem(
-                                file_path=caller.caller_file,
-                                symbol_name=caller.caller_function or "",
-                                line=caller.line,
-                                impact_type="direct_caller",
-                                depth=1,
-                            ))
+                        if not any(
+                            i.file_path == caller.caller_file and i.line == caller.line
+                            for i in direct_impacts
+                        ):
+                            direct_impacts.append(
+                                ImpactItem(
+                                    file_path=caller.caller_file,
+                                    symbol_name=caller.caller_function or "",
+                                    line=caller.line,
+                                    impact_type="direct_caller",
+                                    depth=1,
+                                )
+                            )
 
         return direct_impacts
 
-    def _assess_symbol_target(self, target: str) -> tuple[list[ImpactItem], list["SymbolDefinition"]]:
+    def _assess_symbol_target(
+        self, target: str
+    ) -> tuple[list[ImpactItem], list[SymbolDefinition]]:
         """Assess impacts when target is a symbol name."""
-        from .models import SymbolDefinition  # noqa: F811
-
         direct_impacts: list[ImpactItem] = []
 
         # Find direct callers via call graph
         callers = self._call_graph.find_callers(target, depth=1)
         for caller in callers:
-            direct_impacts.append(ImpactItem(
-                file_path=caller.caller_file,
-                symbol_name=caller.caller_function or "",
-                line=caller.line,
-                impact_type="direct_caller",
-                depth=1,
-            ))
+            direct_impacts.append(
+                ImpactItem(
+                    file_path=caller.caller_file,
+                    symbol_name=caller.caller_function or "",
+                    line=caller.line,
+                    impact_type="direct_caller",
+                    depth=1,
+                )
+            )
 
         # Find direct importers
         defs = self._symbol_index.lookup_definition(target)
@@ -87,13 +96,15 @@ class ImpactAnalyzer:
             dependents = self._dep_graph.get_dependents(d.file_path)
             for dep_file in dependents:
                 if not any(i.file_path == dep_file for i in direct_impacts):
-                    direct_impacts.append(ImpactItem(
-                        file_path=dep_file,
-                        symbol_name="",
-                        line=0,
-                        impact_type="importer",
-                        depth=1,
-                    ))
+                    direct_impacts.append(
+                        ImpactItem(
+                            file_path=dep_file,
+                            symbol_name="",
+                            line=0,
+                            impact_type="importer",
+                            depth=1,
+                        )
+                    )
 
         return direct_impacts, defs
 
@@ -111,7 +122,9 @@ class ImpactAnalyzer:
         if self._is_file_path(target):
             # File path target: find importers + callers of symbols in the file
             direct_impacts = self._assess_file_target(target)
-            defs = []  # No single symbol definition for file targets
+            defs: list[
+                SymbolDefinition
+            ] = []  # No single symbol definition for file targets
         else:
             # Symbol target: original behavior
             direct_impacts, defs = self._assess_symbol_target(target)
@@ -127,20 +140,24 @@ class ImpactAnalyzer:
                     if td not in seen_files:
                         seen_files.add(td)
                         next_frontier.append(td)
-                        transitive_impacts.append(ImpactItem(
-                            file_path=td,
-                            symbol_name="",
-                            line=0,
-                            impact_type="transitive_caller",
-                            depth=current_depth,
-                        ))
+                        transitive_impacts.append(
+                            ImpactItem(
+                                file_path=td,
+                                symbol_name="",
+                                line=0,
+                                impact_type="transitive_caller",
+                                depth=current_depth,
+                            )
+                        )
             frontier = next_frontier
 
         # Identify affected tests
         if include_tests:
             all_affected = {i.file_path for i in direct_impacts + transitive_impacts}
             # For file targets, include the target file itself; for symbol targets, include definition files
-            source_files = [target] if self._is_file_path(target) else [d.file_path for d in defs]
+            source_files = (
+                [target] if self._is_file_path(target) else [d.file_path for d in defs]
+            )
             for f in list(all_affected) + source_files:
                 base = os.path.basename(f)
                 if base.startswith("test_") or base.endswith("_test.py"):

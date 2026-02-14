@@ -30,7 +30,9 @@ class TestGetSupportedLanguages:
             mock_engine = MagicMock()
             mock_get_engine.return_value = mock_engine
             mock_engine.get_supported_languages.return_value = [
-                "python", "javascript", "java"
+                "python",
+                "javascript",
+                "java",
             ]
             result = api_module.get_supported_languages()
             assert result == ["python", "javascript", "java"]
@@ -160,9 +162,7 @@ class TestGetFileExtensions:
             mock_engine.language_detector = mock_detector
             result = api_module.get_file_extensions("python")
             assert result == [".py", ".pyw"]
-            mock_detector.get_extensions_for_language.assert_called_once_with(
-                "python"
-            )
+            mock_detector.get_extensions_for_language.assert_called_once_with("python")
 
     def test_get_file_extensions_empty_result_returns_empty_list(self):
         """Empty result from get_extensions_for_language returns []."""
@@ -265,9 +265,7 @@ class TestValidateFile:
         """Unreadable file adds error when read_file_safe raises."""
         f = tmp_path / "test.py"
         f.write_text("x")
-        with patch(
-            "tree_sitter_analyzer.encoding_utils.read_file_safe"
-        ) as mock_read:
+        with patch("tree_sitter_analyzer.encoding_utils.read_file_safe") as mock_read:
             mock_read.side_effect = PermissionError("denied")
             result = api_module.validate_file(str(f))
             assert result["valid"] is False
@@ -308,7 +306,8 @@ class TestGetFrameworkInfo:
             mock_engine.get_supported_languages.return_value = ["python", "java"]
             mock_engine.plugin_manager = MagicMock()
             mock_engine.plugin_manager.get_supported_languages.return_value = [
-                "python", "java"
+                "python",
+                "java",
             ]
             result = api_module.get_framework_info()
             assert result["name"] == "tree-sitter-analyzer"

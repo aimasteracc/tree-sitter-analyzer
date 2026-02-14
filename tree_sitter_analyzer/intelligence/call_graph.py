@@ -187,9 +187,7 @@ class CallGraphBuilder:
 
         return None
 
-    def find_callers(
-        self, symbol_name: str, depth: int = 1
-    ) -> list[CallSite]:
+    def find_callers(self, symbol_name: str, depth: int = 1) -> list[CallSite]:
         """Find all call sites that call the given symbol."""
         callers: list[CallSite] = []
         for _file_path, sites in self._call_sites.items():
@@ -198,9 +196,7 @@ class CallGraphBuilder:
                     callers.append(site)
         return callers
 
-    def find_callees(
-        self, function_name: str, depth: int = 1
-    ) -> list[CallSite]:
+    def find_callees(self, function_name: str, depth: int = 1) -> list[CallSite]:
         """Find all symbols called by the given function."""
         callees: list[CallSite] = []
         for _file_path, sites in self._call_sites.items():
@@ -208,4 +204,3 @@ class CallGraphBuilder:
                 if site.caller_function == function_name:
                     callees.append(site)
         return callees
-

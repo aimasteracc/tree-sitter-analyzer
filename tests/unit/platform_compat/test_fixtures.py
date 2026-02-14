@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for platform_compat fixtures - SQLTestFixture."""
 
-import pytest
-
 from tree_sitter_analyzer.platform_compat.fixtures import (
     ALL_FIXTURES,
     FIXTURE_SIMPLE_TABLE,

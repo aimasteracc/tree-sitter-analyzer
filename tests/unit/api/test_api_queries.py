@@ -29,7 +29,9 @@ class TestGetAvailableQueries:
             mock_engine = MagicMock()
             mock_get_engine.return_value = mock_engine
             mock_engine.get_available_queries.return_value = [
-                "classes", "functions", "imports"
+                "classes",
+                "functions",
+                "imports",
             ]
             result = api_module.get_available_queries("python")
             assert result == ["classes", "functions", "imports"]
@@ -325,9 +327,7 @@ class TestExecuteQuery:
         }
         with patch("tree_sitter_analyzer.api.analyze_file") as mock_analyze:
             mock_analyze.return_value = analyze_result
-            result = api_module.execute_query(
-                "/test.py", "classes", language="python"
-            )
+            result = api_module.execute_query("/test.py", "classes", language="python")
             assert result["success"] is True
             assert result["query_name"] == "classes"
             assert result["count"] == 1
@@ -497,9 +497,7 @@ class TestExtractElements:
             )
             assert result["success"] is True
             assert result["count"] == 2
-            assert all(
-                e["type"] in ("function", "class") for e in result["elements"]
-            )
+            assert all(e["type"] in ("function", "class") for e in result["elements"])
 
     def test_extract_elements_filter_case_insensitive(self):
         """Element type filter is case insensitive."""
@@ -512,9 +510,7 @@ class TestExtractElements:
         }
         with patch("tree_sitter_analyzer.api.analyze_file") as mock_analyze:
             mock_analyze.return_value = analyze_result
-            result = api_module.extract_elements(
-                "/test.py", element_types=["CLASS"]
-            )
+            result = api_module.extract_elements("/test.py", element_types=["CLASS"])
             assert result["count"] == 1
 
     def test_extract_elements_filter_partial_match(self):
@@ -528,9 +524,7 @@ class TestExtractElements:
         }
         with patch("tree_sitter_analyzer.api.analyze_file") as mock_analyze:
             mock_analyze.return_value = analyze_result
-            result = api_module.extract_elements(
-                "/test.py", element_types=["function"]
-            )
+            result = api_module.extract_elements("/test.py", element_types=["function"])
             assert result["count"] == 1
 
     def test_extract_elements_analysis_failed(self):

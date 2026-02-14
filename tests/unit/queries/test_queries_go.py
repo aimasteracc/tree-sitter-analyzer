@@ -1,8 +1,10 @@
 """Tests for Go language queries."""
+
 import pytest
 
 try:
     import tree_sitter_go
+
     GO_AVAILABLE = True
 except ImportError:
     GO_AVAILABLE = False
@@ -56,8 +58,16 @@ var globalCount int
 
 # Keys to test individually
 GO_KEYS_TO_TEST = [
-    "package", "import", "function", "method", "struct",
-    "interface", "const", "var", "for", "defer",
+    "package",
+    "import",
+    "function",
+    "method",
+    "struct",
+    "interface",
+    "const",
+    "var",
+    "for",
+    "defer",
 ]
 
 
@@ -76,6 +86,7 @@ class TestGoQueriesSyntax:
 
     def test_all_queries_dict_compilable_count(self):
         import tree_sitter
+
         lang = _lang()
         all_q = go_queries.ALL_QUERIES
         assert len(all_q) > 0
@@ -88,9 +99,9 @@ class TestGoQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
     @pytest.mark.parametrize("key", GO_KEYS_TO_TEST)
     def test_individual_query_compiles(self, key, query_validator):
@@ -105,31 +116,45 @@ class TestGoQueriesFunctionality:
     """Test that Go queries return expected results."""
 
     def test_package_query_finds_package(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "package"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "package")
+        )
         assert len(results) >= 1
 
     def test_import_query_finds_imports(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "import"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "import")
+        )
         assert len(results) >= 1
 
     def test_function_query_finds_functions(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "function"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "function")
+        )
         assert len(results) >= 2  # add, main (Speak is a method)
 
     def test_method_query_finds_methods(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "method"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "method")
+        )
         assert len(results) >= 1  # Speak
 
     def test_struct_query_finds_structs(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "struct"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "struct")
+        )
         assert len(results) >= 1
 
     def test_interface_query_finds_interfaces(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "interface"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "interface")
+        )
         assert len(results) >= 1
 
     def test_const_query_finds_constants(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "const"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "const")
+        )
         assert len(results) >= 1
 
     def test_var_query_finds_variables(self, query_executor):
@@ -141,15 +166,21 @@ class TestGoQueriesFunctionality:
         assert len(results) >= 1
 
     def test_function_name_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "function_name"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "function_name")
+        )
         assert len(results) >= 2  # add, main (Speak is a method)
 
     def test_struct_name_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "struct_name"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "struct_name")
+        )
         assert len(results) >= 1
 
     def test_interface_name_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_GO_CODE, _get_query(go_queries, "interface_name"))
+        results = query_executor(
+            _lang(), SAMPLE_GO_CODE, _get_query(go_queries, "interface_name")
+        )
         assert len(results) >= 1
 
 
@@ -217,7 +248,7 @@ class TestGoQueriesHelpers:
         available = go_queries.get_available_go_queries()
         if available:
             result = go_queries.get_go_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_go_query_invalid_raises(self):
         with pytest.raises(ValueError):

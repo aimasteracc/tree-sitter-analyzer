@@ -4,6 +4,7 @@ Tests for TypeScript language queries.
 Validates that TypeScript tree-sitter queries are syntactically correct
 and return expected results for various TypeScript code constructs.
 """
+
 import pytest
 
 try:
@@ -70,9 +71,9 @@ class TestTypeScriptQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
 
 @pytest.mark.skipif(
@@ -81,7 +82,7 @@ class TestTypeScriptQueriesSyntax:
 class TestTypeScriptQueriesFunctionality:
     """Test that TypeScript queries return expected results."""
 
-    SAMPLE_CODE = '''
+    SAMPLE_CODE = """
 // Functions
 function greet(name: string): string {
     return `Hello ${name}`;
@@ -126,7 +127,7 @@ class Service {}
 
 // Generics
 function identity<T>(arg: T): T { return arg; }
-'''
+"""
 
     def test_functions_query_finds_definitions(self, query_executor):
         results = query_executor(_lang(), self.SAMPLE_CODE, ts_queries.FUNCTIONS)
@@ -216,7 +217,9 @@ interface IRepo {
         assert len(results) >= 1
 
 
-@pytest.mark.skipif(not TYPESCRIPT_AVAILABLE, reason="tree-sitter-typescript not available")
+@pytest.mark.skipif(
+    not TYPESCRIPT_AVAILABLE, reason="tree-sitter-typescript not available"
+)
 class TestTypeScriptQueriesHelpers:
     """Test helper functions in the TypeScript queries module."""
 

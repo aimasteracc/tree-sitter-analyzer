@@ -4,10 +4,12 @@ Tests for Rust language queries.
 Validates that Rust tree-sitter queries are syntactically correct
 and return expected results for various Rust code constructs.
 """
+
 import pytest
 
 try:
     import tree_sitter_rust
+
     RUST_AVAILABLE = True
 except ImportError:
     RUST_AVAILABLE = False
@@ -75,8 +77,8 @@ RUST_KEYS_TO_TEST = [
     "attribute",
     "derive_attribute",
     "functions",  # alias
-    "methods",   # alias
-    "classes",   # alias
+    "methods",  # alias
+    "classes",  # alias
 ]
 
 
@@ -115,11 +117,13 @@ class TestRustQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed) if (compiled + failed) > 0 else 1.0
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
-    @pytest.mark.parametrize("key", [k for k in RUST_KEYS_TO_TEST if _get_query(rust_queries, k)])
+    @pytest.mark.parametrize(
+        "key", [k for k in RUST_KEYS_TO_TEST if _get_query(rust_queries, k)]
+    )
     def test_individual_query_compiles(self, key, query_validator):
         if key in KNOWN_BROKEN_QUERIES:
             pytest.xfail(f"{key} has known grammar incompatibility")
@@ -133,47 +137,69 @@ class TestRustQueriesFunctionality:
     """Test that Rust queries return expected results."""
 
     def test_struct_query_finds_structs(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "struct"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "struct")
+        )
         assert len(results) >= 1  # Animal
 
     def test_enum_query_finds_enums(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "enum"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "enum")
+        )
         assert len(results) >= 1  # Direction
 
     def test_trait_query_finds_traits(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "trait"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "trait")
+        )
         assert len(results) >= 1  # Speaker
 
     def test_impl_query_finds_impl_blocks(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "impl"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "impl")
+        )
         assert len(results) >= 1  # impl Animal
 
     def test_fn_query_finds_functions(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "fn"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "fn")
+        )
         assert len(results) >= 4  # new, speak, speak (trait), add, main
 
     def test_field_query_finds_fields(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "field"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "field")
+        )
         assert len(results) >= 2  # name, age
 
     def test_enum_variant_query_finds_variants(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "enum_variant"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "enum_variant")
+        )
         assert len(results) >= 4  # North, South, East, West
 
     def test_const_query_finds_const(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "const"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "const")
+        )
         assert len(results) >= 1  # MAX_SIZE
 
     def test_static_query_finds_static(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "static"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "static")
+        )
         assert len(results) >= 1  # GLOBAL
 
     def test_functions_alias_works(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "functions"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "functions")
+        )
         assert len(results) >= 4
 
     def test_macro_call_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "macro_call"))
+        results = query_executor(
+            _lang(), SAMPLE_RUST_CODE, _get_query(rust_queries, "macro_call")
+        )
         assert len(results) >= 1  # println!
 
 
@@ -196,7 +222,7 @@ class TestRustQueriesEdgeCases:
         assert len(results) >= 1
 
     def test_single_fn(self, query_executor):
-        code = "fn main() { println!(\"hi\"); }"
+        code = 'fn main() { println!("hi"); }'
         results = query_executor(_lang(), code, _get_query(rust_queries, "fn"))
         assert len(results) >= 1
 
@@ -236,7 +262,7 @@ class TestRustQueriesHelpers:
         available = rust_queries.get_available_rust_queries()
         if available:
             result = rust_queries.get_rust_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_rust_query_invalid_raises(self):
         with pytest.raises(ValueError):

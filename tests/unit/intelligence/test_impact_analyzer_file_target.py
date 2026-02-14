@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for ImpactAnalyzer file path target support (C1)."""
+
 import pytest
 
 from tree_sitter_analyzer.intelligence.call_graph import CallGraphBuilder
@@ -73,7 +74,9 @@ class TestFilePathTarget:
         cg, dg, si = components
         target = "tree_sitter_analyzer/core/analysis_engine.py"
         si.add_definition(SymbolDefinition("Engine", target, 1, 100, "class"))
-        dg.add_edge(DependencyEdge("main.py", target, "core.analysis_engine", ["Engine"]))
+        dg.add_edge(
+            DependencyEdge("main.py", target, "core.analysis_engine", ["Engine"])
+        )
         analyzer = ImpactAnalyzer(cg, dg, si)
         result = analyzer.assess(target)
         impact_files = [i.file_path for i in result.direct_impacts]

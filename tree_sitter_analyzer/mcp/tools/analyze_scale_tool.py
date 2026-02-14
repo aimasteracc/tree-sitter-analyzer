@@ -455,9 +455,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                             if analysis_result
                             else "Unknown error"
                         )
-                        raise RuntimeError(
-                            f"Failed to analyze file: {error_msg}"
-                        )
+                        raise RuntimeError(f"Failed to analyze file: {error_msg}")
                     structural_overview = self._extract_structural_overview(
                         analysis_result
                     )
@@ -521,12 +519,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                                 if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
                             ]
                         ),
-                    "package": (
-                        analysis_result.package.name
-                        if analysis_result and analysis_result.package
-                        else None
-                    ),
-                },
+                        "package": (
+                            analysis_result.package.name
+                            if analysis_result and analysis_result.package
+                            else None
+                        ),
+                    },
                 }
 
                 # Always include structural_overview for Java files

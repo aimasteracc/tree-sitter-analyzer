@@ -255,7 +255,15 @@ class TestLogApiInfoEnhanced:
             log_api_info()
         records = [r.message for r in caplog.records]
         # Either tree-sitter available or ImportError path
-        assert any("tree-sitter" in msg.lower() or "available" in msg.lower() or "not" in msg.lower() for msg in records) or len(records) == 0
+        assert (
+            any(
+                "tree-sitter" in msg.lower()
+                or "available" in msg.lower()
+                or "not" in msg.lower()
+                for msg in records
+            )
+            or len(records) == 0
+        )
 
     def test_log_api_info_without_tree_sitter(self, caplog):
         """log_api_info when tree_sitter import fails."""
@@ -383,9 +391,7 @@ class TestExecuteNewestApi:
             parser = tree_sitter.Parser()
             parser.language = lang
             tree = parser.parse(b"x = 1")
-            result = TreeSitterQueryCompat._execute_newest_api(
-                query, tree.root_node
-            )
+            result = TreeSitterQueryCompat._execute_newest_api(query, tree.root_node)
             assert isinstance(result, list)
         except (ImportError, AttributeError):
             # Fallback: test with mocks
@@ -403,9 +409,7 @@ class TestExecuteNewestApi:
         mock_query = MagicMock()
         with patch("tree_sitter.QueryCursor") as mock_qc:
             mock_qc.side_effect = RuntimeError("cursor failed")
-            result = TreeSitterQueryCompat._execute_newest_api(
-                mock_query, MagicMock()
-            )
+            result = TreeSitterQueryCompat._execute_newest_api(mock_query, MagicMock())
             assert result == []
 
 

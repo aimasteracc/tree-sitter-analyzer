@@ -1,20 +1,18 @@
 """Tests for ProjectIndexer file discovery: PI-001 Prioritized File Discovery."""
+
 from __future__ import annotations
 
 import os
-import textwrap
-
-import pytest
 
 from tree_sitter_analyzer.intelligence.project_indexer import (
-    ProjectIndexer,
     _MAX_FILES,
+    ProjectIndexer,
 )
-
 
 # ---------------------------------------------------------------------------
 # PI-001: _MAX_FILES increased to 2000
 # ---------------------------------------------------------------------------
+
 
 class TestMaxFilesLimit:
     """_MAX_FILES must be >= 2000 to cover typical projects."""
@@ -29,6 +27,7 @@ class TestMaxFilesLimit:
 # ---------------------------------------------------------------------------
 # PI-001: Two-phase discovery — source files before test files
 # ---------------------------------------------------------------------------
+
 
 class TestTwoPhaseDiscovery:
     """Source files should be discovered before test files."""
@@ -61,9 +60,9 @@ class TestTwoPhaseDiscovery:
                 source_positions.append(idx)
 
         if source_positions and test_positions:
-            assert max(source_positions) < min(test_positions), (
-                "Source files must appear before test files in discovery order"
-            )
+            assert max(source_positions) < min(
+                test_positions
+            ), "Source files must appear before test files in discovery order"
 
     def test_all_source_files_included_when_limit_tight(self, tmp_path):
         """Even with tight limits, ALL source files must be included."""
@@ -85,14 +84,15 @@ class TestTwoPhaseDiscovery:
         # All 10 source files must be present
         source_basenames = {os.path.basename(f) for f in files if "src" in f}
         for i in range(10):
-            assert f"mod_{i}.py" in source_basenames, (
-                f"Source file mod_{i}.py missing from discovery"
-            )
+            assert (
+                f"mod_{i}.py" in source_basenames
+            ), f"Source file mod_{i}.py missing from discovery"
 
 
 # ---------------------------------------------------------------------------
 # PI-002: is_test_file classification
 # ---------------------------------------------------------------------------
+
 
 class TestIsTestFile:
     """ProjectIndexer.is_test_file must correctly classify test vs source files."""
@@ -113,18 +113,27 @@ class TestIsTestFile:
         assert ProjectIndexer.is_test_file("test/unit/helpers.py") is True
 
     def test_source_file(self):
-        assert ProjectIndexer.is_test_file("tree_sitter_analyzer/core/analysis_engine.py") is False
+        assert (
+            ProjectIndexer.is_test_file("tree_sitter_analyzer/core/analysis_engine.py")
+            is False
+        )
 
     def test_source_init(self):
         assert ProjectIndexer.is_test_file("tree_sitter_analyzer/__init__.py") is False
 
     def test_nested_source(self):
-        assert ProjectIndexer.is_test_file("tree_sitter_analyzer/mcp/tools/trace_symbol_tool.py") is False
+        assert (
+            ProjectIndexer.is_test_file(
+                "tree_sitter_analyzer/mcp/tools/trace_symbol_tool.py"
+            )
+            is False
+        )
 
 
 # ---------------------------------------------------------------------------
 # PI-002: get_test_files / get_source_files
 # ---------------------------------------------------------------------------
+
 
 class TestFileClassificationSets:
     """get_test_files and get_source_files must partition indexed files."""

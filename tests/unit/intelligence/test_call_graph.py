@@ -33,11 +33,11 @@ class TestCallGraphBuilderInit:
 class TestCallGraphBuilderExtractCalls:
     def test_extract_calls_from_source_simple(self, builder):
         """Extract calls from simple Python code."""
-        source = '''
+        source = """
 def main():
     print("hello")
     result = calculate(42)
-'''
+"""
         calls = builder.extract_calls_from_source(source, "test.py")
         call_names = [c.callee_name for c in calls]
         assert "print" in call_names
@@ -45,30 +45,30 @@ def main():
 
     def test_extract_calls_from_source_method(self, builder):
         """Extract method calls."""
-        source = '''
+        source = """
 def process():
     self.validate(data)
     obj.transform(value)
-'''
+"""
         calls = builder.extract_calls_from_source(source, "test.py")
         method_calls = [c for c in calls if c.callee_object is not None]
         assert len(method_calls) >= 1
 
     def test_extract_calls_from_source_no_calls(self, builder):
         """File with no calls should return empty list."""
-        source = '''
+        source = """
 x = 42
 y = "hello"
-'''
+"""
         calls = builder.extract_calls_from_source(source, "test.py")
         assert calls == []
 
     def test_extract_calls_from_source_nested(self, builder):
         """Extract nested function calls."""
-        source = '''
+        source = """
 def main():
     result = outer(inner(x))
-'''
+"""
         calls = builder.extract_calls_from_source(source, "test.py")
         call_names = [c.callee_name for c in calls]
         assert "outer" in call_names
@@ -76,22 +76,22 @@ def main():
 
     def test_extract_calls_preserves_line_numbers(self, builder):
         """Call sites should have correct line numbers."""
-        source = '''def main():
+        source = """def main():
     foo()
     bar()
-'''
+"""
         calls = builder.extract_calls_from_source(source, "test.py")
         assert all(c.line > 0 for c in calls)
 
     def test_extract_calls_with_caller_function(self, builder):
         """Calls should know which function they're in."""
-        source = '''
+        source = """
 def main():
     foo()
 
 def helper():
     bar()
-'''
+"""
         calls = builder.extract_calls_from_source(source, "test.py")
         # At minimum, caller_file should be set
         assert all(c.caller_file == "test.py" for c in calls)

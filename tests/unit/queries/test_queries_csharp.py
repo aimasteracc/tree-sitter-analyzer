@@ -4,10 +4,12 @@ Tests for C# language queries.
 Validates that C# tree-sitter queries are syntactically correct
 and return expected results for various C# code constructs.
 """
+
 import pytest
 
 try:
     import tree_sitter_c_sharp
+
     CSHARP_AVAILABLE = True
 except ImportError:
     CSHARP_AVAILABLE = False
@@ -119,11 +121,13 @@ class TestCSharpQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed) if (compiled + failed) > 0 else 1.0
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
-    @pytest.mark.parametrize("key", [k for k in CSHARP_KEYS_TO_TEST if k in csharp_queries.CSHARP_QUERIES])
+    @pytest.mark.parametrize(
+        "key", [k for k in CSHARP_KEYS_TO_TEST if k in csharp_queries.CSHARP_QUERIES]
+    )
     def test_individual_query_compiles(self, key, query_validator):
         if key in KNOWN_BROKEN_QUERIES:
             pytest.xfail(f"{key} has known grammar incompatibility")
@@ -165,7 +169,9 @@ class TestCSharpQueriesFunctionality:
         assert len(results) >= 1  # Calculator()
 
     def test_async_method_query_finds_async_methods(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_CSHARP_CODE, _get_query("async_method"))
+        results = query_executor(
+            _lang(), SAMPLE_CSHARP_CODE, _get_query("async_method")
+        )
         assert len(results) >= 1  # FetchAsync
 
     def test_property_query_finds_properties(self, query_executor):
@@ -190,7 +196,9 @@ class TestCSharpQueriesFunctionality:
         assert len(results) >= 1  # MyApp
 
     def test_all_declarations_query_finds_declarations(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_CSHARP_CODE, _get_query("all_declarations"))
+        results = query_executor(
+            _lang(), SAMPLE_CSHARP_CODE, _get_query("all_declarations")
+        )
         assert len(results) >= 5
 
 

@@ -4,10 +4,12 @@ Tests for Ruby language queries.
 Validates that Ruby tree-sitter queries are syntactically correct
 and return expected results for various Ruby code constructs.
 """
+
 import pytest
 
 try:
     import tree_sitter_ruby
+
     RUBY_AVAILABLE = True
 except ImportError:
     RUBY_AVAILABLE = False
@@ -96,61 +98,90 @@ class TestRubyQueriesFunctionality:
     """Test that Ruby queries return expected results."""
 
     def test_class_query_finds_classes_and_modules(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_CLASS_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_CLASS_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_CLASS_QUERY failed to compile")
         assert len(results) >= 2
 
     def test_method_query_finds_methods(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_METHOD_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_METHOD_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_METHOD_QUERY failed to compile")
         assert len(results) >= 3
 
     def test_constant_query_finds_constants(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_CONSTANT_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_CONSTANT_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_CONSTANT_QUERY failed to compile")
         assert len(results) >= 1
 
     def test_instance_var_query_finds_instance_vars(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_INSTANCE_VAR_QUERY)
+        results = _safe_execute(
+            query_executor,
+            _lang(),
+            SAMPLE_RUBY_CODE,
+            ruby_queries.RUBY_INSTANCE_VAR_QUERY,
+        )
         if results is None:
             pytest.skip("RUBY_INSTANCE_VAR_QUERY failed to compile")
         assert len(results) >= 2
 
     def test_class_var_query_finds_class_vars(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_CLASS_VAR_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_CLASS_VAR_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_CLASS_VAR_QUERY failed to compile")
         assert len(results) >= 1
 
     def test_require_query_finds_requires(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_REQUIRE_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_REQUIRE_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_REQUIRE_QUERY failed to compile")
         assert len(results) >= 2
 
     def test_attr_query_finds_attr_accessor(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_ATTR_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_ATTR_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_ATTR_QUERY failed to compile")
         assert len(results) >= 1
 
     def test_block_query_finds_blocks(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_BLOCK_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_BLOCK_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_BLOCK_QUERY failed to compile")
         assert len(results) >= 2
 
     def test_proc_lambda_query_finds_procs_and_lambdas(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_PROC_LAMBDA_QUERY)
+        results = _safe_execute(
+            query_executor,
+            _lang(),
+            SAMPLE_RUBY_CODE,
+            ruby_queries.RUBY_PROC_LAMBDA_QUERY,
+        )
         if results is None:
             pytest.skip("RUBY_PROC_LAMBDA_QUERY failed to compile")
         assert len(results) >= 2
 
     def test_all_elements_query_finds_multiple(self, query_executor):
-        results = _safe_execute(query_executor, _lang(), SAMPLE_RUBY_CODE, ruby_queries.RUBY_ALL_ELEMENTS_QUERY)
+        results = _safe_execute(
+            query_executor,
+            _lang(),
+            SAMPLE_RUBY_CODE,
+            ruby_queries.RUBY_ALL_ELEMENTS_QUERY,
+        )
         if results is None:
             pytest.skip("RUBY_ALL_ELEMENTS_QUERY failed to compile")
         assert len(results) >= 5
@@ -162,7 +193,9 @@ class Foo
   end
 end
 """
-        results = _safe_execute(query_executor, _lang(), code, ruby_queries.RUBY_METHOD_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), code, ruby_queries.RUBY_METHOD_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_METHOD_QUERY failed to compile")
         assert len(results) >= 1
@@ -176,7 +209,9 @@ module Outer
   end
 end
 """
-        results = _safe_execute(query_executor, _lang(), code, ruby_queries.RUBY_CLASS_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), code, ruby_queries.RUBY_CLASS_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_CLASS_QUERY failed to compile")
         assert len(results) >= 2
@@ -200,14 +235,18 @@ class TestRubyQueriesEdgeCases:
 class Empty
 end
 """
-        results = _safe_execute(query_executor, _lang(), code, ruby_queries.RUBY_CLASS_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), code, ruby_queries.RUBY_CLASS_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_CLASS_QUERY failed to compile")
         assert len(results) >= 1
 
     def test_require_relative_only(self, query_executor):
         code = "require_relative 'foo'"
-        results = _safe_execute(query_executor, _lang(), code, ruby_queries.RUBY_REQUIRE_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), code, ruby_queries.RUBY_REQUIRE_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_REQUIRE_QUERY failed to compile")
         assert len(results) >= 1
@@ -219,7 +258,9 @@ class C
   attr_writer :b
 end
 """
-        results = _safe_execute(query_executor, _lang(), code, ruby_queries.RUBY_ATTR_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), code, ruby_queries.RUBY_ATTR_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_ATTR_QUERY failed to compile")
         assert len(results) >= 2
@@ -230,7 +271,9 @@ def top_level_method
   nil
 end
 """
-        results = _safe_execute(query_executor, _lang(), code, ruby_queries.RUBY_METHOD_QUERY)
+        results = _safe_execute(
+            query_executor, _lang(), code, ruby_queries.RUBY_METHOD_QUERY
+        )
         if results is None:
             pytest.skip("RUBY_METHOD_QUERY failed to compile")
         assert len(results) >= 1

@@ -1,7 +1,6 @@
 """Tests for AH-012: Test Coverage Analysis."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from tree_sitter_analyzer.intelligence.architecture_metrics import ArchitectureMetrics
 from tree_sitter_analyzer.intelligence.dependency_graph import DependencyGraphBuilder
@@ -9,7 +8,9 @@ from tree_sitter_analyzer.intelligence.models import SymbolDefinition, SymbolRef
 from tree_sitter_analyzer.intelligence.symbol_index import SymbolIndex
 
 
-def _build(defs: list[SymbolDefinition], refs: list[SymbolReference]) -> ArchitectureMetrics:
+def _build(
+    defs: list[SymbolDefinition], refs: list[SymbolReference]
+) -> ArchitectureMetrics:
     si = SymbolIndex()
     for d in defs:
         si.add_definition(d)
@@ -23,6 +24,7 @@ def _build(defs: list[SymbolDefinition], refs: list[SymbolReference]) -> Archite
 def _is_test(path: str) -> bool:
     """Simple test file classifier matching the ProjectIndexer logic."""
     import os
+
     basename = os.path.basename(path)
     if basename.startswith("test_") and basename.endswith(".py"):
         return True
@@ -72,7 +74,13 @@ class TestAnalyzeTestCoverage:
     def test_overtested_symbol_detected(self):
         """A function with >threshold distinct test function references -> overtested."""
         refs = [
-            SymbolReference("compute", f"tests/test_{i}.py", i + 1, "call", context_function=f"test_fn_{i}")
+            SymbolReference(
+                "compute",
+                f"tests/test_{i}.py",
+                i + 1,
+                "call",
+                context_function=f"test_fn_{i}",
+            )
             for i in range(12)
         ]
         metrics = _build(
@@ -82,7 +90,9 @@ class TestAnalyzeTestCoverage:
             refs=refs,
         )
         report = metrics._analyze_test_coverage(
-            scope="", test_file_predicate=_is_test, overtested_threshold=10,
+            scope="",
+            test_file_predicate=_is_test,
+            overtested_threshold=10,
         )
         overtested_names = [s.name for s in report.overtested_symbols]
         assert "compute" in overtested_names
@@ -90,7 +100,13 @@ class TestAnalyzeTestCoverage:
     def test_not_overtested_below_threshold(self):
         """Below threshold -> not overtested."""
         refs = [
-            SymbolReference("compute", f"tests/test_{i}.py", i + 1, "call", context_function=f"test_fn_{i}")
+            SymbolReference(
+                "compute",
+                f"tests/test_{i}.py",
+                i + 1,
+                "call",
+                context_function=f"test_fn_{i}",
+            )
             for i in range(5)
         ]
         metrics = _build(
@@ -100,7 +116,9 @@ class TestAnalyzeTestCoverage:
             refs=refs,
         )
         report = metrics._analyze_test_coverage(
-            scope="", test_file_predicate=_is_test, overtested_threshold=10,
+            scope="",
+            test_file_predicate=_is_test,
+            overtested_threshold=10,
         )
         overtested_names = [s.name for s in report.overtested_symbols]
         assert "compute" not in overtested_names
@@ -109,7 +127,9 @@ class TestAnalyzeTestCoverage:
         """A symbol referenced ONLY from test files -> test_only."""
         metrics = _build(
             defs=[
-                SymbolDefinition("helper_fixture", "src/helpers.py", 10, 20, "function"),
+                SymbolDefinition(
+                    "helper_fixture", "src/helpers.py", 10, 20, "function"
+                ),
             ],
             refs=[
                 SymbolReference("helper_fixture", "tests/test_a.py", 5, "call"),
@@ -140,7 +160,9 @@ class TestAnalyzeTestCoverage:
                 SymbolDefinition("func_a", "src/mod.py", 1, 5, "function"),
                 SymbolDefinition("func_b", "src/mod.py", 10, 15, "function"),
                 SymbolDefinition("func_c", "src/mod.py", 20, 25, "function"),
-                SymbolDefinition("_private", "src/mod.py", 30, 35, "function"),  # private
+                SymbolDefinition(
+                    "_private", "src/mod.py", 30, 35, "function"
+                ),  # private
             ],
             refs=[
                 SymbolReference("func_a", "tests/test_mod.py", 5, "call"),
@@ -168,7 +190,9 @@ class TestAnalyzeTestCoverage:
         """Definitions in test files should not be analysed as 'untested source'."""
         metrics = _build(
             defs=[
-                SymbolDefinition("test_helper", "tests/conftest.py", 10, 20, "function"),
+                SymbolDefinition(
+                    "test_helper", "tests/conftest.py", 10, 20, "function"
+                ),
             ],
             refs=[],
         )
@@ -185,7 +209,9 @@ class TestAnalyzeTestCoverage:
             ],
             refs=[],
         )
-        report = metrics._analyze_test_coverage(scope="src/", test_file_predicate=_is_test)
+        report = metrics._analyze_test_coverage(
+            scope="src/", test_file_predicate=_is_test
+        )
         untested_names = [s.name for s in report.untested_symbols]
         assert "in_scope" in untested_names
         assert "out_scope" not in untested_names
@@ -199,7 +225,11 @@ class TestAH013PropertyAndInnerFunctionExclusion:
         metrics = _build(
             defs=[
                 SymbolDefinition(
-                    "instability", "src/models.py", 135, 140, "method",
+                    "instability",
+                    "src/models.py",
+                    135,
+                    140,
+                    "method",
                     modifiers=["property"],
                 ),
             ],
@@ -214,7 +244,11 @@ class TestAH013PropertyAndInnerFunctionExclusion:
         metrics = _build(
             defs=[
                 SymbolDefinition(
-                    "is_test_file", "src/indexer.py", 50, 60, "method",
+                    "is_test_file",
+                    "src/indexer.py",
+                    50,
+                    60,
+                    "method",
                     modifiers=["staticmethod"],
                 ),
             ],
@@ -229,7 +263,11 @@ class TestAH013PropertyAndInnerFunctionExclusion:
         metrics = _build(
             defs=[
                 SymbolDefinition(
-                    "from_config", "src/factory.py", 20, 30, "method",
+                    "from_config",
+                    "src/factory.py",
+                    20,
+                    30,
+                    "method",
                     modifiers=["classmethod"],
                 ),
             ],
@@ -245,17 +283,29 @@ class TestAH013PropertyAndInnerFunctionExclusion:
             defs=[
                 # Inner function 'wrapper' inside 'handle_exceptions'
                 SymbolDefinition(
-                    "wrapper", "src/exceptions.py", 318, 340, "function",
+                    "wrapper",
+                    "src/exceptions.py",
+                    318,
+                    340,
+                    "function",
                     parent_class=None,
                 ),
                 # The enclosing decorator that also defines 'decorator' inside it
                 SymbolDefinition(
-                    "decorator", "src/exceptions.py", 317, 345, "function",
+                    "decorator",
+                    "src/exceptions.py",
+                    317,
+                    345,
+                    "function",
                     parent_class=None,
                 ),
                 # The outer function
                 SymbolDefinition(
-                    "handle_exceptions", "src/exceptions.py", 310, 350, "function",
+                    "handle_exceptions",
+                    "src/exceptions.py",
+                    310,
+                    350,
+                    "function",
                     parent_class=None,
                 ),
             ],
@@ -276,7 +326,11 @@ class TestAH013PropertyAndInnerFunctionExclusion:
             defs=[
                 SymbolDefinition("func_a", "src/mod.py", 1, 5, "function"),
                 SymbolDefinition(
-                    "prop_b", "src/mod.py", 10, 15, "method",
+                    "prop_b",
+                    "src/mod.py",
+                    10,
+                    15,
+                    "method",
                     modifiers=["property"],
                 ),
             ],
@@ -313,15 +367,33 @@ class TestAH014OvertestedScopedByFile:
             ],
             refs=[
                 # 5 test refs for tools/a.py execute
-                *[SymbolReference("execute", f"tests/test_a_{i}.py", i, "call",
-                                  context_function=f"test_a_{i}") for i in range(5)],
+                *[
+                    SymbolReference(
+                        "execute",
+                        f"tests/test_a_{i}.py",
+                        i,
+                        "call",
+                        context_function=f"test_a_{i}",
+                    )
+                    for i in range(5)
+                ],
                 # 5 test refs for tools/b.py execute
-                *[SymbolReference("execute", f"tests/test_b_{i}.py", i, "call",
-                                  context_function=f"test_b_{i}") for i in range(5)],
+                *[
+                    SymbolReference(
+                        "execute",
+                        f"tests/test_b_{i}.py",
+                        i,
+                        "call",
+                        context_function=f"test_b_{i}",
+                    )
+                    for i in range(5)
+                ],
             ],
         )
         report = metrics._analyze_test_coverage(
-            scope="", test_file_predicate=_is_test, overtested_threshold=8,
+            scope="",
+            test_file_predicate=_is_test,
+            overtested_threshold=8,
         )
         # Neither should be overtested: 5 < 8 threshold for each
         overtested_names = [s.name for s in report.overtested_symbols]
@@ -330,8 +402,13 @@ class TestAH014OvertestedScopedByFile:
     def test_single_file_truly_overtested(self):
         """A single file's method with 15 distinct test refs IS overtested."""
         refs = [
-            SymbolReference("process", f"tests/test_{i}.py", i + 1, "call",
-                            context_function=f"test_fn_{i}")
+            SymbolReference(
+                "process",
+                f"tests/test_{i}.py",
+                i + 1,
+                "call",
+                context_function=f"test_fn_{i}",
+            )
             for i in range(15)
         ]
         metrics = _build(
@@ -341,7 +418,9 @@ class TestAH014OvertestedScopedByFile:
             refs=refs,
         )
         report = metrics._analyze_test_coverage(
-            scope="", test_file_predicate=_is_test, overtested_threshold=10,
+            scope="",
+            test_file_predicate=_is_test,
+            overtested_threshold=10,
         )
         overtested_names = [s.name for s in report.overtested_symbols]
         assert "process" in overtested_names
@@ -356,12 +435,16 @@ class TestAH014OvertestedScopedByFile:
         With 2 definitions, refs are split proportionally (30/2 = 15 per def).
         """
         refs_a = [
-            SymbolReference("run", f"tests/test_a_{i}.py", i, "call",
-                            context_function=f"test_a_{i}") for i in range(25)
+            SymbolReference(
+                "run", f"tests/test_a_{i}.py", i, "call", context_function=f"test_a_{i}"
+            )
+            for i in range(25)
         ]
         refs_b = [
-            SymbolReference("run", f"tests/test_b_{i}.py", i, "call",
-                            context_function=f"test_b_{i}") for i in range(5)
+            SymbolReference(
+                "run", f"tests/test_b_{i}.py", i, "call", context_function=f"test_b_{i}"
+            )
+            for i in range(5)
         ]
         metrics = _build(
             defs=[
@@ -371,7 +454,9 @@ class TestAH014OvertestedScopedByFile:
             refs=refs_a + refs_b,
         )
         report = metrics._analyze_test_coverage(
-            scope="", test_file_predicate=_is_test, overtested_threshold=10,
+            scope="",
+            test_file_predicate=_is_test,
+            overtested_threshold=10,
         )
         # With 30 refs / 2 defs = 15 per def > 10 threshold
         # Both definitions should be overtested

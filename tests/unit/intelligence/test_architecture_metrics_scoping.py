@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for ArchitectureMetrics path scoping and score capping (C2/H2)."""
+
 import pytest
 
 from tree_sitter_analyzer.intelligence.architecture_metrics import ArchitectureMetrics
@@ -26,16 +27,40 @@ class TestPathScoping:
         """Only god classes within the path should be reported."""
         dg, si = components
         # God class inside target path
-        si.add_definition(SymbolDefinition("BigClass", "src/core/big.py", 1, 500, "class"))
+        si.add_definition(
+            SymbolDefinition("BigClass", "src/core/big.py", 1, 500, "class")
+        )
         for i in range(25):
-            si.add_definition(SymbolDefinition(f"method_{i}", "src/core/big.py", i * 10, i * 10 + 5, "method", parent_class="BigClass"))
+            si.add_definition(
+                SymbolDefinition(
+                    f"method_{i}",
+                    "src/core/big.py",
+                    i * 10,
+                    i * 10 + 5,
+                    "method",
+                    parent_class="BigClass",
+                )
+            )
         # God class outside target path
-        si.add_definition(SymbolDefinition("TestBig", "tests/test_big.py", 1, 500, "class"))
+        si.add_definition(
+            SymbolDefinition("TestBig", "tests/test_big.py", 1, 500, "class")
+        )
         for i in range(25):
-            si.add_definition(SymbolDefinition(f"test_{i}", "tests/test_big.py", i * 10, i * 10 + 5, "method", parent_class="TestBig"))
+            si.add_definition(
+                SymbolDefinition(
+                    f"test_{i}",
+                    "tests/test_big.py",
+                    i * 10,
+                    i * 10 + 5,
+                    "method",
+                    parent_class="TestBig",
+                )
+            )
 
         m = ArchitectureMetrics(dg, si)
-        report = m.compute_report("src/", checks=["god_classes"], god_class_threshold=20)
+        report = m.compute_report(
+            "src/", checks=["god_classes"], god_class_threshold=20
+        )
         assert len(report.god_classes) == 1
         assert report.god_classes[0].class_name == "BigClass"
 
@@ -74,7 +99,9 @@ class TestPathScoping:
         dg, si = components
         si.add_definition(SymbolDefinition("used_func", "src/a.py", 1, 5, "function"))
         si.add_definition(SymbolDefinition("dead_in_src", "src/b.py", 1, 5, "function"))
-        si.add_definition(SymbolDefinition("dead_in_tests", "tests/c.py", 1, 5, "function"))
+        si.add_definition(
+            SymbolDefinition("dead_in_tests", "tests/c.py", 1, 5, "function")
+        )
         si.add_reference(SymbolReference("used_func", "src/c.py", 10, "call"))
 
         m = ArchitectureMetrics(dg, si)
@@ -115,11 +142,20 @@ class TestScoreCapping:
         dg.add_edge(DependencyEdge("b.py", "a.py", "a"))
         # Add 30 god classes (simulate typical project)
         for i in range(30):
-            si.add_definition(SymbolDefinition(f"Class{i}", f"file{i}.py", 1, 500, "class"))
+            si.add_definition(
+                SymbolDefinition(f"Class{i}", f"file{i}.py", 1, 500, "class")
+            )
             for j in range(25):
-                si.add_definition(SymbolDefinition(
-                    f"method_{j}", f"file{i}.py", j * 10, j * 10 + 5, "method", parent_class=f"Class{i}"
-                ))
+                si.add_definition(
+                    SymbolDefinition(
+                        f"method_{j}",
+                        f"file{i}.py",
+                        j * 10,
+                        j * 10 + 5,
+                        "method",
+                        parent_class=f"Class{i}",
+                    )
+                )
         m = ArchitectureMetrics(dg, si)
         report = m.compute_report(".")
         # With capping, score should NOT be 0
@@ -132,14 +168,23 @@ class TestScoreCapping:
         for i in range(100):
             si.add_definition(SymbolDefinition(f"C{i}", f"f{i}.py", 1, 500, "class"))
             for j in range(25):
-                si.add_definition(SymbolDefinition(
-                    f"m{j}", f"f{i}.py", j * 10, j * 10 + 5, "method", parent_class=f"C{i}"
-                ))
+                si.add_definition(
+                    SymbolDefinition(
+                        f"m{j}",
+                        f"f{i}.py",
+                        j * 10,
+                        j * 10 + 5,
+                        "method",
+                        parent_class=f"C{i}",
+                    )
+                )
         m = ArchitectureMetrics(dg, si)
         report = m.compute_report(".", checks=["god_classes"])
         # Even with 100 god classes, god_class deduction should be capped
         # Score should be >= 100 - 20 (cap) = 80
-        assert report.score >= 80, f"Score {report.score} too low; god class deduction should be capped"
+        assert (
+            report.score >= 80
+        ), f"Score {report.score} too low; god class deduction should be capped"
 
     def test_max_deduction_100(self, components):
         """Total deductions should never exceed 100 (score can't go below 0)."""
@@ -151,7 +196,16 @@ class TestScoreCapping:
         for i in range(50):
             si.add_definition(SymbolDefinition(f"Big{i}", f"g{i}.py", 1, 500, "class"))
             for j in range(25):
-                si.add_definition(SymbolDefinition(f"m{j}", f"g{i}.py", j * 10, j * 10 + 5, "method", parent_class=f"Big{i}"))
+                si.add_definition(
+                    SymbolDefinition(
+                        f"m{j}",
+                        f"g{i}.py",
+                        j * 10,
+                        j * 10 + 5,
+                        "method",
+                        parent_class=f"Big{i}",
+                    )
+                )
         m = ArchitectureMetrics(dg, si)
         report = m.compute_report(".")
         assert report.score >= 0

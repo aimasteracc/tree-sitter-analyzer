@@ -327,9 +327,7 @@ class TestImpactResult:
         ir = ImpactResult(
             target="foo",
             change_type="behavior_change",
-            direct_impacts=[
-                ImpactItem("a.py", "bar", 10, "direct_caller", 1)
-            ],
+            direct_impacts=[ImpactItem("a.py", "bar", 10, "direct_caller", 1)],
             transitive_impacts=[],
             affected_tests=["test_a.py"],
             risk_level="medium",

@@ -1,8 +1,10 @@
 """Tests for Java language queries."""
+
 import pytest
 
 try:
     import tree_sitter_java
+
     JAVA_AVAILABLE = True
 except ImportError:
     JAVA_AVAILABLE = False
@@ -52,8 +54,16 @@ abstract class Animal {
 
 # Keys to test individually (from ALL_QUERIES)
 JAVA_KEYS_TO_TEST = [
-    "class", "interface", "method", "import", "constructor",
-    "field", "enum", "package", "annotation", "lambda",
+    "class",
+    "interface",
+    "method",
+    "import",
+    "constructor",
+    "field",
+    "enum",
+    "package",
+    "annotation",
+    "lambda",
 ]
 
 
@@ -72,6 +82,7 @@ class TestJavaQueriesSyntax:
 
     def test_all_queries_dict_compilable_count(self):
         import tree_sitter
+
         lang = _lang()
         all_q = java_queries.ALL_QUERIES
         assert len(all_q) > 0
@@ -84,9 +95,9 @@ class TestJavaQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
     @pytest.mark.parametrize("key", JAVA_KEYS_TO_TEST)
     def test_individual_query_compiles(self, key, query_validator):
@@ -101,47 +112,67 @@ class TestJavaQueriesFunctionality:
     """Test that Java queries return expected results."""
 
     def test_class_query_finds_classes(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "class"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "class")
+        )
         assert results is not None
-        assert len(results) >= 2  # Calculator, Animal (Shape is interface, Color is enum)
+        assert (
+            len(results) >= 2
+        )  # Calculator, Animal (Shape is interface, Color is enum)
 
     def test_interface_query_finds_interfaces(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "interface"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "interface")
+        )
         assert results is not None
         assert len(results) >= 1  # Shape
 
     def test_method_query_finds_methods(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "method"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "method")
+        )
         assert results is not None
         assert len(results) >= 4  # add, main, area, perimeter, speak
 
     def test_import_query_finds_imports(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "import"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "import")
+        )
         assert results is not None
         assert len(results) >= 2
 
     def test_constructor_query_finds_constructors(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "constructor"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "constructor")
+        )
         assert results is not None
         assert len(results) >= 1
 
     def test_field_query_finds_fields(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "field"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "field")
+        )
         assert results is not None
         assert len(results) >= 1
 
     def test_enum_query_finds_enums(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "enum"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "enum")
+        )
         assert results is not None
         assert len(results) >= 1
 
     def test_class_name_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "class_name"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "class_name")
+        )
         assert results is not None
         assert len(results) >= 1
 
     def test_method_name_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "method_name"))
+        results = query_executor(
+            _lang(), SAMPLE_JAVA_CODE, _get_query(java_queries, "method_name")
+        )
         assert results is not None
         assert len(results) >= 3
 
@@ -212,7 +243,7 @@ class TestJavaQueriesHelpers:
         available = java_queries.get_available_java_queries()
         if available:
             result = java_queries.get_java_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_java_query_invalid_raises(self):
         with pytest.raises(ValueError):

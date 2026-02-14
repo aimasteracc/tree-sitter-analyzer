@@ -4,10 +4,12 @@ Tests for C language queries.
 Validates that C tree-sitter queries are syntactically correct
 and return expected results for various C code constructs.
 """
+
 import pytest
 
 try:
     import tree_sitter_c
+
     C_AVAILABLE = True
 except ImportError:
     C_AVAILABLE = False
@@ -65,9 +67,17 @@ static int module_var = 0;
 
 # Well-known C queries to test functionality
 C_KEYS_TO_TEST = [
-    "function", "struct", "enum", "include", "define",
-    "typedef", "variable", "for_statement", "if_statement",
-    "function_call", "return_statement",
+    "function",
+    "struct",
+    "enum",
+    "include",
+    "define",
+    "typedef",
+    "variable",
+    "for_statement",
+    "if_statement",
+    "function_call",
+    "return_statement",
 ]
 
 
@@ -96,6 +106,7 @@ class TestCQueriesSyntax:
 
     def test_all_queries_dict_compilable_count(self):
         import tree_sitter
+
         lang = _lang()
         all_q = c_queries.ALL_QUERIES
         assert len(all_q) > 0
@@ -108,9 +119,9 @@ class TestCQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
     @pytest.mark.parametrize("key", C_KEYS_TO_TEST)
     def test_individual_query_compiles(self, key, query_validator):
@@ -289,7 +300,7 @@ class TestCQueriesHelpers:
         available = c_queries.get_available_c_queries()
         if available:
             result = c_queries.get_c_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_c_query_invalid_raises(self):
         with pytest.raises(ValueError):

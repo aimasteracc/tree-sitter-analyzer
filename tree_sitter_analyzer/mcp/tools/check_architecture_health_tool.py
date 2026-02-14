@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """check_architecture_health MCP tool."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -12,7 +13,16 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
-VALID_CHECKS = ("coupling_metrics", "circular_dependencies", "layer_violations", "god_classes", "dead_code", "test_coverage", "stability_metrics", "hotspots")
+VALID_CHECKS = (
+    "coupling_metrics",
+    "circular_dependencies",
+    "layer_violations",
+    "god_classes",
+    "dead_code",
+    "test_coverage",
+    "stability_metrics",
+    "hotspots",
+)
 
 
 class CheckArchitectureHealthTool(BaseMCPTool):
@@ -47,7 +57,10 @@ class CheckArchitectureHealthTool(BaseMCPTool):
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "path": {"type": "string", "description": "Project or module path to analyze"},
+                    "path": {
+                        "type": "string",
+                        "description": "Project or module path to analyze",
+                    },
                     "checks": {
                         "type": "array",
                         "items": {"type": "string", "enum": list(VALID_CHECKS)},
@@ -57,7 +70,11 @@ class CheckArchitectureHealthTool(BaseMCPTool):
                         "type": "object",
                         "description": "Custom layer dependency rules",
                     },
-                    "output_format": {"type": "string", "enum": ["summary", "json"], "default": "summary"},
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["summary", "json"],
+                        "default": "summary",
+                    },
                 },
                 "required": ["path"],
                 "additionalProperties": False,

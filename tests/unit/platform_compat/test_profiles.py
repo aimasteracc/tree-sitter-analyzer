@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Unit tests for platform_compat profiles - validate_profile, migrate_profile_schema, migrate_to_1_0_0."""
 
-import pytest
-
 import jsonschema
+import pytest
 
 from tree_sitter_analyzer.platform_compat.profiles import (
     migrate_profile_schema,
@@ -77,7 +76,17 @@ class TestMigrateTo1_0_0:
 
     def test_preserves_existing_behaviors(self) -> None:
         """Does not overwrite existing behaviors."""
-        data = {"behaviors": {"x": {"construct_id": "x", "node_type": "p", "element_count": 0, "attributes": [], "has_error": False}}}
+        data = {
+            "behaviors": {
+                "x": {
+                    "construct_id": "x",
+                    "node_type": "p",
+                    "element_count": 0,
+                    "attributes": [],
+                    "has_error": False,
+                }
+            }
+        }
         result = migrate_to_1_0_0(data)
         assert result["behaviors"]["x"]["construct_id"] == "x"
 

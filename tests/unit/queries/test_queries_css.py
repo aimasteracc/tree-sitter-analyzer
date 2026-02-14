@@ -1,8 +1,10 @@
 """Tests for CSS language queries."""
+
 import pytest
 
 try:
     import tree_sitter_css
+
     CSS_AVAILABLE = True
 except ImportError:
     CSS_AVAILABLE = False
@@ -67,6 +69,7 @@ class TestCSSQueriesSyntax:
 
     def test_all_queries_dict_compilable_count(self):
         import tree_sitter
+
         lang = _lang()
         all_q = css_queries.ALL_QUERIES
         assert len(all_q) > 0
@@ -79,9 +82,9 @@ class TestCSSQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.35, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.35
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
     @pytest.mark.parametrize("query_name", CSS_STRING_CONSTANTS)
     def test_string_constant_compiles(self, query_name, query_validator):
@@ -111,7 +114,6 @@ class TestCSSQueriesFunctionality:
         qstr = css_queries.ALL_QUERIES["rule_set"]["query"]
         results = query_executor(_lang(), SAMPLE_CSS_CODE, qstr)
         assert len(results) >= 6
-
 
     def test_comments_query_finds_comments(self, query_executor):
         results = query_executor(_lang(), SAMPLE_CSS_CODE, css_queries.COMMENTS)
@@ -237,7 +239,7 @@ class TestCSSQueriesHelpers:
         available = css_queries.get_available_css_queries()
         if available:
             result = css_queries.get_css_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_css_query_invalid_raises(self):
         with pytest.raises(ValueError):

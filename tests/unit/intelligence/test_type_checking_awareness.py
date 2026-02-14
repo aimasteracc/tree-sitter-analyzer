@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for TYPE_CHECKING awareness in dependency analysis (H1)."""
+
 import pytest
 
 from tree_sitter_analyzer.intelligence.architecture_metrics import ArchitectureMetrics

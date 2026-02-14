@@ -69,7 +69,6 @@ class TestSecurityValidatorEnhanced:
         """validate_file_path with Windows junction/reparse point (platform-specific)."""
         # Create a directory junction on Windows - requires ctypes/admin
         try:
-
             junction_dir = str(Path(self.temp_dir) / "junction_target")
             Path(junction_dir).mkdir(exist_ok=True)
             junction_path = str(Path(self.temp_dir) / "my_junction")
@@ -125,9 +124,9 @@ class TestSecurityValidatorEnhanced:
     @pytest.mark.unit
     def test_sanitize_input_dangerous_characters_removed(self):
         """sanitize_input removes < > \" '."""
-        dirty = 'test<>"\'chars'
+        dirty = "test<>\"'chars"
         result = self.validator.sanitize_input(dirty)
-        for c in '<>"\'':
+        for c in "<>\"'":
             assert c not in result
 
     @pytest.mark.unit

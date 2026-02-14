@@ -4,6 +4,7 @@ Shared fixtures for queries tests.
 Provides common utilities for testing tree-sitter queries across different languages.
 Compatible with tree-sitter 0.25+ API (QueryCursor-based).
 """
+
 import pytest
 import tree_sitter
 
@@ -59,12 +60,14 @@ def execute_query(lang, code, query_string):
 @pytest.fixture
 def query_validator():
     """Return a helper that validates a query compiles successfully."""
+
     def _validate(lang, query_string):
         try:
             compile_query(lang, query_string)
             return True
         except Exception as exc:
             pytest.fail(f"Query compilation failed: {exc}")
+
     return _validate
 
 
@@ -77,8 +80,10 @@ def query_executor():
 @pytest.fixture
 def assert_query_finds_nodes():
     """Return an assertion helper for query results."""
+
     def _assert(results, min_count=1):
-        assert len(results) >= min_count, (
-            f"Expected at least {min_count} matches, got {len(results)}"
-        )
+        assert (
+            len(results) >= min_count
+        ), f"Expected at least {min_count} matches, got {len(results)}"
+
     return _assert

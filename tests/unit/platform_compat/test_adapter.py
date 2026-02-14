@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for platform_compat adapter - AdaptationRule, RemovePhantomFunctionsRule."""
 
-import pytest
-
 from tree_sitter_analyzer.models import SQLFunction, SQLTrigger
 from tree_sitter_analyzer.platform_compat.adapter import RemovePhantomFunctionsRule
 

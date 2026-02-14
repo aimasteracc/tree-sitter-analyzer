@@ -1,4 +1,5 @@
 """Tests for SymbolIndex.lookup_references file_filter parameter."""
+
 from __future__ import annotations
 
 from tree_sitter_analyzer.intelligence.models import SymbolReference
@@ -35,7 +36,9 @@ class TestLookupReferencesFileFilter:
 
     def test_filter_combined_with_ref_type(self):
         si = self._make_index()
-        refs = si.lookup_references("foo", ref_type="call", file_filter=lambda f: f.startswith("tests/"))
+        refs = si.lookup_references(
+            "foo", ref_type="call", file_filter=lambda f: f.startswith("tests/")
+        )
         assert len(refs) == 1
         assert refs[0].file_path == "tests/test_core.py"
 

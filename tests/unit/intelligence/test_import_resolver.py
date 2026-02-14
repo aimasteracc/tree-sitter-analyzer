@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for PythonImportResolver (Code Intelligence Graph)."""
 
-
 import pytest
 
 from tree_sitter_analyzer.intelligence.import_resolver import PythonImportResolver
@@ -27,7 +26,9 @@ def project_dir(tmp_path):
     (tmp_path / "src" / "utils" / "__init__.py").write_text("")
     (tmp_path / "src" / "utils" / "logger.py").write_text("def get_logger(): pass")
     (tmp_path / "main.py").write_text("from src.auth.service import AuthService")
-    (tmp_path / "tests" / "test_auth.py").write_text("from src.auth.service import AuthService")
+    (tmp_path / "tests" / "test_auth.py").write_text(
+        "from src.auth.service import AuthService"
+    )
 
     return tmp_path
 

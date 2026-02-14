@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Architecture metrics for Code Intelligence Graph."""
+
 from __future__ import annotations
 
 import os
@@ -24,7 +25,9 @@ from .symbol_index import SymbolIndex
 class ArchitectureMetrics:
     """Computes architecture health metrics."""
 
-    def __init__(self, dep_graph: DependencyGraphBuilder, symbol_index: SymbolIndex) -> None:
+    def __init__(
+        self, dep_graph: DependencyGraphBuilder, symbol_index: SymbolIndex
+    ) -> None:
         self._dep_graph = dep_graph
         self._symbol_index = symbol_index
         self._cycle_detector = CycleDetector()
@@ -41,7 +44,9 @@ class ArchitectureMetrics:
         """Check if file_path is within the given scope prefix."""
         if not scope:
             return True
-        return file_path.startswith(scope) or os.path.dirname(file_path).startswith(scope.rstrip("/"))
+        return file_path.startswith(scope) or os.path.dirname(file_path).startswith(
+            scope.rstrip("/")
+        )
 
     def compute_report(
         self,
@@ -52,7 +57,13 @@ class ArchitectureMetrics:
         test_file_predicate: Callable[[str], bool] | None = None,
     ) -> ArchitectureReport:
         if checks is None:
-            checks = ["coupling_metrics", "circular_dependencies", "layer_violations", "god_classes", "dead_code"]
+            checks = [
+                "coupling_metrics",
+                "circular_dependencies",
+                "layer_violations",
+                "god_classes",
+                "dead_code",
+            ]
 
         scope = self._normalize_path(path)
         report = ArchitectureReport(path=path)
@@ -84,7 +95,7 @@ class ArchitectureMetrics:
 
     def _compute_coupling(self, scope: str = "") -> dict[str, ModuleMetrics]:
         modules: dict[str, ModuleMetrics] = {}
-        all_files = self._dep_graph.get_all_files()
+        all_files: set[str] | list[str] = self._dep_graph.get_all_files()
         if scope:
             all_files = [f for f in all_files if self._file_in_scope(f, scope)]
         # Group files by directory
@@ -119,14 +130,19 @@ class ArchitectureMetrics:
 
             abstract_keywords = {"ABC", "Protocol", "abstractmethod"}
             abstract_count = sum(
-                1 for c in classes_in_module
+                1
+                for c in classes_in_module
                 if c.modifiers and any(kw in c.modifiers for kw in abstract_keywords)
             )
-            abstractness = abstract_count / len(classes_in_module) if classes_in_module else 0.0
+            abstractness = (
+                abstract_count / len(classes_in_module) if classes_in_module else 0.0
+            )
 
             modules[d] = ModuleMetrics(
-                path=d, file_count=len(files),
-                afferent_coupling=ca, efferent_coupling=ce,
+                path=d,
+                file_count=len(files),
+                afferent_coupling=ca,
+                efferent_coupling=ce,
                 abstractness=abstractness,
             )
         return modules
@@ -137,7 +153,11 @@ class ArchitectureMetrics:
             if scope and not self._file_in_scope(edge.source_file, scope):
                 continue
             src_dir = os.path.dirname(edge.source_file) or "."
-            tgt_dir = (os.path.dirname(edge.target_file) or ".") if edge.target_file else "external"
+            tgt_dir = (
+                (os.path.dirname(edge.target_file) or ".")
+                if edge.target_file
+                else "external"
+            )
             if src_dir not in matrix:
                 matrix[src_dir] = {}
             matrix[src_dir][tgt_dir] = matrix[src_dir].get(tgt_dir, 0) + 1
@@ -145,7 +165,7 @@ class ArchitectureMetrics:
 
     def _detect_cycles(self, scope: str = "") -> list[DependencyCycle]:
         adjacency: dict[str, list[str]] = {}
-        all_files = self._dep_graph.get_all_files()
+        all_files: set[str] | list[str] = self._dep_graph.get_all_files()
         if scope:
             all_files = [f for f in all_files if self._file_in_scope(f, scope)]
         scoped_set = set(all_files)
@@ -162,7 +182,9 @@ class ArchitectureMetrics:
                 adjacency[f] = runtime_deps
         return self._cycle_detector.detect_cycles(adjacency)
 
-    def _check_layer_violations(self, layer_rules: dict[str, dict[str, list[str]]]) -> list[LayerViolation]:
+    def _check_layer_violations(
+        self, layer_rules: dict[str, dict[str, list[str]]]
+    ) -> list[LayerViolation]:
         violations: list[LayerViolation] = []
         for edge in self._dep_graph.get_edges():
             if edge.is_external:
@@ -172,22 +194,28 @@ class ArchitectureMetrics:
             if src_layer and tgt_layer and src_layer != tgt_layer:
                 allowed = layer_rules.get(src_layer, {}).get("allowed_deps", [])
                 if tgt_layer not in allowed:
-                    violations.append(LayerViolation(
-                        source_file=edge.source_file,
-                        target_file=edge.target_file or "",
-                        source_layer=src_layer,
-                        target_layer=tgt_layer,
-                        description=f"{src_layer} should not depend on {tgt_layer}",
-                    ))
+                    violations.append(
+                        LayerViolation(
+                            source_file=edge.source_file,
+                            target_file=edge.target_file or "",
+                            source_layer=src_layer,
+                            target_layer=tgt_layer,
+                            description=f"{src_layer} should not depend on {tgt_layer}",
+                        )
+                    )
         return violations
 
-    def _get_layer(self, file_path: str, rules: dict[str, dict[str, list[str]]]) -> str | None:
+    def _get_layer(
+        self, file_path: str, rules: dict[str, dict[str, list[str]]]
+    ) -> str | None:
         for layer_name in rules:
             if layer_name in file_path:
                 return layer_name
         return None
 
-    def _detect_god_classes(self, threshold: int, scope: str = "") -> list[GodClassInfo]:
+    def _detect_god_classes(
+        self, threshold: int, scope: str = ""
+    ) -> list[GodClassInfo]:
         gods: list[GodClassInfo] = []
         all_defs = self._symbol_index.get_all_definitions()
         for name, defs_list in all_defs.items():
@@ -200,33 +228,44 @@ class ArchitectureMetrics:
                     method_count = 0
                     for _mname, mdefs in all_defs.items():
                         for md in mdefs:
-                            if md.parent_class == name and md.symbol_type in ("method", "function"):
+                            if md.parent_class == name and md.symbol_type in (
+                                "method",
+                                "function",
+                            ):
                                 method_count += 1
                     if method_count >= threshold:
-                        gods.append(GodClassInfo(
-                            class_name=name,
-                            file_path=d.file_path,
-                            method_count=method_count,
-                            line_count=d.end_line - d.line + 1,
-                        ))
+                        gods.append(
+                            GodClassInfo(
+                                class_name=name,
+                                file_path=d.file_path,
+                                method_count=method_count,
+                                line_count=d.end_line - d.line + 1,
+                            )
+                        )
         return gods
 
     # Decorators whose methods are accessed via attribute syntax, not calls.
     # These cannot be detected by call-graph-based dead-code analysis.
-    _IMPLICIT_ACCESS_MODIFIERS = frozenset({
-        "property", "staticmethod", "classmethod",
-    })
+    _IMPLICIT_ACCESS_MODIFIERS = frozenset(
+        {
+            "property",
+            "staticmethod",
+            "classmethod",
+        }
+    )
 
     # Known decorator patterns that register callbacks at runtime (e.g. MCP SDK).
     # Functions decorated with these are NOT dead even if never called directly.
-    _CALLBACK_DECORATOR_PATTERNS = frozenset({
-        "server.list_tools",
-        "server.call_tool",
-        "server.list_resources",
-        "server.read_resource",
-        "server.list_prompts",
-        "server.get_prompt",
-    })
+    _CALLBACK_DECORATOR_PATTERNS = frozenset(
+        {
+            "server.list_tools",
+            "server.call_tool",
+            "server.list_resources",
+            "server.read_resource",
+            "server.list_prompts",
+            "server.get_prompt",
+        }
+    )
 
     def _detect_dead_symbols(self, scope: str = "") -> list[str]:
         dead: list[str] = []
@@ -235,7 +274,7 @@ class ArchitectureMetrics:
 
         # Pre-compute a lookup of (file_path) -> list[SymbolDefinition] for
         # inner-function detection.
-        file_defs: dict[str, list["SymbolDefinition"]] = {}
+        file_defs: dict[str, list[SymbolDefinition]] = {}
         for defs_list in all_defs.values():
             for d in defs_list:
                 file_defs.setdefault(d.file_path, []).append(d)
@@ -247,7 +286,8 @@ class ArchitectureMetrics:
                     continue
                 # Skip symbols with implicit-access decorators (@property, etc.)
                 if any(
-                    d.modifiers and any(m in self._IMPLICIT_ACCESS_MODIFIERS for m in d.modifiers)
+                    d.modifiers
+                    and any(m in self._IMPLICIT_ACCESS_MODIFIERS for m in d.modifiers)
                     for d in defs_list
                 ):
                     continue
@@ -260,9 +300,8 @@ class ArchitectureMetrics:
                 # (v5) Skip functions registered via known callback decorators
                 # (e.g. @server.list_tools()).
                 if any(
-                    d.modifiers and any(
-                        m in self._CALLBACK_DECORATOR_PATTERNS for m in d.modifiers
-                    )
+                    d.modifiers
+                    and any(m in self._CALLBACK_DECORATOR_PATTERNS for m in d.modifiers)
                     for d in defs_list
                 ):
                     continue
@@ -277,18 +316,15 @@ class ArchitectureMetrics:
 
     @staticmethod
     def _is_inner_def(
-        defn: "SymbolDefinition",
-        file_defs: dict[str, list["SymbolDefinition"]],
+        defn: SymbolDefinition,
+        file_defs: dict[str, list[SymbolDefinition]],
     ) -> bool:
         """Return True if *defn* is textually nested inside another definition."""
         siblings = file_defs.get(defn.file_path, [])
         for other in siblings:
             if other is defn or other.name == defn.name:
                 continue
-            if (
-                other.line < defn.line
-                and other.end_line > defn.end_line
-            ):
+            if other.line < defn.line and other.end_line > defn.end_line:
                 return True
         return False
 
@@ -322,7 +358,9 @@ class ArchitectureMetrics:
         # Build a set of all defined symbol names for inner-function detection.
         # A function is considered "inner" if it is textually nested inside
         # another definition in the same file (its line range is contained).
-        def _is_inner_function(defn: "SymbolDefinition", all_source_defs: dict[str, list["SymbolDefinition"]]) -> bool:
+        def _is_inner_function(
+            defn: SymbolDefinition, all_source_defs: dict[str, list[SymbolDefinition]]
+        ) -> bool:
             """Return True if *defn* is a nested/inner function inside another definition."""
             for other_name, other_defs in all_source_defs.items():
                 if other_name == defn.name:
@@ -338,12 +376,13 @@ class ArchitectureMetrics:
             return False
 
         # Pre-filter source definitions for scope/test-file exclusion
-        source_defs_map: dict[str, list["SymbolDefinition"]] = {}
+        source_defs_map: dict[str, list[SymbolDefinition]] = {}
         for name, defs_list in all_defs.items():
             if name.startswith("_"):
                 continue
             filtered = [
-                d for d in defs_list
+                d
+                for d in defs_list
                 if not test_file_predicate(d.file_path)
                 and (not scope or self._file_in_scope(d.file_path, scope))
             ]
@@ -363,7 +402,8 @@ class ArchitectureMetrics:
         for name, source_defs in source_defs_map.items():
             # AH-013: Skip symbols with implicit-access modifiers (@property, etc.)
             if any(
-                d.modifiers and any(m in self._IMPLICIT_ACCESS_MODIFIERS for m in d.modifiers)
+                d.modifiers
+                and any(m in self._IMPLICIT_ACCESS_MODIFIERS for m in d.modifiers)
                 for d in source_defs
             ):
                 continue
@@ -376,7 +416,8 @@ class ArchitectureMetrics:
             # (v5) Skip MCP callback-registered functions (decorated with
             # @server.list_tools(), etc.) — these are tested via integration.
             if any(
-                d.modifiers and any(m in self._CALLBACK_DECORATOR_PATTERNS for m in d.modifiers)
+                d.modifiers
+                and any(m in self._CALLBACK_DECORATOR_PATTERNS for m in d.modifiers)
                 for d in source_defs
             ):
                 continue
@@ -386,7 +427,9 @@ class ArchitectureMetrics:
             # Partition references into test vs source
             refs_for_name = all_refs.get(name, [])
             test_refs = [r for r in refs_for_name if test_file_predicate(r.file_path)]
-            source_refs = [r for r in refs_for_name if not test_file_predicate(r.file_path)]
+            source_refs = [
+                r for r in refs_for_name if not test_file_predicate(r.file_path)
+            ]
 
             has_test_refs = len(test_refs) > 0
             has_source_refs = len(source_refs) > 0
@@ -395,7 +438,10 @@ class ArchitectureMetrics:
             # has direct test references — avoids flagging internal methods of
             # well-tested classes.
             if not has_test_refs:
-                if any(d.parent_class and d.parent_class in tested_classes for d in source_defs):
+                if any(
+                    d.parent_class and d.parent_class in tested_classes
+                    for d in source_defs
+                ):
                     has_test_refs = True  # promote to tested
 
             if has_test_refs:
@@ -405,12 +451,14 @@ class ArchitectureMetrics:
             for defn in source_defs:
                 # Untested: no test references at all for this name
                 if not has_test_refs:
-                    untested.append(UntestedSymbol(
-                        name=name,
-                        file_path=defn.file_path,
-                        symbol_type=defn.symbol_type,
-                        line=defn.line,
-                    ))
+                    untested.append(
+                        UntestedSymbol(
+                            name=name,
+                            file_path=defn.file_path,
+                            symbol_type=defn.symbol_type,
+                            line=defn.line,
+                        )
+                    )
                     break  # one untested entry per name is sufficient
 
                 # Over-tested: count distinct test functions referencing this symbol
@@ -433,12 +481,14 @@ class ArchitectureMetrics:
                     per_def_count = len(distinct_test_fns)
 
                 if per_def_count > overtested_threshold:
-                    overtested.append(OvertestedSymbol(
-                        name=name,
-                        file_path=defn.file_path,
-                        test_ref_count=per_def_count,
-                        test_files=sorted(test_file_set),
-                    ))
+                    overtested.append(
+                        OvertestedSymbol(
+                            name=name,
+                            file_path=defn.file_path,
+                            test_ref_count=per_def_count,
+                            test_files=sorted(test_file_set),
+                        )
+                    )
 
             # Test-only: referenced from tests but not from source code
             if has_test_refs and not has_source_refs:
@@ -456,11 +506,14 @@ class ArchitectureMetrics:
     def _compute_score(self, report: ArchitectureReport) -> int:
         score = 100
         # Each category has a cap to prevent score collapse
-        score -= min(len(report.cycles) * 5, 25)          # cycles: max -25
-        score -= min(len(report.layer_violations) * 3, 20) # violations: max -20
-        score -= min(len(report.god_classes) * 2, 20)      # god classes: max -20
-        score -= min(len(report.dead_symbols), 20)         # dead code: max -20
-        d_count = sum(1 for m in report.module_metrics.values()
-                      if m.distance_from_main_sequence > 0.7)
-        score -= min(d_count, 15)                          # D>0.7: max -15
+        score -= min(len(report.cycles) * 5, 25)  # cycles: max -25
+        score -= min(len(report.layer_violations) * 3, 20)  # violations: max -20
+        score -= min(len(report.god_classes) * 2, 20)  # god classes: max -20
+        score -= min(len(report.dead_symbols), 20)  # dead code: max -20
+        d_count = sum(
+            1
+            for m in report.module_metrics.values()
+            if m.distance_from_main_sequence > 0.7
+        )
+        score -= min(d_count, 15)  # D>0.7: max -15
         return max(0, min(100, score))

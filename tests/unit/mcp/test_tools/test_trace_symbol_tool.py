@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for trace_symbol MCP tool."""
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.trace_symbol_tool import TraceSymbolTool
@@ -51,19 +52,23 @@ class TestTraceSymbolToolValidation:
             tool.validate_arguments({"symbol": "foo", "trace_type": "invalid"})
 
     def test_valid_all_args(self, tool):
-        assert tool.validate_arguments({
-            "symbol": "foo",
-            "file_path": "a.py",
-            "trace_type": "full",
-            "depth": 3,
-            "output_format": "json",
-        })
+        assert tool.validate_arguments(
+            {
+                "symbol": "foo",
+                "file_path": "a.py",
+                "trace_type": "full",
+                "depth": 3,
+                "output_format": "json",
+            }
+        )
 
 
 class TestTraceSymbolToolExecute:
     @pytest.mark.asyncio
     async def test_execute_definition_only(self, tool):
-        result = await tool.execute({"symbol": "nonexistent", "trace_type": "definition"})
+        result = await tool.execute(
+            {"symbol": "nonexistent", "trace_type": "definition"}
+        )
         assert "definitions" in result or "error" in str(result)
 
     @pytest.mark.asyncio

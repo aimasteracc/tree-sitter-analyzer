@@ -430,7 +430,7 @@ class TestReadFileSafeAsync:
         """Reading a nonexistent file should raise an exception."""
         nonexistent = tmp_path / "no_such_file.txt"
 
-        with pytest.raises(Exception):
+        with pytest.raises((FileNotFoundError, OSError)):
             await EncodingManager.read_file_safe_async(str(nonexistent))
 
     @pytest.mark.asyncio

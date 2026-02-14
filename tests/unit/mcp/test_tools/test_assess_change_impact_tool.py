@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for assess_change_impact MCP tool."""
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.assess_change_impact_tool import (

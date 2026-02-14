@@ -156,9 +156,15 @@ class TreeSitterAnalyzerMCPServer:
         self._shared_indexer: Any = None  # Lazy-initialized ProjectIndexer
         if INTELLIGENCE_TOOLS_AVAILABLE:
             try:
-                self.trace_symbol_tool: TraceSymbolTool | None = TraceSymbolTool(project_root)
-                self.assess_change_impact_tool: AssessChangeImpactTool | None = AssessChangeImpactTool(project_root)
-                self.check_architecture_health_tool: CheckArchitectureHealthTool | None = CheckArchitectureHealthTool(project_root)
+                self.trace_symbol_tool: TraceSymbolTool | None = TraceSymbolTool(
+                    project_root
+                )
+                self.assess_change_impact_tool: AssessChangeImpactTool | None = (
+                    AssessChangeImpactTool(project_root)
+                )
+                self.check_architecture_health_tool: (
+                    CheckArchitectureHealthTool | None
+                ) = CheckArchitectureHealthTool(project_root)
                 # Inject shared indexer into all intelligence tools
                 self._setup_shared_indexer(project_root)
             except Exception:
@@ -207,9 +213,14 @@ class TreeSitterAnalyzerMCPServer:
         """Create a shared ProjectIndexer and inject into intelligence tools."""
         try:
             from ..intelligence.project_indexer import ProjectIndexer
+
             self._shared_indexer = ProjectIndexer(project_root or "")
             # Inject into all intelligence tools
-            for tool in (self.trace_symbol_tool, self.assess_change_impact_tool, self.check_architecture_health_tool):
+            for tool in (
+                self.trace_symbol_tool,
+                self.assess_change_impact_tool,
+                self.check_architecture_health_tool,
+            ):
                 if tool is not None:
                     tool.set_indexer(self._shared_indexer)
         except Exception:
@@ -474,9 +485,13 @@ class TreeSitterAnalyzerMCPServer:
             if self.trace_symbol_tool is not None:
                 tools.append(Tool(**self.trace_symbol_tool.get_tool_definition()))
             if self.assess_change_impact_tool is not None:
-                tools.append(Tool(**self.assess_change_impact_tool.get_tool_definition()))
+                tools.append(
+                    Tool(**self.assess_change_impact_tool.get_tool_definition())
+                )
             if self.check_architecture_health_tool is not None:
-                tools.append(Tool(**self.check_architecture_health_tool.get_tool_definition()))
+                tools.append(
+                    Tool(**self.check_architecture_health_tool.get_tool_definition())
+                )
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
             return tools
@@ -611,8 +626,12 @@ class TreeSitterAnalyzerMCPServer:
 
                 elif name == "check_architecture_health":
                     if self.check_architecture_health_tool is None:
-                        raise ValueError("check_architecture_health tool is not available")
-                    result = await self.check_architecture_health_tool.execute(arguments)
+                        raise ValueError(
+                            "check_architecture_health tool is not available"
+                        )
+                    result = await self.check_architecture_health_tool.execute(
+                        arguments
+                    )
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")

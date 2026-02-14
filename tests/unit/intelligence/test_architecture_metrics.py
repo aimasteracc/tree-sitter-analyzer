@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for ArchitectureMetrics."""
+
 import pytest
 
 from tree_sitter_analyzer.intelligence.architecture_metrics import ArchitectureMetrics
@@ -49,9 +50,14 @@ class TestArchitectureMetricsBasic:
 
     def test_layer_violations(self, components):
         dg, si = components
-        dg.add_edge(DependencyEdge("models/user.py", "services/auth.py", "services.auth"))
+        dg.add_edge(
+            DependencyEdge("models/user.py", "services/auth.py", "services.auth")
+        )
         m = ArchitectureMetrics(dg, si)
-        rules = {"models": {"allowed_deps": ["utils"]}, "services": {"allowed_deps": ["models"]}}
+        rules = {
+            "models": {"allowed_deps": ["utils"]},
+            "services": {"allowed_deps": ["models"]},
+        }
         report = m.compute_report(".", checks=["layer_violations"], layer_rules=rules)
         assert len(report.layer_violations) >= 1
 
@@ -59,7 +65,16 @@ class TestArchitectureMetricsBasic:
         dg, si = components
         si.add_definition(SymbolDefinition("BigClass", "big.py", 1, 500, "class"))
         for i in range(25):
-            si.add_definition(SymbolDefinition(f"method_{i}", "big.py", i*10, i*10+5, "method", parent_class="BigClass"))
+            si.add_definition(
+                SymbolDefinition(
+                    f"method_{i}",
+                    "big.py",
+                    i * 10,
+                    i * 10 + 5,
+                    "method",
+                    parent_class="BigClass",
+                )
+            )
         m = ArchitectureMetrics(dg, si)
         report = m.compute_report(".", checks=["god_classes"], god_class_threshold=20)
         assert len(report.god_classes) >= 1

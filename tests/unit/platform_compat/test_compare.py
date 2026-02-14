@@ -10,14 +10,10 @@ import pytest
 from tree_sitter_analyzer.platform_compat.compare import (
     BehaviorDifference,
     ProfileComparison,
-    compare_profiles,
     generate_diff_report,
     load_profile_from_file,
 )
-from tree_sitter_analyzer.platform_compat.profiles import (
-    BehaviorProfile,
-    ParsingBehavior,
-)
+from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
 
 
 class TestBehaviorDifference:
@@ -136,9 +132,7 @@ class TestLoadProfileFromFile:
             },
             "adaptation_rules": [],
         }
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(profile_data, f)
             path = Path(f.name)
 

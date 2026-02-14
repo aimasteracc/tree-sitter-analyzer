@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for platform_compat recorder - record_fixture, analyze_ast."""
 
-import pytest
-
-from tree_sitter_analyzer.platform_compat.fixtures import (
-    FIXTURE_SIMPLE_TABLE,
-    SQLTestFixture,
-)
+from tree_sitter_analyzer.platform_compat.fixtures import FIXTURE_SIMPLE_TABLE
 from tree_sitter_analyzer.platform_compat.profiles import ParsingBehavior
 from tree_sitter_analyzer.platform_compat.recorder import BehaviorRecorder
 

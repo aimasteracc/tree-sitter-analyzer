@@ -110,28 +110,60 @@ class TestEndToEndPipeline:
             SymbolDefinition("AuthService", "auth_service.py", 1, 15, "class")
         )
         symbol_index.add_definition(
-            SymbolDefinition("login", "auth_service.py", 5, 9, "method", parent_class="AuthService")
+            SymbolDefinition(
+                "login", "auth_service.py", 5, 9, "method", parent_class="AuthService"
+            )
         )
         symbol_index.add_definition(
-            SymbolDefinition("_create_token", "auth_service.py", 11, 12, "method", parent_class="AuthService")
+            SymbolDefinition(
+                "_create_token",
+                "auth_service.py",
+                11,
+                12,
+                "method",
+                parent_class="AuthService",
+            )
         )
         symbol_index.add_definition(
-            SymbolDefinition("logout", "auth_service.py", 14, 15, "method", parent_class="AuthService")
+            SymbolDefinition(
+                "logout",
+                "auth_service.py",
+                14,
+                15,
+                "method",
+                parent_class="AuthService",
+            )
         )
         symbol_index.add_definition(
             SymbolDefinition("User", "user_model.py", 1, 8, "class")
         )
         symbol_index.add_definition(
-            SymbolDefinition("check_password", "user_model.py", 7, 8, "method", parent_class="User")
+            SymbolDefinition(
+                "check_password", "user_model.py", 7, 8, "method", parent_class="User"
+            )
         )
         symbol_index.add_definition(
             SymbolDefinition("APIHandler", "api_handler.py", 3, 16, "class")
         )
         symbol_index.add_definition(
-            SymbolDefinition("handle_login", "api_handler.py", 7, 11, "method", parent_class="APIHandler")
+            SymbolDefinition(
+                "handle_login",
+                "api_handler.py",
+                7,
+                11,
+                "method",
+                parent_class="APIHandler",
+            )
         )
         symbol_index.add_definition(
-            SymbolDefinition("handle_logout", "api_handler.py", 13, 15, "method", parent_class="APIHandler")
+            SymbolDefinition(
+                "handle_logout",
+                "api_handler.py",
+                13,
+                15,
+                "method",
+                parent_class="APIHandler",
+            )
         )
 
         # Add symbol references
@@ -139,27 +171,53 @@ class TestEndToEndPipeline:
             SymbolReference("AuthService", "api_handler.py", 1, "import")
         )
         symbol_index.add_reference(
-            SymbolReference("AuthService", "api_handler.py", 5, "call", context_function="__init__")
+            SymbolReference(
+                "AuthService", "api_handler.py", 5, "call", context_function="__init__"
+            )
         )
         symbol_index.add_reference(
-            SymbolReference("login", "api_handler.py", 8, "call", context_function="handle_login")
+            SymbolReference(
+                "login", "api_handler.py", 8, "call", context_function="handle_login"
+            )
         )
         symbol_index.add_reference(
-            SymbolReference("logout", "api_handler.py", 14, "call", context_function="handle_logout")
+            SymbolReference(
+                "logout", "api_handler.py", 14, "call", context_function="handle_logout"
+            )
         )
         symbol_index.add_reference(
             SymbolReference("AuthService", "test_auth.py", 1, "import")
         )
         symbol_index.add_reference(
-            SymbolReference("login", "test_auth.py", 5, "call", context_function="test_login_success")
+            SymbolReference(
+                "login",
+                "test_auth.py",
+                5,
+                "call",
+                context_function="test_login_success",
+            )
         )
         symbol_index.add_reference(
-            SymbolReference("login", "test_auth.py", 10, "call", context_function="test_login_failure")
+            SymbolReference(
+                "login",
+                "test_auth.py",
+                10,
+                "call",
+                context_function="test_login_failure",
+            )
         )
 
         # Add dependency edges
-        dep_graph.add_edge(DependencyEdge("api_handler.py", "auth_service.py", "auth_service", ["AuthService"]))
-        dep_graph.add_edge(DependencyEdge("test_auth.py", "auth_service.py", "auth_service", ["AuthService"]))
+        dep_graph.add_edge(
+            DependencyEdge(
+                "api_handler.py", "auth_service.py", "auth_service", ["AuthService"]
+            )
+        )
+        dep_graph.add_edge(
+            DependencyEdge(
+                "test_auth.py", "auth_service.py", "auth_service", ["AuthService"]
+            )
+        )
 
         return call_graph, dep_graph, symbol_index
 
@@ -221,6 +279,7 @@ class TestEndToEndPipeline:
 
         # Test JSON format
         import json
+
         json_out = format_trace_result(trace_data, "json")
         parsed = json.loads(json_out)
         assert parsed["symbol"] == "login"
@@ -247,11 +306,15 @@ class TestEndToEndPipeline:
         call_graph, dep_graph, symbol_index = indexed_project
 
         analyzer = ImpactAnalyzer(call_graph, dep_graph, symbol_index)
-        result = analyzer.assess("AuthService", change_type="signature_change", include_tests=True)
+        result = analyzer.assess(
+            "AuthService", change_type="signature_change", include_tests=True
+        )
 
         # test_auth.py imports AuthService, so should appear
         # (either as direct impact or affected test)
-        all_affected = {i.file_path for i in result.direct_impacts + result.transitive_impacts}
+        all_affected = {
+            i.file_path for i in result.direct_impacts + result.transitive_impacts
+        }
         all_affected.update(result.affected_tests)
         assert any("test_" in f for f in all_affected)
 
@@ -270,9 +333,15 @@ class TestEndToEndPipeline:
     def test_cycle_detection_real_scenario(self):
         """Test cycle detection with a realistic circular dependency."""
         dep_graph = DependencyGraphBuilder()
-        dep_graph.add_edge(DependencyEdge("models/user.py", "services/auth.py", "services.auth"))
-        dep_graph.add_edge(DependencyEdge("services/auth.py", "utils/crypto.py", "utils.crypto"))
-        dep_graph.add_edge(DependencyEdge("utils/crypto.py", "models/user.py", "models.user"))
+        dep_graph.add_edge(
+            DependencyEdge("models/user.py", "services/auth.py", "services.auth")
+        )
+        dep_graph.add_edge(
+            DependencyEdge("services/auth.py", "utils/crypto.py", "utils.crypto")
+        )
+        dep_graph.add_edge(
+            DependencyEdge("utils/crypto.py", "models/user.py", "models.user")
+        )
 
         symbol_index = SymbolIndex()
         metrics = ArchitectureMetrics(dep_graph, symbol_index)
@@ -302,11 +371,13 @@ class TestMCPToolExecution:
         from tree_sitter_analyzer.mcp.tools.trace_symbol_tool import TraceSymbolTool
 
         tool = TraceSymbolTool(project_root=None)
-        result = await tool.execute({
-            "symbol": "TestSymbol",
-            "trace_type": "full",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "symbol": "TestSymbol",
+                "trace_type": "full",
+                "output_format": "json",
+            }
+        )
         assert isinstance(result, dict)
         assert "data" in result
 
@@ -318,11 +389,13 @@ class TestMCPToolExecution:
         )
 
         tool = AssessChangeImpactTool(project_root=None)
-        result = await tool.execute({
-            "target": "SomeFunction",
-            "change_type": "behavior_change",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "target": "SomeFunction",
+                "change_type": "behavior_change",
+                "output_format": "json",
+            }
+        )
         assert isinstance(result, dict)
         assert "data" in result or "error" in result
 
@@ -334,10 +407,12 @@ class TestMCPToolExecution:
         )
 
         tool = CheckArchitectureHealthTool(project_root=None)
-        result = await tool.execute({
-            "path": "src/",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "path": "src/",
+                "output_format": "json",
+            }
+        )
         assert isinstance(result, dict)
         assert "data" in result
 
@@ -349,10 +424,12 @@ class TestMCPToolExecution:
         tool = TraceSymbolTool(project_root=None)
 
         for fmt in ("summary", "tree", "json"):
-            result = await tool.execute({
-                "symbol": "test",
-                "output_format": fmt,
-            })
+            result = await tool.execute(
+                {
+                    "symbol": "test",
+                    "output_format": fmt,
+                }
+            )
             assert isinstance(result, dict)
             assert "result" in result
 

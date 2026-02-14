@@ -4,10 +4,12 @@ Tests for YAML language queries.
 Validates that YAML tree-sitter queries are syntactically correct
 and return expected results for various YAML constructs.
 """
+
 import pytest
 
 try:
     import tree_sitter_yaml
+
     YAML_AVAILABLE = True
 except ImportError:
     YAML_AVAILABLE = False
@@ -104,11 +106,13 @@ class TestYamlQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed) if (compiled + failed) > 0 else 1.0
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
-    @pytest.mark.parametrize("key", [k for k in YAML_KEYS_TO_TEST if _get_query(yaml_queries, k)])
+    @pytest.mark.parametrize(
+        "key", [k for k in YAML_KEYS_TO_TEST if _get_query(yaml_queries, k)]
+    )
     def test_individual_query_compiles(self, key, query_validator):
         qstr = _get_query(yaml_queries, key)
         assert qstr is not None
@@ -120,51 +124,75 @@ class TestYamlQueriesFunctionality:
     """Test that YAML queries return expected results."""
 
     def test_block_mapping_query_finds_mappings(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "block_mapping"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "block_mapping")
+        )
         assert len(results) >= 3  # database, credentials, servers items, features
 
     def test_block_mapping_pair_query_finds_pairs(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "block_mapping_pair"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "block_mapping_pair")
+        )
         assert len(results) >= 5  # name, version, host, port, etc.
 
     def test_block_sequence_query_finds_sequences(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "block_sequence"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "block_sequence")
+        )
         assert len(results) >= 1  # servers list
 
     def test_block_sequence_item_query_finds_items(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "block_sequence_item"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "block_sequence_item")
+        )
         assert len(results) >= 2  # web-1, web-2
 
     def test_plain_scalar_query_finds_scalars(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "plain_scalar"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "plain_scalar")
+        )
         assert len(results) >= 5
 
     def test_double_quote_scalar_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "double_quote_scalar"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "double_quote_scalar")
+        )
         assert len(results) >= 1  # "1.0.0"
 
     def test_boolean_scalar_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "boolean_scalar"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "boolean_scalar")
+        )
         assert len(results) >= 2  # true, false
 
     def test_flow_sequence_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "flow_sequence"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "flow_sequence")
+        )
         assert len(results) >= 1  # [api, web, production]
 
     def test_comment_query_finds_comments(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "comment"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "comment")
+        )
         assert len(results) >= 1  # # Configuration file
 
     def test_key_query_finds_keys(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "key"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "key")
+        )
         assert len(results) >= 5
 
     def test_all_mappings_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "all_mappings"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "all_mappings")
+        )
         assert len(results) >= 3
 
     def test_all_sequences_query(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "all_sequences"))
+        results = query_executor(
+            _lang(), SAMPLE_YAML_CODE, _get_query(yaml_queries, "all_sequences")
+        )
         assert len(results) >= 2  # servers list + flow sequence
 
 
@@ -178,22 +206,30 @@ class TestYamlQueriesEdgeCases:
 
     def test_single_key_value(self, query_executor):
         code = "key: value"
-        results = query_executor(_lang(), code, _get_query(yaml_queries, "block_mapping_pair"))
+        results = query_executor(
+            _lang(), code, _get_query(yaml_queries, "block_mapping_pair")
+        )
         assert len(results) >= 1
 
     def test_empty_mapping(self, query_executor):
         code = "empty: {}"
-        results = query_executor(_lang(), code, _get_query(yaml_queries, "flow_mapping"))
+        results = query_executor(
+            _lang(), code, _get_query(yaml_queries, "flow_mapping")
+        )
         assert len(results) >= 1
 
     def test_empty_sequence(self, query_executor):
         code = "empty: []"
-        results = query_executor(_lang(), code, _get_query(yaml_queries, "flow_sequence"))
+        results = query_executor(
+            _lang(), code, _get_query(yaml_queries, "flow_sequence")
+        )
         assert len(results) >= 1
 
     def test_integer_scalar(self, query_executor):
         code = "port: 8080"
-        results = query_executor(_lang(), code, _get_query(yaml_queries, "integer_scalar"))
+        results = query_executor(
+            _lang(), code, _get_query(yaml_queries, "integer_scalar")
+        )
         assert len(results) >= 1
 
 
@@ -227,7 +263,7 @@ class TestYamlQueriesHelpers:
         available = yaml_queries.get_available_yaml_queries()
         if available:
             result = yaml_queries.get_yaml_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_yaml_query_invalid_raises(self):
         with pytest.raises(ValueError):

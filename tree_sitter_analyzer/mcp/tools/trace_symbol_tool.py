@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """trace_symbol MCP tool for Code Intelligence Graph."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -50,14 +51,21 @@ class TraceSymbolTool(BaseMCPTool):
                 "type": "object",
                 "properties": {
                     "symbol": {"type": "string", "description": "Symbol name to trace"},
-                    "file_path": {"type": "string", "description": "Optional file path hint for disambiguation"},
+                    "file_path": {
+                        "type": "string",
+                        "description": "Optional file path hint for disambiguation",
+                    },
                     "trace_type": {
                         "type": "string",
                         "enum": list(VALID_TRACE_TYPES),
                         "description": "Type of trace to perform",
                         "default": "full",
                     },
-                    "depth": {"type": "integer", "description": "Max depth for call chain tracing", "default": 2},
+                    "depth": {
+                        "type": "integer",
+                        "description": "Max depth for call chain tracing",
+                        "default": 2,
+                    },
                     "output_format": {
                         "type": "string",
                         "enum": list(VALID_OUTPUT_FORMATS),
@@ -75,10 +83,14 @@ class TraceSymbolTool(BaseMCPTool):
             raise ValueError("'symbol' is required")
         trace_type = arguments.get("trace_type", "full")
         if trace_type not in VALID_TRACE_TYPES:
-            raise ValueError(f"Invalid trace_type '{trace_type}'. Must be one of {VALID_TRACE_TYPES}")
+            raise ValueError(
+                f"Invalid trace_type '{trace_type}'. Must be one of {VALID_TRACE_TYPES}"
+            )
         output_format = arguments.get("output_format", "summary")
         if output_format not in VALID_OUTPUT_FORMATS:
-            raise ValueError(f"Invalid output_format '{output_format}'. Must be one of {VALID_OUTPUT_FORMATS}")
+            raise ValueError(
+                f"Invalid output_format '{output_format}'. Must be one of {VALID_OUTPUT_FORMATS}"
+            )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

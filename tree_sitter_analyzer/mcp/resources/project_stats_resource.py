@@ -366,9 +366,7 @@ class ProjectStatsResource:
                     complexity = 0
                     if result and result.success and getattr(result, "elements", None):
                         methods = [
-                            e
-                            for e in result.elements
-                            if hasattr(e, "complexity_score")
+                            e for e in result.elements if hasattr(e, "complexity_score")
                         ]
                         complexity = sum(
                             getattr(m, "complexity_score", 0) or 0 for m in methods

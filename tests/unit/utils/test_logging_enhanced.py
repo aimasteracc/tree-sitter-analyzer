@@ -55,7 +55,10 @@ class TestSetupSafeLoggingShutdown:
         cleanup_func()
 
         # Handler should be removed (or closed)
-        assert len(test_logger.handlers) < initial_count or handler not in test_logger.handlers
+        assert (
+            len(test_logger.handlers) < initial_count
+            or handler not in test_logger.handlers
+        )
 
     def test_cleanup_handles_handler_close_exception(self):
         """Cleanup handles handlers that raise during close."""
@@ -84,9 +87,11 @@ class TestSuppressOutput:
 
     def test_suppress_output_uses_devnull_on_unix(self):
         """suppress_output uses /dev/null on non-Windows."""
-        with patch("sys.platform", "linux"), patch(
-            "builtins.open", MagicMock(return_value=MagicMock())
-        ) as mock_open, patch.object(sys, "_testing", False, create=True):
+        with (
+            patch("sys.platform", "linux"),
+            patch("builtins.open", MagicMock(return_value=MagicMock())) as mock_open,
+            patch.object(sys, "_testing", False, create=True),
+        ):
             decorated = suppress_output(lambda: print("hello"))
 
             decorated()
@@ -95,9 +100,11 @@ class TestSuppressOutput:
 
     def test_suppress_output_uses_nul_on_windows(self):
         """suppress_output uses nul on Windows."""
-        with patch("sys.platform", "win32"), patch(
-            "builtins.open", MagicMock(return_value=MagicMock())
-        ) as mock_open, patch.object(sys, "_testing", False, create=True):
+        with (
+            patch("sys.platform", "win32"),
+            patch("builtins.open", MagicMock(return_value=MagicMock())) as mock_open,
+            patch.object(sys, "_testing", False, create=True),
+        ):
             decorated = suppress_output(lambda: print("hello"))
 
             decorated()
@@ -112,9 +119,11 @@ class TestSuppressOutput:
         def print_something():
             print("secret", file=sys.stdout)
 
-        with patch.object(sys, "_testing", False, create=True), patch(
-            "sys.stdout", out
-        ), patch("builtins.open", MagicMock(return_value=MagicMock())):
+        with (
+            patch.object(sys, "_testing", False, create=True),
+            patch("sys.stdout", out),
+            patch("builtins.open", MagicMock(return_value=MagicMock())),
+        ):
             print_something()
 
         # Output should be suppressed (redirected to devnull/nul)
@@ -129,9 +138,7 @@ class TestSuppressOutput:
             print("visible")
             return 42
 
-        with patch.object(sys, "_testing", True, create=True), patch(
-            "sys.stdout", out
-        ):
+        with patch.object(sys, "_testing", True, create=True), patch("sys.stdout", out):
             result = print_something()
 
         assert result == 42
@@ -139,12 +146,14 @@ class TestSuppressOutput:
 
     def test_suppress_output_preserves_return_value(self):
         """suppress_output preserves function return value."""
+
         @suppress_output
         def return_val():
             return "result"
 
-        with patch.object(sys, "_testing", False, create=True), patch(
-            "builtins.open", MagicMock(return_value=MagicMock())
+        with (
+            patch.object(sys, "_testing", False, create=True),
+            patch("builtins.open", MagicMock(return_value=MagicMock())),
         ):
             r = return_val()
         assert r == "result"
@@ -153,9 +162,11 @@ class TestSuppressOutput:
         """suppress_output handles stdout.close() raising."""
         mock_stream = MagicMock()
         mock_stream.close.side_effect = OSError("close failed")
-        with patch.object(sys, "_testing", False, create=True), patch(
-            "builtins.open", return_value=mock_stream
-        ), patch("sys.stderr", StringIO()):
+        with (
+            patch.object(sys, "_testing", False, create=True),
+            patch("builtins.open", return_value=mock_stream),
+            patch("sys.stderr", StringIO()),
+        ):
             decorated = suppress_output(lambda: None)
             decorated()
 
@@ -173,9 +184,7 @@ class TestSafeStreamHandlerEmit:
         stream = StringIO()
         stream.close()
         handler = SafeStreamHandler(stream)
-        record = logging.LogRecord(
-            "test", logging.INFO, "", 0, "msg", (), None
-        )
+        record = logging.LogRecord("test", logging.INFO, "", 0, "msg", (), None)
         handler.emit(record)
 
     def test_emit_with_stream_raising_on_write(self):
@@ -185,9 +194,7 @@ class TestSafeStreamHandlerEmit:
         mock_stream.write.side_effect = OSError("write failed")
         mock_stream.writable.return_value = True
         handler = SafeStreamHandler(mock_stream)
-        record = logging.LogRecord(
-            "test", logging.INFO, "", 0, "msg", (), None
-        )
+        record = logging.LogRecord("test", logging.INFO, "", 0, "msg", (), None)
         handler.emit(record)
 
     def test_emit_with_unicode_content(self):
@@ -204,9 +211,7 @@ class TestSafeStreamHandlerEmit:
         """Emit with record that has None-like message."""
         out = StringIO()
         handler = SafeStreamHandler(out)
-        record = logging.LogRecord(
-            "test", logging.INFO, "", 0, None, (), None
-        )
+        record = logging.LogRecord("test", logging.INFO, "", 0, None, (), None)
         handler.emit(record)
 
     def test_emit_stream_without_write_attr(self):
@@ -214,9 +219,7 @@ class TestSafeStreamHandlerEmit:
         mock_stream = MagicMock(spec=[])  # No attributes
         del mock_stream.write
         handler = SafeStreamHandler(mock_stream)
-        record = logging.LogRecord(
-            "test", logging.INFO, "", 0, "msg", (), None
-        )
+        record = logging.LogRecord("test", logging.INFO, "", 0, "msg", (), None)
         handler.emit(record)
 
 
@@ -356,9 +359,7 @@ class TestSafePrintEnhanced:
 
     def test_safe_print_log_error_handling(self):
         """safe_print when log_info's logger raises uses stderr fallback."""
-        with patch(
-            "tree_sitter_analyzer.utils.logging.logger"
-        ) as mock_logger:
+        with patch("tree_sitter_analyzer.utils.logging.logger") as mock_logger:
             mock_logger.info.side_effect = OSError("broken pipe")
             with patch("sys.stderr", StringIO()):
                 safe_print("test")
@@ -374,18 +375,14 @@ class TestLogPerformanceEnhanced:
 
     def test_log_performance_with_execution_time(self):
         """log_performance with execution_time."""
-        with patch(
-            "tree_sitter_analyzer.utils.logging.perf_logger"
-        ) as mock_perf:
+        with patch("tree_sitter_analyzer.utils.logging.perf_logger") as mock_perf:
             log_performance("op", execution_time=1.23)
             mock_perf.debug.assert_called_once()
             assert "1.2300" in mock_perf.debug.call_args[0][0]
 
     def test_log_performance_with_details_dict(self):
         """log_performance with details as dict."""
-        with patch(
-            "tree_sitter_analyzer.utils.logging.perf_logger"
-        ) as mock_perf:
+        with patch("tree_sitter_analyzer.utils.logging.perf_logger") as mock_perf:
             log_performance("op", details={"k": 1, "v": 2})
             mock_perf.debug.assert_called_once()
             call_msg = mock_perf.debug.call_args[0][0]
@@ -393,27 +390,21 @@ class TestLogPerformanceEnhanced:
 
     def test_log_performance_with_details_string(self):
         """log_performance with details as string."""
-        with patch(
-            "tree_sitter_analyzer.utils.logging.perf_logger"
-        ) as mock_perf:
+        with patch("tree_sitter_analyzer.utils.logging.perf_logger") as mock_perf:
             log_performance("op", details="some detail")
             mock_perf.debug.assert_called_once()
             assert "some detail" in mock_perf.debug.call_args[0][0]
 
     def test_log_performance_without_details(self):
         """log_performance without details."""
-        with patch(
-            "tree_sitter_analyzer.utils.logging.perf_logger"
-        ) as mock_perf:
+        with patch("tree_sitter_analyzer.utils.logging.perf_logger") as mock_perf:
             log_performance("op")
             mock_perf.debug.assert_called_once()
             assert mock_perf.debug.call_args[0][0] == "op"
 
     def test_log_performance_exception_handling(self):
         """log_performance when debug raises uses stderr fallback."""
-        with patch(
-            "tree_sitter_analyzer.utils.logging.perf_logger"
-        ) as mock_perf:
+        with patch("tree_sitter_analyzer.utils.logging.perf_logger") as mock_perf:
             mock_perf.debug.side_effect = OSError("broken pipe")
             with patch("sys.stderr", StringIO()):
                 log_performance("op")

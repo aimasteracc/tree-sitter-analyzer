@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for ImpactAnalyzer."""
+
 import pytest
 
 from tree_sitter_analyzer.intelligence.call_graph import CallGraphBuilder

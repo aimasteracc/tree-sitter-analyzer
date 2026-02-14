@@ -27,38 +27,40 @@ SCALAR_TYPES = (str, int, float, bool, type(None))
 # 2. Must be metadata about the operation, not the data itself
 # 3. Must have bounded size (no unbounded strings)
 # 4. Should be useful for client-side logic without parsing toon_content
-_METADATA_WHITELIST = frozenset({
-    # Status / control
-    "success",      # bool: operation success status
-    "error",        # str|None: error message if failed
-    "status",       # str: operation status code
-    # Counts (scalar)
-    "count",        # int: number of results/matches
-    "count_files",  # int: number of files processed (batch mode)
-    "count_sections",  # int: number of sections extracted (batch mode)
-    "total_count",  # int: total count across all pages
-    "total_matches",  # int: total search matches
-    "count_only",   # bool: whether only count was requested
-    # Identity
-    "file_path",    # str: file being processed
-    "language",     # str: programming language
-    "query",        # str: search/query pattern
-    "pattern",      # str: search pattern
-    "tool",         # str: tool name
-    "format_type",  # str: format identifier
-    # Flags
-    "truncated",    # bool: whether results were truncated
-    "cache_hit",    # bool: whether result was cached
-    # Timing
-    "elapsed_ms",   # int: operation duration in milliseconds
-    # Process status
-    "returncode",   # int: process return code
-    # File output
-    "output_file",       # str: output file name
-    "output_file_path",  # str: output file path
-    "file_saved",        # bool: whether file was saved
-    "file_save_error",   # str|None: file save error if any
-})
+_METADATA_WHITELIST = frozenset(
+    {
+        # Status / control
+        "success",  # bool: operation success status
+        "error",  # str|None: error message if failed
+        "status",  # str: operation status code
+        # Counts (scalar)
+        "count",  # int: number of results/matches
+        "count_files",  # int: number of files processed (batch mode)
+        "count_sections",  # int: number of sections extracted (batch mode)
+        "total_count",  # int: total count across all pages
+        "total_matches",  # int: total search matches
+        "count_only",  # bool: whether only count was requested
+        # Identity
+        "file_path",  # str: file being processed
+        "language",  # str: programming language
+        "query",  # str: search/query pattern
+        "pattern",  # str: search pattern
+        "tool",  # str: tool name
+        "format_type",  # str: format identifier
+        # Flags
+        "truncated",  # bool: whether results were truncated
+        "cache_hit",  # bool: whether result was cached
+        # Timing
+        "elapsed_ms",  # int: operation duration in milliseconds
+        # Process status
+        "returncode",  # int: process return code
+        # File output
+        "output_file",  # str: output file name
+        "output_file_path",  # str: output file path
+        "file_saved",  # bool: whether file was saved
+        "file_save_error",  # str|None: file save error if any
+    }
+)
 
 
 def format_output(data: dict[str, Any], output_format: str = "json") -> str:
@@ -249,7 +251,7 @@ def apply_toon_format_to_response(
             f"Failed to apply TOON format to result with keys "
             f"{list(result.keys())[:5]}{'...' if len(result) > 5 else ''}, "
             f"returning original JSON. Error: {e}",
-            exc_info=True
+            exc_info=True,
         )
         return result
 
@@ -280,6 +282,6 @@ def attach_toon_content_to_response(result: dict[str, Any]) -> dict[str, Any]:
         "attach_toon_content_to_response() is deprecated and will be removed in v2.0.0. "
         "Use apply_toon_format_to_response(result, 'toon') instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     return apply_toon_format_to_response(result, "toon")

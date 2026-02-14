@@ -53,10 +53,21 @@ def make_mock_element(name="func", elem_type="function", **kwargs):
     elem.raw_text = kwargs.get("raw_text", "def func(): pass")
     elem.language = kwargs.get("language", "python")
     optional_attrs = [
-        "module_path", "module_name", "imported_names", "variable_type",
-        "initializer", "is_constant", "parameters", "return_type",
-        "is_async", "is_static", "is_constructor", "is_method",
-        "complexity_score", "superclass", "class_type",
+        "module_path",
+        "module_name",
+        "imported_names",
+        "variable_type",
+        "initializer",
+        "is_constant",
+        "parameters",
+        "return_type",
+        "is_async",
+        "is_static",
+        "is_constructor",
+        "is_method",
+        "complexity_score",
+        "superclass",
+        "class_type",
     ]
     for attr in optional_attrs:
         if attr in kwargs:
@@ -196,9 +207,7 @@ class TestAnalyzeFile:
 
     def test_analyze_file_include_queries_false_removes_query_results(self):
         """When include_queries=False, query_results key is removed."""
-        mock_result = make_mock_result(
-            query_results={"classes": {"captures": []}}
-        )
+        mock_result = make_mock_result(query_results={"classes": {"captures": []}})
         with patch("tree_sitter_analyzer.api.get_engine") as mock_get_engine:
             mock_engine = MagicMock()
             mock_get_engine.return_value = mock_engine
@@ -270,9 +279,7 @@ class TestAnalyzeFile:
             start_line=3,
             end_line=5,
         )
-        mock_result = make_mock_result(
-            elements=[class_elem, method_elem]
-        )
+        mock_result = make_mock_result(elements=[class_elem, method_elem])
         with patch("tree_sitter_analyzer.api.get_engine") as mock_get_engine:
             mock_engine = MagicMock()
             mock_get_engine.return_value = mock_engine
@@ -322,9 +329,7 @@ class TestAnalyzeFile:
 
     def test_analyze_file_query_results_added_when_include_queries(self):
         """query_results added when include_queries=True and available."""
-        mock_result = make_mock_result(
-            query_results={"classes": {"captures": []}}
-        )
+        mock_result = make_mock_result(query_results={"classes": {"captures": []}})
         with patch("tree_sitter_analyzer.api.get_engine") as mock_get_engine:
             mock_engine = MagicMock()
             mock_get_engine.return_value = mock_engine
@@ -385,9 +390,7 @@ class TestAnalyzeCode:
 
     def test_analyze_code_failed_analysis_returns_error(self):
         """Failed analysis returns error dict."""
-        mock_result = make_mock_result(
-            success=False, error_message="Syntax error"
-        )
+        mock_result = make_mock_result(success=False, error_message="Syntax error")
         with patch("tree_sitter_analyzer.api.get_engine") as mock_get_engine:
             mock_engine = MagicMock()
             mock_get_engine.return_value = mock_engine
@@ -415,14 +418,14 @@ class TestAnalyzeCode:
             mock_engine = MagicMock()
             mock_get_engine.return_value = mock_engine
             mock_engine.analyze_code_sync.return_value = mock_result
-            result = api_module.analyze_code("def x(): pass", "python", include_elements=False)
+            result = api_module.analyze_code(
+                "def x(): pass", "python", include_elements=False
+            )
             assert "elements" not in result
 
     def test_analyze_code_include_queries_false_removes_query_results(self):
         """When include_queries=False, query_results key is removed."""
-        mock_result = make_mock_result(
-            query_results={"functions": []}
-        )
+        mock_result = make_mock_result(query_results={"functions": []})
         with patch("tree_sitter_analyzer.api.get_engine") as mock_get_engine:
             mock_engine = MagicMock()
             mock_get_engine.return_value = mock_engine
@@ -438,8 +441,7 @@ class TestAnalyzeCode:
             name="Foo", elem_type="class", start_line=1, end_line=8
         )
         method_elem = make_mock_element(
-            name="bar", elem_type="function", is_method=True,
-            start_line=2, end_line=4
+            name="bar", elem_type="function", is_method=True, start_line=2, end_line=4
         )
         mock_result = make_mock_result(elements=[class_elem, method_elem])
         with patch("tree_sitter_analyzer.api.get_engine") as mock_get_engine:

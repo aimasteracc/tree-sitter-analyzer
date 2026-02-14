@@ -4,6 +4,7 @@ Tests for SQL language queries.
 Validates that SQL tree-sitter queries are syntactically correct
 and return expected results for various SQL constructs.
 """
+
 import pytest
 
 try:
@@ -23,7 +24,14 @@ def _lang():
 
 # SQL has no string constants; test via ALL_QUERIES dict
 # tree-sitter-sql grammar may use different node names than our queries expect
-COMMON_QUERY_KEYS = ["select", "create_table", "insert", "join", "create_index", "create_view"]
+COMMON_QUERY_KEYS = [
+    "select",
+    "create_table",
+    "insert",
+    "join",
+    "create_index",
+    "create_view",
+]
 
 
 def _get_first_compiling_query():
@@ -63,9 +71,9 @@ class TestSQLQueriesSyntax:
         # SQL queries target various SQL dialects; grammar compatibility varies.
         # Currently 2/71 (~3%) compile with tree-sitter-sql grammar.
         # Use absolute minimum count to catch total breakage.
-        assert compiled >= 1, (
-            f"At least 1 query should compile, got {compiled}/{compiled+failed}"
-        )
+        assert (
+            compiled >= 1
+        ), f"At least 1 query should compile, got {compiled}/{compiled+failed}"
 
     @pytest.mark.parametrize("query_key", COMMON_QUERY_KEYS)
     def test_common_query_keys_exist_and_may_compile(self, query_key):
@@ -80,7 +88,9 @@ class TestSQLQueriesSyntax:
 
             tree_sitter.Query(_lang(), qstr)
         except Exception:
-            pytest.xfail(f"Query '{query_key}' has grammar incompatibility with tree-sitter-sql")
+            pytest.xfail(
+                f"Query '{query_key}' has grammar incompatibility with tree-sitter-sql"
+            )
 
 
 @pytest.mark.skipif(not SQL_AVAILABLE, reason="tree-sitter-sql not available")
@@ -237,7 +247,7 @@ class TestSQLQueriesHelpers:
         available = sql_queries.get_available_sql_queries()
         if available:
             result = sql_queries.get_sql_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_sql_query_invalid_raises(self):
         with pytest.raises(ValueError):

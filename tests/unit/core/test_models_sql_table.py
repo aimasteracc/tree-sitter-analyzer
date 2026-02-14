@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Unit tests for SQLTable model methods - get_primary_key_columns and get_foreign_key_columns."""
 
-import pytest
-
 from tree_sitter_analyzer.models import (
     SQLColumn,
     SQLTable,
@@ -21,7 +19,9 @@ class TestSQLTablePrimaryKeyColumns:
             raw_text="CREATE TABLE users...",
             columns=[
                 SQLColumn(name="id", data_type="INT", is_primary_key=False),
-                SQLColumn(name="username", data_type="VARCHAR(100)", is_primary_key=False),
+                SQLColumn(
+                    name="username", data_type="VARCHAR(100)", is_primary_key=False
+                ),
             ],
         )
         assert table.get_primary_key_columns() == []
@@ -35,7 +35,9 @@ class TestSQLTablePrimaryKeyColumns:
             raw_text="CREATE TABLE users...",
             columns=[
                 SQLColumn(name="id", data_type="INT", is_primary_key=True),
-                SQLColumn(name="username", data_type="VARCHAR(100)", is_primary_key=False),
+                SQLColumn(
+                    name="username", data_type="VARCHAR(100)", is_primary_key=False
+                ),
             ],
         )
         assert table.get_primary_key_columns() == ["id"]
@@ -68,7 +70,9 @@ class TestSQLTableForeignKeyColumns:
             raw_text="CREATE TABLE users...",
             columns=[
                 SQLColumn(name="id", data_type="INT", is_foreign_key=False),
-                SQLColumn(name="username", data_type="VARCHAR(100)", is_foreign_key=False),
+                SQLColumn(
+                    name="username", data_type="VARCHAR(100)", is_foreign_key=False
+                ),
             ],
         )
         assert table.get_foreign_key_columns() == []
@@ -81,7 +85,12 @@ class TestSQLTableForeignKeyColumns:
             end_line=10,
             raw_text="CREATE TABLE orders...",
             columns=[
-                SQLColumn(name="id", data_type="INT", is_primary_key=True, is_foreign_key=False),
+                SQLColumn(
+                    name="id",
+                    data_type="INT",
+                    is_primary_key=True,
+                    is_foreign_key=False,
+                ),
                 SQLColumn(
                     name="user_id",
                     data_type="INT",

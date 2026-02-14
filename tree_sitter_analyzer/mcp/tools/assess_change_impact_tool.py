@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """assess_change_impact MCP tool."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -47,11 +48,26 @@ class AssessChangeImpactTool(BaseMCPTool):
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "target": {"type": "string", "description": "Symbol or file to assess"},
-                    "change_type": {"type": "string", "enum": list(VALID_CHANGE_TYPES), "default": "behavior_change"},
-                    "depth": {"type": "integer", "description": "Max transitive depth", "default": 3},
+                    "target": {
+                        "type": "string",
+                        "description": "Symbol or file to assess",
+                    },
+                    "change_type": {
+                        "type": "string",
+                        "enum": list(VALID_CHANGE_TYPES),
+                        "default": "behavior_change",
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "description": "Max transitive depth",
+                        "default": 3,
+                    },
                     "include_tests": {"type": "boolean", "default": True},
-                    "output_format": {"type": "string", "enum": ["summary", "json"], "default": "summary"},
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["summary", "json"],
+                        "default": "summary",
+                    },
                 },
                 "required": ["target"],
                 "additionalProperties": False,

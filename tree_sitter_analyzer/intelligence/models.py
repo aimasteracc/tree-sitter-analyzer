@@ -15,6 +15,7 @@ from typing import Any
 @dataclass
 class CallSite:
     """A function/method call site extracted from source code."""
+
     caller_file: str
     caller_function: str | None
     callee_name: str
@@ -36,6 +37,7 @@ class CallSite:
 @dataclass
 class SymbolDefinition:
     """A symbol definition (function, class, method, variable)."""
+
     name: str
     file_path: str
     line: int
@@ -65,6 +67,7 @@ class SymbolDefinition:
 @dataclass
 class SymbolReference:
     """A reference to a symbol (call, import, inheritance, type hint)."""
+
     symbol_name: str
     file_path: str
     line: int
@@ -84,6 +87,7 @@ class SymbolReference:
 @dataclass
 class DependencyEdge:
     """A dependency relationship between two files."""
+
     source_file: str
     target_file: str
     target_module: str
@@ -107,6 +111,7 @@ class DependencyEdge:
 @dataclass
 class ResolvedImport:
     """Result of resolving an import statement to an actual file."""
+
     module_name: str
     resolved_path: str
     imported_names: list[str] = field(default_factory=list)
@@ -117,6 +122,7 @@ class ResolvedImport:
 @dataclass
 class DependencyCycle:
     """A circular dependency detected in the dependency graph."""
+
     files: list[str] = field(default_factory=list)
     length: int = 0
     severity: str = "warning"  # "info", "warning", "error"
@@ -125,11 +131,12 @@ class DependencyCycle:
 @dataclass
 class ModuleMetrics:
     """Metrics for a module/directory."""
+
     path: str
     file_count: int = 0
-    afferent_coupling: int = 0   # Ca: incoming dependencies
-    efferent_coupling: int = 0   # Ce: outgoing dependencies
-    abstractness: float = 0.0     # A: abstract types / total types
+    afferent_coupling: int = 0  # Ca: incoming dependencies
+    efferent_coupling: int = 0  # Ce: outgoing dependencies
+    abstractness: float = 0.0  # A: abstract types / total types
 
     @property
     def instability(self) -> float:
@@ -148,6 +155,7 @@ class ModuleMetrics:
 @dataclass
 class ImpactItem:
     """A single item affected by a code change."""
+
     file_path: str
     symbol_name: str
     line: int
@@ -167,6 +175,7 @@ class ImpactItem:
 @dataclass
 class ImpactResult:
     """Result of a change impact analysis."""
+
     target: str
     change_type: str
     direct_impacts: list[ImpactItem] = field(default_factory=list)
@@ -190,6 +199,7 @@ class ImpactResult:
 @dataclass
 class LayerViolation:
     """A layer rule violation in the architecture."""
+
     source_file: str
     target_file: str
     source_layer: str
@@ -200,6 +210,7 @@ class LayerViolation:
 @dataclass
 class GodClassInfo:
     """Information about a god class (too many responsibilities)."""
+
     class_name: str
     file_path: str
     method_count: int = 0
@@ -210,6 +221,7 @@ class GodClassInfo:
 @dataclass
 class UntestedSymbol:
     """A public source-code symbol with no test references."""
+
     name: str
     file_path: str
     symbol_type: str  # "function", "class", "method"
@@ -227,6 +239,7 @@ class UntestedSymbol:
 @dataclass
 class OvertestedSymbol:
     """A symbol referenced by an unusually high number of test functions."""
+
     name: str
     file_path: str
     test_ref_count: int
@@ -244,6 +257,7 @@ class OvertestedSymbol:
 @dataclass
 class TestCoverageReport:
     """Test coverage analysis report based on symbol references."""
+
     untested_symbols: list[UntestedSymbol] = field(default_factory=list)
     overtested_symbols: list[OvertestedSymbol] = field(default_factory=list)
     test_only_symbols: list[str] = field(default_factory=list)
@@ -261,6 +275,7 @@ class TestCoverageReport:
 @dataclass
 class ArchitectureReport:
     """Complete architecture health report."""
+
     path: str
     score: int = 100  # 0-100
     module_metrics: dict[str, ModuleMetrics] = field(default_factory=dict)
@@ -313,5 +328,7 @@ class ArchitectureReport:
             ],
             "dead_symbols": self.dead_symbols,
             "coupling_matrix": self.coupling_matrix,
-            "test_coverage": self.test_coverage.to_dict() if self.test_coverage else None,
+            "test_coverage": self.test_coverage.to_dict()
+            if self.test_coverage
+            else None,
         }

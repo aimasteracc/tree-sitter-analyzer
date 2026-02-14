@@ -4,10 +4,12 @@ Tests for C++ language queries.
 Validates that C++ tree-sitter queries are syntactically correct
 and return expected results for various C++ code constructs.
 """
+
 import pytest
 
 try:
     import tree_sitter_cpp
+
     CPP_AVAILABLE = True
 except ImportError:
     CPP_AVAILABLE = False
@@ -75,9 +77,19 @@ int main() {
 
 # Well-known C++ queries to test functionality
 CPP_KEYS_TO_TEST = [
-    "class", "struct", "function", "method", "namespace",
-    "include", "template", "enum", "lambda", "range_for",
-    "constructor", "destructor", "variable",
+    "class",
+    "struct",
+    "function",
+    "method",
+    "namespace",
+    "include",
+    "template",
+    "enum",
+    "lambda",
+    "range_for",
+    "constructor",
+    "destructor",
+    "variable",
 ]
 
 
@@ -106,6 +118,7 @@ class TestCppQueriesSyntax:
 
     def test_all_queries_dict_compilable_count(self):
         import tree_sitter
+
         lang = _lang()
         all_q = cpp_queries.ALL_QUERIES
         assert len(all_q) > 0
@@ -118,9 +131,9 @@ class TestCppQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.7, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.7
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
     @pytest.mark.parametrize("key", CPP_KEYS_TO_TEST)
     def test_individual_query_compiles(self, key, query_validator):
@@ -315,7 +328,7 @@ class TestCppQueriesHelpers:
         available = cpp_queries.get_available_cpp_queries()
         if available:
             result = cpp_queries.get_cpp_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_cpp_query_invalid_raises(self):
         with pytest.raises(ValueError):

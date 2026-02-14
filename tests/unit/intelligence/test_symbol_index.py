@@ -40,10 +40,18 @@ class TestSymbolIndexAddDefinition:
 
     def test_add_multiple_definitions_same_name(self, index):
         sd1 = SymbolDefinition(
-            name="validate", file_path="a.py", line=1, end_line=5, symbol_type="function"
+            name="validate",
+            file_path="a.py",
+            line=1,
+            end_line=5,
+            symbol_type="function",
         )
         sd2 = SymbolDefinition(
-            name="validate", file_path="b.py", line=1, end_line=5, symbol_type="function"
+            name="validate",
+            file_path="b.py",
+            line=1,
+            end_line=5,
+            symbol_type="function",
         )
         index.add_definition(sd1)
         index.add_definition(sd2)
@@ -109,10 +117,18 @@ class TestSymbolIndexAddReference:
 class TestSymbolIndexLookup:
     def test_lookup_definition_with_file_hint(self, index):
         sd1 = SymbolDefinition(
-            name="validate", file_path="a.py", line=1, end_line=5, symbol_type="function"
+            name="validate",
+            file_path="a.py",
+            line=1,
+            end_line=5,
+            symbol_type="function",
         )
         sd2 = SymbolDefinition(
-            name="validate", file_path="b.py", line=1, end_line=5, symbol_type="function"
+            name="validate",
+            file_path="b.py",
+            line=1,
+            end_line=5,
+            symbol_type="function",
         )
         index.add_definition(sd1)
         index.add_definition(sd2)

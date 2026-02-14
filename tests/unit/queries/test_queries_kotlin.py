@@ -1,8 +1,10 @@
 """Tests for Kotlin language queries."""
+
 import pytest
 
 try:
     import tree_sitter_kotlin
+
     KOTLIN_AVAILABLE = True
 except ImportError:
     KOTLIN_AVAILABLE = False
@@ -50,7 +52,10 @@ var count = 0
 
 # Keys to test individually
 KOTLIN_KEYS_TO_TEST = [
-    "package", "class", "function", "object",
+    "package",
+    "class",
+    "function",
+    "object",
     "annotation",
 ]
 
@@ -70,6 +75,7 @@ class TestKotlinQueriesSyntax:
 
     def test_all_queries_dict_compilable_count(self):
         import tree_sitter
+
         lang = _lang()
         all_q = kotlin_queries.ALL_QUERIES
         assert len(all_q) > 0
@@ -82,9 +88,9 @@ class TestKotlinQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.5, (
-            f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
-        )
+        assert (
+            ratio >= 0.5
+        ), f"Only {compiled}/{compiled+failed} ({ratio:.0%}) queries compile"
 
     @pytest.mark.parametrize("key", KOTLIN_KEYS_TO_TEST)
     def test_individual_query_compiles(self, key, query_validator):
@@ -99,23 +105,33 @@ class TestKotlinQueriesFunctionality:
     """Test that Kotlin queries return expected results."""
 
     def test_package_query_finds_package(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "package"))
+        results = query_executor(
+            _lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "package")
+        )
         assert len(results) >= 1
 
     def test_class_query_finds_classes(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "class"))
+        results = query_executor(
+            _lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "class")
+        )
         assert len(results) >= 4  # Calculator, Shape, Point, Direction
 
     def test_function_query_finds_functions(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "function"))
+        results = query_executor(
+            _lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "function")
+        )
         assert len(results) >= 5  # add, subtract, area, perimeter, greet
 
     def test_object_query_finds_objects(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "object"))
+        results = query_executor(
+            _lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "object")
+        )
         assert len(results) >= 1
 
     def test_class_query_includes_data_classes(self, query_executor):
-        results = query_executor(_lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "class"))
+        results = query_executor(
+            _lang(), SAMPLE_KOTLIN_CODE, _get_query(kotlin_queries, "class")
+        )
         assert len(results) >= 3
 
 
@@ -183,7 +199,7 @@ class TestKotlinQueriesHelpers:
         available = kotlin_queries.get_available_kotlin_queries()
         if available:
             result = kotlin_queries.get_kotlin_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_kotlin_query_invalid_raises(self):
         with pytest.raises(ValueError):

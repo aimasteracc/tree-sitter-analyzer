@@ -4,6 +4,7 @@ Tests for HTML language queries.
 Validates that HTML tree-sitter queries are syntactically correct
 and return expected results for various HTML constructs.
 """
+
 import pytest
 
 try:
@@ -55,9 +56,9 @@ class TestHTMLQueriesSyntax:
             except Exception:
                 failed += 1
         ratio = compiled / (compiled + failed)
-        assert ratio >= 0.15, (
-            f"At least 15% should compile: {compiled}/{compiled+failed} ({ratio:.0%})"
-        )
+        assert (
+            ratio >= 0.15
+        ), f"At least 15% should compile: {compiled}/{compiled+failed} ({ratio:.0%})"
 
 
 @pytest.mark.skipif(not HTML_AVAILABLE, reason="tree-sitter-html not available")
@@ -194,7 +195,7 @@ class TestHTMLQueriesHelpers:
         available = html_queries.get_available_html_queries()
         if available:
             result = html_queries.get_html_query(available[0])
-            assert isinstance(result, (str, dict))
+            assert isinstance(result, str | dict)
 
     def test_get_html_query_invalid_raises(self):
         with pytest.raises(ValueError):

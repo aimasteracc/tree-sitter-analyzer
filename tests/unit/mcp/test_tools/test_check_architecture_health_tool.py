@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for check_architecture_health MCP tool."""
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.check_architecture_health_tool import (

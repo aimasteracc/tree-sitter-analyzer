@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Cycle detector using Tarjan's algorithm."""
+
 from __future__ import annotations
 
 from .models import DependencyCycle
@@ -15,11 +16,19 @@ class CycleDetector:
             if len(scc) > 1:
                 cycle_files = list(scc) + [scc[0]]  # close the loop
                 severity = "error" if len(scc) > 3 else "warning"
-                cycles.append(DependencyCycle(files=cycle_files, length=len(scc), severity=severity))
+                cycles.append(
+                    DependencyCycle(
+                        files=cycle_files, length=len(scc), severity=severity
+                    )
+                )
             elif len(scc) == 1:
                 node = scc[0]
                 if node in adjacency and node in adjacency.get(node, []):
-                    cycles.append(DependencyCycle(files=[node, node], length=1, severity="warning"))
+                    cycles.append(
+                        DependencyCycle(
+                            files=[node, node], length=1, severity="warning"
+                        )
+                    )
         return cycles
 
     def _tarjan_scc(self, graph: dict[str, list[str]]) -> list[list[str]]:
