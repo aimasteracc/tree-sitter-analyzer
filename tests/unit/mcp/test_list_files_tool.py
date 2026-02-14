@@ -477,6 +477,7 @@ class TestExecute:
                     arguments = {
                         "roots": [str(sample_project_structure)],
                         "pattern": "*.py",
+                        "output_format": "toon",
                     }
 
                     result = await tool.execute(arguments)
@@ -793,7 +794,10 @@ class TestExecute:
                 with patch(
                     "tree_sitter_analyzer.mcp.tools.list_files_tool.get_default_detector"
                 ):
-                    arguments = {"roots": [str(sample_project_structure)]}
+                    arguments = {
+                        "roots": [str(sample_project_structure)],
+                        "output_format": "toon",
+                    }
 
                     result = await tool.execute(arguments)
 

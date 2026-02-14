@@ -464,6 +464,7 @@ class TestExecute:
                             "roots": [str(sample_project_structure)],
                             "query": "test",
                             "summary_only": True,
+                            "output_format": "toon",
                         }
 
                         result = await tool.execute(arguments)

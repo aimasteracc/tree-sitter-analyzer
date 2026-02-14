@@ -945,7 +945,12 @@ async def test_search_content_optimize_paths(monkeypatch, tmp_path):
 
     # Test with path optimization enabled
     result = await tool.execute(
-        {"files": [str(f1)], "query": "hello", "optimize_paths": True}
+        {
+            "files": [str(f1)],
+            "query": "hello",
+            "optimize_paths": True,
+            "output_format": "toon",
+        }
     )
 
     assert result["success"] is True

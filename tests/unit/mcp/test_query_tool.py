@@ -443,6 +443,7 @@ class TestExecute:
                 "file_path": str(sample_python_file),
                 "query_key": "methods",
                 "language": "python",
+                "output_format": "toon",
             }
 
             result = await tool.execute(arguments)

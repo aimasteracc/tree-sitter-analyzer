@@ -522,6 +522,7 @@ class TestExecute:
                             "roots": [str(sample_project_structure)],
                             "query": "test",
                             "output_file": "results.json",
+                            "output_format": "toon",
                         }
 
                         result = await tool.execute(arguments)
@@ -560,6 +561,7 @@ class TestExecute:
                             "query": "test",
                             "output_file": "results.json",
                             "suppress_output": True,
+                            "output_format": "toon",
                         }
 
                         result = await tool.execute(arguments)
@@ -596,6 +598,7 @@ class TestExecute:
                             "roots": [str(sample_project_structure)],
                             "query": "test",
                             "optimize_paths": True,
+                            "output_format": "toon",
                         }
 
                         result = await tool.execute(arguments)

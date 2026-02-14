@@ -34,6 +34,8 @@ _METADATA_WHITELIST = frozenset({
     "status",       # str: operation status code
     # Counts (scalar)
     "count",        # int: number of results/matches
+    "count_files",  # int: number of files processed (batch mode)
+    "count_sections",  # int: number of sections extracted (batch mode)
     "total_count",  # int: total count across all pages
     "total_matches",  # int: total search matches
     "count_only",   # bool: whether only count was requested
