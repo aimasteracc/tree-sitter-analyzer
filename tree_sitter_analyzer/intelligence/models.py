@@ -208,6 +208,57 @@ class GodClassInfo:
 
 
 @dataclass
+class UntestedSymbol:
+    """A public source-code symbol with no test references."""
+    name: str
+    file_path: str
+    symbol_type: str  # "function", "class", "method"
+    line: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "file_path": self.file_path,
+            "symbol_type": self.symbol_type,
+            "line": self.line,
+        }
+
+
+@dataclass
+class OvertestedSymbol:
+    """A symbol referenced by an unusually high number of test functions."""
+    name: str
+    file_path: str
+    test_ref_count: int
+    test_files: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "file_path": self.file_path,
+            "test_ref_count": self.test_ref_count,
+            "test_files": self.test_files,
+        }
+
+
+@dataclass
+class TestCoverageReport:
+    """Test coverage analysis report based on symbol references."""
+    untested_symbols: list[UntestedSymbol] = field(default_factory=list)
+    overtested_symbols: list[OvertestedSymbol] = field(default_factory=list)
+    test_only_symbols: list[str] = field(default_factory=list)
+    coverage_ratio: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "untested_symbols": [s.to_dict() for s in self.untested_symbols],
+            "overtested_symbols": [s.to_dict() for s in self.overtested_symbols],
+            "test_only_symbols": self.test_only_symbols,
+            "coverage_ratio": self.coverage_ratio,
+        }
+
+
+@dataclass
 class ArchitectureReport:
     """Complete architecture health report."""
     path: str
@@ -218,6 +269,7 @@ class ArchitectureReport:
     god_classes: list[GodClassInfo] = field(default_factory=list)
     dead_symbols: list[str] = field(default_factory=list)
     coupling_matrix: dict[str, dict[str, int]] = field(default_factory=dict)
+    test_coverage: TestCoverageReport | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -261,4 +313,5 @@ class ArchitectureReport:
             ],
             "dead_symbols": self.dead_symbols,
             "coupling_matrix": self.coupling_matrix,
+            "test_coverage": self.test_coverage.to_dict() if self.test_coverage else None,
         }

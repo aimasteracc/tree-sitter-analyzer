@@ -140,3 +140,75 @@
 ### Task 6.8: M1 — Import Parsing Fixes ✅
 - **File**: `tree_sitter_analyzer/intelligence/project_indexer.py`
 - **Deliverable**: `wildcard_import` node handling, `is_type_check_only` context propagation
+
+---
+
+## Phase 7: v3 Expert-Verified Fixes & Test Coverage Analysis
+
+> All tasks completed 2026-02-14. Bugs verified by expert analysis of MCP self-check results.
+
+### Task 7.1: P0 — _MAX_FILES Increase + Two-Phase Discovery ✅
+- **File**: `tree_sitter_analyzer/intelligence/project_indexer.py`
+- **TDD**: `tests/unit/intelligence/test_project_indexer_discovery.py` (12 tests)
+- **Spec**: `specs/project-indexer/spec.md` PI-001, PI-002
+- **Deliverable**: `_MAX_FILES=2000`, source-first two-phase discovery, `is_test_file()`, `get_test_files()`, `get_source_files()`
+
+### Task 7.2: P1 — Property-Aware Dead Code Detection ✅
+- **File**: `tree_sitter_analyzer/intelligence/architecture_metrics.py`
+- **TDD**: `tests/unit/intelligence/test_dead_code_property.py` (5 tests)
+- **Spec**: `specs/architecture-health/spec.md` AH-011
+- **Deliverable**: `_detect_dead_symbols()` excludes @property/@staticmethod/@classmethod decorated methods
+
+### Task 7.3: SymbolIndex file_filter Parameter ✅
+- **File**: `tree_sitter_analyzer/intelligence/symbol_index.py`
+- **TDD**: `tests/unit/intelligence/test_symbol_index_filter.py` (5 tests)
+- **Deliverable**: `lookup_references(file_filter=...)` callable parameter
+
+### Task 7.4: Test Coverage Analysis Models ✅
+- **File**: `tree_sitter_analyzer/intelligence/models.py`
+- **Deliverable**: `TestCoverageReport`, `UntestedSymbol`, `OvertestedSymbol` dataclasses; `ArchitectureReport.test_coverage` field
+
+### Task 7.5: Test Coverage Analysis Engine ✅
+- **File**: `tree_sitter_analyzer/intelligence/architecture_metrics.py`
+- **TDD**: `tests/unit/intelligence/test_test_coverage_analysis.py` (10 tests)
+- **Spec**: `specs/architecture-health/spec.md` AH-012
+- **Deliverable**: `_analyze_test_coverage()` + `"test_coverage"` check in `compute_report()`
+
+### Task 7.6: MCP Tool + Formatter Integration ✅
+- **Files**: `tree_sitter_analyzer/mcp/tools/check_architecture_health_tool.py`, `tree_sitter_analyzer/intelligence/formatters.py`
+- **Deliverable**: `test_coverage` in VALID_CHECKS, formatted output for untested/overtested/test-only
+
+### Task 7.7: Circular Dependency Fix ✅
+- **Files**: `tree_sitter_analyzer/formatters/interfaces.py` (NEW), `formatter_registry.py`, `html_formatter.py`
+- **Deliverable**: Extract `IFormatter`/`IStructureFormatter` to `interfaces.py`, breaking html_formatter <-> formatter_registry cycle
+
+### Task 7.8: Dead Code Cleanup ✅
+- **Files**: `compat.py`, `php_formatter.py`, `ruby_formatter.py`, `project_indexer.py`
+- **Deliverable**: Remove `FormatterSelector`, PHP/Ruby formatter subclasses, `ProjectIndexer.reset()`
+
+---
+
+## Phase 8: v4 Expert Panel Review — Tool False Positive Fixes & Dead Code
+
+> All tasks completed 2026-02-14. Issues identified by expert panel review of test_coverage results.
+
+### Task 8.1: AH-013 — Property & Inner Function Exclusion from Untested ✅
+- **File**: `tree_sitter_analyzer/intelligence/architecture_metrics.py`
+- **TDD**: `tests/unit/intelligence/test_test_coverage_analysis.py` — 6 new tests (TestAH013PropertyAndInnerFunctionExclusion)
+- **Spec**: `specs/architecture-health/spec.md` AH-013
+- **Deliverable**: `_analyze_test_coverage()` skips @property/@staticmethod/@classmethod decorated methods and inner/nested functions
+
+### Task 8.2: AH-014 — Overtested Scoped by (file, name) ✅
+- **File**: `tree_sitter_analyzer/intelligence/architecture_metrics.py`
+- **TDD**: `tests/unit/intelligence/test_test_coverage_analysis.py` — 3 new tests (TestAH014OvertestedScopedByFile)
+- **Spec**: `specs/architecture-health/spec.md` AH-014
+- **Deliverable**: Overtested counts split proportionally by number of definitions per name
+
+### Task 8.3: Dead Code Cleanup (Expert-Confirmed) ✅
+- **Files**: `exceptions.py`, `intelligence/call_graph.py`, `mcp/tools/fd_rg_utils.py`
+- **Deliverable**: Remove `safe_execute_async`, `mcp_exception_handler`, `TempFileList`, `write_files_to_temp`, `contextlib` shim, `index_file`
+
+### Task 8.4: Test Gap — read_file_safe_async ✅
+- **File**: `tests/unit/core/test_encoding_utils.py`
+- **TDD**: 5 new async tests (TestReadFileSafeAsync)
+- **Deliverable**: Direct tests for async file reading: normal, empty, unicode, nonexistent, fallback-to-sync

@@ -2,7 +2,7 @@
 
 **Change ID**: `add-code-intelligence-graph`
 **Spec ID**: `architecture-health`
-**Status**: Implemented (v2 — 2026-02-14)
+**Status**: Implemented (v4 — 2026-02-14)
 
 ---
 
@@ -157,6 +157,85 @@ MCP tool that assesses the architectural health of a project or module, computin
 **When** cycle detection is run
 **Then** the cycle [A, B] is reported
 
+### Requirement 11: Property-Aware Dead Code Detection (v3)
+**ID**: AH-011
+**Priority**: P1 High
+
+Dead code detection must not report `@property`-decorated methods as dead, since they are accessed via attribute syntax (not function calls) and won't appear as call references.
+
+#### Scenario: Property method not reported as dead
+**Given** a class with a `@property` method `instability` that has no call references
+**When** dead code detection runs
+**Then** `instability` is NOT in the dead_symbols list
+
+#### Scenario: Truly dead method still detected
+**Given** a regular method `old_helper` with no references
+**When** dead code detection runs
+**Then** `old_helper` IS in the dead_symbols list
+
+### Requirement 12: Test Coverage Analysis (v3)
+**ID**: AH-012
+**Priority**: P1 High
+
+A new `"test_coverage"` check that analyses which source code symbols are tested, untested, or over-tested.
+
+#### Scenario: Detect untested public method
+**Given** a public function `process_data()` in source code with zero references from test files
+**When** test coverage analysis runs
+**Then** `process_data` appears in `untested_symbols`
+
+#### Scenario: Detect over-tested symbol
+**Given** a function referenced by more than `overtested_threshold` distinct test functions
+**When** test coverage analysis runs
+**Then** it appears in `overtested_symbols`
+
+#### Scenario: Detect test-only symbol
+**Given** a function with references ONLY from test files (no source code references)
+**When** test coverage analysis runs
+**Then** it appears in `test_only_symbols`
+
+#### Scenario: Coverage ratio calculated
+**Given** 10 public source symbols, 7 have at least one test reference
+**When** test coverage analysis runs
+**Then** `coverage_ratio` = 0.7
+
+### Requirement 13: Test Coverage Excludes Property and Inner Functions (v4)
+**ID**: AH-013
+**Priority**: P1 High
+
+The `test_coverage` check must not report `@property`-decorated methods or inner (nested) functions as untested, since these symbols are accessed implicitly (attribute syntax or closure invocation) and won't appear as direct call references in test files.
+
+#### Scenario: Property method not reported as untested
+**Given** a class with a `@property` method `instability` that is tested via attribute access
+**When** test coverage analysis runs
+**Then** `instability` is NOT in the `untested_symbols` list
+
+#### Scenario: Inner function not reported as untested
+**Given** a nested function `wrapper` inside a decorator `handle_exceptions`
+**When** test coverage analysis runs
+**Then** `wrapper` is NOT in the `untested_symbols` list (it inherits coverage from its enclosing function)
+
+#### Scenario: Truly untested regular method still detected
+**Given** a public method `old_helper` with no test references and no implicit-access modifiers
+**When** test coverage analysis runs
+**Then** `old_helper` IS in the `untested_symbols` list
+
+### Requirement 14: Overtested Scoped by Definition File (v4)
+**ID**: AH-014
+**Priority**: P1 High
+
+The `test_coverage` overtested detection must scope counts by `(file_path, symbol_name)` rather than by `symbol_name` alone. This prevents common method names like `execute` or `format` (implemented by many classes across different files) from being falsely aggregated into a single overtested entry.
+
+#### Scenario: Same-name methods in different files not aggregated
+**Given** `ToolA.execute` in `tools/a.py` with 5 test refs and `ToolB.execute` in `tools/b.py` with 5 test refs
+**When** test coverage analysis runs with `overtested_threshold=10`
+**Then** neither `execute` entry is in `overtested_symbols` (each has only 5 refs, not 10)
+
+#### Scenario: Single file with truly overtested method
+**Given** `process` in `src/engine.py` with 15 distinct test function references
+**When** test coverage analysis runs with `overtested_threshold=10`
+**Then** `process` from `src/engine.py` is in `overtested_symbols` with `test_ref_count=15`
+
 ---
 
 ## Acceptance Criteria
@@ -171,3 +250,7 @@ MCP tool that assesses the architectural health of a project or module, computin
 - [x] (v2) Abstractness computed from ABC/Protocol/abstractmethod ratio
 - [x] (v2) Score uses per-category caps to prevent collapse to 0
 - [x] (v2) TYPE_CHECKING imports excluded from cycle detection
+- [x] (v3) `@property` methods excluded from dead code detection
+- [x] (v3) `test_coverage` check detects untested/overtested/test-only symbols
+- [x] (v4) `test_coverage` excludes `@property` and inner functions from untested list (AH-013)
+- [x] (v4) `test_coverage` overtested scoped by `(file, name)` to avoid cross-class aggregation (AH-014)

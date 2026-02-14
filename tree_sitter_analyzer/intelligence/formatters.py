@@ -131,4 +131,27 @@ def _format_arch_summary(data: dict[str, Any]) -> str:
         lines.append(f"\nModule Metrics ({len(metrics)}):")
         for name, m in metrics.items():
             lines.append(f"  {name}: I={m.get('instability', 0):.2f} A={m.get('abstractness', 0):.2f} D={m.get('distance_from_main_sequence', 0):.2f}")
+
+    tc = data.get("test_coverage")
+    if tc:
+        lines.append(f"\nTest Coverage (ratio={tc.get('coverage_ratio', 0):.1%}):")
+        untested = tc.get("untested_symbols", [])
+        if untested:
+            lines.append(f"  Untested ({len(untested)}):")
+            for s in untested[:20]:  # cap display
+                lines.append(f"    {s.get('file_path', '?')}:{s.get('line', '?')} {s.get('symbol_type', '?')} {s.get('name', '?')}")
+            if len(untested) > 20:
+                lines.append(f"    ... and {len(untested) - 20} more")
+        over = tc.get("overtested_symbols", [])
+        if over:
+            lines.append(f"  Over-tested ({len(over)}):")
+            for s in over[:10]:
+                lines.append(f"    {s.get('name', '?')} ({s.get('test_ref_count', 0)} test refs)")
+        test_only = tc.get("test_only_symbols", [])
+        if test_only:
+            lines.append(f"  Test-only ({len(test_only)}):")
+            for s in test_only[:10]:
+                lines.append(f"    {s}")
+            if len(test_only) > 10:
+                lines.append(f"    ... and {len(test_only) - 10} more")
     return "\n".join(lines)

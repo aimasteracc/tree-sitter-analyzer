@@ -661,23 +661,6 @@ class PythonElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract class info: {e}")
             return None
 
-    def _is_framework_class(self, node: "tree_sitter.Node", class_name: str) -> bool:
-        """Check if class is a framework-specific class"""
-        if self.framework_type == "django":
-            # Check for Django model, view, form, etc.
-            node_text = self._get_node_text_optimized(node)
-            return any(
-                pattern in node_text
-                for pattern in ["Model", "View", "Form", "Serializer", "TestCase"]
-            )
-        elif self.framework_type == "flask":
-            # Check for Flask patterns
-            return "Flask" in self.source_code or "Blueprint" in self.source_code
-        elif self.framework_type == "fastapi":
-            # Check for FastAPI patterns
-            return "APIRouter" in self.source_code or "BaseModel" in self.source_code
-        return False
-
     def _extract_class_attributes(
         self, class_body_node: "tree_sitter.Node", source_code: str
     ) -> list[Variable]:
@@ -1260,13 +1243,6 @@ class PythonElementExtractor(ElementExtractor):
                 break
         return None
 
-    def _extract_function_body(self, node: "tree_sitter.Node", source_code: str) -> str:
-        """Extract function body"""
-        for child in node.children:
-            if child.type == "block":
-                return source_code[child.start_byte : child.end_byte]
-        return ""
-
     def _extract_superclasses_from_node(
         self, node: "tree_sitter.Node", source_code: str
     ) -> list[str]:
@@ -1429,21 +1405,6 @@ class PythonPlugin(LanguagePlugin):
         """Execute query strategy for Python language"""
         queries = self.get_queries()
         return queries.get(query_key) if query_key else None
-
-    def _get_node_type_for_element(self, element: Any) -> str:
-        """Get appropriate node type for element"""
-        from ..models import Class, Function, Import, Variable
-
-        if isinstance(element, Function):
-            return "function_definition"
-        elif isinstance(element, Class):
-            return "class_definition"
-        elif isinstance(element, Variable):
-            return "assignment"
-        elif isinstance(element, Import):
-            return "import_statement"
-        else:
-            return "unknown"
 
     def get_element_categories(self) -> dict[str, list[str]]:
         """

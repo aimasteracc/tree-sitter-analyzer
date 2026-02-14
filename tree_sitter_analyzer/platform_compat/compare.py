@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from deepdiff import DeepDiff
@@ -161,10 +162,48 @@ def generate_diff_report(comparison: ProfileComparison) -> str:
     return "\n".join(lines)
 
 
+def load_profile_from_file(path: Path) -> BehaviorProfile:
+    """
+    Loads a behavior profile from a JSON file.
+
+    Args:
+        path: Path to the profile JSON file.
+
+    Returns:
+        BehaviorProfile: The loaded profile.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        jsonschema.ValidationError: If the profile is invalid.
+    """
+    import json
+
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    # Validate and migrate schema
+    validate_profile(data)
+    data = migrate_profile_schema(data)
+
+    # Convert behaviors dict to ParsingBehavior objects
+    behaviors = {}
+    for key, b_data in data.get("behaviors", {}).items():
+        if isinstance(b_data, dict):
+            behaviors[key] = ParsingBehavior(**b_data)
+        else:
+            behaviors[key] = b_data
+
+    return BehaviorProfile(
+        schema_version=data.get("schema_version", "1.0.0"),
+        platform_key=data["platform_key"],
+        behaviors=behaviors,
+        adaptation_rules=data.get("adaptation_rules", []),
+    )
+
+
 if __name__ == "__main__":
     import argparse
     import sys
-    from pathlib import Path
 
     parser = argparse.ArgumentParser(description="Compare two SQL behavior profiles")
     parser.add_argument("profile_a", type=str, help="Path to first profile")
@@ -189,33 +228,7 @@ if __name__ == "__main__":
             print(f"Error: Profile not found: {path_b}")
             sys.exit(1)
 
-        # Load profiles manually since BehaviorProfile.load expects a platform key
-        # We need to load from specific files
-        import json
-
-        def load_profile_from_file(path: Path) -> BehaviorProfile:
-            with open(path, encoding="utf-8") as f:
-                data = json.load(f)
-
-            # Validate and migrate schema
-            validate_profile(data)
-            data = migrate_profile_schema(data)
-
-            # Convert behaviors dict to ParsingBehavior objects
-            behaviors = {}
-            for key, b_data in data.get("behaviors", {}).items():
-                if isinstance(b_data, dict):
-                    behaviors[key] = ParsingBehavior(**b_data)
-                else:
-                    behaviors[key] = b_data
-
-            return BehaviorProfile(
-                schema_version=data.get("schema_version", "1.0.0"),
-                platform_key=data["platform_key"],
-                behaviors=behaviors,
-                adaptation_rules=data.get("adaptation_rules", []),
-            )
-
+        # Load profiles using module-level function
         profile_a = load_profile_from_file(path_a)
         profile_b = load_profile_from_file(path_b)
 

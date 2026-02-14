@@ -184,18 +184,6 @@ class OutputManager:
         if not self.quiet:
             print(f"\n--- {title} ---")
 
-    def query_result(self, index: int, result: dict[str, Any]) -> None:
-        """Output query result in formatted way"""
-        if not self.quiet:
-            print(
-                f"\n{index}. {result.get('capture_name', 'Unknown')} ({result.get('node_type', 'Unknown')})"
-            )
-            print(
-                f"   Position: Line {result.get('start_line', '?')}-{result.get('end_line', '?')}"
-            )
-            if "content" in result:
-                print(f"   Content:\n{result['content']}")
-
     def analysis_summary(self, stats: dict[str, Any]) -> None:
         """Output analysis summary"""
         # Always print human-readable stats to satisfy CLI expectations in tests

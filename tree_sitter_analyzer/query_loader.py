@@ -224,17 +224,6 @@ class QueryLoader:
             return False
         return language in self.list_supported_languages()
 
-    def preload_languages(self, languages: list[str]) -> dict[str, bool]:
-        """Preload queries for multiple languages efficiently."""
-        results = {}
-        for language in languages:
-            try:
-                queries = self.load_language_queries(language)
-                results[language] = len(queries) > 0
-            except Exception:
-                results[language] = False
-        return results
-
 
 # グローバルインスタンス（シングルトンパターン）
 _query_loader_instance = None

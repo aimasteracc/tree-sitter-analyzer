@@ -12,7 +12,7 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
-VALID_CHECKS = ("coupling_metrics", "circular_dependencies", "layer_violations", "god_classes", "dead_code", "stability_metrics", "hotspots")
+VALID_CHECKS = ("coupling_metrics", "circular_dependencies", "layer_violations", "god_classes", "dead_code", "test_coverage", "stability_metrics", "hotspots")
 
 
 class CheckArchitectureHealthTool(BaseMCPTool):
@@ -80,8 +80,18 @@ class CheckArchitectureHealthTool(BaseMCPTool):
         indexer = self._ensure_indexed()
         metrics = ArchitectureMetrics(indexer.dep_graph, indexer.symbol_index)
 
+        # Provide test file predicate when test_coverage check is requested
+        test_file_predicate = None
+        if checks and "test_coverage" in checks:
+            test_file_predicate = ProjectIndexer.is_test_file
+
         try:
-            report = metrics.compute_report(path, checks=checks, layer_rules=layer_rules)
+            report = metrics.compute_report(
+                path,
+                checks=checks,
+                layer_rules=layer_rules,
+                test_file_predicate=test_file_predicate,
+            )
             report_data = report.to_dict()
             formatted = format_architecture_report(report_data, output_format)
             return {"result": formatted, "data": report_data}

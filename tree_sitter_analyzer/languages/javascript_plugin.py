@@ -926,34 +926,6 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         return names
 
-    def _extract_import_info_enhanced(
-        self, node: "tree_sitter.Node", source_code: str
-    ) -> Import | None:
-        """Extract enhanced import information"""
-        try:
-            import_text = self._get_node_text_optimized(node)
-
-            # Parse different import types
-            import_info = self._parse_import_statement(import_text)
-            if not import_info:
-                return None
-
-            import_type, names, source, is_default, is_namespace = import_info
-
-            return Import(
-                name=names[0] if names else "unknown",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=import_text,
-                language="javascript",
-                module_path=source,
-                module_name=source,
-                imported_names=names,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract import info: {e}")
-            return None
-
     def _extract_dynamic_import(self, node: "tree_sitter.Node") -> Import | None:
         """Extract dynamic import() calls"""
         try:
@@ -1155,17 +1127,6 @@ class JavaScriptElementExtractor(ElementExtractor):
             return None
         except Exception:
             return None
-
-    def _find_parent_class_name(self, node: "tree_sitter.Node") -> str | None:
-        """Find parent class name for methods/properties"""
-        current = node.parent
-        while current:
-            if current.type in ["class_declaration", "class_expression"]:
-                for child in current.children:
-                    if child.type == "identifier":
-                        return self._get_node_text_optimized(child)
-            current = current.parent
-        return None
 
     def _is_react_component(self, node: "tree_sitter.Node", class_name: str) -> bool:
         """Check if class is a React component"""
@@ -1438,26 +1399,6 @@ class JavaScriptPlugin(LanguagePlugin):
         """Execute query strategy for JavaScript language"""
         queries = self.get_queries()
         return queries.get(query_key) if query_key else None
-
-    def _get_node_type_for_element(self, element: Any) -> str:
-        """Get appropriate node type for element"""
-        from ..models import Class, Function, Import, Variable
-
-        if isinstance(element, Function):
-            if hasattr(element, "is_arrow") and element.is_arrow:
-                return "arrow_function"
-            elif hasattr(element, "is_method") and element.is_method:
-                return "method_definition"
-            else:
-                return "function_declaration"
-        elif isinstance(element, Class):
-            return "class_declaration"
-        elif isinstance(element, Variable):
-            return "variable_declaration"
-        elif isinstance(element, Import):
-            return "import_statement"
-        else:
-            return "unknown"
 
     def get_element_categories(self) -> dict[str, list[str]]:
         """

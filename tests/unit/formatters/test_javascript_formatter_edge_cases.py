@@ -389,9 +389,10 @@ class TestJavaScriptTableFormatterEdgeCases:
             "statistics": {"function_count": 1},
         }
 
-        # Mock a helper method to raise an exception
+        # Mock a helper method to raise an exception.
+        # Use _format_method_row which is an internal helper in the formatter.
         with patch.object(
-            formatter, "_get_function_signature", side_effect=Exception("Test error")
+            formatter, "_format_method_row", side_effect=Exception("Test error")
         ):
             # Should handle exception gracefully
             result = formatter.format(data, "full")

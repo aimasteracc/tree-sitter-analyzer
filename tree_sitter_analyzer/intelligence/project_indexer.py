@@ -56,7 +56,7 @@ _SKIP_DIRS = frozenset({
 })
 
 # Max files to index to avoid performance issues
-_MAX_FILES = 500
+_MAX_FILES = 2000
 
 
 class ProjectIndexer:
@@ -96,10 +96,49 @@ class ProjectIndexer:
         """Get the populated dependency graph."""
         return self._dep_graph
 
-    @property
-    def is_indexed(self) -> bool:
-        """Whether the project has been indexed."""
-        return self._indexed
+    @staticmethod
+    def is_test_file(file_path: str) -> bool:
+        """Classify a file path as a test file or source file.
+
+        A file is considered a test file if:
+        - Its basename starts with ``test_`` or ends with ``_test.py``
+        - Its basename is ``conftest.py``
+        - It lives under a ``tests/`` or ``test/`` directory
+        """
+        normalized = file_path.replace("\\", "/")
+        basename = os.path.basename(normalized)
+
+        # Name-based patterns
+        if basename.startswith("test_") and basename.endswith(".py"):
+            return True
+        if basename.endswith("_test.py"):
+            return True
+        if basename == "conftest.py":
+            return True
+
+        # Directory-based patterns
+        parts = normalized.split("/")
+        for part in parts[:-1]:  # exclude the filename itself
+            if part in ("tests", "test"):
+                return True
+
+        return False
+
+    def get_test_files(self) -> set[str]:
+        """Return the set of indexed file paths classified as test files."""
+        return {
+            self._relative_path(f)
+            for f in self._indexed_files
+            if self.is_test_file(self._relative_path(f))
+        }
+
+    def get_source_files(self) -> set[str]:
+        """Return the set of indexed file paths classified as source files."""
+        return {
+            self._relative_path(f)
+            for f in self._indexed_files
+            if not self.is_test_file(self._relative_path(f))
+        }
 
     def _get_parser(self) -> Any:
         """Get or create a tree-sitter parser for Python."""
@@ -165,8 +204,16 @@ class ProjectIndexer:
         )
 
     def _discover_python_files(self, root: str) -> list[str]:
-        """Discover all Python files under root, respecting skip rules."""
-        py_files: list[str] = []
+        """Discover Python files under *root* using two-phase prioritisation.
+
+        Phase 1: collect all **source** files (non-test).
+        Phase 2: collect **test** files.
+
+        This guarantees that core source directories (e.g. ``mcp/``) are always
+        indexed even when ``_MAX_FILES`` would otherwise truncate them.
+        """
+        source_files: list[str] = []
+        test_files: list[str] = []
 
         for dirpath, dirnames, filenames in os.walk(root):
             # Filter out skip directories in-place
@@ -178,16 +225,23 @@ class ProjectIndexer:
             for filename in filenames:
                 if filename.endswith(".py"):
                     full_path = os.path.join(dirpath, filename)
-                    py_files.append(full_path)
+                    rel = os.path.relpath(full_path, root).replace("\\", "/")
+                    if self.is_test_file(rel):
+                        test_files.append(full_path)
+                    else:
+                        source_files.append(full_path)
 
-                    if len(py_files) >= _MAX_FILES:
-                        logger.warning(
-                            f"Reached max file limit ({_MAX_FILES}). "
-                            f"Some files may not be indexed."
-                        )
-                        return py_files
-
-        return py_files
+        # Combine: source first, then tests — honour the global cap
+        combined = source_files + test_files
+        if len(combined) > _MAX_FILES:
+            logger.warning(
+                f"Reached max file limit ({_MAX_FILES}). "
+                f"Some files may not be indexed. "
+                f"({len(source_files)} source, {len(test_files)} test, "
+                f"keeping first {_MAX_FILES})"
+            )
+            combined = combined[:_MAX_FILES]
+        return combined
 
     def _index_single_file(self, file_path: str) -> None:
         """Index a single Python file: extract symbols, calls, imports."""
@@ -222,6 +276,10 @@ class ProjectIndexer:
         # 3. Extract symbol definitions, references, imports, inheritance
         self._extract_symbols(tree.root_node, rel_path, source_code)
         self._extract_imports(tree.root_node, rel_path, source_code)
+
+        # 3b. Extract attribute references (self.method, obj.attr) to catch
+        # dict-dispatch, callback-passing, and other non-call references.
+        self._extract_attribute_refs(tree.root_node, rel_path)
 
         # 4. Add call sites as symbol references for cross-referencing
         for call_site in call_sites:
@@ -477,6 +535,43 @@ class ProjectIndexer:
                         decorators.append(text[1:].split("(")[0])
         return decorators
 
+    # ------------------------------------------------------------------
+    # Attribute reference extraction (v5)
+    # ------------------------------------------------------------------
+    def _extract_attribute_refs(self, root_node: Any, file_path: str) -> None:
+        """Walk the AST and record *attribute* references.
+
+        This catches ``self.method``, ``obj.attr``, etc. that appear outside
+        of call-expression positions (which the CallGraphBuilder already
+        handles).  The primary benefit is detecting dict-dispatch patterns
+        such as ``{node_type: self._extract_xxx}`` and callback-passing
+        patterns like ``atexit.register(cleanup_logging)``.
+        """
+        self._walk_for_attribute_refs(root_node, file_path)
+
+    def _walk_for_attribute_refs(self, node: Any, file_path: str) -> None:
+        """Recursively walk AST for ``attribute`` nodes and bare identifiers
+        used as references (not definitions)."""
+        if node.type == "attribute":
+            # Extract the rightmost identifier as the attribute name
+            children = [c for c in node.children if c.type == "identifier"]
+            if len(children) >= 2:
+                attr_name = self._node_text(children[-1])
+                if attr_name and not attr_name.startswith("__"):
+                    self._symbol_index.add_reference(
+                        SymbolReference(
+                            symbol_name=attr_name,
+                            file_path=file_path,
+                            line=node.start_point[0] + 1,
+                            ref_type="attribute",
+                        )
+                    )
+            # Don't recurse into attribute children — we already processed them
+            return
+
+        for child in node.children:
+            self._walk_for_attribute_refs(child, file_path)
+
     def _extract_imports(
         self, root_node: Any, file_path: str, source_code: str
     ) -> None:
@@ -684,10 +779,4 @@ class ProjectIndexer:
             return text.decode("utf-8")
         return str(text)
 
-    def reset(self) -> None:
-        """Reset the indexer to allow re-indexing."""
-        self._symbol_index.clear()
-        self._dep_graph.clear()
-        self._call_graph = CallGraphBuilder()
-        self._indexed = False
-        self._indexed_files.clear()
+    # reset() was removed in v3 (dead code — MCP server sets _indexer=None instead).

@@ -392,5 +392,59 @@ class TestErrorHandling:
         # Should not crash, exact result may vary based on detection
 
 
+class TestReadFileSafeAsync:
+    """Tests for EncodingManager.read_file_safe_async (P1 coverage gap)."""
+
+    @pytest.mark.asyncio
+    async def test_read_normal_utf8_file(self, tmp_path: Path):
+        """read_file_safe_async should return content and encoding for a normal UTF-8 file."""
+        test_file = tmp_path / "hello.py"
+        test_file.write_text("print('hello world')\n", encoding="utf-8")
+
+        content, encoding = await EncodingManager.read_file_safe_async(str(test_file))
+        assert "hello world" in content
+        assert encoding.lower().replace("-", "") in ("utf8", "ascii")
+
+    @pytest.mark.asyncio
+    async def test_read_empty_file(self, tmp_path: Path):
+        """An empty file should return empty string with default encoding."""
+        test_file = tmp_path / "empty.txt"
+        test_file.write_bytes(b"")
+
+        content, encoding = await EncodingManager.read_file_safe_async(str(test_file))
+        assert content == ""
+        assert encoding == EncodingManager.DEFAULT_ENCODING
+
+    @pytest.mark.asyncio
+    async def test_read_unicode_content(self, tmp_path: Path):
+        """Should handle unicode content correctly."""
+        test_file = tmp_path / "unicode.txt"
+        unicode_text = "Hello, 世界! こんにちは"
+        test_file.write_text(unicode_text, encoding="utf-8")
+
+        content, encoding = await EncodingManager.read_file_safe_async(str(test_file))
+        assert unicode_text in content
+
+    @pytest.mark.asyncio
+    async def test_read_nonexistent_file(self, tmp_path: Path):
+        """Reading a nonexistent file should raise an exception."""
+        nonexistent = tmp_path / "no_such_file.txt"
+
+        with pytest.raises(Exception):
+            await EncodingManager.read_file_safe_async(str(nonexistent))
+
+    @pytest.mark.asyncio
+    async def test_fallback_to_sync_without_anyio(self, tmp_path: Path, monkeypatch):
+        """When ANYIO_AVAILABLE is False, should fallback to sync read."""
+        import tree_sitter_analyzer.encoding_utils as eu
+
+        test_file = tmp_path / "fallback.txt"
+        test_file.write_text("fallback content\n", encoding="utf-8")
+
+        monkeypatch.setattr(eu, "ANYIO_AVAILABLE", False)
+        content, encoding = await EncodingManager.read_file_safe_async(str(test_file))
+        assert "fallback content" in content
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

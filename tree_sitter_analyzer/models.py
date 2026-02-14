@@ -26,11 +26,6 @@ if TYPE_CHECKING:
     pass
 
 
-# Use dataclass with slots for Python 3.10+
-def dataclass_with_slots(*args: Any, **kwargs: Any) -> Any:
-    return dataclass(*args, slots=True, **kwargs)
-
-
 # ========================================
 # Base Generic Models (Language Agnostic)
 # ========================================

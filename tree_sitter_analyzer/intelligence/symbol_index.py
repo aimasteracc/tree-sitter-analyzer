@@ -8,6 +8,8 @@ supporting lookup by name, file, and type.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .models import SymbolDefinition, SymbolReference
 
 
@@ -59,7 +61,10 @@ class SymbolIndex:
         return defs
 
     def lookup_references(
-        self, name: str, ref_type: str | None = None
+        self,
+        name: str,
+        ref_type: str | None = None,
+        file_filter: Callable[[str], bool] | None = None,
     ) -> list[SymbolReference]:
         """
         Look up symbol references by name.
@@ -67,6 +72,9 @@ class SymbolIndex:
         Args:
             name: Symbol name to search for
             ref_type: Optional reference type filter ("call", "import", etc.)
+            file_filter: Optional callable that receives a file path and returns
+                True to include the reference. Useful for filtering to test or
+                source files only.
 
         Returns:
             List of matching references
@@ -74,6 +82,8 @@ class SymbolIndex:
         refs = self._references.get(name, [])
         if ref_type:
             refs = [r for r in refs if r.ref_type == ref_type]
+        if file_filter:
+            refs = [r for r in refs if file_filter(r.file_path)]
         return refs
 
     def set_class_parent(self, class_name: str, parent_name: str) -> None:

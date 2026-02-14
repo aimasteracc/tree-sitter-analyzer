@@ -411,25 +411,5 @@ class PHPTableFormatter(BaseTableFormatter):
         return "\n".join(lines)
 
 
-class PHPFullFormatter(PHPTableFormatter):
-    """Full table formatter for PHP"""
-
-    def format(self, data: dict[str, Any]) -> str:
-        """Format data as full table"""
-        return self._format_full_table(data)
-
-
-class PHPCompactFormatter(PHPTableFormatter):
-    """Compact table formatter for PHP"""
-
-    def format(self, data: dict[str, Any]) -> str:
-        """Format data as compact table"""
-        return self._format_compact_table(data)
-
-
-class PHPCSVFormatter(PHPTableFormatter):
-    """CSV formatter for PHP"""
-
-    def format(self, data: dict[str, Any]) -> str:
-        """Format data as CSV"""
-        return self._format_csv(data)
+# PHPFullFormatter, PHPCompactFormatter, PHPCSVFormatter were removed in v3
+# (dead code — PHPTableFormatter handles all format_types via format_type param).

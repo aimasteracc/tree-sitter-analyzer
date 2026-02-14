@@ -11,7 +11,7 @@ from typing import Any
 
 from ..models import CodeElement, MarkupElement, StyleElement
 from .base_formatter import BaseFormatter
-from .formatter_registry import IFormatter
+from .interfaces import IFormatter
 
 
 class HtmlFormatter(BaseFormatter, IFormatter):

@@ -285,22 +285,6 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         return_type = method.get("return_type", "unknown")
         return f"({params_str}):{return_type}"
 
-    def _format_function_row(self, func: dict[str, Any]) -> str:
-        """Format a function table row for JavaScript"""
-        name = str(func.get("name", ""))
-        params = self._create_full_params(func)
-        func_type = self._get_function_type(func)
-        line_range = func.get("line_range", {})
-        lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-        complexity = func.get("complexity_score", 0)
-        doc = self._clean_csv_text(
-            self._extract_doc_summary(str(func.get("jsdoc", "")))
-        )
-
-        return (
-            f"| {name} | {params} | {func_type} | {lines_str} | {complexity} | {doc} |"
-        )
-
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row for JavaScript"""
         name = str(method.get("name", ""))
@@ -345,27 +329,6 @@ class JavaScriptTableFormatter(BaseTableFormatter):
 
         return f"({params_str})"
 
-    def _create_compact_params(self, func: dict[str, Any]) -> str:
-        """Create compact parameter list for JavaScript functions"""
-        params = func.get("parameters", [])
-        if not params:
-            return "()"
-
-        # Handle malformed data where parameters might be a string
-        if isinstance(params, str):
-            # If parameters is a malformed string, return empty params
-            return "()"
-
-        param_count = len(params)
-        if param_count <= 3:
-            param_names = [
-                param.get("name", str(param)) if isinstance(param, dict) else str(param)
-                for param in params
-            ]
-            return f"({','.join(param_names)})"
-        else:
-            return f"({param_count} params)"
-
     def _get_function_type(self, func: dict[str, Any]) -> str:
         """Get full function type for JavaScript"""
         if func.get("is_async", False):
@@ -387,19 +350,6 @@ class JavaScriptTableFormatter(BaseTableFormatter):
                 return "method"
         else:
             return "function"
-
-    def _get_function_type_short(self, func: dict[str, Any]) -> str:
-        """Get short function type for JavaScript"""
-        if func.get("is_async", False):
-            return "async"
-        elif func.get("is_generator", False):
-            return "gen"
-        elif func.get("is_arrow", False):
-            return "arrow"
-        elif self._is_method(func):
-            return "method"
-        else:
-            return "func"
 
     def _get_method_type(self, method: dict[str, Any]) -> str:
         """Get method type for JavaScript"""
@@ -424,60 +374,6 @@ class JavaScriptTableFormatter(BaseTableFormatter):
         """Get the class name for a method"""
         return str(method.get("class_name", "Unknown"))
 
-    def _infer_js_type(self, value: Any) -> str:
-        """Infer JavaScript type from value"""
-        if value is None:
-            return "undefined"
-
-        value_str = str(value).strip()
-
-        # Check for specific patterns
-        if value_str == "undefined":
-            return "undefined"
-        elif value_str == "NaN":
-            return "number"  # NaN is a number type in JavaScript
-        elif value_str in ["Infinity", "-Infinity"]:
-            return "number"  # Infinity is a number type in JavaScript
-        elif (
-            value_str.startswith('"')
-            or value_str.startswith("'")
-            or value_str.startswith("`")
-        ):
-            return "string"
-        elif value_str in ["true", "false"]:
-            return "boolean"
-        elif value_str == "null":
-            return "null"
-        elif value_str.startswith("[") and value_str.endswith("]"):
-            return "array"
-        elif value_str.startswith("{") and value_str.endswith("}"):
-            return "object"
-        elif (
-            value_str.startswith("function")
-            or value_str.startswith("async function")
-            or value_str.startswith("new Function")
-            or "=>" in value_str
-        ):
-            return "function"
-        elif value_str.startswith("class"):
-            return "class"
-        elif value_str.replace(".", "").replace("-", "").isdigit():
-            return "number"
-        else:
-            return "unknown"
-
-    def _determine_scope(self, var: dict[str, Any]) -> str:
-        """Determine variable scope"""
-        # This would need more context from the parser
-        # For now, return basic scope info
-        kind = self._get_variable_kind(var)
-        if kind == "const" or kind == "let":
-            return "block"
-        elif kind == "var":
-            return "function"
-        else:
-            return "unknown"
-
     def _get_variable_kind(self, var: dict[str, Any]) -> str:
         """Get variable declaration kind (const, let, var)"""
         # Check if variable has is_constant flag
@@ -494,42 +390,6 @@ class JavaScriptTableFormatter(BaseTableFormatter):
             return "var"
         else:
             return "unknown"
-
-    def _get_export_type(self, export: Any) -> str:
-        """Get export type"""
-        if not isinstance(export, dict):
-            return "unknown"
-        if export.get("is_default", False):
-            return "default"
-        elif export.get("is_named", False):
-            return "named"
-        elif export.get("is_all", False):
-            return "all"
-        else:
-            return "unknown"
-
-    def _get_function_signature(self, func: dict[str, Any]) -> str:
-        """Get function signature"""
-        name = str(func.get("name", ""))
-        params = self._create_full_params(func)
-        return_type = func.get("return_type", "")
-        if return_type:
-            return f"{name}{params} -> {return_type}"
-        return f"{name}{params}"
-
-    def _get_class_info(self, cls: dict[str, Any]) -> str:
-        """Get class information as formatted string"""
-        if cls is None:
-            raise TypeError("Cannot format None data")
-
-        if not isinstance(cls, dict):
-            raise TypeError(f"Expected dict, got {type(cls)}")
-
-        name = str(cls.get("name", "Unknown"))
-        methods = cls.get("methods", [])
-        method_count = len(methods) if isinstance(methods, list) else 0
-
-        return f"{name} ({method_count} methods)"
 
     def _format_json(self, data: dict[str, Any]) -> str:
         """Format data as JSON"""

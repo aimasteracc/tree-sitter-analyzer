@@ -9,67 +9,12 @@ This is the unified entry point for all formatter operations in the project.
 """
 
 import logging
-from abc import ABC, abstractmethod
 from typing import Any
 
 from ..models import CodeElement
+from .interfaces import IFormatter
 
 logger = logging.getLogger(__name__)
-
-
-class IFormatter(ABC):
-    """
-    Interface for code element formatters.
-
-    All formatters must implement this interface to be compatible
-    with the FormatterRegistry system.
-    """
-
-    @staticmethod
-    @abstractmethod
-    def get_format_name() -> str:
-        """
-        Return the format name this formatter supports.
-
-        Returns:
-            Format name (e.g., "json", "csv", "markdown")
-        """
-        pass
-
-    @abstractmethod
-    def format(self, elements: list[CodeElement]) -> str:
-        """
-        Format a list of CodeElements into a string representation.
-
-        Args:
-            elements: List of CodeElement objects to format
-
-        Returns:
-            Formatted string representation
-        """
-        pass
-
-
-class IStructureFormatter(ABC):
-    """
-    Interface for structure-based formatters (legacy compatibility).
-
-    These formatters accept dict-based structure data instead of CodeElement lists.
-    Used for backward compatibility with v1.6.1.4 format output.
-    """
-
-    @abstractmethod
-    def format_structure(self, structure_data: dict[str, Any]) -> str:
-        """
-        Format structure data dictionary into a string representation.
-
-        Args:
-            structure_data: Dictionary containing analysis results
-
-        Returns:
-            Formatted string representation
-        """
-        pass
 
 
 class FormatterRegistry:

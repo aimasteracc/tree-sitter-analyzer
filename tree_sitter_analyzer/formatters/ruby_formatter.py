@@ -394,25 +394,5 @@ class RubyTableFormatter(BaseTableFormatter):
         return "\n".join(lines)
 
 
-class RubyFullFormatter(RubyTableFormatter):
-    """Full table formatter for Ruby"""
-
-    def format(self, data: dict[str, Any]) -> str:
-        """Format data as full table"""
-        return self._format_full_table(data)
-
-
-class RubyCompactFormatter(RubyTableFormatter):
-    """Compact table formatter for Ruby"""
-
-    def format(self, data: dict[str, Any]) -> str:
-        """Format data as compact table"""
-        return self._format_compact_table(data)
-
-
-class RubyCSVFormatter(RubyTableFormatter):
-    """CSV formatter for Ruby"""
-
-    def format(self, data: dict[str, Any]) -> str:
-        """Format data as CSV"""
-        return self._format_csv(data)
+# RubyFullFormatter, RubyCompactFormatter, RubyCSVFormatter were removed in v3
+# (dead code — RubyTableFormatter handles all format_types via format_type param).

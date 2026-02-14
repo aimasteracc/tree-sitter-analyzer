@@ -9,6 +9,7 @@ and JSON line parsing for ripgrep.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -612,47 +613,6 @@ def create_file_summary_from_count_data(count_data: dict[str, int]) -> dict[str,
         ],
         "derived_from_count": True,  # 标识这是从count数据推导的
     }
-
-
-@dataclass
-class TempFileList:
-    path: str
-
-    def __enter__(self) -> TempFileList:
-        return self
-
-    def __exit__(
-        self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: Any
-    ) -> None:
-        with contextlib.suppress(Exception):
-            Path(self.path).unlink(missing_ok=True)
-
-
-class contextlib:  # minimal shim for suppress without importing globally
-    class suppress:
-        def __init__(self, *exceptions: type[BaseException]) -> None:
-            self.exceptions = exceptions
-
-        def __enter__(self) -> None:  # noqa: D401
-            return None
-
-        def __exit__(
-            self,
-            exc_type: type[BaseException] | None,
-            exc: BaseException | None,
-            tb: Any,
-        ) -> bool:
-            return exc_type is not None and issubclass(exc_type, self.exceptions)
-
-
-def write_files_to_temp(files: list[str]) -> TempFileList:
-    fd, temp_path = tempfile.mkstemp(prefix="rg-files-", suffix=".lst")
-    os.close(fd)
-    content = "\n".join(files)
-    from ...encoding_utils import write_file_safe
-
-    write_file_safe(temp_path, content)
-    return TempFileList(path=temp_path)
 
 
 async def run_parallel_rg_searches(

@@ -199,14 +199,12 @@ if __name__ == "__main__":
             patch.object(
                 extractor, "_extract_docstring_from_node"
             ) as mock_extract_docstring,
-            patch.object(extractor, "_extract_function_body") as mock_extract_body,
         ):
             mock_extract_name.return_value = "test_function"
             mock_extract_params.return_value = ["param1: int", "param2: str"]
             mock_extract_decorators.return_value = ["property"]
             mock_extract_return.return_value = "int"
             mock_extract_docstring.return_value = "Test function"
-            mock_extract_body.return_value = "return value"
 
             result = extractor._extract_detailed_function_info(mock_node, "test code")
 

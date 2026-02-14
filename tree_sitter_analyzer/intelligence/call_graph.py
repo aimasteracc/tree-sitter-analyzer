@@ -209,6 +209,3 @@ class CallGraphBuilder:
                     callees.append(site)
         return callees
 
-    def index_file(self, file_path: str, source_code: str) -> None:
-        """Index a file's call sites for later lookup."""
-        self.extract_calls_from_source(source_code, file_path)

@@ -177,43 +177,6 @@ class TableCommand(BaseCommand):
             },
         }
 
-    def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
-        """Convert AnalysisResult to format expected by formatters."""
-        return {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "line_count": analysis_result.line_count,
-            "elements": [
-                {
-                    "name": getattr(element, "name", str(element)),
-                    "type": get_element_type(element),
-                    "start_line": getattr(element, "start_line", 0),
-                    "end_line": getattr(element, "end_line", 0),
-                    "text": getattr(element, "text", ""),
-                    "level": getattr(element, "level", 1),
-                    "url": getattr(element, "url", ""),
-                    "alt": getattr(element, "alt", ""),
-                    "language": getattr(element, "language", ""),
-                    "line_count": getattr(element, "line_count", 0),
-                    "list_type": getattr(element, "list_type", ""),
-                    "item_count": getattr(element, "item_count", 0),
-                    "column_count": getattr(element, "column_count", 0),
-                    "row_count": getattr(element, "row_count", 0),
-                    "line_range": {
-                        "start": getattr(element, "start_line", 0),
-                        "end": getattr(element, "end_line", 0),
-                    },
-                }
-                for element in analysis_result.elements
-            ],
-            "analysis_metadata": {
-                "analysis_time": getattr(analysis_result, "analysis_time", 0.0),
-                "language": analysis_result.language,
-                "file_path": analysis_result.file_path,
-                "analyzer_version": "2.0.0",
-            },
-        }
-
     def _get_default_package_name(self, language: str) -> str:
         """
         Get default package name for language.
