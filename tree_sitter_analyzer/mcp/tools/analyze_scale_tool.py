@@ -372,7 +372,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
         include_structure = arguments.get("include_structure", False)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         # Resolve + security validation with shared caching to avoid redundant checks
         resolved_file_path = self.resolve_and_validate_file_path(file_path)
@@ -651,7 +651,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         - Default output_format is TOON.
         - When output_format='toon', response MUST NOT include detailed JSON fields like results.
         """
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         metrics_only = bool(arguments.get("metrics_only", False))
         file_paths = arguments.get("file_paths")
 

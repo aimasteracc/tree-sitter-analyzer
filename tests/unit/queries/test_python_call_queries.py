@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Tests for Python call expression queries (Code Intelligence Graph)."""
 
-import pytest
-
 
 class TestPythonCallExpressionQuery:
     """Test call_expression query for extracting function/method calls."""

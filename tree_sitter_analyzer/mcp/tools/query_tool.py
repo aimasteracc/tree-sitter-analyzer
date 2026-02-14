@@ -145,7 +145,7 @@ class QueryTool(BaseMCPTool):
             result_format = arguments.get("result_format", "json")
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
-            output_format = arguments.get("output_format", "toon")
+            output_format = arguments.get("output_format", "json")
 
             if query_key and query_string:
                 return {

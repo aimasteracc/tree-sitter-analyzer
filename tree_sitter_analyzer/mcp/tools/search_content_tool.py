@@ -348,7 +348,7 @@ Choose output format parameters based on your needs to minimize token usage and 
         # NOTE: MCP tool responses are structured objects. When output_format="toon",
         # we return {"format":"toon","toon_content":"..."} to reduce tokens while
         # remaining JSON/protocol compatible.
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         roots = arguments.get("roots")
         files = arguments.get("files")
@@ -853,7 +853,7 @@ Choose output format parameters based on your needs to minimize token usage and 
         # Handle output suppression and file output
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         # Always add results to the base result for caching
         result["results"] = matches
