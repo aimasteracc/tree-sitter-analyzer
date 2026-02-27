@@ -16,7 +16,6 @@ from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor, SQLPl
 from tree_sitter_analyzer.models import (
     SQLElementType,
     SQLFunction,
-    SQLIndex,
     SQLTable,
     SQLTrigger,
     SQLView,

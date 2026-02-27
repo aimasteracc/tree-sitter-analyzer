@@ -1202,12 +1202,13 @@ class TestTypeScriptRealParsing:
     def test_full_typescript_module(self, plugin, extractor):
         code = "import { EventEmitter } from 'events';\ntype Status = 'active' | 'inactive';\ninterface Disposable { dispose(): void; }\nenum LogLevel { DEBUG = 0, INFO = 1 }\nexport class Logger extends EventEmitter implements Disposable {\n  private level: LogLevel = LogLevel.INFO;\n  constructor(private name: string) { super(); }\n  log(message: string): void { console.log(message); }\n  dispose(): void { this.removeAllListeners(); }\n}\nconst defaultLogger = new Logger('default');\n"
         tree = self._parse(plugin, code)
-        functions = extractor.extract_functions(tree, code)
+        func_list = extractor.extract_functions(tree, code)
         classes = extractor.extract_classes(tree, code)
         imports = extractor.extract_imports(tree, code)
         class_names = [c.name for c in classes]
         assert "Logger" in class_names
         assert len(imports) >= 1
+        assert len(func_list) >= 1
 
     def test_rest_parameters(self, plugin, extractor):
         code = "function concat(...parts: string[]): string {\n  return parts.join('');\n}"
