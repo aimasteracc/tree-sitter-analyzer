@@ -793,6 +793,582 @@ class TestPythonTableFormatterUtilities:
         assert result == "@custom1 (+2)"
 
 
+class TestPythonTableFormatterFormatTable:
+    """Test format_table method (covers line 43)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def test_format_table_full(self, formatter):
+        """Test format_table with full type."""
+        data = {
+            "file_path": "test.py",
+            "classes": [],
+            "functions": [],
+            "imports": [],
+            "methods": [],
+        }
+        result = formatter.format_table(data, table_type="full")
+        assert "# Module: test" in result
+
+    def test_format_table_compact(self, formatter):
+        """Test format_table with compact type."""
+        data = {
+            "file_path": "service.py",
+            "classes": [{"name": "Service"}],
+            "statistics": {"method_count": 0, "field_count": 0},
+            "methods": [],
+        }
+        result = formatter.format_table(data, table_type="compact")
+        assert "## Info" in result
+
+    def test_format_table_restores_format_type(self, formatter):
+        """Test format_table restores original format_type."""
+        original = formatter.format_type
+        formatter.format_table({"file_path": "t.py", "classes": [], "functions": [], "imports": []}, "compact")
+        assert formatter.format_type == original
+
+
+class TestPythonFormatterFormatAdvanced:
+    """Test format_advanced method (covers lines 49-67)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def test_format_advanced_json(self, formatter):
+        """Test format_advanced with json output."""
+        data = {"file_path": "test.py", "classes": [], "functions": [], "imports": []}
+        result = formatter.format_advanced(data, output_format="json")
+        import json
+        parsed = json.loads(result)
+        assert parsed["file_path"] == "test.py"
+
+    def test_format_advanced_csv(self, formatter):
+        """Test format_advanced with csv output."""
+        data = {
+            "file_path": "test.py",
+            "classes": [],
+            "functions": [],
+            "imports": [],
+            "methods": [],
+            "fields": [],
+        }
+        result = formatter.format_advanced(data, output_format="csv")
+        assert "Type" in result  # CSV header
+
+    def test_format_advanced_other(self, formatter):
+        """Test format_advanced with non-json/csv falls back to full table."""
+        data = {"file_path": "test.py", "classes": [], "functions": [], "imports": []}
+        result = formatter.format_advanced(data, output_format="text")
+        assert "# Module: test" in result
+
+    def test_format_json_error(self, formatter):
+        """Test _format_json with non-serializable data."""
+        class NonSerializable:
+            pass
+        result = formatter._format_json({"obj": NonSerializable()})
+        assert "JSON serialization error" in result
+
+
+class TestPythonFormatterConvertAnalysisResult:
+    """Test _convert_analysis_result_to_python_format (covers lines 77-127, 129-195)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def _make_mock_element(self, element_type, **kwargs):
+        """Create a mock element."""
+        from unittest.mock import Mock
+        mock = Mock()
+        mock.element_type = element_type
+        mock.name = kwargs.get("name", "test")
+        mock.start_line = kwargs.get("start_line", 1)
+        mock.end_line = kwargs.get("end_line", 10)
+        mock.language = kwargs.get("language", "python")
+        mock.class_type = kwargs.get("class_type", "class")
+        mock.visibility = kwargs.get("visibility", "public")
+        mock.parameters = kwargs.get("parameters", [])
+        mock.return_type = kwargs.get("return_type", "None")
+        mock.is_constructor = kwargs.get("is_constructor", False)
+        mock.is_static = kwargs.get("is_static", False)
+        mock.is_async = kwargs.get("is_async", False)
+        mock.complexity_score = kwargs.get("complexity_score", 1)
+        mock.docstring = kwargs.get("docstring", "")
+        mock.decorators = kwargs.get("decorators", [])
+        mock.modifiers = kwargs.get("modifiers", [])
+        mock.variable_type = kwargs.get("variable_type", "str")
+        mock.field_type = kwargs.get("field_type", "")
+        mock.raw_text = kwargs.get("raw_text", "")
+        mock.module_name = kwargs.get("module_name", "")
+        return mock
+
+    def test_convert_analysis_result_full(self, formatter):
+        """Test full conversion of AnalysisResult."""
+        from unittest.mock import Mock
+
+        from tree_sitter_analyzer.constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+            ELEMENT_TYPE_IMPORT,
+            ELEMENT_TYPE_PACKAGE,
+            ELEMENT_TYPE_VARIABLE,
+        )
+
+        mock_result = Mock()
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+        mock_result.line_count = 100
+
+        pkg = self._make_mock_element(ELEMENT_TYPE_PACKAGE, name="mypackage")
+        cls = self._make_mock_element(ELEMENT_TYPE_CLASS, name="MyClass")
+        func = self._make_mock_element(ELEMENT_TYPE_FUNCTION, name="my_func", parameters="a, b")
+        var = self._make_mock_element(ELEMENT_TYPE_VARIABLE, name="my_var")
+        imp = self._make_mock_element(ELEMENT_TYPE_IMPORT, name="os", raw_text="import os")
+
+        mock_result.elements = [pkg, cls, func, var, imp]
+
+        data = formatter._convert_analysis_result_to_python_format(mock_result)
+        assert data["package"]["name"] == "mypackage"
+        assert len(data["classes"]) == 1
+        assert len(data["methods"]) == 1
+        assert len(data["fields"]) == 1
+        assert len(data["imports"]) == 1
+
+    def test_convert_import_with_no_raw_text(self, formatter):
+        """Test import conversion when raw_text is empty (fallback construction)."""
+        from unittest.mock import Mock
+
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_IMPORT
+
+        mock_result = Mock()
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+        mock_result.line_count = 10
+
+        imp = self._make_mock_element(ELEMENT_TYPE_IMPORT, name="json", raw_text="")
+        mock_result.elements = [imp]
+
+        data = formatter._convert_analysis_result_to_python_format(mock_result)
+        assert data["imports"][0]["statement"] == "import json"
+
+    def test_format_analysis_result_delegates(self, formatter):
+        """Test format_analysis_result delegates to format_table."""
+        from unittest.mock import Mock
+
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_CLASS
+
+        mock_result = Mock()
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+        mock_result.line_count = 50
+
+        cls = self._make_mock_element(ELEMENT_TYPE_CLASS, name="TestClass")
+        mock_result.elements = [cls]
+
+        result = formatter.format_analysis_result(mock_result, table_type="full")
+        assert isinstance(result, str)
+        # Single class uses Class Info section, not the class name in header
+        assert "## Class Info" in result
+
+
+class TestPythonFormatterProcessParameters:
+    """Test _process_python_parameters (covers lines 197-224)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def test_process_string_params(self, formatter):
+        """Test processing comma-separated string parameters."""
+        result = formatter._process_python_parameters("a, b, c")
+        assert len(result) == 3
+        assert result[0] == {"name": "a", "type": "Any"}
+
+    def test_process_empty_string_params(self, formatter):
+        """Test processing empty string parameter."""
+        result = formatter._process_python_parameters("")
+        assert result == []
+
+    def test_process_string_params_with_colon_type(self, formatter):
+        """Test processing string params with type hints (colon format)."""
+        result = formatter._process_python_parameters(["name: str", "age: int"])
+        assert result[0] == {"name": "name", "type": "str"}
+        assert result[1] == {"name": "age", "type": "int"}
+
+    def test_process_string_params_no_type(self, formatter):
+        """Test processing string params without type hints."""
+        result = formatter._process_python_parameters(["self", "value"])
+        assert result[0] == {"name": "self", "type": "Any"}
+
+    def test_process_dict_params(self, formatter):
+        """Test processing dict parameters passed through."""
+        result = formatter._process_python_parameters(
+            [{"name": "x", "type": "int"}]
+        )
+        assert result[0] == {"name": "x", "type": "int"}
+
+    def test_process_other_type_params(self, formatter):
+        """Test processing non-string non-dict parameters."""
+        result = formatter._process_python_parameters([123, True])
+        assert result[0] == {"name": "123", "type": "Any"}
+        assert result[1] == {"name": "True", "type": "Any"}
+
+    def test_process_non_list_non_string_params(self, formatter):
+        """Test processing non-list non-string parameter returns empty."""
+        result = formatter._process_python_parameters(42)
+        assert result == []
+
+
+class TestPythonFormatterFullTableEdges:
+    """Test _format_full_table edge cases (covers lines 229-239, 276-278, 336-408)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def test_full_table_none_file_path(self, formatter):
+        """Test full table with None file_path."""
+        data = {
+            "file_path": None,
+            "classes": [],
+            "functions": [],
+            "imports": [],
+        }
+        result = formatter._format_full_table(data)
+        assert "# Module: Unknown" in result
+
+    def test_full_table_import_fallback_from_module(self, formatter):
+        """Test import fallback when raw_text is empty but module_name exists."""
+        data = {
+            "file_path": "test.py",
+            "classes": [],
+            "functions": [],
+            "imports": [
+                {"raw_text": "", "module_name": "os.path", "name": "join"},
+            ],
+        }
+        result = formatter._format_full_table(data)
+        assert "from os.path import join" in result
+
+    def test_full_table_import_fallback_no_module(self, formatter):
+        """Test import fallback when both raw_text and module_name are empty."""
+        data = {
+            "file_path": "test.py",
+            "classes": [],
+            "functions": [],
+            "imports": [
+                {"raw_text": "", "module_name": "", "name": "sys"},
+            ],
+        }
+        result = formatter._format_full_table(data)
+        assert "import sys" in result
+
+    def test_full_table_class_methods_filtering(self, formatter):
+        """Test that methods are correctly assigned to their class."""
+        data = {
+            "file_path": "models.py",
+            "classes": [
+                {"name": "ClassA", "type": "class", "visibility": "public",
+                 "line_range": {"start": 1, "end": 30}},
+                {"name": "ClassB", "type": "class", "visibility": "public",
+                 "line_range": {"start": 35, "end": 60}},
+            ],
+            "methods": [
+                {"name": "method_a", "line_range": {"start": 10, "end": 15},
+                 "parameters": [], "visibility": "public", "complexity_score": 1, "docstring": ""},
+                {"name": "method_b", "line_range": {"start": 40, "end": 45},
+                 "parameters": [], "visibility": "public", "complexity_score": 1, "docstring": ""},
+            ],
+            "fields": [],
+            "functions": [],
+            "imports": [],
+        }
+        result = formatter._format_full_table(data)
+        assert "## ClassA" in result
+        assert "## ClassB" in result
+
+    def test_full_table_module_functions_outside_classes(self, formatter):
+        """Test module-level functions not in any class range."""
+        data = {
+            "file_path": "utils.py",
+            "classes": [
+                {"name": "MyClass", "type": "class", "visibility": "public",
+                 "line_range": {"start": 10, "end": 30}},
+            ],
+            "methods": [
+                {"name": "class_method", "line_range": {"start": 15, "end": 20},
+                 "parameters": [], "visibility": "public", "complexity_score": 1, "docstring": ""},
+                {"name": "helper_func", "line_range": {"start": 35, "end": 40},
+                 "parameters": [], "visibility": "public", "complexity_score": 1, "docstring": ""},
+            ],
+            "fields": [],
+            "functions": [],
+            "imports": [],
+        }
+        result = formatter._format_full_table(data)
+        assert "## Module Functions" in result
+        assert "helper_func" in result
+
+    def test_full_table_none_method_in_list(self, formatter):
+        """Test that None method entries are skipped."""
+        data = {
+            "file_path": "test.py",
+            "classes": [],
+            "functions": [],
+            "imports": [],
+            "methods": [
+                None,
+                {"name": "valid_func", "line_range": {"start": 5, "end": 10},
+                 "parameters": [], "visibility": "public", "complexity_score": 1, "docstring": ""},
+            ],
+        }
+        result = formatter._format_full_table(data)
+        assert "valid_func" in result
+
+    def test_full_table_none_class_in_list(self, formatter):
+        """Test that None class entries in classes list are skipped."""
+        data = {
+            "file_path": "test.py",
+            "classes": [None, {"name": "Valid", "type": "class", "visibility": "public",
+                               "line_range": {"start": 1, "end": 20}}],
+            "methods": [],
+            "fields": [],
+            "functions": [],
+            "imports": [],
+            "statistics": {"method_count": 0, "field_count": 0},
+        }
+        result = formatter._format_full_table(data)
+        assert "Valid" in result
+
+
+class TestPythonFormatterCompactTableEdges:
+    """Test _format_compact_table edge cases (covers line 478)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def test_compact_table_classes_section(self, formatter):
+        """Test compact table shows classes section."""
+        data = {
+            "file_path": "models.py",
+            "classes": [
+                {"name": "User", "type": "class", "line_range": {"start": 1, "end": 20}},
+                {"name": "Admin", "type": "class", "line_range": {"start": 25, "end": 50}},
+            ],
+            "statistics": {"method_count": 0, "field_count": 0},
+            "methods": [],
+        }
+        result = formatter._format_compact_table(data)
+        assert "## Classes" in result
+        assert "| User | class | 1-20 |" in result
+        assert "| Admin | class | 25-50 |" in result
+
+    def test_compact_table_none_class_skipped(self, formatter):
+        """Test compact table skips None class entries."""
+        data = {
+            "file_path": "test.py",
+            "classes": [None, {"name": "Valid", "type": "class", "line_range": {"start": 1, "end": 10}}],
+            "statistics": {"method_count": 0, "field_count": 0},
+            "methods": [],
+        }
+        result = formatter._format_compact_table(data)
+        assert "| Valid |" in result
+
+
+class TestPythonFormatterCompactSignatureEdges:
+    """Test _create_compact_signature edge cases (covers lines 554-590)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def test_compact_signature_none_type(self, formatter):
+        """Test compact signature with None parameter type."""
+        method = {
+            "parameters": [{"name": "x", "type": None}],
+            "return_type": "int",
+        }
+        result = formatter._create_compact_signature(method)
+        assert "(Any):int" == result
+
+    def test_compact_signature_string_params(self, formatter):
+        """Test compact signature with string parameters (skipped)."""
+        method = {
+            "parameters": "a, b, c",
+            "return_type": "None",
+        }
+        result = formatter._create_compact_signature(method)
+        assert "():None" == result
+
+    def test_compact_signature_non_dict_param(self, formatter):
+        """Test compact signature with non-dict parameter."""
+        method = {
+            "parameters": [42, "plainstring"],
+            "return_type": "bool",
+        }
+        result = formatter._create_compact_signature(method)
+        assert "(Any,Any):bool" == result
+
+    def test_compact_signature_dict_return_type(self, formatter):
+        """Test compact signature with dict return type."""
+        method = {
+            "parameters": [],
+            "return_type": {"type": "List[str]"},
+        }
+        result = formatter._create_compact_signature(method)
+        assert "():List[str]" == result
+
+    def test_compact_signature_non_string_return_type(self, formatter):
+        """Test compact signature with non-string return type."""
+        method = {
+            "parameters": [],
+            "return_type": 42,
+        }
+        result = formatter._create_compact_signature(method)
+        assert "():42" == result
+
+    def test_compact_signature_raises_on_none_method(self, formatter):
+        """Test compact signature raises on None method."""
+        with pytest.raises(TypeError):
+            formatter._create_compact_signature(None)
+
+
+class TestPythonFormatterClassMethodRow:
+    """Test _format_class_method_row edge cases (covers lines 736-803)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def test_class_method_row_private(self, formatter):
+        """Test class method row with private method."""
+        method = {
+            "name": "_private_helper",
+            "visibility": "public",
+            "line_range": {"start": 10, "end": 15},
+            "parameters": [],
+            "complexity_score": 1,
+            "docstring": "Internal helper.",
+        }
+        result = formatter._format_class_method_row(method)
+        assert "| _private_helper |" in result
+        assert "| - |" in result  # private visibility
+
+    def test_class_method_row_magic_method(self, formatter):
+        """Test class method row with magic method."""
+        method = {
+            "name": "__str__",
+            "visibility": "public",
+            "line_range": {"start": 20, "end": 25},
+            "parameters": [{"name": "self", "type": "Any"}],
+            "complexity_score": 1,
+            "docstring": "String representation.",
+        }
+        result = formatter._format_class_method_row(method)
+        assert "| __str__ |" in result
+        assert "| + |" in result  # magic = public symbol
+
+    def test_class_method_row_init_with_bad_docstring(self, formatter):
+        """Test __init__ with docstring containing method-like words."""
+        method = {
+            "name": "__init__",
+            "visibility": "public",
+            "line_range": {"start": 5, "end": 10},
+            "parameters": [],
+            "complexity_score": 1,
+            "docstring": "bark loudly",  # looks like it belongs to another method
+        }
+        result = formatter._format_class_method_row(method)
+        assert "| - |" in result  # docstring filtered out
+
+    def test_class_method_row_init_valid_docstring(self, formatter):
+        """Test __init__ with valid docstring."""
+        method = {
+            "name": "__init__",
+            "visibility": "public",
+            "line_range": {"start": 5, "end": 10},
+            "parameters": [],
+            "complexity_score": 1,
+            "docstring": "Initialize the calculator.",
+        }
+        result = formatter._format_class_method_row(method)
+        assert "Initialize the calculator" in result
+
+    def test_class_method_row_static(self, formatter):
+        """Test class method row with static modifier."""
+        method = {
+            "name": "create",
+            "visibility": "public",
+            "line_range": {"start": 30, "end": 35},
+            "parameters": [],
+            "complexity_score": 1,
+            "docstring": "",
+            "is_static": True,
+        }
+        result = formatter._format_class_method_row(method)
+        assert "[static]" in result
+
+    def test_class_method_row_malformed_line_range(self, formatter):
+        """Test class method row with non-dict line_range."""
+        method = {
+            "name": "broken",
+            "visibility": "public",
+            "line_range": "invalid",
+            "parameters": [],
+            "complexity_score": 0,
+            "docstring": "",
+        }
+        result = formatter._format_class_method_row(method)
+        assert "0-0" in result
+
+
+class TestPythonFormatterSignatureCompact:
+    """Test _format_python_signature_compact (covers lines 805-830)."""
+
+    @pytest.fixture
+    def formatter(self):
+        return PythonTableFormatter()
+
+    def test_compact_sig_with_typed_params(self, formatter):
+        """Test compact signature with typed params."""
+        method = {
+            "parameters": [
+                {"name": "self", "type": "MyClass"},
+                {"name": "value", "type": "int"},
+            ],
+            "return_type": "bool",
+        }
+        result = formatter._format_python_signature_compact(method)
+        assert "(self:MyClass, value:int):bool" == result
+
+    def test_compact_sig_no_type(self, formatter):
+        """Test compact signature with params lacking type info."""
+        method = {
+            "parameters": [
+                {"name": "self"},
+                {"name": "data"},
+            ],
+            "return_type": "Any",
+        }
+        result = formatter._format_python_signature_compact(method)
+        assert "self:Any" in result
+        assert "data:Any" in result
+        assert ":Any" in result  # Return type defaults to Any
+
+    def test_compact_sig_none_params(self, formatter):
+        """Test compact signature with None parameters."""
+        method = {
+            "parameters": None,
+            "return_type": "str",
+        }
+        result = formatter._format_python_signature_compact(method)
+        assert "():str" == result
+
+
 class TestPythonTableFormatterEdgeCases:
     """Test Python table formatter edge cases."""
 

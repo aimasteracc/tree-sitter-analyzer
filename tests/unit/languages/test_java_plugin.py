@@ -1032,3 +1032,461 @@ class TestJavaEdgeCasesMerged:
         assert set(result.keys()) == expected_keys
         for key in expected_keys:
             assert result[key] == []
+
+
+# ====================================================================== #
+# TARGETED TESTS for coverage boost (79.5% -> 80%+)
+# ====================================================================== #
+
+
+class TestJavaFallbackBranches:
+    """Tests targeting specific uncovered fallback/exception branches."""
+
+    @pytest.fixture
+    def extractor(self) -> JavaElementExtractor:
+        return JavaElementExtractor()
+
+    @pytest.fixture
+    def plugin(self) -> JavaPlugin:
+        return JavaPlugin()
+
+    def test_get_node_text_fallback_single_line(self, extractor):
+        """Cover lines 487-491: fallback single-line text extraction"""
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 10
+        node.start_point = (0, 2)
+        node.end_point = (0, 7)
+        extractor.content_lines = ["Hello World!"]
+
+        with patch(
+            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            side_effect=Exception("primary error"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+            assert result == "llo W"
+
+    def test_get_node_text_fallback_multiline(self, extractor):
+        """Cover lines 494-504: fallback multiline text extraction"""
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 30
+        node.start_point = (0, 5)
+        node.end_point = (2, 3)
+        extractor.content_lines = ["Hello World!", "Middle line", "End text"]
+
+        with patch(
+            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            side_effect=Exception("primary error"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+            assert "World!" in result
+            assert "Middle line" in result
+            assert "End" in result
+
+    def test_get_node_text_both_fallbacks_fail(self, extractor):
+        """Cover lines 505-507: both primary and fallback fail"""
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 10
+        type(node).start_point = property(
+            lambda self: (_ for _ in ()).throw(Exception("bad"))
+        )
+        extractor.content_lines = ["test"]
+
+        with patch(
+            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice",
+            side_effect=Exception("primary error"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+            assert result == ""
+
+    def test_extract_class_optimized_value_error(self, extractor):
+        """Cover lines 589-591: ValueError in class extraction"""
+        node = Mock()
+        node.type = "class_declaration"
+        node.start_point = (0, 0)
+        node.end_point = (5, 0)
+        node.children = []
+        extractor.content_lines = ["public class Test {}"]
+        extractor._get_node_text_optimized = Mock(side_effect=ValueError("bad"))
+        result = extractor._extract_class_optimized(node)
+        assert result is None
+
+    def test_extract_class_optimized_unexpected_error(self, extractor):
+        """Cover lines 592-594: unexpected error in class extraction"""
+        node = Mock()
+        node.type = "class_declaration"
+        node.start_point = (0, 0)
+        node.end_point = (5, 0)
+        node.children = []
+        extractor.content_lines = ["public class Test {}"]
+        extractor._get_node_text_optimized = Mock(side_effect=RuntimeError("unexpected"))
+        result = extractor._extract_class_optimized(node)
+        assert result is None
+
+    def test_extract_method_optimized_value_error(self, extractor):
+        """Cover lines 647-649: ValueError in method extraction"""
+        node = Mock()
+        node.type = "method_declaration"
+        node.start_point = (0, 0)
+        node.end_point = (3, 0)
+        node.children = []
+        extractor.content_lines = ["public void test() {}"]
+        extractor._parse_method_signature_optimized = Mock(
+            side_effect=TypeError("bad")
+        )
+        result = extractor._extract_method_optimized(node)
+        assert result is None
+
+    def test_extract_method_optimized_unexpected_error(self, extractor):
+        """Cover lines 650-652: unexpected error in method extraction"""
+        node = Mock()
+        node.type = "method_declaration"
+        node.start_point = (0, 0)
+        node.end_point = (3, 0)
+        node.children = []
+        extractor.content_lines = ["public void test() {}"]
+        extractor._parse_method_signature_optimized = Mock(
+            side_effect=RuntimeError("unexpected")
+        )
+        result = extractor._extract_method_optimized(node)
+        assert result is None
+
+    def test_extract_field_optimized_value_error(self, extractor):
+        """Cover lines 700-701: ValueError in field extraction"""
+        node = Mock()
+        node.type = "field_declaration"
+        node.start_point = (0, 0)
+        node.end_point = (0, 20)
+        node.children = []
+        extractor.content_lines = ["private int x;"]
+        extractor._parse_field_declaration_optimized = Mock(
+            side_effect=AttributeError("bad")
+        )
+        result = extractor._extract_field_optimized(node)
+        assert result == []
+
+    def test_extract_field_optimized_unexpected_error(self, extractor):
+        """Cover lines 702-703: unexpected error in field extraction"""
+        node = Mock()
+        node.type = "field_declaration"
+        node.start_point = (0, 0)
+        node.end_point = (0, 20)
+        node.children = []
+        extractor.content_lines = ["private int x;"]
+        extractor._parse_field_declaration_optimized = Mock(
+            side_effect=RuntimeError("unexpected")
+        )
+        result = extractor._extract_field_optimized(node)
+        assert result == []
+
+    def test_parse_method_signature_returns_none(self, extractor):
+        """Cover line 762-763: method signature returns None when no name"""
+        node = Mock()
+        node.children = []
+        extractor._get_node_text_optimized = Mock(return_value="")
+        result = extractor._parse_method_signature_optimized(node)
+        assert result is None
+
+    def test_parse_field_declaration_no_type(self, extractor):
+        """Cover line 785: field declaration with no type found"""
+        node = Mock()
+        node.children = []
+        extractor._get_node_text_optimized = Mock(return_value="")
+        result = extractor._parse_field_declaration_optimized(node)
+        assert result is None
+
+    def test_parse_field_declaration_no_names(self, extractor):
+        """Cover lines 797-798: field declaration with type but no names"""
+        node = Mock()
+        type_child = Mock()
+        type_child.type = "type_identifier"
+        node.children = [type_child]
+        extractor._get_node_text_optimized = Mock(return_value="String")
+        result = extractor._parse_field_declaration_optimized(node)
+        assert result is None
+
+    def test_parse_field_declaration_exception(self, extractor):
+        """Cover lines 804-805: exception in field declaration"""
+        node = Mock()
+        type(node).children = property(
+            lambda self: (_ for _ in ()).throw(Exception("bad"))
+        )
+        result = extractor._parse_field_declaration_optimized(node)
+        assert result is None
+
+    def test_extract_modifiers_non_keyword_text(self, extractor):
+        """Cover lines 825-838: modifiers extraction with non-keyword text"""
+        node = Mock()
+        modifiers_node = Mock()
+        modifiers_node.type = "modifiers"
+        non_keyword = Mock()
+        non_keyword.type = "some_other_type"
+        modifiers_node.children = [non_keyword]
+        node.children = [modifiers_node]
+        extractor._get_node_text_optimized = Mock(return_value="public")
+        result = extractor._extract_modifiers_optimized(node)
+        assert "public" in result
+
+    def test_extract_package_info_error(self, extractor):
+        """Cover lines 848-851: package extraction errors"""
+        node = Mock()
+        extractor._get_node_text_optimized = Mock(
+            side_effect=ValueError("bad")
+        )
+        extractor._extract_package_info(node)
+        assert extractor.current_package == ""
+
+    def test_extract_package_info_unexpected_error(self, extractor):
+        """Cover line 850-851: unexpected error in package extraction"""
+        node = Mock()
+        extractor._get_node_text_optimized = Mock(
+            side_effect=RuntimeError("unexpected")
+        )
+        extractor._extract_package_info(node)
+        assert extractor.current_package == ""
+
+    def test_extract_package_element_error(self, extractor):
+        """Cover lines 867-870: package element extraction errors"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 20)
+        extractor._get_node_text_optimized = Mock(
+            side_effect=AttributeError("bad")
+        )
+        result = extractor._extract_package_element(node)
+        assert result is None
+
+    def test_extract_package_element_unexpected_error(self, extractor):
+        """Cover lines 869-870: unexpected error in package element"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 20)
+        extractor._get_node_text_optimized = Mock(
+            side_effect=RuntimeError("unexpected")
+        )
+        result = extractor._extract_package_element(node)
+        assert result is None
+
+    def test_extract_annotation_no_name_text_fallback(self, extractor):
+        """Cover lines 958-961: annotation without identifier, falls back to regex"""
+        node = Mock()
+        node.type = "marker_annotation"
+        node.start_point = (0, 0)
+        node.end_point = (0, 10)
+        node.children = []
+        extractor._get_node_text_optimized = Mock(return_value="@Override")
+        result = extractor._extract_annotation_optimized(node)
+        assert result is not None
+        assert result["name"] == "Override"
+
+    def test_extract_annotation_exception(self, extractor):
+        """Cover lines 970-971: exception in annotation extraction"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("err"))
+        result = extractor._extract_annotation_optimized(node)
+        assert result is None
+
+    def test_is_nested_class_false(self, extractor):
+        """Cover line 1011: not a nested class"""
+        node = Mock()
+        # parent is program, not a class
+        parent = Mock()
+        parent.type = "program"
+        parent.parent = None
+        node.parent = parent
+        result = extractor._is_nested_class(node)
+        assert result is False
+
+    def test_find_parent_class_none(self, extractor):
+        """Cover line 1026: no parent class found"""
+        node = Mock()
+        parent = Mock()
+        parent.type = "program"
+        parent.parent = None
+        node.parent = parent
+        result = extractor._find_parent_class(node)
+        assert result is None
+
+    def test_find_parent_class_found(self, extractor):
+        """Cover lines 1017-1024: parent class found"""
+        node = Mock()
+        class_node = Mock()
+        class_node.type = "class_declaration"
+        class_node.parent = None
+        id_node = Mock()
+        id_node.type = "identifier"
+        class_node.children = [id_node]
+        node.parent = class_node
+        extractor._get_node_text_optimized = Mock(return_value="ParentClass")
+        result = extractor._find_parent_class(node)
+        assert result == "ParentClass"
+
+    def test_extract_javadoc_for_line_exception(self, extractor):
+        """Cover lines 1075-1076: exception in javadoc extraction"""
+        extractor.content_lines = None  # Will cause exception
+        result = extractor._extract_javadoc_for_line(5)
+        assert result is None
+
+    def test_extract_class_name_exception(self, extractor):
+        """Cover lines 1087-1089: exception in class name extraction"""
+        node = Mock()
+        type(node).children = property(
+            lambda self: (_ for _ in ()).throw(Exception("bad"))
+        )
+        result = extractor._extract_class_name(node)
+        assert result is None
+
+    def test_count_tree_nodes_deprecated(self, plugin):
+        """Cover lines 1216-1218: _count_tree_nodes method"""
+        node = Mock()
+        node.children = []
+        result = plugin._count_tree_nodes(node)
+        assert isinstance(result, int)
+        assert result >= 1
+
+    def test_supports_file(self, plugin):
+        """Cover lines 1288-1292: supports_file method"""
+        assert plugin.supports_file("Test.java") is True
+        assert plugin.supports_file("Test.jsp") is True
+        assert plugin.supports_file("Test.py") is False
+        assert plugin.supports_file("Test.js") is False
+
+    def test_extract_elements_with_exception(self, plugin):
+        """Cover lines 1277-1286: extract_elements exception"""
+        tree = Mock()
+        tree.root_node = Mock()
+        with patch.object(
+            plugin, "create_extractor", side_effect=Exception("err")
+        ):
+            result = plugin.extract_elements(tree, "code")
+            assert result["functions"] == []
+            assert result["classes"] == []
+
+    def test_extract_packages_fallback(self, extractor):
+        """Cover lines 274-294: package extraction fallback via regex"""
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []  # No package_declaration in AST
+
+        source = "package com.example.test;\n\npublic class Test {}"
+        packages = extractor.extract_packages(mock_tree, source)
+        assert len(packages) == 1
+        assert packages[0].name == "com.example.test"
+
+    def test_extract_import_info_static(self, extractor):
+        """Cover lines 891-914: static import extraction"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 40)
+        node.start_byte = 0
+        node.end_byte = 40
+        extractor.content_lines = ["import static java.util.Collections.sort;"]
+        extractor._get_node_text_optimized = Mock(
+            return_value="import static java.util.Collections.sort;"
+        )
+        result = extractor._extract_import_info(
+            node, "import static java.util.Collections.sort;"
+        )
+        assert result is not None
+        assert result.is_static is True
+
+    def test_extract_import_info_wildcard(self, extractor):
+        """Cover lines 920-924: wildcard import (text without semicolon)"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 22)
+        # The endswith(".*") check needs text ending in ".*" (no semicolon)
+        extractor._get_node_text_optimized = Mock(
+            return_value="import java.util.*"
+        )
+        result = extractor._extract_import_info(node, "import java.util.*")
+        assert result is not None
+        assert result.is_wildcard is True
+        assert result.name == "java.util"
+
+    def test_extract_import_info_wildcard_with_dot_ending(self, extractor):
+        """Cover line 923-924: import name ending with dot"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 22)
+        # Simulate text where regex captures trailing dot
+        extractor._get_node_text_optimized = Mock(
+            return_value="import java.util.*"
+        )
+        result = extractor._extract_import_info(node, "import java.util.*")
+        assert result is not None
+        assert result.is_wildcard is True
+
+    def test_extract_import_info_exception(self, extractor):
+        """Cover lines 937-938: exception in import extraction"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("err"))
+        result = extractor._extract_import_info(node, "import test;")
+        assert result is None
+
+    def test_traversal_max_depth(self, extractor):
+        """Cover lines 356-358: max depth exceeded"""
+        root = Mock()
+        root.type = "program"
+        root.children = []
+
+        # Create a deeply nested structure
+        current = root
+        for _i in range(55):
+            child = Mock()
+            child.type = "program"
+            child.children = []
+            current.children = [child]
+            current = child
+
+        extractors = {"method_declaration": Mock()}
+        results = []
+        extractor._traverse_and_extract_iterative(root, extractors, results, "method")
+        assert results == []
+
+    def test_field_batch_large(self, extractor):
+        """Cover lines 413-415: field batch processing at size 10"""
+        root = Mock()
+        root.type = "program"
+
+        field_nodes = []
+        for _i in range(12):
+            field = Mock()
+            field.type = "field_declaration"
+            field.children = []
+            field_nodes.append(field)
+
+        root.children = field_nodes
+
+        def mock_extractor(node):
+            return [Variable(
+                name="field",
+                start_line=1,
+                end_line=1,
+                raw_text="int field;",
+                language="java",
+            )]
+
+        extractors = {"field_declaration": mock_extractor}
+        results = []
+        extractor._traverse_and_extract_iterative(root, extractors, results, "field")
+        assert len(results) == 12
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_no_language(self, plugin):
+        """Cover lines 1131-1142: analyze_file when language is None"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".java", delete=False) as f:
+            f.write("public class Test {}")
+            temp_path = f.name
+
+        try:
+            mock_request = Mock()
+            mock_request.file_path = temp_path
+            with patch.object(plugin, "get_tree_sitter_language", return_value=None):
+                result = await plugin.analyze_file(temp_path, mock_request)
+                assert result.success is False
+                assert "Failed to load tree-sitter language" in result.error_message
+        finally:
+            os.unlink(temp_path)

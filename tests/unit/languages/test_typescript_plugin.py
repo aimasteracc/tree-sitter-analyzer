@@ -1401,5 +1401,355 @@ class TestTypeScriptExtractorEdgeCases:
         assert results == []
 
 
+# ====================================================================== #
+# TARGETED TESTS for coverage boost (79.7% -> 80%+)
+# ====================================================================== #
+
+
+class TestTypeScriptFallbackBranches:
+    """Tests targeting specific uncovered fallback/exception branches."""
+
+    @pytest.fixture
+    def extractor(self) -> TypeScriptElementExtractor:
+        return TypeScriptElementExtractor()
+
+    def test_get_node_text_fallback_multiline(self, extractor):
+        """Cover lines 308-319: fallback multiline text extraction"""
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 30
+        node.start_point = (0, 5)
+        node.end_point = (2, 3)
+
+        extractor.content_lines = ["Hello World!", "Middle line", "End text"]
+
+        with patch(
+            "tree_sitter_analyzer.languages.typescript_plugin.extract_text_slice",
+            side_effect=Exception("primary error"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+            assert "World!" in result
+            assert "Middle line" in result
+            assert "End" in result
+
+    def test_get_node_text_fallback_single_line(self, extractor):
+        """Cover lines 305-307: fallback single-line text extraction"""
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 10
+        node.start_point = (0, 2)
+        node.end_point = (0, 7)
+
+        extractor.content_lines = ["Hello World!"]
+
+        with patch(
+            "tree_sitter_analyzer.languages.typescript_plugin.extract_text_slice",
+            side_effect=Exception("primary error"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+            assert result == "llo W"
+
+    def test_get_node_text_both_fallbacks_fail(self, extractor):
+        """Cover lines 320-322: both primary and fallback fail"""
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 10
+        type(node).start_point = property(
+            lambda self: (_ for _ in ()).throw(Exception("bad"))
+        )
+
+        extractor.content_lines = ["test"]
+
+        with patch(
+            "tree_sitter_analyzer.languages.typescript_plugin.extract_text_slice",
+            side_effect=Exception("primary error"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+            assert result == ""
+
+    def test_extract_function_name_none(self, extractor):
+        """Cover line 341: function signature returns name=None"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (2, 0)
+        extractor.content_lines = ["function () {}"]
+        extractor._parse_function_signature_optimized = Mock(
+            return_value=(None, [], False, False, None, [])
+        )
+        result = extractor._extract_function_optimized(node)
+        assert result is None
+
+    def test_extract_arrow_function_type_annotation(self, extractor):
+        """Cover lines 406-409: arrow function with type_annotation child"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 30)
+        node.children = []
+
+        parent = Mock()
+        parent.type = "variable_declarator"
+        id_node = Mock()
+        id_node.type = "identifier"
+        parent.children = [id_node]
+        node.parent = parent
+
+        type_ann = Mock()
+        type_ann.type = "type_annotation"
+        formal_params = Mock()
+        formal_params.type = "formal_parameters"
+        node.children = [formal_params, type_ann]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                node: "const fn = (x: number): string => x.toString()",
+                id_node: "fn",
+                type_ann: ": string",
+            }.get(n, "")
+        )
+        extractor._extract_parameters_with_types = Mock(return_value=["x: number"])
+        extractor._extract_tsdoc_for_line = Mock(return_value=None)
+        extractor._calculate_complexity_optimized = Mock(return_value=1)
+        extractor.content_lines = ["const fn = (x: number): string => x.toString()"]
+
+        result = extractor._extract_arrow_function_optimized(node)
+        assert result is not None
+        assert result.return_type == "string"
+
+    def test_extract_method_name_none_with_regex_fallback(self, extractor):
+        """Cover lines 1098-1109: method name None falls back to regex"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (2, 0)
+        node.children = []
+
+        extractor._get_node_text_optimized = Mock(
+            return_value="public async myMethod(param: string)"
+        )
+        extractor._extract_parameters_with_types = Mock(return_value=[])
+        extractor._extract_generics = Mock(return_value=[])
+
+        result = extractor._parse_method_signature_optimized(node)
+        assert result is not None
+        name = result[0]
+        assert name == "myMethod"
+
+    def test_extract_method_signature_constructor(self, extractor):
+        """Cover line 1113: constructor detection after name determined"""
+        node = Mock()
+        prop_id = Mock()
+        prop_id.type = "property_identifier"
+        node.children = [prop_id]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                node: "constructor()",
+                prop_id: "constructor",
+            }.get(n, "")
+        )
+        extractor._extract_parameters_with_types = Mock(return_value=[])
+        extractor._extract_generics = Mock(return_value=[])
+
+        result = extractor._parse_method_signature_optimized(node)
+        assert result is not None
+        is_constructor = result[6]
+        assert is_constructor is True
+
+    def test_extract_method_signature_protected_visibility(self, extractor):
+        """Cover line 1078: protected visibility"""
+        node = Mock()
+        node.children = []
+        extractor._get_node_text_optimized = Mock(
+            return_value="protected doWork()"
+        )
+        extractor._extract_parameters_with_types = Mock(return_value=[])
+        extractor._extract_generics = Mock(return_value=[])
+
+        result = extractor._parse_method_signature_optimized(node)
+        assert result is not None
+        visibility = result[8]
+        assert visibility == "protected"
+
+    def test_extract_method_optimized_name_none(self, extractor):
+        """Cover line 471: method info returns name=None"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (2, 0)
+        extractor._parse_method_signature_optimized = Mock(
+            return_value=(None, [], False, False, False, False, False, None, "public", [])
+        )
+        result = extractor._extract_method_optimized(node)
+        assert result is None
+
+    def test_extract_method_signature_optimized_name_none(self, extractor):
+        """Cover line 533: method_signature returns name=None"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (2, 0)
+        extractor._parse_method_signature_optimized = Mock(
+            return_value=(None, [], False, False, False, False, False, None, "public", [])
+        )
+        result = extractor._extract_method_signature_optimized(node)
+        assert result is None
+
+    def test_extract_generator_function_name_none(self, extractor):
+        """Cover line 579: generator function with name=None"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (2, 0)
+        extractor._parse_function_signature_optimized = Mock(
+            return_value=(None, [], False, True, None, [])
+        )
+        result = extractor._extract_generator_function_optimized(node)
+        assert result is None
+
+    def test_tsdoc_single_line(self, extractor):
+        """Cover lines 1556-1560: single-line TSDoc comment"""
+        extractor.content_lines = [
+            "/** Single line doc */",
+            "function test(): void {}",
+        ]
+        result = extractor._extract_tsdoc_for_line(2)
+        assert result is not None
+        assert "Single line doc" in result
+
+    def test_tsdoc_no_comment_before(self, extractor):
+        """Cover lines 1580-1581: no comment found, caches empty string"""
+        extractor.content_lines = [
+            "const x = 1;",
+            "function test(): void {}",
+        ]
+        result = extractor._extract_tsdoc_for_line(2)
+        assert result is None
+        assert extractor._tsdoc_cache[2] == ""
+
+    def test_extract_property_signature_no_name(self, extractor):
+        """Cover line 911: property signature with no property_identifier"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 10)
+        node.children = []  # No children
+        extractor._get_node_text_optimized = Mock(return_value="string")
+        result = extractor._extract_property_signature_optimized(node)
+        assert result is None
+
+    def test_extract_property_no_name(self, extractor):
+        """Cover line 864: property without property_identifier child"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 10)
+        node.children = []  # No property_identifier
+        extractor._get_node_text_optimized = Mock(return_value="value")
+        result = extractor._extract_property_optimized(node)
+        assert result is None
+
+    def test_is_framework_component_not_react(self, extractor):
+        """Cover line 1495: framework_type that is not react/angular/vue"""
+        extractor.framework_type = "svelte"
+        node = Mock()
+        assert extractor._is_framework_component(node, "MyComp") is False
+
+    def test_extract_dynamic_import_alternative_pattern(self, extractor):
+        """Cover lines 1411-1414: dynamic import with alternative pattern"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 30)
+        extractor._get_node_text_optimized = Mock(
+            return_value="import(variable)"
+        )
+        result = extractor._extract_dynamic_import(node)
+        assert result is not None
+        assert result.module_path == "variable"
+
+    def test_parse_variable_declarator_skip_arrow_function(self, extractor):
+        """Cover lines 980-982: variable declarator that contains arrow_function"""
+        node = Mock()
+        node.type = "variable_declarator"
+
+        identifier = Mock()
+        identifier.type = "identifier"
+        arrow = Mock()
+        arrow.type = "arrow_function"
+        node.children = [identifier, arrow]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                identifier: "myFunc",
+                node: "myFunc = () => {}",
+            }.get(n, "")
+        )
+        extractor._extract_tsdoc_for_line = Mock(return_value=None)
+        extractor.content_lines = ["const myFunc = () => {}"]
+
+        result = extractor._parse_variable_declarator(node, "const", 1, 1)
+        assert result is None
+
+    def test_parse_variable_declarator_no_name(self, extractor):
+        """Cover line 976: variable declarator with no identifier"""
+        node = Mock()
+        node.children = []
+        extractor._get_node_text_optimized = Mock(return_value="")
+        result = extractor._parse_variable_declarator(node, "const", 1, 1)
+        assert result is None
+
+
+class TestTypeScriptPluginExtractMethods:
+    """Tests for plugin-level extract methods."""
+
+    @pytest.fixture
+    def plugin(self) -> TypeScriptPlugin:
+        return TypeScriptPlugin()
+
+    def test_extract_elements_legacy(self, plugin):
+        """Cover lines 1829-1838: plugin.extract_elements creates new extractor"""
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
+        mock_extractor = Mock()
+        mock_extractor.extract_functions.return_value = []
+        mock_extractor.extract_classes.return_value = []
+        mock_extractor.extract_variables.return_value = []
+        mock_extractor.extract_imports.return_value = []
+
+        with patch.object(plugin, "create_extractor", return_value=mock_extractor):
+            elements = plugin.extract_elements(mock_tree, "")
+            assert elements == []
+            mock_extractor.extract_functions.assert_called_once()
+            mock_extractor.extract_classes.assert_called_once()
+            mock_extractor.extract_variables.assert_called_once()
+            mock_extractor.extract_imports.assert_called_once()
+
+    def test_execute_query_strategy(self, plugin):
+        """Cover lines 1844-1845: execute_query_strategy"""
+        result = plugin.execute_query_strategy(None, "typescript")
+        assert result is None
+
+        result = plugin.execute_query_strategy("function", "typescript")
+        # Should return None or a query string from get_queries()
+        assert result is None or isinstance(result, str)
+
+    def test_get_element_categories(self, plugin):
+        """Cover lines 1847-1893: get_element_categories"""
+        cats = plugin.get_element_categories()
+        assert isinstance(cats, dict)
+        assert "function" in cats
+        assert "class" in cats
+        assert "interface" in cats
+        assert "enum" in cats
+        assert "variable" in cats
+        assert "import" in cats
+        assert "export" in cats
+        assert "react_component" in cats
+
+    def test_get_tree_sitter_language_not_available(self, plugin):
+        """Cover lines 1686-1687: TREE_SITTER_AVAILABLE is False"""
+        with patch(
+            "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE",
+            False,
+        ):
+            plugin._language = None
+            result = plugin.get_tree_sitter_language()
+            assert result is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

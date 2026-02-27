@@ -1270,6 +1270,385 @@ class TestComputeRobustCounts:
         assert counts["image_count"] >= 4
 
 
+class TestFormatCompact:
+    """Test _format_compact method (covers lines 736-785)"""
+
+    def test_compact_basic(self):
+        """Test basic compact formatting"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "path/to/readme.md",
+            "elements": [
+                {"type": "heading", "text": "Title", "level": 1, "line_range": {"start": 1, "end": 1}},
+                {"type": "link", "text": "Link", "url": "http://example.com", "line_range": {"start": 5, "end": 5}},
+                {"type": "image", "alt": "Image", "url": "img.png", "line_range": {"start": 10, "end": 10}},
+                {"type": "code_block", "language": "python", "line_count": 5, "line_range": {"start": 15, "end": 20}},
+                {"type": "list", "list_type": "ordered", "item_count": 3, "line_range": {"start": 25, "end": 28}},
+                {"type": "table", "column_count": 3, "row_count": 4, "line_range": {"start": 30, "end": 34}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="compact")
+
+        assert "# readme" in result
+        assert "## Summary" in result
+        assert "| Element Type | Count |" in result
+        assert "| Headers | 1 |" in result
+        assert "| Links | 1 |" in result
+        assert "| Images | 1 |" in result
+        assert "| Code Blocks | 1 |" in result
+        assert "| Lists | 1 |" in result
+        assert "| Tables | 1 |" in result
+        assert "**Total**" in result
+
+    def test_compact_with_headers(self):
+        """Test compact format shows document structure section"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "doc.md",
+            "elements": [
+                {"type": "heading", "text": "Introduction", "level": 1, "line_range": {"start": 1, "end": 1}},
+                {"type": "heading", "text": "Details", "level": 2, "line_range": {"start": 10, "end": 10}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="compact")
+
+        assert "## Document Structure" in result
+        assert "| # | Introduction | 1 |" in result
+        assert "| ## | Details | 10 |" in result
+
+    def test_compact_truncates_long_headers(self):
+        """Test compact format truncates long header text"""
+        formatter = MarkdownFormatter()
+        long_text = "A" * 100
+        analysis_result = {
+            "file_path": "doc.md",
+            "elements": [
+                {"type": "heading", "text": long_text, "level": 1, "line_range": {"start": 1, "end": 1}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="compact")
+
+        # Header text should be truncated to 50 chars
+        assert long_text not in result
+        assert "A" * 50 in result
+
+    def test_compact_limits_headers_to_20(self):
+        """Test compact format limits headers to 20"""
+        formatter = MarkdownFormatter()
+        elements = [
+            {"type": "heading", "text": f"Header {i}", "level": 2, "line_range": {"start": i, "end": i}}
+            for i in range(25)
+        ]
+        analysis_result = {"file_path": "many_headers.md", "elements": elements}
+        result = formatter.format_table(analysis_result, table_type="compact")
+
+        assert "more)" in result
+
+    def test_compact_no_headers(self):
+        """Test compact format with no headers"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "noheaders.md",
+            "elements": [
+                {"type": "link", "text": "Link", "url": "http://example.com"},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="compact")
+
+        assert "## Summary" in result
+        assert "## Document Structure" not in result
+
+    def test_compact_filename_extraction_markdown_ext(self):
+        """Test compact format extracts filename from .markdown extension"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "docs/guide.markdown",
+            "elements": [{"type": "heading", "text": "Title", "level": 1, "line_range": {"start": 1, "end": 1}}],
+        }
+        result = formatter.format_table(analysis_result, table_type="compact")
+        assert "# guide" in result
+
+    def test_compact_filename_backslash_path(self):
+        """Test compact format with backslash path"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "C:\\docs\\readme.md",
+            "elements": [{"type": "heading", "text": "Title", "level": 1, "line_range": {"start": 1, "end": 1}}],
+        }
+        result = formatter.format_table(analysis_result, table_type="compact")
+        assert "# readme" in result
+
+
+class TestFormatCsv:
+    """Test _format_csv method (covers lines 787-846)"""
+
+    def test_csv_header_row(self):
+        """Test CSV has correct header"""
+        formatter = MarkdownFormatter()
+        analysis_result = {"file_path": "test.md", "elements": []}
+        result = formatter.format_table(analysis_result, table_type="csv")
+
+        assert "Type" in result
+        assert "Text/URL/Language" in result
+        assert "Level/Count" in result
+        assert "Start Line" in result
+        assert "End Line" in result
+
+    def test_csv_heading_element(self):
+        """Test CSV heading row"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "heading", "text": "Test Header", "level": 2,
+                 "line_range": {"start": 1, "end": 1}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "heading" in result
+        assert "Test Header" in result
+
+    def test_csv_link_element(self):
+        """Test CSV link row"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "link", "text": "Example", "url": "http://example.com",
+                 "line_range": {"start": 5, "end": 5}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "link" in result
+        assert "Example" in result
+        assert "http://example.com" in result
+
+    def test_csv_autolink_element(self):
+        """Test CSV autolink row"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "autolink", "text": "auto", "url": "http://auto.com",
+                 "line_range": {"start": 3, "end": 3}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "autolink" in result
+
+    def test_csv_image_element(self):
+        """Test CSV image row"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "image", "alt": "Screenshot", "url": "screenshot.png",
+                 "line_range": {"start": 10, "end": 10}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "image" in result
+        assert "Screenshot" in result
+        assert "screenshot.png" in result
+
+    def test_csv_code_block_element(self):
+        """Test CSV code block row"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "code_block", "language": "python", "line_count": 15,
+                 "line_range": {"start": 10, "end": 25}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "code_block" in result
+        assert "python" in result
+
+    def test_csv_list_element(self):
+        """Test CSV list row"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "list", "list_type": "ordered", "item_count": 5,
+                 "line_range": {"start": 20, "end": 25}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "list" in result
+        assert "ordered" in result
+
+    def test_csv_task_list_element(self):
+        """Test CSV task list row"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "task_list", "list_type": "task", "item_count": 3,
+                 "line_range": {"start": 30, "end": 33}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "task_list" in result
+
+    def test_csv_table_element(self):
+        """Test CSV table row"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "table", "column_count": 4, "row_count": 10,
+                 "line_range": {"start": 40, "end": 50}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "table" in result
+        assert "4x10" in result
+
+    def test_csv_unknown_element_type(self):
+        """Test CSV unknown element type"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "footnote_definition", "name": "Note text here",
+                 "line_range": {"start": 50, "end": 52}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "footnote_definition" in result
+        assert "Note text here" in result
+
+    def test_csv_mixed_elements(self):
+        """Test CSV with many different element types"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "heading", "text": "Title", "level": 1, "line_range": {"start": 1, "end": 1}},
+                {"type": "link", "text": "Link", "url": "http://example.com", "line_range": {"start": 5, "end": 5}},
+                {"type": "image", "alt": "Img", "url": "img.png", "line_range": {"start": 10, "end": 10}},
+                {"type": "code_block", "language": "js", "line_count": 3, "line_range": {"start": 15, "end": 18}},
+                {"type": "list", "list_type": "unordered", "item_count": 2, "line_range": {"start": 20, "end": 22}},
+                {"type": "table", "column_count": 2, "row_count": 3, "line_range": {"start": 25, "end": 28}},
+                {"type": "blockquote", "name": "A quote", "line_range": {"start": 30, "end": 30}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        import csv
+        import io
+        reader = csv.reader(io.StringIO(result))
+        rows = list(reader)
+        assert len(rows) == 8  # Header + 7 data rows
+
+    def test_csv_empty_elements(self):
+        """Test CSV with empty elements list"""
+        formatter = MarkdownFormatter()
+        analysis_result = {"file_path": "test.md", "elements": []}
+        result = formatter.format_table(analysis_result, table_type="csv")
+        import csv
+        import io
+        reader = csv.reader(io.StringIO(result))
+        rows = list(reader)
+        assert len(rows) == 1  # Header only
+
+    def test_csv_reference_link_element(self):
+        """Test CSV reference_link element"""
+        formatter = MarkdownFormatter()
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "reference_link", "text": "Ref Link", "url": "http://ref.com",
+                 "line_range": {"start": 7, "end": 7}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        assert "reference_link" in result
+        assert "Ref Link" in result
+
+    def test_csv_long_text_truncation(self):
+        """Test CSV truncates long text content"""
+        formatter = MarkdownFormatter()
+        long_text = "X" * 100
+        analysis_result = {
+            "file_path": "test.md",
+            "elements": [
+                {"type": "heading", "text": long_text, "level": 1,
+                 "line_range": {"start": 1, "end": 1}},
+            ],
+        }
+        result = formatter.format_table(analysis_result, table_type="csv")
+        # Heading text should be truncated to 50 chars
+        assert "X" * 50 in result
+        assert "X" * 51 not in result
+
+
+class TestCollectImagesExceptionPath:
+    """Test _collect_images exception handling (covers lines 318/320, 589/591)"""
+
+    def test_collect_images_with_malformed_ref_def(self):
+        """Test _collect_images handles malformed reference_definition gracefully"""
+        formatter = MarkdownFormatter()
+        elements = [
+            {"type": "reference_definition", "name": "malformed content without brackets",
+             "url": "", "alt": ""},
+        ]
+        images = formatter._collect_images(elements)
+        # Should not crash and should return empty (no image extensions match)
+        assert isinstance(images, list)
+
+    def test_collect_images_ref_def_no_url_no_name(self):
+        """Test _collect_images with reference_definition missing both url and name"""
+        formatter = MarkdownFormatter()
+        elements = [
+            {"type": "reference_definition"},  # Missing all fields
+        ]
+        images = formatter._collect_images(elements)
+        assert isinstance(images, list)
+
+    def test_collect_images_ref_def_non_image_url(self):
+        """Test _collect_images ref def with non-image URL is not added"""
+        formatter = MarkdownFormatter()
+        elements = [
+            {"type": "reference_definition", "name": "[link]: http://example.com",
+             "url": "http://example.com", "alt": ""},
+        ]
+        images = formatter._collect_images(elements)
+        assert len(images) == 0  # .com is not an image extension
+
+
+class TestFormatTableDispatch:
+    """Test format_table dispatching to correct method"""
+
+    def test_format_table_csv(self):
+        """Test format_table dispatches to CSV"""
+        formatter = MarkdownFormatter()
+        result = formatter.format_table(
+            {"file_path": "test.md", "elements": []},
+            table_type="csv"
+        )
+        assert "Type" in result  # CSV header
+
+    def test_format_table_compact(self):
+        """Test format_table dispatches to compact"""
+        formatter = MarkdownFormatter()
+        result = formatter.format_table(
+            {"file_path": "test.md", "elements": []},
+            table_type="compact"
+        )
+        assert "## Summary" in result
+
+    def test_format_table_full_default(self):
+        """Test format_table defaults to full"""
+        formatter = MarkdownFormatter()
+        result = formatter.format_table(
+            {"file_path": "test.md", "line_count": 10, "elements": []},
+            table_type="full"
+        )
+        assert "## Document Overview" in result
+
+
 class TestFormatJsonOutput:
     """Test _format_json_output method"""
 

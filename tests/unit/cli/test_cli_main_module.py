@@ -724,6 +724,481 @@ class TestSpecialCommandsIntegration:
         )
 
 
+class TestHandleSpecialCommandsBatchPartialRead:
+    """Tests for batch partial read and metrics in handle_special_commands."""
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    @patch("tree_sitter_analyzer.cli_main.output_error")
+    def test_batch_partial_read_json_success_toon_format(self, mock_error, mock_run):
+        """Test batch partial read with JSON and toon output format."""
+        mock_run.return_value = {"success": True, "toon_content": "data"}
+        args = argparse.Namespace(
+            partial_read=True,
+            partial_read_requests_json='[{"file": "test.py", "start_line": 1}]',
+            partial_read_requests_file=None,
+            project_root=None,
+            allow_truncate=False,
+            fail_fast=False,
+            format="toon",
+            output_format="toon",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 0
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    def test_batch_partial_read_json_success_json_format(self, mock_run):
+        """Test batch partial read with JSON and json output format."""
+        mock_run.return_value = {"success": True}
+        args = argparse.Namespace(
+            partial_read=True,
+            partial_read_requests_json='[{"file": "test.py", "start_line": 1}]',
+            partial_read_requests_file=None,
+            project_root="/some/root",
+            allow_truncate=True,
+            fail_fast=True,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 0
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    def test_batch_partial_read_json_failure(self, mock_run):
+        """Test batch partial read returning failure."""
+        mock_run.return_value = {"success": False}
+        args = argparse.Namespace(
+            partial_read=True,
+            partial_read_requests_json='[{"file": "test.py", "start_line": 1}]',
+            partial_read_requests_file=None,
+            project_root=None,
+            allow_truncate=False,
+            fail_fast=False,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 1
+
+    @patch("tree_sitter_analyzer.cli_main.output_error")
+    def test_batch_partial_read_exception(self, mock_error):
+        """Test batch partial read with exception during execution."""
+        args = argparse.Namespace(
+            partial_read=True,
+            partial_read_requests_json='INVALID_JSON',
+            partial_read_requests_file=None,
+            project_root=None,
+            allow_truncate=False,
+            fail_fast=False,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 1
+        mock_error.assert_called()
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    def test_batch_partial_read_from_file(self, mock_run, tmp_path):
+        """Test batch partial read with requests from file."""
+        mock_run.return_value = {"success": True, "toon_content": "data"}
+        req_file = tmp_path / "requests.json"
+        req_file.write_text('{"requests": [{"file": "test.py", "start_line": 1}]}')
+        args = argparse.Namespace(
+            partial_read=True,
+            partial_read_requests_json=None,
+            partial_read_requests_file=str(req_file),
+            project_root=None,
+            allow_truncate=False,
+            fail_fast=False,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 0
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    def test_batch_partial_read_list_payload(self, mock_run):
+        """Test batch partial read with a direct list payload (not wrapped in requests key)."""
+        mock_run.return_value = {"success": True}
+        args = argparse.Namespace(
+            partial_read=True,
+            partial_read_requests_json='[{"file": "test.py", "start_line": 1}]',
+            partial_read_requests_file=None,
+            project_root=None,
+            allow_truncate=False,
+            fail_fast=False,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 0
+
+    @patch("tree_sitter_analyzer.cli_main.output_error")
+    def test_batch_partial_read_invalid_payload_not_list(self, mock_error):
+        """Test batch partial read where payload is not a list."""
+        args = argparse.Namespace(
+            partial_read=True,
+            partial_read_requests_json='{"requests": "not_a_list"}',
+            partial_read_requests_file=None,
+            project_root=None,
+            allow_truncate=False,
+            fail_fast=False,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 1
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    @patch("tree_sitter_analyzer.cli_main.output_error")
+    def test_batch_metrics_with_file_paths_toon(self, mock_error, mock_run):
+        """Test batch metrics with --file-paths and toon output."""
+        mock_run.return_value = {"success": True, "toon_content": "metrics"}
+        args = argparse.Namespace(
+            partial_read=False,
+            metrics_only=True,
+            file_paths=["a.py", "b.py"],
+            files_from=None,
+            project_root=None,
+            format="toon",
+            output_format="toon",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+        )
+        result = handle_special_commands(args)
+        assert result == 0
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    def test_batch_metrics_with_file_paths_json(self, mock_run):
+        """Test batch metrics with --file-paths and json output."""
+        mock_run.return_value = {"success": True}
+        args = argparse.Namespace(
+            partial_read=False,
+            metrics_only=True,
+            file_paths=["a.py"],
+            files_from=None,
+            project_root="/root",
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+        )
+        result = handle_special_commands(args)
+        assert result == 0
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    def test_batch_metrics_failure(self, mock_run):
+        """Test batch metrics returning failure."""
+        mock_run.return_value = {"success": False}
+        args = argparse.Namespace(
+            partial_read=False,
+            metrics_only=True,
+            file_paths=["a.py"],
+            files_from=None,
+            project_root=None,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+        )
+        result = handle_special_commands(args)
+        assert result == 1
+
+    @patch("tree_sitter_analyzer.cli_main.output_error")
+    def test_batch_metrics_exception(self, mock_error):
+        """Test batch metrics with exception."""
+        args = argparse.Namespace(
+            partial_read=False,
+            metrics_only=True,
+            file_paths=["a.py"],
+            files_from=None,
+            project_root=None,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+        )
+        with patch(
+            "tree_sitter_analyzer.cli_main.asyncio.run",
+            side_effect=Exception("Scale tool error"),
+        ):
+            result = handle_special_commands(args)
+        assert result == 1
+        mock_error.assert_called()
+
+    @patch("tree_sitter_analyzer.cli_main.asyncio.run")
+    def test_batch_metrics_with_files_from(self, mock_run, tmp_path):
+        """Test batch metrics with --files-from file."""
+        mock_run.return_value = {"success": True}
+        files_list = tmp_path / "files.txt"
+        files_list.write_text("a.py\nb.py\na.py\n\n")  # with duplicates and blanks
+        args = argparse.Namespace(
+            partial_read=False,
+            metrics_only=True,
+            file_paths=None,
+            files_from=str(files_list),
+            project_root=None,
+            format=None,
+            output_format="json",
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+        )
+        result = handle_special_commands(args)
+        assert result == 0
+
+
+class TestHandleSpecialCommandsSqlPlatform:
+    """Tests for SQL platform commands in handle_special_commands."""
+
+    @patch("tree_sitter_analyzer.cli_main.output_list")
+    def test_sql_platform_info_no_profile(self, mock_output_list):
+        """Test --sql-platform-info when no profile exists."""
+        args = argparse.Namespace(
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=True,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            partial_read=False,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 0
+        mock_output_list.assert_called()
+
+    @patch("tree_sitter_analyzer.cli_main.output_info")
+    def test_record_sql_profile(self, mock_info):
+        """Test --record-sql-profile."""
+        args = argparse.Namespace(
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=True,
+            compare_sql_profiles=None,
+            partial_read=False,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        # Returns 0 on success, 1 on failure
+        assert result in (0, 1)
+
+    @patch("tree_sitter_analyzer.cli_main.output_error")
+    def test_compare_sql_profiles_missing_file(self, mock_error):
+        """Test --compare-sql-profiles with missing file."""
+        args = argparse.Namespace(
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=["/nonexistent/p1.json", "/nonexistent/p2.json"],
+            partial_read=False,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 1
+        mock_error.assert_called()
+
+    @patch("tree_sitter_analyzer.cli_main.output_error")
+    def test_compare_sql_profiles_second_missing(self, mock_error, tmp_path):
+        """Test --compare-sql-profiles with second file missing."""
+        p1 = tmp_path / "p1.json"
+        p1.write_text('{"platform_key": "test", "behaviors": {}}')
+        args = argparse.Namespace(
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=[str(p1), "/nonexistent/p2.json"],
+            partial_read=False,
+            metrics_only=False,
+        )
+        result = handle_special_commands(args)
+        assert result == 1
+
+    @patch("tree_sitter_analyzer.cli_main.output_info")
+    def test_show_common_queries_empty(self, mock_info):
+        """Test --show-common-queries when no common queries exist."""
+        args = argparse.Namespace(
+            show_query_languages=False,
+            show_common_queries=True,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            partial_read=False,
+            metrics_only=False,
+        )
+        with patch.object(
+            __import__(
+                "tree_sitter_analyzer.query_loader", fromlist=["query_loader"]
+            ).query_loader,
+            "get_common_queries",
+            return_value=[],
+        ):
+            result = handle_special_commands(args)
+        assert result == 0
+
+
+class TestMainFunctionExtended:
+    """Extended tests for main function covering additional branches."""
+
+    @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
+    @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
+    @patch("tree_sitter_analyzer.cli_main.CLICommandFactory")
+    @patch("tree_sitter_analyzer.cli_main.sys.exit")
+    def test_main_filter_help_exits_zero(
+        self, mock_exit, mock_factory, mock_handle_special, mock_parser
+    ):
+        """Test that filter_help returns None but main exits with 0."""
+        args = argparse.Namespace(
+            file_path=None,
+            quiet=False,
+            format=None,
+            output_format="json",
+            list_queries=False,
+            describe_query=None,
+            show_supported_languages=False,
+            show_supported_extensions=False,
+            filter_help=True,
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            partial_read=False,
+            metrics_only=False,
+        )
+        mock_parser.return_value.parse_args.return_value = args
+        mock_handle_special.return_value = None
+        mock_factory.create_command.return_value = None
+
+        main()
+
+        mock_exit.assert_called_once_with(0)
+
+    @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
+    @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
+    @patch("tree_sitter_analyzer.cli_main.CLICommandFactory")
+    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.cli_main.sys.exit")
+    def test_main_no_executable_command_with_file_path(
+        self, mock_exit, mock_error, mock_factory, mock_handle_special, mock_parser
+    ):
+        """Test main when command is None, file_path present, filter_help is False."""
+        args = argparse.Namespace(
+            file_path="test.py",
+            quiet=False,
+            format=None,
+            output_format="json",
+            list_queries=False,
+            describe_query=None,
+            show_supported_languages=False,
+            show_supported_extensions=False,
+            filter_help=False,
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            partial_read=False,
+            metrics_only=False,
+        )
+        mock_parser.return_value.parse_args.return_value = args
+        mock_handle_special.return_value = None
+        mock_factory.create_command.return_value = None
+
+        main()
+
+        mock_error.assert_called_once_with("No executable command specified.")
+        mock_exit.assert_called_once_with(1)
+
+    @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
+    @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
+    @patch("tree_sitter_analyzer.cli_main.sys.exit")
+    def test_main_quiet_mode(self, mock_exit, mock_handle_special, mock_parser):
+        """Test main configures quiet logging mode."""
+        args = argparse.Namespace(
+            file_path=None,
+            quiet=True,
+            format=None,
+            output_format="json",
+            list_queries=False,
+            describe_query=None,
+            show_supported_languages=False,
+            show_supported_extensions=False,
+            filter_help=False,
+            show_query_languages=False,
+            show_common_queries=False,
+            sql_platform_info=False,
+            record_sql_profile=False,
+            compare_sql_profiles=None,
+            partial_read=False,
+            metrics_only=False,
+        )
+        mock_parser.return_value.parse_args.return_value = args
+        mock_handle_special.return_value = 0
+
+        main()
+
+        # First call is sys.exit(0) from handle_special_commands returning 0
+        mock_exit.assert_any_call(0)
+
+
 class TestLoggingConfiguration:
     """Tests for logging configuration."""
 

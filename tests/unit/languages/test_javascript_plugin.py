@@ -1211,3 +1211,370 @@ class TestCleanJsdocExtended:
 
     def test_end_marker(self, extractor):
         assert extractor._clean_jsdoc("*/") == ""
+
+
+# ====================================================================== #
+# TARGETED TESTS for coverage boost (79.7% -> 80%+)
+# ====================================================================== #
+
+
+class TestJavaScriptFallbackBranches:
+    """Tests targeting specific uncovered fallback/exception branches."""
+
+    def test_get_node_text_fallback_single_line(self, extractor):
+        """Cover lines 319-322: fallback single-line text extraction"""
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 10
+        node.start_point = (0, 2)
+        node.end_point = (0, 7)
+        extractor.content_lines = ["Hello World!"]
+
+        with patch(
+            "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice",
+            side_effect=Exception("primary error"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+            assert result == "llo W"
+
+    def test_get_node_text_fallback_multiline(self, extractor):
+        """Cover lines 323-334: fallback multiline text extraction"""
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 30
+        node.start_point = (0, 5)
+        node.end_point = (2, 3)
+        extractor.content_lines = ["Hello World!", "Middle line", "End text"]
+
+        with patch(
+            "tree_sitter_analyzer.languages.javascript_plugin.extract_text_slice",
+            side_effect=Exception("primary error"),
+        ):
+            result = extractor._get_node_text_optimized(node)
+            assert "World!" in result
+            assert "Middle line" in result
+            assert "End" in result
+
+    def test_extract_function_optimized_exception(self, extractor):
+        """Cover lines 380-385: exception during function extraction"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_function_optimized(node)
+        assert result is None
+
+    def test_extract_arrow_function_exception(self, extractor):
+        """Cover lines 444-446: exception during arrow function extraction"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_arrow_function_optimized(node)
+        assert result is None
+
+    def test_extract_method_optimized_no_info(self, extractor):
+        """Cover line 457: method info returns None"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (2, 0)
+        extractor._parse_method_signature_optimized = Mock(return_value=None)
+        result = extractor._extract_method_optimized(node)
+        assert result is None
+
+    def test_extract_generator_function_exception(self, extractor):
+        """Cover lines 544-546: exception in generator function"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_generator_function_optimized(node)
+        assert result is None
+
+    def test_extract_generator_function_no_info(self, extractor):
+        """Cover line 514: generator function signature returns None"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (2, 0)
+        extractor._parse_function_signature_optimized = Mock(return_value=None)
+        result = extractor._extract_generator_function_optimized(node)
+        assert result is None
+
+    def test_extract_class_optimized_exception(self, extractor):
+        """Cover lines 595-597: exception in class extraction"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_class_optimized(node)
+        assert result is None
+
+    def test_extract_property_optimized_no_name(self, extractor):
+        """Cover lines 635-636: property with no name"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 10)
+        node.children = []
+        node.parent = None
+        extractor._get_node_text_optimized = Mock(return_value="some_value")
+        result = extractor._extract_property_optimized(node)
+        assert result is None
+
+    def test_extract_property_optimized_with_parent_static(self, extractor):
+        """Cover lines 630-633: property with static parent"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 30)
+
+        prop_id = Mock()
+        prop_id.type = "property_identifier"
+        value_node = Mock()
+        value_node.type = "number"
+        node.children = [prop_id, value_node]
+
+        parent = Mock()
+        node.parent = parent
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                prop_id: "myProp",
+                value_node: "42",
+                node: "static myProp = 42",
+                parent: "static myProp = 42",
+            }.get(n, "")
+        )
+
+        result = extractor._extract_property_optimized(node)
+        assert result is not None
+        assert result.name == "myProp"
+        assert result.is_static is True
+
+    def test_extract_property_optimized_exception(self, extractor):
+        """Cover lines 655-657: exception during property extraction"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_property_optimized(node)
+        assert result is None
+
+    def test_extract_variables_from_declaration_exception(self, extractor):
+        """Cover lines 678-679: exception in variable declaration extraction"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_variables_from_declaration(node, "const")
+        assert result == []
+
+    def test_parse_variable_declarator_skip_arrow(self, extractor):
+        """Cover lines 722-723: skip arrow function in value assignment"""
+        node = Mock()
+        identifier = Mock()
+        identifier.type = "identifier"
+        eq_node = Mock()
+        eq_node.type = "="
+        arrow = Mock()
+        arrow.type = "arrow_function"
+        eq_node.next_sibling = arrow
+        node.children = [identifier, eq_node, arrow]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                identifier: "myFunc",
+                arrow: "() => {}",
+                node: "myFunc = () => {}",
+            }.get(n, "")
+        )
+        result = extractor._parse_variable_declarator(node, "const", 1, 1)
+        assert result is None
+
+    def test_parse_variable_declarator_no_name(self, extractor):
+        """Cover line 728: no identifier found"""
+        node = Mock()
+        node.children = []
+        node.parent = None
+        extractor._get_node_text_optimized = Mock(return_value="")
+        result = extractor._parse_variable_declarator(node, "const", 1, 1)
+        assert result is None
+
+    def test_parse_variable_declarator_exception(self, extractor):
+        """Cover lines 765-767: exception in variable declarator parsing"""
+        node = Mock()
+        type(node).children = property(
+            lambda self: (_ for _ in ()).throw(Exception("bad"))
+        )
+        result = extractor._parse_variable_declarator(node, "const", 1, 1)
+        assert result is None
+
+    def test_extract_import_info_simple_exception(self, extractor):
+        """Cover lines 896-898: exception in import info extraction"""
+        node = Mock()
+        node.start_point = Mock(side_effect=Exception("error"))
+        extractor.source_code = "import x from 'y';"
+        result = extractor._extract_import_info_simple(node)
+        assert result is None
+
+    def test_extract_import_info_enhanced(self, extractor):
+        """Cover lines 929-955: enhanced import info extraction"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 30)
+        extractor._get_node_text_optimized = Mock(
+            return_value="import React from 'react';"
+        )
+        result = extractor._extract_import_info_enhanced(node, "import React from 'react';")
+        assert result is not None
+        assert result.module_path == "react"
+
+    def test_extract_import_info_enhanced_no_match(self, extractor):
+        """Cover line 939: enhanced import returns None"""
+        node = Mock()
+        node.start_point = (0, 0)
+        node.end_point = (0, 10)
+        extractor._get_node_text_optimized = Mock(return_value="invalid")
+        result = extractor._extract_import_info_enhanced(node, "invalid")
+        assert result is None
+
+    def test_extract_import_info_enhanced_exception(self, extractor):
+        """Cover lines 953-955: exception in enhanced import"""
+        node = Mock()
+        extractor._get_node_text_optimized = Mock(side_effect=Exception("err"))
+        result = extractor._extract_import_info_enhanced(node, "test")
+        assert result is None
+
+    def test_find_parent_class_name(self, extractor):
+        """Cover lines 1159-1168: find parent class name"""
+        class_node = Mock()
+        class_node.type = "class_declaration"
+        id_node = Mock()
+        id_node.type = "identifier"
+        class_node.children = [id_node]
+        class_node.parent = None
+
+        method_node = Mock()
+        method_node.type = "method_definition"
+        method_node.parent = class_node
+
+        extractor._get_node_text_optimized = Mock(return_value="MyClass")
+        result = extractor._find_parent_class_name(method_node)
+        assert result == "MyClass"
+
+    def test_find_parent_class_name_none(self, extractor):
+        """Cover line 1168: no parent class found"""
+        node = Mock()
+        node.parent = None
+        result = extractor._find_parent_class_name(node)
+        assert result is None
+
+    def test_extract_elements_extractor_exception(self, extractor):
+        """Cover lines 1222-1223: exception in extract_elements"""
+        extractor.extract_functions = Mock(side_effect=Exception("err"))
+        tree = Mock()
+        tree.root_node = Mock()
+        tree.root_node.children = []
+        result = extractor.extract_elements(tree, "code")
+        assert result == []
+
+    def test_jsdoc_extraction_for_line_1(self, extractor):
+        """Cover line 1253: target_line <= 1"""
+        extractor.content_lines = ["function test() {}"]
+        result = extractor._extract_jsdoc_for_line(1)
+        assert result is None
+
+    def test_jsdoc_extraction_cache_hit(self, extractor):
+        """Cover lines 1249-1250: cache hit"""
+        extractor._jsdoc_cache[5] = "Cached"
+        result = extractor._extract_jsdoc_for_line(5)
+        assert result == "Cached"
+
+    def test_jsdoc_extraction_exception(self, extractor):
+        """Cover lines 1291-1293: exception in jsdoc extraction"""
+        extractor.content_lines = None  # Will cause exception
+        result = extractor._extract_jsdoc_for_line(5)
+        assert result is None
+
+    def test_get_variable_kind_string_input(self, extractor):
+        """Cover lines 1231-1232: string input for _get_variable_kind"""
+        assert extractor._get_variable_kind("const x = 1") == "const"
+        assert extractor._get_variable_kind("let x = 1") == "let"
+        assert extractor._get_variable_kind("var x = 1") == "var"
+
+    def test_get_variable_kind_empty(self, extractor):
+        """Cover lines 1234-1235: empty input"""
+        assert extractor._get_variable_kind("") == "unknown"
+        assert extractor._get_variable_kind({"raw_text": ""}) == "unknown"
+
+    def test_get_variable_kind_unknown(self, extractor):
+        """Cover lines 1244-1245: unknown kind"""
+        assert extractor._get_variable_kind("something else") == "unknown"
+
+    def test_commonjs_exports_exception(self, extractor):
+        """Cover lines 1073-1074: exception in CommonJS exports"""
+        tree = Mock()
+        with patch("re.finditer", side_effect=Exception("err")):
+            result = extractor._extract_commonjs_exports(tree, "module.exports = X;")
+            assert result == []
+
+
+class TestJavaScriptPluginAdditionalMethods:
+    """Tests for additional plugin-level methods."""
+
+    def test_get_node_type_for_arrow_function(self, plugin):
+        """Cover lines 1447-1448: arrow function node type"""
+        func = Function(name="test", start_line=1, end_line=1)
+        func.is_arrow = True
+        func.is_method = False
+        assert plugin._get_node_type_for_element(func) == "arrow_function"
+
+    def test_get_node_type_for_method(self, plugin):
+        """Cover lines 1449-1450: method definition node type"""
+        func = Function(name="test", start_line=1, end_line=1)
+        func.is_arrow = False
+        func.is_method = True
+        assert plugin._get_node_type_for_element(func) == "method_definition"
+
+    def test_get_node_type_for_import(self, plugin):
+        """Cover lines 1457-1458: import node type"""
+        from tree_sitter_analyzer.models import Import
+        imp = Import(name="test", start_line=1, end_line=1)
+        assert plugin._get_node_type_for_element(imp) == "import_statement"
+
+    def test_get_node_type_for_unknown(self, plugin):
+        """Cover lines 1459-1460: unknown element type"""
+        assert plugin._get_node_type_for_element("unknown") == "unknown"
+
+    def test_extract_elements_exception(self, plugin):
+        """Cover lines 1611-1613: extract_elements with exception"""
+        tree = Mock()
+        tree.root_node = Mock()
+        tree.root_node.children = []
+
+        with patch.object(plugin._extractor, "extract_functions", side_effect=Exception("err")):
+            result = plugin.extract_elements(tree, "code")
+            assert result == {
+                "functions": [],
+                "classes": [],
+                "variables": [],
+                "imports": [],
+                "exports": [],
+            }
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_exception(self, plugin, tmp_path):
+        """Cover lines 1578-1585: analyze_file with exception"""
+        from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
+        request = AnalysisRequest(file_path="test.js")
+        result = await plugin.analyze_file("/nonexistent/file.js", request)
+        assert result.success is False
+        assert result.error_message is not None
+
+
+class TestJavaScriptParseStatements:
+    """Tests for parse_export_statement edge cases."""
+
+    def test_parse_export_default_no_name(self, extractor):
+        """Cover line 1131: export default without specific name"""
+        result = extractor._parse_export_statement("export default function() {}")
+        assert result is not None
+        assert result[2] is True  # is_default
+
+    def test_parse_export_direct_unknown(self, extractor):
+        """Cover lines 1152-1153: direct export without matching pattern"""
+        result = extractor._parse_export_statement("export something_else")
+        assert result is not None
+        assert result[0] == "direct"
+        assert result[1] == ["unknown"]
+
+    def test_parse_import_statement_none(self, extractor):
+        """Cover line 1114: no source match in import"""
+        result = extractor._parse_import_statement("import something")
+        assert result is None

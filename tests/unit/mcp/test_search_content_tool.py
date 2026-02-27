@@ -853,3 +853,770 @@ class TestExecute:
                 result = await tool.execute(arguments)
 
                 assert result["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# Additional targeted tests for uncovered branches in search_content_tool.py
+# ---------------------------------------------------------------------------
+
+
+class TestCacheHitBranches:
+    """Test cache hit branches (lines 378-420)."""
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_total_only_with_int(self, tool, sample_project_structure):
+        """Test total_only cache hit when cached result is integer (line 382-383)."""
+        tool.cache = MagicMock()
+        tool.cache.get.return_value = 42
+        tool.cache.create_cache_key.return_value = "cache_key"
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "total_only": True,
+            })
+            assert result == 42
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_total_only_with_total_matches_dict(self, tool, sample_project_structure):
+        """Test total_only cache hit when cached result is dict with total_matches (lines 384-389)."""
+        tool.cache = MagicMock()
+        tool.cache.get.return_value = {"total_matches": 15, "file_counts": {}}
+        tool.cache.create_cache_key.return_value = "cache_key"
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "total_only": True,
+            })
+            assert result == 15
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_total_only_with_count_dict(self, tool, sample_project_structure):
+        """Test total_only cache hit when cached result is dict with count (lines 394-396)."""
+        tool.cache = MagicMock()
+        tool.cache.get.return_value = {"count": 7}
+        tool.cache.create_cache_key.return_value = "cache_key"
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "total_only": True,
+            })
+            assert result == 7
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_total_only_fallback_zero(self, tool, sample_project_structure):
+        """Test total_only cache hit with unrecognized cached type returns 0 (line 399)."""
+        tool.cache = MagicMock()
+        tool.cache.get.return_value = {"unrelated": "data"}
+        tool.cache.create_cache_key.return_value = "cache_key"
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "total_only": True,
+            })
+            assert result == 0
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_non_total_int_cached(self, tool, sample_project_structure):
+        """Test non-total_only cache hit with integer cached (lines 406-413)."""
+        tool.cache = MagicMock()
+        tool.cache.get.return_value = 10
+        tool.cache.create_cache_key.return_value = "cache_key"
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+            })
+            assert result["success"] is True
+            assert result["count"] == 10
+            assert result["total_matches"] == 10
+            assert result["cache_hit"] is True
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_non_total_other_type(self, tool, sample_project_structure):
+        """Test non-total_only cache hit with non-dict/non-int cached (lines 414-420)."""
+        tool.cache = MagicMock()
+        tool.cache.get.return_value = "string_result"
+        tool.cache.create_cache_key.return_value = "cache_key"
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+            })
+            assert result["success"] is True
+            assert result["cached_result"] == "string_result"
+            assert result["cache_hit"] is True
+
+
+class TestGitignoreAutoDetection:
+    """Test gitignore auto-detection branches (lines 479-485)."""
+
+    @pytest.mark.asyncio
+    async def test_auto_detect_no_ignore(self, tool, sample_project_structure):
+        """Test auto-detection of --no-ignore when gitignore interferes (lines 479-487)."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_detector"
+        ) as mock_detector_fn:
+            mock_detector = MagicMock()
+            mock_detector.should_use_no_ignore.return_value = True
+            mock_detector.get_detection_info.return_value = {"reason": "test reason"}
+            mock_detector_fn.return_value = mock_detector
+
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+            })
+            assert result["success"] is True
+            mock_detector.should_use_no_ignore.assert_called_once()
+
+
+class TestCountOnlyToonFormat:
+    """Test count_only with toon format (line 627)."""
+
+    @pytest.mark.asyncio
+    async def test_count_only_toon_format(self, tool, sample_project_structure):
+        """Test count_only_matches returns toon format (line 625-627)."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"file1.py:3\nfile2.py:5\n", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_count_output",
+            return_value={"__total__": 8, "file1.py": 3, "file2.py": 5},
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.attach_toon_content_to_response"
+        ) as mock_toon:
+            mock_toon.return_value = {"format": "toon", "toon_content": "..."}
+
+            await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "count_only_matches": True,
+                "output_format": "toon",
+            })
+            mock_toon.assert_called()
+
+
+class TestMaxCountTruncation:
+    """Test max_count truncation (lines 637-638)."""
+
+    @pytest.mark.asyncio
+    async def test_truncation_by_max_count(self, tool, sample_project_structure):
+        """Test that results are truncated when exceeding max_count (lines 636-638)."""
+        many_matches = [{"path": f"file{i}.py", "line": i} for i in range(20)]
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=many_matches,
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "max_count": 5,
+            })
+            assert result["success"] is True
+            assert result["truncated"] is True
+            assert result["count"] == 5
+
+
+class TestOptimizePathsOutputBranches:
+    """Test optimize_paths with output_file/suppress_output (lines 659-705)."""
+
+    @pytest.mark.asyncio
+    async def test_optimize_paths_with_output_file(self, tool, sample_project_structure):
+        """Test optimize_paths with output_file (lines 663-688)."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.optimize_match_paths",
+            return_value=[{"path": "f1.py"}],
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", return_value="/out/result.json"
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "optimize_paths": True,
+                "output_file": "result.json",
+                "output_format": "json",
+            })
+            assert result["success"] is True
+            assert "file_saved" in result
+
+    @pytest.mark.asyncio
+    async def test_optimize_paths_with_output_file_and_suppress(self, tool, sample_project_structure):
+        """Test optimize_paths with output_file and suppress_output (lines 672-684).
+
+        Note: suppress_output is mutually exclusive with optimize_paths at the validator level.
+        We bypass the validator to test the downstream code path.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.optimize_match_paths",
+            return_value=[{"path": "f1.py"}],
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", return_value="/out/result.json"
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "optimize_paths": True,
+                "output_file": "result.json",
+                "suppress_output": True,
+                "output_format": "json",
+            })
+            assert result["success"] is True
+            assert "output_file" in result
+            # Minimal response should not have results
+            assert "results" not in result
+
+    @pytest.mark.asyncio
+    async def test_optimize_paths_with_output_file_suppress_toon(self, tool, sample_project_structure):
+        """Test optimize_paths with suppress_output and toon format (lines 682-684).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.optimize_match_paths",
+            return_value=[{"path": "f1.py"}],
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", return_value="/out/result.json"
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.attach_toon_content_to_response"
+        ) as mock_toon, patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            mock_toon.return_value = {"toon": "minimal"}
+            await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "optimize_paths": True,
+                "output_file": "result.json",
+                "suppress_output": True,
+                "output_format": "toon",
+            })
+            mock_toon.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_optimize_paths_file_save_error(self, tool, sample_project_structure):
+        """Test optimize_paths when file save fails (lines 689-692)."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.optimize_match_paths",
+            return_value=[{"path": "f1.py"}],
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", side_effect=Exception("disk full")
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "optimize_paths": True,
+                "output_file": "result.json",
+                "output_format": "json",
+            })
+            assert "file_save_error" in result
+            assert result["file_saved"] is False
+
+    @pytest.mark.asyncio
+    async def test_optimize_paths_suppress_no_file(self, tool, sample_project_structure):
+        """Test optimize_paths with suppress_output but no output_file (lines 693-705).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.optimize_match_paths",
+            return_value=[{"path": "f1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "optimize_paths": True,
+                "suppress_output": True,
+                "output_format": "json",
+            })
+            assert result["success"] is True
+            assert "results" not in result
+
+    @pytest.mark.asyncio
+    async def test_optimize_paths_suppress_no_file_toon(self, tool, sample_project_structure):
+        """Test optimize_paths with suppress_output (no file) in toon format (lines 703-704).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.optimize_match_paths",
+            return_value=[{"path": "f1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.attach_toon_content_to_response"
+        ) as mock_toon, patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            mock_toon.return_value = {"toon": "minimal"}
+            await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "optimize_paths": True,
+                "suppress_output": True,
+                "output_format": "toon",
+            })
+            mock_toon.assert_called()
+
+
+class TestGroupByFileOutputBranches:
+    """Test group_by_file with output_file/suppress_output (lines 720-776)."""
+
+    @pytest.mark.asyncio
+    async def test_group_by_file_with_output_file(self, tool, sample_project_structure):
+        """Test group_by_file with output_file (lines 725-750)."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.group_matches_by_file",
+            return_value={"success": True, "count": 1, "files": [{"path": "file1.py"}]},
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", return_value="/out/grouped.json"
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "group_by_file": True,
+                "output_file": "grouped.json",
+                "output_format": "json",
+            })
+            assert "file_saved" in result
+
+    @pytest.mark.asyncio
+    async def test_group_by_file_output_file_suppress(self, tool, sample_project_structure):
+        """Test group_by_file with output_file and suppress_output (lines 734-746).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.group_matches_by_file",
+            return_value={"success": True, "count": 1, "files": [{"path": "file1.py"}]},
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", return_value="/out/grouped.json"
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "group_by_file": True,
+                "output_file": "grouped.json",
+                "suppress_output": True,
+                "output_format": "json",
+            })
+            assert result["success"] is True
+            assert "output_file" in result
+            assert "files" not in result
+
+    @pytest.mark.asyncio
+    async def test_group_by_file_file_save_error(self, tool, sample_project_structure):
+        """Test group_by_file when file save fails (lines 751-754)."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.group_matches_by_file",
+            return_value={"success": True, "count": 1, "files": [{"path": "file1.py"}]},
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", side_effect=Exception("disk full")
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "group_by_file": True,
+                "output_file": "grouped.json",
+                "output_format": "json",
+            })
+            assert "file_save_error" in result
+            assert result["file_saved"] is False
+
+    @pytest.mark.asyncio
+    async def test_group_by_file_suppress_no_file(self, tool, sample_project_structure):
+        """Test group_by_file with suppress_output but no output_file (lines 755-768).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.group_matches_by_file",
+            return_value={"success": True, "count": 1, "summary": {}, "meta": {}, "files": [{"path": "file1.py"}]},
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "group_by_file": True,
+                "suppress_output": True,
+                "output_format": "json",
+            })
+            assert result["success"] is True
+            assert "files" not in result
+
+    @pytest.mark.asyncio
+    async def test_group_by_file_suppress_no_file_toon(self, tool, sample_project_structure):
+        """Test group_by_file suppress_output (no file) in toon format (lines 766-767).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.group_matches_by_file",
+            return_value={"success": True, "count": 1, "summary": {}, "meta": {}, "files": []},
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.attach_toon_content_to_response"
+        ) as mock_toon, patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            mock_toon.return_value = {"toon": "minimal"}
+            await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "group_by_file": True,
+                "suppress_output": True,
+                "output_format": "toon",
+            })
+            mock_toon.assert_called()
+
+
+class TestSummaryOutputBranches:
+    """Test summary_only with output_file/suppress_output (lines 789-844)."""
+
+    @pytest.mark.asyncio
+    async def test_summary_with_output_file(self, tool, sample_project_structure):
+        """Test summary_only with output_file (lines 793-818)."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.summarize_search_results",
+            return_value={"top_files": ["file1.py"]},
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", return_value="/out/summary.json"
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "summary_only": True,
+                "output_file": "summary.json",
+                "output_format": "json",
+            })
+            assert "file_saved" in result
+
+    @pytest.mark.asyncio
+    async def test_summary_output_file_suppress(self, tool, sample_project_structure):
+        """Test summary_only with output_file and suppress_output (lines 802-814).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.summarize_search_results",
+            return_value={"top_files": ["file1.py"]},
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", return_value="/out/summary.json"
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "summary_only": True,
+                "output_file": "summary.json",
+                "suppress_output": True,
+                "output_format": "json",
+            })
+            assert result["success"] is True
+            assert "output_file" in result
+
+    @pytest.mark.asyncio
+    async def test_summary_file_save_error(self, tool, sample_project_structure):
+        """Test summary_only when file save fails (lines 819-822)."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.summarize_search_results",
+            return_value={"top_files": ["file1.py"]},
+        ), patch.object(
+            tool.file_output_manager, "save_to_file", side_effect=Exception("disk full")
+        ):
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "summary_only": True,
+                "output_file": "summary.json",
+                "output_format": "json",
+            })
+            assert "file_save_error" in result
+            assert result["file_saved"] is False
+
+    @pytest.mark.asyncio
+    async def test_summary_suppress_no_file(self, tool, sample_project_structure):
+        """Test summary_only with suppress_output but no output_file (lines 823-836).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.summarize_search_results",
+            return_value={"top_files": ["file1.py"]},
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            result = await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "summary_only": True,
+                "suppress_output": True,
+                "output_format": "json",
+            })
+            assert result["success"] is True
+            assert "results" not in result
+
+    @pytest.mark.asyncio
+    async def test_summary_suppress_no_file_toon(self, tool, sample_project_structure):
+        """Test summary suppress_output (no file) in toon format (lines 834-835).
+
+        Bypasses validator since these are mutually exclusive at validation level.
+        """
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
+            new_callable=AsyncMock,
+            return_value=(0, b"", b""),
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.parse_rg_json_lines_to_matches",
+            return_value=[{"path": "file1.py"}],
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.summarize_search_results",
+            return_value={"top_files": ["file1.py"]},
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.attach_toon_content_to_response"
+        ) as mock_toon, patch(
+            "tree_sitter_analyzer.mcp.tools.search_content_tool.get_default_validator"
+        ) as mock_validator_fn:
+            mock_validator_fn.return_value = MagicMock()
+            mock_toon.return_value = {"toon": "minimal"}
+            await tool.execute({
+                "roots": [str(sample_project_structure)],
+                "query": "test",
+                "summary_only": True,
+                "suppress_output": True,
+                "output_format": "toon",
+            })
+            mock_toon.assert_called()
+
+
+class TestCreateCountOnlyCacheKey:
+    """Test _create_count_only_cache_key method (lines 307-334)."""
+
+    def test_create_count_only_cache_key_no_cache(self, tool):
+        """Test returns None when cache is disabled (line 317)."""
+        tool.cache = None
+        result = tool._create_count_only_cache_key("key", {"query": "test"})
+        assert result is None
+
+    def test_create_count_only_cache_key_success(self, tool):
+        """Test creating count_only cache key from total_only key."""
+        tool.cache = MagicMock()
+        tool.cache.create_cache_key.return_value = "count_only_key"
+        result = tool._create_count_only_cache_key(
+            "total_only_key",
+            {"query": "test", "roots": ["."], "total_only": True}
+        )
+        assert result == "count_only_key"
+        # Verify that count_only_matches was set in the call
+        tool.cache.create_cache_key.assert_called_once()

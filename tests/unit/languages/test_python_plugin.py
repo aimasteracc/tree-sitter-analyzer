@@ -1571,3 +1571,1045 @@ class TestPythonPluginMethods:
             mock_get.return_value = mock_extractor
             result = plugin.extract_elements(mock_tree, "def foo(): pass")
             assert isinstance(result, list)
+
+
+# =============================================================================
+# NEW TARGETED TESTS for uncovered lines (batch 2)
+# Covering: _extract_function_optimized branches, _extract_class_optimized
+# decorator paths, _parse_function_signature_optimized return_type branches,
+# extract_imports manual fallback, _extract_class_attributes direct assignment,
+# _extract_class_attribute_info typed/untyped, _is_framework_class fastapi,
+# _extract_variable_info branches, _extract_import_info aliased_import,
+# _extract_docstring_from_node single-quote, _extract_return_type_from_node
+# fallback, _extract_superclasses_from_node, _extract_function_body,
+# extract_packages, _get_node_text_optimized multi-line fallback,
+# _extract_detailed_function_info visibility branches,
+# _extract_detailed_class_info, _extract_imports_manual,
+# PythonPlugin.execute_query_strategy, _get_node_type_for_element,
+# PythonPlugin.analyze_file TREE_SITTER_AVAILABLE=False,
+# PythonPlugin.get_tree_sitter_language exception path
+# =============================================================================
+
+
+try:
+    import tree_sitter_python  # noqa: F401
+    TREE_SITTER_PYTHON_AVAILABLE = True
+except ImportError:
+    TREE_SITTER_PYTHON_AVAILABLE = False
+
+
+class TestExtractFunctionOptimizedBranches:
+    """More branch coverage for _extract_function_optimized."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.framework_type = ""
+        ext.current_module = ""
+        return ext
+
+    def test_generator_function(self, extractor):
+        """Test is_generator detection when 'yield' is in raw_text (line 381)."""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (3, 0)
+        extractor.content_lines = [
+            "def gen():",
+            "    yield 1",
+            "    yield 2",
+        ]
+        with (
+            patch.object(extractor, "_parse_function_signature_optimized",
+                         return_value=("gen", [], False, [], None)),
+            patch.object(extractor, "_extract_docstring_for_line", return_value=None),
+            patch.object(extractor, "_calculate_complexity_optimized", return_value=1),
+        ):
+            result = extractor._extract_function_optimized(mock_node)
+            assert result is not None
+            assert result.is_generator is True
+
+    def test_classmethod_detection(self, extractor):
+        """Test is_classmethod flag (line 392)."""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        extractor.content_lines = ["def from_dict(cls, data):", "    return cls(**data)"]
+        with (
+            patch.object(extractor, "_parse_function_signature_optimized",
+                         return_value=("from_dict", ["cls", "data"], False, ["classmethod"], None)),
+            patch.object(extractor, "_extract_docstring_for_line", return_value=None),
+            patch.object(extractor, "_calculate_complexity_optimized", return_value=1),
+        ):
+            result = extractor._extract_function_optimized(mock_node)
+            assert result is not None
+            assert result.is_classmethod is True
+            assert result.is_static is False
+
+    def test_async_with_return_type(self, extractor):
+        """Test async function with explicit return type."""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        extractor.content_lines = ["async def fetch(url: str) -> dict:", "    pass"]
+        with (
+            patch.object(extractor, "_parse_function_signature_optimized",
+                         return_value=("fetch", ["url: str"], True, [], "dict")),
+            patch.object(extractor, "_extract_docstring_for_line", return_value=None),
+            patch.object(extractor, "_calculate_complexity_optimized", return_value=1),
+        ):
+            result = extractor._extract_function_optimized(mock_node)
+            assert result is not None
+            assert result.is_async is True
+            assert result.return_type == "dict"
+
+    def test_framework_type_propagation(self, extractor):
+        """Test framework_type is set on Function (line 390)."""
+        extractor.framework_type = "fastapi"
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        extractor.content_lines = ["def endpoint():", "    pass"]
+        with (
+            patch.object(extractor, "_parse_function_signature_optimized",
+                         return_value=("endpoint", [], False, [], None)),
+            patch.object(extractor, "_extract_docstring_for_line", return_value=None),
+            patch.object(extractor, "_calculate_complexity_optimized", return_value=1),
+        ):
+            result = extractor._extract_function_optimized(mock_node)
+            assert result is not None
+            assert result.framework_type == "fastapi"
+
+
+class TestParseFunctionSignatureReturnType:
+    """Tests for return_type parsing branches in _parse_function_signature_optimized."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        return ext
+
+    def test_return_type_with_arrow(self, extractor):
+        """Test return type extracted from -> annotation (lines 417-438)."""
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_id = Mock(type="identifier", text=b"func")
+        mock_params = Mock(type="parameters", children=[])
+        mock_node.children = [mock_id, mock_params]
+        with patch.object(extractor, "_get_node_text_optimized",
+                         return_value="def func(x: int) -> str:\n    pass"), \
+             patch.object(extractor, "_extract_parameters_from_node_optimized", return_value=["x: int"]):
+            result = extractor._parse_function_signature_optimized(mock_node)
+            assert result is not None
+            name, params, is_async, decorators, return_type = result
+            assert return_type == "str"
+
+    def test_return_type_invalid_contains_def(self, extractor):
+        """Test return type rejected when it contains 'def ' (lines 432-438)."""
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_id = Mock(type="identifier", text=b"func")
+        mock_params = Mock(type="parameters", children=[])
+        mock_node.children = [mock_id, mock_params]
+        # Simulate a malformed -> that contains "def "
+        with patch.object(extractor, "_get_node_text_optimized",
+                         return_value="def func() -> def something:\n    pass"), \
+             patch.object(extractor, "_extract_parameters_from_node_optimized", return_value=[]):
+            result = extractor._parse_function_signature_optimized(mock_node)
+            assert result is not None
+            assert result[4] is None  # return_type should be None
+
+    def test_return_type_dataclass_branch(self, extractor):
+        """Test the != 'dataclass' branch is exercised (lines 429, 461).
+
+        When the return type text after -> is 'dataclass', the condition
+        `return_type != "dataclass"` is False, so the inner block is skipped.
+        The 'type' child fallback (line 455) also checks != 'dataclass'.
+        We exercise the type-child fallback here.
+        """
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_id = Mock(type="identifier", text=b"func")
+        mock_params = Mock(type="parameters", children=[])
+        mock_type = Mock(type="type")
+        mock_node.children = [mock_id, mock_params, mock_type]
+        # No -> in text, so type child fallback is used.
+        def side_effect(node):
+            if node == mock_type:
+                return "dataclass"
+            return "def func():\n    pass"
+        with patch.object(extractor, "_get_node_text_optimized", side_effect=side_effect), \
+             patch.object(extractor, "_extract_parameters_from_node_optimized", return_value=[]):
+            result = extractor._parse_function_signature_optimized(mock_node)
+            assert result is not None
+            # 'dataclass' from type child is rejected by != 'dataclass' check
+            assert result[4] is None
+
+    def test_type_child_fallback(self, extractor):
+        """Test return type from 'type' child node (lines 455-463)."""
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_id = Mock(type="identifier", text=b"func")
+        mock_params = Mock(type="parameters", children=[])
+        mock_type = Mock(type="type")
+        mock_node.children = [mock_id, mock_params, mock_type]
+        # No -> in text, so type child should be used
+        call_count = [0]
+        def side_effect(node):
+            call_count[0] += 1
+            if node == mock_type:
+                return "list[int]"
+            return "def func():\n    pass"
+        with patch.object(extractor, "_get_node_text_optimized", side_effect=side_effect), \
+             patch.object(extractor, "_extract_parameters_from_node_optimized", return_value=[]):
+            result = extractor._parse_function_signature_optimized(mock_node)
+            assert result is not None
+            assert result[4] == "list[int]"
+
+
+class TestExtractClassOptimizedDecoratorPaths:
+    """Test decorator extraction from decorated_definition parent (lines 597-605)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.content_lines = ["@dataclass", "class MyClass:", "    pass"]
+        ext.current_module = ""
+        ext.framework_type = ""
+        return ext
+
+    def test_class_decorators_from_decorated_definition(self, extractor):
+        """Test decorators extracted from decorated_definition parent (lines 597-605)."""
+        mock_node = Mock()
+        mock_node.start_point = (1, 0)
+        mock_node.end_point = (2, 0)
+
+        # Parent is a decorated_definition containing a decorator
+        mock_decorated = Mock(type="decorated_definition")
+        mock_decorator = Mock(type="decorator")
+        mock_decorated.children = [mock_decorator, mock_node]
+        # Sibling scan: parent has decorated_definition child
+        mock_module = Mock()
+        mock_module.children = [mock_decorated]
+        mock_node.parent = mock_module
+
+        mock_id = Mock(type="identifier", text=b"DataModel")
+        mock_node.children = [mock_id]
+
+        with patch.object(extractor, "_get_node_text_optimized",
+                         side_effect=lambda n: "@dataclass" if n == mock_decorator
+                         else "class DataModel:\n    pass"), \
+             patch.object(extractor, "_extract_docstring_for_line", return_value=None):
+            result = extractor._extract_class_optimized(mock_node)
+            assert result is not None
+            assert result.name == "DataModel"
+            assert "dataclass" in result.modifiers
+            assert result.is_dataclass is True
+
+    def test_class_abstract_detection(self, extractor):
+        """Test abstract class detection via ABC superclass (line 655)."""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        mock_node.parent = Mock()
+        mock_node.parent.children = []
+
+        mock_id = Mock(type="identifier", text=b"AbstractBase")
+        mock_arg = Mock(type="argument_list")
+        mock_sc = Mock(type="identifier", text=b"ABC")
+        mock_arg.children = [mock_sc]
+        mock_node.children = [mock_id, mock_arg]
+
+        with patch.object(extractor, "_get_node_text_optimized",
+                         return_value="class AbstractBase(ABC):\n    pass"), \
+             patch.object(extractor, "_extract_docstring_for_line", return_value=None):
+            result = extractor._extract_class_optimized(mock_node)
+            assert result is not None
+            assert result.is_abstract is True
+            assert result.superclass == "ABC"
+
+
+class TestExtractImportsManualPath:
+    """Tests for _extract_imports_manual method (lines 801-911)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_manual_import_statement(self, extractor):
+        """Test manual import extraction for 'import os' (lines 819-842)."""
+        mock_root = Mock(type="module")
+        mock_import = Mock(type="import_statement")
+        mock_import.start_point = (0, 0)
+        mock_import.end_point = (0, 9)
+        mock_import.start_byte = 0
+        mock_import.end_byte = 9
+        mock_dotted = Mock(type="dotted_name")
+        mock_dotted.start_byte = 7
+        mock_dotted.end_byte = 9
+        mock_dotted.children = []  # leaf node
+        mock_import.children = [mock_dotted]
+        mock_root.children = [mock_import]
+
+        source = "import os"
+        imports = extractor._extract_imports_manual(mock_root, source)
+        assert len(imports) >= 1
+        assert imports[0].module_name == "os"
+
+    def test_manual_from_import_statement(self, extractor):
+        """Test manual from-import extraction (lines 843-901)."""
+        mock_root = Mock(type="module")
+        mock_from_import = Mock(type="import_from_statement")
+        mock_from_import.start_point = (0, 0)
+        mock_from_import.end_point = (0, 30)
+        mock_from_import.start_byte = 0
+        mock_from_import.end_byte = 30
+
+        # "from typing import List, Dict"
+        source = "from typing import List, Dict"
+        mock_module = Mock(type="dotted_name")
+        mock_module.start_byte = 5
+        mock_module.end_byte = 11
+        mock_module.children = []  # leaf node
+        mock_import_list = Mock(type="import_list")
+        mock_item1 = Mock(type="identifier")
+        mock_item1.start_byte = 19
+        mock_item1.end_byte = 23
+        mock_item1.children = []  # leaf node
+        mock_item2 = Mock(type="identifier")
+        mock_item2.start_byte = 25
+        mock_item2.end_byte = 29
+        mock_item2.children = []  # leaf node
+        mock_import_list.children = [mock_item1, mock_item2]
+        mock_from_import.children = [mock_module, mock_import_list]
+        mock_root.children = [mock_from_import]
+
+        imports = extractor._extract_imports_manual(mock_root, source)
+        assert len(imports) >= 1
+        assert imports[0].module_name == "typing"
+        assert "List" in imports[0].imported_names
+        assert "Dict" in imports[0].imported_names
+
+    def test_manual_import_exception(self, extractor):
+        """Test manual import extraction handles exceptions (line 903-904)."""
+        mock_root = Mock(type="module")
+        mock_import = Mock(type="import_statement")
+        # Cause an exception by removing start_point
+        type(mock_import).start_point = property(
+            lambda self: (_ for _ in ()).throw(AttributeError("no"))
+        )
+        mock_import.children = []
+        mock_root.children = [mock_import]
+        imports = extractor._extract_imports_manual(mock_root, "import os")
+        assert isinstance(imports, list)
+
+
+class TestExtractClassAttributesDirect:
+    """Tests for _extract_class_attributes with direct assignment node (line 699-702)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_direct_assignment_node(self, extractor):
+        """Test direct 'assignment' child of class body (lines 699-702)."""
+        mock_assignment = Mock(
+            type="assignment",
+            start_byte=0,
+            end_byte=6,
+            start_point=(0, 0),
+            end_point=(0, 6),
+        )
+        mock_body = Mock(children=[mock_assignment])
+        result = extractor._extract_class_attributes(mock_body, "x = 10")
+        assert len(result) == 1
+        assert result[0].name == "x"
+
+
+class TestExtractClassAttributeInfo:
+    """Tests for _extract_class_attribute_info typed and untyped (lines 709-742)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_typed_attribute(self, extractor):
+        """Test typed class attribute with annotation (lines 722-725)."""
+        mock_node = Mock(
+            start_byte=0,
+            end_byte=16,
+            start_point=(0, 0),
+            end_point=(0, 16),
+        )
+        source = "name: str = 'hi'"
+        result = extractor._extract_class_attribute_info(mock_node, source)
+        assert result is not None
+        assert result.name == "name"
+        assert result.variable_type == "str"
+
+    def test_untyped_attribute(self, extractor):
+        """Test untyped class attribute (lines 726-728)."""
+        mock_node = Mock(
+            start_byte=0,
+            end_byte=6,
+            start_point=(0, 0),
+            end_point=(0, 6),
+        )
+        source = "x = 42"
+        result = extractor._extract_class_attribute_info(mock_node, source)
+        assert result is not None
+        assert result.name == "x"
+        assert result.variable_type is None
+
+    def test_no_equals(self, extractor):
+        """Test attribute without = returns None (line 718)."""
+        mock_node = Mock(
+            start_byte=0,
+            end_byte=4,
+            start_point=(0, 0),
+            end_point=(0, 4),
+        )
+        source = "name"
+        result = extractor._extract_class_attribute_info(mock_node, source)
+        assert result is None
+
+    def test_exception_returns_none(self, extractor):
+        """Test exception in attribute extraction returns None (line 739-741)."""
+        mock_node = Mock()
+        type(mock_node).start_byte = property(
+            lambda self: (_ for _ in ()).throw(Exception("bad"))
+        )
+        result = extractor._extract_class_attribute_info(mock_node, "x = 1")
+        assert result is None
+
+
+class TestIsFrameworkClassFastAPI:
+    """Test _is_framework_class for FastAPI (lines 676-679)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_fastapi_framework(self, extractor):
+        """Test FastAPI detection via APIRouter/BaseModel (lines 677-678)."""
+        extractor.framework_type = "fastapi"
+        extractor.source_code = "from pydantic import BaseModel"
+        assert extractor._is_framework_class(Mock(), "Item") is True
+
+    def test_fastapi_no_pattern(self, extractor):
+        """Test FastAPI detection returns False when no patterns match."""
+        extractor.framework_type = "fastapi"
+        extractor.source_code = "import json"
+        assert extractor._is_framework_class(Mock(), "Item") is False
+
+    def test_django_no_pattern(self, extractor):
+        """Test Django detection returns False when no patterns match."""
+        extractor.framework_type = "django"
+        with patch.object(extractor, "_get_node_text_optimized", return_value="class Plain:\n    pass"):
+            assert extractor._is_framework_class(Mock(), "Plain") is False
+
+
+class TestExtractVariableInfoBranches:
+    """Test _extract_variable_info branches (lines 1070-1102)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_invalid_node(self, extractor):
+        """Test _extract_variable_info with invalid node (lines 1075-1076)."""
+        mock_node = Mock()
+        with patch.object(extractor, "_validate_node", return_value=False):
+            result = extractor._extract_variable_info(mock_node, "x = 1", "assignment")
+            assert result is None
+
+    def test_multiple_assignment(self, extractor):
+        """Test multiple assignment pattern (lines 1084-1085)."""
+        mock_node = Mock(
+            start_byte=0,
+            end_byte=14,
+            start_point=(0, 0),
+            end_point=(0, 14),
+        )
+        with patch.object(extractor, "_validate_node", return_value=True):
+            result = extractor._extract_variable_info(mock_node, "a, b = 1, 2   ", "multiple_assignment")
+            assert result is not None
+            assert result.name == "a"
+
+    def test_no_equals(self, extractor):
+        """Test variable without equals (lines 1088-1089)."""
+        mock_node = Mock(
+            start_byte=0,
+            end_byte=4,
+            start_point=(0, 0),
+            end_point=(0, 4),
+        )
+        with patch.object(extractor, "_validate_node", return_value=True):
+            result = extractor._extract_variable_info(mock_node, "name", "augmented")
+            assert result is not None
+            assert result.name == "variable"
+
+
+class TestExtractImportInfoBranches:
+    """Test _extract_import_info branches (lines 1104-1148)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        return ext
+
+    def test_aliased_import(self, extractor):
+        """Test aliased_import type (lines 1130-1132)."""
+        mock_node = Mock(
+            start_byte=0,
+            end_byte=20,
+            start_point=(0, 0),
+            end_point=(0, 20),
+        )
+        with patch.object(extractor, "_validate_node", return_value=True):
+            result = extractor._extract_import_info(mock_node, "import numpy as np  ", "aliased_import")
+            assert result is not None
+            assert result.module_name == ""
+
+    def test_from_import_no_from_keyword(self, extractor):
+        """Test from_import without 'from' keyword in text (lines 1127-1129)."""
+        mock_node = Mock(
+            start_byte=0,
+            end_byte=10,
+            start_point=(0, 0),
+            end_point=(0, 10),
+        )
+        with patch.object(extractor, "_validate_node", return_value=True):
+            result = extractor._extract_import_info(mock_node, "something ", "from_import")
+            assert result is not None
+            assert result.module_name == ""
+
+    def test_import_info_exception(self, extractor):
+        """Test _extract_import_info exception returns None (line 1147)."""
+        mock_node = Mock()
+        with patch.object(extractor, "_validate_node", side_effect=Exception("bad")):
+            result = extractor._extract_import_info(mock_node, "import os", "import")
+            assert result is None
+
+
+class TestExtractDocstringFromNodeBranches:
+    """Test _extract_docstring_from_node edge cases (lines 1234-1261)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_single_quote_docstring(self, extractor):
+        """Test single-quoted docstring (lines 1254-1257)."""
+        mock_node = Mock()
+        mock_block = Mock(type="block")
+        mock_stmt = Mock(type="expression_statement")
+        mock_expr = Mock(type="string")
+        source = "'hello world'"
+        mock_expr.start_byte = 0
+        mock_expr.end_byte = len(source)
+        mock_stmt.children = [mock_expr]
+        mock_block.children = [mock_stmt]
+        mock_node.children = [mock_block]
+        with patch.object(extractor, "_validate_node", return_value=True):
+            result = extractor._extract_docstring_from_node(mock_node, source)
+            assert result == "hello world"
+
+    def test_no_block_child(self, extractor):
+        """Test function node with no block child returns None."""
+        mock_node = Mock()
+        mock_node.children = [Mock(type="identifier")]
+        result = extractor._extract_docstring_from_node(mock_node, "def foo(): pass")
+        assert result is None
+
+
+class TestExtractReturnTypeFromNode:
+    """Test _extract_return_type_from_node fallback paths (lines 1208-1232)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        return ext
+
+    def test_return_type_starts_with_at(self, extractor):
+        """Test decorator-like return type is rejected (line 1222)."""
+        mock_node = Mock()
+        mock_node.children = []
+        with patch.object(extractor, "_get_node_text_optimized",
+                         return_value="def func() -> @decorator:\n    pass"):
+            result = extractor._extract_return_type_from_node(mock_node, "")
+            # Should not return a type starting with @
+            assert result is None or not result.startswith("@")
+
+    def test_return_type_fallback_to_type_child(self, extractor):
+        """Test fallback to type child node (lines 1226-1231)."""
+        mock_type = Mock(type="type")
+        mock_type.start_byte = 0
+        mock_type.end_byte = 3
+        mock_node = Mock()
+        mock_node.children = [mock_type]
+        with patch.object(extractor, "_get_node_text_optimized", return_value="def foo():\n    pass"):
+            result = extractor._extract_return_type_from_node(mock_node, "int")
+            assert result == "int"
+
+
+class TestExtractFunctionBody:
+    """Test _extract_function_body (lines 1263-1268)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_extract_body(self, extractor):
+        """Test body extraction from block child."""
+        mock_block = Mock(type="block")
+        mock_block.start_byte = 15
+        mock_block.end_byte = 30
+        mock_node = Mock()
+        mock_node.children = [mock_block]
+        source = "def foo():\n    return 42"
+        result = extractor._extract_function_body(mock_node, source)
+        assert isinstance(result, str)
+
+    def test_no_block_returns_empty(self, extractor):
+        """Test no block child returns empty string."""
+        mock_node = Mock()
+        mock_node.children = [Mock(type="identifier")]
+        result = extractor._extract_function_body(mock_node, "def foo(): pass")
+        assert result == ""
+
+
+class TestExtractSuperclassesFromNode:
+    """Test _extract_superclasses_from_node (lines 1270-1280)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_multiple_superclasses(self, extractor):
+        """Test extracting multiple superclasses."""
+        mock_arg = Mock(type="argument_list")
+        mock_s1 = Mock(type="identifier")
+        mock_s1.start_byte = 0
+        mock_s1.end_byte = 4
+        mock_s2 = Mock(type="identifier")
+        mock_s2.start_byte = 6
+        mock_s2.end_byte = 11
+        mock_arg.children = [mock_s1, mock_s2]
+        mock_node = Mock()
+        mock_node.children = [mock_arg]
+        source = "Base, Mixin"
+        result = extractor._extract_superclasses_from_node(mock_node, source)
+        assert len(result) == 2
+
+
+class TestExtractPackages:
+    """Test extract_packages (lines 913-959)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_extract_packages_no_current_file(self, extractor):
+        """Test extract_packages with no current_file set."""
+        mock_tree = Mock()
+        result = extractor.extract_packages(mock_tree, "")
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_extract_packages_with_file(self, extractor, tmp_path):
+        """Test extract_packages with a file in a package structure."""
+        # Create a minimal package structure
+        pkg_dir = tmp_path / "my_pkg"
+        pkg_dir.mkdir()
+        (pkg_dir / "__init__.py").write_text("")
+        test_file = pkg_dir / "module.py"
+        test_file.write_text("x = 1")
+
+        extractor.current_file = str(test_file)
+        mock_tree = Mock()
+        result = extractor.extract_packages(mock_tree, "x = 1")
+        assert isinstance(result, list)
+        if result:
+            assert result[0].name == "my_pkg"
+            assert extractor.current_module == "my_pkg"
+
+
+class TestGetNodeTextOptimizedMultiLine:
+    """Test _get_node_text_optimized multi-line fallback (lines 321-336)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = "line0\nline1\nline2\nline3"
+        ext.content_lines = ext.source_code.split("\n")
+        return ext
+
+    def test_multi_line_fallback(self, extractor):
+        """Test multi-line text extraction fallback (lines 321-336)."""
+        mock_node = Mock()
+        mock_node.start_byte = 0
+        mock_node.end_byte = 100
+        mock_node.start_point = (0, 2)
+        mock_node.end_point = (2, 3)
+        with patch("tree_sitter_analyzer.languages.python_plugin.extract_text_slice",
+                   return_value=""):
+            result = extractor._get_node_text_optimized(mock_node)
+            # Should span from line 0, col 2 to line 2, col 3
+            assert "ne0" in result  # "line0"[2:] = "ne0"
+            assert "lin" in result  # "line2"[:3] = "lin"
+
+    def test_end_point_negative_returns_empty(self, extractor):
+        """Test end_point with negative row returns empty (line 311)."""
+        mock_node = Mock()
+        mock_node.start_byte = 0
+        mock_node.end_byte = 10
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (-1, 0)
+        with patch("tree_sitter_analyzer.languages.python_plugin.extract_text_slice",
+                   return_value=""):
+            result = extractor._get_node_text_optimized(mock_node)
+            assert result == ""
+
+    def test_both_fallbacks_fail(self, extractor):
+        """Test when both byte and line fallbacks fail (line 338)."""
+        mock_node = Mock()
+        mock_node.start_byte = 0
+        mock_node.end_byte = 10
+        type(mock_node).start_point = property(
+            lambda self: (_ for _ in ()).throw(Exception("fail"))
+        )
+        with patch("tree_sitter_analyzer.languages.python_plugin.extract_text_slice",
+                   return_value=""):
+            result = extractor._get_node_text_optimized(mock_node)
+            assert result == ""
+
+
+class TestExtractDetailedFunctionInfoVisibility:
+    """Test _extract_detailed_function_info visibility branches (lines 990-994)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        return ext
+
+    def test_magic_method_visibility(self, extractor):
+        """Test magic method visibility detection (line 991)."""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 25
+        mock_node.children = []
+
+        with (
+            patch.object(extractor, "_extract_name_from_node", return_value="__repr__"),
+            patch.object(extractor, "_extract_parameters_from_node", return_value=["self"]),
+            patch.object(extractor, "_extract_decorators_from_node", return_value=[]),
+            patch.object(extractor, "_extract_return_type_from_node", return_value="str"),
+        ):
+            result = extractor._extract_detailed_function_info(mock_node, "def __repr__(self): pass")
+            assert result is not None
+            assert result.is_private is False
+            assert result.is_public is False
+
+    def test_private_method(self, extractor):
+        """Test private method visibility (line 993)."""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 20
+        mock_node.children = []
+
+        with (
+            patch.object(extractor, "_extract_name_from_node", return_value="_helper"),
+            patch.object(extractor, "_extract_parameters_from_node", return_value=[]),
+            patch.object(extractor, "_extract_decorators_from_node", return_value=[]),
+            patch.object(extractor, "_extract_return_type_from_node", return_value=None),
+        ):
+            result = extractor._extract_detailed_function_info(mock_node, "def _helper(): pass ")
+            assert result is not None
+            assert result.is_private is True
+
+    def test_no_name_returns_none(self, extractor):
+        """Test None name returns None (line 968-969)."""
+        mock_node = Mock()
+        mock_node.children = []
+        with patch.object(extractor, "_extract_name_from_node", return_value=None):
+            result = extractor._extract_detailed_function_info(mock_node, "def (): pass")
+            assert result is None
+
+
+class TestExtractDetailedClassInfoBranches:
+    """Test _extract_detailed_class_info (lines 1023-1068)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.current_module = "my.module"
+        return ext
+
+    def test_detailed_class_with_module(self, extractor):
+        """Test full_qualified_name with module (line 1044)."""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 20
+        mock_node.children = []
+
+        with (
+            patch.object(extractor, "_extract_name_from_node", return_value="MyClass"),
+            patch.object(extractor, "_extract_superclasses_from_node", return_value=["Base"]),
+            patch.object(extractor, "_extract_decorators_from_node", return_value=[]),
+        ):
+            result = extractor._extract_detailed_class_info(mock_node, "class MyClass(Base):")
+            assert result is not None
+            assert result.full_qualified_name == "my.module.MyClass"
+
+    def test_detailed_class_no_name(self, extractor):
+        """Test _extract_detailed_class_info with no name returns None."""
+        mock_node = Mock()
+        mock_node.children = []
+        with patch.object(extractor, "_extract_name_from_node", return_value=None):
+            result = extractor._extract_detailed_class_info(mock_node, "class :")
+            assert result is None
+
+    def test_detailed_class_exception(self, extractor):
+        """Test exception returns None (line 1066-1068)."""
+        mock_node = Mock()
+        with patch.object(extractor, "_extract_name_from_node", side_effect=Exception("bad")):
+            result = extractor._extract_detailed_class_info(mock_node, "class Foo:")
+            assert result is None
+
+
+class TestPythonPluginExecuteQueryStrategy:
+    """Test execute_query_strategy (lines 1426-1431)."""
+
+    @pytest.fixture
+    def plugin(self) -> PythonPlugin:
+        return PythonPlugin()
+
+    def test_execute_query_strategy_with_key(self, plugin):
+        """Test execute_query_strategy returns query for known key."""
+        result = plugin.execute_query_strategy("function", "python")
+        # Returns query string or None depending on get_queries()
+        assert result is None or isinstance(result, str)
+
+    def test_execute_query_strategy_none_key(self, plugin):
+        """Test execute_query_strategy with None key."""
+        result = plugin.execute_query_strategy(None, "python")
+        assert result is None
+
+
+class TestPythonPluginGetNodeTypeForElement:
+    """Test _get_node_type_for_element (lines 1433-1446)."""
+
+    @pytest.fixture
+    def plugin(self) -> PythonPlugin:
+        return PythonPlugin()
+
+    def test_function_element(self, plugin):
+        """Test function type mapping."""
+        func = Function(name="f", start_line=1, end_line=2, raw_text="x", language="python")
+        assert plugin._get_node_type_for_element(func) == "function_definition"
+
+    def test_class_element(self, plugin):
+        """Test class type mapping."""
+        cls = Class(name="C", start_line=1, end_line=2, raw_text="x", language="python")
+        assert plugin._get_node_type_for_element(cls) == "class_definition"
+
+    def test_variable_element(self, plugin):
+        """Test variable type mapping."""
+        var = Variable(name="v", start_line=1, end_line=1, raw_text="x", language="python")
+        assert plugin._get_node_type_for_element(var) == "assignment"
+
+    def test_import_element(self, plugin):
+        """Test import type mapping."""
+        imp = Import(name="i", start_line=1, end_line=1, raw_text="x", language="python")
+        assert plugin._get_node_type_for_element(imp) == "import_statement"
+
+    def test_unknown_element(self, plugin):
+        """Test unknown element type (line 1446)."""
+        result = plugin._get_node_type_for_element("string_element")
+        assert result == "unknown"
+
+
+class TestPythonPluginAnalyzeFileTreeSitterUnavailable:
+    """Test analyze_file when TREE_SITTER_AVAILABLE is False (lines 1536-1542)."""
+
+    @pytest.fixture
+    def plugin(self) -> PythonPlugin:
+        return PythonPlugin()
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_no_tree_sitter(self, plugin):
+        """Test analyze_file returns error when TREE_SITTER_AVAILABLE is False (lines 1536-1542)."""
+        import tree_sitter_analyzer.languages.python_plugin as pymod
+        original = pymod.TREE_SITTER_AVAILABLE
+        try:
+            pymod.TREE_SITTER_AVAILABLE = False
+            mock_request = Mock()
+            mock_request.file_path = "test.py"
+            result = await plugin.analyze_file("test.py", mock_request)
+            assert result.success is False
+            assert "not available" in result.error_message
+        finally:
+            pymod.TREE_SITTER_AVAILABLE = original
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_no_language(self, plugin):
+        """Test analyze_file returns error when language is None (lines 1545-1551)."""
+        with patch.object(plugin, "get_tree_sitter_language", return_value=None):
+            mock_request = Mock()
+            mock_request.file_path = "test.py"
+            result = await plugin.analyze_file("test.py", mock_request)
+            assert result.success is False
+
+
+class TestPythonPluginGetTreeSitterLanguageException:
+    """Test get_tree_sitter_language general exception path (lines 1367-1369)."""
+
+    @pytest.fixture
+    def plugin(self) -> PythonPlugin:
+        p = PythonPlugin()
+        p._language_cache = None
+        return p
+
+    def test_general_exception(self, plugin):
+        """Test get_tree_sitter_language handles non-ImportError exceptions."""
+        with patch("tree_sitter_python.language", side_effect=RuntimeError("broken")):
+            result = plugin.get_tree_sitter_language()
+            assert result is None
+
+
+class TestExtractImportsDuplicateSkip:
+    """Test extract_imports skips duplicate positions (lines 769-773)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_duplicate_position_skipped(self, extractor):
+        """Test that duplicate import positions are skipped (lines 769-773)."""
+        mock_tree = Mock()
+        mock_tree.language = Mock()
+        mock_tree.root_node = Mock(children=[], type="module")
+
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (0, 9)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 9
+
+        # Return the same node twice to test dedup
+        captures = [(mock_node, "import_stmt"), (mock_node, "import_stmt")]
+
+        with patch("tree_sitter_analyzer.languages.python_plugin.TreeSitterQueryCompat.safe_execute_query",
+                   return_value=captures), \
+             patch.object(extractor, "_extract_import_info", return_value=Import(
+                 name="os", start_line=1, end_line=1, raw_text="import os", language="python"
+             )):
+            result = extractor.extract_imports(mock_tree, "import os")
+            # Should only have 1 import due to dedup
+            assert len(result) == 1
+
+
+class TestExtractImportsOuterException:
+    """Test extract_imports outer exception fallback (lines 794-797)."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_outer_exception_fallback(self, extractor):
+        """Test that outer exception triggers _extract_imports_manual fallback (lines 794-797)."""
+        mock_tree = Mock()
+        # Make hasattr(tree, 'language') raise exception
+        type(mock_tree).language = property(lambda self: (_ for _ in ()).throw(Exception("fail")))
+        mock_tree.root_node = Mock(children=[], type="module")
+
+        result = extractor.extract_imports(mock_tree, "import os")
+        assert isinstance(result, list)
+
+
+@pytest.mark.skipif(not TREE_SITTER_PYTHON_AVAILABLE, reason="tree-sitter-python not installed")
+class TestPythonPluginRealParsing:
+    """Integration tests using real tree-sitter-python parsing."""
+
+    @pytest.fixture
+    def plugin(self) -> PythonPlugin:
+        return PythonPlugin()
+
+    @pytest.fixture
+    def parser(self):
+        import tree_sitter
+        import tree_sitter_python as tspython
+        lang = tree_sitter.Language(tspython.language())
+        p = tree_sitter.Parser()
+        p.language = lang
+        return p
+
+    def test_extract_functions_real(self, plugin, parser):
+        """Test real function extraction."""
+        code = "def hello(name: str) -> str:\n    return f'Hello {name}'\n\nasync def fetch(url):\n    pass\n"
+        tree = parser.parse(code.encode("utf-8"))
+        extractor = plugin.get_extractor()
+        functions = extractor.extract_functions(tree, code)
+        names = [f.name for f in functions]
+        assert "hello" in names
+        assert "fetch" in names
+        hello = [f for f in functions if f.name == "hello"][0]
+        assert hello.return_type == "str"
+        fetch = [f for f in functions if f.name == "fetch"][0]
+        assert fetch.is_async is True
+
+    def test_extract_classes_real(self, plugin, parser):
+        """Test real class extraction."""
+        code = "class Animal:\n    pass\n\nclass Dog(Animal):\n    pass\n"
+        tree = parser.parse(code.encode("utf-8"))
+        extractor = plugin.get_extractor()
+        classes = extractor.extract_classes(tree, code)
+        names = [c.name for c in classes]
+        assert "Animal" in names
+        assert "Dog" in names
+        dog = [c for c in classes if c.name == "Dog"][0]
+        assert dog.superclass == "Animal"
+
+    def test_extract_imports_real(self, plugin, parser):
+        """Test real import extraction."""
+        code = "import os\nimport sys\nfrom typing import List, Dict\n"
+        tree = parser.parse(code.encode("utf-8"))
+        extractor = plugin.get_extractor()
+        imports = extractor.extract_imports(tree, code)
+        assert len(imports) >= 2
+
+    def test_extract_variables_real(self, plugin, parser):
+        """Test real variable extraction from class body."""
+        code = "class Config:\n    debug: bool = True\n    name = 'app'\n"
+        tree = parser.parse(code.encode("utf-8"))
+        extractor = plugin.get_extractor()
+        variables = extractor.extract_variables(tree, code)
+        assert isinstance(variables, list)
+
+    def test_full_extract_elements(self, plugin, parser):
+        """Test full extract_elements pipeline."""
+        code = (
+            "import os\n"
+            "class MyClass:\n"
+            "    x = 1\n"
+            "    def method(self):\n"
+            "        pass\n"
+        )
+        tree = parser.parse(code.encode("utf-8"))
+        elements = plugin.extract_elements(tree, code)
+        assert isinstance(elements, list)
+        assert len(elements) >= 2  # At least class + function

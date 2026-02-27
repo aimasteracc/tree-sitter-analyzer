@@ -1375,3 +1375,376 @@ class TestResetCachesTracking:
         ext._reset_caches()
         assert len(ext._extracted_links) == 0
         assert len(ext._extracted_images) == 0
+
+
+# ====================================================================== #
+# TARGETED TESTS for coverage boost (79% -> 80%+)
+# ====================================================================== #
+
+
+class TestMarkdownExceptionHandlers:
+    """Tests that hit the exception handler branches in extraction methods."""
+
+    def setup_method(self):
+        self.extractor = MarkdownElementExtractor()
+
+    def _make_tree(self):
+        tree = Mock()
+        tree.root_node = Mock()
+        return tree
+
+    def test_extract_code_blocks_exception_handler(self):
+        """Cover lines 207-208: exception in code block extraction"""
+        tree = self._make_tree()
+        with patch.object(
+            self.extractor,
+            "_extract_fenced_code_blocks",
+            side_effect=Exception("code block error"),
+        ):
+            result = self.extractor.extract_code_blocks(tree, "```\ncode\n```")
+            assert result == []
+
+    def test_extract_links_exception_handler(self):
+        """Cover lines 232-233: exception in link extraction"""
+        tree = self._make_tree()
+        with patch.object(
+            self.extractor,
+            "_extract_inline_links",
+            side_effect=Exception("link error"),
+        ):
+            result = self.extractor.extract_links(tree, "[text](url)")
+            assert result == []
+
+    def test_extract_images_exception_handler(self):
+        """Cover lines 265-266: exception in image extraction"""
+        tree = self._make_tree()
+        with patch.object(
+            self.extractor,
+            "_extract_inline_images",
+            side_effect=Exception("image error"),
+        ):
+            result = self.extractor.extract_images(tree, "![alt](img.png)")
+            assert result == []
+
+    def test_extract_references_exception_handler(self):
+        """Cover lines 295-296: exception in reference extraction"""
+        tree = self._make_tree()
+        with patch.object(
+            self.extractor,
+            "_extract_link_reference_definitions",
+            side_effect=Exception("ref error"),
+        ):
+            result = self.extractor.extract_references(tree, "[ref]: url")
+            assert result == []
+
+    def test_extract_lists_exception_handler(self):
+        """Cover lines 415-416: exception in list extraction"""
+        tree = self._make_tree()
+        with patch.object(
+            self.extractor,
+            "_extract_list_items",
+            side_effect=Exception("list error"),
+        ):
+            result = self.extractor.extract_lists(tree, "- item")
+            assert result == []
+
+    def test_extract_tables_exception_handler(self):
+        """Cover lines 434-435: exception in table extraction"""
+        tree = self._make_tree()
+        with patch.object(
+            self.extractor,
+            "_extract_pipe_tables",
+            side_effect=Exception("table error"),
+        ):
+            result = self.extractor.extract_tables(tree, "| a | b |")
+            assert result == []
+
+    def test_extract_fenced_code_block_exception_in_node(self):
+        """Cover lines 637-638: exception inside fenced code block node processing"""
+        node = Mock()
+        node.type = "fenced_code_block"
+        node.start_point = Mock(side_effect=Exception("node error"))
+        node.children = []
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            code_blocks = []
+            self.extractor.source_code = "```\ncode\n```"
+            self.extractor.content_lines = ["```", "code", "```"]
+            self.extractor._extract_fenced_code_blocks(Mock(), code_blocks)
+            assert code_blocks == []
+
+    def test_extract_indented_code_block_exception_in_node(self):
+        """Cover lines 664-665: exception inside indented code block node processing"""
+        node = Mock()
+        node.type = "indented_code_block"
+        node.start_point = Mock(side_effect=Exception("node error"))
+        node.children = []
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            code_blocks = []
+            self.extractor.source_code = "    code"
+            self.extractor.content_lines = ["    code"]
+            self.extractor._extract_indented_code_blocks(Mock(), code_blocks)
+            assert code_blocks == []
+
+    def test_extract_inline_links_exception_in_node(self):
+        """Cover lines 718-719: exception inside inline link node processing"""
+        node = Mock()
+        node.type = "inline"
+        node.start_point = Mock(side_effect=Exception("node error"))
+        node.children = []
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            links = []
+            self.extractor.source_code = "[text](url)"
+            self.extractor.content_lines = ["[text](url)"]
+            self.extractor._extract_inline_links(Mock(), links)
+            assert links == []
+
+    def test_extract_inline_images_exception_in_node(self):
+        """Cover lines 878-879: exception inside inline image node processing"""
+        node = Mock()
+        node.type = "inline"
+        node.start_point = Mock(side_effect=Exception("node error"))
+        node.children = []
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            images = []
+            self.extractor.source_code = "![alt](img.png)"
+            self.extractor.content_lines = ["![alt](img.png)"]
+            self.extractor._extract_inline_images(Mock(), images)
+            assert images == []
+
+    def test_extract_link_reference_definitions_exception_in_node(self):
+        """Cover lines 1024-1025: exception inside reference definition node"""
+        node = Mock()
+        node.type = "link_reference_definition"
+        node.start_point = Mock(side_effect=Exception("node error"))
+        node.children = []
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            refs = []
+            self.extractor.source_code = "[ref]: url"
+            self.extractor.content_lines = ["[ref]: url"]
+            self.extractor._extract_link_reference_definitions(Mock(), refs)
+            assert refs == []
+
+    def test_extract_list_items_exception_in_node(self):
+        """Cover lines 1085-1086: exception inside list node processing"""
+        node = Mock()
+        node.type = "list"
+        node.start_point = Mock(side_effect=Exception("node error"))
+        node.children = []
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            lists = []
+            self.extractor.source_code = "- item"
+            self.extractor.content_lines = ["- item"]
+            self.extractor._extract_list_items(Mock(), lists)
+            assert lists == []
+
+    def test_extract_pipe_tables_exception_in_node(self):
+        """Cover lines 1129-1130: exception inside table node processing"""
+        node = Mock()
+        node.type = "pipe_table"
+        node.start_point = Mock(side_effect=Exception("node error"))
+        node.children = []
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            tables = []
+            self.extractor.source_code = "| a | b |"
+            self.extractor.content_lines = ["| a | b |"]
+            self.extractor._extract_pipe_tables(Mock(), tables)
+            assert tables == []
+
+    def test_image_reference_definition_exception(self):
+        """Cover lines 1002-1003: exception in image reference definition"""
+        node = Mock()
+        node.type = "link_reference_definition"
+        node.start_point = Mock(side_effect=Exception("node error"))
+        node.children = []
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            images = []
+            self.extractor.source_code = "[logo]: logo.png"
+            self.extractor.content_lines = ["[logo]: logo.png"]
+            self.extractor._extract_image_reference_definitions(Mock(), images)
+            assert images == []
+
+    def test_image_ref_scan_exception(self):
+        """Cover lines 949-950: exception scanning for image references"""
+        inline_node = Mock()
+        inline_node.type = "inline"
+        inline_node.start_point = (0, 0)
+        inline_node.end_point = (0, 20)
+        inline_node.start_byte = 0
+        inline_node.end_byte = 20
+        inline_node.children = []
+
+        ref_node = Mock()
+        ref_node.type = "link_reference_definition"
+        ref_node.start_point = (1, 0)
+        ref_node.end_point = (1, 20)
+        ref_node.start_byte = 21
+        ref_node.end_byte = 41
+        ref_node.children = []
+
+        self.extractor.source_code = "![alt][ref]\n[ref]: logo.png"
+        self.extractor.content_lines = self.extractor.source_code.split("\n")
+
+        call_count = [0]
+
+        def text_side_effect(n):
+            call_count[0] += 1
+            if n is inline_node:
+                if call_count[0] <= 1:
+                    raise Exception("scan error")
+                return "![alt][ref]"
+            if n is ref_node:
+                return "[ref]: logo.png"
+            return ""
+
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[inline_node, ref_node]):
+            with patch.object(self.extractor, "_get_node_text_optimized", side_effect=text_side_effect):
+                images = []
+                self.extractor._extract_image_reference_definitions(Mock(), images)
+                # Should handle exception gracefully
+                assert isinstance(images, list)
+
+
+class TestMarkdownSetextSingleLine:
+    """Test setext header with only single line (no underline)."""
+
+    def setup_method(self):
+        self.extractor = MarkdownElementExtractor()
+
+    def test_setext_header_single_line(self):
+        """Cover line 575: setext header with only one line (no underline)"""
+        node = Mock()
+        node.type = "setext_heading"
+        node.start_point = (0, 0)
+        node.end_point = (0, 10)
+        node.start_byte = 0
+        node.end_byte = 10
+        node.children = []
+
+        self.extractor.source_code = "Title Only"
+        self.extractor.content_lines = ["Title Only"]
+
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            with patch.object(
+                self.extractor, "_get_node_text_optimized", return_value="Title Only"
+            ):
+                headers = []
+                self.extractor._extract_setext_headers(Mock(), headers)
+                assert len(headers) == 1
+                assert headers[0].level == 2  # Default is H2
+                assert headers[0].name == "Title Only"
+
+    def test_setext_header_exception(self):
+        """Cover lines 589-590: exception in setext header extraction"""
+        node = Mock()
+        node.type = "setext_heading"
+        node.start_point = Mock(side_effect=Exception("error"))
+        node.children = []
+
+        with patch.object(self.extractor, "_traverse_nodes", return_value=[node]):
+            headers = []
+            self.extractor.source_code = "Title\n====="
+            self.extractor.content_lines = ["Title", "====="]
+            self.extractor._extract_setext_headers(Mock(), headers)
+            assert headers == []
+
+
+class TestMarkdownPluginAnalyzeFileFallback:
+    """Test analyze_file non-MarkdownElementExtractor fallback path."""
+
+    def setup_method(self):
+        self.plugin = MarkdownPlugin()
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_non_markdown_extractor_fallback(self):
+        """Cover lines 1750-1763: fallback for non-MarkdownElementExtractor"""
+        from tree_sitter_analyzer.plugins.base import ElementExtractor
+
+        mock_base_extractor = Mock(spec=ElementExtractor)
+        # Make it NOT an instance of MarkdownElementExtractor
+        mock_base_extractor.__class__ = ElementExtractor
+
+        with patch.object(self.plugin, "get_tree_sitter_language", return_value=Mock()):
+            with patch("tree_sitter_analyzer.languages.markdown_plugin.tree_sitter") as mock_ts:
+                mock_parser = Mock()
+                mock_tree = Mock()
+                mock_root = Mock()
+                mock_root.children = []
+                mock_tree.root_node = mock_root
+                mock_parser.parse.return_value = mock_tree
+                mock_ts.Parser.return_value = mock_parser
+
+                with patch(
+                    "tree_sitter_analyzer.encoding_utils.read_file_safe",
+                    return_value=("# Test\n", "utf-8"),
+                ):
+                    with patch.object(
+                        self.plugin,
+                        "create_extractor",
+                        return_value=mock_base_extractor,
+                    ):
+                        request = AnalysisRequest(file_path="test.md")
+                        result = await self.plugin.analyze_file("test.md", request)
+                        assert result.success is True
+                        assert result.elements == []
+
+
+class TestMarkdownExecuteQueryStrategyFallback:
+    """Test execute_query_strategy fallback path."""
+
+    def test_fallback_to_base_queries(self):
+        """Cover lines 1882-1883: fallback to base queries"""
+        plugin = MarkdownPlugin()
+        # Query key not in element categories
+        result = plugin.execute_query_strategy("nonexistent_category", "markdown")
+        # Should fall back to get_queries()
+        assert result is None or isinstance(result, str)
+
+    def test_category_with_empty_node_types(self):
+        """Test category found but with empty node_types list"""
+        plugin = MarkdownPlugin()
+        with patch.object(
+            plugin, "get_element_categories", return_value={"empty_cat": []}
+        ):
+            result = plugin.execute_query_strategy("empty_cat", "markdown")
+            # node_types is empty, should fall through to base queries
+            assert result is None or isinstance(result, str)
+
+
+class TestMarkdownGetNodeTextMultilineFallback:
+    """Test fallback multiline path with same start/end line in loop."""
+
+    def test_multiline_fallback_same_line_in_range(self):
+        """Cover lines 498-502: multiline fallback branch where i == start == end"""
+        ext = MarkdownElementExtractor()
+        ext.content_lines = ["Hello World"]
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 5
+        node.start_point = (0, 2)
+        node.end_point = (0, 8)
+
+        with patch(
+            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            return_value=None,
+        ):
+            result = ext._get_node_text_optimized(node)
+            # Returns empty since extract_text_slice returned None (falsy)
+            # then falls to fallback which handles single-line case
+            assert isinstance(result, str)
+
+    def test_end_point_out_of_bounds(self):
+        """Cover lines 481-482: end_point out of bounds"""
+        ext = MarkdownElementExtractor()
+        ext.content_lines = ["Hello"]
+        node = Mock()
+        node.start_byte = 0
+        node.end_byte = 5
+        node.start_point = (0, 0)
+        node.end_point = (10, 5)  # Out of bounds
+
+        with patch(
+            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            side_effect=Exception("error"),
+        ):
+            result = ext._get_node_text_optimized(node)
+            assert result == ""

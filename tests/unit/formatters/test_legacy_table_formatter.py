@@ -840,6 +840,661 @@ class TestDetailedFormatting:
         assert "innerField" not in field_names
 
 
+class TestFormatClassDetails:
+    """Tests for _format_class_details method (covers lines 449-534)."""
+
+    @pytest.fixture
+    def formatter_no_javadoc(self) -> LegacyTableFormatter:
+        """Create formatter without javadoc."""
+        return LegacyTableFormatter(format_type="full", include_javadoc=False)
+
+    @pytest.fixture
+    def formatter_with_javadoc(self) -> LegacyTableFormatter:
+        """Create formatter with javadoc enabled."""
+        return LegacyTableFormatter(format_type="full", include_javadoc=True)
+
+    def test_format_class_details_basic(self, formatter_no_javadoc: LegacyTableFormatter) -> None:
+        """Test basic class detail formatting."""
+        class_info = {
+            "name": "UserService",
+            "line_range": {"start": 10, "end": 100},
+        }
+        data = {
+            "classes": [class_info],
+            "methods": [
+                {
+                    "name": "getUser",
+                    "return_type": "User",
+                    "visibility": "public",
+                    "is_constructor": False,
+                    "parameters": [{"type": "int", "name": "id"}],
+                    "line_range": {"start": 20, "end": 30},
+                    "complexity_score": 2,
+                    "javadoc": "",
+                },
+            ],
+            "fields": [
+                {
+                    "name": "userDao",
+                    "type": "UserDao",
+                    "visibility": "private",
+                    "modifiers": [],
+                    "line_range": {"start": 12, "end": 12},
+                    "javadoc": "",
+                },
+            ],
+        }
+        lines = formatter_no_javadoc._format_class_details(class_info, data)
+        result = "\n".join(lines)
+
+        assert "## UserService (10-100)" in result
+        assert "### Fields" in result
+        assert "| userDao |" in result
+        assert "### Public Methods" in result
+        assert "| getUser |" in result
+
+    def test_format_class_details_with_constructors(self, formatter_no_javadoc: LegacyTableFormatter) -> None:
+        """Test class details with constructors."""
+        class_info = {
+            "name": "Person",
+            "line_range": {"start": 1, "end": 50},
+        }
+        data = {
+            "classes": [class_info],
+            "methods": [
+                {
+                    "name": "Person",
+                    "is_constructor": True,
+                    "visibility": "public",
+                    "parameters": [{"type": "String", "name": "name"}],
+                    "line_range": {"start": 5, "end": 10},
+                    "complexity_score": 1,
+                    "javadoc": "",
+                },
+            ],
+            "fields": [],
+        }
+        lines = formatter_no_javadoc._format_class_details(class_info, data)
+        result = "\n".join(lines)
+
+        assert "### Constructors" in result
+        assert "| Person |" in result
+
+    def test_format_class_details_methods_by_visibility(self, formatter_no_javadoc: LegacyTableFormatter) -> None:
+        """Test class details organizes methods by visibility."""
+        class_info = {
+            "name": "TestClass",
+            "line_range": {"start": 1, "end": 100},
+        }
+        data = {
+            "classes": [class_info],
+            "methods": [
+                {"name": "pubMethod", "visibility": "public", "is_constructor": False,
+                 "line_range": {"start": 10, "end": 15}, "parameters": [], "complexity_score": 1, "javadoc": ""},
+                {"name": "protMethod", "visibility": "protected", "is_constructor": False,
+                 "line_range": {"start": 20, "end": 25}, "parameters": [], "complexity_score": 1, "javadoc": ""},
+                {"name": "pkgMethod", "visibility": "package", "is_constructor": False,
+                 "line_range": {"start": 30, "end": 35}, "parameters": [], "complexity_score": 1, "javadoc": ""},
+                {"name": "privMethod", "visibility": "private", "is_constructor": False,
+                 "line_range": {"start": 40, "end": 45}, "parameters": [], "complexity_score": 1, "javadoc": ""},
+            ],
+            "fields": [],
+        }
+        lines = formatter_no_javadoc._format_class_details(class_info, data)
+        result = "\n".join(lines)
+
+        assert "### Public Methods" in result
+        assert "### Protected Methods" in result
+        assert "### Package Methods" in result
+        assert "### Private Methods" in result
+        assert "| pubMethod |" in result
+        assert "| protMethod |" in result
+        assert "| pkgMethod |" in result
+        assert "| privMethod |" in result
+
+    def test_format_class_details_with_javadoc(self, formatter_with_javadoc: LegacyTableFormatter) -> None:
+        """Test class details with javadoc enabled."""
+        class_info = {
+            "name": "DocClass",
+            "line_range": {"start": 1, "end": 50},
+        }
+        data = {
+            "classes": [class_info],
+            "methods": [
+                {"name": "documented", "visibility": "public", "is_constructor": False,
+                 "line_range": {"start": 10, "end": 20}, "parameters": [],
+                 "complexity_score": 1, "javadoc": "/** Gets the user name. */"},
+            ],
+            "fields": [
+                {"name": "name", "type": "String", "visibility": "private",
+                 "modifiers": [], "line_range": {"start": 3, "end": 3},
+                 "javadoc": "/** The user name. */"},
+            ],
+        }
+        lines = formatter_with_javadoc._format_class_details(class_info, data)
+        result = "\n".join(lines)
+
+        # Javadoc should be extracted, not "-"
+        assert "Gets the user name" in result
+        assert "The user name" in result
+
+    def test_format_class_details_no_methods_no_fields(self, formatter_no_javadoc: LegacyTableFormatter) -> None:
+        """Test class details with no methods or fields."""
+        class_info = {
+            "name": "EmptyClass",
+            "line_range": {"start": 1, "end": 5},
+        }
+        data = {
+            "classes": [class_info],
+            "methods": [],
+            "fields": [],
+        }
+        lines = formatter_no_javadoc._format_class_details(class_info, data)
+        result = "\n".join(lines)
+
+        assert "## EmptyClass (1-5)" in result
+        # No methods or fields sections
+        assert "### Fields" not in result
+        assert "### Public Methods" not in result
+
+
+class TestFormatMethodRowDetailed:
+    """Tests for _format_method_row_detailed (covers lines 536-550)."""
+
+    def test_method_row_basic(self) -> None:
+        """Test basic method row formatting."""
+        formatter = LegacyTableFormatter(include_javadoc=False)
+        method = {
+            "name": "process",
+            "return_type": "void",
+            "visibility": "public",
+            "is_static": False,
+            "parameters": [{"type": "String", "name": "input"}],
+            "line_range": {"start": 10, "end": 20},
+            "complexity_score": 3,
+            "javadoc": "",
+        }
+        result = formatter._format_method_row_detailed(method)
+        assert "| process |" in result
+        assert "| + |" in result or "+ |" in result
+        assert "10-20" in result
+        assert "3" in result
+
+    def test_method_row_static(self) -> None:
+        """Test static method row formatting."""
+        formatter = LegacyTableFormatter(include_javadoc=False)
+        method = {
+            "name": "staticMethod",
+            "return_type": "int",
+            "visibility": "public",
+            "is_static": True,
+            "parameters": [],
+            "line_range": {"start": 5, "end": 8},
+            "complexity_score": 1,
+            "javadoc": "",
+        }
+        result = formatter._format_method_row_detailed(method)
+        assert "[static]" in result
+
+    def test_method_row_with_javadoc(self) -> None:
+        """Test method row with javadoc enabled."""
+        formatter = LegacyTableFormatter(include_javadoc=True)
+        method = {
+            "name": "getData",
+            "return_type": "List",
+            "visibility": "public",
+            "is_static": False,
+            "parameters": [],
+            "line_range": {"start": 15, "end": 25},
+            "complexity_score": 2,
+            "javadoc": "/** Retrieves all data from the database. */",
+        }
+        result = formatter._format_method_row_detailed(method)
+        assert "Retrieves all data from the database" in result
+
+
+class TestCompactMethodRow:
+    """Tests for _format_compact_method_row (covers lines 552-564)."""
+
+    def test_compact_method_row_basic(self) -> None:
+        """Test basic compact method row."""
+        formatter = LegacyTableFormatter()
+        method = {
+            "name": "calculate",
+            "return_type": "double",
+            "visibility": "public",
+            "parameters": [{"type": "int", "name": "a"}, {"type": "int", "name": "b"}],
+            "line_range": {"start": 10, "end": 20},
+            "complexity_score": 3,
+        }
+        result = formatter._format_compact_method_row(method)
+        assert "| calculate |" in result
+        assert "| + |" in result or "+ |" in result
+
+    def test_compact_method_row_same_start_end(self) -> None:
+        """Test compact method row where start equals end."""
+        formatter = LegacyTableFormatter()
+        method = {
+            "name": "getter",
+            "return_type": "String",
+            "visibility": "private",
+            "parameters": [],
+            "line_range": {"start": 10, "end": 10},
+            "complexity_score": 1,
+        }
+        result = formatter._format_compact_method_row(method)
+        assert "| 10 |" in result or "10" in result
+
+
+class TestCreateCompactSignature:
+    """Tests for _create_compact_signature (covers lines 566-580)."""
+
+    def test_compact_signature_basic(self) -> None:
+        """Test basic compact signature creation."""
+        formatter = LegacyTableFormatter()
+        method = {
+            "parameters": [{"type": "String", "name": "name"}, {"type": "int", "name": "age"}],
+            "return_type": "boolean",
+        }
+        result = formatter._create_compact_signature(method)
+        assert result == "(S,i):b"
+
+    def test_compact_signature_no_params(self) -> None:
+        """Test compact signature with no parameters."""
+        formatter = LegacyTableFormatter()
+        method = {"parameters": [], "return_type": "void"}
+        result = formatter._create_compact_signature(method)
+        assert result == "():void"
+
+
+class TestAbbreviateType:
+    """Tests for _abbreviate_type (covers lines 582-620)."""
+
+    def test_abbreviate_basic_types(self) -> None:
+        """Test abbreviation of basic types."""
+        formatter = LegacyTableFormatter()
+        assert formatter._abbreviate_type("String") == "S"
+        assert formatter._abbreviate_type("int") == "i"
+        assert formatter._abbreviate_type("boolean") == "b"
+        assert formatter._abbreviate_type("void") == "void"
+        assert formatter._abbreviate_type("Object") == "O"
+        assert formatter._abbreviate_type("long") == "l"
+        assert formatter._abbreviate_type("double") == "d"
+        assert formatter._abbreviate_type("float") == "f"
+        assert formatter._abbreviate_type("List") == "L"
+        assert formatter._abbreviate_type("Map") == "M"
+        assert formatter._abbreviate_type("Set") == "St"
+        assert formatter._abbreviate_type("Collection") == "C"
+
+    def test_abbreviate_generic_type(self) -> None:
+        """Test abbreviation of generic types like Map<String, Object>."""
+        formatter = LegacyTableFormatter()
+        result = formatter._abbreviate_type("Map<String, Object>")
+        assert "M<" in result
+        assert "S" in result
+        assert "O" in result
+
+    def test_abbreviate_array_type(self) -> None:
+        """Test abbreviation of array types."""
+        formatter = LegacyTableFormatter()
+        result = formatter._abbreviate_type("String[]")
+        assert result == "S[]"
+
+    def test_abbreviate_unknown_type(self) -> None:
+        """Test abbreviation of unknown type (first letter uppercase)."""
+        formatter = LegacyTableFormatter()
+        result = formatter._abbreviate_type("CustomType")
+        assert result == "C"
+
+    def test_abbreviate_empty_type(self) -> None:
+        """Test abbreviation of empty type string."""
+        formatter = LegacyTableFormatter()
+        result = formatter._abbreviate_type("")
+        assert result == "?"
+
+
+class TestGetVisibilitySymbol:
+    """Tests for _get_visibility_symbol (covers lines 622-631)."""
+
+    def test_visibility_symbols(self) -> None:
+        """Test all visibility symbol conversions."""
+        formatter = LegacyTableFormatter()
+        assert formatter._get_visibility_symbol("public") == "+"
+        assert formatter._get_visibility_symbol("private") == "-"
+        assert formatter._get_visibility_symbol("protected") == "#"
+        assert formatter._get_visibility_symbol("package") == "~"
+        assert formatter._get_visibility_symbol("internal") == "~"
+
+    def test_visibility_unknown(self) -> None:
+        """Test unknown visibility defaults to +."""
+        formatter = LegacyTableFormatter()
+        assert formatter._get_visibility_symbol("unknown") == "+"
+
+    def test_visibility_case_sensitivity(self) -> None:
+        """Test that case conversion works for visibility."""
+        formatter = LegacyTableFormatter()
+        assert formatter._get_visibility_symbol("PUBLIC") == "+"  # lowered
+
+
+class TestShortenType:
+    """Tests for _shorten_type (covers lines 847-890)."""
+
+    def test_shorten_basic_types(self) -> None:
+        """Test shortening of basic types."""
+        formatter = LegacyTableFormatter()
+        assert formatter._shorten_type("String") == "S"
+        assert formatter._shorten_type("int") == "i"
+        assert formatter._shorten_type("void") == "void"
+        assert formatter._shorten_type("boolean") == "b"
+        assert formatter._shorten_type("Object") == "O"
+
+    def test_shorten_none_type(self) -> None:
+        """Test shortening of None type."""
+        formatter = LegacyTableFormatter()
+        assert formatter._shorten_type(None) == "O"
+
+    def test_shorten_non_string_type(self) -> None:
+        """Test shortening of non-string type."""
+        formatter = LegacyTableFormatter()
+        result = formatter._shorten_type(42)
+        assert isinstance(result, str)
+
+    def test_shorten_map_type(self) -> None:
+        """Test shortening Map generic type."""
+        formatter = LegacyTableFormatter()
+        result = formatter._shorten_type("Map<String,Object>")
+        assert "M<" in result
+        assert "S" in result
+
+    def test_shorten_list_type(self) -> None:
+        """Test shortening List generic type."""
+        formatter = LegacyTableFormatter()
+        result = formatter._shorten_type("List<String>")
+        assert "L<" in result
+        assert "S" in result
+
+    def test_shorten_array_type(self) -> None:
+        """Test shortening array type."""
+        formatter = LegacyTableFormatter()
+        result = formatter._shorten_type("String[]")
+        assert result == "S[]"
+
+    def test_shorten_empty_array_type(self) -> None:
+        """Test shortening empty base array type."""
+        formatter = LegacyTableFormatter()
+        result = formatter._shorten_type("[]")
+        assert result == "O[]"
+
+    def test_shorten_exception_types(self) -> None:
+        """Test shortening exception types."""
+        formatter = LegacyTableFormatter()
+        assert formatter._shorten_type("Exception") == "E"
+        assert formatter._shorten_type("SQLException") == "SE"
+        assert formatter._shorten_type("IllegalArgumentException") == "IAE"
+        assert formatter._shorten_type("RuntimeException") == "RE"
+
+
+class TestConvertVisibility:
+    """Tests for _convert_visibility (covers lines 892-895)."""
+
+    def test_convert_all_visibilities(self) -> None:
+        """Test all visibility conversions."""
+        formatter = LegacyTableFormatter()
+        assert formatter._convert_visibility("public") == "+"
+        assert formatter._convert_visibility("private") == "-"
+        assert formatter._convert_visibility("protected") == "#"
+        assert formatter._convert_visibility("package") == "~"
+
+    def test_convert_unknown_visibility(self) -> None:
+        """Test unknown visibility returns as-is."""
+        formatter = LegacyTableFormatter()
+        assert formatter._convert_visibility("internal") == "internal"
+
+
+class TestExtractDocSummary:
+    """Tests for _extract_doc_summary (covers lines 897-913)."""
+
+    def test_extract_empty_doc(self) -> None:
+        """Test extracting summary from empty doc."""
+        formatter = LegacyTableFormatter()
+        assert formatter._extract_doc_summary("") == "-"
+
+    def test_extract_javadoc_summary(self) -> None:
+        """Test extracting summary from JavaDoc comment."""
+        formatter = LegacyTableFormatter()
+        result = formatter._extract_doc_summary("/** Gets the user name. */")
+        assert "Gets the user name" in result
+
+    def test_extract_javadoc_first_sentence(self) -> None:
+        """Test extracting first sentence from multi-sentence JavaDoc."""
+        formatter = LegacyTableFormatter()
+        result = formatter._extract_doc_summary(
+            "/** First sentence. Second sentence with details. */"
+        )
+        assert "First sentence" in result
+
+
+class TestCleanCsvText:
+    """Tests for _clean_csv_text (covers lines 915-926)."""
+
+    def test_clean_empty_text(self) -> None:
+        """Test cleaning empty text."""
+        formatter = LegacyTableFormatter()
+        assert formatter._clean_csv_text("") == "-"
+        assert formatter._clean_csv_text("-") == "-"
+
+    def test_clean_text_with_newlines(self) -> None:
+        """Test cleaning text with newlines."""
+        formatter = LegacyTableFormatter()
+        result = formatter._clean_csv_text("line1\nline2\nline3")
+        assert "\n" not in result
+        assert "line1 line2 line3" == result
+
+    def test_clean_text_with_quotes(self) -> None:
+        """Test cleaning text with double quotes."""
+        formatter = LegacyTableFormatter()
+        result = formatter._clean_csv_text('text with "quotes"')
+        assert '""' in result
+
+    def test_clean_text_with_extra_whitespace(self) -> None:
+        """Test cleaning text with extra whitespace."""
+        formatter = LegacyTableFormatter()
+        result = formatter._clean_csv_text("  extra   spaces  ")
+        assert result == "extra spaces"
+
+
+class TestCreateFullSignature:
+    """Tests for _create_full_signature (covers lines 815-845)."""
+
+    def test_full_signature_basic(self) -> None:
+        """Test basic full signature creation."""
+        formatter = LegacyTableFormatter()
+        method = {
+            "parameters": [{"type": "String", "name": "name"}],
+            "return_type": "void",
+        }
+        result = formatter._create_full_signature(method)
+        assert result == "(name:String):void"
+
+    def test_full_signature_static(self) -> None:
+        """Test full signature with static modifier."""
+        formatter = LegacyTableFormatter()
+        method = {
+            "parameters": [],
+            "return_type": "int",
+            "is_static": True,
+        }
+        result = formatter._create_full_signature(method)
+        assert "[static]" in result
+        assert "():int" in result
+
+    def test_full_signature_string_param(self) -> None:
+        """Test full signature with string-format parameters."""
+        formatter = LegacyTableFormatter()
+        method = {
+            "parameters": ["String name", "int age"],
+            "return_type": "void",
+        }
+        result = formatter._create_full_signature(method)
+        assert "String name" in result
+        assert "int age" in result
+
+    def test_full_signature_other_param_type(self) -> None:
+        """Test full signature with non-standard parameter types."""
+        formatter = LegacyTableFormatter()
+        method = {
+            "parameters": [123, True],
+            "return_type": "void",
+        }
+        result = formatter._create_full_signature(method)
+        assert "123" in result
+        assert "True" in result
+
+
+class TestMultipleClassesMethodRows:
+    """Tests for multiple-class method row formatting (covers lines 226-256)."""
+
+    def test_multiple_classes_method_parameters(self) -> None:
+        """Test method parameter formatting in multi-class mode."""
+        formatter = LegacyTableFormatter(format_type="full")
+        data = {
+            "classes": [
+                {"name": "ClassA", "type": "class", "visibility": "public",
+                 "line_range": {"start": 1, "end": 30}},
+                {"name": "ClassB", "type": "class", "visibility": "public",
+                 "line_range": {"start": 35, "end": 60}},
+            ],
+            "methods": [
+                {"name": "methodA", "return_type": "void", "visibility": "public",
+                 "is_constructor": False,
+                 "parameters": [
+                     {"type": "String", "name": "input"},
+                     {"type": "int", "name": "count"},
+                 ],
+                 "line_range": {"start": 10, "end": 15}},
+                {"name": "ConstructorB", "return_type": "void", "visibility": "public",
+                 "is_constructor": True,
+                 "parameters": ["plainParam"],
+                 "line_range": {"start": 40, "end": 45}},
+            ],
+            "fields": [
+                {"name": "field1", "type": "int", "visibility": "private",
+                 "modifiers": ["static", "final"],
+                 "line_range": {"start": 3, "end": 3}},
+            ],
+        }
+        result = formatter.format_structure(data)
+
+        assert "## ClassA" in result
+        assert "## ClassB" in result
+        assert "String input" in result
+        assert "int count" in result
+        assert "| - |" in result  # Constructor return type
+
+
+class TestFullTableFilePathVariants:
+    """Tests for file_path handling in _format_full_table (covers lines 102-122)."""
+
+    def test_file_path_no_classes_with_package(self) -> None:
+        """Test header when no classes but package name exists."""
+        formatter = LegacyTableFormatter(format_type="full")
+        data = {
+            "package": {"name": "com.example"},
+            "classes": [],
+            "file_path": "/path/to/Utils.java",
+        }
+        result = formatter.format_structure(data)
+        assert "com.example.Utils" in result
+
+    def test_file_path_no_package_no_classes(self) -> None:
+        """Test header with no package and no classes uses default."""
+        formatter = LegacyTableFormatter(format_type="full")
+        data = {"classes": []}
+        result = formatter.format_structure(data)
+        assert "unknown.Unknown" in result
+
+    def test_file_path_package_no_file(self) -> None:
+        """Test header with package but no file path and no classes."""
+        formatter = LegacyTableFormatter(format_type="full")
+        data = {"package": {"name": "org.test"}, "classes": []}
+        result = formatter.format_structure(data)
+        assert "org.test.Unknown" in result
+
+    def test_none_package(self) -> None:
+        """Test handling of None package dict."""
+        formatter = LegacyTableFormatter(format_type="full")
+        data = {"package": None, "classes": [{"name": "Test"}]}
+        result = formatter.format_structure(data)
+        assert "Test" in result
+
+    def test_compact_format_with_package(self) -> None:
+        """Test compact format with package name."""
+        formatter = LegacyTableFormatter(format_type="compact")
+        data = {
+            "package": {"name": "com.example"},
+            "classes": [{"name": "Service"}],
+            "methods": [],
+            "fields": [],
+        }
+        result = formatter.format_structure(data)
+        assert "# com.example.Service" in result
+        assert "| Package | com.example |" in result
+
+
+class TestCSVEdgeCases:
+    """Additional CSV format tests (covers lines 744-813)."""
+
+    def test_csv_field_rows(self) -> None:
+        """Test CSV format with field rows."""
+        formatter = LegacyTableFormatter(format_type="csv")
+        data = {
+            "classes": [],
+            "methods": [],
+            "fields": [
+                {"name": "count", "type": "int", "visibility": "private",
+                 "modifiers": ["static", "final"], "line_range": {"start": 5}},
+                {"name": "name", "type": "String", "visibility": "public",
+                 "modifiers": [], "is_static": False, "line_range": {"start": 6}},
+            ],
+        }
+        result = formatter.format_structure(data)
+        assert "field" in result
+        assert "count" in result
+        assert "name" in result
+        # Static field
+        assert "true" in result
+
+    def test_csv_class_with_final_modifier(self) -> None:
+        """Test CSV class row with final modifier."""
+        formatter = LegacyTableFormatter(format_type="csv")
+        data = {
+            "classes": [
+                {"name": "FinalClass", "type": "class", "visibility": "public",
+                 "modifiers": ["final"], "line_range": {"start": 1}},
+            ],
+        }
+        result = formatter.format_structure(data)
+        reader = csv.reader(io.StringIO(result))
+        rows = list(reader)
+        class_row = rows[1]
+        # Final should be true
+        assert "true" in class_row
+
+    def test_csv_single_part_string_parameter(self) -> None:
+        """Test CSV with single-part string parameter."""
+        formatter = LegacyTableFormatter(format_type="csv")
+        data = {
+            "classes": [],
+            "methods": [
+                {"name": "test", "return_type": "void", "visibility": "public",
+                 "parameters": ["args"],  # Single part parameter
+                 "line_range": {"start": 10}},
+            ],
+        }
+        result = formatter.format_structure(data)
+        assert "args" in result
+
+
 class TestLanguageSpecificFormatting:
     """Tests for language-specific formatting."""
 

@@ -696,6 +696,597 @@ class TestHtmlFormatterRegistration:
         assert isinstance(html_compact_formatter, HtmlCompactFormatter)
 
 
+class TestHtmlFormatterDictInput:
+    """Test HtmlFormatter with dictionary element inputs (covers lines 47-57)"""
+
+    def setup_method(self):
+        self.formatter = HtmlFormatter()
+
+    def test_format_dict_markup_by_tag_name(self):
+        """Test dict elements with tag_name key are converted to markup"""
+        elements = [
+            {"tag_name": "div", "name": "container", "element_class": "structure",
+             "start_line": 1, "end_line": 10, "attributes": {"id": "main"}}
+        ]
+        result = self.formatter.format(elements)
+        assert "## HTML Elements" in result
+        assert "container" in result
+
+    def test_format_dict_markup_by_element_type(self):
+        """Test dict elements with type=tag are treated as markup"""
+        elements = [
+            {"type": "tag", "name": "span", "element_class": "text",
+             "start_line": 1, "end_line": 1, "attributes": {}}
+        ]
+        result = self.formatter.format(elements)
+        assert "## HTML Elements" in result
+
+    def test_format_dict_markup_by_element_element_type(self):
+        """Test dict elements with type=element are treated as markup"""
+        elements = [
+            {"type": "element", "name": "p", "element_class": "text",
+             "start_line": 2, "end_line": 5}
+        ]
+        result = self.formatter.format(elements)
+        assert "## HTML Elements" in result
+
+    def test_format_dict_markup_by_markup_type(self):
+        """Test dict elements with type=markup are treated as markup"""
+        elements = [
+            {"type": "markup", "name": "article", "element_class": "structure",
+             "start_line": 1, "end_line": 20}
+        ]
+        result = self.formatter.format(elements)
+        assert "## HTML Elements" in result
+
+    def test_format_dict_style_by_selector(self):
+        """Test dict elements with selector key are converted to style"""
+        elements = [
+            {"selector": ".container", "name": ".container", "element_class": "layout",
+             "start_line": 1, "end_line": 5, "properties": {"width": "100%"}}
+        ]
+        result = self.formatter.format(elements)
+        assert "## CSS Rules" in result
+        assert "`.container`" in result
+
+    def test_format_dict_style_by_rule_type(self):
+        """Test dict elements with type=rule are treated as style"""
+        elements = [
+            {"type": "rule", "name": "body", "element_class": "layout",
+             "start_line": 1, "end_line": 3, "properties": {}}
+        ]
+        result = self.formatter.format(elements)
+        assert "## CSS Rules" in result
+
+    def test_format_dict_style_by_style_type(self):
+        """Test dict elements with type=style are treated as style"""
+        elements = [
+            {"type": "style", "name": "#header", "element_class": "layout",
+             "start_line": 1, "end_line": 5}
+        ]
+        result = self.formatter.format(elements)
+        assert "## CSS Rules" in result
+
+    def test_format_dict_other_elements(self):
+        """Test dict elements with unknown type go to other"""
+        elements = [
+            {"type": "unknown", "name": "something", "start_line": 1, "end_line": 1}
+        ]
+        result = self.formatter.format(elements)
+        assert "## Other Elements" in result
+
+    def test_format_dict_other_with_element_type_key(self):
+        """Test dict elements using element_type key"""
+        elements = [
+            {"element_type": "function", "name": "foo", "start_line": 10, "end_line": 20,
+             "language": "javascript"}
+        ]
+        result = self.formatter.format(elements)
+        assert "## Other Elements" in result
+        assert "function" in result
+        assert "foo" in result
+
+    def test_format_mixed_dict_and_objects(self):
+        """Test formatting a mix of dict and object elements"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        dict_style = {"selector": "body", "name": "body", "element_class": "layout",
+                       "start_line": 10, "end_line": 15, "properties": {"margin": "0"}}
+        dict_other = {"type": "unknown", "name": "misc", "start_line": 20, "end_line": 25}
+
+        result = self.formatter.format([markup, dict_style, dict_other])
+        assert "## HTML Elements" in result
+        assert "## CSS Rules" in result
+        assert "## Other Elements" in result
+
+
+class TestHtmlFormatterSummary:
+    """Test format_summary method (covers lines 73-91)"""
+
+    def setup_method(self):
+        self.formatter = HtmlFormatter()
+
+    def test_format_summary_empty(self):
+        """Test summary with empty elements"""
+        result = self.formatter.format_summary({"elements": []})
+        assert result == "No HTML elements found."
+
+    def test_format_summary_with_markup_and_style(self):
+        """Test summary with markup and style elements"""
+        markup = MarkupElement(name="div", start_line=1, end_line=5, tag_name="div")
+        style = StyleElement(name="body", start_line=10, end_line=15, selector="body")
+        other = Function(name="init", start_line=20, end_line=25, language="javascript")
+
+        result = self.formatter.format_summary({"elements": [markup, style, other]})
+        assert "# HTML Analysis Summary" in result
+        assert "**Total Elements:** 3" in result
+        assert "- Markup Elements: 1" in result
+        assert "- Style Elements: 1" in result
+        assert "- Other Elements: 1" in result
+
+    def test_format_summary_no_elements_key(self):
+        """Test summary with missing elements key"""
+        result = self.formatter.format_summary({})
+        assert result == "No HTML elements found."
+
+
+class TestHtmlFormatterStructure:
+    """Test format_structure method (covers lines 93-96)"""
+
+    def setup_method(self):
+        self.formatter = HtmlFormatter()
+
+    def test_format_structure_delegates_to_format(self):
+        """Test that format_structure delegates to format"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_structure({"elements": [markup]})
+        assert "# HTML Structure Analysis" in result
+        assert "## HTML Elements" in result
+
+
+class TestHtmlFormatterAdvanced:
+    """Test format_advanced method (covers lines 98-108)"""
+
+    def setup_method(self):
+        self.formatter = HtmlFormatter()
+
+    def test_format_advanced_json(self):
+        """Test format_advanced with json output"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_advanced({"elements": [markup]}, output_format="json")
+        data = json.loads(result)
+        assert "html_analysis" in data
+        assert len(data["html_analysis"]["markup_elements"]) == 1
+
+    def test_format_advanced_non_json(self):
+        """Test format_advanced with non-json output (falls back to format)"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_advanced({"elements": [markup]}, output_format="text")
+        assert "# HTML Structure Analysis" in result
+
+
+class TestHtmlFormatterAnalysisResult:
+    """Test format_analysis_result method (covers lines 110-131)"""
+
+    def setup_method(self):
+        self.formatter = HtmlFormatter()
+
+    def _make_mock_result(self, elements):
+        """Create a mock AnalysisResult object"""
+        class MockResult:
+            def __init__(self, elements):
+                self.elements = elements
+        return MockResult(elements)
+
+    def test_format_analysis_result_full(self):
+        """Test format_analysis_result with full table type"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_analysis_result(
+            self._make_mock_result([markup]), table_type="full"
+        )
+        assert "# HTML Structure Analysis" in result
+
+    def test_format_analysis_result_compact(self):
+        """Test format_analysis_result with compact table type"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_analysis_result(
+            self._make_mock_result([markup]), table_type="compact"
+        )
+        assert "## Summary" in result
+
+    def test_format_analysis_result_json(self):
+        """Test format_analysis_result with json table type"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_analysis_result(
+            self._make_mock_result([markup]), table_type="json"
+        )
+        data = json.loads(result)
+        assert "html_analysis" in data
+
+    def test_format_analysis_result_csv(self):
+        """Test format_analysis_result with csv table type"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            attributes={"class": "container"},
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_analysis_result(
+            self._make_mock_result([markup]), table_type="csv"
+        )
+        assert "Name" in result
+        assert "div" in result
+
+    def test_format_analysis_result_no_elements_attr(self):
+        """Test format_analysis_result with object lacking elements attr"""
+        class NoElements:
+            pass
+        result = self.formatter.format_analysis_result(NoElements(), table_type="full")
+        assert result == "No HTML elements found."
+
+
+class TestHtmlFormatterFormatTable:
+    """Test format_table method (covers lines 133-148)"""
+
+    def setup_method(self):
+        self.formatter = HtmlFormatter()
+
+    def test_format_table_compact(self):
+        """Test format_table with compact type and file_path"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_table(
+            {"elements": [markup], "file_path": "/path/to/index.html"},
+            table_type="compact"
+        )
+        assert "## Summary" in result
+        assert "index" in result
+
+    def test_format_table_json(self):
+        """Test format_table with json type"""
+        style = StyleElement(
+            name="body", start_line=1, end_line=5,
+            selector="body", properties={"margin": "0"}, language="css",
+        )
+        result = self.formatter.format_table(
+            {"elements": [style]}, table_type="json"
+        )
+        data = json.loads(result)
+        assert len(data["html_analysis"]["style_elements"]) == 1
+
+    def test_format_table_full_default(self):
+        """Test format_table defaults to full format"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format_table(
+            {"elements": [markup]}, table_type="full"
+        )
+        assert "# HTML Structure Analysis" in result
+
+
+class TestHtmlFormatterOtherElements:
+    """Test _format_other_elements (covers lines 277-305 non-dict branch)"""
+
+    def setup_method(self):
+        self.formatter = HtmlFormatter()
+
+    def test_format_other_elements_dict(self):
+        """Test _format_other_elements with dict elements"""
+        elements = [
+            {"element_type": "function", "name": "doStuff", "start_line": 1,
+             "end_line": 10, "language": "javascript"}
+        ]
+        lines = self.formatter._format_other_elements(elements)
+        output = "\n".join(lines)
+        assert "| function | doStuff | 1-10 | javascript |" in output
+
+    def test_format_other_elements_non_dict(self):
+        """Test _format_other_elements with non-dict object elements"""
+        func = Function(name="init", start_line=1, end_line=5, language="javascript")
+        # _element_to_dict is called in format() but _format_other_elements can
+        # receive objects too
+        elements = [func]
+        lines = self.formatter._format_other_elements(elements)
+        output = "\n".join(lines)
+        assert "init" in output
+        assert "javascript" in output
+
+
+class TestHtmlFormatterAttributeBoolean:
+    """Test attribute formatting edge case (covers line 185)"""
+
+    def setup_method(self):
+        self.formatter = HtmlFormatter()
+
+    def test_format_markup_element_with_boolean_attribute(self):
+        """Test element with attribute that has empty string value (boolean attr)"""
+        element = MarkupElement(
+            name="input", start_line=1, end_line=1, tag_name="input",
+            attributes={"disabled": "", "type": "text"},
+            element_class="form", language="html",
+        )
+        result = self.formatter.format([element])
+        # Boolean attribute (empty value) should appear without ="value"
+        assert "disabled" in result
+        assert 'type="text"' in result
+
+
+class TestHtmlJsonFormatterDicts:
+    """Test HtmlJsonFormatter with dict elements (covers lines 379-397)"""
+
+    def setup_method(self):
+        self.formatter = HtmlJsonFormatter()
+
+    def test_format_dict_with_tag_name(self):
+        """Test dict with tag_name key goes to markup_elements"""
+        elements = [
+            {"tag_name": "div", "name": "container", "start_line": 1, "end_line": 5}
+        ]
+        result = self.formatter.format(elements)
+        data = json.loads(result)
+        assert len(data["html_analysis"]["markup_elements"]) == 1
+
+    def test_format_dict_with_element_type_tag(self):
+        """Test dict with type=element goes to markup_elements"""
+        elements = [{"type": "element", "name": "span"}]
+        result = self.formatter.format(elements)
+        data = json.loads(result)
+        assert len(data["html_analysis"]["markup_elements"]) == 1
+
+    def test_format_dict_with_selector(self):
+        """Test dict with selector key goes to style_elements"""
+        elements = [
+            {"selector": ".container", "name": ".container", "start_line": 1, "end_line": 5}
+        ]
+        result = self.formatter.format(elements)
+        data = json.loads(result)
+        assert len(data["html_analysis"]["style_elements"]) == 1
+
+    def test_format_dict_with_style_type(self):
+        """Test dict with type=style goes to style_elements"""
+        elements = [{"type": "style", "name": "h1"}]
+        result = self.formatter.format(elements)
+        data = json.loads(result)
+        assert len(data["html_analysis"]["style_elements"]) == 1
+
+    def test_format_dict_other(self):
+        """Test dict with unknown type goes to other_elements"""
+        elements = [{"type": "unknown", "name": "misc"}]
+        result = self.formatter.format(elements)
+        data = json.loads(result)
+        assert len(data["html_analysis"]["other_elements"]) == 1
+
+
+class TestHtmlCompactFormatterFilePath:
+    """Test HtmlCompactFormatter file_path handling (covers lines 453-457)"""
+
+    def setup_method(self):
+        self.formatter = HtmlCompactFormatter()
+
+    def test_format_with_html_file_path(self):
+        """Test filename extraction from .html path"""
+        element = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format([element], file_path="/path/to/index.html")
+        assert "# index" in result
+
+    def test_format_with_htm_file_path(self):
+        """Test filename extraction from .htm path"""
+        element = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format([element], file_path="page.htm")
+        assert "# page" in result
+
+    def test_format_with_backslash_path(self):
+        """Test filename extraction from Windows-style path"""
+        element = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format([element], file_path="C:\\web\\site.html")
+        assert "# site" in result
+
+    def test_format_with_no_file_path(self):
+        """Test default filename when no path provided"""
+        element = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format([element])
+        assert "# comprehensive_sample" in result
+
+    def test_compact_all_element_classes(self):
+        """Test compact formatter categorizes all element classes"""
+        elements = [
+            MarkupElement(name="html", start_line=1, end_line=100, tag_name="html",
+                          element_class="structure", language="html"),
+            MarkupElement(name="h1", start_line=5, end_line=5, tag_name="h1",
+                          element_class="heading", language="html"),
+            MarkupElement(name="p", start_line=10, end_line=12, tag_name="p",
+                          element_class="text", language="html"),
+            MarkupElement(name="input", start_line=15, end_line=15, tag_name="input",
+                          element_class="form", language="html"),
+            MarkupElement(name="img", start_line=20, end_line=20, tag_name="img",
+                          element_class="media", language="html"),
+            MarkupElement(name="table", start_line=25, end_line=30, tag_name="table",
+                          element_class="table", language="html"),
+            MarkupElement(name="ul", start_line=35, end_line=40, tag_name="ul",
+                          element_class="list", language="html"),
+            MarkupElement(name="meta", start_line=2, end_line=2, tag_name="meta",
+                          element_class="metadata", language="html"),
+            MarkupElement(name="custom", start_line=50, end_line=55, tag_name="custom",
+                          element_class="custom", language="html"),
+        ]
+        result = self.formatter.format(elements)
+        assert "| Structure | 1 |" in result
+        assert "| Headings | 1 |" in result
+        assert "| Text | 1 |" in result
+        assert "| Forms | 1 |" in result
+        assert "| Media | 1 |" in result
+        assert "| Tables | 1 |" in result
+        assert "| Lists | 1 |" in result
+        assert "| Metadata | 1 |" in result
+        assert "| Other | 1 |" in result
+
+    def test_compact_more_than_20_important_elements(self):
+        """Test compact formatter limits to 20 top-level elements"""
+        elements = []
+        for i in range(25):
+            elements.append(MarkupElement(
+                name=f"section{i}", start_line=i * 10, end_line=i * 10 + 5,
+                tag_name="section", element_class="structure", language="html",
+            ))
+        result = self.formatter.format(elements)
+        assert "more)" in result
+
+    def test_compact_structural_tags_included(self):
+        """Test that important structural tags appear in top-level elements even with parent"""
+        parent = MarkupElement(
+            name="html", start_line=1, end_line=100, tag_name="html",
+            element_class="structure", language="html",
+        )
+        body = MarkupElement(
+            name="body", start_line=5, end_line=95, tag_name="body",
+            element_class="structure", language="html", parent=parent,
+        )
+        parent.children = [body]
+        result = self.formatter.format([parent, body])
+        # body is a structural tag, should still appear
+        assert "`body`" in result or "`html`" in result
+
+
+class TestHtmlCsvFormatter:
+    """Test HtmlCsvFormatter (covers lines 577-675)"""
+
+    def setup_method(self):
+        from tree_sitter_analyzer.formatters.html_formatter import HtmlCsvFormatter
+        self.formatter = HtmlCsvFormatter()
+
+    def test_get_format_name(self):
+        """Test CSV formatter format name"""
+        assert self.formatter.get_format_name() == "html_csv"
+
+    def test_format_markup_element(self):
+        """Test CSV formatting of MarkupElement"""
+        element = MarkupElement(
+            name="div", start_line=1, end_line=10, tag_name="div",
+            attributes={"class": "container", "id": "main"},
+            element_class="structure", language="html",
+        )
+        result = self.formatter.format([element])
+        assert "Name" in result  # Header
+        assert "div" in result
+        assert "structure" in result
+        assert "class=container" in result
+
+    def test_format_markup_element_empty_attr_value(self):
+        """Test CSV formatting with boolean attribute (empty value)"""
+        element = MarkupElement(
+            name="input", start_line=1, end_line=1, tag_name="input",
+            attributes={"disabled": "", "type": "text"},
+            element_class="form", language="html",
+        )
+        result = self.formatter.format([element])
+        assert "disabled" in result
+        assert "type=text" in result
+
+    def test_format_style_element(self):
+        """Test CSV formatting of StyleElement"""
+        element = StyleElement(
+            name=".container", start_line=1, end_line=5,
+            selector=".container",
+            properties={"width": "100%", "margin": "0"},
+            element_class="layout", language="css",
+        )
+        result = self.formatter.format([element])
+        assert ".container" in result
+        assert "layout" in result
+        assert "width:100%" in result
+
+    def test_format_dict_element(self):
+        """Test CSV formatting of dict element"""
+        element = {
+            "name": "test", "tag_name": "div",
+            "element_class": "structure",
+            "start_line": 1, "end_line": 5,
+            "attributes": {"class": "main"},
+            "children_count": 3, "language": "html",
+        }
+        result = self.formatter.format([element])
+        assert "test" in result
+        assert "div" in result
+
+    def test_format_generic_element(self):
+        """Test CSV formatting of generic CodeElement (else branch)"""
+        func = Function(
+            name="handleClick", start_line=10, end_line=20, language="javascript"
+        )
+        result = self.formatter.format([func])
+        assert "handleClick" in result
+        assert "javascript" in result
+
+    def test_format_empty_list(self):
+        """Test CSV formatting of empty list"""
+        result = self.formatter.format([])
+        # Should have header only
+        assert "Name" in result
+        lines = result.strip().split("\n")
+        assert len(lines) == 1  # Header only
+
+    def test_format_mixed_elements(self):
+        """Test CSV formatting of mixed element types"""
+        markup = MarkupElement(
+            name="div", start_line=1, end_line=5, tag_name="div",
+            element_class="structure", language="html",
+        )
+        style = StyleElement(
+            name="body", start_line=10, end_line=15, selector="body",
+            properties={"margin": "0"}, element_class="layout", language="css",
+        )
+        dict_elem = {"name": "test", "selector": "h1", "start_line": 20, "end_line": 25}
+        func = Function(name="init", start_line=30, end_line=35, language="javascript")
+
+        result = self.formatter.format([markup, style, dict_elem, func])
+        lines = result.strip().split("\n")
+        assert len(lines) == 5  # Header + 4 data rows
+
+    def test_format_style_no_properties(self):
+        """Test CSV formatting of StyleElement with no properties"""
+        element = StyleElement(
+            name="*", start_line=1, end_line=1, selector="*",
+            properties={}, element_class="layout", language="css",
+        )
+        result = self.formatter.format([element])
+        assert "*" in result
+
+
 class TestHtmlFormatterEdgeCases:
     """Test edge cases and error conditions"""
 
