@@ -213,3 +213,115 @@ items:
             e for e in result.elements if getattr(e, "element_type", "") == "sequence"
         ]
         assert len(sequences) >= 1
+
+
+@pytest.mark.skipif(not YAML_AVAILABLE, reason="tree-sitter-yaml not installed")
+class TestYAMLEnhancedFeatures:
+    """Tests for advanced YAML features merged from enhanced test file."""
+
+    def _get_tree_for_code(self, code, plugin):
+        """Helper to parse YAML code and return tree."""
+        import tree_sitter
+
+        language = plugin.get_tree_sitter_language()
+        parser = tree_sitter.Parser()
+        if hasattr(parser, "set_language"):
+            parser.set_language(language)
+        elif hasattr(parser, "language"):
+            parser.language = language
+        else:
+            parser = tree_sitter.Parser(language)
+        return parser.parse(code.encode("utf-8"))
+
+    def test_extract_key_value_types(self) -> None:
+        """Test extraction of different value types (string, number, boolean, null)."""
+        plugin = YAMLPlugin()
+        code = """name: John Doe
+age: 30
+salary: 50000.50
+active: true
+verified: false
+middle_name: null
+"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.extractor.extract_elements(tree, code)
+
+        name_element = next((e for e in elements if e.key == "name"), None)
+        if name_element:
+            assert name_element.value_type == "string"
+        age_element = next((e for e in elements if e.key == "age"), None)
+        if age_element:
+            assert age_element.value_type == "number"
+        active_element = next((e for e in elements if e.key == "active"), None)
+        if active_element:
+            assert active_element.value_type == "boolean"
+
+    def test_extract_list_sequences(self) -> None:
+        """Test extraction of list/sequence elements."""
+        plugin = YAMLPlugin()
+        code = """fruits:
+  - apple
+  - banana
+  - orange
+colors: [red, green, blue]
+"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.extractor.extract_elements(tree, code)
+
+        sequence_elements = [e for e in elements if e.element_type == "sequence"]
+        assert len(sequence_elements) >= 1
+
+    def test_extract_deep_nesting_levels(self) -> None:
+        """Test that nesting levels are correctly captured for deeply nested structures."""
+        plugin = YAMLPlugin()
+        code = """config:
+  database:
+    connection:
+      host: localhost
+      port: 5432
+      credentials:
+        username: admin
+        password: secret
+"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.extractor.extract_elements(tree, code)
+
+        nested_elements = [e for e in elements if e.nesting_level > 0]
+        assert len(nested_elements) >= 1
+        assert len(elements) >= 5
+
+    def test_extract_anchors_and_aliases(self) -> None:
+        """Test extraction of YAML anchors and aliases."""
+        plugin = YAMLPlugin()
+        code = """defaults: &defaults
+  timeout: 30
+  retries: 3
+production:
+  <<: *defaults
+  timeout: 60
+"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.extractor.extract_elements(tree, code)
+
+        anchor_elements = [e for e in elements if e.element_type == "anchor"]
+        alias_elements = [e for e in elements if e.element_type == "alias"]
+        assert len(anchor_elements) >= 1 or len(alias_elements) >= 1
+
+    def test_extract_scalar_types_variety(self) -> None:
+        """Test extraction of various scalar types (scientific, hex, timestamp)."""
+        plugin = YAMLPlugin()
+        code = """string_value: "Hello, World!"
+integer_value: 42
+float_value: 3.14159
+boolean_true: true
+null_value: null
+scientific: 1.23e+10
+hex: 0x1A
+timestamp: 2001-12-15T02:59:43.1Z
+"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.extractor.extract_elements(tree, code)
+
+        scalar_types = {e.value_type for e in elements if e.value_type}
+        assert "string" in scalar_types
+        assert "number" in scalar_types

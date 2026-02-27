@@ -3,6 +3,9 @@
 Tests for RegexSafetyChecker class.
 """
 
+import re
+from unittest.mock import patch
+
 import pytest
 
 from tree_sitter_analyzer.security import RegexSafetyChecker
@@ -224,3 +227,89 @@ class TestRegexSafetyChecker:
 
         # Assert
         assert dangerous_found is None
+
+
+class TestRegexCheckerEdgeCases:
+    """Tests for edge cases and additional code paths merged from variant files."""
+
+    @pytest.mark.unit
+    def test_validate_pattern_none(self):
+        """Test validation fails for None pattern."""
+        checker = RegexSafetyChecker()
+        is_safe, error = checker.validate_pattern(None)
+        assert not is_safe
+        assert "non-empty string" in error
+
+    @pytest.mark.unit
+    def test_validate_pattern_non_string(self):
+        """Test validation fails for non-string pattern."""
+        checker = RegexSafetyChecker()
+        is_safe, error = checker.validate_pattern(123)
+        assert not is_safe
+        assert "non-empty string" in error
+
+    @pytest.mark.unit
+    def test_validate_pattern_at_max_length(self):
+        """Test validation passes for pattern at exact max length."""
+        checker = RegexSafetyChecker()
+        max_pattern = "a" * RegexSafetyChecker.MAX_PATTERN_LENGTH
+        is_safe, error = checker.validate_pattern(max_pattern)
+        assert is_safe
+        assert error == ""
+
+    @pytest.mark.unit
+    def test_validate_pattern_exception_handling(self):
+        """Test validation handles internal exceptions gracefully."""
+        checker = RegexSafetyChecker()
+        with patch.object(
+            checker, "_check_dangerous_patterns", side_effect=Exception("Test error")
+        ):
+            is_safe, error = checker.validate_pattern(r"test")
+            assert not is_safe
+            assert "Validation error" in error
+
+    @pytest.mark.unit
+    def test_check_dangerous_patterns_negative_lookahead(self):
+        """Test detection of negative lookahead with quantifier."""
+        checker = RegexSafetyChecker()
+        result = checker._check_dangerous_patterns(r"(?!.*)+")
+        assert result is not None
+
+    @pytest.mark.unit
+    def test_check_dangerous_patterns_negative_lookbehind(self):
+        """Test detection of negative lookbehind with quantifier."""
+        checker = RegexSafetyChecker()
+        result = checker._check_dangerous_patterns(r"(?<!.*)+")
+        assert result is not None
+
+    @pytest.mark.unit
+    def test_check_compilation_valid(self):
+        """Test _check_compilation returns None for valid pattern."""
+        checker = RegexSafetyChecker()
+        result = checker._check_compilation(r"test.*pattern")
+        assert result is None
+
+    @pytest.mark.unit
+    def test_check_compilation_invalid(self):
+        """Test _check_compilation returns error for invalid pattern."""
+        checker = RegexSafetyChecker()
+        result = checker._check_compilation(r"[invalid(regex")
+        assert result is not None
+        assert "unterminated" in result.lower() or "missing" in result.lower()
+
+    @pytest.mark.unit
+    def test_check_performance_exception_handling(self):
+        """Test _check_performance handles exceptions gracefully."""
+        checker = RegexSafetyChecker()
+        with patch("re.compile", side_effect=Exception("Test error")):
+            result = checker._check_performance(r"test")
+            assert result is not None
+            assert "Performance check failed" in result
+
+    @pytest.mark.unit
+    def test_create_safe_pattern_with_flags(self):
+        """Test creating safe pattern with custom flags."""
+        checker = RegexSafetyChecker()
+        pattern = checker.create_safe_pattern(r"test.*pattern", flags=re.IGNORECASE)
+        assert pattern is not None
+        assert isinstance(pattern, re.Pattern)

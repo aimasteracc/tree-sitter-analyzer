@@ -149,3 +149,67 @@ def test_ambiguous_extensions():
     # .m files could be Objective-C or MATLAB
     result = detector.detect_from_extension("file.m")
     assert result in ["objc", "matlab", "unknown"]  # Implementation dependent
+
+
+# --- Merged from test_language_detector_extended.py ---
+
+
+def test_add_extension_mapping():
+    """Test adding custom extension mapping"""
+    from tree_sitter_analyzer.language_detector import LanguageDetector
+
+    ld = LanguageDetector()
+    ld.add_extension_mapping(".custom", "customlang")
+    language = ld.detect_from_extension("test.custom")
+    assert language == "customlang"
+
+    # Test case insensitivity
+    ld.add_extension_mapping(".UPPER", "upperlang")
+    language = ld.detect_from_extension("test.upper")
+    assert language == "upperlang"
+
+
+def test_get_language_info_supported():
+    """Test getting language information for supported language"""
+    from tree_sitter_analyzer.language_detector import LanguageDetector
+
+    ld = LanguageDetector()
+    info = ld.get_language_info("java")
+    assert isinstance(info, dict)
+    assert info["name"] == "java"
+    assert ".java" in info["extensions"]
+    assert info["supported"] is True
+    assert info["tree_sitter_available"] is True
+
+
+def test_get_language_info_unsupported():
+    """Test getting language information for unsupported language"""
+    from tree_sitter_analyzer.language_detector import LanguageDetector
+
+    ld = LanguageDetector()
+    info = ld.get_language_info("swift")
+    assert info["name"] == "swift"
+    assert ".swift" in info["extensions"]
+    assert info["supported"] is False
+    assert info["tree_sitter_available"] is False
+
+
+def test_empty_file_path():
+    """Test empty file path"""
+    from tree_sitter_analyzer.language_detector import LanguageDetector
+
+    ld = LanguageDetector()
+    language, confidence = ld.detect_language("")
+    assert language == "unknown"
+    assert confidence == 0.0
+
+
+def test_case_insensitive_extensions():
+    """Test case insensitive extension handling"""
+    from tree_sitter_analyzer.language_detector import LanguageDetector
+
+    ld = LanguageDetector()
+    assert ld.detect_from_extension("test.JAVA") == "java"
+    assert ld.detect_from_extension("test.PY") == "python"
+    assert ld.detect_from_extension("test.JS") == "javascript"
+    assert ld.detect_from_extension("test.Cpp") == "cpp"

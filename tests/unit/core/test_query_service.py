@@ -328,6 +328,29 @@ class TestQueryServiceEdgeCases:
         assert result["start_line"] == 1
         assert result["end_line"] == 6
 
+    # --- Merged from test_query_service_coverage.py ---
+
+    @pytest.mark.asyncio
+    async def test_execute_query_with_mocked_parser(self) -> None:
+        """Test execute_query with fully mocked parser for empty content."""
+        from unittest.mock import patch
+
+        service = QueryService()
+        with patch.object(
+            service, "_read_file_async", return_value=("", "utf-8")
+        ):
+            with patch.object(service.parser, "parse_code") as mock_parse:
+                mock_result = MagicMock()
+                mock_result.tree = MagicMock()
+                mock_result.tree.language = MagicMock()
+                mock_result.tree.root_node = MagicMock()
+                mock_parse.return_value = mock_result
+
+                result = await service.execute_query(
+                    "test.py", "python", query_string="(module) @module"
+                )
+                assert isinstance(result, list)
+
 
 # Pytest fixtures
 @pytest.fixture

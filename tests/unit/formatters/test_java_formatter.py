@@ -974,5 +974,125 @@ class TestEdgeCases:
         assert isinstance(result, str)
 
 
+class TestJavaFormatterCoverageMerged:
+    """Tests merged from test_java_formatter_coverage.py."""
+
+    def test_format_full_table_multiple_classes_with_package(self):
+        """Test full table formatting with multiple classes and package, verifying method/field assignment."""
+        formatter = JavaTableFormatter()
+        data = {
+            "package": {"name": "com.example"},
+            "file_path": "path/to/MyFile.java",
+            "classes": [
+                {
+                    "name": "ClassA",
+                    "type": "class",
+                    "visibility": "public",
+                    "line_range": {"start": 1, "end": 10},
+                },
+                {
+                    "name": "ClassB",
+                    "type": "class",
+                    "visibility": "package",
+                    "line_range": {"start": 11, "end": 20},
+                },
+            ],
+            "methods": [
+                {"name": "methodA", "line_range": {"start": 2, "end": 3}},
+                {"name": "methodB", "line_range": {"start": 12, "end": 13}},
+            ],
+            "fields": [
+                {"name": "fieldA", "line_range": {"start": 4, "end": 4}},
+                {"name": "fieldB", "line_range": {"start": 14, "end": 14}},
+            ],
+        }
+
+        result = formatter._format_full_table(data)
+
+        assert "# com.example.MyFile" in result
+        assert "| Class | Type | Visibility | Lines | Methods | Fields |" in result
+        assert "| ClassA | class | public | 1-10 | 1 | 1 |" in result
+        assert "| ClassB | class | package | 11-20 | 1 | 1 |" in result
+
+    def test_format_enum_details(self):
+        """Test formatting enum details including fields and methods within enum range."""
+        formatter = JavaTableFormatter()
+        data = {
+            "classes": [
+                {
+                    "name": "MyEnum",
+                    "type": "enum",
+                    "line_range": {"start": 1, "end": 20},
+                    "constants": ["A", "B"],
+                }
+            ],
+            "fields": [
+                {
+                    "name": "value",
+                    "type": "int",
+                    "visibility": "private",
+                    "line_range": {"start": 5, "end": 5},
+                    "modifiers": ["final"],
+                }
+            ],
+            "methods": [
+                {
+                    "name": "getValue",
+                    "visibility": "public",
+                    "return_type": "int",
+                    "line_range": {"start": 10, "end": 12},
+                    "parameters": [],
+                }
+            ],
+        }
+
+        result = formatter._format_full_table(data)
+
+        assert "## MyEnum" in result
+        assert "| Type | enum |" in result
+        assert "### Fields" in result
+        assert "| value | int | - | final | 5 | - |" in result
+        assert "Public Methods" in result
+        assert "getValue" in result
+
+    def test_shorten_type_complex(self):
+        """Test shortening of complex types including exceptions and non-string input."""
+        formatter = JavaTableFormatter()
+
+        assert formatter._shorten_type("List<String>") == "L<S>"
+        assert formatter._shorten_type("Map<String,Object>") == "M<S,O>"
+        assert formatter._shorten_type("String[]") == "S[]"
+        assert formatter._shorten_type("Object[]") == "O[]"
+        assert formatter._shorten_type("int[]") == "i[]"
+        assert formatter._shorten_type("Unknown[]") == "U[]"
+        assert formatter._shorten_type("RuntimeException") == "RE"
+        assert formatter._shorten_type("SQLException") == "SE"
+        assert formatter._shorten_type("IllegalArgumentException") == "IAE"
+        assert formatter._shorten_type(123) == "123"
+
+    def test_format_json_error(self):
+        """Test JSON serialization error handling."""
+        formatter = JavaTableFormatter()
+
+        class Unserializable:
+            pass
+
+        data = {"key": Unserializable()}
+
+        result = formatter._format_json(data)
+        assert "# JSON serialization error:" in result
+
+    def test_format_table_context_manager(self):
+        """Test format_table ensures format_type is restored."""
+        formatter = JavaTableFormatter()
+        formatter.format_type = "compact"
+
+        data = {"classes": [{"name": "Test"}]}
+
+        formatter.format_table(data, "json")
+
+        assert formatter.format_type == "compact"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

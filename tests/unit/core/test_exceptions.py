@@ -2,10 +2,11 @@
 """
 Tests for tree_sitter_analyzer.exceptions module
 
-This module tests all custom exception classes to improve coverage
-and ensure proper error handling according to .roo-config.json requirements.
+Comprehensive tests for all custom exception types, exception handling utilities,
+security exceptions, MCP-specific exceptions, and async exception handling.
 """
 
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -14,313 +15,556 @@ from tree_sitter_analyzer.exceptions import (
     AnalysisError,
     ConfigurationError,
     FileHandlingError,
+    FileRestrictionError,
     LanguageNotSupportedError,
     MCPError,
+    MCPResourceError,
+    MCPTimeoutError,
+    MCPToolError,
+    MCPValidationError,
     ParseError,
+    PathTraversalError,
     PluginError,
     QueryError,
+    RegexSecurityError,
+    SecurityError,
     TreeSitterAnalyzerError,
     ValidationError,
+    _sanitize_error_context,
     create_error_response,
+    create_mcp_error_response,
     handle_exception,
     handle_exceptions,
+    mcp_exception_handler,
     safe_execute,
+    safe_execute_async,
 )
 
 
-class TestTreeSitterAnalyzerError:
-    """Test base exception class"""
+class TestBaseException:
+    """Test TreeSitterAnalyzerError base exception."""
 
-    def test_base_exception_creation(self) -> None:
-        """Test basic exception creation"""
-        error = TreeSitterAnalyzerError("Test error message")
-        assert str(error) == "Test error message"
-        assert isinstance(error, Exception)
-        assert error.message == "Test error message"
-        assert error.error_code == "TreeSitterAnalyzerError"
-        assert error.context == {}
-
-    def test_base_exception_with_context(self) -> None:
-        """Test exception with additional context"""
-        context = {"file": "test.py", "line": 42}
-        error = TreeSitterAnalyzerError("Test error", context=context)
-        assert str(error) == "Test error"
-        assert error.context == context
+    def test_base_exception_initialization(self) -> None:
+        """Test base exception can be initialized with message only."""
+        exc = TreeSitterAnalyzerError("Test error")
+        assert exc.message == "Test error"
+        assert exc.error_code == "TreeSitterAnalyzerError"
+        assert exc.context == {}
 
     def test_base_exception_with_error_code(self) -> None:
-        """Test exception with custom error code"""
-        error = TreeSitterAnalyzerError("Test error", error_code="CUSTOM_ERROR")
-        assert error.error_code == "CUSTOM_ERROR"
+        """Test base exception with custom error code."""
+        exc = TreeSitterAnalyzerError("Test error", error_code="CUSTOM_001")
+        assert exc.error_code == "CUSTOM_001"
 
-    def test_to_dict_method(self) -> None:
-        """Test exception to_dict conversion"""
-        context = {"file": "test.py"}
-        error = TreeSitterAnalyzerError(
-            "Test error", error_code="TEST_ERROR", context=context
+    def test_base_exception_with_context(self) -> None:
+        """Test base exception with context dictionary."""
+        context = {"file": "test.py", "line": 42}
+        exc = TreeSitterAnalyzerError("Test error", context=context)
+        assert exc.context == context
+
+    def test_base_exception_with_empty_context(self) -> None:
+        """Test exception with empty context."""
+        exc = TreeSitterAnalyzerError("Test", context={})
+        assert exc.context == {}
+
+    def test_base_exception_to_dict(self) -> None:
+        """Test exception conversion to dictionary."""
+        exc = TreeSitterAnalyzerError(
+            "Test error", error_code="TEST_001", context={"key": "value"}
         )
-        result = error.to_dict()
+        result = exc.to_dict()
 
-        expected = {
-            "error_type": "TreeSitterAnalyzerError",
-            "error_code": "TEST_ERROR",
-            "message": "Test error",
-            "context": context,
-        }
-        assert result == expected
+        assert result["error_type"] == "TreeSitterAnalyzerError"
+        assert result["error_code"] == "TEST_001"
+        assert result["message"] == "Test error"
+        assert result["context"] == {"key": "value"}
+
+    def test_base_exception_str_representation(self) -> None:
+        """Test exception string representation."""
+        exc = TreeSitterAnalyzerError("Test error")
+        assert str(exc) == "Test error"
+        assert "TreeSitterAnalyzerError" in repr(exc)
+
+    def test_base_exception_is_exception(self) -> None:
+        """Test that base exception inherits from Exception."""
+        exc = TreeSitterAnalyzerError("Test error")
+        assert isinstance(exc, Exception)
 
 
 class TestAnalysisError:
-    """Test analysis error class"""
+    """Test AnalysisError exception."""
 
     def test_analysis_error_basic(self) -> None:
-        """Test basic analysis error"""
-        error = AnalysisError("Analysis failed")
-        assert str(error) == "Analysis failed"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test AnalysisError with basic message."""
+        exc = AnalysisError("Analysis failed")
+        assert exc.message == "Analysis failed"
+        assert exc.context == {}
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
     def test_analysis_error_with_file_path(self) -> None:
-        """Test analysis error with file path"""
-        error = AnalysisError("Analysis failed", file_path="test.py")
-        assert error.context["file_path"] == "test.py"
+        """Test AnalysisError with file path."""
+        exc = AnalysisError("Analysis failed", file_path="/path/to/file.py")
+        assert exc.context["file_path"] == "/path/to/file.py"
+
+    def test_analysis_error_with_path_object(self) -> None:
+        """Test AnalysisError with Path object."""
+        path = Path("/path/to/file.py")
+        exc = AnalysisError("Analysis failed", file_path=path)
+        assert exc.context["file_path"] == str(path)
 
     def test_analysis_error_with_language(self) -> None:
-        """Test analysis error with language"""
-        error = AnalysisError("Analysis failed", language="python")
-        assert error.context["language"] == "python"
+        """Test AnalysisError with language parameter."""
+        exc = AnalysisError("Analysis failed", language="python")
+        assert exc.context["language"] == "python"
 
     def test_analysis_error_with_all_params(self) -> None:
-        """Test analysis error with all parameters"""
-        from pathlib import Path
+        """Test AnalysisError with all parameters."""
+        exc = AnalysisError("Analysis failed", file_path="/test.py", language="python")
+        assert exc.context["file_path"] == "/test.py"
+        assert exc.context["language"] == "python"
 
-        file_path = Path("test.py")
-        error = AnalysisError("Analysis failed", file_path=file_path, language="python")
-        assert error.context["file_path"] == "test.py"
-        assert error.context["language"] == "python"
+    def test_analysis_error_with_none_values(self) -> None:
+        """Test AnalysisError with None values for optional params."""
+        exc = AnalysisError("Test", file_path=None, language=None)
+        assert (
+            "file_path" not in exc.context or exc.context.get("file_path") is None
+        )
+        assert "language" not in exc.context or exc.context.get("language") is None
 
 
 class TestParseError:
-    """Test parse error class"""
+    """Test ParseError exception."""
 
     def test_parse_error_basic(self) -> None:
-        """Test basic parse error"""
-        error = ParseError("Parse failed")
-        assert str(error) == "Parse failed"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test ParseError with basic message."""
+        exc = ParseError("Parse failed")
+        assert exc.message == "Parse failed"
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
     def test_parse_error_with_language(self) -> None:
-        """Test parse error with language"""
-        error = ParseError("Parse failed", language="python")
-        assert error.context["language"] == "python"
+        """Test ParseError with language."""
+        exc = ParseError("Parse failed", language="javascript")
+        assert exc.context["language"] == "javascript"
 
     def test_parse_error_with_source_info(self) -> None:
-        """Test parse error with source info"""
-        source_info = {"line": 10, "column": 5}
-        error = ParseError("Parse failed", source_info=source_info)
-        assert error.context["line"] == 10
-        assert error.context["column"] == 5
+        """Test ParseError with source information."""
+        source_info = {"line": 10, "column": 5, "offset": 150}
+        exc = ParseError("Parse failed", source_info=source_info)
+        assert exc.context["line"] == 10
+        assert exc.context["column"] == 5
+        assert exc.context["offset"] == 150
 
 
 class TestLanguageNotSupportedError:
-    """Test language not supported error"""
+    """Test LanguageNotSupportedError exception."""
 
     def test_language_not_supported_basic(self) -> None:
-        """Test basic language not supported error"""
-        error = LanguageNotSupportedError("rust")
-        assert "rust" in str(error)
-        assert error.context["language"] == "rust"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test LanguageNotSupportedError with language name."""
+        exc = LanguageNotSupportedError("rust")
+        assert "rust" in exc.message
+        assert exc.context["language"] == "rust"
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
-    def test_language_not_supported_with_supported_list(self) -> None:
-        """Test with supported languages list"""
+    def test_language_not_supported_with_list(self) -> None:
+        """Test LanguageNotSupportedError with supported languages list."""
         supported = ["python", "java", "javascript"]
-        error = LanguageNotSupportedError("rust", supported_languages=supported)
-        assert "rust" in str(error)
-        assert error.context["language"] == "rust"
-        assert error.context["supported_languages"] == supported
-        assert "python" in str(error)
+        exc = LanguageNotSupportedError("rust", supported_languages=supported)
+        assert "rust" in exc.message
+        assert "python" in exc.message
+        assert exc.context["supported_languages"] == supported
 
 
 class TestPluginError:
-    """Test plugin error class"""
+    """Test PluginError exception."""
 
     def test_plugin_error_basic(self) -> None:
-        """Test basic plugin error"""
-        error = PluginError("Plugin failed")
-        assert str(error) == "Plugin failed"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test PluginError with basic message."""
+        exc = PluginError("Plugin failed")
+        assert exc.message == "Plugin failed"
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
     def test_plugin_error_with_plugin_name(self) -> None:
-        """Test plugin error with plugin name"""
-        error = PluginError("Plugin failed", plugin_name="python_plugin")
-        assert error.context["plugin_name"] == "python_plugin"
+        """Test PluginError with plugin name."""
+        exc = PluginError("Plugin failed", plugin_name="JavaPlugin")
+        assert exc.context["plugin_name"] == "JavaPlugin"
 
     def test_plugin_error_with_operation(self) -> None:
-        """Test plugin error with operation"""
-        error = PluginError("Plugin failed", operation="load")
-        assert error.context["operation"] == "load"
+        """Test PluginError with operation."""
+        exc = PluginError("Plugin failed", operation="initialize")
+        assert exc.context["operation"] == "initialize"
 
     def test_plugin_error_with_all_params(self) -> None:
-        """Test plugin error with all parameters"""
-        error = PluginError(
+        """Test PluginError with all parameters."""
+        exc = PluginError(
             "Plugin failed", plugin_name="java_plugin", operation="initialize"
         )
-        assert error.context["plugin_name"] == "java_plugin"
-        assert error.context["operation"] == "initialize"
+        assert exc.context["plugin_name"] == "java_plugin"
+        assert exc.context["operation"] == "initialize"
 
 
 class TestQueryError:
-    """Test query error class"""
+    """Test QueryError exception."""
 
     def test_query_error_basic(self) -> None:
-        """Test basic query error"""
-        error = QueryError("Query failed")
-        assert str(error) == "Query failed"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test QueryError with basic message."""
+        exc = QueryError("Query failed")
+        assert exc.message == "Query failed"
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
     def test_query_error_with_query_name(self) -> None:
-        """Test query error with query name"""
-        error = QueryError("Query failed", query_name="functions")
-        assert error.context["query_name"] == "functions"
+        """Test QueryError with query name."""
+        exc = QueryError("Query failed", query_name="functions")
+        assert exc.context["query_name"] == "functions"
 
     def test_query_error_with_query_string(self) -> None:
-        """Test query error with query string"""
+        """Test QueryError with query string."""
         query_string = "(function_declaration) @func"
-        error = QueryError("Query failed", query_string=query_string)
-        assert error.context["query_string"] == query_string
+        exc = QueryError("Query failed", query_string=query_string)
+        assert exc.context["query_string"] == query_string
 
     def test_query_error_with_all_params(self) -> None:
-        """Test query error with all parameters"""
-        error = QueryError(
+        """Test QueryError with all parameters."""
+        exc = QueryError(
             "Query failed",
-            query_name="functions",
-            query_string="(function_declaration) @func",
-            language="python",
+            query_name="methods",
+            query_string="(method_declaration) @method",
+            language="java",
         )
-        assert error.context["query_name"] == "functions"
-        assert error.context["query_string"] == "(function_declaration) @func"
-        assert error.context["language"] == "python"
+        assert exc.context["query_name"] == "methods"
+        assert exc.context["query_string"] == "(method_declaration) @method"
+        assert exc.context["language"] == "java"
 
 
 class TestFileHandlingError:
-    """Test file handling error class"""
+    """Test FileHandlingError exception."""
 
     def test_file_handling_error_basic(self) -> None:
-        """Test basic file handling error"""
-        error = FileHandlingError("File operation failed")
-        assert str(error) == "File operation failed"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test FileHandlingError with basic message."""
+        exc = FileHandlingError("File operation failed")
+        assert exc.message == "File operation failed"
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
-    def test_file_handling_error_with_file_path(self) -> None:
-        """Test file handling error with file path"""
-        error = FileHandlingError("File operation failed", file_path="test.py")
-        assert error.context["file_path"] == "test.py"
+    def test_file_handling_error_with_path(self) -> None:
+        """Test FileHandlingError with file path."""
+        exc = FileHandlingError("File operation failed", file_path="/test.txt")
+        assert exc.context["file_path"] == "/test.txt"
 
     def test_file_handling_error_with_operation(self) -> None:
-        """Test file handling error with operation"""
-        error = FileHandlingError("File operation failed", operation="read")
-        assert error.context["operation"] == "read"
+        """Test FileHandlingError with operation type."""
+        exc = FileHandlingError("File operation failed", operation="read")
+        assert exc.context["operation"] == "read"
 
 
 class TestConfigurationError:
-    """Test configuration error class"""
+    """Test ConfigurationError exception."""
 
     def test_configuration_error_basic(self) -> None:
-        """Test basic configuration error"""
-        error = ConfigurationError("Configuration invalid")
-        assert str(error) == "Configuration invalid"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test ConfigurationError with basic message."""
+        exc = ConfigurationError("Invalid configuration")
+        assert exc.message == "Invalid configuration"
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
     def test_configuration_error_with_config_key(self) -> None:
-        """Test configuration error with config key"""
-        error = ConfigurationError("Configuration invalid", config_key="timeout")
-        assert error.context["config_key"] == "timeout"
+        """Test ConfigurationError with config key."""
+        exc = ConfigurationError("Invalid configuration", config_key="timeout")
+        assert exc.context["config_key"] == "timeout"
 
     def test_configuration_error_with_config_value(self) -> None:
-        """Test configuration error with config value"""
-        error = ConfigurationError("Configuration invalid", config_value="invalid")
-        assert error.context["config_value"] == "invalid"
+        """Test ConfigurationError with config value."""
+        exc = ConfigurationError("Invalid configuration", config_value="invalid")
+        assert exc.context["config_value"] == "invalid"
+
+    def test_configuration_error_with_key_and_value(self) -> None:
+        """Test ConfigurationError with config key and value."""
+        exc = ConfigurationError(
+            "Invalid configuration", config_key="timeout", config_value=9999
+        )
+        assert exc.context["config_key"] == "timeout"
+        assert exc.context["config_value"] == 9999
 
 
 class TestValidationError:
-    """Test validation error class"""
+    """Test ValidationError exception."""
 
     def test_validation_error_basic(self) -> None:
-        """Test basic validation error"""
-        error = ValidationError("Validation failed")
-        assert str(error) == "Validation failed"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test ValidationError with basic message."""
+        exc = ValidationError("Validation failed")
+        assert exc.message == "Validation failed"
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
     def test_validation_error_with_validation_type(self) -> None:
-        """Test validation error with validation type"""
-        error = ValidationError("Validation failed", validation_type="schema")
-        assert error.context["validation_type"] == "schema"
+        """Test ValidationError with validation type."""
+        exc = ValidationError("Validation failed", validation_type="schema")
+        assert exc.context["validation_type"] == "schema"
 
     def test_validation_error_with_invalid_value(self) -> None:
-        """Test validation error with invalid value"""
-        error = ValidationError("Validation failed", invalid_value="bad_value")
-        assert error.context["invalid_value"] == "bad_value"
+        """Test ValidationError with invalid value."""
+        exc = ValidationError("Validation failed", invalid_value="bad_value")
+        assert exc.context["invalid_value"] == "bad_value"
+
+    def test_validation_error_with_type_and_value(self) -> None:
+        """Test ValidationError with validation type and invalid value."""
+        exc = ValidationError(
+            "Validation failed", validation_type="range", invalid_value=-1
+        )
+        assert exc.context["validation_type"] == "range"
+        assert exc.context["invalid_value"] == -1
 
 
-class TestMCPError:
-    """Test MCP error class"""
+class TestSecurityExceptions:
+    """Test security-related exceptions."""
+
+    def test_security_error_basic(self) -> None:
+        """Test SecurityError with basic message."""
+        exc = SecurityError("Security violation")
+        assert exc.message == "Security violation"
+        assert isinstance(exc, TreeSitterAnalyzerError)
+
+    def test_security_error_with_type(self) -> None:
+        """Test SecurityError with security type."""
+        exc = SecurityError("Security violation", security_type="path_traversal")
+        assert exc.context["security_type"] == "path_traversal"
+        assert exc.security_type == "path_traversal"
+
+    def test_security_error_with_type_and_path(self) -> None:
+        """Test SecurityError with security type and file path."""
+        exc = SecurityError(
+            "Access denied", security_type="path_traversal", file_path="/etc/passwd"
+        )
+        assert exc.security_type == "path_traversal"
+        assert exc.file_path == "/etc/passwd"
+
+    def test_path_traversal_error(self) -> None:
+        """Test PathTraversalError exception."""
+        exc = PathTraversalError(
+            "Path traversal detected", attempted_path="../etc/passwd"
+        )
+        assert exc.security_type == "path_traversal"
+        assert exc.attempted_path == "../etc/passwd"
+        assert exc.context["attempted_path"] == "../etc/passwd"
+
+    def test_regex_security_error(self) -> None:
+        """Test RegexSecurityError exception."""
+        exc = RegexSecurityError(
+            "Unsafe regex",
+            pattern="(a+)+",
+            dangerous_construct="nested quantifiers",
+        )
+        assert exc.security_type == "regex_security"
+        assert exc.pattern == "(a+)+"
+        assert exc.dangerous_construct == "nested quantifiers"
+
+    def test_file_restriction_error(self) -> None:
+        """Test FileRestrictionError exception."""
+        exc = FileRestrictionError(
+            "File access restricted",
+            file_path="/restricted/file.txt",
+            current_mode="read-only",
+            allowed_patterns=["*.py", "*.txt"],
+        )
+        assert exc.security_type == "file_restriction"
+        assert exc.current_mode == "read-only"
+        assert exc.allowed_patterns == ["*.py", "*.txt"]
+
+
+class TestMCPExceptions:
+    """Test MCP-related exceptions."""
 
     def test_mcp_error_basic(self) -> None:
-        """Test basic MCP error"""
-        error = MCPError("MCP operation failed")
-        assert str(error) == "MCP operation failed"
-        assert isinstance(error, TreeSitterAnalyzerError)
+        """Test MCPError with basic message."""
+        exc = MCPError("MCP operation failed")
+        assert exc.message == "MCP operation failed"
+        assert isinstance(exc, TreeSitterAnalyzerError)
 
     def test_mcp_error_with_tool_name(self) -> None:
-        """Test MCP error with tool name"""
-        error = MCPError("MCP operation failed", tool_name="analyze_code")
-        assert error.context["tool_name"] == "analyze_code"
+        """Test MCPError with tool name."""
+        exc = MCPError("MCP operation failed", tool_name="analyze_code")
+        assert exc.context["tool_name"] == "analyze_code"
 
     def test_mcp_error_with_resource_uri(self) -> None:
-        """Test MCP error with resource URI"""
-        error = MCPError("MCP operation failed", resource_uri="code://file/test.py")
-        assert error.context["resource_uri"] == "code://file/test.py"
+        """Test MCPError with resource URI."""
+        exc = MCPError("MCP operation failed", resource_uri="code://file/test.py")
+        assert exc.context["resource_uri"] == "code://file/test.py"
+
+    def test_mcp_tool_error(self) -> None:
+        """Test MCPToolError exception."""
+        exc = MCPToolError(
+            "Tool execution failed",
+            tool_name="query_code",
+            input_params={"file": "test.py", "query": "functions"},
+            execution_stage="parsing",
+        )
+        assert exc.tool_name == "query_code"
+        assert exc.execution_stage == "parsing"
+        assert "input_params" in exc.context
+
+    def test_mcp_tool_error_sanitizes_sensitive_params(self) -> None:
+        """Test MCPToolError sanitizes sensitive parameters."""
+        exc = MCPToolError(
+            "Tool failed",
+            input_params={
+                "password": "secret123",
+                "file": "test.py",
+            },  # pragma: allowlist secret
+        )
+        assert exc.context["input_params"]["password"] == "***REDACTED***"
+        assert exc.context["input_params"]["file"] == "test.py"
+
+    def test_mcp_tool_error_sanitizes_multiple_sensitive_keys(self) -> None:
+        """Test MCPToolError sanitizes multiple sensitive parameter keys."""
+        params = {
+            "password": "secret123",  # pragma: allowlist secret
+            "normal_param": "value",
+            "api_token": "abc123",  # pragma: allowlist secret
+            "long_value": "x" * 200,
+        }
+        exc = MCPToolError("Tool failed", tool_name="test_tool", input_params=params)
+
+        assert exc.context["input_params"]["password"] == "***REDACTED***"
+        assert exc.context["input_params"]["normal_param"] == "value"
+        assert exc.context["input_params"]["api_token"] == "***REDACTED***"
+        assert "TRUNCATED" in exc.context["input_params"]["long_value"]
+
+    def test_mcp_tool_error_truncates_long_values(self) -> None:
+        """Test MCPToolError truncates long parameter values."""
+        long_value = "x" * 200
+        exc = MCPToolError(
+            "Tool failed",
+            input_params={"data": long_value},
+        )
+        assert "[TRUNCATED]" in exc.context["input_params"]["data"]
+
+    def test_mcp_resource_error(self) -> None:
+        """Test MCPResourceError exception."""
+        exc = MCPResourceError(
+            "Resource not found",
+            resource_uri="file:///test.py",
+            resource_type="file",
+            access_mode="read",
+        )
+        assert exc.resource_uri == "file:///test.py"
+        assert exc.resource_type == "file"
+        assert exc.access_mode == "read"
+        assert exc.context["resource_type"] == "file"
+
+    def test_mcp_timeout_error(self) -> None:
+        """Test MCPTimeoutError exception."""
+        exc = MCPTimeoutError(
+            "Operation timed out",
+            timeout_seconds=30.0,
+            operation_type="file_analysis",
+        )
+        assert exc.timeout_seconds == 30.0
+        assert exc.operation_type == "file_analysis"
+        assert exc.context["timeout_seconds"] == 30.0
+
+    def test_mcp_validation_error(self) -> None:
+        """Test MCPValidationError exception."""
+        exc = MCPValidationError(
+            "Invalid parameter",
+            tool_name="analyze",
+            parameter_name="max_depth",
+            parameter_value=-1,
+            validation_rule="must be positive",
+        )
+        assert exc.tool_name == "analyze"
+        assert exc.parameter_name == "max_depth"
+        assert exc.validation_rule == "must be positive"
+
+    def test_mcp_validation_error_truncates_long_values(self) -> None:
+        """Test MCPValidationError truncates long parameter values."""
+        long_value = "x" * 300
+        exc = MCPValidationError(
+            "Invalid parameter",
+            parameter_name="content",
+            parameter_value=long_value,
+        )
+        assert "[TRUNCATED]" in exc.context["parameter_value"]
 
 
-class TestExceptionUtilities:
-    """Test exception handling utilities"""
+class TestHandleException:
+    """Test handle_exception utility function."""
 
     @patch("tree_sitter_analyzer.utils.log_error")
-    def test_handle_exception_basic(self, mock_log_error: Mock) -> None:
-        """Test basic exception handling"""
-        original_error = ValueError("Test error")
-
-        with pytest.raises(ValueError):
-            handle_exception(original_error)
-
+    def test_handle_exception_logs_and_reraises(self, mock_log_error: Mock) -> None:
+        """Test that handle_exception logs and re-raises the original exception."""
+        exc = TreeSitterAnalyzerError("Test error")
+        with pytest.raises(TreeSitterAnalyzerError):
+            handle_exception(exc)
         mock_log_error.assert_called_once()
 
     @patch("tree_sitter_analyzer.utils.log_error")
     def test_handle_exception_with_context(self, mock_log_error: Mock) -> None:
-        """Test exception handling with context"""
-        original_error = ValueError("Test error")
-        context = {"file": "test.py"}
-
-        with pytest.raises(ValueError):
-            handle_exception(original_error, context=context)
-
+        """Test handle_exception with additional context."""
+        exc = TreeSitterAnalyzerError("Test error")
+        context = {"key": "value"}
+        with pytest.raises(TreeSitterAnalyzerError):
+            handle_exception(exc, context=context)
         mock_log_error.assert_called_once()
 
     @patch("tree_sitter_analyzer.utils.log_error")
-    def test_handle_exception_reraise_as(self, mock_log_error: Mock) -> None:
-        """Test exception handling with re-raising"""
-        original_error = ValueError("Test error")
+    def test_handle_exception_reraise_as_tree_sitter_error(
+        self, mock_log_error: Mock
+    ) -> None:
+        """Test re-raising as TreeSitterAnalyzerError type."""
+        original = ValueError("Original error")
+        with pytest.raises(TreeSitterAnalyzerError):
+            handle_exception(original, reraise_as=TreeSitterAnalyzerError)
+        mock_log_error.assert_called_once()
 
-        # Test that the function attempts to re-raise, but skip the actual re-raising due to context conflict
+    @patch("tree_sitter_analyzer.utils.log_error")
+    def test_handle_exception_reraise_as_non_tree_sitter_error(
+        self, mock_log_error: Mock
+    ) -> None:
+        """Test re-raising as non-TreeSitterAnalyzerError type."""
+        original = ValueError("Original error")
+        with pytest.raises(RuntimeError):
+            handle_exception(original, reraise_as=RuntimeError)
+        mock_log_error.assert_called_once()
+
+    @patch("tree_sitter_analyzer.utils.log_error")
+    def test_handle_exception_reraise_as_analysis_error(
+        self, mock_log_error: Mock
+    ) -> None:
+        """Test handle_exception with re-raising as AnalysisError."""
+        original_error = ValueError("Test error")
         try:
             handle_exception(original_error, reraise_as=AnalysisError)
         except (AnalysisError, TypeError):
             # Either the re-raise works or there's a context parameter conflict
             pass
-
         mock_log_error.assert_called_once()
 
+    @patch("tree_sitter_analyzer.utils.log_error")
+    def test_handle_exception_with_exception_context(
+        self, mock_log_error: Mock
+    ) -> None:
+        """Test handle_exception when exception has context attribute."""
+        exc = AnalysisError("Test", file_path="test.py")
+        with pytest.raises(AnalysisError):
+            handle_exception(exc, context={"extra": "data"})
+
+    def test_handle_exception_with_tree_sitter_error(self) -> None:
+        """Test handle_exception with TreeSitterAnalyzerError subclass."""
+        original_error = AnalysisError("Test error", file_path="test.py")
+        with pytest.raises(AnalysisError):
+            handle_exception(original_error)
+
+
+class TestSafeExecute:
+    """Test safe_execute utility function."""
+
     def test_safe_execute_success(self) -> None:
-        """Test safe execution with successful function"""
+        """Test safe_execute with successful execution."""
+
+        def success_func() -> str:
+            return "success"
+
+        result = safe_execute(success_func, default_return="failed")
+        assert result == "success"
+
+    def test_safe_execute_success_with_positional_args(self) -> None:
+        """Test safe_execute with positional arguments."""
 
         def test_func(x: int) -> int:
             return x * 2
@@ -328,9 +572,54 @@ class TestExceptionUtilities:
         result = safe_execute(test_func, 5)
         assert result == 10
 
+    def test_safe_execute_with_kwargs(self) -> None:
+        """Test safe_execute with keyword arguments."""
+
+        def func_with_kwargs(a: int, b: int, c: int = 3) -> int:
+            return a + b + c
+
+        result = safe_execute(func_with_kwargs, 1, 2, c=10)
+        assert result == 13
+
+    def test_safe_execute_with_exception(self) -> None:
+        """Test safe_execute returns default on exception."""
+
+        def failing_func() -> None:
+            raise ValueError("Test error")
+
+        result = safe_execute(failing_func, default_return="default")
+        assert result == "default"
+
+    def test_safe_execute_with_specific_exception_types(self) -> None:
+        """Test safe_execute catches specific exception types."""
+
+        def failing_func() -> None:
+            raise ValueError("Test error")
+
+        # Should catch ValueError
+        result = safe_execute(
+            failing_func, default_return="caught", exception_types=(ValueError,)
+        )
+        assert result == "caught"
+
+        # Should not catch KeyError
+        with pytest.raises(ValueError):
+            safe_execute(
+                failing_func, default_return="caught", exception_types=(KeyError,)
+            )
+
+    def test_safe_execute_no_logging(self) -> None:
+        """Test safe execution without logging."""
+
+        def failing_func() -> None:
+            raise ValueError("Test error")
+
+        result = safe_execute(failing_func, default_return="default", log_errors=False)
+        assert result == "default"
+
     @patch("tree_sitter_analyzer.utils.log_error")
-    def test_safe_execute_with_exception(self, mock_log_error: Mock) -> None:
-        """Test safe execution with exception"""
+    def test_safe_execute_with_logging(self, mock_log_error: Mock) -> None:
+        """Test safe execution with logging enabled."""
 
         def failing_func() -> None:
             raise ValueError("Test error")
@@ -339,53 +628,115 @@ class TestExceptionUtilities:
         assert result == "default"
         mock_log_error.assert_called_once()
 
-    def test_safe_execute_no_logging(self) -> None:
-        """Test safe execution without logging"""
 
-        def failing_func() -> None:
-            raise ValueError("Test error")
-
-        result = safe_execute(failing_func, default_return="default", log_errors=False)
-        assert result == "default"
+class TestCreateErrorResponse:
+    """Test create_error_response utility function."""
 
     def test_create_error_response_basic(self) -> None:
-        """Test basic error response creation"""
-        error = ValueError("Test error")
-        response = create_error_response(error)
+        """Test create_error_response with basic exception."""
+        exc = ValueError("Test error")
+        response = create_error_response(exc)
 
         assert response["success"] is False
         assert response["error"]["type"] == "ValueError"
         assert response["error"]["message"] == "Test error"
 
+    def test_create_error_response_with_tree_sitter_error(self) -> None:
+        """Test create_error_response with TreeSitterAnalyzerError."""
+        exc = TreeSitterAnalyzerError("Test error")
+        response = create_error_response(exc)
+
+        assert response["success"] is False
+        assert response["error"]["type"] == "TreeSitterAnalyzerError"
+        assert response["error"]["message"] == "Test error"
+
     def test_create_error_response_with_context(self) -> None:
-        """Test error response with context"""
-        error = AnalysisError("Test error", file_path="test.py")
-        response = create_error_response(error)
+        """Test create_error_response includes context."""
+        exc = AnalysisError("Test error", file_path="test.py")
+        response = create_error_response(exc)
 
         assert response["error"]["context"]["file_path"] == "test.py"
 
     def test_create_error_response_with_traceback(self) -> None:
-        """Test error response with traceback"""
-        error = ValueError("Test error")
-        response = create_error_response(error, include_traceback=True)
+        """Test create_error_response with traceback."""
+        exc = ValueError("Test error")
+        response = create_error_response(exc, include_traceback=True)
 
         assert "traceback" in response["error"]
 
-    def test_handle_exceptions_decorator_success(self) -> None:
-        """Test exception handling decorator with successful function"""
+    def test_create_error_response_with_error_code(self) -> None:
+        """Test error response includes error code."""
+        exc = TreeSitterAnalyzerError("Test", error_code="CUSTOM_CODE")
+        response = create_error_response(exc)
+
+        assert response["error"]["code"] == "CUSTOM_CODE"
+
+
+class TestHandleExceptionsDecorator:
+    """Test handle_exceptions decorator."""
+
+    def test_handle_exceptions_success(self) -> None:
+        """Test decorator with successful function."""
 
         @handle_exceptions(default_return="default")
-        def test_func(x: int) -> int:
-            return x * 2
+        def successful_func() -> str:
+            return "success"
 
-        result = test_func(5)
-        assert result == 10
+        assert successful_func() == "success"
+
+    def test_handle_exceptions_with_exception(self) -> None:
+        """Test decorator returns default on exception."""
+
+        @handle_exceptions(default_return="default", log_errors=False)
+        def failing_func() -> None:
+            raise ValueError("Error")
+
+        assert failing_func() == "default"
+
+    def test_handle_exceptions_reraise_as_analysis_error(self) -> None:
+        """Test decorator re-raises as AnalysisError."""
+
+        @handle_exceptions(reraise_as=AnalysisError, log_errors=False)
+        def failing_func() -> None:
+            raise ValueError("Error")
+
+        with pytest.raises(AnalysisError):
+            failing_func()
+
+    def test_handle_exceptions_reraise_as_non_tree_sitter(self) -> None:
+        """Test decorator re-raises as non-TreeSitterAnalyzerError type."""
+
+        @handle_exceptions(reraise_as=RuntimeError, log_errors=False)
+        def failing_func() -> None:
+            raise ValueError("Error")
+
+        with pytest.raises(RuntimeError):
+            failing_func()
+
+    def test_handle_exceptions_specific_exception_types(self) -> None:
+        """Test decorator with specific exception types."""
+
+        @handle_exceptions(
+            default_return="caught", exception_types=(KeyError,), log_errors=False
+        )
+        def failing_func() -> None:
+            raise KeyError("Key error")
+
+        assert failing_func() == "caught"
+
+    def test_handle_exceptions_no_logging(self) -> None:
+        """Test exception handling decorator without logging."""
+
+        @handle_exceptions(default_return="default", log_errors=False)
+        def failing_func() -> None:
+            raise ValueError("Test error")
+
+        result = failing_func()
+        assert result == "default"
 
     @patch("tree_sitter_analyzer.utils.log_error")
-    def test_handle_exceptions_decorator_with_exception(
-        self, mock_log_error: Mock
-    ) -> None:
-        """Test exception handling decorator with exception"""
+    def test_handle_exceptions_with_logging(self, mock_log_error: Mock) -> None:
+        """Test exception handling decorator with logging enabled."""
 
         @handle_exceptions(default_return="default")
         def failing_func() -> None:
@@ -395,66 +746,231 @@ class TestExceptionUtilities:
         assert result == "default"
         mock_log_error.assert_called_once()
 
-    @patch("tree_sitter_analyzer.utils.log_error")
-    def test_handle_exceptions_decorator_reraise(self, mock_log_error: Mock) -> None:
-        """Test exception handling decorator with re-raising"""
 
-        @handle_exceptions(reraise_as=AnalysisError)
-        def failing_func() -> None:
+class TestMCPErrorResponse:
+    """Test MCP-specific error response utilities."""
+
+    def test_create_mcp_error_response_basic(self) -> None:
+        """Test create_mcp_error_response with basic exception."""
+        exc = MCPError("MCP failed")
+        response = create_mcp_error_response(exc)
+
+        assert response["success"] is False
+        assert response["error"]["type"] == "MCPError"
+        assert response["error"]["message"] == "MCP failed"
+        assert "timestamp" in response["error"]
+
+    def test_create_mcp_error_response_with_tool_name(self) -> None:
+        """Test create_mcp_error_response includes tool name."""
+        exc = MCPError("Tool failed")
+        response = create_mcp_error_response(exc, tool_name="analyze_code")
+
+        assert response["error"]["tool"] == "analyze_code"
+
+    def test_create_mcp_error_response_sanitizes_sensitive_data(self) -> None:
+        """Test create_mcp_error_response sanitizes sensitive information."""
+        exc = MCPError(
+            "Failed",
+            context={
+                "password": "secret",
+                "token": "abc123",
+                "file": "test.py",
+            },  # pragma: allowlist secret
+        )
+        response = create_mcp_error_response(exc, sanitize_sensitive=True)
+
+        assert response["error"]["context"]["password"] == "***REDACTED***"
+        assert response["error"]["context"]["token"] == "***REDACTED***"
+        assert response["error"]["context"]["file"] == "test.py"
+
+    def test_create_mcp_error_response_with_debug_info(self) -> None:
+        """Test create_mcp_error_response includes debug information."""
+        exc = MCPError("Failed")
+        response = create_mcp_error_response(exc, include_debug_info=True)
+
+        assert "debug" in response["error"]
+        assert "traceback" in response["error"]["debug"]
+
+    def test_create_mcp_error_response_specific_types(self) -> None:
+        """Test create_mcp_error_response with specific exception types."""
+        # MCPToolError
+        exc1 = MCPToolError("Failed", execution_stage="validation")
+        response1 = create_mcp_error_response(exc1)
+        assert response1["error"]["execution_stage"] == "validation"
+
+        # MCPTimeoutError
+        exc2 = MCPTimeoutError("Timed out", timeout_seconds=60.0)
+        response2 = create_mcp_error_response(exc2)
+        assert response2["error"]["timeout_seconds"] == 60.0
+
+        # FileRestrictionError
+        exc3 = FileRestrictionError("Restricted", current_mode="read-only")
+        response3 = create_mcp_error_response(exc3)
+        assert response3["error"]["current_mode"] == "read-only"
+
+    def test_create_mcp_error_response_with_tool_error_sanitization(self) -> None:
+        """Test MCP error response sanitization with MCPToolError context."""
+        exc = MCPToolError(
+            "Failed",
+            tool_name="test",
+            input_params={"api_key": "secret123", "normal": "value"},
+        )
+        response = create_mcp_error_response(exc, sanitize_sensitive=True)
+
+        context = response["error"]["context"]
+        assert context["input_params"]["api_key"] == "***REDACTED***"
+        assert context["input_params"]["normal"] == "value"
+
+
+class TestAsyncExceptionHandling:
+    """Test async exception handling utilities."""
+
+    @pytest.mark.asyncio
+    async def test_safe_execute_async_success(self) -> None:
+        """Test safe_execute_async with successful execution."""
+
+        async def success_coro() -> str:
+            return "success"
+
+        result = await safe_execute_async(success_coro(), default_return="failed")
+        assert result == "success"
+
+    @pytest.mark.asyncio
+    async def test_safe_execute_async_with_exception(self) -> None:
+        """Test safe_execute_async returns default on exception."""
+
+        async def failing_coro() -> None:
             raise ValueError("Test error")
 
-        with pytest.raises(AnalysisError):
-            failing_func()
+        result = await safe_execute_async(
+            failing_coro(), default_return="default", log_errors=False
+        )
+        assert result == "default"
 
-    def test_handle_exceptions_decorator_no_logging(self) -> None:
-        """Test exception handling decorator without logging"""
+    @pytest.mark.asyncio
+    async def test_safe_execute_async_with_tool_name(self) -> None:
+        """Test safe_execute_async with tool name context."""
 
-        @handle_exceptions(default_return="default", log_errors=False)
-        def failing_func() -> None:
+        async def failing_coro() -> None:
             raise ValueError("Test error")
 
-        result = failing_func()
+        result = await safe_execute_async(
+            failing_coro(), default_return="default", tool_name="test_tool"
+        )
         assert result == "default"
 
 
+class TestMCPExceptionHandler:
+    """Test mcp_exception_handler decorator."""
+
+    @pytest.mark.asyncio
+    async def test_mcp_exception_handler_async_success(self) -> None:
+        """Test decorator with successful async function."""
+
+        @mcp_exception_handler("test_tool")
+        async def async_func() -> str:
+            return "success"
+
+        result = await async_func()
+        assert result == "success"
+
+    @pytest.mark.asyncio
+    async def test_mcp_exception_handler_async_failure(self) -> None:
+        """Test decorator with failing async function."""
+
+        @mcp_exception_handler(tool_name="test_tool", include_debug=False)
+        async def failing_async_tool() -> None:
+            raise ValueError("Async tool failed")
+
+        response = await failing_async_tool()
+
+        assert response["success"] is False
+        assert response["error"]["tool"] == "test_tool"
+        assert "ValueError" in response["error"]["type"]
+
+    def test_mcp_exception_handler_sync_success(self) -> None:
+        """Test decorator with successful sync function."""
+
+        @mcp_exception_handler("test_tool")
+        def sync_func() -> str:
+            return "success"
+
+        result = sync_func()
+        assert result == "success"
+
+    def test_mcp_exception_handler_sync_failure(self) -> None:
+        """Test decorator with failing sync function."""
+
+        @mcp_exception_handler(tool_name="test_tool", include_debug=False)
+        def failing_sync_tool() -> None:
+            raise ValueError("Sync tool failed")
+
+        response = failing_sync_tool()
+
+        assert response["success"] is False
+        assert response["error"]["tool"] == "test_tool"
+        assert "ValueError" in response["error"]["type"]
+
+
 class TestExceptionInheritance:
-    """Test exception inheritance hierarchy"""
+    """Test exception inheritance chain."""
 
     def test_all_exceptions_inherit_from_base(self) -> None:
-        """Test that all custom exceptions inherit from TreeSitterAnalyzerError"""
-        exceptions_to_test = [
-            AnalysisError("test"),
-            ParseError("test"),
-            LanguageNotSupportedError("test"),
-            PluginError("test"),
-            QueryError("test"),
-            FileHandlingError("test"),
-            ConfigurationError("test"),
-            ValidationError("test"),
-            MCPError("test"),
+        """Test that all custom exceptions inherit from TreeSitterAnalyzerError."""
+        exception_classes = [
+            AnalysisError,
+            ParseError,
+            LanguageNotSupportedError,
+            PluginError,
+            QueryError,
+            FileHandlingError,
+            ConfigurationError,
+            ValidationError,
+            MCPError,
+            SecurityError,
+            PathTraversalError,
+            RegexSecurityError,
+            MCPToolError,
+            MCPResourceError,
+            MCPTimeoutError,
+            MCPValidationError,
+            FileRestrictionError,
         ]
 
-        for exception in exceptions_to_test:
-            assert isinstance(exception, TreeSitterAnalyzerError)
-            assert isinstance(exception, Exception)
+        for exc_class in exception_classes:
+            assert issubclass(exc_class, TreeSitterAnalyzerError)
+            assert issubclass(exc_class, Exception)
+
+    def test_security_exceptions_inheritance(self) -> None:
+        """Test security exception inheritance chain."""
+        assert issubclass(PathTraversalError, SecurityError)
+        assert issubclass(RegexSecurityError, SecurityError)
+        assert issubclass(FileRestrictionError, SecurityError)
+
+    def test_mcp_exceptions_inheritance(self) -> None:
+        """Test MCP exception inheritance chain."""
+        assert issubclass(MCPToolError, MCPError)
+        assert issubclass(MCPResourceError, MCPError)
+        assert issubclass(MCPTimeoutError, MCPError)
+        assert issubclass(MCPValidationError, ValidationError)
 
     def test_exception_context_inheritance(self) -> None:
-        """Test that context is properly inherited"""
-        error = AnalysisError("Test", file_path="test.py", language="python")
-        assert hasattr(error, "context")
-        assert error.context["file_path"] == "test.py"
-        assert error.context["language"] == "python"
+        """Test that context is properly inherited."""
+        exc = AnalysisError("Test", file_path="test.py", language="python")
+        assert hasattr(exc, "context")
+        assert exc.context["file_path"] == "test.py"
+        assert exc.context["language"] == "python"
 
     def test_exception_error_code_inheritance(self) -> None:
-        """Test that error codes are properly set"""
-        error = PluginError("Test", plugin_name="test_plugin")
-        assert hasattr(error, "error_code")
-        assert error.error_code == "PluginError"
+        """Test that error codes are properly set."""
+        exc = PluginError("Test", plugin_name="test_plugin")
+        assert hasattr(exc, "error_code")
+        assert exc.error_code == "PluginError"
 
     def test_exception_to_dict_inheritance(self) -> None:
-        """Test that to_dict method works for all exceptions"""
-        error = QueryError("Test", query_name="functions")
-        result = error.to_dict()
+        """Test that to_dict method works for all exceptions."""
+        exc = QueryError("Test", query_name="functions")
+        result = exc.to_dict()
 
         assert "error_type" in result
         assert "error_code" in result
@@ -463,50 +979,99 @@ class TestExceptionInheritance:
         assert result["error_type"] == "QueryError"
 
 
-class TestExceptionEdgeCases:
-    """Test edge cases and error conditions"""
+class TestSanitizeErrorContext:
+    """Test _sanitize_error_context function for edge cases."""
 
-    def test_exception_with_none_values(self) -> None:
-        """Test exceptions with None values"""
-        error = AnalysisError("Test", file_path=None, language=None)
-        # Should not add None values to context
-        assert (
-            "file_path" not in error.context or error.context.get("file_path") is None
-        )
-        assert "language" not in error.context or error.context.get("language") is None
+    def test_sanitize_long_string_value(self) -> None:
+        """Test that long string values are truncated."""
+        long_string = "x" * 600  # More than 500 characters
+        context = {"long_data": long_string}
+        result = _sanitize_error_context(context)
 
-    def test_exception_with_empty_context(self) -> None:
-        """Test exception with empty context"""
-        error = TreeSitterAnalyzerError("Test", context={})
-        assert error.context == {}
+        assert "[TRUNCATED]" in result["long_data"]
+        assert len(result["long_data"]) < len(long_string)
+        assert result["long_data"].startswith("x" * 100)
 
-    def test_exception_string_representation(self) -> None:
-        """Test string representation of exceptions"""
-        error = TreeSitterAnalyzerError("Test message")
-        assert str(error) == "Test message"
-        assert "TreeSitterAnalyzerError" in repr(error)
+    def test_sanitize_long_list_value(self) -> None:
+        """Test that long list values are truncated."""
+        long_list = list(range(20))  # More than 10 items
+        context = {"long_list": long_list}
+        result = _sanitize_error_context(context)
 
-    def test_safe_execute_with_specific_exception_types(self) -> None:
-        """Test safe execute with specific exception types"""
+        assert len(result["long_list"]) == 11  # 10 items + "[TRUNCATED]"
+        assert result["long_list"][-1] == "...[TRUNCATED]"
+        assert result["long_list"][0] == 0
+        assert result["long_list"][9] == 9
 
-        def failing_func() -> None:
-            raise ValueError("Test error")
+    def test_sanitize_long_tuple_value(self) -> None:
+        """Test that long tuple values are truncated."""
+        long_tuple = tuple(range(15))  # More than 10 items
+        context = {"long_tuple": long_tuple}
+        result = _sanitize_error_context(context)
 
-        # Should catch ValueError
-        result = safe_execute(
-            failing_func, exception_types=(ValueError,), default_return="caught"
-        )
-        assert result == "caught"
+        assert len(result["long_tuple"]) == 11  # 10 items + "[TRUNCATED]"
+        assert result["long_tuple"][-1] == "...[TRUNCATED]"
 
-        # Should not catch TypeError
-        with pytest.raises(ValueError):
-            safe_execute(
-                failing_func, exception_types=(TypeError,), default_return="not_caught"
-            )
+    def test_sanitize_large_nested_dict(self) -> None:
+        """Test that large nested dictionaries are truncated."""
+        large_dict = {f"key_{i}": f"value_{i}" for i in range(25)}  # More than 20 items
+        context = {"nested": large_dict}
+        result = _sanitize_error_context(context)
 
-    def test_handle_exception_with_tree_sitter_error(self) -> None:
-        """Test handle_exception with TreeSitterAnalyzerError"""
-        original_error = AnalysisError("Test error", file_path="test.py")
+        assert "__truncated__" in result["nested"]
+        assert result["nested"]["__truncated__"] is True
+        assert len(result["nested"]) <= 21
 
-        with pytest.raises(AnalysisError):
-            handle_exception(original_error)
+    def test_sanitize_sensitive_keys(self) -> None:
+        """Test that sensitive keys are redacted."""
+        context = {
+            "password": "secret123",  # pragma: allowlist secret
+            "api_key": "abc123",  # pragma: allowlist secret
+            "access_token": "token456",  # pragma: allowlist secret
+            "private_key": "key789",  # pragma: allowlist secret
+            "session_id": "session123",  # pragma: allowlist secret
+            "file_path": "normal_value",  # Not a sensitive key
+        }
+        result = _sanitize_error_context(context)
+
+        assert result["password"] == "***REDACTED***"
+        assert result["api_key"] == "***REDACTED***"
+        assert result["access_token"] == "***REDACTED***"
+        assert result["private_key"] == "***REDACTED***"
+        assert result["session_id"] == "***REDACTED***"
+        assert result["file_path"] == "normal_value"
+
+    def test_sanitize_normal_values_unchanged(self) -> None:
+        """Test that normal values are not modified."""
+        context = {
+            "file": "test.py",
+            "line": 42,
+            "short_list": [1, 2, 3],
+            "small_dict": {"a": 1, "b": 2},
+        }
+        result = _sanitize_error_context(context)
+
+        assert result["file"] == "test.py"
+        assert result["line"] == 42
+        assert result["short_list"] == [1, 2, 3]
+        assert result["small_dict"] == {"a": 1, "b": 2}
+
+    def test_sanitize_empty_context(self) -> None:
+        """Test sanitization of empty context."""
+        result = _sanitize_error_context({})
+        assert result == {}
+
+    def test_sanitize_mixed_context(self) -> None:
+        """Test sanitization with mixed content types."""
+        context = {
+            "password": "secret",  # Should be redacted
+            "long_string": "y" * 600,  # Should be truncated
+            "long_list": list(range(15)),  # Should be truncated
+            "normal": "value",  # Should be unchanged
+        }
+        result = _sanitize_error_context(context)
+
+        assert result["password"] == "***REDACTED***"
+        assert "[TRUNCATED]" in result["long_string"]
+        assert result["long_list"][-1] == "...[TRUNCATED]"
+        assert result["normal"] == "value"

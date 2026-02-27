@@ -13,6 +13,14 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor, SQLPlugin
+from tree_sitter_analyzer.models import (
+    SQLElementType,
+    SQLFunction,
+    SQLIndex,
+    SQLTable,
+    SQLTrigger,
+    SQLView,
+)
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -934,3 +942,708 @@ class TestSQLFormatterIntegration:
 
         finally:
             os.unlink(temp_path)
+
+
+# =============================================================================
+# Tests consolidated from variant files (branches, comprehensive, deep_coverage,
+# enhanced, extract_methods, coverage_boost)
+# =============================================================================
+
+
+class TestSQLIdentifierValidation:
+    """Test _is_valid_identifier covering numbers, special chars, keywords, quoting, length."""
+
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        ext._reset_caches()
+        return ext
+
+    def test_identifier_valid_and_invalid_patterns(self, extractor: SQLElementExtractor) -> None:
+        """Test valid identifiers, leading digits, special chars, multiline, length."""
+        # Valid
+        assert extractor._is_valid_identifier("_column1")
+        assert extractor._is_valid_identifier("user_123")
+        assert extractor._is_valid_identifier("a" * 128)
+        # Invalid
+        assert not extractor._is_valid_identifier("123_invalid")
+        assert not extractor._is_valid_identifier("user@name")
+        assert not extractor._is_valid_identifier("table#1")
+        assert not extractor._is_valid_identifier("")
+        assert not extractor._is_valid_identifier("multi\nline")
+        assert not extractor._is_valid_identifier("has(paren")
+        assert not extractor._is_valid_identifier("a" * 200)
+
+    def test_identifier_sql_keywords_rejected(self, extractor: SQLElementExtractor) -> None:
+        """Test that SQL keywords (case-insensitive) are rejected."""
+        for kw in ["SELECT", "INSERT", "UPDATE", "DELETE", "FROM", "WHERE",
+                    "CREATE", "TABLE", "INDEX", "VIEW", "TRIGGER", "PROCEDURE"]:
+            assert not extractor._is_valid_identifier(kw)
+            assert not extractor._is_valid_identifier(kw.lower())
+
+    def test_identifier_quoted_variants(self, extractor: SQLElementExtractor) -> None:
+        """Test backtick, double-quoted, and bracket-quoted identifiers."""
+        assert extractor._is_valid_identifier("`my-table`")
+        assert extractor._is_valid_identifier('"my-column"')
+        assert extractor._is_valid_identifier("[my-table]")
+
+
+class TestSQLColumnParsing:
+    """Test _parse_column_definition and _split_column_definitions."""
+
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        return ext
+
+    def test_column_various_definitions(self, extractor: SQLElementExtractor) -> None:
+        """Test column parsing: DEFAULT, CHECK, multiple constraints, invalid."""
+        # DEFAULT value
+        col = extractor._parse_column_definition("created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        assert col is not None and col.name == "created_at"
+        # CHECK constraint
+        col = extractor._parse_column_definition("age INT CHECK (age >= 0)")
+        assert col is not None and col.name == "age"
+        # Multiple constraints
+        col = extractor._parse_column_definition("id INT NOT NULL PRIMARY KEY AUTO_INCREMENT UNIQUE")
+        assert col is not None and col.nullable is False and col.is_primary_key is True
+        # Invalid
+        assert extractor._parse_column_definition("123invalid COLUMN") is None
+
+    def test_column_with_foreign_key(self, extractor: SQLElementExtractor) -> None:
+        """Test column parsing with inline foreign key reference."""
+        col = extractor._parse_column_definition("user_id INT REFERENCES users(id)")
+        assert col is not None
+        assert col.is_foreign_key is True
+        assert "users(id)" in col.foreign_key_reference
+
+    def test_split_column_definitions(self, extractor: SQLElementExtractor) -> None:
+        """Test splitting column defs with nested and deeply nested parentheses."""
+        assert len(extractor._split_column_definitions(
+            "id INT, name VARCHAR(100), price DECIMAL(10,2), created DATETIME")) == 4
+        assert len(extractor._split_column_definitions(
+            "id INT, check_val INT CHECK (value > 0 AND value < (SELECT MAX(id) FROM t)), name TEXT")) == 3
+
+
+class TestSQLValidateAndFixElements:
+    """Test _validate_and_fix_elements: dedup, phantom triggers, empty list."""
+
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        return ext
+
+    def test_dedup_and_phantom_trigger_removal(self, extractor: SQLElementExtractor) -> None:
+        """Test deduplication and phantom trigger removal."""
+        table1 = SQLTable(name="users", start_line=1, end_line=5,
+                          raw_text="CREATE TABLE users (id INT)",
+                          sql_element_type=SQLElementType.TABLE)
+        table2 = SQLTable(name="users", start_line=1, end_line=5,
+                          raw_text="CREATE TABLE users (id INT)",
+                          sql_element_type=SQLElementType.TABLE)
+        phantom = SQLTrigger(name="not_a_trigger", start_line=1, end_line=5,
+                             raw_text="CREATE FUNCTION my_func() RETURNS INT",
+                             sql_element_type=SQLElementType.TRIGGER)
+        valid = SQLTrigger(name="valid_trigger", start_line=10, end_line=15,
+                           raw_text="CREATE TRIGGER valid_trigger BEFORE INSERT ON users",
+                           sql_element_type=SQLElementType.TRIGGER)
+        result = extractor._validate_and_fix_elements([table1, table2, phantom, valid])
+        assert len([e for e in result if getattr(e, "name", "") == "users"]) == 1
+        assert not any(isinstance(e, SQLTrigger) and e.name == "not_a_trigger" for e in result)
+        assert any(isinstance(e, SQLTrigger) and e.name == "valid_trigger" for e in result)
+
+    def test_validates_empty_list(self, extractor: SQLElementExtractor) -> None:
+        """Test validation with empty element list."""
+        result = extractor._validate_and_fix_elements([])
+        assert isinstance(result, list)
+
+
+class TestSQLExtractorInternals:
+    """Test caching, traversal, diagnostic mode, adapter."""
+
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        return SQLElementExtractor()
+
+    def test_reset_caches_and_diagnostic_mode(self, extractor: SQLElementExtractor) -> None:
+        """Test _reset_caches and diagnostic mode init."""
+        extractor._node_text_cache[(0, 10)] = "cached"
+        extractor._processed_nodes.add(456)
+        extractor._reset_caches()
+        assert len(extractor._node_text_cache) == 0
+        assert len(extractor._processed_nodes) == 0
+        ext = SQLElementExtractor(diagnostic_mode=True)
+        assert ext.diagnostic_mode is True
+
+    def test_set_adapter(self, extractor: SQLElementExtractor) -> None:
+        """Test setting a compatibility adapter."""
+        mock_adapter = Mock()
+        extractor.set_adapter(mock_adapter)
+        assert extractor.adapter is mock_adapter
+
+    def test_get_node_text_caching_and_fallback(self, extractor: SQLElementExtractor) -> None:
+        """Test _get_node_text caching and out-of-bounds fallback."""
+        extractor.source_code = "CREATE TABLE test (id INT);"
+        extractor.content_lines = extractor.source_code.split("\n")
+        extractor._reset_caches()
+        node = Mock(start_byte=0, end_byte=27, start_point=(0, 0), end_point=(0, 27))
+        assert extractor._get_node_text(node) == extractor._get_node_text(node)
+        assert (0, 27) in extractor._node_text_cache
+        # Out of bounds
+        extractor.source_code = ""
+        extractor.content_lines = []
+        extractor._reset_caches()
+        oob = Mock(start_byte=100, end_byte=200, start_point=(100, 0), end_point=(100, 50))
+        assert extractor._get_node_text(oob) == ""
+
+    def test_traverse_nodes(self, extractor: SQLElementExtractor) -> None:
+        """Test _traverse_nodes yields root and all descendants."""
+        root = Mock()
+        child = Mock()
+        grandchild = Mock()
+        grandchild.children = []
+        child.children = [grandchild]
+        root.children = [child]
+        nodes = list(extractor._traverse_nodes(root))
+        assert len(nodes) == 3
+
+
+class TestSQLTriggerExtractionEdgeCases:
+    """Test _extract_triggers: keyword name, empty text, multiple triggers."""
+
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        return ext
+
+    def test_trigger_keyword_name_and_empty_text(self, extractor: SQLElementExtractor) -> None:
+        """Test trigger with keyword name is skipped and empty text produces nothing."""
+        # Keyword name
+        code = "CREATE TRIGGER UPDATE BEFORE INSERT ON t FOR EACH ROW BEGIN END"
+        extractor.source_code = code
+        extractor.content_lines = [code]
+        node = Mock(type="ERROR", start_point=(0, 0), end_point=(0, len(code)),
+                    start_byte=0, end_byte=len(code), children=[])
+        funcs: list = []
+        extractor._extract_triggers(node, funcs)
+        assert not any(f.name == "UPDATE" for f in funcs)
+        # Empty text
+        extractor.source_code = ""
+        extractor.content_lines = []
+        empty_node = Mock(type="ERROR", start_point=(0, 0), end_point=(0, 0),
+                          start_byte=0, end_byte=0, children=[])
+        funcs2: list = []
+        extractor._extract_triggers(empty_node, funcs2)
+        assert funcs2 == []
+
+    def test_multiple_triggers_in_error_node(self, extractor: SQLElementExtractor) -> None:
+        """Test extracting multiple triggers from a single ERROR node."""
+        code = ("CREATE TRIGGER t1 BEFORE INSERT ON users FOR EACH ROW BEGIN END;\n"
+                "CREATE TRIGGER t2 AFTER UPDATE ON orders FOR EACH ROW BEGIN END;")
+        extractor.source_code = code
+        extractor.content_lines = code.split("\n")
+        node = Mock(type="ERROR", start_point=(0, 0), end_point=(1, 65),
+                    start_byte=0, end_byte=len(code), children=[])
+        funcs: list = []
+        extractor._extract_triggers(node, funcs)
+        names = [f.name for f in funcs]
+        assert "t1" in names and "t2" in names
+
+
+class TestSQLViewExtractionRecovery:
+    """Test view extraction recovery for single-line misparsed views."""
+
+    def test_single_line_view_recovery(self) -> None:
+        """Test view extraction recovery for single-line misparsed view."""
+        ext = SQLElementExtractor()
+        ext.source_code = ("CREATE VIEW active_users AS\n"
+                           "SELECT id, name FROM users WHERE active = 1;")
+        ext.content_lines = ext.source_code.split("\n")
+        node = Mock(type="create_view", start_point=(0, 0), end_point=(0, 27),
+                    start_byte=0, end_byte=27, children=[])
+        classes: list = []
+        ext._extract_views(node, classes)
+
+
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE,
+    reason="tree-sitter-sql not installed",
+)
+class TestSQLPluginExtractionBranches:
+    """Test extraction with various SQL statement types: DROP, OR REPLACE, backticks, etc."""
+
+    @pytest.fixture
+    def plugin(self) -> SQLPlugin:
+        return SQLPlugin()
+
+    @pytest.fixture
+    def parser(self):
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    def test_drop_statements_no_error(self, plugin: SQLPlugin, parser) -> None:
+        """Test DROP statements do not cause extraction errors."""
+        code = ("DROP TABLE IF EXISTS old_users;\n"
+                "DROP VIEW IF EXISTS old_view;\n"
+                "DROP INDEX idx_old ON users;\n"
+                "DROP PROCEDURE IF EXISTS old_proc;\n"
+                "DROP TRIGGER IF EXISTS old_trigger;\n")
+        result = plugin.extract_elements(parser.parse(code.encode("utf-8")), code)
+        assert isinstance(result, dict)
+
+    def test_create_or_replace_view(self, plugin: SQLPlugin, parser) -> None:
+        """Test CREATE OR REPLACE VIEW extraction."""
+        code = "CREATE OR REPLACE VIEW user_summary AS\nSELECT id, name FROM users;\n"
+        result = plugin.extract_elements(parser.parse(code.encode("utf-8")), code)
+        assert "classes" in result
+
+    def test_backtick_and_if_not_exists_and_temp(self, plugin: SQLPlugin, parser) -> None:
+        """Test backtick-quoted, IF NOT EXISTS, and TEMPORARY table."""
+        for sql in [
+            "CREATE TABLE `user-data` (`id` INT PRIMARY KEY, `full-name` VARCHAR(100));",
+            "CREATE TABLE IF NOT EXISTS events (id SERIAL PRIMARY KEY, event_type VARCHAR(50));",
+            "CREATE TEMPORARY TABLE temp_results (id INT, value DECIMAL(10,2));",
+        ]:
+            result = plugin.extract_elements(parser.parse(sql.encode("utf-8")), sql)
+            assert isinstance(result, dict)
+
+    def test_recursive_cte_and_alter_table(self, plugin: SQLPlugin, parser) -> None:
+        """Test recursive CTE and ALTER TABLE do not cause errors."""
+        cte = ("WITH RECURSIVE eh AS (\n"
+               "  SELECT id, 1 as lvl FROM employees WHERE manager_id IS NULL\n"
+               "  UNION ALL\n"
+               "  SELECT e.id, eh.lvl+1 FROM employees e JOIN eh ON e.manager_id=eh.id\n"
+               ") SELECT * FROM eh;\n")
+        result = plugin.extract_elements(parser.parse(cte.encode("utf-8")), cte)
+        assert isinstance(result, dict)
+        alter = "ALTER TABLE users ADD COLUMN email VARCHAR(255);\nALTER TABLE users DROP COLUMN old_field;\n"
+        result = plugin.extract_elements(parser.parse(alter.encode("utf-8")), alter)
+        assert isinstance(result, dict)
+
+
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE,
+    reason="tree-sitter-sql not installed",
+)
+class TestSQLEnhancedExtractMethods:
+    """Test direct calls to _extract_sql_tables, _extract_sql_views, _extract_sql_indexes."""
+
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        return SQLElementExtractor()
+
+    @pytest.fixture
+    def parser(self):
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    def test_extract_sql_tables_views_indexes_directly(self, extractor: SQLElementExtractor, parser) -> None:
+        """Test _extract_sql_tables, _extract_sql_views, _extract_sql_indexes directly."""
+        table_code = "CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100) NOT NULL);"
+        view_code = "CREATE VIEW order_summary AS SELECT id FROM orders;"
+        index_code = "CREATE INDEX idx_email ON users(email);\nCREATE UNIQUE INDEX idx_username ON users(username);"
+
+        for code, method_name in [
+            (table_code, "_extract_sql_tables"),
+            (view_code, "_extract_sql_views"),
+            (index_code, "_extract_sql_indexes"),
+        ]:
+            tree = parser.parse(code.encode("utf-8"))
+            extractor.source_code = code
+            extractor.content_lines = code.split("\n")
+            elements: list = []
+            getattr(extractor, method_name)(tree.root_node, elements)
+            assert isinstance(elements, list)
+
+
+class TestSQLPluginEdgeCases:
+    """Test edge cases: unicode, very long SQL, whitespace only, missing tree-sitter."""
+
+    @pytest.fixture
+    def plugin(self) -> SQLPlugin:
+        return SQLPlugin()
+
+    def test_unicode_and_very_long_and_whitespace(self, plugin: SQLPlugin) -> None:
+        """Test unicode, very long, and whitespace-only SQL do not crash."""
+        assert isinstance(plugin.extract_elements(None, "CREATE TABLE \u7528\u6236 (\u540d\u524d VARCHAR(100));"), dict)
+        columns = ", ".join([f"col{i} INT" for i in range(100)])
+        assert isinstance(plugin.extract_elements(None, f"CREATE TABLE big ({columns});"), dict)
+        assert isinstance(plugin.extract_elements(None, "   \n\n   \t   "), dict)
+
+    def test_plugin_init_without_tree_sitter(self) -> None:
+        """Test plugin initialisation when tree-sitter-sql is not importable."""
+        with patch.dict("sys.modules", {"tree_sitter_sql": None}):
+            plugin = SQLPlugin()
+            assert plugin is not None
+
+
+# =============================================================================
+# NEW TARGETED TESTS for uncovered lines
+# =============================================================================
+
+
+class TestExtractFunctionsWithTree:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        return SQLElementExtractor()
+
+    @pytest.fixture
+    def parser(self):
+        pytest.importorskip("tree_sitter_sql")
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_functions_with_create_function(self, extractor, parser):
+        sql = "CREATE FUNCTION calc_total(order_id_param INT)\nRETURNS DECIMAL(10,2)\nBEGIN\n    DECLARE total DECIMAL(10,2);\n    RETURN total;\nEND;"
+        tree = parser.parse(sql.encode("utf-8"))
+        functions = extractor.extract_functions(tree, sql)
+        assert isinstance(functions, list)
+        assert any(f.name == "calc_total" for f in functions)
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_classes_with_table_and_view(self, extractor, parser):
+        sql = "CREATE TABLE orders (id INT PRIMARY KEY, user_id INT);\nCREATE VIEW order_view AS SELECT id FROM orders;"
+        tree = parser.parse(sql.encode("utf-8"))
+        classes = extractor.extract_classes(tree, sql)
+        assert isinstance(classes, list)
+        assert any(c.name == "orders" for c in classes)
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_variables_with_indexes(self, extractor, parser):
+        sql = "CREATE INDEX idx_user_email ON users(email);"
+        tree = parser.parse(sql.encode("utf-8"))
+        variables = extractor.extract_variables(tree, sql)
+        assert isinstance(variables, list)
+        assert any(v.name == "idx_user_email" for v in variables)
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_functions_exception(self, extractor, parser):
+        sql = "CREATE FUNCTION bad_func() RETURNS INT BEGIN RETURN 1; END;"
+        tree = parser.parse(sql.encode("utf-8"))
+        with patch.object(extractor, '_extract_procedures', side_effect=RuntimeError("err")):
+            result = extractor.extract_functions(tree, sql)
+            assert isinstance(result, list)
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_classes_exception(self, extractor, parser):
+        sql = "CREATE TABLE t (id INT);"
+        tree = parser.parse(sql.encode("utf-8"))
+        with patch.object(extractor, '_extract_tables', side_effect=RuntimeError("err")):
+            result = extractor.extract_classes(tree, sql)
+            assert isinstance(result, list)
+
+
+class TestGetNodeTextFallbacks:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext._reset_caches()
+        return ext
+
+    def test_multiline_fallback(self, extractor):
+        extractor.source_code = "CREATE TABLE test (\n    id INT\n);"
+        extractor.content_lines = extractor.source_code.split("\n")
+        extractor._reset_caches()
+        node = Mock(start_byte=0, end_byte=100, start_point=(0, 0), end_point=(2, 2))
+        with patch("tree_sitter_analyzer.languages.sql_plugin.safe_encode", side_effect=Exception("fail")):
+            result = extractor._get_node_text(node)
+            assert "CREATE TABLE" in result
+
+    def test_single_line_fallback(self, extractor):
+        extractor.source_code = "SELECT * FROM users;"
+        extractor.content_lines = extractor.source_code.split("\n")
+        extractor._reset_caches()
+        node = Mock(start_byte=0, end_byte=20, start_point=(0, 0), end_point=(0, 20))
+        with patch("tree_sitter_analyzer.languages.sql_plugin.safe_encode", side_effect=Exception("fail")):
+            result = extractor._get_node_text(node)
+            assert "SELECT" in result
+
+    def test_fallback_both_fail(self, extractor):
+        extractor.source_code = "test"
+        extractor.content_lines = ["test"]
+        extractor._reset_caches()
+        node = Mock(start_byte=0, end_byte=4)
+        type(node).start_point = property(lambda self: (_ for _ in ()).throw(AttributeError("no")))
+        with patch("tree_sitter_analyzer.languages.sql_plugin.safe_encode", side_effect=Exception("fail")):
+            assert extractor._get_node_text(node) == ""
+
+    def test_negative_start_point(self, extractor):
+        extractor.source_code = "test"
+        extractor.content_lines = ["test"]
+        extractor._reset_caches()
+        node = Mock(start_byte=0, end_byte=4, start_point=(-1, 0), end_point=(0, 4))
+        with patch("tree_sitter_analyzer.languages.sql_plugin.safe_encode", side_effect=Exception("fail")):
+            assert extractor._get_node_text(node) == ""
+
+
+class TestValidateAndFixElements:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        ext._reset_caches()
+        return ext
+
+    def test_phantom_function_removal(self, extractor):
+        phantom = SQLFunction(name="phantom", start_line=1, end_line=5,
+            raw_text="CREATE TABLE something (id INT)", sql_element_type=SQLElementType.FUNCTION)
+        result = extractor._validate_and_fix_elements([phantom])
+        assert not any(e.name == "phantom" for e in result)
+
+    def test_garbage_name_recovery(self, extractor):
+        garbage = SQLFunction(name="AUTO_INCREMENT", start_line=1, end_line=5,
+            raw_text="CREATE FUNCTION real_func(x INT) RETURNS INT BEGIN RETURN x; END;",
+            sql_element_type=SQLElementType.FUNCTION)
+        result = extractor._validate_and_fix_elements([garbage])
+        funcs = [e for e in result if hasattr(e, 'sql_element_type') and e.sql_element_type.value == 'function']
+        if funcs:
+            assert funcs[0].name == "real_func"
+
+    def test_trigger_name_fixing(self, extractor):
+        trigger = SQLTrigger(name="description", start_line=1, end_line=5,
+            raw_text="CREATE TRIGGER update_log BEFORE INSERT ON users FOR EACH ROW BEGIN END;",
+            sql_element_type=SQLElementType.TRIGGER)
+        result = extractor._validate_and_fix_elements([trigger])
+        triggers = [e for e in result if isinstance(e, SQLTrigger)]
+        if triggers:
+            assert triggers[0].name == "update_log"
+
+    def test_view_recovery_from_source(self, extractor):
+        extractor.source_code = "CREATE VIEW active_users AS\nSELECT * FROM users WHERE active = 1;\n"
+        extractor.content_lines = extractor.source_code.split("\n")
+        result = extractor._validate_and_fix_elements([])
+        view_names = {e.name for e in result if hasattr(e, 'sql_element_type') and e.sql_element_type.value == 'view'}
+        assert "active_users" in view_names
+
+    def test_view_recovery_skips_existing(self, extractor):
+        extractor.source_code = "CREATE VIEW active_users AS SELECT * FROM users;\n"
+        extractor.content_lines = extractor.source_code.split("\n")
+        existing = SQLView(name="active_users", start_line=1, end_line=2,
+            raw_text="CREATE VIEW active_users ...", sql_element_type=SQLElementType.VIEW)
+        result = extractor._validate_and_fix_elements([existing])
+        count = sum(1 for e in result if getattr(e, 'name', '') == 'active_users')
+        assert count == 1
+
+
+class TestExtractTablesFromAST:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext._reset_caches()
+        return ext
+
+    @pytest.fixture
+    def parser(self):
+        pytest.importorskip("tree_sitter_sql")
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_tables(self, extractor, parser):
+        sql = "CREATE TABLE products (id INT PRIMARY KEY, name VARCHAR(100));"
+        tree = parser.parse(sql.encode("utf-8"))
+        extractor.source_code = sql
+        extractor.content_lines = sql.split("\n")
+        classes = []
+        extractor._extract_tables(tree.root_node, classes)
+        assert len(classes) >= 1
+        assert classes[0].name == "products"
+
+
+class TestExtractViewsFromAST:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext._reset_caches()
+        return ext
+
+    @pytest.fixture
+    def parser(self):
+        pytest.importorskip("tree_sitter_sql")
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_views(self, extractor, parser):
+        sql = "CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1;"
+        tree = parser.parse(sql.encode("utf-8"))
+        extractor.source_code = sql
+        extractor.content_lines = sql.split("\n")
+        classes = []
+        extractor._extract_views(tree.root_node, classes)
+        assert any(c.name == "active_users" for c in classes)
+
+
+class TestExtractProceduresFromAST:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext._reset_caches()
+        return ext
+
+    @pytest.fixture
+    def parser(self):
+        pytest.importorskip("tree_sitter_sql")
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_procedures(self, extractor, parser):
+        sql = "CREATE PROCEDURE get_orders(IN uid INT)\nBEGIN\n    SELECT * FROM orders WHERE user_id = uid;\nEND;"
+        tree = parser.parse(sql.encode("utf-8"))
+        extractor.source_code = sql
+        extractor.content_lines = sql.split("\n")
+        functions = []
+        extractor._extract_procedures(tree.root_node, functions)
+        assert any(f.name == "get_orders" for f in functions)
+
+
+class TestExtractTriggersFromAST:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext._reset_caches()
+        return ext
+
+    @pytest.fixture
+    def parser(self):
+        pytest.importorskip("tree_sitter_sql")
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_triggers(self, extractor, parser):
+        sql = "CREATE TRIGGER log_changes BEFORE UPDATE ON users\nFOR EACH ROW\nBEGIN\n    INSERT INTO audit VALUES (OLD.id);\nEND;"
+        tree = parser.parse(sql.encode("utf-8"))
+        extractor.source_code = sql
+        extractor.content_lines = sql.split("\n")
+        elements = []
+        extractor._extract_sql_triggers(tree.root_node, elements)
+        assert len(elements) >= 1
+        assert elements[0].name == "log_changes"
+
+    def test_extract_trigger_metadata(self, extractor):
+        timing, event, table = extractor._extract_trigger_metadata("CREATE TRIGGER trig AFTER DELETE ON products FOR EACH ROW BEGIN END;")
+        assert timing == "AFTER"
+        assert event == "DELETE"
+        assert table == "products"
+
+    def test_extract_trigger_metadata_no_match(self, extractor):
+        timing, event, table = extractor._extract_trigger_metadata("CREATE TRIGGER no_info")
+        assert timing is None
+
+
+class TestExtractIndexesFromAST:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        ext = SQLElementExtractor()
+        ext._reset_caches()
+        return ext
+
+    @pytest.fixture
+    def parser(self):
+        pytest.importorskip("tree_sitter_sql")
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_indexes(self, extractor, parser):
+        sql = "CREATE INDEX idx_name ON employees(last_name);\nCREATE UNIQUE INDEX idx_email ON employees(email);"
+        tree = parser.parse(sql.encode("utf-8"))
+        extractor.source_code = sql
+        extractor.content_lines = sql.split("\n")
+        variables = []
+        extractor._extract_indexes(tree.root_node, variables)
+        names = {v.name for v in variables}
+        assert "idx_name" in names
+        assert "idx_email" in names
+
+
+class TestExtractProcedureParameters:
+    @pytest.fixture
+    def extractor(self) -> SQLElementExtractor:
+        return SQLElementExtractor()
+
+    def test_in_out_inout(self, extractor):
+        params = []
+        extractor._extract_procedure_parameters("CREATE PROCEDURE p(IN x INT, OUT y VARCHAR(100), INOUT z DECIMAL)", params)
+        param_dict = {p.name: p for p in params}
+        if "x" in param_dict:
+            assert param_dict["x"].direction == "IN"
+        if "y" in param_dict:
+            assert param_dict["y"].direction == "OUT"
+
+    def test_empty_parens(self, extractor):
+        params = []
+        extractor._extract_procedure_parameters("CREATE PROCEDURE p() BEGIN END;", params)
+        assert len(params) == 0
+
+
+class TestSQLPluginDiagnostic:
+    def test_diagnostic_mode(self):
+        plugin = SQLPlugin(diagnostic_mode=True)
+        assert plugin.diagnostic_mode is True
+
+    def test_adapter_set(self):
+        plugin = SQLPlugin()
+        assert plugin.extractor.adapter is not None
+
+
+class TestAnalyzeFileEdgeCases:
+    @pytest.fixture
+    def plugin(self) -> SQLPlugin:
+        return SQLPlugin()
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_file(self, plugin):
+        from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
+        request = AnalysisRequest(file_path="/nonexistent/path/file.sql")
+        result = await plugin.analyze_file("/nonexistent/path/file.sql", request)
+        assert result.success is False
+
+    @pytest.mark.asyncio
+    async def test_read_error(self, plugin):
+        from tree_sitter_analyzer.core.analysis_engine import AnalysisRequest
+        with patch("builtins.open", side_effect=PermissionError("denied")):
+            request = AnalysisRequest(file_path="some.sql")
+            result = await plugin.analyze_file("some.sql", request)
+            assert result.success is False
+
+
+class TestExtractElementsMapping:
+    @pytest.fixture
+    def plugin(self) -> SQLPlugin:
+        return SQLPlugin()
+
+    @pytest.fixture
+    def parser(self):
+        pytest.importorskip("tree_sitter_sql")
+        import tree_sitter
+        import tree_sitter_sql
+        return tree_sitter.Parser(tree_sitter.Language(tree_sitter_sql.language()))
+
+    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed")
+    def test_extract_elements_maps_types(self, plugin, parser):
+        sql = "CREATE TABLE users (id INT PRIMARY KEY);\nCREATE INDEX idx ON users(id);"
+        tree = parser.parse(sql.encode("utf-8"))
+        result = plugin.extract_elements(tree, sql)
+        assert len(result["classes"]) >= 1
+        assert len(result["variables"]) >= 1

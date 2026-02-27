@@ -4,6 +4,8 @@ Tests for SecurityValidator class.
 """
 
 import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -234,3 +236,95 @@ class TestSecurityValidator:
 
         # Assert
         assert is_valid  # Should pass basic validation without boundary checks
+
+
+class TestValidatorEdgeCases:
+    """Tests for edge cases and additional code paths merged from variant files."""
+
+    @pytest.mark.unit
+    def test_validate_file_path_none(self):
+        """Test validation fails for None path."""
+        validator = SecurityValidator()
+        is_valid, error = validator.validate_file_path(None)
+        assert not is_valid
+        assert "non-empty" in error
+
+    @pytest.mark.unit
+    def test_validate_file_path_non_string(self):
+        """Test validation fails for non-string path."""
+        validator = SecurityValidator()
+        is_valid, error = validator.validate_file_path(123)
+        assert not is_valid
+        assert "non-empty" in error
+
+    @pytest.mark.unit
+    def test_validate_file_path_exception_handling(self):
+        """Test validation handles internal exceptions gracefully."""
+        validator = SecurityValidator()
+        with patch.object(
+            validator,
+            "_validate_windows_drive_letter",
+            side_effect=Exception("Test error"),
+        ):
+            is_valid, error = validator.validate_file_path("test.py")
+            assert not is_valid
+            assert "Validation error" in error
+
+    @pytest.mark.unit
+    def test_validate_file_path_symlink(self):
+        """Test validation detects symbolic links."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            target = Path(temp_dir) / "target.txt"
+            target.touch()
+            symlink = Path(temp_dir) / "link.txt"
+            try:
+                symlink.symlink_to(target)
+                validator = SecurityValidator()
+                is_valid, error = validator.validate_file_path(str(symlink))
+                assert not is_valid
+                assert "symbolic link" in error.lower()
+            except OSError:
+                pytest.skip("Symlink creation not supported")
+
+    @pytest.mark.unit
+    def test_sanitize_input_html_tags(self):
+        """Test input sanitization strips HTML tags."""
+        validator = SecurityValidator()
+        result = validator.sanitize_input("<script>alert('xss')</script>")
+        assert "<script>" not in result
+        assert "alert" in result
+
+    @pytest.mark.unit
+    def test_sanitize_input_dangerous_chars(self):
+        """Test input sanitization strips dangerous characters."""
+        validator = SecurityValidator()
+        result = validator.sanitize_input('test"><script>alert')
+        assert ">" not in result
+        assert "'" not in result
+
+    @pytest.mark.unit
+    def test_sanitize_input_non_string(self):
+        """Test sanitization raises SecurityError for non-string input."""
+        validator = SecurityValidator()
+        with pytest.raises(SecurityError):
+            validator.sanitize_input(123)
+
+    @pytest.mark.unit
+    def test_validate_path_alias(self):
+        """Test validate_path alias method delegates correctly."""
+        validator = SecurityValidator()
+        is_valid, error = validator.validate_path("src/main.py")
+        assert is_valid
+        assert error == ""
+
+    @pytest.mark.unit
+    def test_is_safe_path_valid(self):
+        """Test is_safe_path returns True for safe path."""
+        validator = SecurityValidator()
+        assert validator.is_safe_path("src/main.py") is True
+
+    @pytest.mark.unit
+    def test_is_safe_path_invalid(self):
+        """Test is_safe_path returns False for unsafe path."""
+        validator = SecurityValidator()
+        assert validator.is_safe_path("../etc/passwd") is False

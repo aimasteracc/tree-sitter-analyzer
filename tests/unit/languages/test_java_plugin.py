@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
-from tree_sitter_analyzer.models import Class, Function, Import
+from tree_sitter_analyzer.models import Class, Function, Import, Package, Variable
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -580,3 +580,455 @@ class TestJavaPluginIntegration:
 
         for non_java_file in non_java_files:
             assert plugin.is_applicable(non_java_file) is False
+
+
+class TestJavaExtractorCachesAndTraversal:
+    """Tests for cache management, traversal, and batch processing.
+
+    Merged from test_java_plugin_comprehensive.py and
+    test_java_plugin_edge_cases.py.
+    """
+
+    @pytest.fixture
+    def extractor(self) -> JavaElementExtractor:
+        """Create a JavaElementExtractor instance for testing"""
+        return JavaElementExtractor()
+
+    def test_reset_caches(self, extractor: JavaElementExtractor) -> None:
+        """Test cache reset functionality clears all internal caches"""
+        # Populate caches
+        extractor._node_text_cache[1] = "test"
+        extractor._processed_nodes.add(1)
+        extractor._element_cache[(1, "test")] = "value"
+        extractor._annotation_cache[1] = [{"name": "Test"}]
+        extractor._signature_cache[1] = "signature"
+        extractor.annotations.append({"name": "Test"})
+
+        extractor._reset_caches()
+
+        assert len(extractor._node_text_cache) == 0
+        assert len(extractor._processed_nodes) == 0
+        assert len(extractor._element_cache) == 0
+        assert len(extractor._annotation_cache) == 0
+        assert len(extractor._signature_cache) == 0
+        assert len(extractor.annotations) == 0
+
+    def test_get_node_text_optimized_caching(
+        self, extractor: JavaElementExtractor
+    ) -> None:
+        """Test that node text extraction caches results and avoids repeat work"""
+        mock_node = Mock()
+        mock_node.start_byte = 0
+        mock_node.end_byte = 10
+
+        extractor.content_lines = ["test content line"]
+        extractor._file_encoding = "utf-8"
+
+        with patch(
+            "tree_sitter_analyzer.languages.java_plugin.extract_text_slice"
+        ) as mock_extract:
+            mock_extract.return_value = "test text"
+
+            result1 = extractor._get_node_text_optimized(mock_node)
+            assert result1 == "test text"
+            assert (
+                mock_node.start_byte,
+                mock_node.end_byte,
+            ) in extractor._node_text_cache
+
+            result2 = extractor._get_node_text_optimized(mock_node)
+            assert result2 == "test text"
+            assert mock_extract.call_count == 1  # Only called once due to caching
+
+    def test_traverse_and_extract_iterative(
+        self, extractor: JavaElementExtractor
+    ) -> None:
+        """Test iterative traversal extracts both methods and classes"""
+        mock_root = Mock()
+        mock_child1 = Mock()
+        mock_child1.type = "method_declaration"
+        mock_child1.children = []
+
+        mock_child2 = Mock()
+        mock_child2.type = "class_declaration"
+        mock_child2.children = []
+
+        mock_root.children = [mock_child1, mock_child2]
+
+        mock_method_extractor = Mock()
+        mock_method_extractor.return_value = Function(
+            name="test_method",
+            start_line=1,
+            end_line=3,
+            raw_text="public void test_method() {}",
+            language="java",
+        )
+
+        mock_class_extractor = Mock()
+        mock_class_extractor.return_value = Class(
+            name="TestClass",
+            start_line=5,
+            end_line=10,
+            raw_text="public class TestClass {}",
+            language="java",
+        )
+
+        extractors = {
+            "method_declaration": mock_method_extractor,
+            "class_declaration": mock_class_extractor,
+        }
+
+        results = []
+        extractor._traverse_and_extract_iterative(
+            mock_root, extractors, results, "mixed"
+        )
+
+        assert len(results) == 2
+        assert isinstance(results[0], Function)
+        assert isinstance(results[1], Class)
+
+    def test_traverse_and_extract_iterative_with_caching(
+        self, extractor: JavaElementExtractor
+    ) -> None:
+        """Test traversal uses element cache to skip repeated extraction"""
+        mock_root = Mock()
+        mock_child = Mock()
+        mock_child.type = "method_declaration"
+        mock_child.children = []
+        mock_root.children = [mock_child]
+
+        node_id = id(mock_child)
+        cache_key = (node_id, "method")
+        cached_method = Function(
+            name="cached_method",
+            start_line=1,
+            end_line=2,
+            raw_text="public void cached_method() {}",
+            language="java",
+        )
+        extractor._element_cache[cache_key] = cached_method
+
+        extractors = {"method_declaration": Mock()}
+        results = []
+
+        extractor._traverse_and_extract_iterative(
+            mock_root, extractors, results, "method"
+        )
+
+        assert len(results) == 1
+        assert results[0] == cached_method
+        assert extractors["method_declaration"].call_count == 0
+
+    def test_process_field_batch(self, extractor: JavaElementExtractor) -> None:
+        """Test field batch processing handles multiple field nodes"""
+        field_nodes = []
+        for _i in range(5):
+            node = Mock()
+            node.type = "field_declaration"
+            field_nodes.append(node)
+
+        def mock_field_extractor(node):
+            return [
+                Variable(
+                    name=f"field_{i}",
+                    start_line=1,
+                    end_line=1,
+                    raw_text=f"private String field_{i};",
+                    language="java",
+                )
+                for i in range(2)
+            ]
+
+        extractors = {"field_declaration": mock_field_extractor}
+        results = []
+
+        extractor._process_field_batch(field_nodes, extractors, results)
+
+        # 5 nodes, each returning 2 variables = 10
+        assert len(results) == 10
+
+
+class TestJavaExtractorAdditionalElements:
+    """Tests for packages, annotations, import fallback, and field extraction.
+
+    Merged from test_java_plugin_comprehensive.py and
+    test_java_plugin_edge_cases.py.
+    """
+
+    @pytest.fixture
+    def extractor(self) -> JavaElementExtractor:
+        """Create a JavaElementExtractor instance for testing"""
+        return JavaElementExtractor()
+
+    def test_extract_packages_basic(self, extractor: JavaElementExtractor) -> None:
+        """Test basic package extraction via extract_packages"""
+        mock_tree = Mock()
+        mock_package_node = Mock()
+        mock_package_node.type = "package_declaration"
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = [mock_package_node]
+
+        with patch.object(extractor, "_extract_package_element") as mock_extract:
+            mock_package = Package(
+                name="com.example.service",
+                start_line=1,
+                end_line=1,
+                raw_text="package com.example.service;",
+                language="java",
+            )
+            mock_extract.return_value = mock_package
+
+            packages = extractor.extract_packages(mock_tree, "package com.example.service;")
+
+            assert isinstance(packages, list)
+            mock_extract.assert_called_once()
+
+    def test_extract_annotations_basic(self, extractor: JavaElementExtractor) -> None:
+        """Test basic annotation extraction via extract_annotations"""
+        mock_tree = Mock()
+        mock_annotation_node = Mock()
+        mock_annotation_node.type = "annotation"
+        mock_annotation_node.children = []
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = [mock_annotation_node]
+
+        with patch.object(
+            extractor, "_traverse_and_extract_iterative"
+        ) as mock_traverse:
+            annotations = extractor.extract_annotations(mock_tree, "@Service\npublic class Foo {}")
+
+            mock_traverse.assert_called_once()
+            assert isinstance(annotations, list)
+
+    def test_extract_imports_fallback_static_imports(
+        self, extractor: JavaElementExtractor
+    ) -> None:
+        """Test fallback import extraction correctly parses static imports"""
+        source_code = """
+        import static java.util.Collections.emptyList;
+        import static org.junit.Assert.*;
+        import static com.example.Utils.helper;
+        """
+
+        imports = extractor._extract_imports_fallback(source_code)
+
+        assert len(imports) == 3
+        assert imports[0].name == "java.util.Collections"
+        assert imports[0].is_static is True
+        assert imports[0].is_wildcard is False
+        assert imports[1].name == "org.junit.Assert"
+        assert imports[1].is_static is True
+        assert imports[1].is_wildcard is True
+        assert imports[2].name == "com.example.Utils"
+        assert imports[2].is_static is True
+        assert imports[2].is_wildcard is False
+
+    def test_extract_imports_fallback_normal_imports(
+        self, extractor: JavaElementExtractor
+    ) -> None:
+        """Test fallback import extraction correctly parses normal and wildcard imports"""
+        source_code = """
+        import java.util.List;
+        import java.util.*;
+        import javax.annotation.Nullable;
+        """
+
+        imports = extractor._extract_imports_fallback(source_code)
+
+        assert len(imports) == 3
+        assert imports[0].name == "java.util.List"
+        assert imports[0].is_static is False
+        assert imports[0].is_wildcard is False
+        assert imports[1].name == "java.util"
+        assert imports[1].is_static is False
+        assert imports[1].is_wildcard is True
+        assert imports[2].name == "javax.annotation.Nullable"
+        assert imports[2].is_static is False
+        assert imports[2].is_wildcard is False
+
+    def test_extract_field_optimized_complete(
+        self, extractor: JavaElementExtractor
+    ) -> None:
+        """Test complete field extraction produces Variable with all attributes"""
+        mock_node = Mock()
+        mock_node.type = "field_declaration"
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+
+        extractor.content_lines = [
+            "/**",
+            " * User repository for data access",
+            " */",
+            "@Autowired",
+            "private UserRepository userRepository;",
+        ]
+
+        with patch.object(
+            extractor, "_parse_field_declaration_optimized"
+        ) as mock_parse:
+            mock_parse.return_value = (
+                "UserRepository",
+                ["userRepository"],
+                ["private"],
+            )
+
+            with patch.object(extractor, "_determine_visibility") as mock_visibility:
+                mock_visibility.return_value = "private"
+
+                with patch.object(
+                    extractor, "_find_annotations_for_line_cached"
+                ) as mock_annotations:
+                    mock_annotations.return_value = [{"name": "Autowired"}]
+
+                    with patch.object(
+                        extractor, "_extract_javadoc_for_line"
+                    ) as mock_javadoc:
+                        mock_javadoc.return_value = "User repository for data access"
+
+                        result = extractor._extract_field_optimized(mock_node)
+
+                        assert isinstance(result, list)
+                        assert len(result) == 1
+                        field = result[0]
+                        assert isinstance(field, Variable)
+                        assert field.name == "userRepository"
+                        assert field.variable_type == "UserRepository"
+                        assert field.modifiers == ["private"]
+                        assert field.visibility == "private"
+                        assert field.docstring == "User repository for data access"
+                        assert field.annotations == [{"name": "Autowired"}]
+
+    def test_extract_field_optimized_multiple_variables(
+        self, extractor: JavaElementExtractor
+    ) -> None:
+        """Test field extraction when declaration contains multiple variable names"""
+        mock_node = Mock()
+        mock_node.type = "field_declaration"
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (0, 30)
+
+        extractor.content_lines = ["private String firstName, lastName, email;"]
+
+        with patch.object(
+            extractor, "_parse_field_declaration_optimized"
+        ) as mock_parse:
+            mock_parse.return_value = (
+                "String",
+                ["firstName", "lastName", "email"],
+                ["private"],
+            )
+
+            with patch.object(extractor, "_determine_visibility") as mock_visibility:
+                mock_visibility.return_value = "private"
+
+                with patch.object(
+                    extractor, "_find_annotations_for_line_cached"
+                ) as mock_annotations:
+                    mock_annotations.return_value = []
+
+                    with patch.object(
+                        extractor, "_extract_javadoc_for_line"
+                    ) as mock_javadoc:
+                        mock_javadoc.return_value = None
+
+                        result = extractor._extract_field_optimized(mock_node)
+
+                        assert isinstance(result, list)
+                        assert len(result) == 3
+                        assert result[0].name == "firstName"
+                        assert result[1].name == "lastName"
+                        assert result[2].name == "email"
+                        for field in result:
+                            assert field.variable_type == "String"
+                            assert field.modifiers == ["private"]
+
+
+class TestJavaEdgeCasesMerged:
+    """Edge case tests for empty input, Unicode, encoding, and malformed code.
+
+    Merged from test_java_plugin_edge_cases.py.
+    """
+
+    @pytest.fixture
+    def extractor(self) -> JavaElementExtractor:
+        """Create a JavaElementExtractor instance for testing"""
+        return JavaElementExtractor()
+
+    @pytest.fixture
+    def plugin(self) -> JavaPlugin:
+        """Create a JavaPlugin instance for testing"""
+        return JavaPlugin()
+
+    def test_empty_source_code(self, extractor: JavaElementExtractor) -> None:
+        """Test all extractors return empty lists for empty source code"""
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
+
+        assert extractor.extract_functions(mock_tree, "") == []
+        assert extractor.extract_classes(mock_tree, "") == []
+        assert extractor.extract_variables(mock_tree, "") == []
+        assert extractor.extract_imports(mock_tree, "") == []
+        assert extractor.extract_packages(mock_tree, "") == []
+        assert extractor.extract_annotations(mock_tree, "") == []
+
+    def test_unicode_and_special_characters(
+        self, extractor: JavaElementExtractor
+    ) -> None:
+        """Test extraction does not crash on Unicode identifiers and special chars"""
+        unicode_code = """
+        package com.\u4f8b\u3048.\u30c6\u30b9\u30c8;
+        import java.util.\u65e5\u672c\u8a9e;
+        public class \u65e5\u672c\u8a9e\u30af\u30e9\u30b9 {
+            private String \u540d\u524d = "\u5024";
+            public String \u65e5\u672c\u8a9e\u30e1\u30bd\u30c3\u30c9(String \u30d1\u30e9\u30e1\u30fc\u30bf) {
+                return "\u7d50\u679c";
+            }
+        }
+        """
+
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
+
+        assert isinstance(extractor.extract_functions(mock_tree, unicode_code), list)
+        assert isinstance(extractor.extract_classes(mock_tree, unicode_code), list)
+        assert isinstance(extractor.extract_variables(mock_tree, unicode_code), list)
+
+    def test_encoding_edge_cases(self, extractor: JavaElementExtractor) -> None:
+        """Test node text extraction with various file encodings"""
+        encodings = ["utf-8", "latin1", "ascii", "utf-16"]
+
+        for encoding in encodings:
+            extractor._file_encoding = encoding
+            mock_node = Mock()
+            mock_node.start_byte = 0
+            mock_node.end_byte = 5
+            mock_node.start_point = (0, 0)
+            mock_node.end_point = (0, 5)
+
+            extractor.content_lines = ["test"]
+
+            with patch(
+                "tree_sitter_analyzer.languages.java_plugin.extract_text_slice"
+            ) as mock_extract:
+                mock_extract.return_value = "test"
+                result = extractor._get_node_text_optimized(mock_node)
+                assert isinstance(result, str)
+
+    def test_plugin_extract_elements_with_none_tree(
+        self, plugin: JavaPlugin
+    ) -> None:
+        """Test extract_elements gracefully handles None tree"""
+        result = plugin.extract_elements(None, "public class Test {}")
+        expected_keys = {
+            "functions",
+            "classes",
+            "variables",
+            "imports",
+            "packages",
+            "annotations",
+        }
+        assert set(result.keys()) == expected_keys
+        for key in expected_keys:
+            assert result[key] == []

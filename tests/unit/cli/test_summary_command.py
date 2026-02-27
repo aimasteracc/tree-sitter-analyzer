@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tree_sitter_analyzer.cli.commands.summary_command import SummaryCommand
+from tree_sitter_analyzer.models import AnalysisResult
 
 
 @pytest.fixture
@@ -456,3 +457,230 @@ class TestSummaryCommandOutputTextFormat:
             calls = [str(call) for call in mock_data.call_args_list]
             assert any("Classes (0 items):" in call for call in calls)
             assert any("Methods (0 items):" in call for call in calls)
+
+    def test_output_text_format_with_unknown_type(self, command):
+        """Test _output_text_format with unknown type handles gracefully."""
+        summary_data = {
+            "file_path": "test.py",
+            "language": "python",
+            "summary": {"unknown_type": [{"name": "test"}]},
+        }
+        requested_types = ["unknown_type"]
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_data:
+            command._output_text_format(summary_data, requested_types)
+            calls = [str(call) for call in mock_data.call_args_list]
+            assert any("unknown_type" in call for call in calls)
+
+    def test_output_text_format_displays_counts(self, command):
+        """Test _output_text_format displays item counts correctly."""
+        summary_data = {
+            "file_path": "test.py",
+            "language": "python",
+            "summary": {
+                "classes": [
+                    {"name": "Class1"},
+                    {"name": "Class2"},
+                    {"name": "Class3"},
+                ]
+            },
+        }
+        requested_types = ["classes"]
+
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_data"
+        ) as mock_data:
+            command._output_text_format(summary_data, requested_types)
+            calls = [str(call) for call in mock_data.call_args_list]
+            assert any(
+                "3 items" in str(call) or "(3 items)" in str(call) for call in calls
+            )
+
+
+class TestSummaryCommandInheritance:
+    """Tests for SummaryCommand inheritance."""
+
+    def test_inherits_from_base_command(self):
+        """Test that SummaryCommand inherits from BaseCommand."""
+        from tree_sitter_analyzer.cli.commands.base_command import BaseCommand
+
+        assert issubclass(SummaryCommand, BaseCommand)
+
+
+class TestSummaryCommandEdgeCases:
+    """Tests for SummaryCommand edge cases and boundary conditions."""
+
+    @pytest.fixture
+    def command(self):
+        """Create a SummaryCommand instance with minimal mock args."""
+        args = MagicMock()
+        args.summary = "classes,methods"
+        args.output_format = "text"
+        return SummaryCommand(args)
+
+    def test_output_summary_with_empty_summary_types(self, command):
+        """Test _output_summary_analysis with empty string summary uses defaults."""
+        command.args.summary = ""
+
+        mock_result = MagicMock(spec=AnalysisResult)
+        mock_result.elements = []
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+
+        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ):
+                with patch.object(command, "_output_text_format") as mock_text_output:
+                    command._output_summary_analysis(mock_result)
+
+                assert mock_text_output.called
+                call_args = mock_text_output.call_args[0]
+                requested_types = call_args[1]
+                assert requested_types == ["classes", "methods"]
+
+    def test_output_summary_with_whitespace_in_types(self, command):
+        """Test _output_summary_analysis strips whitespace from types."""
+        command.args.summary = "  classes  ,  methods  ,  fields  "
+
+        mock_result = MagicMock(spec=AnalysisResult)
+        mock_result.elements = []
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+
+        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ):
+                with patch.object(command, "_output_text_format") as mock_text_output:
+                    command._output_summary_analysis(mock_result)
+
+                assert mock_text_output.called
+                call_args = mock_text_output.call_args[0]
+                requested_types = call_args[1]
+                assert requested_types == ["classes", "methods", "fields"]
+
+    def test_output_summary_filters_elements_correctly(self, command):
+        """Test that elements are filtered correctly by type."""
+        from tree_sitter_analyzer.constants import (
+            ELEMENT_TYPE_CLASS,
+            ELEMENT_TYPE_FUNCTION,
+        )
+
+        command.args.summary = "classes"
+
+        mock_class = MagicMock()
+        mock_class.name = "TestClass"
+
+        mock_method = MagicMock()
+        mock_method.name = "test_method"
+
+        mock_result = MagicMock(spec=AnalysisResult)
+        mock_result.elements = [mock_class, mock_method]
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+
+        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type"
+            ) as mock_is_type:
+
+                def side_effect(element, element_type):
+                    if element == mock_class and element_type == ELEMENT_TYPE_CLASS:
+                        return True
+                    if element == mock_method and element_type == ELEMENT_TYPE_FUNCTION:
+                        return True
+                    return False
+
+                mock_is_type.side_effect = side_effect
+
+                with patch.object(command, "_output_text_format") as mock_text_output:
+                    command._output_summary_analysis(mock_result)
+
+                call_args = mock_text_output.call_args[0]
+                summary_data = call_args[0]
+
+                assert "classes" in summary_data["summary"]
+                assert len(summary_data["summary"]["classes"]) == 1
+                assert summary_data["summary"]["classes"][0]["name"] == "TestClass"
+                assert "methods" not in summary_data["summary"]
+
+    def test_element_without_name_attribute(self, command):
+        """Test handling element without name attribute uses 'unknown'."""
+        command.args.summary = "classes"
+
+        mock_element = MagicMock(spec=[])
+        delattr(mock_element, "name")
+
+        mock_result = MagicMock(spec=AnalysisResult)
+        mock_result.elements = [mock_element]
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+
+        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type",
+                return_value=True,
+            ):
+                with patch.object(command, "_output_text_format") as mock_text_output:
+                    command._output_summary_analysis(mock_result)
+
+                call_args = mock_text_output.call_args[0]
+                summary_data = call_args[0]
+                assert summary_data["summary"]["classes"][0]["name"] == "unknown"
+
+    def test_large_number_of_elements(self, command):
+        """Test handling large number of elements."""
+        command.args.summary = "methods"
+
+        mock_elements = []
+        for i in range(1000):
+            mock_element = MagicMock()
+            mock_element.name = f"method_{i}"
+            mock_elements.append(mock_element)
+
+        mock_result = MagicMock(spec=AnalysisResult)
+        mock_result.elements = mock_elements
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+
+        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type",
+                return_value=True,
+            ):
+                with patch.object(command, "_output_text_format") as mock_text_output:
+                    command._output_summary_analysis(mock_result)
+
+                call_args = mock_text_output.call_args[0]
+                summary_data = call_args[0]
+                assert len(summary_data["summary"]["methods"]) == 1000
+
+    def test_single_element_type_excludes_others(self, command):
+        """Test requesting single element type excludes other types from summary."""
+        command.args.summary = "classes"
+
+        mock_class = MagicMock()
+        mock_class.name = "TestClass"
+
+        mock_result = MagicMock(spec=AnalysisResult)
+        mock_result.elements = [mock_class]
+        mock_result.file_path = "test.py"
+        mock_result.language = "python"
+
+        with patch("tree_sitter_analyzer.cli.commands.summary_command.output_section"):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.summary_command.is_element_of_type",
+                return_value=True,
+            ):
+                with patch.object(command, "_output_text_format") as mock_text_output:
+                    command._output_summary_analysis(mock_result)
+
+                call_args = mock_text_output.call_args[0]
+                summary_data = call_args[0]
+                assert "classes" in summary_data["summary"]
+                assert "methods" not in summary_data["summary"]
+                assert "fields" not in summary_data["summary"]
+                assert "imports" not in summary_data["summary"]

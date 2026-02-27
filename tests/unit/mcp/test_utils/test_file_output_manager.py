@@ -129,7 +129,9 @@ class TestFileOutputManagerSetOutputPath:
     def test_set_output_path_not_exists(self, manager):
         """Test set_output_path fails when path doesn't exist."""
         with pytest.raises(ValueError, match="Output path does not exist"):
-            manager.set_output_path("/nonexistent/path")
+            manager.set_output_path(os.path.join(
+                tempfile.gettempdir(), "nonexistent_tsa_test_dir_12345"
+            ))
 
     def test_set_output_path_not_directory(self, manager, temp_dir):
         """Test set_output_path fails when path is not a directory."""

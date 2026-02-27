@@ -357,3 +357,55 @@ class TestOutputManagerEdgeCases:
         assert parsed["project"]["name"] == "test-project"
         assert "java" in parsed["project"]["languages"]
         assert parsed["project"]["statistics"]["classes"] == 10
+
+
+# ---------------------------------------------------------------------------
+# Targeted tests for uncovered output_manager.py lines
+# ---------------------------------------------------------------------------
+
+
+class TestOutputManagerFormatters:
+    """Tests for formatter registry and YAML/TOON branches (lines 59-78, 143-167)."""
+
+    def test_yaml_formatter_available(self):
+        """Test YAML formatter registration (lines 66-76)."""
+        om = OutputManager()
+        reg = om._formatter_registry
+        # yaml may or may not be installed
+        if "yaml" in reg:
+            result = reg["yaml"].format({"key": "value"})
+            assert isinstance(result, str)
+            # Test string passthrough
+            result2 = reg["yaml"].format("plain string")
+            assert result2 == "plain string"
+
+    def test_output_data_toon_format(self, capsys):
+        """Test TOON format output (lines 143-146)."""
+        om = OutputManager()
+        toon_data = {"format": "toon", "toon_content": "TOON: test content"}
+        om.output_data(toon_data, "toon")
+        captured = capsys.readouterr()
+        assert "test content" in captured.out
+
+    def test_output_data_toon_as_json(self, capsys):
+        """Test TOON data requested as JSON (lines 148-150)."""
+        om = OutputManager()
+        toon_data = {"format": "toon", "toon_content": "TOON: content"}
+        om.output_data(toon_data, "json")
+        captured = capsys.readouterr()
+        assert "toon_content" in captured.out
+
+    def test_output_data_callable_formatter(self, capsys):
+        """Test callable formatter (lines 158-159)."""
+        om = OutputManager()
+        om._formatter_registry["custom_callable"] = lambda data: f"CUSTOM:{data}"
+        om.output_data("test", "custom_callable")
+        captured = capsys.readouterr()
+        assert "CUSTOM:" in captured.out
+
+    def test_output_data_fallback_json(self, capsys):
+        """Test fallback to JSON when no formatter found (line 167)."""
+        om = OutputManager()
+        om.output_data({"key": "val"}, "json")
+        captured = capsys.readouterr()
+        assert "key" in captured.out

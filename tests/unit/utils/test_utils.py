@@ -405,6 +405,57 @@ def test_performance_logging_integration():
         assert True
 
 
+# --- Tests consolidated from test_utils_extended.py ---
+
+def test_setup_logger_with_custom_level():
+    """Test setup_logger with custom log level."""
+    from tree_sitter_analyzer.utils import setup_logger
+
+    logger = setup_logger("test_custom_level_logger", level="DEBUG")
+    assert logger is not None
+
+
+def test_logging_functions_with_kwargs():
+    """Test logging functions accept keyword arguments without errors."""
+    from tree_sitter_analyzer.utils import log_debug, log_error, log_info, log_warning
+
+    log_info("test message", extra={"key": "value"})
+    log_warning("test warning", extra={"key": "value"})
+    log_error("test error", extra={"key": "value"})
+    log_debug("test debug", extra={"key": "value"})
+
+
+def test_safe_print_quiet_mode_extended():
+    """Test safe_print in quiet mode suppresses output."""
+    from unittest.mock import patch as mock_patch
+
+    from tree_sitter_analyzer.utils import safe_print
+
+    with mock_patch("tree_sitter_analyzer.utils.log_info") as mock_info:
+        safe_print("test info", level="info", quiet=True)
+        mock_info.assert_not_called()
+
+
+def test_logging_edge_cases():
+    """Test logging with edge case inputs."""
+    from tree_sitter_analyzer.utils import log_info
+
+    # Empty string
+    log_info("")
+    # Very long message
+    log_info("a" * 10000)
+    # Special characters
+    log_info("test@#$%^&*()_+-=[]{}|;':\",./<>?`~")
+
+
+def test_create_performance_logger():
+    """Test create_performance_logger returns a logger."""
+    from tree_sitter_analyzer.utils import create_performance_logger
+
+    monitor = create_performance_logger("test")
+    assert monitor is not None
+
+
 if __name__ == "__main__":
     # Set testing flag
     sys._testing = True

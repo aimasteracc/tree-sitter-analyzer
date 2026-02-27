@@ -558,5 +558,847 @@ class TestTypeScriptPluginIntegration:
         assert "typescript" in loader.LANGUAGE_MODULES
 
 
+class TestTypeScriptExtractorMerged:
+    """Merged tests from variant files covering unique code paths."""
+
+    @pytest.fixture
+    def extractor(self) -> TypeScriptElementExtractor:
+        """Create a TypeScriptElementExtractor instance for testing"""
+        return TypeScriptElementExtractor()
+
+    def test_get_node_text_optimized_cached(self, extractor):
+        """Test node text extraction with caching"""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (5, 0)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 100
+        mock_node.children = []
+        mock_node.text = b"function test() {}"
+
+        extractor.content_lines = ["function test() {", "  return 42;", "}"]
+        extractor._file_encoding = "utf-8"
+
+        text1 = extractor._get_node_text_optimized(mock_node)
+        assert text1 is not None
+
+        text2 = extractor._get_node_text_optimized(mock_node)
+        assert text1 == text2
+        assert (mock_node.start_byte, mock_node.end_byte) in extractor._node_text_cache
+
+    def test_get_node_text_optimized_error_handling(self, extractor):
+        """Test node text extraction error handling when content is empty"""
+        mock_node = Mock()
+        mock_node.start_point = (10, 0)
+        mock_node.end_point = (15, 0)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 100
+        mock_node.children = []
+        mock_node.text = b"function test() {}"
+
+        extractor.content_lines = []
+
+        with patch(
+            "tree_sitter_analyzer.languages.typescript_plugin.extract_text_slice",
+            side_effect=Exception("Primary error"),
+        ):
+            text = extractor._get_node_text_optimized(mock_node)
+            assert text == ""
+
+    def test_parse_function_signature_optimized(self, extractor):
+        """Test function signature parsing with async and generics"""
+        mock_node = Mock()
+        mock_node.type = "function_declaration"
+
+        identifier = Mock()
+        identifier.type = "identifier"
+        identifier.text = b"testFunction"
+
+        params = Mock()
+        params.type = "formal_parameters"
+
+        type_annotation = Mock()
+        type_annotation.type = "type_annotation"
+
+        type_params = Mock()
+        type_params.type = "type_parameters"
+
+        mock_node.children = [identifier, params, type_annotation, type_params]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                mock_node: "async function testFunction<T>()",
+                type_annotation: ": Promise<T>",
+            }.get(n, "")
+        )
+        extractor._extract_parameters_with_types = Mock(return_value=["param1: string"])
+        extractor._extract_generics = Mock(return_value=["T"])
+
+        result = extractor._parse_function_signature_optimized(mock_node)
+
+        assert result is not None
+        name, parameters, is_async, is_generator, return_type, generics = result
+        assert name == "testFunction"
+        assert parameters == ["param1: string"]
+        assert is_async is True
+        assert is_generator is False
+        assert return_type == "Promise<T>"
+        assert generics == ["T"]
+
+    def test_parse_method_signature_optimized(self, extractor):
+        """Test method signature parsing with visibility, static, and async"""
+        mock_node = Mock()
+
+        prop_id = Mock()
+        prop_id.type = "property_identifier"
+        prop_id.text = b"methodName"
+
+        params = Mock()
+        params.type = "formal_parameters"
+
+        type_annotation = Mock()
+        type_annotation.type = "type_annotation"
+
+        mock_node.children = [prop_id, params, type_annotation]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                mock_node: "public static async methodName()",
+                type_annotation: ": Promise<void>",
+            }.get(n, "")
+        )
+        extractor._extract_parameters_with_types = Mock(return_value=["param: string"])
+        extractor._extract_generics = Mock(return_value=[])
+
+        result = extractor._parse_method_signature_optimized(mock_node)
+
+        assert result is not None
+        (
+            name, parameters, is_async, is_static,
+            is_getter, is_setter, is_constructor,
+            return_type, visibility, generics,
+        ) = result
+
+        assert name == "methodName"
+        assert parameters == ["param: string"]
+        assert is_async is True
+        assert is_static is True
+        assert visibility == "public"
+        assert return_type == "Promise<void>"
+
+    def test_parse_method_signature_getter_setter(self, extractor):
+        """Test getter/setter method signature parsing"""
+        mock_node = Mock()
+        mock_node.children = []
+
+        extractor._get_node_text_optimized = Mock(return_value="get value()")
+        result = extractor._parse_method_signature_optimized(mock_node)
+        assert result is not None
+        (_, _, _, _, is_getter, is_setter, _, _, _, _) = result
+        assert is_getter is True
+        assert is_setter is False
+
+        extractor._get_node_text_optimized = Mock(return_value="set value(val: string)")
+        result = extractor._parse_method_signature_optimized(mock_node)
+        assert result is not None
+        (_, _, _, _, is_getter, is_setter, _, _, _, _) = result
+        assert is_getter is False
+        assert is_setter is True
+
+    def test_extract_parameters_with_types(self, extractor):
+        """Test parameter extraction with type annotations"""
+        mock_params_node = Mock()
+
+        param1 = Mock()
+        param1.type = "required_parameter"
+        param1_id = Mock()
+        param1_id.type = "identifier"
+        param1_id.text = b"param1"
+        param1_type = Mock()
+        param1_type.type = "type_annotation"
+        param1.children = [param1_id, param1_type]
+
+        param2 = Mock()
+        param2.type = "optional_parameter"
+        param2_id = Mock()
+        param2_id.type = "identifier"
+        param2_id.text = b"param2"
+        param2.children = [param2_id]
+
+        mock_params_node.children = [param1, param2]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                param1_type: ": string",
+                param1: "param1: string",
+                param2: "param2?",
+            }.get(n, "")
+        )
+
+        result = extractor._extract_parameters_with_types(mock_params_node)
+        assert len(result) == 2
+        assert "param1: string" in result
+        assert "param2?" in result
+
+    def test_extract_generics(self, extractor):
+        """Test generic type parameter extraction"""
+        mock_type_params = Mock()
+
+        type_param1 = Mock()
+        type_param1.type = "type_parameter"
+        type_param2 = Mock()
+        type_param2.type = "type_parameter"
+
+        mock_type_params.children = [type_param1, type_param2]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                type_param1: "T",
+                type_param2: "U extends string",
+            }.get(n, "")
+        )
+
+        result = extractor._extract_generics(mock_type_params)
+        assert len(result) == 2
+        assert "T" in result
+        assert "U extends string" in result
+
+    def test_extract_import_info_simple(self, extractor):
+        """Test import statement parsing"""
+        mock_import_node = Mock()
+        mock_import_node.type = "import_statement"
+        mock_import_node.start_point = (0, 0)
+        mock_import_node.end_point = (0, 30)
+
+        import_clause = Mock()
+        import_clause.type = "import_clause"
+
+        string_literal = Mock()
+        string_literal.type = "string"
+        string_literal.text = b"'./module'"
+
+        mock_import_node.children = [import_clause, string_literal]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                mock_import_node: "import { Component } from './module'",
+                import_clause: "{ Component }",
+            }.get(n, "")
+        )
+        extractor._extract_import_names = Mock(return_value=["Component"])
+
+        result = extractor._extract_import_info_simple(mock_import_node)
+
+        assert result is not None
+        assert result.module_name == "./module"
+        assert result.imported_names == ["Component"]
+        assert result.language == "typescript"
+
+    def test_extract_dynamic_import(self, extractor):
+        """Test dynamic import() extraction"""
+        mock_expr_stmt = Mock()
+        mock_expr_stmt.type = "expression_statement"
+        mock_expr_stmt.start_point = (10, 0)
+        mock_expr_stmt.end_point = (10, 30)
+
+        call_expr = Mock()
+        call_expr.type = "call_expression"
+
+        import_id = Mock()
+        import_id.type = "import"
+
+        arguments = Mock()
+        arguments.type = "arguments"
+
+        string_literal = Mock()
+        string_literal.type = "string"
+        string_literal.text = b"'./dynamic-module'"
+
+        arguments.children = [string_literal]
+        call_expr.children = [import_id, arguments]
+        mock_expr_stmt.children = [call_expr]
+
+        extractor._get_node_text_optimized = Mock(
+            return_value="import('./dynamic-module')"
+        )
+
+        result = extractor._extract_dynamic_import(mock_expr_stmt)
+
+        assert result is not None
+        assert result.module_name == "./dynamic-module"
+        assert "dynamic_import" in result.imported_names
+
+    def test_extract_tsdoc_for_line(self, extractor):
+        """Test TSDoc extraction for a function line"""
+        extractor.content_lines = [
+            "/**",
+            " * This is a TSDoc comment",
+            " * @param user The user object",
+            " * @returns Promise with result",
+            " */",
+            "function testFunction(user: User): Promise<Result> {",
+            "  return Promise.resolve();",
+            "}",
+        ]
+
+        result = extractor._extract_tsdoc_for_line(6)
+        assert result is not None
+        assert "This is a TSDoc comment" in result
+        assert "@param user The user object" in result
+
+    def test_extract_arrow_function_optimized_with_parent(self, extractor):
+        """Test arrow function extraction with variable declarator parent"""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        mock_node.children = []
+
+        parent = Mock()
+        parent.type = "variable_declarator"
+        identifier = Mock()
+        identifier.type = "identifier"
+        identifier.text = b"myArrowFunc"
+        parent.children = [identifier]
+        mock_node.parent = parent
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                mock_node: "() => 42",
+                identifier: "myArrowFunc",
+            }.get(n, "")
+        )
+        extractor._extract_parameters_with_types = Mock(return_value=[])
+        extractor._extract_tsdoc_for_line = Mock(return_value=None)
+        extractor._calculate_complexity_optimized = Mock(return_value=1)
+        extractor.content_lines = ["const myArrowFunc = () => 42;"]
+
+        result = extractor._extract_arrow_function_optimized(mock_node)
+
+        assert result is not None
+        assert result.name == "myArrowFunc"
+        assert result.is_arrow is True
+
+    def test_extract_class_optimized_with_heritage(self, extractor):
+        """Test class extraction with extends and implements"""
+        mock_node = Mock()
+        mock_node.type = "class_declaration"
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (10, 0)
+
+        type_id = Mock()
+        type_id.type = "type_identifier"
+        type_id.text = b"MyClass"
+
+        heritage = Mock()
+        heritage.type = "class_heritage"
+
+        type_params = Mock()
+        type_params.type = "type_parameters"
+
+        mock_node.children = [type_id, heritage, type_params]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                heritage: "extends BaseClass implements IInterface1, IInterface2",
+                mock_node: "class MyClass<T> extends BaseClass implements IInterface1, IInterface2 {}",
+            }.get(n, "")
+        )
+        extractor._extract_generics = Mock(return_value=["T"])
+        extractor._extract_tsdoc_for_line = Mock(return_value="Class documentation")
+        extractor._is_framework_component = Mock(return_value=False)
+        extractor._is_exported_class = Mock(return_value=True)
+
+        result = extractor._extract_class_optimized(mock_node)
+
+        assert result is not None
+        assert result.name == "MyClass"
+        assert result.superclass == "BaseClass"
+        assert "IInterface1" in result.interfaces
+        assert "IInterface2" in result.interfaces
+
+    def test_extract_interface_optimized_with_extends(self, extractor):
+        """Test interface extraction with extends clause"""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (5, 0)
+
+        type_id = Mock()
+        type_id.type = "type_identifier"
+        type_id.text = b"MyInterface"
+
+        extends_clause = Mock()
+        extends_clause.type = "extends_clause"
+
+        mock_node.children = [type_id, extends_clause]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                extends_clause: "extends BaseInterface, OtherInterface",
+                mock_node: "interface MyInterface extends BaseInterface, OtherInterface {}",
+            }.get(n, "")
+        )
+        extractor._extract_tsdoc_for_line = Mock(return_value=None)
+        extractor._is_exported_class = Mock(return_value=False)
+
+        result = extractor._extract_interface_optimized(mock_node)
+
+        assert result is not None
+        assert result.name == "MyInterface"
+        assert result.class_type == "interface"
+        assert "BaseInterface" in result.interfaces
+        assert "OtherInterface" in result.interfaces
+
+    def test_extract_property_optimized_with_modifiers(self, extractor):
+        """Test property extraction with visibility modifiers"""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+
+        prop_id = Mock()
+        prop_id.type = "property_identifier"
+
+        type_annotation = Mock()
+        type_annotation.type = "type_annotation"
+
+        string_value = Mock()
+        string_value.type = "string"
+
+        mock_node.children = [prop_id, type_annotation, string_value]
+
+        extractor._get_node_text_optimized = Mock(
+            side_effect=lambda n: {
+                prop_id: "myProperty",
+                type_annotation: ": string",
+                string_value: "'default value'",
+                mock_node: "private static myProperty: string = 'default value'",
+            }.get(n, "")
+        )
+
+        result = extractor._extract_property_optimized(mock_node)
+
+        assert result is not None
+        assert result.name == "myProperty"
+        assert result.variable_type == "string"
+        assert result.initializer == "'default value'"
+        assert result.is_static is True
+        assert result.visibility == "private"
+
+
+class TestTypeScriptPluginMerged:
+    """Merged plugin tests from variant files covering unique code paths."""
+
+    @pytest.fixture
+    def plugin(self) -> TypeScriptPlugin:
+        """Create a TypeScriptPlugin instance for testing"""
+        return TypeScriptPlugin()
+
+    def test_get_tree_sitter_language_exception(self, plugin):
+        """Test tree-sitter language getter when loading raises an exception"""
+        with patch(
+            "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE",
+            True,
+        ):
+            with patch(
+                "tree_sitter_analyzer.languages.typescript_plugin.loader.load_language",
+                side_effect=Exception("Load error"),
+            ):
+                result = plugin.get_tree_sitter_language()
+                assert result is None
+
+
+# ===================================================================
+# NEW TESTS: Real tree-sitter parsing for comprehensive coverage
+# ===================================================================
+
+
+class TestTypeScriptRealParsing:
+    """Tests using real tree-sitter parsing to cover actual extraction code paths."""
+
+    @pytest.fixture
+    def plugin(self) -> TypeScriptPlugin:
+        return TypeScriptPlugin()
+
+    @pytest.fixture
+    def extractor(self) -> TypeScriptElementExtractor:
+        return TypeScriptElementExtractor()
+
+    def _parse(self, plugin, code: str):
+        """Helper to parse TypeScript code into a tree-sitter tree."""
+        import tree_sitter
+
+        language = plugin.get_tree_sitter_language()
+        assert language is not None, "TypeScript language must be available"
+        parser = tree_sitter.Parser(language)
+        return parser.parse(code.encode("utf-8"))
+
+    def test_extract_function_declaration(self, plugin, extractor):
+        code = "function greet(name: string): string {\n  return 'Hello ' + name;\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        assert len(functions) >= 1
+        assert functions[0].name == "greet"
+
+    def test_extract_async_function(self, plugin, extractor):
+        code = "async function fetchData(url: string): Promise<any> {\n  return fetch(url);\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        assert len(functions) >= 1
+        assert functions[0].is_async is True
+
+    def test_extract_arrow_function(self, plugin, extractor):
+        code = "const add = (a: number, b: number): number => {\n  return a + b;\n};"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        arrow_fns = [f for f in functions if f.is_arrow]
+        assert len(arrow_fns) >= 1
+
+    def test_extract_constructor(self, plugin, extractor):
+        code = "class Person {\n  constructor(public name: string) {}\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        constructors = [f for f in functions if f.name == "constructor"]
+        assert len(constructors) >= 1
+
+    def test_extract_static_method(self, plugin, extractor):
+        code = "class Factory {\n  static create(): Factory {\n    return new Factory();\n  }\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        static_methods = [f for f in functions if f.is_static]
+        assert len(static_methods) >= 1
+
+    def test_extract_private_method(self, plugin, extractor):
+        code = "class Service {\n  private doWork(): void {}\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        private_methods = [f for f in functions if f.visibility == "private"]
+        assert len(private_methods) >= 1
+
+    def test_extract_getter_setter(self, plugin, extractor):
+        code = "class Box {\n  private _w: number = 0;\n  get width(): number { return this._w; }\n  set width(v: number) { this._w = v; }\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        names = [f.name for f in functions]
+        assert "width" in names
+
+    def test_extract_class_with_extends_and_implements(self, plugin, extractor):
+        code = "interface Serializable { serialize(): string; }\nclass Base { id: number = 0; }\nclass Entity extends Base implements Serializable {\n  serialize(): string { return ''; }\n}"
+        tree = self._parse(plugin, code)
+        classes = extractor.extract_classes(tree, code)
+        entity = [c for c in classes if c.name == "Entity"]
+        assert len(entity) == 1
+        assert entity[0].superclass == "Base"
+
+    def test_extract_abstract_class(self, plugin, extractor):
+        code = "abstract class Shape {\n  abstract area(): number;\n}"
+        tree = self._parse(plugin, code)
+        classes = extractor.extract_classes(tree, code)
+        shapes = [c for c in classes if c.name == "Shape"]
+        assert len(shapes) >= 1
+        assert shapes[0].is_abstract is True
+
+    def test_extract_interface_basic(self, plugin, extractor):
+        code = "interface User {\n  id: number;\n  name: string;\n}"
+        tree = self._parse(plugin, code)
+        classes = extractor.extract_classes(tree, code)
+        ifaces = [c for c in classes if c.class_type == "interface"]
+        assert len(ifaces) >= 1
+
+    def test_extract_interface_with_extends(self, plugin, extractor):
+        code = "interface Base { id: number; }\ninterface Extended extends Base { extra: string; }"
+        tree = self._parse(plugin, code)
+        classes = extractor.extract_classes(tree, code)
+        extended = [c for c in classes if c.name == "Extended"]
+        assert len(extended) == 1
+
+    def test_extract_type_alias(self, plugin, extractor):
+        code = "type Status = 'active' | 'inactive' | 'pending';"
+        tree = self._parse(plugin, code)
+        classes = extractor.extract_classes(tree, code)
+        type_aliases = [c for c in classes if c.class_type == "type"]
+        assert len(type_aliases) >= 1
+
+    def test_extract_enum(self, plugin, extractor):
+        code = "enum Direction {\n  Up = 'UP',\n  Down = 'DOWN',\n}"
+        tree = self._parse(plugin, code)
+        classes = extractor.extract_classes(tree, code)
+        enums = [c for c in classes if c.class_type == "enum"]
+        assert len(enums) >= 1
+
+    def test_extract_exported_class(self, plugin, extractor):
+        code = "export class AppService {\n  run(): void {}\n}"
+        tree = self._parse(plugin, code)
+        classes = extractor.extract_classes(tree, code)
+        exported = [c for c in classes if c.name == "AppService"]
+        assert len(exported) >= 1
+        assert exported[0].is_exported is True
+
+    def test_extract_const_variable(self, plugin, extractor):
+        code = "const MAX_RETRIES: number = 3;"
+        tree = self._parse(plugin, code)
+        variables = extractor.extract_variables(tree, code)
+        consts = [v for v in variables if v.name == "MAX_RETRIES"]
+        assert len(consts) >= 1
+
+    def test_extract_let_variable(self, plugin, extractor):
+        code = "let count: number = 0;"
+        tree = self._parse(plugin, code)
+        variables = extractor.extract_variables(tree, code)
+        lets = [v for v in variables if v.name == "count"]
+        assert len(lets) >= 1
+
+    def test_extract_named_import(self, plugin, extractor):
+        code = "import { useState, useEffect } from 'react';"
+        tree = self._parse(plugin, code)
+        imports = extractor.extract_imports(tree, code)
+        assert len(imports) >= 1
+        assert imports[0].module_path == "react"
+
+    def test_extract_default_import(self, plugin, extractor):
+        code = "import React from 'react';"
+        tree = self._parse(plugin, code)
+        imports = extractor.extract_imports(tree, code)
+        assert len(imports) >= 1
+
+    def test_extract_namespace_import(self, plugin, extractor):
+        code = "import * as path from 'path';"
+        tree = self._parse(plugin, code)
+        imports = extractor.extract_imports(tree, code)
+        assert len(imports) >= 1
+
+    def test_extract_commonjs_require(self, plugin, extractor):
+        code = "const fs = require('fs');\nconst path = require('path');"
+        tree = self._parse(plugin, code)
+        imports = extractor.extract_imports(tree, code)
+        require_imports = [i for i in imports if i.module_path in ("fs", "path")]
+        assert len(require_imports) >= 2
+
+    def test_tsdoc_extraction_for_function(self, plugin, extractor):
+        code = "/**\n * Calculates the sum.\n * @param a First\n * @param b Second\n */\nfunction sum(a: number, b: number): number {\n  return a + b;\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        assert len(functions) >= 1
+        assert functions[0].docstring is not None
+
+    def test_complexity_complex_function(self, plugin, extractor):
+        code = "function process(x: number): string {\n  if (x > 0) {\n    for (let i = 0; i < x; i++) {\n      while (i > 0) { break; }\n    }\n    return x > 5 ? 'medium' : 'small';\n  }\n  return 'none';\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        assert len(functions) >= 1
+        assert functions[0].complexity_score > 1
+
+    def test_extract_generator_function(self, plugin, extractor):
+        code = "function* counter(): Generator<number> {\n  let i = 0;\n  while (true) { yield i++; }\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        generators = [f for f in functions if f.is_generator]
+        assert len(generators) >= 1
+
+    def test_extract_elements_legacy(self, plugin, extractor):
+        code = "import { x } from 'mod';\nconst val: number = 10;\nfunction foo(): void {}\nclass Bar {}\n"
+        tree = self._parse(plugin, code)
+        elements = extractor.extract_elements(tree, code)
+        assert len(elements) >= 4
+
+    def test_full_typescript_module(self, plugin, extractor):
+        code = "import { EventEmitter } from 'events';\ntype Status = 'active' | 'inactive';\ninterface Disposable { dispose(): void; }\nenum LogLevel { DEBUG = 0, INFO = 1 }\nexport class Logger extends EventEmitter implements Disposable {\n  private level: LogLevel = LogLevel.INFO;\n  constructor(private name: string) { super(); }\n  log(message: string): void { console.log(message); }\n  dispose(): void { this.removeAllListeners(); }\n}\nconst defaultLogger = new Logger('default');\n"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        classes = extractor.extract_classes(tree, code)
+        imports = extractor.extract_imports(tree, code)
+        class_names = [c.name for c in classes]
+        assert "Logger" in class_names
+        assert len(imports) >= 1
+
+    def test_rest_parameters(self, plugin, extractor):
+        code = "function concat(...parts: string[]): string {\n  return parts.join('');\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        assert len(functions) >= 1
+
+    def test_destructuring_parameters(self, plugin, extractor):
+        code = "function printUser({ name, age }: { name: string; age: number }): void {\n  console.log(name, age);\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        assert len(functions) >= 1
+
+    def test_generic_function(self, plugin, extractor):
+        code = "function identity<T>(arg: T): T {\n  return arg;\n}"
+        tree = self._parse(plugin, code)
+        functions = extractor.extract_functions(tree, code)
+        assert len(functions) >= 1
+
+
+class TestTypeScriptExtractorEdgeCases:
+    """Edge case tests for specific uncovered branches."""
+
+    @pytest.fixture
+    def extractor(self) -> TypeScriptElementExtractor:
+        return TypeScriptElementExtractor()
+
+    def test_extract_function_optimized_no_name(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        mock_node.children = []
+        extractor.content_lines = ["function () { }"]
+        extractor._parse_function_signature_optimized = Mock(return_value=None)
+        result = extractor._extract_function_optimized(mock_node)
+        assert result is None
+
+    def test_extract_function_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        extractor.content_lines = []
+        result = extractor._extract_function_optimized(mock_node)
+        assert result is None
+
+    def test_extract_method_optimized_no_info(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        extractor._parse_method_signature_optimized = Mock(return_value=None)
+        result = extractor._extract_method_optimized(mock_node)
+        assert result is None
+
+    def test_extract_method_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_method_optimized(mock_node)
+        assert result is None
+
+    def test_extract_class_optimized_no_name(self, extractor):
+        mock_node = Mock()
+        mock_node.type = "class_declaration"
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (5, 0)
+        mock_node.children = []
+        extractor._get_node_text_optimized = Mock(return_value="class { }")
+        result = extractor._extract_class_optimized(mock_node)
+        assert result is None
+
+    def test_extract_class_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_class_optimized(mock_node)
+        assert result is None
+
+    def test_extract_interface_optimized_no_name(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (5, 0)
+        mock_node.children = []
+        extractor._get_node_text_optimized = Mock(return_value="interface { }")
+        result = extractor._extract_interface_optimized(mock_node)
+        assert result is None
+
+    def test_extract_interface_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_interface_optimized(mock_node)
+        assert result is None
+
+    def test_extract_type_alias_optimized_no_name(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (0, 10)
+        mock_node.children = []
+        extractor._get_node_text_optimized = Mock(return_value="type = string")
+        result = extractor._extract_type_alias_optimized(mock_node)
+        assert result is None
+
+    def test_extract_type_alias_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_type_alias_optimized(mock_node)
+        assert result is None
+
+    def test_extract_enum_optimized_no_name(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (3, 0)
+        mock_node.children = []
+        extractor._get_node_text_optimized = Mock(return_value="enum { A, B }")
+        result = extractor._extract_enum_optimized(mock_node)
+        assert result is None
+
+    def test_extract_enum_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_enum_optimized(mock_node)
+        assert result is None
+
+    def test_extract_generator_function_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_generator_function_optimized(mock_node)
+        assert result is None
+
+    def test_extract_import_info_simple_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_import_info_simple(mock_node)
+        assert result is None
+
+    def test_extract_dynamic_import_no_match(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (0, 30)
+        extractor._get_node_text_optimized = Mock(return_value="console.log('hello')")
+        result = extractor._extract_dynamic_import(mock_node)
+        assert result is None
+
+    def test_extract_dynamic_import_exception(self, extractor):
+        mock_node = Mock()
+        extractor._get_node_text_optimized = Mock(side_effect=Exception("error"))
+        result = extractor._extract_dynamic_import(mock_node)
+        assert result is None
+
+    def test_extract_commonjs_requires_error(self, extractor):
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        extractor._get_node_text_optimized = Mock(side_effect=Exception("error"))
+        result = extractor._extract_commonjs_requires(mock_tree, "const x = require('x');")
+        assert result == []
+
+    def test_calculate_complexity_exception(self, extractor):
+        mock_node = Mock()
+        extractor._get_node_text_optimized = Mock(side_effect=Exception("error"))
+        result = extractor._calculate_complexity_optimized(mock_node)
+        assert result == 1
+
+    def test_extract_tsdoc_for_line_no_content(self, extractor):
+        extractor.content_lines = []
+        result = extractor._extract_tsdoc_for_line(5)
+        assert result is None
+
+    def test_extract_tsdoc_for_line_cache_hit(self, extractor):
+        extractor._tsdoc_cache[10] = "Cached"
+        result = extractor._extract_tsdoc_for_line(10)
+        assert result == "Cached"
+
+    def test_extract_variables_from_declaration_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_variables_from_declaration(mock_node, "const")
+        assert result == []
+
+    def test_extract_property_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_property_optimized(mock_node)
+        assert result is None
+
+    def test_extract_property_signature_optimized_exception(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = Mock(side_effect=Exception("error"))
+        result = extractor._extract_property_signature_optimized(mock_node)
+        assert result is None
+
+    def test_traverse_with_none_root(self, extractor):
+        results = []
+        extractor._traverse_and_extract_iterative(None, {}, results, "function")
+        assert results == []
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

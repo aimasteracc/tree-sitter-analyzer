@@ -881,3 +881,158 @@ class TestCSharpIntegration:
             code = f.read()
         # Just verify it can be read without errors
         assert len(code) > 0
+
+
+class TestCSharpEnhancedFeatures:
+    """Tests for advanced C# features merged from enhanced test file."""
+
+    NESTED_NS_CODE = """
+using System;
+namespace MyApp.Core
+{
+    namespace Models
+    {
+        public class User
+        {
+            public string Name { get; set; }
+        }
+    }
+    namespace Services
+    {
+        public class UserService
+        {
+            public void CreateUser() { }
+        }
+    }
+}
+"""
+
+    MULTI_INTERFACE_CODE = """
+using System;
+namespace MyApp.Interfaces
+{
+    public interface IRepository<T>
+    {
+        T GetById(int id);
+        void Save(T entity);
+        void Delete(int id);
+    }
+    public interface ILogger
+    {
+        void Log(string message);
+        void LogError(string error);
+    }
+}
+"""
+
+    GENERIC_CONSTRAINT_CODE = """
+using System;
+using System.Collections.Generic;
+namespace MyApp.Generic
+{
+    public class Repository<T> where T : class
+    {
+        public T GetById(int id) => default;
+        public void Save(T entity) { }
+    }
+    public interface IProcessor<in TInput, out TOutput>
+    {
+        TOutput Process(TInput input);
+    }
+}
+"""
+
+    ASYNC_ENUMERABLE_CODE = """
+using System;
+using System.Threading.Tasks;
+namespace MyApp.Async
+{
+    public class AsyncService
+    {
+        public async Task<string> GetDataAsync()
+        {
+            await Task.Delay(100);
+            return "data";
+        }
+        public async IAsyncEnumerable<int> GetNumbersAsync()
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                await Task.Delay(10);
+                yield return i;
+            }
+        }
+    }
+}
+"""
+
+    ENUM_EXPLICIT_CODE = """
+namespace MyApp.Enums
+{
+    public enum OrderStatus
+    {
+        Pending = 0,
+        Processing = 1,
+        Shipped = 2,
+        Delivered = 3,
+        Cancelled = 4
+    }
+    public enum Priority
+    {
+        Low,
+        Medium,
+        High,
+        Critical
+    }
+}
+"""
+
+    def test_extract_nested_namespace_classes(self):
+        """Test extraction of classes from nested namespaces."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(self.NESTED_NS_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, self.NESTED_NS_CODE)
+
+        class_names = [c.name for c in classes]
+        assert "User" in class_names
+        assert "UserService" in class_names
+
+    def test_extract_multiple_interfaces(self):
+        """Test extraction of multiple interfaces."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(self.MULTI_INTERFACE_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, self.MULTI_INTERFACE_CODE)
+
+        interface_names = [c.name for c in classes]
+        assert "IRepository" in interface_names
+        assert "ILogger" in interface_names
+
+    def test_extract_generic_type_constraints(self):
+        """Test extraction of generic classes with type constraints."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(self.GENERIC_CONSTRAINT_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, self.GENERIC_CONSTRAINT_CODE)
+
+        repository_class = next((c for c in classes if "Repository" in c.name), None)
+        assert repository_class is not None
+        assert "where T" in str(repository_class.raw_text)
+
+    def test_extract_async_enumerable_method(self):
+        """Test extraction of IAsyncEnumerable method."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(self.ASYNC_ENUMERABLE_CODE, plugin)
+        functions = plugin.extractor.extract_functions(tree, self.ASYNC_ENUMERABLE_CODE)
+
+        get_numbers = next((f for f in functions if f.name == "GetNumbersAsync"), None)
+        assert get_numbers is not None
+        assert "IAsyncEnumerable" in str(get_numbers.raw_text)
+
+    def test_extract_multiple_enums_with_values(self):
+        """Test extraction of multiple enums with explicit values."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(self.ENUM_EXPLICIT_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, self.ENUM_EXPLICIT_CODE)
+
+        enum_names = [c.name for c in classes]
+        assert "OrderStatus" in enum_names
+        assert "Priority" in enum_names

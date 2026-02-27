@@ -538,6 +538,62 @@ class TestResolvePathFunction:
             os.chdir(original_cwd)
 
 
+class TestPathResolverEdgeCases:
+    """Edge case tests for PathResolver (consolidated from test_path_resolver_extended)."""
+
+    def test_resolve_with_empty_string_project_root(self):
+        """Test resolve with empty string project root."""
+        resolver = PathResolver("")
+        result = resolver.resolve("test.txt")
+        assert isinstance(result, str)
+        assert Path(result).is_absolute()
+
+    def test_resolve_with_relative_path_double_dot(self, tmp_path):
+        """Test resolve with relative path starting with double dot."""
+        project = tmp_path / "project"
+        project.mkdir()
+        test_file = project.parent / "test.txt"
+        test_file.write_text("content")
+
+        subdir = project / "subdir"
+        subdir.mkdir()
+        resolver = PathResolver(str(subdir))
+        result = resolver.resolve("../test.txt")
+        assert _normalize_test_path(result) == _normalize_test_path(
+            str((subdir / ".." / "test.txt").resolve())
+        )
+
+    def test_is_relative_with_empty_path(self):
+        """Test is_relative with empty path."""
+        resolver = PathResolver()
+        assert resolver.is_relative("") is True
+
+    def test_set_project_root_with_empty_string(self):
+        """Test set_project_root with empty string."""
+        resolver = PathResolver("initial")
+        resolver.set_project_root("")
+        assert resolver.project_root is None
+
+    def test_resolve_path_function_with_empty_project_root(self):
+        """Test resolve_path function with empty project root."""
+        result = resolve_path("test.txt", "")
+        assert isinstance(result, str)
+        assert Path(result).is_absolute()
+
+    def test_long_path(self, tmp_path):
+        """Test resolving very long path name."""
+        resolver = PathResolver(str(tmp_path))
+        long_path = "a" * 200
+        result = resolver.resolve(long_path)
+        assert isinstance(result, str)
+
+    def test_special_characters_in_path(self, tmp_path):
+        """Test resolving path with special characters."""
+        resolver = PathResolver(str(tmp_path))
+        result = resolver.resolve("test file with spaces.txt")
+        assert isinstance(result, str)
+
+
 class TestPathResolverIntegration:
     """Integration tests for PathResolver."""
 

@@ -790,3 +790,784 @@ async def async_function():
         # Each pattern should be recognizable by the extractor
         # (This would require actual tree parsing in a real test)
         assert extractor is not None
+
+
+class TestPythonExtractorOptimizedMethods:
+    """Tests for optimized extraction methods on PythonElementExtractor.
+
+    These tests cover _extract_function_optimized, _extract_class_optimized,
+    _extract_docstring_for_line, _reset_caches, _detect_file_characteristics,
+    _traverse_and_extract_iterative, and edge cases for None/empty inputs.
+    """
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        """Create a PythonElementExtractor instance for testing"""
+        return PythonElementExtractor()
+
+    def test_reset_caches(self, extractor: PythonElementExtractor) -> None:
+        """Test that _reset_caches clears all internal caches"""
+        extractor._node_text_cache[1] = "test"
+        extractor._processed_nodes.add(1)
+        extractor._element_cache[(1, "test")] = "value"
+        extractor._docstring_cache[1] = "doc"
+        extractor._complexity_cache[1] = 5
+
+        extractor._reset_caches()
+
+        assert len(extractor._node_text_cache) == 0
+        assert len(extractor._processed_nodes) == 0
+        assert len(extractor._element_cache) == 0
+        assert len(extractor._docstring_cache) == 0
+        assert len(extractor._complexity_cache) == 0
+
+    def test_detect_file_characteristics_frameworks(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test framework detection for Django, Flask, and FastAPI"""
+        # Django detection
+        extractor.source_code = (
+            "from django.db import models\nclass MyModel(models.Model): pass"
+        )
+        extractor._detect_file_characteristics()
+        assert extractor.framework_type == "django"
+
+        # Flask detection
+        extractor.source_code = "from flask import Flask\napp = Flask(__name__)"
+        extractor._detect_file_characteristics()
+        assert extractor.framework_type == "flask"
+
+        # FastAPI detection
+        extractor.source_code = "from fastapi import FastAPI\napp = FastAPI()"
+        extractor._detect_file_characteristics()
+        assert extractor.framework_type == "fastapi"
+
+    def test_detect_file_characteristics_empty_source(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test file characteristics detection with empty source"""
+        extractor.source_code = ""
+        extractor._detect_file_characteristics()
+        assert extractor.is_module is False
+        assert extractor.framework_type == ""
+
+    def test_extract_docstring_for_line_single_line(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test single-line docstring extraction via _extract_docstring_for_line"""
+        extractor.content_lines = [
+            "def test_function():",
+            '    """This is a single line docstring"""',
+            "    pass",
+        ]
+        result = extractor._extract_docstring_for_line(1)
+        assert result == "This is a single line docstring"
+
+    def test_extract_docstring_for_line_multi_line(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test multi-line docstring extraction via _extract_docstring_for_line"""
+        extractor.content_lines = [
+            "def test_function():",
+            '    """',
+            "    This is a multi-line",
+            "    docstring with details",
+            '    """',
+            "    pass",
+        ]
+        result = extractor._extract_docstring_for_line(1)
+        expected = "\n    This is a multi-line\n    docstring with details\n    "
+        assert result == expected
+
+    def test_extract_docstring_for_line_malformed(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test docstring extraction with unclosed triple quotes"""
+        extractor.content_lines = [
+            "def test_function():",
+            '    """Unclosed docstring',
+            "    pass",
+        ]
+        result = extractor._extract_docstring_for_line(1)
+        assert result is None
+
+    def test_extract_function_optimized_complete(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test _extract_function_optimized with full mock setup"""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (5, 0)
+
+        extractor.content_lines = [
+            "def test_function(param1: str, param2: int = 0) -> str:",
+            '    """Test function docstring"""',
+            "    return param1 * param2",
+            "",
+            "",
+        ]
+        extractor.current_module = "test_module"
+        extractor.framework_type = "django"
+
+        with (
+            patch.object(
+                extractor, "_parse_function_signature_optimized"
+            ) as mock_parse,
+            patch.object(
+                extractor, "_extract_docstring_for_line"
+            ) as mock_docstring,
+            patch.object(
+                extractor, "_calculate_complexity_optimized"
+            ) as mock_complexity,
+        ):
+            mock_parse.return_value = (
+                "test_function",
+                ["param1: str", "param2: int = 0"],
+                False,
+                ["property"],
+                "str",
+            )
+            mock_docstring.return_value = "Test function docstring"
+            mock_complexity.return_value = 3
+
+            result = extractor._extract_function_optimized(mock_node)
+
+            assert isinstance(result, Function)
+            assert result.name == "test_function"
+            assert result.parameters == ["param1: str", "param2: int = 0"]
+            assert result.return_type == "str"
+            assert result.docstring == "Test function docstring"
+            assert result.complexity_score == 3
+            assert result.is_property is True
+
+    def test_extract_function_optimized_signature_failure(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test _extract_function_optimized when signature parsing fails"""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+
+        extractor.content_lines = ["def test():", "    pass"]
+
+        with patch.object(
+            extractor, "_parse_function_signature_optimized"
+        ) as mock_parse:
+            mock_parse.return_value = None
+            result = extractor._extract_function_optimized(mock_node)
+            assert result is None
+
+    def test_extract_class_optimized_exception_class(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test _extract_class_optimized detects exception superclass"""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (3, 0)
+        mock_node.parent = None
+
+        mock_identifier = Mock()
+        mock_identifier.type = "identifier"
+        mock_identifier.text = b"CustomError"
+
+        mock_arg_list = Mock()
+        mock_arg_list.type = "argument_list"
+        mock_superclass = Mock()
+        mock_superclass.type = "identifier"
+        mock_superclass.text = b"Exception"
+        mock_arg_list.children = [mock_superclass]
+
+        mock_node.children = [mock_identifier, mock_arg_list]
+
+        extractor.content_lines = ["class CustomError(Exception):", "    pass"]
+
+        with (
+            patch.object(extractor, "_get_node_text_optimized") as mock_get_text,
+            patch.object(
+                extractor, "_extract_docstring_for_line"
+            ) as mock_docstring,
+        ):
+            mock_get_text.side_effect = [
+                "class CustomError(Exception):\n    pass",
+                "Exception",
+            ]
+            mock_docstring.return_value = None
+
+            result = extractor._extract_class_optimized(mock_node)
+
+            assert isinstance(result, Class)
+            assert result.name == "CustomError"
+            assert result.superclass == "Exception"
+            assert result.is_exception is True
+
+    def test_extract_class_optimized_no_name(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test _extract_class_optimized when no identifier child exists"""
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (2, 0)
+        mock_node.parent = None
+        mock_node.children = []
+
+        result = extractor._extract_class_optimized(mock_node)
+        assert result is None
+
+    def test_traverse_and_extract_iterative(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test _traverse_and_extract_iterative with function and class nodes"""
+        mock_root = Mock()
+        mock_child1 = Mock()
+        mock_child1.type = "function_definition"
+        mock_child1.children = []
+        mock_child2 = Mock()
+        mock_child2.type = "class_definition"
+        mock_child2.children = []
+        mock_root.children = [mock_child1, mock_child2]
+
+        mock_func_extractor = Mock(
+            return_value=Function(
+                name="test_func",
+                start_line=1,
+                end_line=3,
+                raw_text="def test_func(): pass",
+                language="python",
+            )
+        )
+        mock_class_extractor = Mock(
+            return_value=Class(
+                name="TestClass",
+                start_line=5,
+                end_line=10,
+                raw_text="class TestClass: pass",
+                language="python",
+            )
+        )
+
+        extractors = {
+            "function_definition": mock_func_extractor,
+            "class_definition": mock_class_extractor,
+        }
+        results: list = []
+
+        extractor._traverse_and_extract_iterative(
+            mock_root, extractors, results, "mixed"
+        )
+
+        assert len(results) == 2
+        assert isinstance(results[0], Function)
+        assert isinstance(results[1], Class)
+
+    def test_traverse_and_extract_iterative_with_none_root(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test _traverse_and_extract_iterative with None root node"""
+        extractors = {"function_definition": Mock()}
+        results: list = []
+
+        extractor._traverse_and_extract_iterative(
+            None, extractors, results, "function"
+        )
+
+        assert len(results) == 0
+
+    def test_extract_functions_with_none_tree(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test function extraction with None tree input"""
+        result = extractor.extract_functions(None, "def test(): pass")
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_extract_functions_with_none_source(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test function extraction with None source code"""
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
+
+        result = extractor.extract_functions(mock_tree, None)
+        assert isinstance(result, list)
+        assert extractor.source_code == ""
+        assert extractor.content_lines == [""]
+
+    def test_extract_variables_with_query_exception(
+        self, extractor: PythonElementExtractor
+    ) -> None:
+        """Test variable extraction when tree-sitter query raises exception"""
+        mock_tree = Mock()
+        mock_tree.language = Mock()
+        mock_tree.language.query.side_effect = Exception("Query error")
+
+        result = extractor.extract_variables(mock_tree, "x = 1")
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+
+# ============================================================================
+# Targeted coverage tests for uncovered code paths
+# ============================================================================
+
+
+class TestExtractFunctionsErrorPaths:
+    """Tests covering error/exception paths in extract_functions and extract_classes."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_extract_functions_traversal_exception(self, extractor):
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
+        with patch.object(extractor, "_traverse_and_extract_iterative", side_effect=RuntimeError("boom")):
+            result = extractor.extract_functions(mock_tree, "def foo(): pass")
+            assert result == []
+
+    def test_extract_classes_traversal_exception(self, extractor):
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
+        with patch.object(extractor, "_traverse_and_extract_iterative", side_effect=RuntimeError("boom")):
+            result = extractor.extract_classes(mock_tree, "class Foo: pass")
+            assert result == []
+
+
+class TestTraverseEdgeCases:
+    """Tests for _traverse_and_extract_iterative edge cases."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_max_depth_exceeded(self, extractor):
+        current = Mock()
+        current.type = "module"
+        current.children = []
+        for _ in range(55):
+            parent = Mock()
+            parent.type = "block"
+            parent.children = [current]
+            current = parent
+        results = []
+        extractor._traverse_and_extract_iterative(current, {"function_definition": Mock()}, results, "function")
+        assert isinstance(results, list)
+
+    def test_cache_hit_returns_cached(self, extractor):
+        mock_child = Mock()
+        mock_child.type = "function_definition"
+        mock_child.children = []
+        cached_func = Function(name="cached", start_line=1, end_line=3, raw_text="def cached(): pass", language="python")
+        extractor._element_cache[(id(mock_child), "function")] = cached_func
+        mock_root = Mock()
+        mock_root.type = "module"
+        mock_root.children = [mock_child]
+        results = []
+        extractor._traverse_and_extract_iterative(mock_root, {"function_definition": Mock()}, results, "function")
+        assert len(results) == 1
+        assert results[0].name == "cached"
+
+    def test_cache_hit_with_list(self, extractor):
+        mock_child = Mock()
+        mock_child.type = "function_definition"
+        mock_child.children = []
+        cached_list = [
+            Function(name="f1", start_line=1, end_line=2, raw_text="x", language="python"),
+            Function(name="f2", start_line=3, end_line=4, raw_text="y", language="python"),
+        ]
+        extractor._element_cache[(id(mock_child), "function")] = cached_list
+        mock_root = Mock()
+        mock_root.type = "module"
+        mock_root.children = [mock_child]
+        results = []
+        extractor._traverse_and_extract_iterative(mock_root, {"function_definition": Mock()}, results, "function")
+        assert len(results) == 2
+
+    def test_already_processed_skipped(self, extractor):
+        mock_child = Mock()
+        mock_child.type = "function_definition"
+        mock_child.children = []
+        extractor._processed_nodes.add(id(mock_child))
+        mock_root = Mock()
+        mock_root.type = "module"
+        mock_root.children = [mock_child]
+        mock_fn = Mock()
+        results = []
+        extractor._traverse_and_extract_iterative(mock_root, {"function_definition": mock_fn}, results, "function")
+        mock_fn.assert_not_called()
+
+    def test_extractor_exception_marks_processed(self, extractor):
+        mock_child = Mock()
+        mock_child.type = "function_definition"
+        mock_child.children = []
+        mock_root = Mock()
+        mock_root.type = "module"
+        mock_root.children = [mock_child]
+        results = []
+        extractor._traverse_and_extract_iterative(mock_root, {"function_definition": Mock(side_effect=Exception("err"))}, results, "function")
+        assert id(mock_child) in extractor._processed_nodes
+
+
+class TestGetNodeTextOptimizedPaths:
+    """Tests for _get_node_text_optimized fallback paths."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = "def foo():\n    pass\n    return 42"
+        ext.content_lines = ext.source_code.split("\n")
+        return ext
+
+    def test_cache_hit(self, extractor):
+        extractor._node_text_cache[(0, 10)] = "cached_text"
+        mock_node = Mock()
+        mock_node.start_byte = 0
+        mock_node.end_byte = 10
+        assert extractor._get_node_text_optimized(mock_node) == "cached_text"
+
+    def test_fallback_single_line(self, extractor):
+        mock_node = Mock()
+        mock_node.start_byte = 0
+        mock_node.end_byte = 10
+        mock_node.start_point = (0, 4)
+        mock_node.end_point = (0, 10)
+        with patch("tree_sitter_analyzer.languages.python_plugin.extract_text_slice", return_value=""):
+            result = extractor._get_node_text_optimized(mock_node)
+            assert "foo():" in result
+
+    def test_fallback_out_of_bounds(self, extractor):
+        mock_node = Mock()
+        mock_node.start_byte = 0
+        mock_node.end_byte = 10
+        mock_node.start_point = (100, 0)
+        mock_node.end_point = (101, 0)
+        with patch("tree_sitter_analyzer.languages.python_plugin.extract_text_slice", return_value=""):
+            result = extractor._get_node_text_optimized(mock_node)
+            assert result == ""
+
+
+class TestExtractFunctionOptimizedVisibility:
+    """Tests for visibility detection in _extract_function_optimized."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.content_lines = ["def _private_func():", "    pass"]
+        ext.framework_type = ""
+        return ext
+
+    def test_private_visibility(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        with (
+            patch.object(extractor, "_parse_function_signature_optimized", return_value=("_private_func", [], False, [], None)),
+            patch.object(extractor, "_extract_docstring_for_line", return_value=None),
+            patch.object(extractor, "_calculate_complexity_optimized", return_value=1),
+        ):
+            result = extractor._extract_function_optimized(mock_node)
+            assert result is not None
+            assert result.is_private is True
+
+    def test_magic_method(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        with (
+            patch.object(extractor, "_parse_function_signature_optimized", return_value=("__init__", ["self"], False, [], None)),
+            patch.object(extractor, "_extract_docstring_for_line", return_value=None),
+            patch.object(extractor, "_calculate_complexity_optimized", return_value=1),
+        ):
+            result = extractor._extract_function_optimized(mock_node)
+            assert result is not None
+            assert result.is_private is False
+            assert result.is_public is False
+
+    def test_static_and_classmethod(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        with (
+            patch.object(extractor, "_parse_function_signature_optimized", return_value=("func", [], False, ["staticmethod"], None)),
+            patch.object(extractor, "_extract_docstring_for_line", return_value=None),
+            patch.object(extractor, "_calculate_complexity_optimized", return_value=1),
+        ):
+            result = extractor._extract_function_optimized(mock_node)
+            assert result is not None
+            assert result.is_static is True
+
+    def test_exception_returns_none(self, extractor):
+        bad_node = Mock()
+        type(bad_node).start_point = property(lambda self: (_ for _ in ()).throw(Exception("bad")))
+        result = extractor._extract_function_optimized(bad_node)
+        assert result is None
+
+
+class TestParseFunctionSignatureOptimizedPaths:
+    """Tests for _parse_function_signature_optimized."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = ""
+        ext.content_lines = []
+        return ext
+
+    def test_async_detection(self, extractor):
+        mock_node = Mock()
+        mock_node.parent = None
+        mock_id = Mock(type="identifier", text=b"async_handler")
+        mock_params = Mock(type="parameters", children=[])
+        mock_node.children = [mock_id, mock_params]
+        with patch.object(extractor, "_get_node_text_optimized", return_value="async def async_handler():"), \
+             patch.object(extractor, "_extract_parameters_from_node_optimized", return_value=[]):
+            result = extractor._parse_function_signature_optimized(mock_node)
+            assert result is not None
+            assert result[2] is True  # is_async
+
+    def test_decorators_from_parent(self, extractor):
+        mock_node = Mock()
+        mock_parent = Mock(type="decorated_definition")
+        mock_decorator = Mock(type="decorator")
+        mock_node.parent = mock_parent
+        mock_parent.children = [mock_decorator, mock_node]
+        mock_id = Mock(type="identifier", text=b"my_func")
+        mock_params = Mock(type="parameters", children=[])
+        mock_node.children = [mock_id, mock_params]
+        with patch.object(extractor, "_get_node_text_optimized", side_effect=lambda n: "@property" if n == mock_decorator else "def my_func():"), \
+             patch.object(extractor, "_extract_parameters_from_node_optimized", return_value=[]):
+            result = extractor._parse_function_signature_optimized(mock_node)
+            assert result is not None
+            assert "property" in result[3]  # decorators
+
+    def test_exception_returns_none(self, extractor):
+        mock_node = Mock()
+        with patch.object(extractor, "_get_node_text_optimized", side_effect=Exception("boom")):
+            result = extractor._parse_function_signature_optimized(mock_node)
+            assert result is None
+
+
+class TestExtractParameterTypes:
+    """Tests for _extract_parameters_from_node_optimized."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = "def func(self, x: int, y=5, *args, **kwargs): pass"
+        ext.content_lines = ext.source_code.split("\n")
+        return ext
+
+    def test_all_param_types(self, extractor):
+        mock_params = Mock()
+        mock_id = Mock(type="identifier")
+        mock_typed = Mock(type="typed_parameter")
+        mock_default = Mock(type="default_parameter")
+        mock_splat = Mock(type="list_splat_pattern")
+        mock_dict_splat = Mock(type="dictionary_splat_pattern")
+        mock_params.children = [mock_id, mock_typed, mock_default, mock_splat, mock_dict_splat]
+        values = ["self", "x: int", "y=5", "*args", "**kwargs"]
+        call_count = [0]
+        def side_effect(node):
+            idx = call_count[0]
+            call_count[0] += 1
+            return values[idx] if idx < len(values) else ""
+        with patch.object(extractor, "_get_node_text_optimized", side_effect=side_effect):
+            result = extractor._extract_parameters_from_node_optimized(mock_params)
+            assert len(result) == 5
+
+
+class TestDocstringEdgeCases:
+    """Tests for _extract_docstring_for_line edge cases."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_cache_hit(self, extractor):
+        extractor._docstring_cache[5] = "cached"
+        assert extractor._extract_docstring_for_line(5) == "cached"
+
+    def test_not_found(self, extractor):
+        extractor.content_lines = ["def func():", "    x = 1", "    y = 2", "    z = 3", "    w = 4", "    return x"]
+        result = extractor._extract_docstring_for_line(1)
+        assert result is None
+
+    def test_exception(self, extractor):
+        extractor.content_lines = None
+        result = extractor._extract_docstring_for_line(0)
+        assert result is None
+
+    def test_out_of_bounds(self, extractor):
+        extractor.content_lines = ["line 0"]
+        result = extractor._extract_docstring_for_line(100)
+        assert result is None
+
+
+class TestComplexityOptimizedEdgeCases:
+    """Tests for _calculate_complexity_optimized edge cases."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.source_code = "def func(): pass"
+        ext.content_lines = ["def func(): pass"]
+        return ext
+
+    def test_cache_hit(self, extractor):
+        mock_node = Mock()
+        extractor._complexity_cache[id(mock_node)] = 7
+        assert extractor._calculate_complexity_optimized(mock_node) == 7
+
+    def test_exception(self, extractor):
+        mock_node = Mock()
+        with patch.object(extractor, "_get_node_text_optimized", side_effect=Exception("err")):
+            assert extractor._calculate_complexity_optimized(mock_node) == 1
+
+
+class TestExtractClassOptimizedPaths:
+    """Tests for _extract_class_optimized edge cases."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        ext = PythonElementExtractor()
+        ext.content_lines = ["class Foo:", "    pass"]
+        ext.current_module = ""
+        ext.framework_type = ""
+        return ext
+
+    def test_class_with_module_fqn(self, extractor):
+        extractor.current_module = "my.package"
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        mock_node.parent = None
+        mock_id = Mock(type="identifier", text=b"MyClass")
+        mock_node.children = [mock_id]
+        with patch.object(extractor, "_get_node_text_optimized", return_value="class MyClass:\n    pass"), \
+             patch.object(extractor, "_extract_docstring_for_line", return_value=None):
+            result = extractor._extract_class_optimized(mock_node)
+            assert result is not None
+            assert result.full_qualified_name == "my.package.MyClass"
+
+    def test_class_with_multiple_superclasses(self, extractor):
+        mock_node = Mock()
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (1, 0)
+        mock_node.parent = None
+        mock_id = Mock(type="identifier", text=b"MyClass")
+        mock_arg = Mock(type="argument_list")
+        mock_s1 = Mock(type="identifier", text=b"Base")
+        mock_s2 = Mock(type="identifier", text=b"MixinA")
+        mock_arg.children = [mock_s1, mock_s2]
+        mock_node.children = [mock_id, mock_arg]
+        with patch.object(extractor, "_get_node_text_optimized", return_value="class MyClass(Base, MixinA):\n    pass"), \
+             patch.object(extractor, "_extract_docstring_for_line", return_value=None):
+            result = extractor._extract_class_optimized(mock_node)
+            assert result is not None
+            assert result.superclass == "Base"
+            assert result.interfaces == ["MixinA"]
+
+    def test_exception_returns_none(self, extractor):
+        mock_node = Mock()
+        type(mock_node).start_point = property(lambda self: (_ for _ in ()).throw(Exception("bad")))
+        result = extractor._extract_class_optimized(mock_node)
+        assert result is None
+
+
+class TestIsFrameworkClassPaths:
+    """Tests for _is_framework_class."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_django_model(self, extractor):
+        extractor.framework_type = "django"
+        with patch.object(extractor, "_get_node_text_optimized", return_value="class MyModel(Model):\n    pass"):
+            assert extractor._is_framework_class(Mock(), "MyModel") is True
+
+    def test_flask_framework(self, extractor):
+        extractor.framework_type = "flask"
+        extractor.source_code = "from flask import Flask"
+        assert extractor._is_framework_class(Mock(), "MyApp") is True
+
+    def test_no_framework(self, extractor):
+        extractor.framework_type = ""
+        assert extractor._is_framework_class(Mock(), "MyClass") is False
+
+
+class TestExtractClassAttributes:
+    """Tests for _extract_class_attributes."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_expression_statement_assignment(self, extractor):
+        mock_assignment = Mock(type="assignment", start_byte=16, end_byte=22, start_point=(1, 4), end_point=(1, 10))
+        mock_expr = Mock(type="expression_statement", children=[mock_assignment])
+        mock_body = Mock(children=[mock_expr])
+        result = extractor._extract_class_attributes(mock_body, "class Foo:\n    x = 10")
+        assert len(result) == 1
+
+    def test_exception_returns_empty(self, extractor):
+        mock_body = Mock()
+        type(mock_body).children = property(lambda self: (_ for _ in ()).throw(Exception("bad")))
+        result = extractor._extract_class_attributes(mock_body, "x = 1")
+        assert isinstance(result, list)
+
+
+class TestExtractImportsPaths:
+    """Tests for extract_imports paths."""
+
+    @pytest.fixture
+    def extractor(self) -> PythonElementExtractor:
+        return PythonElementExtractor()
+
+    def test_query_exception_fallback(self, extractor):
+        mock_tree = Mock()
+        mock_tree.language = Mock()
+        mock_tree.root_node = Mock(children=[], type="module")
+        with patch("tree_sitter_analyzer.languages.python_plugin.TreeSitterQueryCompat.safe_execute_query", side_effect=Exception("fail")):
+            result = extractor.extract_imports(mock_tree, "import os")
+            assert isinstance(result, list)
+
+    def test_no_language(self, extractor):
+        mock_tree = Mock()
+        mock_tree.language = None
+        mock_tree.root_node = Mock()
+        result = extractor.extract_imports(mock_tree, "import os")
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+
+class TestPythonPluginMethods:
+    """Tests for PythonPlugin methods."""
+
+    @pytest.fixture
+    def plugin(self) -> PythonPlugin:
+        return PythonPlugin()
+
+    def test_get_element_categories(self, plugin):
+        categories = plugin.get_element_categories()
+        assert isinstance(categories, dict)
+        assert "function" in categories
+        assert "class" in categories
+
+    def test_extract_elements_delegates(self, plugin):
+        mock_tree = Mock()
+        mock_tree.root_node = Mock(children=[])
+        mock_tree.language = None
+        result = plugin.extract_elements(mock_tree, "def foo(): pass")
+        assert isinstance(result, list)
+
+    def test_extract_elements_exception(self, plugin):
+        mock_tree = Mock()
+        with patch.object(plugin, "get_extractor") as mock_get:
+            mock_extractor = Mock()
+            mock_extractor.extract_functions.side_effect = Exception("boom")
+            mock_get.return_value = mock_extractor
+            result = plugin.extract_elements(mock_tree, "def foo(): pass")
+            assert isinstance(result, list)

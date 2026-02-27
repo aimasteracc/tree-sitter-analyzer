@@ -3,6 +3,8 @@
 Tests for ProjectBoundaryManager class.
 """
 
+import os
+import sys
 import tempfile
 from pathlib import Path
 
@@ -232,3 +234,96 @@ class TestProjectBoundaryManager:
             or normalized in repr_repr
             or Path(normalized).name in repr_repr
         )
+
+
+class TestBoundaryManagerEdgeCases:
+    """Tests for edge cases and additional code paths merged from coverage variants."""
+
+    @pytest.mark.unit
+    def test_init_with_none_raises_error(self):
+        """Test initialization with None raises SecurityError."""
+        with pytest.raises(SecurityError, match="Project root cannot be empty"):
+            ProjectBoundaryManager(None)
+
+    @pytest.mark.unit
+    def test_init_with_file_path_raises_error(self, tmp_path):
+        """Test initialization with file path raises SecurityError."""
+        file_path = tmp_path / "test_file.txt"
+        file_path.write_text("test")
+        with pytest.raises(SecurityError, match="Project root is not a directory"):
+            ProjectBoundaryManager(str(file_path))
+
+    @pytest.mark.unit
+    def test_init_with_invalid_type_raises_error(self, tmp_path):
+        """Test initialization with invalid type raises SecurityError."""
+        with pytest.raises(SecurityError, match="Invalid project root type"):
+            ProjectBoundaryManager(tmp_path)
+
+    @pytest.mark.unit
+    def test_add_empty_directory_raises_error(self, tmp_path):
+        """Test adding empty string as directory raises SecurityError."""
+        manager = ProjectBoundaryManager(str(tmp_path))
+        with pytest.raises(SecurityError, match="Directory cannot be empty"):
+            manager.add_allowed_directory("")
+
+    @pytest.mark.unit
+    def test_add_file_as_directory_raises_error(self, tmp_path):
+        """Test adding a file path as directory raises SecurityError."""
+        file_path = tmp_path / "test_file.txt"
+        file_path.write_text("test")
+        manager = ProjectBoundaryManager(str(tmp_path))
+        with pytest.raises(SecurityError, match="Path is not a directory"):
+            manager.add_allowed_directory(str(file_path))
+
+    @pytest.mark.unit
+    @pytest.mark.skipif(
+        os.name == "nt", reason="Symlinks may require elevated privileges on Windows"
+    )
+    def test_safe_symlink_within_project(self, tmp_path):
+        """Test symlink within project is considered safe."""
+        target = tmp_path / "target.py"
+        target.write_text("test")
+        link = tmp_path / "link.py"
+        link.symlink_to(target)
+        manager = ProjectBoundaryManager(str(tmp_path))
+        assert manager.is_symlink_safe(str(link)) is True
+
+    @pytest.mark.unit
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Windows symlink handling differs"
+    )
+    def test_is_symlink_safe_outside_boundary(self):
+        """Test symlink pointing outside boundary is unsafe."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            manager = ProjectBoundaryManager(project_root=tmp_dir)
+            with tempfile.TemporaryDirectory() as outside_dir:
+                target_file = Path(outside_dir) / "target.txt"
+                target_file.write_text("content")
+                link_file = Path(tmp_dir) / "link.txt"
+                link_file.symlink_to(target_file)
+                result = manager.is_symlink_safe(str(link_file))
+                assert result is False
+
+    @pytest.mark.unit
+    def test_deeply_nested_directory(self, tmp_path):
+        """Test deeply nested directory is within project."""
+        manager = ProjectBoundaryManager(str(tmp_path))
+        deep_dir = tmp_path / "a" / "b" / "c" / "d"
+        deep_dir.mkdir(parents=True)
+        assert manager.is_within_project(str(deep_dir)) is True
+
+    @pytest.mark.unit
+    def test_unicode_filename(self, tmp_path):
+        """Test Unicode filename is within project."""
+        manager = ProjectBoundaryManager(str(tmp_path))
+        unicode_file = tmp_path / "test_unicode.txt"
+        unicode_file.write_text("content")
+        assert manager.is_within_project(str(unicode_file)) is True
+
+    @pytest.mark.unit
+    def test_path_with_spaces(self, tmp_path):
+        """Test path with spaces is within project."""
+        manager = ProjectBoundaryManager(str(tmp_path))
+        space_file = tmp_path / "file with spaces.txt"
+        space_file.write_text("content")
+        assert manager.is_within_project(str(space_file)) is True

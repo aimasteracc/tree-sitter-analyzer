@@ -482,5 +482,122 @@ class TestCompatibilityScenarios:
         )
 
 
+# --- Merged from test_tree_sitter_compat_coverage.py ---
+
+
+class TestTreeSitterCompatAPIPaths:
+    """Test specific tree-sitter API compatibility paths via sys.modules patching."""
+
+    def test_execute_query_newest_api(self):
+        """Test execution with newest API (QueryCursor)"""
+        import sys
+
+        mock_tree_sitter = MagicMock()
+        mock_tree_sitter.QueryCursor = MagicMock()
+        mock_query = MagicMock()
+        mock_tree_sitter.Query.return_value = mock_query
+
+        mock_node = MagicMock()
+        mock_cursor = mock_tree_sitter.QueryCursor.return_value
+        mock_cursor.matches.return_value = [(0, {"capture_name": [mock_node]})]
+
+        with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter}):
+            results = TreeSitterQueryCompat.execute_query(
+                MagicMock(), "query", MagicMock()
+            )
+            assert len(results) == 1
+            assert results[0][0] == mock_node
+            assert results[0][1] == "capture_name"
+
+    def test_execute_query_modern_api(self):
+        """Test execution with modern API (matches)"""
+        import sys
+
+        mock_tree_sitter = MagicMock()
+        del mock_tree_sitter.QueryCursor
+
+        mock_query = MagicMock()
+        mock_tree_sitter.Query.return_value = mock_query
+
+        mock_match = MagicMock()
+        mock_capture = MagicMock()
+        mock_node = MagicMock()
+        mock_capture.index = 0
+        mock_capture.node = mock_node
+        mock_match.captures = [mock_capture]
+        mock_query.matches.return_value = [mock_match]
+        mock_query.capture_names = ["capture_name"]
+
+        with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter}):
+            results = TreeSitterQueryCompat.execute_query(
+                MagicMock(), "query", MagicMock()
+            )
+            assert len(results) == 1
+            assert results[0][0] == mock_node
+            assert results[0][1] == "capture_name"
+
+    def test_execute_query_legacy_api(self):
+        """Test execution with legacy API (captures)"""
+        import sys
+
+        mock_tree_sitter = MagicMock()
+        del mock_tree_sitter.QueryCursor
+
+        mock_query = MagicMock()
+        mock_tree_sitter.Query.return_value = mock_query
+        del mock_query.matches
+
+        mock_node = MagicMock()
+        mock_query.captures.return_value = [(mock_node, "capture_name")]
+
+        with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter}):
+            results = TreeSitterQueryCompat.execute_query(
+                MagicMock(), "query", MagicMock()
+            )
+            assert len(results) == 1
+            assert results[0][0] == mock_node
+            assert results[0][1] == "capture_name"
+
+    def test_execute_query_no_compatible_api(self):
+        """Test execution when no compatible API is found"""
+        import sys
+
+        mock_tree_sitter = MagicMock()
+        del mock_tree_sitter.QueryCursor
+
+        mock_query = MagicMock()
+        del mock_query.matches
+        del mock_query.captures
+        mock_tree_sitter.Query.return_value = mock_query
+
+        with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter}):
+            results = TreeSitterQueryCompat.execute_query(
+                MagicMock(), "query", MagicMock()
+            )
+            assert results == []
+
+    def test_log_api_info_import_error(self):
+        """Test log_api_info when tree-sitter import fails"""
+        import builtins
+        import sys
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "tree_sitter":
+                raise ImportError("No module named 'tree_sitter'")
+            return original_import(name, *args, **kwargs)
+
+        saved_module = sys.modules.get("tree_sitter")
+        try:
+            if "tree_sitter" in sys.modules:
+                del sys.modules["tree_sitter"]
+            with patch.object(builtins, "__import__", side_effect=mock_import):
+                log_api_info()
+        finally:
+            if saved_module is not None:
+                sys.modules["tree_sitter"] = saved_module
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

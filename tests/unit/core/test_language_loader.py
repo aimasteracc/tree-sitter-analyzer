@@ -168,3 +168,81 @@ def test_case_sensitivity():
     assert not loader.is_language_available("JAVA")
     assert not loader.is_language_available("JavaScript")
     assert not loader.is_language_available("Python")
+
+
+# --- Merged from test_language_loader_comprehensive.py ---
+
+
+def test_clear_cache():
+    """Test clearing all caches"""
+    from unittest.mock import Mock
+
+    test_loader = LanguageLoader()
+    test_loader._loaded_languages["python"] = Mock()
+    test_loader._loaded_modules["tree_sitter_python"] = Mock()
+    test_loader._availability_cache["python"] = True
+    test_loader._parser_cache["python"] = Mock()
+    test_loader._unavailable_languages.add("unknown")
+
+    test_loader.clear_cache()
+
+    assert len(test_loader._loaded_languages) == 0
+    assert len(test_loader._loaded_modules) == 0
+    assert len(test_loader._availability_cache) == 0
+    assert len(test_loader._parser_cache) == 0
+    assert len(test_loader._unavailable_languages) == 0
+
+
+def test_get_loader_singleton():
+    """Test that get_loader returns singleton instance"""
+    from tree_sitter_analyzer.language_loader import get_loader
+
+    loader1 = get_loader()
+    loader2 = get_loader()
+    assert loader1 is loader2
+
+
+def test_load_language_from_cache():
+    """Test loading language from cache"""
+    from unittest.mock import Mock
+
+    test_loader = LanguageLoader()
+    mock_language = Mock()
+    test_loader._loaded_languages["python"] = mock_language
+
+    result = test_loader.load_language("python")
+    assert result == mock_language
+
+
+def test_create_parser_from_cache():
+    """Test getting parser from cache"""
+    from unittest.mock import Mock
+
+    test_loader = LanguageLoader()
+    mock_parser = Mock()
+    test_loader._parser_cache["python"] = mock_parser
+
+    result = test_loader.create_parser_safely("python")
+    assert result == mock_parser
+
+
+def test_language_modules_completeness():
+    """Test that all expected languages are in LANGUAGE_MODULES"""
+    test_loader = LanguageLoader()
+    expected_languages = [
+        "java",
+        "javascript",
+        "typescript",
+        "tsx",
+        "python",
+        "c",
+        "cpp",
+        "rust",
+        "go",
+        "markdown",
+        "sql",
+        "csharp",
+        "cs",
+    ]
+    for lang in expected_languages:
+        assert lang in test_loader.LANGUAGE_MODULES

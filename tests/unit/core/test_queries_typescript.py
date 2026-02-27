@@ -384,6 +384,89 @@ class TestTypeScriptQueries:
                 )
                 assert has_expected_pattern, f"Query {query_name} doesn't contain expected capture group patterns: {patterns}"
 
+    # --- Merged from test_queries_typescript_extended.py ---
+
+    def test_type_system_queries(self):
+        """Test TypeScript type system queries"""
+        type_queries = [
+            "union_type",
+            "intersection_type",
+            "conditional_type",
+            "mapped_type",
+            "tuple_type",
+            "array_type",
+            "literal_type",
+            "template_literal_type",
+            "keyof_type",
+            "typeof_type",
+            "infer_type",
+            "function_type",
+            "constructor_type",
+            "object_type",
+        ]
+        for query_name in type_queries:
+            assert query_name in ts_queries.ALL_QUERIES
+            query_data = ts_queries.ALL_QUERIES[query_name]
+            assert "query" in query_data
+            assert "description" in query_data
+            assert "type" in query_data["description"].lower()
+
+    def test_method_visibility_queries(self):
+        """Test method visibility queries"""
+        visibility_queries = [
+            "getter_method",
+            "setter_method",
+            "static_method",
+            "private_method",
+            "protected_method",
+            "public_method",
+            "override_method",
+            "abstract_method",
+        ]
+        for query_name in visibility_queries:
+            assert query_name in ts_queries.ALL_QUERIES
+            query_data = ts_queries.ALL_QUERIES[query_name]
+            assert "query" in query_data
+            assert "description" in query_data
+
+    def test_jsx_queries_extended(self):
+        """Test JSX-specific queries for TypeScript"""
+        jsx_queries = [
+            "jsx_element",
+            "jsx_self_closing",
+            "jsx_fragment",
+            "jsx_expression",
+        ]
+        for query_name in jsx_queries:
+            assert query_name in ts_queries.ALL_QUERIES
+            query_data = ts_queries.ALL_QUERIES[query_name]
+            assert "query" in query_data
+            assert "description" in query_data
+            assert "jsx" in query_data["description"].lower()
+
+    def test_expression_queries(self):
+        """Test expression-specific queries"""
+        expression_queries = [
+            "as_expression",
+            "type_assertion",
+            "satisfies_expression",
+            "non_null_expression",
+            "optional_chain",
+            "nullish_coalescing",
+        ]
+        for query_name in expression_queries:
+            assert query_name in ts_queries.ALL_QUERIES
+            query_data = ts_queries.ALL_QUERIES[query_name]
+            assert "query" in query_data
+            assert "description" in query_data
+
+    def test_alias_queries(self):
+        """Test that alias queries work correctly"""
+        assert "methods" in ts_queries.ALL_QUERIES
+        methods_query = ts_queries.ALL_QUERIES["methods"]["query"]
+        functions_query = ts_queries.ALL_QUERIES["functions"]["query"]
+        assert methods_query == functions_query
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

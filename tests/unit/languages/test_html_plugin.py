@@ -247,5 +247,110 @@ class TestHtmlIntegration:
         assert child.parent == parent
 
 
+class TestHtmlEnhancedFeatures:
+    """Tests for advanced HTML features merged from enhanced test file."""
+
+    def _get_tree_for_code(self, code, plugin):
+        """Helper to parse HTML code and return tree."""
+        import tree_sitter
+
+        language = plugin.get_tree_sitter_language()
+        parser = tree_sitter.Parser()
+        if hasattr(parser, "set_language"):
+            parser.set_language(language)
+        elif hasattr(parser, "language"):
+            parser.language = language
+        else:
+            parser = tree_sitter.Parser(language)
+        return parser.parse(code.encode("utf-8"))
+
+    def test_extract_form_elements(self):
+        """Test extraction of form elements including input types."""
+        plugin = HtmlPlugin()
+        code = """<form id="login-form" action="/login" method="post">
+    <input type="text" name="username" required>
+    <input type="password" name="password" required>
+    <select name="country">
+        <option value="us">United States</option>
+    </select>
+    <textarea name="message" rows="5"></textarea>
+    <button type="submit">Submit</button>
+</form>"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.create_extractor().extract_html_elements(tree, code)
+
+        form_elements = [e for e in elements if e.tag_name == "form"]
+        assert len(form_elements) >= 1
+        input_elements = [e for e in elements if e.tag_name == "input"]
+        assert len(input_elements) >= 1
+
+    def test_extract_table_structure(self):
+        """Test extraction of table structure with thead/tbody/tfoot."""
+        plugin = HtmlPlugin()
+        code = """<table>
+    <thead><tr><th>Name</th><th>Age</th></tr></thead>
+    <tbody><tr><td>John</td><td>30</td></tr></tbody>
+    <tfoot><tr><td colspan="2">Total: 1</td></tr></tfoot>
+</table>"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.create_extractor().extract_html_elements(tree, code)
+
+        table_elements = [e for e in elements if e.tag_name == "table"]
+        assert len(table_elements) >= 1
+        thead_elements = [e for e in elements if e.tag_name == "thead"]
+        assert len(thead_elements) >= 1
+
+    def test_extract_script_and_style_tags(self):
+        """Test extraction of script and style tags."""
+        plugin = HtmlPlugin()
+        code = """<script src="https://cdn.example.com/library.js"></script>
+<script>function hello() { console.log("Hello"); }</script>
+<style>body { margin: 0; }</style>
+<link rel="stylesheet" href="styles.css">"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.create_extractor().extract_html_elements(tree, code)
+
+        script_elements = [e for e in elements if e.tag_name == "script"]
+        assert len(script_elements) >= 1
+        style_elements = [e for e in elements if e.tag_name == "style"]
+        assert len(style_elements) >= 1
+
+    def test_extract_data_attributes(self):
+        """Test extraction of data-* attributes."""
+        plugin = HtmlPlugin()
+        code = '<div id="main" class="container" data-id="123">Content</div>'
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.create_extractor().extract_html_elements(tree, code)
+
+        div_with_data = next(
+            (e for e in elements if e.attributes and "data-id" in e.attributes), None
+        )
+        if div_with_data:
+            assert div_with_data.attributes["data-id"] == "123"
+
+    def test_extract_complex_nested_structure(self):
+        """Test extraction of deeply nested HTML document structure."""
+        plugin = HtmlPlugin()
+        code = """<!DOCTYPE html>
+<html lang="en">
+<head><title>Test</title></head>
+<body>
+    <div id="app">
+        <header><nav><ul><li><a href="/">Home</a></li></ul></nav></header>
+        <main><section><article><h1>Title</h1><p>Content.</p></article></section></main>
+        <footer><p>Footer</p></footer>
+    </div>
+</body>
+</html>"""
+        tree = self._get_tree_for_code(code, plugin)
+        elements = plugin.create_extractor().extract_html_elements(tree, code)
+
+        assert len(elements) >= 10
+        tag_names = [e.tag_name for e in elements]
+        assert "html" in tag_names
+        assert "body" in tag_names
+        assert "h1" in tag_names
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

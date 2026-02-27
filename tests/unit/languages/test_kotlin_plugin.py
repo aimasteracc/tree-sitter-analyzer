@@ -495,6 +495,87 @@ class Person(val name: String) {
         assert result is not None
 
 
+class TestKotlinPluginUtilities:
+    """Tests for KotlinPlugin utility methods and edge cases."""
+
+    @pytest.fixture
+    def plugin(self):
+        """Create plugin instance."""
+        return KotlinPlugin()
+
+    @pytest.fixture
+    def kotlin_parser(self):
+        """Create Kotlin parser."""
+        import tree_sitter
+        import tree_sitter_kotlin
+
+        language = tree_sitter.Language(tree_sitter_kotlin.language())
+        parser = tree_sitter.Parser(language)
+        return parser
+
+    def test_count_tree_nodes(self, plugin):
+        """Test _count_tree_nodes method with a mock tree."""
+        mock_node = MagicMock()
+        mock_child1 = MagicMock()
+        mock_child2 = MagicMock()
+        mock_child1.children = []
+        mock_child2.children = []
+        mock_node.children = [mock_child1, mock_child2]
+
+        count = plugin._count_tree_nodes(mock_node)
+        assert count == 3  # Root + 2 children
+
+    def test_count_tree_nodes_none(self, plugin):
+        """Test _count_tree_nodes with None."""
+        count = plugin._count_tree_nodes(None)
+        assert count == 0
+
+    def test_supports_file(self, plugin):
+        """Test supports_file for various file paths."""
+        assert plugin.supports_file("test.kt") is True
+        assert plugin.supports_file("test.kts") is True
+        assert plugin.supports_file("TEST.KT") is True
+        assert plugin.supports_file("test.java") is False
+        assert plugin.supports_file("test.py") is False
+
+    def test_extract_elements_exception_handling(self, plugin):
+        """Test extract_elements exception handling returns empty dict."""
+        from unittest.mock import patch
+
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+        mock_tree.root_node.children = []
+
+        with patch.object(
+            plugin, "create_extractor", side_effect=Exception("Test error")
+        ):
+            result = plugin.extract_elements(mock_tree, "fun test() {}")
+            assert result == {
+                "functions": [],
+                "classes": [],
+                "variables": [],
+                "imports": [],
+                "packages": [],
+            }
+
+    def test_extract_variance_annotations(self, kotlin_parser):
+        """Test extraction of covariant/contravariant generic classes."""
+        extractor = KotlinElementExtractor()
+        code = """
+class Producer<out T>(private val value: T) {
+    fun get(): T = value
+}
+
+class Consumer<in T> {
+    fun accept(value: T) {}
+}
+"""
+        tree = kotlin_parser.parse(code.encode("utf-8"))
+        classes = extractor.extract_classes(tree, code)
+
+        assert len(classes) >= 2
+
+
 class TestKotlinComplexExtraction:
     """Tests for complex Kotlin code extraction."""
 

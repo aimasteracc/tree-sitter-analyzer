@@ -692,3 +692,36 @@ class TestCppPluginLegacyTests:
         path = os.path.join("examples", "sample.cpp")
         out = await p.analyze_file(path, SimpleNamespace())
         assert out is not None
+
+
+class TestCppPluginRealParsing:
+    """Tests using real tree-sitter parsing via extract_elements."""
+
+    def test_cpp_plugin_extract_elements_real_parsing(self) -> None:
+        """Test real tree-sitter parsing with extract_elements for C++ code."""
+        import tree_sitter
+
+        plugin = CppPlugin()
+        code = """
+        #include <iostream>
+        namespace my_ns {
+            class MyClass {
+                public:
+                    void my_method() {}
+            };
+        }
+        void global_func() {}
+        """
+
+        language = plugin.get_tree_sitter_language()
+        parser = tree_sitter.Parser(language)
+        tree = parser.parse(code.encode("utf-8"))
+
+        elements_dict = plugin.extract_elements(tree, code)
+        assert elements_dict is not None
+        assert len(elements_dict["functions"]) > 0
+        assert len(elements_dict["classes"]) > 0
+
+        names = [e.name for e in elements_dict["functions"]]
+        assert "my_method" in names
+        assert "global_func" in names
