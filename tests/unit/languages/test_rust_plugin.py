@@ -75,13 +75,21 @@ class TestRustPlugin:
 
 
 class TestRustElementExtractor:
-    def test_extract_function(self, rust_extractor):
-        # This requires mocking tree nodes which is complex.
-        # We will rely on integration tests or simpler unit tests if possible.
-        pass
+    def test_extract_functions_empty_tree_returns_list(self, rust_extractor):
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+        mock_tree.root_node.children = []
+        mock_tree.root_node.type = "source_file"
+        result = rust_extractor.extract_functions(mock_tree, "")
+        assert isinstance(result, list)
 
-    def test_extract_struct(self, rust_extractor):
-        pass
+    def test_extract_classes_empty_tree_returns_list(self, rust_extractor):
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+        mock_tree.root_node.children = []
+        mock_tree.root_node.type = "source_file"
+        result = rust_extractor.extract_classes(mock_tree, "")
+        assert isinstance(result, list)
 
 
 # Basic integration test with sample code

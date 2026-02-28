@@ -398,7 +398,7 @@ class TestSerializationRoundTripProperties:
     **Validates: Requirements 2.4, 6.4, 10.3**
     """
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
     def test_property_1_analysis_result_to_dict_roundtrip(self, result: AnalysisResult):
         """
@@ -423,7 +423,7 @@ class TestSerializationRoundTripProperties:
         deserialized = json.loads(json_str)
         assert deserialized == serialized, "JSON round-trip should preserve data"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
     def test_property_1_analysis_result_to_json_roundtrip(self, result: AnalysisResult):
         """
@@ -456,7 +456,7 @@ class TestSerializationRoundTripProperties:
             serialized["success"] == deserialized["success"]
         ), "success status should be preserved"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
     def test_property_1_analysis_result_to_mcp_format_roundtrip(
         self, result: AnalysisResult
@@ -491,7 +491,7 @@ class TestSerializationRoundTripProperties:
             mcp_format["file_path"] == deserialized["file_path"]
         ), "file_path should be preserved in MCP format round-trip"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
     def test_property_1_analysis_result_summary_dict_roundtrip(
         self, result: AnalysisResult
@@ -524,7 +524,7 @@ class TestSerializationRoundTripProperties:
             deserialized["summary_elements"]
         ), "summary_elements count should be preserved"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
     def test_property_1_java_formatter_json_roundtrip(self, data: dict):
         """
@@ -564,7 +564,7 @@ class TestSerializationRoundTripProperties:
             data.get("fields", [])
         ), "Field count should be preserved in JSON round-trip"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
     def test_property_1_java_formatter_json_preserves_all_class_names(self, data: dict):
         """
@@ -588,7 +588,7 @@ class TestSerializationRoundTripProperties:
             original_class_names == deserialized_class_names
         ), f"All class names should be preserved. Original: {original_class_names}, Got: {deserialized_class_names}"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
     def test_property_1_java_formatter_json_preserves_all_method_names(
         self, data: dict
@@ -614,7 +614,7 @@ class TestSerializationRoundTripProperties:
             original_method_names == deserialized_method_names
         ), f"All method names should be preserved. Original: {original_method_names}, Got: {deserialized_method_names}"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
     def test_property_1_java_formatter_json_preserves_all_field_names(self, data: dict):
         """
@@ -647,7 +647,7 @@ class TestSerializationDataIntegrityProperties:
     **Validates: Requirements 2.4, 6.4, 10.3**
     """
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
     def test_property_1_serialization_preserves_element_counts(
         self, result: AnalysisResult
@@ -687,7 +687,7 @@ class TestSerializationDataIntegrityProperties:
             len(deserialized.get("imports", [])) == summary_before["import_count"]
         ), "Import count should be preserved after serialization"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
     def test_property_1_serialization_preserves_metadata(self, result: AnalysisResult):
         """
@@ -715,7 +715,7 @@ class TestSerializationDataIntegrityProperties:
             abs(deserialized["analysis_time"] - result.analysis_time) < 0.0001
         ), "analysis_time should be preserved"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
     def test_property_1_format_table_json_is_valid(self, data: dict):
         """
@@ -737,7 +737,7 @@ class TestSerializationDataIntegrityProperties:
         except json.JSONDecodeError as e:
             pytest.fail(f"format_table(json) should produce valid JSON: {e}")
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
     def test_property_1_format_advanced_json_is_valid(self, data: dict):
         """

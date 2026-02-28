@@ -332,6 +332,140 @@ class TestQueryService:
         assert result["end_line"] == 0
         assert result["content"] == ""
 
+    # --- Migrated from test_query_service.py ---
+
+    def test_query_service_init_default(self) -> None:
+        """Test QueryService initialization with default project_root."""
+        service = QueryService()
+        assert service.project_root is None
+        assert service.parser is not None
+        assert service.filter is not None
+        assert service.plugin_manager is not None
+
+    def test_query_service_init_with_project_root(self) -> None:
+        """Test QueryService initialization with project_root."""
+        service = QueryService(project_root="/test/path")
+        assert service.project_root == "/test/path"
+        assert service.parser is not None
+        assert service.filter is not None
+
+    def test_create_result_dict_with_source_code(self) -> None:
+        """Test creating result dictionary with source code."""
+        mock_node = Mock()
+        mock_node.type = "class_definition"
+        mock_node.start_point = (10, 0)
+        mock_node.end_point = (20, 0)
+        mock_node.text = b"class MyClass: pass"
+        mock_node.start_byte = 0
+        mock_node.end_byte = 19
+
+        result = self.query_service._create_result_dict(
+            mock_node, "class", "class MyClass: pass"
+        )
+
+        assert result["capture_name"] == "class"
+        assert result["node_type"] == "class_definition"
+        assert result["start_line"] == 11
+        assert result["end_line"] == 21
+
+    def test_get_available_queries_unsupported_language(self) -> None:
+        """Test getting available queries for unsupported language."""
+        queries = self.query_service.get_available_queries("unsupported")
+        assert isinstance(queries, list)
+
+    def test_execute_plugin_query_with_plugin(self) -> None:
+        """Test executing plugin query with available plugin."""
+        mock_root_node = Mock()
+        mock_root_node.children = []
+
+        captures = self.query_service._execute_plugin_query(
+            mock_root_node, "functions", "python", "def test(): pass"
+        )
+        assert isinstance(captures, list)
+
+    def test_execute_plugin_query_without_plugin(self) -> None:
+        """Test executing plugin query without available plugin."""
+        mock_root_node = Mock()
+        mock_root_node.children = []
+
+        captures = self.query_service._execute_plugin_query(
+            mock_root_node, "functions", "unsupported", "code"
+        )
+        assert isinstance(captures, list)
+
+    def test_fallback_query_execution_function(self) -> None:
+        """Test fallback query execution for function nodes."""
+        mock_root_node = Mock()
+        mock_root_node.type = "module"
+        mock_child = Mock()
+        mock_child.type = "function_definition"
+        mock_child.start_point = (0, 0)
+        mock_child.end_point = (5, 0)
+        mock_child.children = []
+        mock_root_node.children = [mock_child]
+
+        captures = self.query_service._fallback_query_execution(
+            mock_root_node, "function"
+        )
+        assert isinstance(captures, list)
+        assert len(captures) >= 0
+
+    def test_fallback_query_execution_class(self) -> None:
+        """Test fallback query execution for class nodes."""
+        mock_root_node = Mock()
+        mock_root_node.type = "module"
+        mock_child = Mock()
+        mock_child.type = "class_definition"
+        mock_child.start_point = (0, 0)
+        mock_child.end_point = (10, 0)
+        mock_child.children = []
+        mock_root_node.children = [mock_child]
+
+        captures = self.query_service._fallback_query_execution(
+            mock_root_node, "class"
+        )
+        assert isinstance(captures, list)
+
+    def test_fallback_query_execution_no_matches(self) -> None:
+        """Test fallback query execution with no matches."""
+        mock_root_node = Mock()
+        mock_root_node.type = "module"
+        mock_child = Mock()
+        mock_child.type = "comment"
+        mock_child.start_point = (0, 0)
+        mock_child.end_point = (1, 0)
+        mock_child.children = []
+        mock_root_node.children = [mock_child]
+
+        captures = self.query_service._fallback_query_execution(
+            mock_root_node, "function"
+        )
+        assert isinstance(captures, list)
+
+    @pytest.mark.asyncio
+    async def test_read_file_async(self) -> None:
+        """Test async file reading."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("def hello(): pass\n")
+            temp_path = Path(f.name)
+        try:
+            content, encoding = await self.query_service._read_file_async(
+                str(temp_path)
+            )
+            assert isinstance(content, str)
+            assert isinstance(encoding, str)
+            assert "def hello(): pass" in content
+        finally:
+            try:
+                temp_path.unlink()
+            except Exception:
+                pass
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

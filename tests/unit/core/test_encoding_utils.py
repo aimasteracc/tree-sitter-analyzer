@@ -392,5 +392,49 @@ class TestErrorHandling:
         # Should not crash, exact result may vary based on detection
 
 
+class TestAsyncFileFunctions:
+    """Tests for async file I/O functions (read_file_safe_async, clear_encoding_cache)."""
+
+    def test_read_file_safe_async_returns_content(self, tmp_path):
+        """read_file_safe_async should return (content, encoding) for a UTF-8 file."""
+        import asyncio
+
+        from tree_sitter_analyzer.encoding_utils import read_file_safe_async
+
+        target = tmp_path / "sample.txt"
+        target.write_text("hello async world", encoding="utf-8")
+
+        content, encoding = asyncio.run(read_file_safe_async(str(target)))
+        assert content == "hello async world"
+        assert isinstance(encoding, str)
+
+    def test_read_file_safe_async_classmethod_returns_content(self, tmp_path):
+        """EncodingManager.read_file_safe_async classmethod should return (content, encoding)."""
+        import asyncio
+
+        target = tmp_path / "sample.txt"
+        target.write_text("async classmethod test", encoding="utf-8")
+
+        content, encoding = asyncio.run(EncodingManager.read_file_safe_async(str(target)))
+        assert content == "async classmethod test"
+        assert isinstance(encoding, str)
+
+    def test_clear_encoding_cache_does_not_raise(self, tmp_path):
+        """clear_encoding_cache should run without errors and invalidate cache."""
+        from tree_sitter_analyzer.encoding_utils import clear_encoding_cache, read_file_safe
+
+        # Prime the cache with a file read
+        target = tmp_path / "cache_test.txt"
+        target.write_text("cache content", encoding="utf-8")
+        read_file_safe(str(target))
+
+        # Clearing should not raise
+        clear_encoding_cache()
+
+        # Reading again after clear should still work correctly
+        content, _ = read_file_safe(str(target))
+        assert content == "cache content"
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

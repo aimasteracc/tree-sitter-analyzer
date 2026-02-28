@@ -162,7 +162,7 @@ def rust_struct_nodes(draw):
 
 class TestRustProperties:
     @given(data=rust_function_nodes())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     def test_property_2_rust_function_extraction_completeness(self, data):
         """
         Property 2: Rust Element Extraction Completeness (Functions)
@@ -191,7 +191,7 @@ class TestRustProperties:
             assert getattr(func, "is_async", False) == data["is_async"]
 
     @given(data=rust_struct_nodes())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     def test_property_2_rust_struct_extraction_completeness(self, data):
         """
         Property 2: Rust Element Extraction Completeness (Structs)

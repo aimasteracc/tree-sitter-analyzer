@@ -324,3 +324,10 @@ tests/debug_artifacts/
 /output.toon
 /test_mcp_output.toon
 /test_mcp_suppress_output.toon
+
+# Windows null device file created by MSYS2/Git Bash when CMD-style redirection
+# "2>nul" is used in a POSIX shell context (creates a real file instead of null device)
+/nul
+
+# Claude Code Bash tool CWD tracking files (session state, never commit)
+/tmpclaude-*-cwd

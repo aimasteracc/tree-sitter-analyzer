@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest:*)",
+      "Bash(xargs:*)",
+      "Bash(uv run coverage:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(py -c:*)",
+      "Bash(node -e:*)",
+      "Bash(node:*)",
+      "Bash(uv run ruff check:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv run:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(sort -t'%' -k1 -n)"
+    ]
+  }
+}

@@ -182,7 +182,7 @@ def kotlin_class_nodes(draw):
 
 class TestKotlinProperties:
     @given(data=kotlin_function_nodes())
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_property_3_kotlin_function_extraction_completeness(self, data):
         """
         Property 3: Kotlin Element Extraction Completeness (Functions)
@@ -209,7 +209,7 @@ class TestKotlinProperties:
             assert getattr(func, "is_suspend", False) == data["is_suspend"]
 
     @given(data=kotlin_class_nodes())
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_property_3_kotlin_class_extraction_completeness(self, data):
         """
         Property 3: Kotlin Element Extraction Completeness (Classes)

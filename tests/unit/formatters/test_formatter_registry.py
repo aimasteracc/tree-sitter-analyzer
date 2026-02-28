@@ -683,3 +683,73 @@ class TestFormatterErrorHandling:
         csv_formatter = CsvFormatter()
         result = csv_formatter.format([element])
         assert "テスト関数" in result
+
+
+class TestFormatterRegistryUncoveredMethods:
+    """Tests for register_language_formatter, set_default_language_formatter, register_builtin_formatters."""
+
+    def setup_method(self):
+        """Clear registry state before each test."""
+        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
+        FormatterRegistry.clear_registry()
+
+    def teardown_method(self):
+        """Restore registry after each test."""
+        from tree_sitter_analyzer.formatters.formatter_registry import (
+            FormatterRegistry,
+            register_builtin_formatters,
+        )
+        FormatterRegistry.clear_registry()
+        register_builtin_formatters()
+
+    def test_register_language_formatter_stores_formatter(self):
+        """register_language_formatter stores formatter under language+format_type key."""
+        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
+
+        class FakeFormatter:
+            pass
+
+        FormatterRegistry.register_language_formatter("python", "full", FakeFormatter)
+        assert "python" in FormatterRegistry._language_formatters
+        assert "full" in FormatterRegistry._language_formatters["python"]
+        assert FormatterRegistry._language_formatters["python"]["full"] is FakeFormatter
+
+    def test_register_language_formatter_case_insensitive(self):
+        """register_language_formatter lowercases the language key."""
+        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
+
+        class FakeFormatter:
+            pass
+
+        FormatterRegistry.register_language_formatter("PYTHON", "full", FakeFormatter)
+        assert "python" in FormatterRegistry._language_formatters
+
+    def test_set_default_language_formatter_stores_class(self):
+        """set_default_language_formatter stores the class as default."""
+        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
+
+        class FakeDefaultFormatter:
+            pass
+
+        FormatterRegistry.set_default_language_formatter(FakeDefaultFormatter)
+        assert FormatterRegistry._default_language_formatter is FakeDefaultFormatter
+
+    def test_register_builtin_formatters_registers_json_formatter(self):
+        """register_builtin_formatters registers at least JsonFormatter."""
+        from tree_sitter_analyzer.formatters.formatter_registry import (
+            FormatterRegistry,
+            register_builtin_formatters,
+        )
+        register_builtin_formatters()
+        assert len(FormatterRegistry._formatters) > 0
+
+    def test_register_builtin_formatters_idempotent(self):
+        """Calling register_builtin_formatters twice does not raise and formatters remain."""
+        from tree_sitter_analyzer.formatters.formatter_registry import (
+            FormatterRegistry,
+            register_builtin_formatters,
+        )
+        register_builtin_formatters()
+        count_first = len(FormatterRegistry._formatters)
+        register_builtin_formatters()  # second call should not crash
+        assert len(FormatterRegistry._formatters) == count_first  # same formatters

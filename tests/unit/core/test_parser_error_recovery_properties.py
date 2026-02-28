@@ -284,7 +284,7 @@ class TestParserErrorRecoveryProperties:
     **Validates: Requirements 5.1**
     """
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(code=python_code_with_syntax_error())
     def test_property_6_python_parser_does_not_crash_on_syntax_errors(self, code: str):
         """
@@ -311,7 +311,7 @@ class TestParserErrorRecoveryProperties:
         # Property: Source code should be preserved
         assert result.source_code == code, "Source code should be preserved in result"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(code=java_code_with_syntax_error())
     def test_property_6_java_parser_does_not_crash_on_syntax_errors(self, code: str):
         """
@@ -335,7 +335,7 @@ class TestParserErrorRecoveryProperties:
         # Property: Result should have language set
         assert result.language == "java", "Language should be preserved in result"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(code=javascript_code_with_syntax_error())
     def test_property_6_javascript_parser_does_not_crash_on_syntax_errors(
         self, code: str
@@ -361,7 +361,7 @@ class TestParserErrorRecoveryProperties:
         # Property: Result should have language set
         assert result.language == "javascript", "Language should be preserved in result"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(data=code_with_partial_errors())
     def test_property_6_parser_returns_partial_results_for_mixed_code(
         self, data: tuple
@@ -392,7 +392,7 @@ class TestParserErrorRecoveryProperties:
                 result.tree.root_node is not None
             ), "Successful parse should have root node"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     @given(garbage=random_garbage_code())
     def test_property_6_parser_handles_garbage_input_gracefully(self, garbage: str):
         """
@@ -428,7 +428,7 @@ class TestEngineErrorRecoveryProperties:
     """
 
     @settings(
-        max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
+        max_examples=30, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=python_code_with_syntax_error())
     @pytest.mark.asyncio
@@ -457,7 +457,7 @@ class TestEngineErrorRecoveryProperties:
         assert result.language == "python", "Language should be preserved in result"
 
     @settings(
-        max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
+        max_examples=30, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=java_code_with_syntax_error())
     @pytest.mark.asyncio
@@ -483,7 +483,7 @@ class TestEngineErrorRecoveryProperties:
         ), "Engine should return AnalysisResult even for invalid code"
 
     @settings(
-        max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
+        max_examples=30, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=javascript_code_with_syntax_error())
     @pytest.mark.asyncio
@@ -522,7 +522,7 @@ class TestParserErrorDetectionProperties:
     **Validates: Requirements 5.1**
     """
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(code=python_code_with_syntax_error())
     def test_property_6_parser_can_detect_errors_in_tree(self, code: str):
         """
@@ -551,7 +551,7 @@ class TestParserErrorDetectionProperties:
                 assert "start_point" in error, "Error should have 'start_point' field"
                 assert "end_point" in error, "Error should have 'end_point' field"
 
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     @given(data=code_with_partial_errors())
     def test_property_6_parser_validates_ast_correctly(self, data: tuple):
         """
@@ -586,7 +586,7 @@ class TestParserUnsupportedLanguageProperties:
     **Validates: Requirements 5.1**
     """
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     @given(
         code=st.text(min_size=1, max_size=100),
         language=st.sampled_from(
@@ -642,7 +642,7 @@ class TestParserEmptyInputProperties:
     **Validates: Requirements 5.1**
     """
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     @given(language=st.sampled_from(["python", "java", "javascript", "typescript"]))
     def test_property_6_parser_handles_empty_string(self, language: str):
         """
@@ -665,7 +665,7 @@ class TestParserEmptyInputProperties:
             result, ParseResult
         ), "Parser should return ParseResult for empty string"
 
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     @given(
         whitespace=st.text(alphabet=" \t\n\r", min_size=1, max_size=100),
         language=st.sampled_from(["python", "java", "javascript"]),

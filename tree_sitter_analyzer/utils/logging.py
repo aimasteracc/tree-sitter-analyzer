@@ -291,9 +291,7 @@ def suppress_output(func: Any) -> Any:
         # Redirect stdout to suppress prints
         old_stdout = sys.stdout
         try:
-            sys.stdout = (
-                open("/dev/null", "w") if sys.platform != "win32" else open("nul", "w")
-            )
+            sys.stdout = open(os.devnull, "w")  # cross-platform: /dev/null on POSIX, nul on Windows
             result = func(*args, **kwargs)
         finally:
             try:

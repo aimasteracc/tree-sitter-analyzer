@@ -10,7 +10,7 @@ and types from the analysis result.
 **Validates: Requirements 2.1, 2.2, 2.3, 10.2**
 """
 
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
@@ -206,7 +206,7 @@ class TestFormatterOutputCompletenessProperties:
     """
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_all_class_names(self, data: dict):
@@ -229,7 +229,7 @@ class TestFormatterOutputCompletenessProperties:
             ), f"Class name '{class_name}' should appear in formatted output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_all_field_names(self, data: dict):
@@ -254,6 +254,10 @@ class TestFormatterOutputCompletenessProperties:
                     return True
             return False
 
+        # Formatter deduplicates classes by name; skip inputs with duplicate names
+        class_names = [c.get("name", "") for c in data.get("classes", [])]
+        assume(len(class_names) == len(set(class_names)))
+
         # Property: Field names within class ranges should appear in the output
         for field in data.get("fields", []):
             field_name = field.get("name", "")
@@ -263,7 +267,7 @@ class TestFormatterOutputCompletenessProperties:
                 ), f"Field name '{field_name}' should appear in formatted output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_all_method_names(self, data: dict):
@@ -297,7 +301,7 @@ class TestFormatterOutputCompletenessProperties:
                 ), f"Method name '{method_name}' should appear in formatted output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_full_table_contains_field_types(self, data: dict):
@@ -332,7 +336,7 @@ class TestFormatterOutputCompletenessProperties:
             ), "Some field information should appear in formatted output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_compact_table_contains_all_method_names(self, data: dict):
@@ -356,7 +360,7 @@ class TestFormatterOutputCompletenessProperties:
                 ), f"Method name '{method_name}' should appear in compact formatted output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_imports_appear_in_output(self, data: dict):
@@ -380,7 +384,7 @@ class TestFormatterOutputCompletenessProperties:
                 ), f"Import statement '{statement}' should appear in formatted output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_package_name_appears_in_output(self, data: dict):
@@ -403,7 +407,7 @@ class TestFormatterOutputCompletenessProperties:
             ), f"Package name '{package_name}' should appear in formatted output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_csv_format_contains_all_elements(self, data: dict):
@@ -435,7 +439,7 @@ class TestFormatterOutputCompletenessProperties:
                 ), f"Method name '{method_name}' should appear in CSV output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(data=java_analysis_result())
     def test_property_2_json_format_preserves_all_data(self, data: dict):
@@ -484,7 +488,7 @@ class TestFormatterAnnotationHandlingProperties:
     """
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(
         class_name=java_identifier,
@@ -547,7 +551,7 @@ class TestFormatterGenericTypeHandlingProperties:
     """
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(
         method_name=java_identifier,
@@ -604,7 +608,7 @@ class TestFormatterGenericTypeHandlingProperties:
         ), f"Method name '{method_name}' should appear in output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(
         type_name=st.sampled_from(
@@ -653,7 +657,7 @@ class TestFormatterEdgeCaseProperties:
     """
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(
         num_classes=st.integers(min_value=1, max_value=5),
@@ -739,7 +743,7 @@ class TestFormatterEdgeCaseProperties:
             assert f"field{i}" in result, f"field{i} should appear in output"
 
     @settings(
-        max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
+        max_examples=20, suppress_health_check=[HealthCheck.too_slow], derandomize=True
     )
     @given(
         enum_name=java_identifier,

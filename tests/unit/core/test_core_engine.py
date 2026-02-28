@@ -575,10 +575,8 @@ class TestAnalyzeFileRequestUpdate:
         txt_file = tmp_path / "test.xyz_unsupported"
         txt_file.write_text("content\n")
         engine = AnalysisEngine()
-        try:
+        with pytest.raises((UnsupportedLanguageError, Exception)):
             await engine.analyze_file(str(txt_file), language="xyz_unsupported_lang")
-        except (UnsupportedLanguageError, Exception):
-            pass  # Expected
 
     @pytest.mark.asyncio
     async def test_analyze_file_fills_missing_language(self, tmp_path):
@@ -592,3 +590,36 @@ class TestAnalyzeFileRequestUpdate:
                 assert result.language is not None
         except Exception:
             pass
+
+
+class TestUnifiedAnalysisEngineUncovered:
+    """Tests for UnifiedAnalysisEngine.analyze_file_async and cache_service property."""
+
+    def test_analyze_file_async_is_alias_for_analyze_file(self, tmp_path):
+        """analyze_file_async is a compatibility alias: calling it delegates to analyze_file."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+
+        engine = UnifiedAnalysisEngine()
+        # Mock the underlying analyze_file to avoid real I/O
+        mock_result = object()
+        with patch.object(engine, "analyze_file", new=AsyncMock(return_value=mock_result)) as mock_analyze:
+            result = asyncio.run(engine.analyze_file_async("test.py"))
+        mock_analyze.assert_called_once_with("test.py", None, None)
+        assert result is mock_result
+
+    def test_cache_service_property_returns_value_after_init(self):
+        """cache_service property exposes the initialized cache service."""
+        from unittest.mock import MagicMock, patch
+
+        from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+
+        engine = UnifiedAnalysisEngine()
+        fake_cache = MagicMock()
+        engine._cache_service = fake_cache
+        # Patch _ensure_initialized to be a no-op so we don't need real deps
+        with patch.object(engine, "_ensure_initialized"):
+            result = engine.cache_service
+        assert result is fake_cache

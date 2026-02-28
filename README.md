@@ -268,6 +268,9 @@ uv run pytest tests/benchmarks/ -v         # Benchmark tests
 # Run with coverage
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 
+# Run governance audit (duplicate/invalid/gap detection)
+uv run python scripts/audit_test_governance.py
+
 # Run property-based tests
 uv run pytest tests/property/
 
@@ -282,6 +285,7 @@ uv run pytest tests/benchmarks/ --benchmark-only
 | [Test Writing Guide](docs/test-writing-guide.md) | Comprehensive guide for writing tests |
 | [Regression Testing Guide](docs/regression-testing-guide.md) | Golden Master methodology and regression testing |
 | [Testing Documentation](docs/TESTING.md) | Project testing standards |
+| [Test Governance Framework](docs/test-governance-framework.md) | Function-level mapping, duplicate/invalid detection, sharding policy |
 
 ### Test Categories
 
@@ -323,6 +327,7 @@ When contributing new features:
 | [Architecture](docs/architecture.md) | System design |
 | [Contributing](docs/CONTRIBUTING.md) | Development guidelines |
 | [Test Writing Guide](docs/test-writing-guide.md) | Comprehensive test writing guide |
+| [Test Governance Framework](docs/test-governance-framework.md) | Enterprise-grade testing governance and CI gates |
 | [Regression Testing Guide](docs/regression-testing-guide.md) | Golden Master methodology |
 | [Changelog](CHANGELOG.md) | Version history |
 

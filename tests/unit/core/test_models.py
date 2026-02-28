@@ -603,3 +603,49 @@ class TestEdgeCases:
         assert len(div.children) == 1
         assert len(section.children) == 1
         assert len(article.children) == 0
+
+
+class TestSQLTableMethods:
+    """Tests for SQLTable.get_primary_key_columns and get_foreign_key_columns."""
+
+    def _make_table(self) -> "SQLTable":  # noqa: F821
+        from tree_sitter_analyzer.models import SQLColumn, SQLTable
+
+        columns = [
+            SQLColumn(name="id", data_type="INT", is_primary_key=True),
+            SQLColumn(name="user_id", data_type="INT", is_foreign_key=True),
+            SQLColumn(name="email", data_type="VARCHAR"),
+            SQLColumn(name="owner_id", data_type="INT", is_primary_key=True, is_foreign_key=True),
+        ]
+        table = SQLTable(name="orders", start_line=1, end_line=10)
+        table.columns = columns
+        return table
+
+    def test_get_primary_key_columns_returns_names(self):
+        """get_primary_key_columns should return names of is_primary_key columns."""
+        table = self._make_table()
+        pk_cols = table.get_primary_key_columns()
+        assert pk_cols == ["id", "owner_id"]
+
+    def test_get_foreign_key_columns_returns_names(self):
+        """get_foreign_key_columns should return names of is_foreign_key columns."""
+        table = self._make_table()
+        fk_cols = table.get_foreign_key_columns()
+        assert fk_cols == ["user_id", "owner_id"]
+
+    def test_get_primary_key_columns_empty_when_none(self):
+        """get_primary_key_columns returns [] when no PKs exist."""
+        from tree_sitter_analyzer.models import SQLColumn, SQLTable
+
+        table = SQLTable(name="log", start_line=1, end_line=5)
+        table.columns = [SQLColumn(name="msg", data_type="TEXT")]
+        assert table.get_primary_key_columns() == []
+
+    def test_get_foreign_key_columns_empty_when_none(self):
+        """get_foreign_key_columns returns [] when no FKs exist."""
+        from tree_sitter_analyzer.models import SQLColumn, SQLTable
+
+        table = SQLTable(name="config", start_line=1, end_line=5)
+        table.columns = [SQLColumn(name="key", data_type="TEXT", is_primary_key=True)]
+        assert table.get_foreign_key_columns() == []
+

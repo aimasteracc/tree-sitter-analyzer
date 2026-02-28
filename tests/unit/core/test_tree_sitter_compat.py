@@ -601,3 +601,49 @@ class TestTreeSitterCompatAPIPaths:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestCountNodesIterative:
+    """Tests for count_nodes_iterative."""
+
+    def test_count_nodes_iterative_none_returns_zero(self):
+        """count_nodes_iterative returns 0 for None root_node."""
+        from tree_sitter_analyzer.utils.tree_sitter_compat import count_nodes_iterative
+        assert count_nodes_iterative(None) == 0
+
+    def test_count_nodes_iterative_single_node(self):
+        """count_nodes_iterative returns 1 for a leaf node."""
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.utils.tree_sitter_compat import count_nodes_iterative
+        node = MagicMock()
+        node.children = []
+        assert count_nodes_iterative(node) == 1
+
+    def test_count_nodes_iterative_tree_with_children(self):
+        """count_nodes_iterative counts all nodes recursively."""
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.utils.tree_sitter_compat import count_nodes_iterative
+        leaf1 = MagicMock()
+        leaf1.children = []
+        leaf2 = MagicMock()
+        leaf2.children = []
+        root = MagicMock()
+        root.children = [leaf1, leaf2]
+        assert count_nodes_iterative(root) == 3
+
+    def test_count_nodes_iterative_deep_tree(self):
+        """count_nodes_iterative handles a 5-level deep chain without recursion error."""
+        from unittest.mock import MagicMock
+
+        from tree_sitter_analyzer.utils.tree_sitter_compat import count_nodes_iterative
+        # Build chain: root -> n1 -> n2 -> n3 -> n4 -> leaf
+        nodes = []
+        for _ in range(6):
+            n = MagicMock()
+            n.children = []
+            nodes.append(n)
+        for i in range(5):
+            nodes[i].children = [nodes[i + 1]]
+        assert count_nodes_iterative(nodes[0]) == 6

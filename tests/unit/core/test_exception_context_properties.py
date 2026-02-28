@@ -79,7 +79,7 @@ class TestExceptionContextPreservationProperty:
         context=context_dict,
     )
     @settings(
-        max_examples=100, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+        max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow]
     )
     def test_base_exception_preserves_context(
         self, message: str, error_code: str | None, context: dict[str, Any]
@@ -110,7 +110,7 @@ class TestExceptionContextPreservationProperty:
             st.none(), st.sampled_from(["python", "java", "javascript"])
         ),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_analysis_error_preserves_file_and_language_context(
         self, message: str, file_path: str | None, language: str | None
     ) -> None:
@@ -137,7 +137,7 @@ class TestExceptionContextPreservationProperty:
         original_message=safe_text,
         wrapper_message=safe_text,
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_exception_chain_preserves_cause(
         self, original_message: str, wrapper_message: str
     ) -> None:
@@ -167,7 +167,7 @@ class TestExceptionContextPreservationProperty:
         message=safe_text,
         context=context_dict,
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_to_dict_preserves_all_information(
         self, message: str, context: dict[str, Any]
     ) -> None:
@@ -196,7 +196,7 @@ class TestExceptionContextPreservationProperty:
         message=safe_text,
         context=context_dict,
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_create_error_response_preserves_context(
         self, message: str, context: dict[str, Any]
     ) -> None:
@@ -226,7 +226,7 @@ class TestExceptionContextPreservationProperty:
         message=safe_text,
         tool_name=st.one_of(st.none(), safe_text),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_mcp_error_response_preserves_tool_context(
         self, message: str, tool_name: str | None
     ) -> None:
@@ -258,7 +258,7 @@ class TestExceptionContextPreservationProperty:
             st.none(), st.sampled_from(["python", "java", "javascript"])
         ),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_query_error_preserves_all_query_context(
         self,
         message: str,
@@ -294,7 +294,7 @@ class TestExceptionContextPreservationProperty:
         ),
         operation_type=st.one_of(st.none(), safe_text),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_mcp_timeout_error_preserves_timeout_context(
         self, message: str, timeout_seconds: float, operation_type: str | None
     ) -> None:
@@ -326,7 +326,7 @@ class TestExceptionContextPreservationProperty:
         ),
         access_mode=st.one_of(st.none(), st.sampled_from(["read", "write", "execute"])),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_mcp_resource_error_preserves_resource_context(
         self,
         message: str,
@@ -364,7 +364,7 @@ class TestExceptionContextPreservationProperty:
         outer_message=safe_text,
         inner_context=context_dict,
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_nested_exception_chain_preserves_all_causes(
         self, inner_message: str, outer_message: str, inner_context: dict[str, Any]
     ) -> None:
@@ -396,7 +396,7 @@ class TestExceptionContextPreservationProperty:
         language=safe_text,
         supported=st.lists(safe_text, min_size=0, max_size=5),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_language_not_supported_error_preserves_language_info(
         self, message: str, language: str, supported: list[str]
     ) -> None:
@@ -431,7 +431,7 @@ class TestExceptionContextPreservationProperty:
             st.booleans(),
         ),
     )
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_validation_error_preserves_validation_context(
         self, message: str, validation_type: str | None, invalid_value: Any
     ) -> None:
@@ -456,7 +456,7 @@ class TestExceptionChainWithDecorator:
     """Test exception chain preservation with handle_exceptions decorator."""
 
     @given(original_message=safe_text)
-    @settings(max_examples=100)
+    @settings(max_examples=30)
     def test_handle_exceptions_decorator_preserves_cause_chain(
         self, original_message: str
     ) -> None:

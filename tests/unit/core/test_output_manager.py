@@ -409,3 +409,65 @@ class TestOutputManagerFormatters:
         om.output_data({"key": "val"}, "json")
         captured = capsys.readouterr()
         assert "key" in captured.out
+
+
+class TestOutputManagerUncoveredMethods:
+    """Targeted tests for OutputManager methods missing from previous coverage."""
+
+    def test_results_header_prints_title(self, capsys):
+        """results_header should print '--- <title> ---' when not quiet."""
+        om = OutputManager(quiet=False)
+        om.results_header("Test Section")
+        captured = capsys.readouterr()
+        assert "--- Test Section ---" in captured.out
+
+    def test_results_header_silent_when_quiet(self, capsys):
+        """results_header should produce no output in quiet mode."""
+        om = OutputManager(quiet=True)
+        om.results_header("Test Section")
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+    def test_analysis_summary_prints_stats(self, capsys):
+        """analysis_summary should print each key-value pair from the stats dict."""
+        om = OutputManager()
+        om.analysis_summary({"classes": 3, "methods": 12})
+        captured = capsys.readouterr()
+        assert "classes: 3" in captured.out
+        assert "methods: 12" in captured.out
+
+    def test_language_list_prints_languages(self, capsys):
+        """language_list should print the provided languages."""
+        om = OutputManager(quiet=False)
+        om.language_list(["python", "java", "go"], "Test Languages")
+        captured = capsys.readouterr()
+        assert "Test Languages:" in captured.out
+        assert "python" in captured.out
+        assert "java" in captured.out
+        assert "go" in captured.out
+
+    def test_query_list_prints_queries(self, capsys):
+        """query_list should print all query keys."""
+        om = OutputManager(quiet=False)
+        om.query_list({"class_decl": "Find class declarations"}, "java")
+        captured = capsys.readouterr()
+        assert "Available query keys (java):" in captured.out
+        assert "class_decl" in captured.out
+
+    def test_extension_list_prints_extensions(self, capsys):
+        """extension_list should print all extensions."""
+        om = OutputManager(quiet=False)
+        om.extension_list([".py", ".java", ".go"])
+        captured = capsys.readouterr()
+        assert ".py" in captured.out
+        assert ".java" in captured.out
+        assert ".go" in captured.out
+        assert "Total 3 extensions supported" in captured.out
+
+    def test_get_output_manager_returns_instance(self):
+        """get_output_manager should return an OutputManager instance."""
+        from tree_sitter_analyzer.output_manager import get_output_manager
+
+        manager = get_output_manager()
+        assert isinstance(manager, OutputManager)
+

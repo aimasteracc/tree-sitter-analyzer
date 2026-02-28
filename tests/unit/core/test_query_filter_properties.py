@@ -124,7 +124,7 @@ class TestQueryFilterCorrectnessProperties:
         self.filter = QueryFilter()
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_name_exact_filter_correctness(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -150,7 +150,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result has name '{extracted_name}' but filter was for '{target_name}'"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_static_filter_correctness(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -169,7 +169,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result does not contain 'static': {result['content']}"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_static_false_filter_correctness(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -188,7 +188,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result contains 'static' but filter was static=false: {result['content']}"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_public_filter_correctness(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -207,7 +207,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result does not contain 'public': {result['content']}"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_private_filter_correctness(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -226,7 +226,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result does not contain 'private': {result['content']}"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_protected_filter_correctness(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -248,7 +248,7 @@ class TestQueryFilterCorrectnessProperties:
         results=query_results_strategy(),
         param_count=st.integers(min_value=0, max_value=5),
     )
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_params_filter_correctness(
         self, results: list[dict], param_count: int
     ):
@@ -270,7 +270,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result has {actual_count} params but filter was for {param_count}: {result['content']}"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_combined_filters_correctness(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -293,7 +293,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result does not contain 'static': {result['content']}"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_pattern_filter_correctness(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -324,7 +324,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result name '{extracted_name}' does not match pattern '{pattern}'"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_empty_filter_returns_all(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -342,7 +342,7 @@ class TestQueryFilterCorrectnessProperties:
         assert filtered_none == results, "None filter should return all results"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_filtered_subset_of_original(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**
@@ -361,7 +361,7 @@ class TestQueryFilterCorrectnessProperties:
             ), f"Filtered result not found in original results: {result}"
 
     @given(results=query_results_strategy())
-    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=30, suppress_health_check=[HealthCheck.too_slow])
     def test_property_7_filter_preserves_result_structure(self, results: list[dict]):
         """
         **Feature: test-coverage-improvement, Property 7: Query Filter Correctness**

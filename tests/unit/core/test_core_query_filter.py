@@ -325,6 +325,23 @@ class TestQueryFilter:
         assert "static=" in help_text
         assert "Examples" in help_text
 
+    def test_match_name_case_insensitive(self):
+        """Test case-insensitive pattern match."""
+        result = {"content": "def Main(): pass"}
+        assert self.filter._match_name(result, "pattern", "main*") is True
+
+    def test_filter_results_empty_list(self):
+        """Test filtering empty results list."""
+        results: list = []
+        filtered = self.filter.filter_results(results, "name=main")
+        assert len(filtered) == 0
+
+    def test_filter_results_missing_content(self):
+        """Test filtering results without content field."""
+        results = [{"name": "main"}]
+        filtered = self.filter.filter_results(results, "name=main")
+        assert isinstance(filtered, list)
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

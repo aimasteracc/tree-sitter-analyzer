@@ -139,11 +139,14 @@ def pytest_sessionfinish(session, exitstatus):
     gc.collect()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 async def cleanup_asyncio_tasks():
     """
     Clean up asyncio tasks after each test to prevent 'NoneType' object has no attribute '_PENDING'
     error on Python 3.10 during shutdown.
+
+    Not autouse - only needed for tests that create asyncio tasks.
+    Use with @pytest.mark.usefixtures("cleanup_asyncio_tasks") or request directly.
     """
     yield
 
@@ -269,12 +272,13 @@ def reset_global_singletons():
     _reset_all_singletons()
 
 
-@pytest.fixture(autouse=True)
-def cleanup_test_databases():
-    """Clean up test databases after each test."""
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_databases_session():
+    """Clean up test databases at the end of the test session (not per-test)."""
     yield
 
-    # Clean up any test databases
+    # Clean up any test databases at session end
+    import glob
     import os
     import tempfile
 
@@ -289,15 +293,12 @@ def cleanup_test_databases():
     ]
 
     for pattern in test_db_patterns:
-        import glob
-
         db_files = glob.glob(os.path.join(temp_dir, pattern))
         for db_file in db_files:
             try:
                 if os.path.exists(db_file):
                     os.remove(db_file)
             except (OSError, PermissionError):
-                # Ignore permission errors or file not found
                 pass
 
 

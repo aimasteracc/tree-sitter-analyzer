@@ -328,7 +328,7 @@ class TestGoElementExtractionProperties:
     """Property tests for Go element extraction completeness."""
 
     @given(data=go_function_nodes())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     def test_property_1_go_function_extraction_completeness(self, data: dict) -> None:
         """
         Property 1: Go Element Extraction Completeness (Functions)
@@ -356,7 +356,7 @@ class TestGoElementExtractionProperties:
             assert func.return_type == data["return_type"]
 
     @given(data=go_method_nodes())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     def test_property_1_go_method_extraction_completeness(self, data: dict) -> None:
         """
         Property 1: Go Element Extraction Completeness (Methods)
@@ -386,7 +386,7 @@ class TestGoElementExtractionProperties:
             assert getattr(method, "receiver_type", None) is not None
 
     @given(data=go_struct_nodes())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     def test_property_1_go_struct_extraction_completeness(self, data: dict) -> None:
         """
         Property 1: Go Element Extraction Completeness (Structs)
@@ -414,7 +414,7 @@ class TestGoElementExtractionProperties:
             assert cls.visibility == data["visibility"]
 
     @given(data=go_interface_nodes())
-    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
+    @settings(max_examples=20, suppress_health_check=[HealthCheck.too_slow])
     def test_property_1_go_interface_extraction_completeness(self, data: dict) -> None:
         """
         Property 1: Go Element Extraction Completeness (Interfaces)

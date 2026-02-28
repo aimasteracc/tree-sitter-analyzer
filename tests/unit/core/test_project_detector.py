@@ -332,5 +332,42 @@ class TestUnifiedDetectProjectRoot(unittest.TestCase):
         self.assertIn(actual, possible_results)
 
 
+class TestProjectRootDetectorCwd(unittest.TestCase):
+    """Tests for ProjectRootDetector.detect_from_cwd."""
+
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(str(self.temp_dir), ignore_errors=True)
+
+    def test_detect_from_cwd_returns_string_or_none(self):
+        """detect_from_cwd should return a str path or None (not raise)."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        detector = ProjectRootDetector()
+        result = detector.detect_from_cwd()
+        # Result is either a valid directory path string or None
+        assert result is None or (isinstance(result, str) and Path(result).is_dir())
+
+    def test_detect_from_cwd_when_cwd_is_project(self):
+        """detect_from_cwd should find project root when CWD contains a marker file."""
+        import os
+
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(str(self.temp_dir))
+            (self.temp_dir / "pyproject.toml").write_text("[tool.poetry]\n")
+            detector = ProjectRootDetector()
+            result = detector.detect_from_cwd()
+            # Should find the temp dir or None (some implementations have depth limit)
+            assert result is None or isinstance(result, str)
+        finally:
+            os.chdir(original_cwd)
+
+
 if __name__ == "__main__":
     unittest.main()

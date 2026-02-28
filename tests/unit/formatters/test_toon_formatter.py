@@ -403,3 +403,30 @@ class TestIsToonContent:
         content = ": only_value\n: another"
         # parts[0].strip() is empty, so these don't count
         assert ToonFormatter.is_toon_content(content) is False
+
+
+class TestToonFormatterFormatMcpResponse:
+    """Tests for ToonFormatter.format_mcp_response."""
+
+    def test_format_mcp_response_returns_string(self):
+        """format_mcp_response returns a non-empty string."""
+        from tree_sitter_analyzer.formatters.toon_formatter import ToonFormatter
+        formatter = ToonFormatter()
+        result = formatter.format_mcp_response({"key": "value", "count": 3})
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_format_mcp_response_encodes_data(self):
+        """format_mcp_response includes data from input dict."""
+        from tree_sitter_analyzer.formatters.toon_formatter import ToonFormatter
+        formatter = ToonFormatter()
+        result = formatter.format_mcp_response({"language": "python", "elements": 5})
+        # TOON format should contain the data somehow
+        assert "python" in result or "language" in result
+
+    def test_format_mcp_response_empty_dict(self):
+        """format_mcp_response handles empty dict without error."""
+        from tree_sitter_analyzer.formatters.toon_formatter import ToonFormatter
+        formatter = ToonFormatter()
+        result = formatter.format_mcp_response({})
+        assert isinstance(result, str)

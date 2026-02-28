@@ -262,3 +262,28 @@ def test_caching_behavior():
     # Second load should use cache
     queries2 = query_loader.load_language_queries("java")
     assert queries1 is queries2  # Should be same object from cache
+
+
+def test_preload_languages_returns_bool_map():
+    """QueryLoader.preload_languages should return a dict[lang -> bool]."""
+    from tree_sitter_analyzer.query_loader import QueryLoader
+
+    loader = QueryLoader()
+    result = loader.preload_languages(["java", "python", "unknown_lang_xyz"])
+    assert isinstance(result, dict)
+    assert "java" in result
+    assert "python" in result
+    assert "unknown_lang_xyz" in result
+    assert isinstance(result["java"], bool)
+    assert result["java"] is True  # java queries exist
+    assert result["unknown_lang_xyz"] is False  # non-existent language
+
+
+def test_preload_languages_empty_input():
+    """preload_languages with empty list returns empty dict."""
+    from tree_sitter_analyzer.query_loader import QueryLoader
+
+    loader = QueryLoader()
+    result = loader.preload_languages([])
+    assert result == {}
+

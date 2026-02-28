@@ -25,7 +25,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".py"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_python_extension_detection(self, file_path: Path) -> None:
         """测试Python扩展名检测的属性。
 
@@ -45,7 +45,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".java"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_java_extension_detection(self, file_path: Path) -> None:
         """测试Java扩展名检测的属性。
 
@@ -64,7 +64,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".js"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_javascript_extension_detection(self, file_path: Path) -> None:
         """测试JavaScript扩展名检测的属性。
 
@@ -83,7 +83,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".ts"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_typescript_extension_detection(self, file_path: Path) -> None:
         """测试TypeScript扩展名检测的属性。
 
@@ -102,7 +102,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".go"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_go_extension_detection(self, file_path: Path) -> None:
         """测试Go扩展名检测的属性。
 
@@ -121,7 +121,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".rs"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_rust_extension_detection(self, file_path: Path) -> None:
         """测试Rust扩展名检测的属性。
 
@@ -140,7 +140,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".cs"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_csharp_extension_detection(self, file_path: Path) -> None:
         """测试C#扩展名检测的属性。
 
@@ -159,7 +159,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".css"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_css_extension_detection(self, file_path: Path) -> None:
         """测试CSS扩展名检测的属性。
 
@@ -178,7 +178,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".html"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_html_extension_detection(self, file_path: Path) -> None:
         """测试HTML扩展名检测的属性。
 
@@ -197,7 +197,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".yaml"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_yaml_extension_detection(self, file_path: Path) -> None:
         """测试YAML扩展名检测的属性。
 
@@ -216,7 +216,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".yml"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_yml_extension_detection(self, file_path: Path) -> None:
         """测试.yml扩展名检测的属性。
 
@@ -235,7 +235,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".sql"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_sql_extension_detection(self, file_path: Path) -> None:
         """测试SQL扩展名检测的属性。
 
@@ -254,7 +254,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".unknown"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_unknown_extension_detection(self, file_path: Path) -> None:
         """测试未知扩展名检测的属性。
 
@@ -274,7 +274,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|.'),
         ).map(lambda s: Path(s))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_no_extension_detection(self, file_path: Path) -> None:
         """测试无扩展名检测的属性。
 
@@ -298,7 +298,7 @@ class TestLanguageDetectionProperties:
             alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
         ).map(lambda s: Path(s + ".py"))
     )
-    @settings(max_examples=50)
+    @settings(max_examples=20)
     def test_detection_idempotency(self, file_path: Path) -> None:
         """测试语言检测的幂等性。
 

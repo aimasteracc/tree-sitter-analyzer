@@ -36,17 +36,17 @@ class TestOutputFormatValidator:
         validator = OutputFormatValidator()
 
         # Test various combinations
-        with pytest.raises(ValueError, match="Output Format Parameter Error"):
+        with pytest.raises(ValueError, match="total_only"):
             validator.validate_output_format_exclusion(
                 {"total_only": True, "count_only_matches": True}
             )
 
-        with pytest.raises(ValueError, match="Output Format Parameter Error"):
+        with pytest.raises(ValueError, match="summary_only"):
             validator.validate_output_format_exclusion(
                 {"total_only": True, "summary_only": True}
             )
 
-        with pytest.raises(ValueError, match="Output Format Parameter Error"):
+        with pytest.raises(ValueError, match="group_by_file"):
             validator.validate_output_format_exclusion(
                 {
                     "count_only_matches": True,

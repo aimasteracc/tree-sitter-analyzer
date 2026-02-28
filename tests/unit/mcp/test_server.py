@@ -1347,3 +1347,95 @@ class TestRunLifecycleBranches:
             mock_create.side_effect = Exception("creation failed")
             with pytest.raises(Exception, match="creation failed"):
                 await server.run()
+
+
+class TestErrorHandlerDecorator:
+    """Tests migrated from test_mcp_server_initialization.py for error handler decorator."""
+
+    @pytest.mark.asyncio
+    async def test_initialization_error_handling_in_decorator(self):
+        """Test that the error handling decorator properly handles initialization errors."""
+        from tree_sitter_analyzer.mcp.utils.error_handler import (
+            ErrorCategory,
+            ErrorSeverity,
+            MCPError,
+            handle_mcp_errors,
+        )
+
+        @handle_mcp_errors("test_operation")
+        async def mock_function():
+            raise RuntimeError(
+                "Server not fully initialized. Please wait for initialization to complete."
+            )
+
+        with pytest.raises(MCPError) as exc_info:
+            await mock_function()
+
+        assert "Server is still initializing" in str(exc_info.value)
+        assert exc_info.value.category == ErrorCategory.CONFIGURATION
+        assert exc_info.value.severity == ErrorSeverity.LOW
+
+    @pytest.mark.asyncio
+    async def test_other_runtime_errors_not_converted(self):
+        """Test that other RuntimeErrors are not converted to initialization errors."""
+        from tree_sitter_analyzer.mcp.utils.error_handler import handle_mcp_errors
+
+        @handle_mcp_errors("test_operation")
+        async def mock_function():
+            raise RuntimeError("Some other runtime error")
+
+        with pytest.raises(RuntimeError, match="Some other runtime error"):
+            await mock_function()
+
+
+class TestWriteFilesToTemp:
+    """Tests for mcp.tools.fd_rg_utils.write_files_to_temp."""
+
+    def test_write_files_to_temp_creates_file(self):
+        """write_files_to_temp creates a temporary file that exists on disk."""
+        import os
+
+        from tree_sitter_analyzer.mcp.tools.fd_rg_utils import write_files_to_temp
+        temp_list = write_files_to_temp(["/path/to/file1.py", "/path/to/file2.go"])
+        try:
+            assert os.path.exists(temp_list.path)
+        finally:
+            os.unlink(temp_list.path)
+
+    def test_write_files_to_temp_content_contains_paths(self):
+        """write_files_to_temp writes file paths newline-separated."""
+        import os
+
+        from tree_sitter_analyzer.encoding_utils import read_file_safe
+        from tree_sitter_analyzer.mcp.tools.fd_rg_utils import write_files_to_temp
+        files = ["/src/main.py", "/src/utils.py"]
+        temp_list = write_files_to_temp(files)
+        try:
+            content, _ = read_file_safe(temp_list.path)
+            assert "/src/main.py" in content
+            assert "/src/utils.py" in content
+        finally:
+            os.unlink(temp_list.path)
+
+    def test_write_files_to_temp_empty_list(self):
+        """write_files_to_temp handles an empty file list."""
+        import os
+
+        from tree_sitter_analyzer.mcp.tools.fd_rg_utils import write_files_to_temp
+        temp_list = write_files_to_temp([])
+        try:
+            assert os.path.exists(temp_list.path)
+        finally:
+            os.unlink(temp_list.path)
+
+    def test_write_files_to_temp_returns_tempfilelist(self):
+        """write_files_to_temp returns a TempFileList with a .path attribute."""
+        import os
+
+        from tree_sitter_analyzer.mcp.tools.fd_rg_utils import TempFileList, write_files_to_temp
+        temp_list = write_files_to_temp(["file.py"])
+        try:
+            assert isinstance(temp_list, TempFileList)
+            assert isinstance(temp_list.path, str)
+        finally:
+            os.unlink(temp_list.path)

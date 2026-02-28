@@ -17,6 +17,8 @@ class TestMainModuleImport:
         """Test that tree_sitter_analyzer.__main__ can be imported."""
         import tree_sitter_analyzer.__main__  # noqa: F401
 
+        assert tree_sitter_analyzer.__main__ is not None
+
     def test_main_function_importable(self):
         """Test that the main function is importable from __main__."""
         from tree_sitter_analyzer.__main__ import main

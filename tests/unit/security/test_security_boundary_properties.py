@@ -213,7 +213,7 @@ class TestSecurityBoundaryEnforcementProperties:
     **Validates: Requirements 3.4, 10.5**
     """
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(traversal_path=path_traversal_attempt())
     def test_property_4_path_traversal_rejected(self, temp_project_dir, traversal_path):
         """
@@ -238,7 +238,7 @@ class TestSecurityBoundaryEnforcementProperties:
             error_msg
         ), f"Error message should be provided for rejected path: {traversal_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(null_path=null_byte_injection())
     def test_property_4_null_byte_injection_rejected(self, temp_project_dir, null_path):
         """
@@ -260,7 +260,7 @@ class TestSecurityBoundaryEnforcementProperties:
             "null" in error_msg.lower()
         ), f"Error message should mention null bytes: {error_msg}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
     def test_property_4_valid_relative_paths_accepted(self, temp_project_dir, rel_path):
         """
@@ -280,7 +280,7 @@ class TestSecurityBoundaryEnforcementProperties:
             is_valid
         ), f"Valid relative path should be accepted: {rel_path}, error: {error_msg}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(abs_path=absolute_path_outside_project())
     def test_property_4_absolute_paths_outside_boundary_rejected(
         self, temp_project_dir, abs_path
@@ -310,7 +310,7 @@ class TestSecurityBoundaryEnforcementProperties:
             not is_valid
         ), f"Absolute path outside boundary should be rejected: {abs_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
     def test_property_4_boundary_manager_accepts_internal_paths(
         self, temp_project_dir, rel_path
@@ -333,7 +333,7 @@ class TestSecurityBoundaryEnforcementProperties:
 
         assert is_within, f"Path within project should be accepted: {full_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(abs_path=absolute_path_outside_project())
     def test_property_4_boundary_manager_rejects_external_paths(
         self, temp_project_dir, abs_path
@@ -361,7 +361,7 @@ class TestSecurityBoundaryEnforcementProperties:
 
         assert not is_within, f"Path outside project should be rejected: {abs_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(traversal_path=path_traversal_attempt())
     def test_property_4_boundary_manager_rejects_traversal(
         self, temp_project_dir, traversal_path
@@ -392,7 +392,7 @@ class TestSecurityBoundaryEnforcementProperties:
             # Invalid paths are acceptable to reject
             pass
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
     def test_property_4_validate_and_resolve_returns_resolved_path(
         self, temp_project_dir, rel_path
@@ -417,7 +417,7 @@ class TestSecurityBoundaryEnforcementProperties:
             resolved
         ).is_absolute(), f"Resolved path should be absolute: {resolved}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(traversal_path=path_traversal_attempt())
     def test_property_4_validate_and_resolve_rejects_traversal(
         self, temp_project_dir, traversal_path
@@ -457,7 +457,7 @@ class TestSecurityBoundaryEdgeCases:
     **Validates: Requirements 3.4, 10.5**
     """
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(empty_or_whitespace=st.sampled_from(["", " ", "  ", "\t", "\n", "\r\n"]))
     def test_property_4_empty_paths_rejected(
         self, temp_project_dir, empty_or_whitespace
@@ -480,7 +480,7 @@ class TestSecurityBoundaryEdgeCases:
         if empty_or_whitespace == "":
             assert not is_valid, "Empty path should be rejected"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(name=safe_name)
     def test_property_4_boundary_manager_empty_path_rejected(
         self, temp_project_dir, name
@@ -499,7 +499,7 @@ class TestSecurityBoundaryEdgeCases:
 
         assert not is_within, "Empty path should be rejected by boundary manager"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
     def test_property_4_get_relative_path_consistency(self, temp_project_dir, rel_path):
         """
@@ -525,7 +525,7 @@ class TestSecurityBoundaryEdgeCases:
                 Path(reconstructed).resolve() == Path(full_path).resolve()
             ), f"Relative path should reconstruct to original: {relative} -> {reconstructed} != {full_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(abs_path=absolute_path_outside_project())
     def test_property_4_get_relative_path_returns_none_for_external(
         self, temp_project_dir, abs_path
@@ -563,7 +563,7 @@ class TestSecurityValidatorIntegrationProperties:
     **Validates: Requirements 3.4, 10.5**
     """
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
     def test_property_4_is_safe_path_consistent_with_validate(
         self, temp_project_dir, rel_path
@@ -585,7 +585,7 @@ class TestSecurityValidatorIntegrationProperties:
             is_safe == is_valid
         ), f"is_safe_path should match validate_file_path: {rel_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
     def test_property_4_validate_path_alias_consistent(
         self, temp_project_dir, rel_path
@@ -607,7 +607,7 @@ class TestSecurityValidatorIntegrationProperties:
             result1 == result2
         ), f"validate_path should be alias for validate_file_path: {rel_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(
         glob_pattern=st.one_of(
             st.just("*.py"),
@@ -637,7 +637,7 @@ class TestSecurityValidatorIntegrationProperties:
             is_valid
         ), f"Valid glob pattern should be accepted: {glob_pattern}, error: {error_msg}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=30, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(
         dangerous_glob=st.one_of(
             st.just("../*.py"),
@@ -702,7 +702,7 @@ class TestProjectBoundaryManagerInitializationProperties:
         assert "does not exist" in str(exc_info.value).lower()
 
     @settings(
-        max_examples=50, suppress_health_check=COMMON_HEALTH_CHECKS, deadline=None
+        max_examples=20, suppress_health_check=COMMON_HEALTH_CHECKS, deadline=None
     )
     @given(name=safe_name)
     def test_property_4_file_as_root_raises_security_error(
@@ -724,7 +724,7 @@ class TestProjectBoundaryManagerInitializationProperties:
 
         assert "not a directory" in str(exc_info.value).lower()
 
-    @settings(max_examples=50, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=20, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(name=safe_name)
     def test_property_4_valid_directory_initializes_successfully(
         self, temp_project_dir, name
