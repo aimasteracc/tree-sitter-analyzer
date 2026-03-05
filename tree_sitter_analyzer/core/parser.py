@@ -55,8 +55,8 @@ class Parser:
     # Class-level cache to share across all Parser instances
     _cache: LRUCache = LRUCache(maxsize=100)
 
-    # Default maximum file size: 10MB
-    DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024
+    # Default maximum file size: 100MB (supports large log files, data exports, etc.)
+    DEFAULT_MAX_FILE_SIZE = 100 * 1024 * 1024
 
     def __init__(self, max_file_size: int | None = None) -> None:
         """
