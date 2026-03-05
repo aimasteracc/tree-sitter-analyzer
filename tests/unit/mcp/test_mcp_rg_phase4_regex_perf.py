@@ -222,7 +222,7 @@ async def test_rg_51_group_by_file_structure(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "group_by_file": True}
+        {"roots": [str(tmp_path)], "query": "x", "group_by_file": True, "output_format": "json"}
     )
     assert res["success"] is True
     assert res["count"] == 3
@@ -260,7 +260,7 @@ async def test_rg_52_summary_counts_consistent(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "summary_only": True}
+        {"roots": [str(tmp_path)], "query": "x", "summary_only": True, "output_format": "json"}
     )
     assert res["success"] is True
     assert res["summary"]["total_matches"] == 3

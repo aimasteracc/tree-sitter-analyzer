@@ -450,6 +450,7 @@ class TestExecute:
                             "roots": [str(sample_project_structure)],
                             "query": "test",
                             "group_by_file": True,
+                            "output_format": "json",
                         }
 
                         result = await tool.execute(arguments)

@@ -259,6 +259,7 @@ async def test_rg_63_find_and_grep_grouped_summary(monkeypatch, tmp_path):
             "query": "x",
             "group_by_file": True,
             "summary_only": True,
+            "output_format": "json",
         }
     )
     assert res["success"] is True

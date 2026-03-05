@@ -708,6 +708,7 @@ temp/
                 "roots": ["."],
                 "max_count": 100,  # 結果を制限
                 "summary_only": True,
+                "output_format": "json",
             }
         )
 

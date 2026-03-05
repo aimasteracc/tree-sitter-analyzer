@@ -52,6 +52,7 @@ public class Test {
         arguments = {
             "file_path": str(java_file),
             "include_guidance": False,
+            "output_format": "json",
         }
 
         result = await tool.execute(arguments)

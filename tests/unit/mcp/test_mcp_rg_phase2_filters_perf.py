@@ -313,7 +313,7 @@ async def test_rg_20_summary_only(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "import", "summary_only": True}
+        {"roots": [str(tmp_path)], "query": "import", "summary_only": True, "output_format": "json"}
     )
     assert res["success"] is True
     assert "summary" in res
@@ -345,7 +345,7 @@ async def test_rg_21_group_by_file(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "print", "group_by_file": True}
+        {"roots": [str(tmp_path)], "query": "print", "group_by_file": True, "output_format": "json"}
     )
     assert res["success"] is True
     assert "files" in res

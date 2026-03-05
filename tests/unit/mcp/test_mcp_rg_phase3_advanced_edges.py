@@ -178,6 +178,7 @@ async def test_rg_31_find_and_grep_group_by_file(monkeypatch, tmp_path):
             "roots": [str(tmp_path)],
             "query": "hello",
             "group_by_file": True,
+            "output_format": "json",
         }
     )
     assert res["success"] is True
