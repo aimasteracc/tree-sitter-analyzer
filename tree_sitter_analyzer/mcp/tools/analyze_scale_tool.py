@@ -467,6 +467,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                     "file_path": file_path,
                     "language": language,
                     "file_metrics": file_metrics,
+                    "warnings": [],  # Initialize warnings list
                     "summary": {
                         "classes": len(
                             [
@@ -517,6 +518,13 @@ class AnalyzeScaleTool(BaseMCPTool):
                     },
                     "structural_overview": structural_overview,
                 }
+
+                # Add warning for non-Java files with limited structural analysis
+                if language != "java" and analysis_result is None:
+                    result["warnings"].append(
+                        f"Structural analysis limited for {language}. "
+                        "Use analyze_code_structure tool for detailed code structure."
+                    )
 
                 if include_guidance:
                     result["llm_guidance"] = llm_guidance
