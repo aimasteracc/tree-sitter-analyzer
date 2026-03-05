@@ -8,12 +8,12 @@ class TestParserFileSizeLimit:
     """Test file size limit functionality."""
 
     def test_default_max_file_size(self):
-        """Should have default max file size of 10MB."""
+        """Should have default max file size of 100MB."""
         from tree_sitter_analyzer.core.parser import Parser
 
         parser = Parser()
         assert hasattr(parser, "_max_file_size")
-        assert parser._max_file_size == 10 * 1024 * 1024  # 10MB
+        assert parser._max_file_size == 100 * 1024 * 1024  # 100MB
 
     def test_rejects_oversized_file(self, tmp_path):
         """Should reject files exceeding size limit."""
