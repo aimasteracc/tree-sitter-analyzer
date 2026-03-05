@@ -28,13 +28,14 @@ on:
           - '3.13'
 
 env:
-  COVERAGE_THRESHOLD: 40  # Minimum coverage percentage (adjust as needed)
-  COVERAGE_THRESHOLD_FAIL: false  # Set to true to fail CI on low coverage
+  COVERAGE_THRESHOLD: 80  # Minimum coverage percentage - enforced per project standards
+  COVERAGE_THRESHOLD_FAIL: true  # Fail CI on low coverage to maintain code quality
 
 jobs:
   coverage-check:
     name: Coverage Check (Python ${{ inputs.python-version || '3.11' }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Prevent runaway jobs
 
     steps:
     - name: Checkout code

@@ -10,6 +10,7 @@ jobs:
   lint:
     name: Lint (Ruff)
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Linting should be fast
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -27,6 +28,7 @@ jobs:
   type-check:
     name: Type Check (MyPy)
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # Type checking can take longer
     steps:
       - uses: actions/checkout@v4
       - name: Install uv
@@ -44,6 +46,7 @@ jobs:
   security:
     name: Security Scan (Bandit)
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # Security scan should be fast
     steps:
       - uses: actions/checkout@v4
       - name: Install uv

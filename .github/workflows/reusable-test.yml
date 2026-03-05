@@ -32,6 +32,7 @@ jobs:
   test-matrix:
     name: Test Suite
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45  # Prevent runaway test jobs
     strategy:
       fail-fast: false
       matrix:
