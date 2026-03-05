@@ -99,20 +99,31 @@ class Parser:
                     error_message=f"File not found: {file_path_str}",
                 )
 
+            # Get file stats for size check and caching
+            try:
+                stat = os.stat(file_path_str)
+            except OSError as e:
+                return ParseResult(
+                    tree=None,
+                    source_code="",
+                    language=language,
+                    file_path=file_path_str,
+                    success=False,
+                    error_message=f"Could not access file stats: {str(e)}",
+                )
+
+            # Check file size limit before processing
+            if self._max_file_size > 0 and stat.st_size > self._max_file_size:
+                raise FileHandlingError(
+                    f"File size ({stat.st_size} bytes) exceeds maximum allowed "
+                    f"size ({self._max_file_size} bytes)",
+                    file_path=file_path_str,
+                    operation="parse_file",
+                )
+
             # Check cache first using file metadata for versioning
             cache_key = None
             try:
-                stat = os.stat(file_path_str)
-
-                # Check file size limit before processing
-                if self._max_file_size > 0 and stat.st_size > self._max_file_size:
-                    raise FileHandlingError(
-                        f"File size ({stat.st_size} bytes) exceeds maximum allowed "
-                        f"size ({self._max_file_size} bytes)",
-                        file_path=file_path_str,
-                        operation="parse_file",
-                    )
-
                 # Key: path + mtime + size + language
                 key_string = (
                     f"{file_path_str}:{stat.st_mtime}:{stat.st_size}:{language}"
@@ -162,6 +173,9 @@ class Parser:
 
             return result
 
+        except FileHandlingError:
+            # Re-raise file handling errors (like file size limit)
+            raise
         except Exception as e:
             logger.error(f"Unexpected error parsing file {file_path_str}: {e}")
             return ParseResult(
