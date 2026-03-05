@@ -645,5 +645,11 @@ if __name__ == "__main__":
         output_info("\nOperation cancelled by user.")
         sys.exit(1)
     except Exception as e:
-        output_error(f"Unexpected error: {e}")
+        import traceback
+
+        output_error(f"Unexpected error: {type(e).__name__}: {e}")
+        # Log full traceback for debugging
+        output_error("Full traceback:")
+        for line in traceback.format_exc().splitlines():
+            output_error(f"  {line}")
         sys.exit(1)
