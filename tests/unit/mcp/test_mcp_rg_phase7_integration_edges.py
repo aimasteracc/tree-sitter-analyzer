@@ -271,6 +271,7 @@ async def test_rg_90_search_content_group_by_file_then_summary(monkeypatch, tmp_
             "roots": [str(tmp_path)],
             "query": "x",
             "group_by_file": True,
+            "output_format": "json",
         }
     )
     assert "files" in res and "summary" not in res

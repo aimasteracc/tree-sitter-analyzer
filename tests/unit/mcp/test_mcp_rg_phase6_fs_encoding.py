@@ -128,7 +128,7 @@ async def test_rg_71_group_by_file_positions_key(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "group_by_file": True}
+        {"roots": [str(tmp_path)], "query": "x", "group_by_file": True, "output_format": "json"}
     )
     assert res["success"] is True
     files = res["files"]
@@ -166,7 +166,7 @@ async def test_rg_72_summary_text_contains_totals(monkeypatch, tmp_path):
     )
 
     res = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "x", "summary_only": True}
+        {"roots": [str(tmp_path)], "query": "x", "summary_only": True, "output_format": "json"}
     )
     assert res["success"] is True
     assert "Found 2 matches" in res["summary"]["summary"]
@@ -337,6 +337,7 @@ async def test_rg_78_group_by_file_priority_over_summary(monkeypatch, tmp_path):
             "roots": [str(tmp_path)],
             "query": "x",
             "group_by_file": True,
+            "output_format": "json",
         }
     )
     # group_by_file returns grouped structure
