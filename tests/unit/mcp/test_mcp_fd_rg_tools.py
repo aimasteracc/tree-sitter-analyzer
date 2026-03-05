@@ -558,7 +558,7 @@ async def test_search_content_summary_only(monkeypatch, tmp_path):
     )
 
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "import", "summary_only": True}
+        {"roots": [str(tmp_path)], "query": "import", "summary_only": True, "output_format": "json"}
     )
 
     assert result["success"] is True
@@ -1011,9 +1011,9 @@ async def test_search_content_group_by_file(monkeypatch, tmp_path):
         "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture", fake_run
     )
 
-    # Test with file grouping enabled
+    # Test with file grouping enabled (use JSON format to check structure)
     result = await tool.execute(
-        {"files": [str(test_file)], "query": "hello", "group_by_file": True}
+        {"files": [str(test_file)], "query": "hello", "group_by_file": True, "output_format": "json"}
     )
 
     assert result["success"] is True
