@@ -16,6 +16,7 @@ from cachetools import LRUCache
 from tree_sitter import Tree
 
 from ..encoding_utils import EncodingManager
+from ..exceptions import FileHandlingError
 from ..language_loader import get_loader
 
 # Configure logging
@@ -54,10 +55,22 @@ class Parser:
     # Class-level cache to share across all Parser instances
     _cache: LRUCache = LRUCache(maxsize=100)
 
-    def __init__(self) -> None:
-        """Initialize the Parser with language loader."""
+    # Default maximum file size: 10MB
+    DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024
+
+    def __init__(self, max_file_size: int | None = None) -> None:
+        """
+        Initialize the Parser with language loader.
+
+        Args:
+            max_file_size: Maximum file size in bytes to parse.
+                          Defaults to 10MB. Set to 0 or negative to disable.
+        """
         self._loader = get_loader()
         self._encoding_manager = EncodingManager()
+        self._max_file_size = (
+            max_file_size if max_file_size is not None else self.DEFAULT_MAX_FILE_SIZE
+        )
         logger.info("Parser initialized successfully")
 
     def parse_file(self, file_path: str | Path, language: str) -> ParseResult:
@@ -90,6 +103,16 @@ class Parser:
             cache_key = None
             try:
                 stat = os.stat(file_path_str)
+
+                # Check file size limit before processing
+                if self._max_file_size > 0 and stat.st_size > self._max_file_size:
+                    raise FileHandlingError(
+                        f"File size ({stat.st_size} bytes) exceeds maximum allowed "
+                        f"size ({self._max_file_size} bytes)",
+                        file_path=file_path_str,
+                        operation="parse_file",
+                    )
+
                 # Key: path + mtime + size + language
                 key_string = (
                     f"{file_path_str}:{stat.st_mtime}:{stat.st_size}:{language}"
@@ -267,6 +290,8 @@ class Parser:
         """
         Extract parse errors from a tree.
 
+        Uses iterative traversal to avoid stack overflow on deeply nested code.
+
         Args:
             tree: Tree-sitter tree to check for errors
 
@@ -276,9 +301,17 @@ class Parser:
         errors = []
 
         try:
+            if not tree or not tree.root_node:
+                return errors
 
-            def find_error_nodes(node: Any) -> None:
-                """Recursively find error nodes in the tree."""
+            # Iterative traversal using a stack to avoid recursion depth issues
+            stack = [tree.root_node]
+
+            while stack:
+                node = stack.pop()
+                if node is None:
+                    continue
+
                 if hasattr(node, "type") and node.type == "ERROR":
                     errors.append(
                         {
@@ -293,12 +326,10 @@ class Parser:
                         }
                     )
 
+                # Add children to stack (reversed to maintain left-to-right order)
                 if hasattr(node, "children"):
-                    for child in node.children:
-                        find_error_nodes(child)
-
-            if tree and tree.root_node:
-                find_error_nodes(tree.root_node)
+                    for child in reversed(node.children):
+                        stack.append(child)
 
         except Exception as e:
             logger.error(f"Error extracting parse errors: {e}")
