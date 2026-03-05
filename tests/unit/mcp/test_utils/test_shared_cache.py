@@ -6,6 +6,8 @@ Tests the singleton SharedCache class which provides
 shared caching across MCP tool instances.
 """
 
+import threading
+
 import pytest
 
 from tree_sitter_analyzer.mcp.utils.shared_cache import (
@@ -15,12 +17,15 @@ from tree_sitter_analyzer.mcp.utils.shared_cache import (
 
 
 @pytest.fixture(autouse=True)
-def clear_shared_cache():
-    """Fixture to clear shared cache before each test."""
+def reset_shared_cache():
+    """Fixture to reset shared cache singleton before and after each test."""
+    # Reset singleton before each test for proper isolation
+    SharedCache._instance = None
+    SharedCache._lock = threading.Lock()
     yield
-    # Clear cache after each test to ensure isolation
-    cache = get_shared_cache()
-    cache.clear()
+    # Reset singleton after each test to clean up
+    SharedCache._instance = None
+    SharedCache._lock = threading.Lock()
 
 
 class TestSharedCacheSingleton:
