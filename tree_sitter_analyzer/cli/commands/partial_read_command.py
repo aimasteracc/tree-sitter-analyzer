@@ -32,7 +32,7 @@ class PartialReadCommand(BaseCommand):
         # Don't call super().__init__() to avoid unnecessary analysis engine setup
 
     def validate_file(self) -> bool:
-        """Validate input file exists and is accessible."""
+        """Validate input file exists, is accessible, and is safe."""
         if not hasattr(self.args, "file_path") or not self.args.file_path:
             from ...output_manager import output_error
 
@@ -41,10 +41,41 @@ class PartialReadCommand(BaseCommand):
 
         from pathlib import Path
 
-        if not Path(self.args.file_path).exists():
+        file_path = Path(self.args.file_path)
+
+        # Security checks
+        # 1. Check for path traversal
+        if ".." in str(file_path):
+            from ...output_manager import output_error
+
+            output_error(f"Path traversal not allowed: {self.args.file_path}")
+            return False
+
+        # 2. Check if file exists
+        if not file_path.exists():
             from ...output_manager import output_error
 
             output_error(f"File not found: {self.args.file_path}")
+            return False
+
+        # 3. Check for symlinks pointing outside allowed areas
+        try:
+            resolved = file_path.resolve()
+            resolved_str = str(resolved)
+            original_str = str(file_path)
+            # Basic check: don't allow access to system files
+            # Check both original and resolved paths for security
+            system_paths = ["/etc/", "/root/", "/private/etc/"]
+            for sys_path in system_paths:
+                if resolved_str.startswith(sys_path) or original_str.startswith(sys_path):
+                    from ...output_manager import output_error
+
+                    output_error(f"Access denied to system path: {self.args.file_path}")
+                    return False
+        except OSError as e:
+            from ...output_manager import output_error
+
+            output_error(f"Cannot resolve file path: {e}")
             return False
 
         return True
