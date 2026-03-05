@@ -1,5 +1,4 @@
 """Tests for cache size limits and LRU eviction."""
-import pytest
 
 
 class TestCacheSizeLimits:

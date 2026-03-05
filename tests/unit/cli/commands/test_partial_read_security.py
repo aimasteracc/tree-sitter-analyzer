@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tests for PartialReadCommand security validation."""
 import argparse
-from pathlib import Path
 
 import pytest
 

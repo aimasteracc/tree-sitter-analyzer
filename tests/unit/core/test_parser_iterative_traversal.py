@@ -1,5 +1,4 @@
 """Tests for iterative tree traversal."""
-import pytest
 
 
 class TestIterativeTreeTraversal:

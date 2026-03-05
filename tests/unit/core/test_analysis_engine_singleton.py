@@ -1,8 +1,6 @@
 """Tests for UnifiedAnalysisEngine singleton thread safety."""
 import threading
 
-import pytest
-
 
 class TestSingletonThreadSafety:
     """Test singleton pattern thread safety."""

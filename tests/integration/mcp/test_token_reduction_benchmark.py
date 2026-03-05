@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Token reduction benchmark tests."""
 import json
-import pytest
 
 
 class TestTokenReductionBenchmark:
@@ -12,7 +11,6 @@ class TestTokenReductionBenchmark:
         from tree_sitter_analyzer.mcp.utils.format_helper import (
             apply_toon_format_to_response,
             format_as_json,
-            format_as_toon,
         )
 
         # Create realistic large response
@@ -80,8 +78,8 @@ class TestTokenReductionBenchmark:
     def test_redundant_fields_removed(self):
         """Verify all redundant fields are removed in TOON response."""
         from tree_sitter_analyzer.mcp.utils.format_helper import (
-            apply_toon_format_to_response,
             TOON_REDUNDANT_FIELDS,
+            apply_toon_format_to_response,
         )
 
         # Create response with all possible redundant fields
@@ -109,6 +107,7 @@ class TestTokenReductionBenchmark:
     def test_attach_toon_content_reduction(self):
         """Verify attach_toon_content_to_response achieves reduction."""
         import json
+
         from tree_sitter_analyzer.mcp.utils.format_helper import (
             attach_toon_content_to_response,
         )
