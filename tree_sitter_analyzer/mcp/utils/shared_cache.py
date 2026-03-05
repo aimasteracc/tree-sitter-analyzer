@@ -23,6 +23,7 @@ class SharedCache:
 
     _instance: SharedCache | None = None
     _lock: threading.Lock = threading.Lock()
+    _max_size: int  # Class-level type declaration for MyPy
 
     def __new__(cls, max_size: int = 1000) -> SharedCache:
         """Thread-safe singleton instantiation with configurable max size."""

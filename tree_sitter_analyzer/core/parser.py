@@ -316,7 +316,7 @@ class Parser:
 
         try:
             if not tree or not tree.root_node:
-                return errors  # Defensive: tree may be None or empty
+                return errors  # type: ignore[unreachable]  # Defensive: tree may be None or empty
 
             # Iterative traversal using a stack to avoid recursion depth issues
             stack = [tree.root_node]
@@ -324,7 +324,7 @@ class Parser:
             while stack:
                 node = stack.pop()
                 if node is None:
-                    continue  # Defensive: node may be None from malformed trees
+                    continue  # type: ignore[unreachable]  # Defensive: node may be None from malformed trees
 
                 if hasattr(node, "type") and node.type == "ERROR":
                     errors.append(
