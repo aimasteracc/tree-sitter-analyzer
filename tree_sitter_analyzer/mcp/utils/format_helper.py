@@ -206,23 +206,13 @@ def apply_toon_format_to_response(
         # Format the full result as TOON
         toon_content = format_as_toon(result)
 
-        # Create minimal response with only metadata and TOON content
-        # Remove redundant data fields to maximize token savings
-        # These fields are already included in toon_content, so keeping them
-        # would duplicate data and waste tokens
-        redundant_fields = {
-            "results",  # Search/query results
-            "matches",  # Search matches
-            "content",  # File content
-            "partial_content_result",  # Partial read results
-            "analysis_result",  # Code analysis results
-            "data",  # Generic data field
-            "items",  # List items
-            "files",  # File listings
-            "lines",  # Line content
-            "table_output",  # Formatted table output
-        }
+        # Use the centralized TOON_REDUNDANT_FIELDS constant for consistency
+        # This includes: results, matches, content, partial_content_result,
+        # analysis_result, data, items, files, lines, table_output,
+        # detailed_analysis, structural_overview, and summary
+        fields_to_remove = set(TOON_REDUNDANT_FIELDS)
 
+        # Create minimal response with only metadata and TOON content
         toon_response: dict[str, Any] = {
             "format": "toon",
             "toon_content": toon_content,
@@ -230,7 +220,7 @@ def apply_toon_format_to_response(
 
         # Preserve only metadata fields (not redundant data)
         for key, value in result.items():
-            if key not in redundant_fields:
+            if key not in fields_to_remove:
                 toon_response[key] = value
 
         return toon_response

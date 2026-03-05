@@ -130,3 +130,124 @@ class TestAttachToonContentOptimization:
         # Should achieve at least 15% reduction (realistic estimate given TOON encoding)
         reduction = 1 - (optimized_size / original_size)
         assert reduction >= 0.15, f"Expected >= 15% reduction, got {reduction*100:.1f}%"
+
+
+class TestApplyToonFormatOptimization:
+    """Tests for apply_toon_format_to_response token optimization."""
+
+    def test_removes_summary_when_structural_overview_present(self):
+        """Should remove summary field when structural_overview exists."""
+        from tree_sitter_analyzer.mcp.utils.format_helper import apply_toon_format_to_response
+
+        input_data = {
+            "success": True,
+            "summary": {"classes": 5, "methods": 20},
+            "structural_overview": {
+                "classes": [{"name": "TestClass"} for _ in range(5)],
+                "methods": [{"name": "testMethod"} for _ in range(20)],
+            },
+        }
+
+        result = apply_toon_format_to_response(input_data, output_format="toon")
+
+        # summary should be removed because it's derivable from structural_overview
+        assert "summary" not in result
+        # structural_overview should also be removed (it's in TOON_REDUNDANT_FIELDS)
+        assert "structural_overview" not in result
+        assert "toon_content" in result
+
+    def test_preserves_summary_when_no_structural_overview(self):
+        """Should preserve summary when structural_overview is absent (summary stays in toon_content)."""
+        from tree_sitter_analyzer.mcp.utils.format_helper import apply_toon_format_to_response
+
+        input_data = {
+            "success": True,
+            "summary": {"classes": 0, "methods": 0},
+        }
+
+        result = apply_toon_format_to_response(input_data, output_format="toon")
+
+        # toon_content should contain the summary info
+        assert "toon_content" in result
+        # But summary should be removed from top level (it's in TOON_REDUNDANT_FIELDS)
+        assert "summary" not in result
+
+    def test_json_format_unaffected(self):
+        """JSON format should not be affected by optimization."""
+        from tree_sitter_analyzer.mcp.utils.format_helper import apply_toon_format_to_response
+
+        input_data = {
+            "success": True,
+            "results": ["a", "b", "c"],
+            "summary": {"count": 3},
+        }
+
+        result = apply_toon_format_to_response(input_data, output_format="json")
+
+        # JSON format should return unchanged
+        assert result == input_data
+        assert "toon_content" not in result
+
+    def test_removes_all_redundant_fields(self):
+        """Should remove all fields in TOON_REDUNDANT_FIELDS."""
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            TOON_REDUNDANT_FIELDS,
+            apply_toon_format_to_response,
+        )
+
+        input_data = {
+            "success": True,
+            "results": ["a", "b"],
+            "matches": [{"line": 1}],
+            "content": "file content",
+            "partial_content_result": {"text": "partial"},
+            "analysis_result": {"imports": []},
+            "data": {"key": "value"},
+            "items": [1, 2, 3],
+            "files": ["file1.py"],
+            "lines": ["line1", "line2"],
+            "table_output": "table",
+            "detailed_analysis": {"metrics": {}},
+            "structural_overview": {"classes": []},
+            "summary": {"count": 0},
+        }
+
+        result = apply_toon_format_to_response(input_data, output_format="toon")
+
+        # All redundant fields should be removed
+        for field in TOON_REDUNDANT_FIELDS:
+            assert field not in result, f"Field '{field}' should have been removed"
+
+        # Metadata should be preserved
+        assert result["success"] is True
+        assert "toon_content" in result
+
+    def test_preserves_metadata_fields(self):
+        """Should preserve metadata fields like file_path, language, etc."""
+        from tree_sitter_analyzer.mcp.utils.format_helper import apply_toon_format_to_response
+
+        input_data = {
+            "success": True,
+            "file_path": "/path/to/file.py",
+            "language": "python",
+            "warnings": ["deprecated API"],
+            "error": None,
+            "total_count": 100,
+            "truncated": False,
+            "execution_time": 0.5,
+            "results": ["data"],
+        }
+
+        result = apply_toon_format_to_response(input_data, output_format="toon")
+
+        # Metadata should be preserved
+        assert result["success"] is True
+        assert result["file_path"] == "/path/to/file.py"
+        assert result["language"] == "python"
+        assert result["warnings"] == ["deprecated API"]
+        assert result["error"] is None
+        assert result["total_count"] == 100
+        assert result["truncated"] is False
+        assert result["execution_time"] == 0.5
+        # Redundant data should be removed
+        assert "results" not in result
