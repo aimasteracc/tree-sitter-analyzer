@@ -242,17 +242,34 @@ def apply_toon_format_to_response(
 
 def attach_toon_content_to_response(result: dict[str, Any]) -> dict[str, Any]:
     """
-    Attach TOON formatted content to a response *without removing* any existing fields.
+    Attach TOON formatted content, removing redundant data fields for token optimization.
 
-    This is useful for structured outputs (e.g. group_by_file) where callers/tests rely
-    on the original JSON structure, while still allowing clients to display TOON.
+    This function formats the result as TOON and removes redundant data fields
+    to prevent token explosion. Only metadata fields are preserved alongside
+    the toon_content field.
+
+    Args:
+        result: Original result dictionary from MCP tool
+
+    Returns:
+        Optimized dict with toon_content and metadata fields only
     """
     try:
         toon_content = format_as_toon(result)
-        enriched = result.copy()
-        enriched["format"] = "toon"
-        enriched["toon_content"] = toon_content
-        return enriched
+
+        # Build optimized response with only metadata and TOON content
+        toon_response: dict[str, Any] = {
+            "format": "toon",
+            "toon_content": toon_content,
+        }
+
+        # Preserve only metadata fields (not redundant data)
+        for key, value in result.items():
+            if key not in TOON_REDUNDANT_FIELDS:
+                toon_response[key] = value
+
+        return toon_response
+
     except Exception as e:
         logger.warning(f"Failed to attach TOON content, returning JSON: {e}")
         return result

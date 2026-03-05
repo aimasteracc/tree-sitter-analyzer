@@ -391,8 +391,8 @@ class TestAttachToonContentToResponse:
         assert "toon_content" in response
         assert isinstance(response["toon_content"], str)
 
-    def test_attach_toon_content_preserves_original(self):
-        """Test attach_toon_content_to_response preserves all original fields."""
+    def test_attach_toon_content_removes_redundant_fields(self):
+        """Test attach_toon_content_to_response removes redundant fields for token optimization."""
         result = {
             "results": [{"id": 1}, {"id": 2}],
             "matches": [{"line": 1}],
@@ -401,13 +401,11 @@ class TestAttachToonContentToResponse:
             "status": "success",
         }
         response = attach_toon_content_to_response(result)
-        # All original fields should be preserved
-        assert "results" in response
-        assert response["results"] == [{"id": 1}, {"id": 2}]
-        assert "matches" in response
-        assert response["matches"] == [{"line": 1}]
-        assert "content" in response
-        assert response["content"] == "file content"
+        # Redundant data fields should be removed
+        assert "results" not in response
+        assert "matches" not in response
+        assert "content" not in response
+        # Metadata fields should be preserved
         assert "metadata" in response
         assert response["metadata"] == {"total": 2}
         assert "status" in response
@@ -493,24 +491,24 @@ class TestIntegration:
         toon_result = toon_formatter.format(data)
         assert isinstance(toon_result, str)
 
-    def test_attach_vs_apply_toon_difference(self):
-        """Test difference between attach and apply TOON functions."""
+    def test_attach_vs_apply_toon_consistency(self):
+        """Test that both attach and apply TOON functions remove redundant fields."""
         data = {
             "results": [{"id": 1}],
             "metadata": {"total": 1},
             "status": "success",
         }
 
-        # apply_toon_format_to_response removes redundant fields
+        # Both functions should now remove redundant fields
         applied = apply_toon_format_to_response(data, "toon")
         assert "results" not in applied
         assert "metadata" in applied
         assert "status" in applied
+        assert "toon_content" in applied
 
-        # attach_toon_content_to_response preserves all fields
+        # attach_toon_content_to_response also removes redundant fields
         attached = attach_toon_content_to_response(data)
-        assert "results" in attached
-        assert attached["results"] == [{"id": 1}]
+        assert "results" not in attached
         assert "metadata" in attached
         assert "status" in attached
         assert "toon_content" in attached

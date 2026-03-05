@@ -506,7 +506,9 @@ class TestExecute:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        assert "files" in result
+                        # Files field is removed for token optimization, but toon_content contains it
+                        assert "toon_content" in result
+                        assert "files" not in result  # Removed for token optimization
 
     @pytest.mark.asyncio
     async def test_execute_with_file_output(self, tool, sample_project_structure):
