@@ -43,14 +43,15 @@ class UnifiedAnalysisEngine:
     _lock: threading.Lock = threading.Lock()
 
     def __new__(cls, project_root: str | None = None) -> "UnifiedAnalysisEngine":
-        """Singleton instance management (backward compatible)"""
+        """Singleton instance management (thread-safe)."""
         instance_key = project_root or "default"
-        if instance_key not in cls._instances:
-            with cls._lock:
-                if instance_key not in cls._instances:
-                    instance = super().__new__(cls)
-                    cls._instances[instance_key] = instance
-                    instance._initialized = False
+        # Always acquire lock to ensure thread-safe initialization
+        with cls._lock:
+            if instance_key not in cls._instances:
+                instance = super().__new__(cls)
+                # Set _initialized atomically within lock
+                instance._initialized = False
+                cls._instances[instance_key] = instance
         return cls._instances[instance_key]
 
     def __init__(self, project_root: str | None = None) -> None:
