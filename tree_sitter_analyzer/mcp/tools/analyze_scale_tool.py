@@ -451,14 +451,14 @@ class AnalyzeScaleTool(BaseMCPTool):
 
                     # Adapt the result to a compatible structure for report generation
                     # This part needs careful implementation based on universal_result structure
-                    analysis_result = None  # Placeholder
-                    structural_overview = {}  # Placeholder
+                    analysis_result = None
+                    structural_overview = None  # Use None instead of empty dict to save tokens
 
                 # Generate LLM guidance
                 llm_guidance = None
                 if include_guidance:
                     llm_guidance = self._generate_llm_guidance(
-                        file_metrics, structural_overview
+                        file_metrics, structural_overview or {}
                     )
 
                 # Build enhanced result structure
@@ -516,8 +516,11 @@ class AnalyzeScaleTool(BaseMCPTool):
                             else None
                         ),
                     },
-                    "structural_overview": structural_overview,
                 }
+
+                # Only add structural_overview if we have real data (not None placeholder)
+                if structural_overview:
+                    result["structural_overview"] = structural_overview
 
                 # Add warning for non-Java files with limited structural analysis
                 if language != "java" and analysis_result is None:
