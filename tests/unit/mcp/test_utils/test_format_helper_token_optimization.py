@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Tests for token optimization in format_helper."""
-import pytest
 
 
 class TestToonRedundantFields:
@@ -51,7 +50,9 @@ class TestAttachToonContentOptimization:
 
     def test_removes_redundant_data_fields(self):
         """Should remove redundant data fields from TOON response."""
-        from tree_sitter_analyzer.mcp.utils.format_helper import attach_toon_content_to_response
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            attach_toon_content_to_response,
+        )
 
         input_data = {
             "success": True,
@@ -71,7 +72,9 @@ class TestAttachToonContentOptimization:
 
     def test_preserves_metadata_fields(self):
         """Should preserve metadata fields in TOON response."""
-        from tree_sitter_analyzer.mcp.utils.format_helper import attach_toon_content_to_response
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            attach_toon_content_to_response,
+        )
 
         input_data = {
             "success": True,
@@ -91,7 +94,9 @@ class TestAttachToonContentOptimization:
 
     def test_includes_toon_content(self):
         """Should include toon_content field."""
-        from tree_sitter_analyzer.mcp.utils.format_helper import attach_toon_content_to_response
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            attach_toon_content_to_response,
+        )
 
         input_data = {
             "success": True,
@@ -107,7 +112,10 @@ class TestAttachToonContentOptimization:
     def test_token_reduction_achieved(self):
         """Should achieve significant token reduction."""
         import json
-        from tree_sitter_analyzer.mcp.utils.format_helper import attach_toon_content_to_response
+
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            attach_toon_content_to_response,
+        )
 
         # Create large data structure
         large_data = {
@@ -137,7 +145,9 @@ class TestApplyToonFormatOptimization:
 
     def test_removes_summary_when_structural_overview_present(self):
         """Should remove summary field when structural_overview exists."""
-        from tree_sitter_analyzer.mcp.utils.format_helper import apply_toon_format_to_response
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            apply_toon_format_to_response,
+        )
 
         input_data = {
             "success": True,
@@ -158,7 +168,9 @@ class TestApplyToonFormatOptimization:
 
     def test_preserves_summary_when_no_structural_overview(self):
         """Should preserve summary when structural_overview is absent (summary stays in toon_content)."""
-        from tree_sitter_analyzer.mcp.utils.format_helper import apply_toon_format_to_response
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            apply_toon_format_to_response,
+        )
 
         input_data = {
             "success": True,
@@ -174,7 +186,9 @@ class TestApplyToonFormatOptimization:
 
     def test_json_format_unaffected(self):
         """JSON format should not be affected by optimization."""
-        from tree_sitter_analyzer.mcp.utils.format_helper import apply_toon_format_to_response
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            apply_toon_format_to_response,
+        )
 
         input_data = {
             "success": True,
@@ -224,7 +238,9 @@ class TestApplyToonFormatOptimization:
 
     def test_preserves_metadata_fields(self):
         """Should preserve metadata fields like file_path, language, etc."""
-        from tree_sitter_analyzer.mcp.utils.format_helper import apply_toon_format_to_response
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            apply_toon_format_to_response,
+        )
 
         input_data = {
             "success": True,

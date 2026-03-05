@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import OrderedDict
 import threading
+from collections import OrderedDict
 from typing import Any
 
 
@@ -11,10 +11,10 @@ class SharedCache:
     Implements thread-safe singleton pattern with LRU eviction.
     """
 
-    _instance: "SharedCache | None" = None
+    _instance: SharedCache | None = None
     _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls, max_size: int = 1000) -> "SharedCache":
+    def __new__(cls, max_size: int = 1000) -> SharedCache:
         """Thread-safe singleton instantiation with configurable max size."""
         if cls._instance is None:
             with cls._lock:

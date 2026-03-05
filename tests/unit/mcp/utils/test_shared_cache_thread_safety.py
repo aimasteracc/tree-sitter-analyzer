@@ -1,8 +1,6 @@
 """Tests for SharedCache singleton thread safety."""
 import threading
 
-import pytest
-
 
 class TestSharedCacheThreadSafety:
     """Test SharedCache singleton thread safety."""
