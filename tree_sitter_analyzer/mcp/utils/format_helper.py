@@ -14,6 +14,41 @@ from ...utils import setup_logger
 logger = setup_logger(__name__)
 
 
+# Token optimization: Redundant fields to remove when using TOON format
+TOON_REDUNDANT_FIELDS: frozenset[str] = frozenset({
+    # Data fields (already encoded in toon_content)
+    "results",
+    "matches",
+    "content",
+    "partial_content_result",
+    "analysis_result",
+    "data",
+    "items",
+    "files",
+    "lines",
+    "table_output",
+    # Detailed analysis fields
+    "detailed_analysis",
+    "structural_overview",
+    # Derivable summary
+    "summary",  # Can be derived from structural_overview array lengths
+})
+
+# Token optimization: Metadata fields to preserve in TOON response
+TOON_METADATA_FIELDS: frozenset[str] = frozenset({
+    "success",
+    "file_path",
+    "language",
+    "format",
+    "toon_content",
+    "warnings",
+    "error",
+    "total_count",
+    "truncated",
+    "execution_time",
+})
+
+
 def format_output(data: dict[str, Any], output_format: str = "json") -> str:
     """
     Format data according to the specified output format.
