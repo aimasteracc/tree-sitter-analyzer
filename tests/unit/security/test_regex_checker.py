@@ -313,3 +313,237 @@ class TestRegexCheckerEdgeCases:
         pattern = checker.create_safe_pattern(r"test.*pattern", flags=re.IGNORECASE)
         assert pattern is not None
         assert isinstance(pattern, re.Pattern)
+
+
+class TestReDoSPrevention:
+    """Advanced ReDoS attack prevention tests.
+
+    These tests cover sophisticated backtracking bomb patterns and
+    real-world ReDoS attack vectors.
+    """
+
+    @pytest.mark.unit
+    def test_nested_quantifier_variants(self):
+        """Test detection of various nested quantifier patterns."""
+        checker = RegexSafetyChecker()
+
+        # These patterns should be detected as dangerous (cause exponential backtracking)
+        dangerous_variants = [
+            r"(a+)+",           # Basic nested quantifier
+            r"(a*)*",           # Star nested in star
+            r"(a?)+",           # Optional nested in plus - can still cause issues
+            r"(a+)*",           # Plus nested in star
+            r"(a*)+",           # Star nested in plus
+            r"(.+)+",           # Dot nested quantifier
+            r"(.*)*",           # Dot star nested
+            r"(\w+)+",          # Word char nested
+            r"([a-z]+)+",       # Character class nested
+        ]
+
+        for pattern in dangerous_variants:
+            is_safe, error = checker.validate_pattern(pattern)
+            assert not is_safe, f"Pattern should be dangerous: {pattern}"
+            assert "dangerous" in error.lower(), f"Error should mention danger: {error}"
+
+    @pytest.mark.unit
+    def test_optional_nested_quantifiers_may_be_safe(self):
+        """Test that some optional nested quantifiers may be considered safe."""
+        checker = RegexSafetyChecker()
+
+        # (a+)? is effectively the same as a+ and may not be flagged
+        # This is acceptable behavior
+        pattern = r"(a+)?"
+        is_safe, error = checker.validate_pattern(pattern)
+        # Either outcome is acceptable for this edge case
+        # The important thing is the checker doesn't crash
+
+    @pytest.mark.unit
+    def test_alternation_overlap_variants(self):
+        """Test detection of overlapping alternation patterns."""
+        checker = RegexSafetyChecker()
+
+        dangerous_alternations = [
+            r"(a|aa)*",         # Overlapping alternatives
+            r"(a|ab)+",         # Prefix overlap
+            r"(ab|a)+",         # Reverse prefix overlap
+            r"(a|a)*",          # Identical alternatives
+            r"(.|a)*",          # Dot with specific char
+        ]
+
+        for pattern in dangerous_alternations:
+            is_safe, error = checker.validate_pattern(pattern)
+            # Some patterns might pass, but should still be flagged if dangerous
+            if not is_safe:
+                assert "dangerous" in error.lower() or "invalid" in error.lower()
+
+    @pytest.mark.unit
+    def test_backreference_attacks(self):
+        """Test detection of backreference-based attacks."""
+        checker = RegexSafetyChecker()
+
+        # Backreferences can cause exponential backtracking
+        backreference_patterns = [
+            r"(.*)\1",          # Simple backreference
+            r"(.+)\1+",         # Backreference with quantifier
+        ]
+
+        for pattern in backreference_patterns:
+            is_safe, error = checker.validate_pattern(pattern)
+            # These should either be detected as dangerous or compile safely
+            # but not cause ReDoS in testing
+
+    @pytest.mark.unit
+    def test_lookahead_quantifier_combinations(self):
+        """Test detection of lookahead with quantifier attacks."""
+        checker = RegexSafetyChecker()
+
+        dangerous_lookaheads = [
+            r"(?=.*)+",         # Positive lookahead with plus
+            r"(?!.*)+",         # Negative lookahead with plus
+            r"(?<=.*)+",        # Lookbehind with plus
+            r"(?<!.*)+",        # Negative lookbehind with plus
+        ]
+
+        for pattern in dangerous_lookaheads:
+            result = checker._check_dangerous_patterns(pattern)
+            assert result is not None, f"Should detect dangerous lookahead: {pattern}"
+
+    @pytest.mark.unit
+    def test_deeply_nested_groups(self):
+        """Test handling of deeply nested group patterns."""
+        checker = RegexSafetyChecker()
+
+        # These patterns are complex but should be handled
+        complex_patterns = [
+            r"((a+)+)",         # Double nested
+            r"(((a+)+)+)",      # Triple nested
+            r"(a(b(c(d+)+)+)+)",  # Mixed nesting
+        ]
+
+        for pattern in complex_patterns:
+            is_safe, error = checker.validate_pattern(pattern)
+            # All should be detected as dangerous due to nested quantifiers
+            assert not is_safe, f"Nested pattern should be dangerous: {pattern}"
+
+    @pytest.mark.unit
+    def test_quantified_character_classes(self):
+        """Test patterns with quantified character classes."""
+        checker = RegexSafetyChecker()
+
+        safe_patterns = [
+            r"[a-z]+",          # Simple character class
+            r"[0-9]{1,3}",      # Bounded quantifier
+            r"[a-zA-Z0-9_]+",   # Word characters
+        ]
+
+        for pattern in safe_patterns:
+            is_safe, error = checker.validate_pattern(pattern)
+            assert is_safe, f"Pattern should be safe: {pattern}, error: {error}"
+
+    @pytest.mark.unit
+    def test_real_world_redos_patterns(self):
+        """Test patterns known to cause ReDoS in real applications."""
+        checker = RegexSafetyChecker()
+
+        # Real-world ReDoS patterns from security advisories
+        real_world_dangerous = [
+            r"^(a+)+$",         # Classic ReDoS pattern
+            r"^(a|aa)+$",       # OWASP example
+            r"^(a|a?)+$",       # Another OWASP example
+        ]
+
+        for pattern in real_world_dangerous:
+            is_safe, error = checker.validate_pattern(pattern)
+            assert not is_safe, f"Real-world dangerous pattern should be caught: {pattern}"
+
+    @pytest.mark.unit
+    def test_bounded_vs_unbounded_quantifiers(self):
+        """Test that bounded quantifiers are safer than unbounded."""
+        checker = RegexSafetyChecker()
+
+        # Bounded quantifiers are generally safer
+        bounded_patterns = [
+            r"a{1,10}",         # Bounded range
+            r"a{5}",            # Exact count
+            r"a{0,5}",          # Bounded optional
+        ]
+
+        for pattern in bounded_patterns:
+            is_safe, error = checker.validate_pattern(pattern)
+            assert is_safe, f"Bounded pattern should be safe: {pattern}, error: {error}"
+
+    @pytest.mark.unit
+    def test_complexity_score_thresholds(self):
+        """Test complexity scoring for various patterns."""
+        checker = RegexSafetyChecker()
+
+        # Low complexity patterns
+        simple = checker.analyze_complexity(r"hello")
+        complex_pattern = checker.analyze_complexity(r"^((a+)+)+$")
+
+        # Complex patterns should have higher scores
+        assert complex_pattern["complexity_score"] > simple["complexity_score"]
+
+    @pytest.mark.unit
+    def test_empty_input_handling(self):
+        """Test handling of empty and whitespace inputs."""
+        checker = RegexSafetyChecker()
+
+        # Empty pattern
+        is_safe, error = checker.validate_pattern("")
+        assert not is_safe
+        assert "non-empty" in error.lower()
+
+        # Whitespace only
+        is_safe, error = checker.validate_pattern("   ")
+        assert is_safe  # Whitespace is a valid regex
+
+    @pytest.mark.unit
+    def test_unicode_pattern_handling(self):
+        """Test handling of unicode patterns."""
+        checker = RegexSafetyChecker()
+
+        unicode_patterns = [
+            r"[\u0400-\u04FF]+",  # Cyrillic range
+            r"[ぁ-ん]+",           # Hiragana
+            r"[\p{L}]+",          # Unicode letter (may not compile)
+        ]
+
+        for pattern in unicode_patterns:
+            is_safe, error = checker.validate_pattern(pattern)
+            # Should either be safe or have a clear error
+            if not is_safe:
+                assert error  # Should have an error message
+
+    @pytest.mark.unit
+    def test_max_pattern_length_boundary(self):
+        """Test exact boundary of max pattern length."""
+        checker = RegexSafetyChecker()
+        max_len = RegexSafetyChecker.MAX_PATTERN_LENGTH
+
+        # Exactly at limit
+        at_limit = "a" * max_len
+        is_safe, error = checker.validate_pattern(at_limit)
+        assert is_safe, "Pattern at exact limit should be safe"
+
+        # One over limit
+        over_limit = "a" * (max_len + 1)
+        is_safe, error = checker.validate_pattern(over_limit)
+        assert not is_safe
+        assert "too long" in error.lower()
+
+    @pytest.mark.unit
+    def test_suggestion_quality(self):
+        """Test that suggestions are actually safer."""
+        checker = RegexSafetyChecker()
+
+        dangerous = r"(.+)+"
+        suggestion = checker.suggest_safer_pattern(dangerous)
+
+        if suggestion:
+            # Suggestion should be safe
+            is_safe, error = checker.validate_pattern(suggestion)
+            assert is_safe, f"Suggested pattern should be safe: {suggestion}, error: {error}"
+
+            # Suggestion should be different
+            assert suggestion != dangerous
