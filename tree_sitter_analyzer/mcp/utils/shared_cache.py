@@ -11,6 +11,16 @@ class SharedCache:
     Implements thread-safe singleton pattern with LRU eviction.
     """
 
+    __slots__ = (
+        "_language_cache",
+        "_language_meta_cache",
+        "_security_cache",
+        "_metrics_cache",
+        "_resolved_paths",
+        "_access_lock",
+        "_max_size",
+    )
+
     _instance: SharedCache | None = None
     _lock: threading.Lock = threading.Lock()
 
