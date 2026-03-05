@@ -1,28 +1,36 @@
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 
 class SharedCache:
     """
     Shared cache for MCP tools to reduce redundant operations.
-    Implements singleton pattern to ensure sharing across tool instances.
+    Implements thread-safe singleton pattern to ensure sharing across tool instances.
     """
 
-    _instance = None
+    _instance: "SharedCache | None" = None
+    _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls) -> SharedCache:
+    def __new__(cls) -> "SharedCache":
+        """Thread-safe singleton instantiation."""
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialize()
+            with cls._lock:
+                if cls._instance is None:
+                    instance = super().__new__(cls)
+                    instance._initialize()
+                    cls._instance = instance
         return cls._instance
 
     def _initialize(self) -> None:
+        """Initialize cache dictionaries and access lock."""
         self._language_cache: dict[str, str] = {}
         self._language_meta_cache: dict[str, dict[str, Any]] = {}
         self._security_cache: dict[str, tuple[bool, str]] = {}
         self._metrics_cache: dict[str, dict[str, Any]] = {}
         self._resolved_paths: dict[str, str] = {}
+        self._access_lock = threading.Lock()
 
     def _make_key(self, kind: str, path: str, project_root: str | None) -> str:
         """
@@ -38,76 +46,91 @@ class SharedCache:
     def get_language(
         self, file_path: str, project_root: str | None = None
     ) -> str | None:
-        return self._language_cache.get(
-            self._make_key("language", file_path, project_root)
-        )
+        with self._access_lock:
+            return self._language_cache.get(
+                self._make_key("language", file_path, project_root)
+            )
 
     def set_language(
         self, file_path: str, language: str, project_root: str | None = None
     ) -> None:
-        self._language_cache[self._make_key("language", file_path, project_root)] = (
-            language
-        )
+        with self._access_lock:
+            self._language_cache[self._make_key("language", file_path, project_root)] = (
+                language
+            )
 
     def get_language_meta(
         self, abs_path: str, project_root: str | None = None
     ) -> dict[str, Any] | None:
-        return self._language_meta_cache.get(
-            self._make_key("language_meta", abs_path, project_root)
-        )
+        with self._access_lock:
+            return self._language_meta_cache.get(
+                self._make_key("language_meta", abs_path, project_root)
+            )
 
     def set_language_meta(
         self, abs_path: str, meta: dict[str, Any], project_root: str | None = None
     ) -> None:
-        self._language_meta_cache[
-            self._make_key("language_meta", abs_path, project_root)
-        ] = meta
+        with self._access_lock:
+            self._language_meta_cache[
+                self._make_key("language_meta", abs_path, project_root)
+            ] = meta
 
     def get_security_validation(
         self, file_path: str, project_root: str | None = None
     ) -> tuple[bool, str] | None:
-        return self._security_cache.get(
-            self._make_key("security", file_path, project_root)
-        )
+        with self._access_lock:
+            return self._security_cache.get(
+                self._make_key("security", file_path, project_root)
+            )
 
     def set_security_validation(
         self, file_path: str, result: tuple[bool, str], project_root: str | None = None
     ) -> None:
-        self._security_cache[self._make_key("security", file_path, project_root)] = (
-            result
-        )
+        with self._access_lock:
+            self._security_cache[self._make_key("security", file_path, project_root)] = (
+                result
+            )
 
     def get_metrics(
         self, file_path: str, project_root: str | None = None
     ) -> dict[str, Any] | None:
-        return self._metrics_cache.get(
-            self._make_key("metrics", file_path, project_root)
-        )
+        with self._access_lock:
+            return self._metrics_cache.get(
+                self._make_key("metrics", file_path, project_root)
+            )
 
     def set_metrics(
         self, file_path: str, metrics: dict[str, Any], project_root: str | None = None
     ) -> None:
-        self._metrics_cache[self._make_key("metrics", file_path, project_root)] = (
-            metrics
-        )
+        with self._access_lock:
+            self._metrics_cache[self._make_key("metrics", file_path, project_root)] = (
+                metrics
+            )
 
     def get_resolved_path(
         self, original_path: str, project_root: str | None = None
     ) -> str | None:
-        return self._resolved_paths.get(
-            self._make_key("resolved_path", original_path, project_root)
-        )
+        with self._access_lock:
+            return self._resolved_paths.get(
+                self._make_key("resolved_path", original_path, project_root)
+            )
 
     def set_resolved_path(
         self, original_path: str, resolved_path: str, project_root: str | None = None
     ) -> None:
-        self._resolved_paths[
-            self._make_key("resolved_path", original_path, project_root)
-        ] = resolved_path
+        with self._access_lock:
+            self._resolved_paths[
+                self._make_key("resolved_path", original_path, project_root)
+            ] = resolved_path
 
     def clear(self) -> None:
         """Clear all caches"""
-        self._initialize()
+        with self._access_lock:
+            self._language_cache.clear()
+            self._language_meta_cache.clear()
+            self._security_cache.clear()
+            self._metrics_cache.clear()
+            self._resolved_paths.clear()
 
 
 # Global instance access
