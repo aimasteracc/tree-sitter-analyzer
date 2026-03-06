@@ -18,25 +18,19 @@ if TYPE_CHECKING:
 
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
-from ..plugins.base import ElementExtractor, LanguagePlugin
+from ..plugins import ElementExtractorBase, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
 
-class CppElementExtractor(ElementExtractor):
+class CppElementExtractor(ElementExtractorBase):
     """C++ specific element extractor with advanced analysis support"""
 
     def __init__(self) -> None:
         """Initialize the C++ element extractor."""
+        super().__init__()  # Initialize base class
         self.current_namespace: str = ""
-        self.current_file: str = ""
-        self.source_code: str = ""
         self.content_lines: list[str] = []
         self.includes: list[str] = []
-
-        # Performance optimization caches - use position-based keys for deterministic caching
-        self._node_text_cache: dict[tuple[int, int], str] = {}
-        self._processed_nodes: set[int] = set()
-        self._element_cache: dict[tuple[int, str], Any] = {}
         self._file_encoding: str | None = None
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
@@ -195,13 +189,8 @@ class CppElementExtractor(ElementExtractor):
         return packages
 
     def _reset_caches(self) -> None:
-        """Reset performance caches"""
-        self._node_text_cache.clear()
-        self._processed_nodes.clear()
-        self._element_cache.clear()
-        self._comment_cache.clear()
-        self._complexity_cache.clear()
-        self.current_namespace = ""
+        """Reset all caches."""
+        super()._reset_caches()  # Clear base class caches
 
     def _traverse_and_extract_iterative(
         self,
