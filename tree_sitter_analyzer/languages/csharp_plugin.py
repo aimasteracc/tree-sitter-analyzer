@@ -27,7 +27,7 @@ from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
 from ..utils import log_debug, log_error
 
 
-class CSharpElementExtractor(ElementExtractor):
+class CSharpElementExtractor(ElementExtractorBase):
     """
     C#-specific element extractor.
 
