@@ -14,6 +14,7 @@ import pytest
 
 from tree_sitter_analyzer.languages.go_plugin import GoElementExtractor, GoPlugin
 from tree_sitter_analyzer.models import Class, Function, Package
+from tree_sitter_analyzer.plugins import ElementExtractorBase
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -113,7 +114,7 @@ class TestGoPlugin:
         """Test creating element extractor."""
         extractor = go_plugin.create_extractor()
         assert isinstance(extractor, GoElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
 
     def test_get_supported_element_types(self, go_plugin: GoPlugin) -> None:
         """Test getting supported element types."""
@@ -263,7 +264,7 @@ class TestGoElementExtractor:
     def test_extractor_initialization(self, go_extractor: GoElementExtractor) -> None:
         """Test GoElementExtractor initialization."""
         assert go_extractor is not None
-        assert isinstance(go_extractor, ElementExtractor)
+        assert isinstance(go_extractor, ElementExtractorBase)
         assert hasattr(go_extractor, "extract_functions")
         assert hasattr(go_extractor, "extract_classes")
         assert hasattr(go_extractor, "extract_variables")

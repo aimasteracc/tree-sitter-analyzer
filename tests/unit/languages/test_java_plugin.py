@@ -14,6 +14,7 @@ import pytest
 
 from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
 from tree_sitter_analyzer.models import Class, Function, Import, Package, Variable
+from tree_sitter_analyzer.plugins import ElementExtractorBase
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -81,7 +82,7 @@ public class Calculator {
     def test_extractor_initialization(self, extractor: JavaElementExtractor) -> None:
         """Test JavaElementExtractor initialization"""
         assert extractor is not None
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
         assert hasattr(extractor, "extract_functions")
         assert hasattr(extractor, "extract_classes")
         assert hasattr(extractor, "extract_variables")
@@ -302,7 +303,7 @@ class TestJavaPlugin:
         extractor = plugin.create_extractor()
 
         assert isinstance(extractor, JavaElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
 
     def test_is_applicable_java_file(self, plugin: JavaPlugin) -> None:
         """Test applicability check for Java file"""

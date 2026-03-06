@@ -745,7 +745,7 @@ class PHPPlugin(LanguagePlugin):
 
         return PHPPlugin._language_instance
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> ElementExtractorBase:
         """
         Create a PHP element extractor.
 

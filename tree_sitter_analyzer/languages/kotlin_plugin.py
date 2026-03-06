@@ -485,7 +485,7 @@ class KotlinPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".kt", ".kts"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> ElementExtractorBase:
         """Create a new element extractor instance."""
         return KotlinElementExtractor()
 

@@ -225,9 +225,18 @@ class NodeTextExtractionMixin:
             start_byte = node.start_byte
             end_byte = node.end_byte
             
+            # Boundary checks: return empty string for invalid positions
+            if start_byte < 0 or end_byte < 0:
+                return ""
+            
             encoding = self._file_encoding or "utf-8"
             content_lines = getattr(self, 'content_lines', [])
             content_bytes = safe_encode("\n".join(content_lines), encoding)
+            
+            # Check if end_byte is within bounds
+            if end_byte > len(content_bytes):
+                return ""
+            
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
             
             self._node_text_cache[cache_key] = text

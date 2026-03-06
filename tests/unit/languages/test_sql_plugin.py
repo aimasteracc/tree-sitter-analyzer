@@ -20,6 +20,7 @@ from tree_sitter_analyzer.models import (
     SQLTrigger,
     SQLView,
 )
+from tree_sitter_analyzer.plugins import ElementExtractorBase
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -43,7 +44,7 @@ class TestSQLElementExtractor:
     def test_extractor_initialization(self, extractor: SQLElementExtractor) -> None:
         """Test SQLElementExtractor initialization"""
         assert extractor is not None
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
         assert hasattr(extractor, "extract_functions")
         assert hasattr(extractor, "extract_classes")
         assert hasattr(extractor, "extract_variables")
@@ -116,7 +117,7 @@ class TestSQLPlugin:
         """Test create_extractor method"""
         extractor = plugin.create_extractor()
         assert isinstance(extractor, SQLElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
 
     def test_is_applicable(self, plugin: SQLPlugin) -> None:
         """Test is_applicable method"""

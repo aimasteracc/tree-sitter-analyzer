@@ -15,6 +15,7 @@ from tree_sitter_analyzer.languages.typescript_plugin import (
     TypeScriptElementExtractor,
     TypeScriptPlugin,
 )
+from tree_sitter_analyzer.plugins import ElementExtractorBase
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -157,7 +158,7 @@ export default UserComponent;
 
     def test_extractor_initialization(self, extractor):
         """Test that extractor initializes properly"""
-        assert isinstance(extractor, TypeScriptElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
         assert extractor.current_file == ""
         assert extractor.source_code == ""
         assert extractor.content_lines == []
@@ -356,7 +357,7 @@ class TestTypeScriptPlugin:
         """Test extractor creation"""
         extractor = plugin.create_extractor()
         assert isinstance(extractor, TypeScriptElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
 
     def test_get_extractor(self, plugin):
         """Test extractor getter"""

@@ -640,7 +640,7 @@ class RubyPlugin(LanguagePlugin):
 
         return RubyPlugin._language_instance
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> ElementExtractorBase:
         """
         Create a Ruby element extractor.
 

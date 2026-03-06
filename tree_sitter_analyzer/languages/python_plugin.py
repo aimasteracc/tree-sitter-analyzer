@@ -1299,7 +1299,7 @@ class PythonPlugin(LanguagePlugin):
         """Return list of file extensions this plugin supports"""
         return [".py", ".pyw", ".pyi"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> ElementExtractorBase:
         """Create and return an element extractor for this language"""
         return PythonElementExtractor()
 

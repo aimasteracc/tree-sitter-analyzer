@@ -14,6 +14,7 @@ import pytest
 
 from tree_sitter_analyzer.languages.cpp_plugin import CppElementExtractor, CppPlugin
 from tree_sitter_analyzer.models import Class, Function
+from tree_sitter_analyzer.plugins import ElementExtractorBase
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -85,7 +86,7 @@ const std::string Calculator::VERSION = "1.0";
     def test_extractor_initialization(self, extractor: CppElementExtractor) -> None:
         """Test CppElementExtractor initialization"""
         assert extractor is not None
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
         assert hasattr(extractor, "extract_functions")
         assert hasattr(extractor, "extract_classes")
         assert hasattr(extractor, "extract_variables")
@@ -258,7 +259,7 @@ class TestCppPlugin:
         extractor = plugin.create_extractor()
 
         assert isinstance(extractor, CppElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
 
     def test_is_applicable_cpp_file(self, plugin: CppPlugin) -> None:
         """Test applicability check for C++ file"""

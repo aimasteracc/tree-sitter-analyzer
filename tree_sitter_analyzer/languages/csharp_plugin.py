@@ -882,7 +882,7 @@ class CSharpPlugin(LanguagePlugin):
         """
         return [".cs"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> ElementExtractorBase:
         """
         Create a new C# element extractor instance.
 

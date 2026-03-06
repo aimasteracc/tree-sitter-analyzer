@@ -883,7 +883,7 @@ class CPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".c", ".h"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> ElementExtractorBase:
         """Create a new element extractor instance."""
         return CElementExtractor()
 

@@ -1452,7 +1452,7 @@ class MarkdownPlugin(LanguagePlugin):
         """Return list of file extensions this plugin supports"""
         return [".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".mdx"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> ElementExtractorBase:
         """Create and return a NEW element extractor for this language (avoid state pollution)"""
         return MarkdownElementExtractor()
 

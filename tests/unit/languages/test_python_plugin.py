@@ -17,6 +17,7 @@ from tree_sitter_analyzer.languages.python_plugin import (
     PythonPlugin,
 )
 from tree_sitter_analyzer.models import Class, Function, Import, Variable
+from tree_sitter_analyzer.plugins import ElementExtractorBase
 from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
 
 
@@ -101,7 +102,7 @@ if __name__ == "__main__":
     def test_extractor_initialization(self, extractor: PythonElementExtractor) -> None:
         """Test PythonElementExtractor initialization"""
         assert extractor is not None
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
         assert hasattr(extractor, "extract_functions")
         assert hasattr(extractor, "extract_classes")
         assert hasattr(extractor, "extract_variables")
@@ -454,7 +455,7 @@ class TestPythonPlugin:
         extractor = plugin.create_extractor()
 
         assert isinstance(extractor, PythonElementExtractor)
-        assert isinstance(extractor, ElementExtractor)
+        assert isinstance(extractor, ElementExtractorBase)
 
     def test_is_applicable_python_file(self, plugin: PythonPlugin) -> None:
         """Test applicability check for Python file"""
