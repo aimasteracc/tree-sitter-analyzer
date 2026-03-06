@@ -43,7 +43,7 @@ from ..models import (
 from ..platform_compat.adapter import CompatibilityAdapter
 from ..platform_compat.detector import PlatformDetector
 from ..platform_compat.profiles import BehaviorProfile
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
 from ..utils import log_debug, log_error
 
 

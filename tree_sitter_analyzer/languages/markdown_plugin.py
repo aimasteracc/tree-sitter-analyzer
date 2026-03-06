@@ -26,7 +26,7 @@ from ..models import Class as ModelClass
 from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
 from ..utils import log_debug, log_error
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
 

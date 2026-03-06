@@ -80,27 +80,26 @@ class TestCacheManagementMixin:
 
 
 class TestNodeTraversalMixin:
-    """Test cases for NodeTraversalMixin"""
+    """Test cases for NodeTraversalMixin using ElementExtractorBase"""
 
     @pytest.fixture
-    def mixin(self) -> NodeTraversalMixin:
-        """Create a NodeTraversalMixin instance"""
-        mixin = NodeTraversalMixin()
-        mixin._init_caches()
-        mixin.content_lines = ["line1", "line2", "line3"]
-        return mixin
+    def extractor(self) -> ElementExtractorBase:
+        """Create an ElementExtractorBase instance (combines all mixins)"""
+        extractor = ElementExtractorBase()
+        extractor.content_lines = ["line1", "line2", "line3"]
+        return extractor
 
-    def test_traverse_empty_tree(self, mixin: NodeTraversalMixin) -> None:
+    def test_traverse_empty_tree(self, extractor: ElementExtractorBase) -> None:
         """Test traversal with None root node"""
         results: list = []
         extractors = {"function_declaration": lambda n: Mock()}
         
         # Should not raise exception
-        mixin._traverse_and_extract_iterative(None, extractors, results, "function")
+        extractor._traverse_and_extract_iterative(None, extractors, results, "function")
         
         assert results == []
 
-    def test_traverse_simple_tree(self, mixin: NodeTraversalMixin) -> None:
+    def test_traverse_simple_tree(self, extractor: ElementExtractorBase) -> None:
         """Test traversal with simple tree structure"""
         # Create mock tree
         root_node = Mock()
@@ -110,12 +109,12 @@ class TestNodeTraversalMixin:
         results: list = []
         extractors = {}
         
-        mixin._traverse_and_extract_iterative(root_node, extractors, results, "test")
+        extractor._traverse_and_extract_iterative(root_node, extractors, results, "test")
         
         # Should complete without errors
         assert True
 
-    def test_traverse_with_extractor(self, mixin: NodeTraversalMixin) -> None:
+    def test_traverse_with_extractor(self, extractor: ElementExtractorBase) -> None:
         """Test traversal with actual extractor function"""
         # Create mock function node
         func_node = Mock()
@@ -138,12 +137,12 @@ class TestNodeTraversalMixin:
             "function_declaration": lambda n: mock_result
         }
         
-        mixin._traverse_and_extract_iterative(root_node, extractors, results, "function")
+        extractor._traverse_and_extract_iterative(root_node, extractors, results, "function")
         
         assert len(results) == 1
         assert results[0] == mock_result
 
-    def test_traverse_respects_max_depth(self, mixin: NodeTraversalMixin) -> None:
+    def test_traverse_respects_max_depth(self, extractor: ElementExtractorBase) -> None:
         """Test that traversal respects maximum depth limit"""
         # Create deeply nested tree
         current = Mock()
@@ -163,24 +162,23 @@ class TestNodeTraversalMixin:
         extractors = {}
         
         # Should complete without infinite loop
-        mixin._traverse_and_extract_iterative(root, extractors, results, "test")
+        extractor._traverse_and_extract_iterative(root, extractors, results, "test")
         
         assert True  # Just verify it completes
 
 
 class TestNodeTextExtractionMixin:
-    """Test cases for NodeTextExtractionMixin"""
+    """Test cases for NodeTextExtractionMixin using ElementExtractorBase"""
 
     @pytest.fixture
-    def mixin(self) -> NodeTextExtractionMixin:
-        """Create a NodeTextExtractionMixin instance"""
-        mixin = NodeTextExtractionMixin()
-        mixin._init_caches()
-        mixin.content_lines = ["line1", "line2", "line3"]
-        mixin._file_encoding = "utf-8"
-        return mixin
+    def extractor(self) -> ElementExtractorBase:
+        """Create an ElementExtractorBase instance (combines all mixins)"""
+        extractor = ElementExtractorBase()
+        extractor.content_lines = ["line1", "line2", "line3"]
+        extractor._file_encoding = "utf-8"
+        return extractor
 
-    def test_get_node_text_optimized_caching(self, mixin: NodeTextExtractionMixin) -> None:
+    def test_get_node_text_optimized_caching(self, extractor: ElementExtractorBase) -> None:
         """Test that node text extraction uses caching"""
         # Create mock node
         node = Mock()
@@ -195,32 +193,32 @@ class TestNodeTextExtractionMixin:
                 mock_encode.return_value = b"line1\nline2"
                 mock_extract.return_value = "line1"
                 
-                text1 = mixin._get_node_text_optimized(node)
+                text1 = extractor._get_node_text_optimized(node)
                 
                 # Second call should use cache
-                text2 = mixin._get_node_text_optimized(node)
+                text2 = extractor._get_node_text_optimized(node)
                 
                 assert text1 == text2
                 # Encoding should only be called once
                 assert mock_encode.call_count == 1
 
-    def test_fallback_text_extraction_single_line(self, mixin: NodeTextExtractionMixin) -> None:
+    def test_fallback_text_extraction_single_line(self, extractor: ElementExtractorBase) -> None:
         """Test fallback extraction for single line"""
         node = Mock()
         node.start_point = (0, 0)
         node.end_point = (0, 5)
         
-        text = mixin._fallback_text_extraction(node)
+        text = extractor._fallback_text_extraction(node)
         
         assert text == "line1"
 
-    def test_fallback_text_extraction_multiple_lines(self, mixin: NodeTextExtractionMixin) -> None:
+    def test_fallback_text_extraction_multiple_lines(self, extractor: ElementExtractorBase) -> None:
         """Test fallback extraction for multiple lines"""
         node = Mock()
         node.start_point = (0, 2)
         node.end_point = (2, 4)
         
-        text = mixin._fallback_text_extraction(node)
+        text = extractor._fallback_text_extraction(node)
         
         # Should extract from line 0 (starting at char 2) through line 2 (ending at char 4)
         assert "ne1" in text  # "line1"[2:]
@@ -282,8 +280,8 @@ class TestIntegration:
                 self._traverse_and_extract_iterative(root_node, extractors, results, "test")
                 return results
             
-            def _extract_test_node(self, node: Mock) -> Mock:
-                return Mock(name=self._get_node_text_optimized(node))
+            def _extract_test_node(self, node: Mock) -> dict:
+                return {"name": self._get_node_text_optimized(node)}
         
         # Setup
         extractor = TestExtractor()
@@ -313,7 +311,7 @@ class TestIntegration:
         
         # Verify
         assert len(results) == 1
-        assert results[0].name == "test content"
+        assert results[0]["name"] == "test content"
 
 
 if __name__ == "__main__":

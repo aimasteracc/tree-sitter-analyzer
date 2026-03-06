@@ -11,7 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, StyleElement
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
 from ..utils import log_debug, log_error, log_info
 
 if TYPE_CHECKING:

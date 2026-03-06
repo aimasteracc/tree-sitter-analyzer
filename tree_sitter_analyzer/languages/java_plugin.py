@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
 

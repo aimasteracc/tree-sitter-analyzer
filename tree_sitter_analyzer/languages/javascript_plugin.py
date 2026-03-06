@@ -27,7 +27,7 @@ from ..core.analysis_engine import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..language_loader import loader
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
 

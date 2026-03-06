@@ -23,7 +23,7 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 from ..models import Class, Function, Import, Variable
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
 from ..utils import log_debug, log_error
 
 
