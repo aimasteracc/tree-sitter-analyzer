@@ -21,7 +21,7 @@ from tree_sitter_analyzer.models import (
     SQLView,
 )
 from tree_sitter_analyzer.plugins import ElementExtractorBase
-from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
+from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
 
 class TestSQLElementExtractor:
@@ -1357,7 +1357,7 @@ class TestGetNodeTextFallbacks:
         extractor.content_lines = extractor.source_code.split("\n")
         extractor._reset_caches()
         node = Mock(start_byte=0, end_byte=100, start_point=(0, 0), end_point=(2, 2))
-        with patch("tree_sitter_analyzer.languages.sql_plugin.safe_encode", side_effect=Exception("fail")):
+        with patch("tree_sitter_analyzer.plugins.extractor_mixin.safe_encode", side_effect=Exception("fail")):
             result = extractor._get_node_text(node)
             assert "CREATE TABLE" in result
 
