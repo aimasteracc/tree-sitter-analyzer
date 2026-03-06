@@ -314,3 +314,30 @@ class ElementExtractorBase(
             self.source_code = ""
         if not hasattr(self, 'content_lines'):
             self.content_lines = []
+    
+    # Type annotations for methods that language extractors must implement
+    # These are abstract in ElementExtractor but we provide default implementations
+    # here for ElementExtractorBase so mypy can recognize them
+    def extract_functions(
+        self, tree: Any, source_code: str
+    ) -> list[Any]:
+        """Extract function definitions. Must be implemented by subclasses."""
+        return []
+    
+    def extract_classes(
+        self, tree: Any, source_code: str
+    ) -> list[Any]:
+        """Extract class definitions. Must be implemented by subclasses."""
+        return []
+    
+    def extract_variables(
+        self, tree: Any, source_code: str
+    ) -> list[Any]:
+        """Extract variable declarations. Must be implemented by subclasses."""
+        return []
+    
+    def extract_imports(
+        self, tree: Any, source_code: str
+    ) -> list[Any]:
+        """Extract import statements. Must be implemented by subclasses."""
+        return []
