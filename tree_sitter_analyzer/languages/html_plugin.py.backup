@@ -11,7 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, MarkupElement
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info
 
 if TYPE_CHECKING:
@@ -22,11 +22,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class HtmlElementExtractor(ElementExtractorBase):
+class HtmlElementExtractor(ElementExtractor):
     """HTML-specific element extractor using tree-sitter-html"""
 
     def __init__(self) -> None:
-        super().__init__()  # Initialize base class
         self.element_categories = {
             # HTML要素の分類システム
             "structure": [

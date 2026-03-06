@@ -11,7 +11,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, StyleElement
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info
 
 if TYPE_CHECKING:
@@ -22,11 +22,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class CssElementExtractor(ElementExtractorBase):
+class CssElementExtractor(ElementExtractor):
     """CSS-specific element extractor using tree-sitter-css"""
 
     def __init__(self) -> None:
-        super().__init__()  # Initialize base class
         self.property_categories = {
             # CSS プロパティの分類システム
             "layout": [

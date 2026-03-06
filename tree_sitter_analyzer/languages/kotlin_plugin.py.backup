@@ -15,17 +15,19 @@ if TYPE_CHECKING:
 
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
-from ..plugins import ElementExtractorBase, LanguagePlugin
+from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
 
-class KotlinElementExtractor(ElementExtractorBase):
+class KotlinElementExtractor(ElementExtractor):
     """Kotlin-specific element extractor"""
 
     def __init__(self) -> None:
         """Initialize the Kotlin element extractor."""
-        super().__init__()  # Initialize base class
         self.current_package: str = ""
+        self.current_file: str = ""
+        self.source_code: str = ""
+        self.content_lines: list[str] = []
         self._node_text_cache: dict[tuple[int, int], str] = {}
 
     def extract_functions(
@@ -148,8 +150,12 @@ class KotlinElementExtractor(ElementExtractorBase):
         return packages
 
     def _reset_caches(self) -> None:
-        """Reset all caches."""
-        super()._reset_caches()  # Clear base class caches
+        """Reset performance caches"""
+        self._node_text_cache.clear()
+        # Keep current_package if already extracted?
+        # Usually safe to re-extract or clear.
+        if not self.source_code:
+            self.current_package = ""
 
     def _traverse_and_extract(
         self,
