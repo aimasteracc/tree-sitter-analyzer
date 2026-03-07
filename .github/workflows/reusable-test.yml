@@ -3,7 +3,8 @@
 # Purpose: Comprehensive test suite for all branches
 # Triggers: Called by branch-specific workflows
 # Jobs:
-#   - test-matrix: Runs tests across Python versions and OS platforms
+#   - unit-tests: Fast unit tests across OS/Python matrix
+#   - integration-tests: Slower integration tests on Ubuntu only
 # Secrets Required:
 #   - CODECOV_TOKEN: For coverage upload
 
@@ -29,21 +30,21 @@ on:
         required: true
 
 jobs:
-  test-matrix:
-    name: Test Suite
+  unit-tests:
+    name: Unit Tests
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45  # Prevent runaway test jobs
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13"]
         exclude:
-          # Reduce matrix size for faster CI
+          # Reduce matrix size - only test edge Python versions on non-Linux
           - os: windows-latest
-            python-version: "3.10"
+            python-version: "3.11"
           - os: macos-latest
-            python-version: "3.10"
+            python-version: "3.11"
 
     env:
       PYTHONIOENCODING: utf-8
@@ -70,16 +71,57 @@ jobs:
         os: ${{ matrix.os }}
 
     - name: Install dependencies
-      run: |
-        uv sync --all-extras
+      run: uv sync --all-extras
       shell: bash
 
-    - name: Run Tests with Coverage
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
-      id: test-coverage
+    - name: Run Unit Tests
       run: |
-        echo "### 📊 Test Coverage Report" >> $GITHUB_STEP_SUMMARY
-        uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
+        uv run pytest tests/unit/ -n auto -v --tb=short --maxfail=5 \
+          -m "not requires_ripgrep or not requires_fd"
+      shell: bash
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: 1
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Setup System Dependencies
+      uses: ./.github/actions/setup-system
+      with:
+        os: ubuntu-latest
+
+    - name: Install dependencies
+      run: uv sync --all-extras
+      shell: bash
+
+    - name: Run Integration Tests with Coverage
+      if: matrix.python-version == inputs.python-version
+      run: |
+        echo "### 📊 Integration Test Report" >> $GITHUB_STEP_SUMMARY
+        uv run pytest tests/integration/ -n auto -v --tb=short --maxfail=10 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
           -m "not requires_ripgrep or not requires_fd" > pytest-output.txt 2>&1 || touch test_failed
 
@@ -94,15 +136,15 @@ jobs:
         fi
       shell: bash
 
-    - name: Run Tests (no coverage)
-      if: matrix.os != 'ubuntu-latest' || matrix.python-version != inputs.python-version
+    - name: Run Integration Tests (no coverage)
+      if: matrix.python-version != inputs.python-version
       run: |
-        uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
+        uv run pytest tests/integration/ -n auto -v --tb=short --maxfail=10 \
           -m "not requires_ripgrep or not requires_fd"
       shell: bash
 
     - name: Upload coverage to Codecov
-      if: inputs.upload-coverage && matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      if: inputs.upload-coverage && matrix.python-version == inputs.python-version
       uses: codecov/codecov-action@v5
       env:
         CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
@@ -113,7 +155,7 @@ jobs:
         name: codecov-umbrella
 
     - name: Update README statistics
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == inputs.python-version
+      if: matrix.python-version == inputs.python-version
       run: |
         echo "Updating README statistics..."
         uv run python scripts/update_readme_stats.py || echo "README stats update completed with warnings"
