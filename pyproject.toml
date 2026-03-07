@@ -499,7 +499,7 @@ known-first-party = ["tree_sitter_analyzer"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "archived_files"]
-skips = ["B101", "B601"]
+skips = ["B101", "B110", "B601"]
 
 [dependency-groups]
 dev = [

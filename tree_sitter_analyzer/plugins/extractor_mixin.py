@@ -237,11 +237,11 @@ class NodeTextExtractionMixin:
             # Use encoding utilities for text extraction
             start_byte = node.start_byte
             end_byte = node.end_byte
-            
+
             # Boundary checks: return empty string for invalid positions
             if start_byte < 0 or end_byte < 0:
                 return ""
-            
+
             # Check start_point and end_point for validity
             try:
                 start_point = node.start_point
@@ -251,11 +251,11 @@ class NodeTextExtractionMixin:
             except (AttributeError, TypeError):
                 # If start_point or end_point are not accessible, return empty
                 return ""
-            
+
             encoding = self._file_encoding or "utf-8"
             content_lines = getattr(self, "content_lines", [])
             content_bytes = safe_encode("\n".join(content_lines), encoding)
-            
+
             # Check if end_byte is within bounds
             if end_byte > len(content_bytes):
                 return ""
