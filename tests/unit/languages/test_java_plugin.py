@@ -15,7 +15,7 @@ import pytest
 from tree_sitter_analyzer.languages.java_plugin import JavaElementExtractor, JavaPlugin
 from tree_sitter_analyzer.models import Class, Function, Import, Package, Variable
 from tree_sitter_analyzer.plugins import ElementExtractorBase
-from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
+from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
 
 class TestJavaElementExtractor:

@@ -198,13 +198,14 @@ class CppElementExtractor(ElementExtractorBase):
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
+        container_node_types: set[str] | None = None,
     ) -> None:
         """Iterative node traversal and extraction with caching"""
         if root_node is None:
             return
 
         target_node_types = set(extractors.keys())
-        container_node_types = {
+        default_container_node_types = {
             "translation_unit",
             "namespace_definition",
             "class_specifier",
@@ -215,6 +216,11 @@ class CppElementExtractor(ElementExtractorBase):
             "compound_statement",
             "template_declaration",
         }
+        active_container_node_types = (
+            container_node_types
+            if container_node_types is not None
+            else default_container_node_types
+        )
 
         node_stack = [(root_node, 0)]
         processed_nodes = 0
@@ -234,7 +240,7 @@ class CppElementExtractor(ElementExtractorBase):
             if (
                 depth > 0
                 and node_type not in target_node_types
-                and node_type not in container_node_types
+                and node_type not in active_container_node_types
             ):
                 continue
 
@@ -1180,7 +1186,7 @@ class CppPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".h++", ".c++"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return CppElementExtractor()
 

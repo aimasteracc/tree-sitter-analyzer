@@ -7,7 +7,6 @@ clean up resources, and return meaningful error messages.
 """
 
 import asyncio
-import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

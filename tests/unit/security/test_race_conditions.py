@@ -13,9 +13,6 @@ Race conditions can occur when:
 
 import asyncio
 import os
-import tempfile
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -83,9 +80,9 @@ class TestTOCTOURaceConditions:
         results = await asyncio.gather(*tasks)
 
         # All validations should complete without error
-        for is_valid, error in results:
+        for is_valid, _error in results:
             assert isinstance(is_valid, bool)
-            assert isinstance(error, str)
+            assert isinstance(_error, str)
 
     @pytest.mark.asyncio
     async def test_file_deletion_during_validation(self, tmp_path):
@@ -133,7 +130,7 @@ class TestConcurrentSafety:
 
         # All should complete
         assert len(results) == 50
-        for is_valid, error in results:
+        for is_valid, _error in results:
             assert isinstance(is_valid, bool)
 
     @pytest.mark.asyncio
@@ -333,7 +330,7 @@ class TestFileSystemRaceConditions:
 
         async def validate_file():
             results = []
-            for i in range(10):
+            for _i in range(10):
                 result = validator.validate_file_path(str(test_file))
                 results.append(result)
                 await asyncio.sleep(0.001)

@@ -171,13 +171,14 @@ class PythonElementExtractor(ElementExtractorBase):
         extractors: dict[str, Any],
         results: list[Any],
         element_type: str,
+        container_node_types: set[str] | None = None,
     ) -> None:
         """Iterative node traversal and extraction with caching"""
         if not root_node:
             return
 
         target_node_types = set(extractors.keys())
-        container_node_types = {
+        default_container_node_types = {
             "module",
             "class_definition",
             "function_definition",
@@ -188,6 +189,11 @@ class PythonElementExtractor(ElementExtractorBase):
             "try_statement",
             "block",
         }
+        active_container_node_types = (
+            container_node_types
+            if container_node_types is not None
+            else default_container_node_types
+        )
 
         node_stack = [(root_node, 0)]
         processed_nodes = 0
@@ -207,7 +213,7 @@ class PythonElementExtractor(ElementExtractorBase):
             if (
                 depth > 0
                 and node_type not in target_node_types
-                and node_type not in container_node_types
+                and node_type not in active_container_node_types
             ):
                 continue
 
@@ -1299,7 +1305,7 @@ class PythonPlugin(LanguagePlugin):
         """Return list of file extensions this plugin supports"""
         return [".py", ".pyw", ".pyi"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """Create and return an element extractor for this language"""
         return PythonElementExtractor()
 

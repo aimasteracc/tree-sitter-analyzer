@@ -13,7 +13,7 @@ Phase 4 User Experience Enhancement.
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class ErrorCategory(Enum):
@@ -35,7 +35,7 @@ class ErrorCode:
     message: str
     repair_suggestion: str
     severity: str = "error"  # error, warning, info
-    doc_url: Optional[str] = None
+    doc_url: str | None = None
 
 
 # Error code registry
@@ -76,7 +76,7 @@ ERROR_CODES: dict[str, ErrorCode] = {
         repair_suggestion="This file appears to be binary. Text analysis is not applicable.",
         severity="warning",
     ),
-    
+
     # Parsing Errors (E100-E199)
     "E100": ErrorCode(
         code="E100",
@@ -99,7 +99,7 @@ ERROR_CODES: dict[str, ErrorCode] = {
         repair_suggestion="Install the tree-sitter language package: pip install tree-sitter-{language}",
         severity="error",
     ),
-    
+
     # Language Errors (E200-E299)
     "E200": ErrorCode(
         code="E200",
@@ -122,7 +122,7 @@ ERROR_CODES: dict[str, ErrorCode] = {
         repair_suggestion="Check plugin dependencies and configuration.",
         severity="error",
     ),
-    
+
     # Memory Errors (E300-E399)
     "E300": ErrorCode(
         code="E300",
@@ -138,7 +138,7 @@ ERROR_CODES: dict[str, ErrorCode] = {
         repair_suggestion="Consider using --no-cache for one-time analysis or increase cache size.",
         severity="info",
     ),
-    
+
     # Validation Errors (E400-E499)
     "E400": ErrorCode(
         code="E400",
@@ -161,7 +161,7 @@ ERROR_CODES: dict[str, ErrorCode] = {
         repair_suggestion="Check command documentation for valid option combinations.",
         severity="error",
     ),
-    
+
     # Configuration Errors (E500-E599)
     "E500": ErrorCode(
         code="E500",
@@ -177,7 +177,7 @@ ERROR_CODES: dict[str, ErrorCode] = {
         repair_suggestion="Check configuration documentation for valid values.",
         severity="error",
     ),
-    
+
     # System Errors (E600-E699)
     "E600": ErrorCode(
         code="E600",
@@ -199,21 +199,21 @@ ERROR_CODES: dict[str, ErrorCode] = {
 class AnalyzerError(Exception):
     """
     Structured exception with error code.
-    
+
     Attributes:
         error_code: The ErrorCode definition
         details: Format parameters for the error message
     """
-    
+
     def __init__(
         self,
         code: str,
-        details: Optional[dict[str, Any]] = None,
-        cause: Optional[Exception] = None,
+        details: dict[str, Any] | None = None,
+        cause: Exception | None = None,
     ) -> None:
         """
         Initialize error.
-        
+
         Args:
             code: Error code (e.g., "E001")
             details: Parameters for message formatting
@@ -223,74 +223,74 @@ class AnalyzerError(Exception):
         self.error_code = ERROR_CODES.get(code)
         self.details = details or {}
         self.cause = cause
-        
+
         if self.error_code:
             message = self.error_code.message.format(**self.details)
         else:
             message = f"Unknown error code: {code}"
-        
+
         super().__init__(message)
-    
+
     def get_repair_suggestion(self) -> str:
         """Get repair suggestion for this error."""
         if self.error_code:
             return self.error_code.repair_suggestion.format(**self.details)
         return "No repair suggestion available."
-    
+
     def get_full_message(self) -> str:
         """Get full error message with code and suggestion."""
-        parts = [f"[{self.code}] {self.message}"]
-        
+        parts = [f"[{self.code}] {self}"]
+
         suggestion = self.get_repair_suggestion()
         if suggestion:
             parts.append(f"Suggestion: {suggestion}")
-        
+
         if self.cause:
             parts.append(f"Caused by: {self.cause}")
-        
+
         return "\n".join(parts)
 
 
 def create_error(code: str, **details: Any) -> AnalyzerError:
     """
     Create a structured error.
-    
+
     Args:
         code: Error code
         **details: Parameters for message formatting
-    
+
     Returns:
         AnalyzerError instance
     """
     return AnalyzerError(code, details)
 
 
-def get_error_info(code: str) -> Optional[ErrorCode]:
+def get_error_info(code: str) -> ErrorCode | None:
     """
     Get error code information.
-    
+
     Args:
         code: Error code
-    
+
     Returns:
         ErrorCode definition or None
     """
     return ERROR_CODES.get(code)
 
 
-def list_errors(category: Optional[ErrorCategory] = None) -> list[ErrorCode]:
+def list_errors(category: ErrorCategory | None = None) -> list[ErrorCode]:
     """
     List all error codes, optionally filtered by category.
-    
+
     Args:
         category: Category to filter by
-    
+
     Returns:
         List of ErrorCode definitions
     """
     errors = list(ERROR_CODES.values())
-    
+
     if category:
         errors = [e for e in errors if e.category == category]
-    
+
     return sorted(errors, key=lambda e: e.code)

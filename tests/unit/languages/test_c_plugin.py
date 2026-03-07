@@ -15,7 +15,7 @@ import pytest
 from tree_sitter_analyzer.languages.c_plugin import CElementExtractor, CPlugin
 from tree_sitter_analyzer.models import Class, Function
 from tree_sitter_analyzer.plugins import ElementExtractorBase
-from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
+from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
 
 class TestCElementExtractor:

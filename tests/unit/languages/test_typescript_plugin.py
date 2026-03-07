@@ -16,7 +16,7 @@ from tree_sitter_analyzer.languages.typescript_plugin import (
     TypeScriptPlugin,
 )
 from tree_sitter_analyzer.plugins import ElementExtractorBase
-from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
+from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
 
 class TestTypeScriptElementExtractor:

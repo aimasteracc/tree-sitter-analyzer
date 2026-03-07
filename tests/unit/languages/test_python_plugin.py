@@ -18,7 +18,7 @@ from tree_sitter_analyzer.languages.python_plugin import (
 )
 from tree_sitter_analyzer.models import Class, Function, Import, Variable
 from tree_sitter_analyzer.plugins import ElementExtractorBase
-from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
+from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
 
 class TestPythonElementExtractor:

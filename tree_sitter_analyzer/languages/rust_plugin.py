@@ -484,7 +484,7 @@ class RustPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".rs"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return RustElementExtractor()
 

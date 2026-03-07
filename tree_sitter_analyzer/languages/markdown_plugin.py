@@ -20,7 +20,6 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 from ..core.analysis_engine import AnalysisRequest
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, CodeElement
 from ..models import Class as ModelClass
 from ..models import Function as ModelFunction
@@ -1452,7 +1451,7 @@ class MarkdownPlugin(LanguagePlugin):
         """Return list of file extensions this plugin supports"""
         return [".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".mdx"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """Create and return a NEW element extractor for this language (avoid state pollution)"""
         return MarkdownElementExtractor()
 

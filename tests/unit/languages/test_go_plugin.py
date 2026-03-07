@@ -15,7 +15,7 @@ import pytest
 from tree_sitter_analyzer.languages.go_plugin import GoElementExtractor, GoPlugin
 from tree_sitter_analyzer.models import Class, Function, Package
 from tree_sitter_analyzer.plugins import ElementExtractorBase
-from tree_sitter_analyzer.plugins.base import ElementExtractor, LanguagePlugin
+from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
 
 @pytest.fixture

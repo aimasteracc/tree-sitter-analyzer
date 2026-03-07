@@ -17,10 +17,9 @@ if TYPE_CHECKING:
     from ..core.analysis_engine import AnalysisRequest
     from ..models import AnalysisResult
 
-from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
-from ..utils import log_debug, log_error, log_warning
+from ..utils import log_debug, log_error
 
 
 class JavaElementExtractor(ElementExtractorBase):
@@ -29,16 +28,16 @@ class JavaElementExtractor(ElementExtractorBase):
     def __init__(self) -> None:
         """Initialize the Java element extractor."""
         super().__init__()  # Initialize base class caches
-        
+
         # Java-specific state
         self.current_package: str = ""
         self.current_file: str = ""
         self.imports: list[str] = []
-        
+
         # Java-specific caches
         self._annotation_cache: dict[int, list[dict[str, Any]]] = {}
         self._signature_cache: dict[int, str] = {}
-        
+
         # Extracted annotations for cross-referencing
         self.annotations: list[dict[str, Any]] = []
 
@@ -910,7 +909,7 @@ class JavaPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".java", ".jsp", ".jspx"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return JavaElementExtractor()
 

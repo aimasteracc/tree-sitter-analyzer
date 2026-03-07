@@ -639,7 +639,7 @@ class GoPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".go"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return GoElementExtractor()
 

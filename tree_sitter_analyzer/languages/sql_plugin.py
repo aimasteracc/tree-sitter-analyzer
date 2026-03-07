@@ -462,8 +462,70 @@ class SQLElementExtractor(ElementExtractorBase):
         super()._reset_caches()  # Clear base class caches
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
-        """Get text content from a tree-sitter node with caching."""
-        return self._get_node_text_optimized(node)
+        """
+        Get text content from a tree-sitter node with caching.
+
+        Uses byte-based extraction first, then falls back to line-based
+        extraction if needed.
+        """
+        cache_key = (node.start_byte, node.end_byte)
+
+        if cache_key in self._node_text_cache:
+            return self._node_text_cache[cache_key]
+
+        try:
+            start_byte = node.start_byte
+            end_byte = node.end_byte
+            encoding = self._file_encoding or "utf-8"
+            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
+            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
+
+            if text:
+                self._node_text_cache[cache_key] = text
+                return text
+        except Exception as e:
+            log_debug(f"Error in _get_node_text: {e}")
+
+        # Fallback to line-based extraction
+        try:
+            start_point = node.start_point
+            end_point = node.end_point
+
+            if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
+                return ""
+            if end_point[0] < 0 or end_point[0] >= len(self.content_lines):
+                return ""
+
+            if start_point[0] == end_point[0]:
+                line = self.content_lines[start_point[0]]
+                start_col = max(0, min(start_point[1], len(line)))
+                end_col = max(start_col, min(end_point[1], len(line)))
+                result: str = line[start_col:end_col]
+                self._node_text_cache[cache_key] = result
+                return result
+
+            lines: list[str] = []
+            for i in range(start_point[0], min(end_point[0] + 1, len(self.content_lines))):
+                line = self.content_lines[i]
+                if i == start_point[0] and i == end_point[0]:
+                    start_col = max(0, min(start_point[1], len(line)))
+                    end_col = max(start_col, min(end_point[1], len(line)))
+                    lines.append(line[start_col:end_col])
+                elif i == start_point[0]:
+                    start_col = max(0, min(start_point[1], len(line)))
+                    lines.append(line[start_col:])
+                elif i == end_point[0]:
+                    end_col = max(0, min(end_point[1], len(line)))
+                    lines.append(line[:end_col])
+                else:
+                    lines.append(line)
+
+            result = "\n".join(lines)
+            self._node_text_cache[cache_key] = result
+            return result
+        except Exception as fallback_error:
+            log_debug(f"Fallback text extraction also failed: {fallback_error}")
+            return ""
 
     def _traverse_nodes(self, node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
         """
@@ -2264,7 +2326,7 @@ class SQLPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".sql"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return SQLElementExtractor()
 

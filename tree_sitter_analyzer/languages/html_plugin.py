@@ -369,7 +369,7 @@ class HtmlPlugin(LanguagePlugin):
     def get_file_extensions(self) -> list[str]:
         return [".html", ".htm", ".xhtml"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         return HtmlElementExtractor()
 
     def get_tree_sitter_language(self) -> Any:

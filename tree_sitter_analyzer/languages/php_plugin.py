@@ -26,7 +26,7 @@ from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
 from ..utils import log_error
 
 
-class PHPElementExtractor(ElementExtractor):
+class PHPElementExtractor(ElementExtractorBase):
     """
     PHP-specific element extractor.
 
@@ -745,7 +745,7 @@ class PHPPlugin(LanguagePlugin):
 
         return PHPPlugin._language_instance
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """
         Create a PHP element extractor.
 

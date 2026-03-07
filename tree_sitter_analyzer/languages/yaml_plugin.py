@@ -12,7 +12,7 @@ import threading
 from typing import TYPE_CHECKING, Any, cast
 
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
-from ..plugins import ElementExtractor, ElementExtractorBase, LanguagePlugin
+from ..plugins import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info, log_warning
 
 if TYPE_CHECKING:

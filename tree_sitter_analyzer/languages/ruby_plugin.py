@@ -6,7 +6,7 @@ Provides Ruby-specific parsing and element extraction functionality.
 Supports extraction of classes, modules, methods, constants, variables, and require statements.
 """
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -640,7 +640,7 @@ class RubyPlugin(LanguagePlugin):
 
         return RubyPlugin._language_instance
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         """
         Create a Ruby element extractor.
 

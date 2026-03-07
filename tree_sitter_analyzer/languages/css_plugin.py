@@ -339,7 +339,7 @@ class CssPlugin(LanguagePlugin):
     def get_file_extensions(self) -> list[str]:
         return [".css", ".scss", ".sass", ".less"]
 
-    def create_extractor(self) -> ElementExtractorBase:
+    def create_extractor(self) -> ElementExtractor:
         return CssElementExtractor()
 
     def get_tree_sitter_language(self) -> Any:
