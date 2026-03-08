@@ -25,6 +25,19 @@ from ..utils import log_debug, log_error
 class JavaElementExtractor(ElementExtractorBase):
     """Java-specific element extractor with AdvancedAnalyzer implementation"""
 
+    _JAVA_CONTAINER_NODE_TYPES = {
+        "program",
+        "class_declaration",
+        "interface_declaration",
+        "enum_declaration",
+        "annotation_type_declaration",
+        "class_body",
+        "interface_body",
+        "enum_body",
+        "enum_body_declarations",
+        "block",
+    }
+
     def __init__(self) -> None:
         """Initialize the Java element extractor."""
         super().__init__()  # Initialize base class caches
@@ -71,7 +84,11 @@ class JavaElementExtractor(ElementExtractorBase):
         }
 
         self._traverse_and_extract_iterative(
-            tree.root_node, extractors, annotations, "annotation"
+            tree.root_node,
+            extractors,
+            annotations,
+            "annotation",
+            container_node_types=self._JAVA_CONTAINER_NODE_TYPES,
         )
 
         # Store annotations for cross-referencing
@@ -97,7 +114,11 @@ class JavaElementExtractor(ElementExtractorBase):
         }
 
         self._traverse_and_extract_iterative(
-            tree.root_node, extractors, functions, "method"
+            tree.root_node,
+            extractors,
+            functions,
+            "method",
+            container_node_types=self._JAVA_CONTAINER_NODE_TYPES,
         )
 
         log_debug(f"Extracted {len(functions)} methods")
@@ -150,7 +171,11 @@ class JavaElementExtractor(ElementExtractorBase):
 
         log_debug("Starting field extraction with iterative traversal")
         self._traverse_and_extract_iterative(
-            tree.root_node, extractors, variables, "field"
+            tree.root_node,
+            extractors,
+            variables,
+            "field",
+            container_node_types=self._JAVA_CONTAINER_NODE_TYPES,
         )
 
         log_debug(f"Extracted {len(variables)} fields")

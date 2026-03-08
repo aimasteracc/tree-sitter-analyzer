@@ -117,6 +117,7 @@ class NodeTraversalMixin:
                 "class_body",
                 "interface_body",
                 "enum_body",
+                "enum_body_declarations",
                 "module",
                 "block",
             }
@@ -128,6 +129,27 @@ class NodeTraversalMixin:
 
         # Batch processing containers
         field_batch = []
+
+        def process_field_nodes(batch: list[Any]) -> None:
+            """Process field nodes with batch support when available."""
+            if not batch:
+                return
+
+            if hasattr(self, '_process_field_batch'):
+                self._process_field_batch(batch, extractors, results)
+                return
+
+            extractor = extractors.get("field_declaration")
+            if extractor is None:
+                return
+
+            for field_node in batch:
+                field_result = extractor(field_node)
+                if field_result:
+                    if isinstance(field_result, list):
+                        results.extend(field_result)
+                    else:
+                        results.append(field_result)
 
         while node_stack:
             current_node, depth = node_stack.pop()
@@ -190,13 +212,11 @@ class NodeTraversalMixin:
 
             # Process field batch when it reaches optimal size
             if len(field_batch) >= 10:
-                if hasattr(self, '_process_field_batch'):
-                    self._process_field_batch(field_batch, extractors, results)
+                process_field_nodes(field_batch)
                 field_batch.clear()
 
         # Process remaining field batch
-        if field_batch and hasattr(self, '_process_field_batch'):
-            self._process_field_batch(field_batch, extractors, results)
+        process_field_nodes(field_batch)
 
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 

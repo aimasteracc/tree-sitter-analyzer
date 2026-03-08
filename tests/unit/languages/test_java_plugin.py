@@ -8,6 +8,7 @@ support in the new plugin architecture.
 
 import os
 import tempfile
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -142,6 +143,48 @@ public class Calculator {
         variables = extractor.extract_variables(mock_tree, "test code")
 
         assert isinstance(variables, list)
+
+    def test_real_tree_sitter_parsing_extracts_java_members(
+        self, sample_java_code: str
+    ) -> None:
+        """Test that real Java parsing extracts methods and fields."""
+        import tree_sitter
+
+        plugin = JavaPlugin()
+        language = plugin.get_tree_sitter_language()
+        assert language is not None
+
+        parser = tree_sitter.Parser(language)
+        tree = parser.parse(sample_java_code.encode("utf-8"))
+
+        elements = plugin.extract_elements(tree, sample_java_code)
+
+        function_names = {func.name for func in elements["functions"]}
+        variable_names = {var.name for var in elements["variables"]}
+
+        assert {"Calculator", "add", "getValue", "reset"}.issubset(function_names)
+        assert {"value", "VERSION"}.issubset(variable_names)
+
+    def test_real_tree_sitter_parsing_extracts_enum_members(self) -> None:
+        """Test that Java enum members nested under enum_body_declarations are kept."""
+        import tree_sitter
+
+        sample_java_code = Path("examples/Sample.java").read_text(encoding="utf-8")
+
+        plugin = JavaPlugin()
+        language = plugin.get_tree_sitter_language()
+        assert language is not None
+
+        parser = tree_sitter.Parser(language)
+        tree = parser.parse(sample_java_code.encode("utf-8"))
+
+        elements = plugin.extract_elements(tree, sample_java_code)
+
+        function_names = {func.name for func in elements["functions"]}
+        variable_names = {var.name for var in elements["variables"]}
+
+        assert {"TestEnum", "getDescription"}.issubset(function_names)
+        assert {"description"}.issubset(variable_names)
 
     def test_extract_imports_success(
         self, extractor: JavaElementExtractor, mock_tree: Mock

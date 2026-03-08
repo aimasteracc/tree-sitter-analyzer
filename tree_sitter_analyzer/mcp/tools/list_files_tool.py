@@ -212,17 +212,18 @@ class ListFilesTool(BaseMCPTool):
 
     @handle_mcp_errors("list_files")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        # Check if fd command is available
-        if not fd_rg_utils.check_external_command("fd"):
+        self.validate_arguments(arguments)
+        roots = self._validate_roots(arguments["roots"])  # normalized absolutes
+
+        fd_available = fd_rg_utils.check_external_command("fd")
+        rg_available = fd_rg_utils.check_external_command("rg")
+        if not fd_available and not rg_available:
             return {
                 "success": False,
-                "error": "fd command not found. Please install fd (https://github.com/sharkdp/fd) to use this tool.",
+                "error": "fd command not found. Please install fd (https://github.com/sharkdp/fd) or ensure ripgrep is available for fallback discovery.",
                 "count": 0,
                 "results": [],
             }
-
-        self.validate_arguments(arguments)
-        roots = self._validate_roots(arguments["roots"])  # normalized absolutes
 
         limit = fd_rg_utils.clamp_int(
             arguments.get("limit"),
@@ -256,39 +257,56 @@ class ListFilesTool(BaseMCPTool):
                     f"Auto-enabled --no-ignore due to .gitignore interference: {detection_info['reason']}"
                 )
 
-        cmd = fd_rg_utils.build_fd_command(
-            pattern=arguments.get("pattern"),
-            glob=bool(arguments.get("glob", False)),
-            types=effective_types,
-            extensions=arguments.get("extensions"),
-            exclude=arguments.get("exclude"),
-            depth=arguments.get("depth"),
-            follow_symlinks=bool(arguments.get("follow_symlinks", False)),
-            hidden=bool(arguments.get("hidden", False)),
-            no_ignore=no_ignore,  # Use the potentially auto-detected value
-            size=arguments.get("size"),
-            changed_within=arguments.get("changed_within"),
-            changed_before=arguments.get("changed_before"),
-            full_path_match=bool(arguments.get("full_path_match", False)),
-            absolute=True,  # unify output to absolute paths
-            limit=limit,
-            roots=roots,
-        )
-
-        # Use fd default path format (one per line). We'll determine is_dir and ext via Path
+        # Use fd when available, otherwise fall back to Python discovery.
         started = time.time()
-        rc, out, err = await fd_rg_utils.run_command_capture(cmd)
+        if fd_available:
+            cmd = fd_rg_utils.build_fd_command(
+                pattern=arguments.get("pattern"),
+                glob=bool(arguments.get("glob", False)),
+                types=effective_types,
+                extensions=arguments.get("extensions"),
+                exclude=arguments.get("exclude"),
+                depth=arguments.get("depth"),
+                follow_symlinks=bool(arguments.get("follow_symlinks", False)),
+                hidden=bool(arguments.get("hidden", False)),
+                no_ignore=no_ignore,  # Use the potentially auto-detected value
+                size=arguments.get("size"),
+                changed_within=arguments.get("changed_within"),
+                changed_before=arguments.get("changed_before"),
+                full_path_match=bool(arguments.get("full_path_match", False)),
+                absolute=True,  # unify output to absolute paths
+                limit=limit,
+                roots=roots,
+            )
+            rc, out, err = await fd_rg_utils.run_command_capture(cmd)
+            if rc != 0:
+                message = err.decode("utf-8", errors="replace").strip() or "fd failed"
+                return {"success": False, "error": message, "returncode": rc}
+
+            lines = [
+                line.strip()
+                for line in out.decode("utf-8", errors="replace").splitlines()
+                if line.strip()
+            ]
+        else:
+            lines = await fd_rg_utils.discover_paths_fallback(
+                pattern=arguments.get("pattern"),
+                glob=bool(arguments.get("glob", False)),
+                types=effective_types,
+                extensions=arguments.get("extensions"),
+                exclude=arguments.get("exclude"),
+                depth=arguments.get("depth"),
+                follow_symlinks=bool(arguments.get("follow_symlinks", False)),
+                hidden=bool(arguments.get("hidden", False)),
+                size=arguments.get("size"),
+                changed_within=arguments.get("changed_within"),
+                changed_before=arguments.get("changed_before"),
+                full_path_match=bool(arguments.get("full_path_match", False)),
+                absolute=True,
+                limit=limit,
+                roots=roots,
+            )
         elapsed_ms = int((time.time() - started) * 1000)
-
-        if rc != 0:
-            message = err.decode("utf-8", errors="replace").strip() or "fd failed"
-            return {"success": False, "error": message, "returncode": rc}
-
-        lines = [
-            line.strip()
-            for line in out.decode("utf-8", errors="replace").splitlines()
-            if line.strip()
-        ]
 
         # Check if count_only mode is requested
         if arguments.get("count_only", False):

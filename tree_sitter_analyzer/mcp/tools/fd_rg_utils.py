@@ -9,10 +9,14 @@ and JSON line parsing for ripgrep.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import fnmatch
 import json
 import os
+import re
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -61,6 +65,356 @@ def clamp_int(value: int | None, default_value: int, hard_cap: int) -> int:
     except (TypeError, ValueError):
         return default_value
     return max(0, min(v, hard_cap))
+
+
+def _normalize_path_for_match(path: str) -> str:
+    """Normalize paths for consistent glob and regex matching."""
+    return path.replace(os.sep, "/")
+
+
+def _is_hidden_relative_path(relative_path: str) -> bool:
+    """Return True when any path segment is hidden."""
+    return any(
+        part.startswith(".") for part in Path(relative_path).parts if part not in {"", "."}
+    )
+
+
+def _matches_exclude_patterns(
+    relative_path: str, name: str, exclude: list[str] | None
+) -> bool:
+    """Check whether an entry should be excluded by fd-style patterns."""
+    if not exclude:
+        return False
+
+    relative_path = _normalize_path_for_match(relative_path)
+    path_parts = set(Path(relative_path).parts)
+
+    for pattern in exclude:
+        normalized_pattern = _normalize_path_for_match(pattern)
+        if normalized_pattern in path_parts:
+            return True
+        if fnmatch.fnmatch(name, normalized_pattern):
+            return True
+        if fnmatch.fnmatch(relative_path, normalized_pattern):
+            return True
+    return False
+
+
+def _matches_pattern(
+    relative_path: str,
+    name: str,
+    pattern: str | None,
+    glob: bool,
+    full_path_match: bool,
+) -> bool:
+    """Apply fd-style filename or path matching."""
+    if not pattern:
+        return True
+
+    target = _normalize_path_for_match(relative_path) if full_path_match else name
+    if glob:
+        return fnmatch.fnmatch(target, pattern)
+
+    try:
+        return re.search(pattern, target) is not None
+    except re.error:
+        return pattern in target
+
+
+def _matches_type_filters(entry_path: str, is_dir: bool, types: list[str] | None) -> bool:
+    """Apply fd type filters to a filesystem entry."""
+    if not types:
+        return True
+
+    is_symlink = os.path.islink(entry_path)
+    is_file = os.path.isfile(entry_path)
+
+    for type_filter in types:
+        if type_filter == "d" and is_dir:
+            return True
+        if type_filter == "f" and is_file:
+            return True
+        if type_filter == "l" and is_symlink:
+            return True
+        if type_filter == "x" and is_file and os.access(entry_path, os.X_OK):
+            return True
+        if type_filter == "e":
+            try:
+                if is_dir and not any(Path(entry_path).iterdir()):
+                    return True
+                if not is_dir and os.path.getsize(entry_path) == 0:
+                    return True
+            except OSError:
+                continue
+
+    return False
+
+
+def _matches_extension_filters(
+    entry_path: str, is_dir: bool, extensions: list[str] | None
+) -> bool:
+    """Apply extension filtering in fallback mode."""
+    if not extensions:
+        return True
+    if is_dir:
+        return False
+
+    suffix = Path(entry_path).suffix[1:].lower()
+    normalized_extensions = {
+        ext[1:].lower() if ext.startswith(".") else ext.lower() for ext in extensions
+    }
+    return suffix in normalized_extensions
+
+
+def _matches_size_filters(entry_path: str, size_filters: list[str] | None) -> bool:
+    """Apply fd-compatible size filters to files."""
+    if not size_filters:
+        return True
+    if not os.path.isfile(entry_path):
+        return False
+
+    try:
+        size_bytes = os.path.getsize(entry_path)
+    except OSError:
+        return False
+
+    for raw_filter in size_filters:
+        if not raw_filter:
+            continue
+        operator = raw_filter[0] if raw_filter[0] in {"+", "-"} else "="
+        size_token = raw_filter[1:] if operator in {"+", "-"} else raw_filter
+        threshold = parse_size_to_bytes(size_token)
+        if threshold is None:
+            continue
+
+        if operator == "+" and not size_bytes > threshold:
+            return False
+        if operator == "-" and not size_bytes < threshold:
+            return False
+        if operator == "=" and not size_bytes == threshold:
+            return False
+
+    return True
+
+
+def _parse_relative_time_window(value: str | None) -> float | None:
+    """Parse relative time expressions such as 1d, 2h, or 30m."""
+    if not value:
+        return None
+
+    match = re.fullmatch(r"\s*(\d+)\s*([smhdw])\s*", value.strip().lower())
+    if not match:
+        return None
+
+    amount = int(match.group(1))
+    unit = match.group(2)
+    multipliers = {
+        "s": 1,
+        "m": 60,
+        "h": 3600,
+        "d": 86400,
+        "w": 7 * 86400,
+    }
+    return amount * multipliers[unit]
+
+
+def _matches_changed_filters(
+    entry_path: str, changed_within: str | None, changed_before: str | None
+) -> bool:
+    """Apply fd-compatible mtime filters."""
+    if not changed_within and not changed_before:
+        return True
+
+    try:
+        modified_at = os.path.getmtime(entry_path)
+    except OSError:
+        return False
+
+    now = time.time()
+    within_window = _parse_relative_time_window(changed_within)
+    if within_window is not None and modified_at < now - within_window:
+        return False
+
+    before_window = _parse_relative_time_window(changed_before)
+    if before_window is not None and modified_at >= now - before_window:
+        return False
+
+    return True
+
+
+def _should_include_entry(
+    *,
+    entry_path: str,
+    relative_path: str,
+    name: str,
+    is_dir: bool,
+    pattern: str | None,
+    glob: bool,
+    types: list[str] | None,
+    extensions: list[str] | None,
+    size: list[str] | None,
+    changed_within: str | None,
+    changed_before: str | None,
+    full_path_match: bool,
+) -> bool:
+    """Check whether a fallback-discovered entry matches all requested filters."""
+    return (
+        _matches_type_filters(entry_path, is_dir, types)
+        and _matches_extension_filters(entry_path, is_dir, extensions)
+        and _matches_size_filters(entry_path, size)
+        and _matches_changed_filters(entry_path, changed_within, changed_before)
+        and _matches_pattern(relative_path, name, pattern, glob, full_path_match)
+    )
+
+
+def _discover_paths_fallback_sync(
+    *,
+    pattern: str | None,
+    glob: bool,
+    types: list[str] | None,
+    extensions: list[str] | None,
+    exclude: list[str] | None,
+    depth: int | None,
+    follow_symlinks: bool,
+    hidden: bool,
+    size: list[str] | None,
+    changed_within: str | None,
+    changed_before: str | None,
+    full_path_match: bool,
+    absolute: bool,
+    limit: int | None,
+    roots: list[str],
+) -> list[str]:
+    """Enumerate filesystem entries in Python when fd is unavailable."""
+    max_results = (
+        MAX_RESULTS_HARD_CAP
+        if limit is None
+        else min(limit, MAX_RESULTS_HARD_CAP)
+    )
+    results: list[str] = []
+
+    for root in roots:
+        for current_root, dirnames, filenames in os.walk(
+            root, topdown=True, followlinks=follow_symlinks
+        ):
+            dirnames.sort()
+            filenames.sort()
+
+            current_relative = os.path.relpath(current_root, root)
+            current_depth = 0 if current_relative == "." else len(Path(current_relative).parts)
+
+            traversable_dirnames: list[str] = []
+            for dirname in dirnames:
+                entry_path = os.path.join(current_root, dirname)
+                relative_path = os.path.relpath(entry_path, root)
+
+                if not hidden and _is_hidden_relative_path(relative_path):
+                    continue
+                if _matches_exclude_patterns(relative_path, dirname, exclude):
+                    continue
+
+                entry_depth = len(Path(relative_path).parts)
+                if depth is not None and entry_depth > depth:
+                    continue
+
+                if _should_include_entry(
+                    entry_path=entry_path,
+                    relative_path=relative_path,
+                    name=dirname,
+                    is_dir=True,
+                    pattern=pattern,
+                    glob=glob,
+                    types=types,
+                    extensions=extensions,
+                    size=size,
+                    changed_within=changed_within,
+                    changed_before=changed_before,
+                    full_path_match=full_path_match,
+                ):
+                    results.append(
+                        os.path.abspath(entry_path) if absolute else relative_path
+                    )
+                    if len(results) >= max_results:
+                        return results
+
+                if depth is None or current_depth < depth:
+                    traversable_dirnames.append(dirname)
+
+            dirnames[:] = traversable_dirnames
+
+            for filename in filenames:
+                entry_path = os.path.join(current_root, filename)
+                relative_path = os.path.relpath(entry_path, root)
+
+                if not hidden and _is_hidden_relative_path(relative_path):
+                    continue
+                if _matches_exclude_patterns(relative_path, filename, exclude):
+                    continue
+
+                entry_depth = len(Path(relative_path).parts)
+                if depth is not None and entry_depth > depth:
+                    continue
+
+                if _should_include_entry(
+                    entry_path=entry_path,
+                    relative_path=relative_path,
+                    name=filename,
+                    is_dir=False,
+                    pattern=pattern,
+                    glob=glob,
+                    types=types,
+                    extensions=extensions,
+                    size=size,
+                    changed_within=changed_within,
+                    changed_before=changed_before,
+                    full_path_match=full_path_match,
+                ):
+                    results.append(
+                        os.path.abspath(entry_path) if absolute else relative_path
+                    )
+                    if len(results) >= max_results:
+                        return results
+
+    return results
+
+
+async def discover_paths_fallback(
+    *,
+    pattern: str | None,
+    glob: bool,
+    types: list[str] | None,
+    extensions: list[str] | None,
+    exclude: list[str] | None,
+    depth: int | None,
+    follow_symlinks: bool,
+    hidden: bool,
+    size: list[str] | None,
+    changed_within: str | None,
+    changed_before: str | None,
+    full_path_match: bool,
+    absolute: bool,
+    limit: int | None,
+    roots: list[str],
+) -> list[str]:
+    """Async wrapper for Python-based path discovery when fd is unavailable."""
+    return await asyncio.to_thread(
+        _discover_paths_fallback_sync,
+        pattern=pattern,
+        glob=glob,
+        types=types,
+        extensions=extensions,
+        exclude=exclude,
+        depth=depth,
+        follow_symlinks=follow_symlinks,
+        hidden=hidden,
+        size=size,
+        changed_within=changed_within,
+        changed_before=changed_before,
+        full_path_match=full_path_match,
+        absolute=absolute,
+        limit=limit,
+        roots=roots,
+    )
 
 
 def parse_size_to_bytes(size_str: str) -> int | None:
