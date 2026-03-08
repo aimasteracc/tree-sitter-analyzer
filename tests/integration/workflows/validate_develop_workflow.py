@@ -14,7 +14,10 @@ import yaml
 def load_workflow(workflow_path: Path) -> dict[str, Any]:
     """Load a workflow YAML file."""
     with open(workflow_path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        workflow = yaml.safe_load(f)
+        if True in workflow and "on" not in workflow:
+            workflow["on"] = workflow.pop(True)
+        return workflow
 
 
 def validate_develop_workflow():
@@ -35,20 +38,12 @@ def validate_develop_workflow():
     jobs = develop_workflow["jobs"]
     triggers = develop_workflow.get("on") or develop_workflow.get(True)
 
-    # Validate test job
-    print("  ✓ Checking test job...")
-    assert "test" in jobs, "Must have test job"
-    test_job = jobs["test"]
-    assert "uses" in test_job, "Test job must use reusable workflow"
-    assert "reusable-test.yml" in test_job["uses"], "Must use reusable-test.yml"
-    assert test_job.get("secrets") == "inherit", "Must inherit secrets"
-
     # Validate build job
     print("  ✓ Checking build job...")
     assert "build" in jobs, "Must have build job"
     build_job = jobs["build"]
-    assert "needs" in build_job, "Build job must have dependencies"
-    assert "test" in build_job["needs"], "Build must depend on test"
+    assert "uses" in build_job, "Build job must use reusable workflow"
+    assert "reusable-build.yml" in build_job["uses"], "Must use reusable-build.yml"
 
     # Validate PR creation job
     print("  ✓ Checking PR creation job...")
@@ -56,7 +51,7 @@ def validate_develop_workflow():
     pr_job = jobs["create-release-pr"]
     assert "needs" in pr_job, "PR job must have dependencies"
     needs = pr_job["needs"]
-    assert "test" in needs and "build" in needs, "PR must depend on test and build"
+    assert "build" in needs, "PR must depend on build"
 
     # Validate triggers
     print("  ✓ Checking triggers...")
@@ -70,11 +65,8 @@ def validate_develop_workflow():
     print("  1. Create a test feature branch")
     print("  2. Push changes to trigger the workflow")
     print("  3. Verify in GitHub Actions that:")
-    print("     - Test job executes using reusable-test.yml")
-    print("     - All quality checks run")
-    print("     - Test matrix executes on all platforms (ubuntu, windows, macos)")
-    print("     - Coverage uploads successfully to Codecov")
-    print("     - Build job runs after tests pass")
+    print("     - CI workflow covers quality checks and tests for develop pushes")
+    print("     - Build job executes using reusable-build.yml")
     print("     - PR creation job runs after build passes")
 
     return True

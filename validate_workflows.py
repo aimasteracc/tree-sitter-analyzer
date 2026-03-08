@@ -69,8 +69,10 @@ def validate_workflow(workflow_path: Path) -> tuple[bool, list[str]]:
         on_config = content.get("on") or content.get(True)
         if on_config and isinstance(on_config, dict):
             if "workflow_call" in on_config:
-                workflow_call = on_config["workflow_call"]
-                if "inputs" in workflow_call:
+                workflow_call = on_config["workflow_call"] or {}
+                if not isinstance(workflow_call, dict):
+                    errors.append("workflow_call must be a dictionary")
+                elif "inputs" in workflow_call:
                     inputs = workflow_call["inputs"]
                     if not isinstance(inputs, dict):
                         errors.append("workflow_call.inputs must be a dictionary")
@@ -149,7 +151,11 @@ def main():
     all_valid = True
 
     # Validate new reusable workflows
-    new_workflows = ["reusable-test.yml", "reusable-quality.yml"]
+    new_workflows = [
+        "reusable-test.yml",
+        "reusable-quality.yml",
+        "reusable-build.yml",
+    ]
 
     print("Validating reusable workflows...")
     for workflow_name in new_workflows:

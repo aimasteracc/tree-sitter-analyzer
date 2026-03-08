@@ -57,51 +57,52 @@ def validate_test_job(workflow: dict[str, Any]) -> bool:
 
 
 def validate_deployment_job(workflow: dict[str, Any]) -> bool:
-    """Validate that deployment job depends on test job."""
+    """Validate that build and publish jobs depend on prior stages."""
     jobs = workflow.get("jobs", {})
 
-    if "build-and-deploy" not in jobs:
-        print("❌ Build-and-deploy job not found")
+    if "build" not in jobs:
+        print("❌ Build job not found")
+        return False
+    if "publish" not in jobs:
+        print("❌ Publish job not found")
         return False
 
-    deploy_job = jobs["build-and-deploy"]
+    build_job = jobs["build"]
+    publish_job = jobs["publish"]
 
-    if "needs" not in deploy_job:
-        print("❌ Deploy job does not have needs dependency")
+    if "needs" not in build_job:
+        print("❌ Build job does not have needs dependency")
         return False
 
-    needs = deploy_job["needs"]
-    if isinstance(needs, str):
-        needs = [needs]
+    build_needs = build_job["needs"]
+    if isinstance(build_needs, str):
+        build_needs = [build_needs]
 
-    if "test" not in needs:
-        print("❌ Deploy job does not depend on test job")
+    if "test" not in build_needs:
+        print("❌ Build job does not depend on test job")
         return False
 
-    # Check for PyPI deployment steps
-    steps = deploy_job.get("steps", [])
-
-    has_build = any(
-        "build" in step.get("name", "").lower()
-        or "python -m build" in step.get("run", "")
-        for step in steps
-    )
-
-    has_upload = any(
-        "deploy" in step.get("name", "").lower()
-        or "twine upload" in step.get("run", "")
-        for step in steps
-    )
-
-    if not has_build:
-        print("❌ Deploy job missing build step")
+    if "needs" not in publish_job:
+        print("❌ Publish job does not have needs dependency")
+        return False
+    publish_needs = publish_job["needs"]
+    if isinstance(publish_needs, str):
+        publish_needs = [publish_needs]
+    if "build" not in publish_needs:
+        print("❌ Publish job does not depend on build job")
         return False
 
-    if not has_upload:
-        print("❌ Deploy job missing PyPI upload step")
+    if "uses" not in build_job or "reusable-build.yml" not in build_job["uses"]:
+        print("❌ Build job does not use reusable-build.yml")
+        return False
+    if "uses" not in publish_job or "reusable-publish.yml" not in publish_job["uses"]:
+        print("❌ Publish job does not use reusable-publish.yml")
+        return False
+    if "PYPI_API_TOKEN" not in publish_job.get("secrets", {}):
+        print("❌ Publish job does not receive PYPI_API_TOKEN")
         return False
 
-    print("✅ Deployment job correctly configured")
+    print("✅ Build and publish jobs correctly configured")
     return True
 
 
@@ -123,8 +124,8 @@ def validate_pr_creation_job(workflow: dict[str, Any]) -> bool:
     if isinstance(needs, str):
         needs = [needs]
 
-    if "test" not in needs or "build-and-deploy" not in needs:
-        print("❌ PR job does not depend on both test and build-and-deploy")
+    if not {"test", "build", "publish"}.issubset(set(needs)):
+        print("❌ PR job does not depend on test, build, and publish")
         return False
 
     # Check for PR creation action
@@ -209,8 +210,12 @@ def validate_consistency_with_release(
         print("❌ Python version mismatch between hotfix and release")
         return False
 
-    if hotfix_inputs.get("upload-coverage") != release_inputs.get("upload-coverage"):
-        print("❌ Coverage upload setting mismatch between hotfix and release")
+    if hotfix_inputs.get("upload-coverage") is not False:
+        print("❌ Hotfix workflow should disable coverage upload")
+        return False
+
+    if release_inputs.get("upload-coverage") is not True:
+        print("❌ Release workflow should enable coverage upload")
         return False
 
     print("✅ Hotfix workflow matches release workflow structure")

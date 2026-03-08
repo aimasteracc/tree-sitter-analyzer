@@ -5,8 +5,8 @@
 # Jobs:
 #   - unit-tests: Fast unit tests across OS/Python matrix
 #   - integration-tests: Slower integration tests on Ubuntu only
-# Secrets Required:
-#   - CODECOV_TOKEN: For coverage upload
+# Secrets:
+#   - CODECOV_TOKEN: Optional; used for Codecov uploads when available
 
 name: Reusable Test Workflow
 
@@ -27,7 +27,7 @@ on:
 
     secrets:
       CODECOV_TOKEN:
-        required: true
+        required: false
 
 jobs:
   unit-tests:
@@ -76,8 +76,7 @@ jobs:
 
     - name: Run Unit Tests
       run: |
-        uv run pytest tests/unit/ -n auto -v --tb=short --maxfail=5 \
-          -m "not requires_ripgrep or not requires_fd"
+        uv run pytest tests/unit/ -n auto -v --tb=short --maxfail=5
       shell: bash
 
   integration-tests:
@@ -123,7 +122,7 @@ jobs:
         echo "### 📊 Integration Test Report" >> $GITHUB_STEP_SUMMARY
         uv run pytest tests/integration/ -n auto -v --tb=short --maxfail=10 \
           --cov=tree_sitter_analyzer --cov-report=xml --cov-report=term-missing \
-          -m "not requires_ripgrep or not requires_fd" > pytest-output.txt 2>&1 || touch test_failed
+          > pytest-output.txt 2>&1 || touch test_failed
 
         cat pytest-output.txt
         echo '```text' >> $GITHUB_STEP_SUMMARY
@@ -139,8 +138,7 @@ jobs:
     - name: Run Integration Tests (no coverage)
       if: matrix.python-version != inputs.python-version
       run: |
-        uv run pytest tests/integration/ -n auto -v --tb=short --maxfail=10 \
-          -m "not requires_ripgrep or not requires_fd"
+        uv run pytest tests/integration/ -n auto -v --tb=short --maxfail=10
       shell: bash
 
     - name: Upload coverage to Codecov

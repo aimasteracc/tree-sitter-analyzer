@@ -62,79 +62,56 @@ class ReleaseWorkflowValidator:
         """Validate that deployment depends on tests."""
         jobs = workflow.get("jobs", {})
 
-        # Find deployment job
-        deploy_job = jobs.get("build-and-deploy")
-        if not deploy_job:
-            self.errors.append("❌ Missing 'build-and-deploy' job")
+        build_job = jobs.get("build")
+        publish_job = jobs.get("publish")
+        if not build_job:
+            self.errors.append("❌ Missing 'build' job")
+            return False
+        if not publish_job:
+            self.errors.append("❌ Missing 'publish' job")
             return False
 
-        # Check needs dependency
-        needs = deploy_job.get("needs")
-        if not needs:
-            self.errors.append("❌ Deploy job missing 'needs' dependency")
+        build_needs = build_job.get("needs")
+        if not build_needs:
+            self.errors.append("❌ Build job missing 'needs' dependency")
+            return False
+        if isinstance(build_needs, str):
+            build_needs = [build_needs]
+        if "test" not in build_needs:
+            self.errors.append("❌ Build job does not depend on 'test' job")
             return False
 
-        if isinstance(needs, str):
-            needs = [needs]
-
-        if "test" not in needs:
-            self.errors.append("❌ Deploy job does not depend on 'test' job")
+        publish_needs = publish_job.get("needs")
+        if not publish_needs:
+            self.errors.append("❌ Publish job missing 'needs' dependency")
+            return False
+        if isinstance(publish_needs, str):
+            publish_needs = [publish_needs]
+        if "build" not in publish_needs:
+            self.errors.append("❌ Publish job does not depend on 'build' job")
             return False
 
-        self.successes.append("✅ Deployment depends on test job")
+        self.successes.append("✅ Build and publish dependencies are configured correctly")
         return True
 
     def validate_pypi_deployment(self, workflow: dict[str, Any]) -> bool:
         """Validate PyPI deployment configuration."""
         jobs = workflow.get("jobs", {})
-        deploy_job = jobs.get("build-and-deploy", {})
-        steps = deploy_job.get("steps", [])
+        build_job = jobs.get("build", {})
+        publish_job = jobs.get("publish", {})
 
-        # Check for build step
-        has_build = any(
-            "build" in step.get("name", "").lower()
-            or "python -m build" in step.get("run", "")
-            for step in steps
-        )
-
-        if not has_build:
-            self.errors.append("❌ Missing package build step")
+        if "uses" not in build_job or "reusable-build.yml" not in build_job["uses"]:
+            self.errors.append("❌ Build job must use reusable-build.yml")
             return False
 
-        # Check for twine check
-        has_check = any(
-            "check" in step.get("name", "").lower()
-            or "twine check" in step.get("run", "")
-            for step in steps
-        )
-
-        if not has_check:
-            self.warnings.append("⚠️  Missing twine check step")
-
-        # Check for PyPI upload
-        has_upload = any(
-            "deploy" in step.get("name", "").lower()
-            or "twine upload" in step.get("run", "")
-            for step in steps
-        )
-
-        if not has_upload:
-            self.errors.append("❌ Missing PyPI upload step")
+        if "uses" not in publish_job or "reusable-publish.yml" not in publish_job["uses"]:
+            self.errors.append("❌ Publish job must use reusable-publish.yml")
             return False
 
-        # Verify credentials configuration
-        upload_step = next(
-            (step for step in steps if "twine upload" in step.get("run", "")), None
-        )
-
-        if upload_step:
-            env_config = upload_step.get("env", {})
-            if "TWINE_USERNAME" not in env_config:
-                self.errors.append("❌ Missing TWINE_USERNAME in PyPI upload")
-                return False
-            if "TWINE_PASSWORD" not in env_config:
-                self.errors.append("❌ Missing TWINE_PASSWORD in PyPI upload")
-                return False
+        secrets = publish_job.get("secrets", {})
+        if "PYPI_API_TOKEN" not in secrets:
+            self.errors.append("❌ Publish job must pass PYPI_API_TOKEN")
+            return False
 
         self.successes.append("✅ PyPI deployment configured correctly")
         return True
@@ -157,10 +134,8 @@ class ReleaseWorkflowValidator:
         if isinstance(needs, str):
             needs = [needs]
 
-        if "test" not in needs or "build-and-deploy" not in needs:
-            self.errors.append(
-                "❌ PR job must depend on both test and build-and-deploy"
-            )
+        if not {"test", "build", "publish"}.issubset(set(needs)):
+            self.errors.append("❌ PR job must depend on test, build, and publish")
             return False
 
         # Check PR action

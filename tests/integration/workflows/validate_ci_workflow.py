@@ -26,43 +26,53 @@ class CIWorkflowValidator:
             Path(__file__).parent.parent.parent.parent / ".github" / "workflows"
         )
         self.ci_workflow_path = self.workflow_root / "ci.yml"
+        self.reusable_test_workflow_path = self.workflow_root / "reusable-test.yml"
         self.errors: list[str] = []
         self.warnings: list[str] = []
 
-    def load_workflow(self) -> dict[str, Any]:
-        """Load the CI workflow YAML."""
-        with open(self.ci_workflow_path, encoding="utf-8") as f:
+    def load_workflow(self, workflow_path: Path) -> dict[str, Any]:
+        """Load a workflow YAML file."""
+        with open(workflow_path, encoding="utf-8") as f:
             workflow = yaml.safe_load(f)
             # Handle YAML parsing 'on' as boolean True
             if True in workflow and "on" not in workflow:
                 workflow["on"] = workflow.pop(True)
             return workflow
 
-    def validate_uses_reusable_test_workflow(self, workflow: dict[str, Any]) -> bool:
-        """Validate that CI workflow uses reusable test workflow."""
-        print("\n✓ Checking if CI workflow uses reusable test workflow...")
+    def validate_reusable_workflow_usage(self, workflow: dict[str, Any]) -> bool:
+        """Validate that CI workflow uses the reusable workflow stack."""
+        print("\n✓ Checking reusable workflow usage...")
 
         jobs = workflow.get("jobs", {})
-        if "test" not in jobs:
-            self.errors.append("CI workflow must have a 'test' job")
-            return False
+        required_uses = {
+            "quality-check": "./.github/workflows/reusable-quality.yml",
+            "test": "./.github/workflows/reusable-test.yml",
+            "build": "./.github/workflows/reusable-build.yml",
+        }
 
-        test_job = jobs["test"]
-        if "uses" not in test_job:
-            self.errors.append("Test job must use reusable workflow")
-            return False
+        all_valid = True
+        for job_name, expected_workflow in required_uses.items():
+            job = jobs.get(job_name)
+            if not job:
+                self.errors.append(f"CI workflow must have a '{job_name}' job")
+                all_valid = False
+                continue
+            if job.get("uses") != expected_workflow:
+                self.errors.append(
+                    f"Job '{job_name}' must use {expected_workflow}"
+                )
+                all_valid = False
 
-        if "./.github/workflows/reusable-test.yml" not in test_job["uses"]:
-            self.errors.append("Test job must use reusable-test.yml")
-            return False
-
+        test_job = jobs.get("test", {})
         if test_job.get("secrets") != "inherit":
             self.errors.append("Test job must inherit secrets")
-            return False
+            all_valid = False
 
-        print("  ✓ CI workflow correctly uses reusable-test.yml")
-        print("  ✓ Secrets are properly inherited")
-        return True
+        if all_valid:
+            print("  ✓ Quality, test, and build jobs use reusable workflows")
+            print("  ✓ Test job inherits secrets")
+
+        return all_valid
 
     def validate_no_deployment_logic(self, workflow: dict[str, Any]) -> bool:
         """Validate that CI workflow has no deployment logic."""
@@ -109,53 +119,59 @@ class CIWorkflowValidator:
 
         return not has_deployment
 
-    def validate_uses_composite_setup_action(self, workflow: dict[str, Any]) -> bool:
-        """Validate that CI workflow uses composite setup-system action."""
-        print("\n✓ Checking if CI workflow uses composite setup-system action...")
+    def validate_quality_gate(self, workflow: dict[str, Any]) -> bool:
+        """Validate that the final quality gate blocks on prior jobs."""
+        print("\n✓ Checking quality gate...")
 
         jobs = workflow.get("jobs", {})
-        ci_specific_jobs = ["security-check", "documentation-check", "build-check"]
+        quality_gate = jobs.get("quality-gate")
+        if not quality_gate:
+            self.errors.append("CI workflow must have a 'quality-gate' job")
+            return False
 
-        all_use_composite = True
-        for job_name in ci_specific_jobs:
-            if job_name not in jobs:
-                self.warnings.append(f"Expected CI-specific job not found: {job_name}")
-                continue
-
-            job = jobs[job_name]
-            steps = job.get("steps", [])
-
-            has_setup_action = any(
-                "./.github/actions/setup-system" in step.get("uses", "")
-                for step in steps
+        needs = quality_gate.get("needs")
+        if isinstance(needs, str):
+            needs = [needs]
+        expected_needs = {"test", "quality-check", "build"}
+        if not needs or set(needs) != expected_needs:
+            self.errors.append(
+                "Quality gate must depend on test, quality-check, and build"
             )
+            return False
 
-            if has_setup_action:
-                print(f"  ✓ Job '{job_name}' uses composite setup-system action")
-            else:
-                self.errors.append(
-                    f"Job '{job_name}' should use composite setup-system action"
-                )
-                all_use_composite = False
+        if quality_gate.get("if") != "always()":
+            self.errors.append("Quality gate must always evaluate upstream results")
+            return False
 
-        return all_use_composite
+        print("  ✓ Quality gate waits for all reusable jobs")
+        return True
 
-    def validate_ci_specific_jobs(self, workflow: dict[str, Any]) -> bool:
-        """Validate that CI workflow maintains CI-specific jobs."""
-        print("\n✓ Checking CI-specific jobs...")
+    def validate_reusable_test_workflow(self) -> bool:
+        """Validate key behavior in the reusable test workflow."""
+        print("\n✓ Checking reusable test workflow details...")
 
-        jobs = workflow.get("jobs", {})
-        required_jobs = ["test", "security-check", "documentation-check", "build-check"]
+        workflow = self.load_workflow(self.reusable_test_workflow_path)
+        on_config = workflow.get("on", {})
+        workflow_call = on_config.get("workflow_call", {})
+        codecov_secret = workflow_call.get("secrets", {}).get("CODECOV_TOKEN", {})
 
-        all_present = True
-        for job_name in required_jobs:
-            if job_name in jobs:
-                print(f"  ✓ Job '{job_name}' is present")
-            else:
-                self.errors.append(f"Required job '{job_name}' is missing")
-                all_present = False
+        if codecov_secret.get("required") is not False:
+            self.errors.append("Reusable test workflow must not require CODECOV_TOKEN")
+            return False
 
-        return all_present
+        reusable_test_content = self.reusable_test_workflow_path.read_text(
+            encoding="utf-8"
+        )
+        broken_marker_expression = 'not requires_ripgrep or not requires_fd'
+        if broken_marker_expression in reusable_test_content:
+            self.errors.append(
+                "Reusable test workflow must not use the broken ripgrep/fd marker expression"
+            )
+            return False
+
+        print("  ✓ CODECOV_TOKEN is optional")
+        print("  ✓ Test commands no longer use the broken marker filter")
+        return True
 
     def validate_triggers(self, workflow: dict[str, Any]) -> bool:
         """Validate that CI workflow has appropriate triggers."""
@@ -229,17 +245,16 @@ class CIWorkflowValidator:
         print(f"\nValidating: {self.ci_workflow_path}")
 
         try:
-            workflow = self.load_workflow()
+            workflow = self.load_workflow(self.ci_workflow_path)
         except Exception as e:
             print(f"\n❌ Failed to load workflow: {e}")
             return False
 
         # Run all validation checks
-        # Run all validation checks
-        self.validate_uses_reusable_test_workflow(workflow)
+        self.validate_reusable_workflow_usage(workflow)
         self.validate_no_deployment_logic(workflow)
-        self.validate_uses_composite_setup_action(workflow)
-        self.validate_ci_specific_jobs(workflow)
+        self.validate_quality_gate(workflow)
+        self.validate_reusable_test_workflow()
         self.validate_triggers(workflow)
         self.validate_all_extras_flag(workflow)
 
@@ -262,10 +277,10 @@ class CIWorkflowValidator:
 
         print("\n✅ All validation checks passed!")
         print("\nCI workflow is correctly configured:")
-        print("  ✓ Uses reusable test workflow")
+        print("  ✓ Uses reusable quality, test, and build workflows")
         print("  ✓ No deployment logic present")
-        print("  ✓ Uses composite setup-system action")
-        print("  ✓ All CI-specific jobs present")
+        print("  ✓ Quality gate enforces overall CI status")
+        print("  ✓ Reusable test workflow keeps Codecov optional")
         print("  ✓ Appropriate triggers configured")
         print("  ✓ Consistent --all-extras flag usage")
 
