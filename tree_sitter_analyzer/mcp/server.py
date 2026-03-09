@@ -396,7 +396,7 @@ class TreeSitterAnalyzerMCPServer:
         server: Server = Server(self.name)
 
         # Register tools using @server decorators (standard MCP pattern)
-        @server.list_tools()  # type: ignore[misc]
+        @server.list_tools()  # type: ignore
         async def handle_list_tools() -> list[Tool]:
             """List all available tools."""
             logger.info("Client requesting tools list")
@@ -429,7 +429,7 @@ class TreeSitterAnalyzerMCPServer:
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
             return tools
 
-        @server.call_tool()  # type: ignore[misc]
+        @server.call_tool()  # type: ignore
         async def handle_call_tool(
             name: str, arguments: dict[str, Any]
         ) -> list[TextContent]:
