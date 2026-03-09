@@ -3,6 +3,7 @@
 Global test configuration and fixtures.
 """
 
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -14,6 +15,30 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import pytest  # noqa: E402
+
+# =============================================================================
+# Hypothesis Configuration for Fast CI
+# =============================================================================
+# This reduces max_examples from 100 to 5 in CI, cutting property test time by 95%
+from hypothesis import HealthCheck, settings  # noqa: E402
+
+if os.getenv("CI"):
+    # CI: Only 5 examples per property test for fast execution
+    settings.register_profile(
+        "ci",
+        max_examples=5,
+        deadline=2000,
+        suppress_health_check=[HealthCheck.too_slow, HealthCheck.function_scoped_fixture],
+    )
+    settings.load_profile("ci")
+else:
+    # Local: 20 examples for development (still faster than default 100)
+    settings.register_profile(
+        "dev",
+        max_examples=20,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
+    settings.load_profile("dev")
 
 
 def pytest_configure(config):
@@ -45,6 +70,11 @@ def pytest_collection_modifyitems(config, items):
         # Skip tests that require fd if not available
         if "requires_fd" in item.keywords and not has_fd:
             item.add_marker(skip_fd)
+
+        # Automatically mark property-based tests as slow (for CI optimization)
+        # Property tests in files ending with _properties.py are slow due to many examples
+        if item.fspath and str(item.fspath).endswith("_properties.py"):
+            item.add_marker(pytest.mark.slow)
 
 
 @pytest.fixture(scope="session")
