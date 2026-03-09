@@ -3,6 +3,8 @@ import time
 
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from tree_sitter_analyzer.api import get_engine
 from tree_sitter_analyzer.core.analysis_engine import (
     AnalysisRequest,

@@ -139,6 +139,7 @@ class TestCacheServiceGet:
         assert stats["l1_hits"] == 1
 
     @pytest.mark.asyncio
+    @pytest.mark.slow
     async def test_get_expired_entry(self):
         """Test get with expired entry."""
         service = CacheService(ttl_seconds=1)
