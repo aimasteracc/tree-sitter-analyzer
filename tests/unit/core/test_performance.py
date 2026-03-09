@@ -6,10 +6,14 @@ Performance Monitor 单元测试
 import time
 from unittest.mock import patch
 
+import pytest
+
 from tree_sitter_analyzer.core.performance import (
     PerformanceContext,
     PerformanceMonitor,
 )
+
+pytestmark = pytest.mark.slow
 
 
 class TestPerformanceMonitor:

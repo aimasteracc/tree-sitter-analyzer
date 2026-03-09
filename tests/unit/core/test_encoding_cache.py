@@ -101,6 +101,7 @@ def test_cache_basic_operations(encoding_cache):
     assert encoding_cache.size() == 1
 
 
+@pytest.mark.slow
 def test_cache_expiration(encoding_cache):
     """Test cache entry expiration"""
     # Set entry with short TTL
