@@ -97,6 +97,7 @@ class TestCacheExpiration:
         result = cache.get("key1")
         assert result == {"data": "value1"}
 
+    @pytest.mark.slow
     def test_cache_entry_expired(self):
         """Test that expired entries are removed."""
         cache = SearchCache(ttl_seconds=1)
@@ -118,6 +119,7 @@ class TestCacheExpiration:
         fresh_timestamp = time.time() - 1
         assert cache._is_expired(fresh_timestamp) is False
 
+    @pytest.mark.slow
     def test_cleanup_expired_entries(self):
         """Test that expired entries are cleaned up."""
         cache = SearchCache(ttl_seconds=1, max_size=100)
@@ -211,6 +213,7 @@ class TestCacheStatistics:
         assert stats["misses"] == 3
         assert stats["hit_rate_percent"] == 62.5
 
+    @pytest.mark.slow
     def test_stats_includes_expired_count(self):
         """Test that stats count expired entries."""
         cache = SearchCache(ttl_seconds=1)
@@ -475,6 +478,7 @@ class TestGlobalCacheFunctions:
 class TestCacheEdgeCases:
     """Tests for edge cases."""
 
+    @pytest.mark.slow
     def test_get_with_expired_entry_removal(self):
         """Test that get removes expired entry."""
         cache = SearchCache(ttl_seconds=1)

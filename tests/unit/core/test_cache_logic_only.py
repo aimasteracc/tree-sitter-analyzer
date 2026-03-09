@@ -83,6 +83,7 @@ class TestSearchCacheLogic:
         )
         assert key1 != key4
 
+    @pytest.mark.slow
     def test_cache_ttl_expiration(self):
         """Test TTL-based cache expiration"""
         cache = SearchCache(max_size=10, ttl_seconds=1)  # 1 second TTL
