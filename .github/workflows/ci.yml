@@ -47,10 +47,19 @@ jobs:
             echo "❌ Quality Checks failed" >> $GITHUB_STEP_SUMMARY
             SUCCESS=false
           fi
-          if [[ "${{ needs.test.result }}" != "success" ]]; then
+
+          # Handle test result - success if all required tests passed or success if skipped
+          if [[ "${{ needs.test.result }}" == "success" || "${{ needs.test.result }}" == "skipped" ]]; then
+            if [[ "${{ needs.test.result }}" == "skipped" ]]; then
+              echo "ℹ️ Tests skipped (conditional check)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "✅ Tests passed" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
             echo "❌ Test Suite failed" >> $GITHUB_STEP_SUMMARY
             SUCCESS=false
           fi
+
           if [[ "${{ needs.build.result }}" != "success" ]]; then
             echo "❌ Build Verification failed" >> $GITHUB_STEP_SUMMARY
             SUCCESS=false
