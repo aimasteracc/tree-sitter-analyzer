@@ -91,7 +91,7 @@ typescript = [
     "tree-sitter-typescript>=0.20.0,<0.25.0",
 ]
 python = [
-    "tree-sitter-python>=0.23.0,<0.25.0",
+    "tree-sitter-python>=0.23.0,<0.26.0",
 ]
 c = ["tree-sitter-c>=0.20.0,<0.25.0"]
 cpp = ["tree-sitter-cpp>=0.23.4,<0.25.0"]
@@ -126,7 +126,7 @@ systems = [
 ]
 popular = [
     "tree-sitter-java>=0.23.5,<0.25.0",
-    "tree-sitter-python>=0.23.0,<0.25.0",
+    "tree-sitter-python>=0.23.0,<0.26.0",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-typescript>=0.20.0,<0.25.0"
 ]
@@ -134,7 +134,7 @@ all-languages = [
     "tree-sitter-java>=0.23.5,<0.25.0",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-typescript>=0.20.0,<0.25.0",
-    "tree-sitter-python>=0.23.0,<0.25.0",
+    "tree-sitter-python>=0.23.0,<0.26.0",
     "tree-sitter-c>=0.20.0,<0.25.0",
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
@@ -215,7 +215,7 @@ full = [
     "tree-sitter-java>=0.23.5,<0.25.0",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-typescript>=0.20.0,<0.25.0",
-    "tree-sitter-python>=0.23.0,<0.25.0",
+    "tree-sitter-python>=0.23.0,<0.26.0",
     "tree-sitter-c>=0.20.0,<0.25.0",
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
@@ -245,7 +245,7 @@ all = [
     "tree-sitter-java>=0.23.5,<0.25.0",
     "tree-sitter-javascript>=0.23.1,<0.25.0",
     "tree-sitter-typescript>=0.20.0,<0.25.0",
-    "tree-sitter-python>=0.23.0,<0.25.0",
+    "tree-sitter-python>=0.23.0,<0.26.0",
     "tree-sitter-c>=0.20.0,<0.25.0",
     "tree-sitter-cpp>=0.23.4,<0.25.0",
     "tree-sitter-rust>=0.20.0,<0.25.0",
