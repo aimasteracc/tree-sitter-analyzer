@@ -982,23 +982,6 @@ class TempFileList:
             Path(self.path).unlink(missing_ok=True)
 
 
-class contextlib:  # minimal shim for suppress without importing globally
-    class suppress:
-        def __init__(self, *exceptions: type[BaseException]) -> None:
-            self.exceptions = exceptions
-
-        def __enter__(self) -> None:  # noqa: D401
-            return None
-
-        def __exit__(
-            self,
-            exc_type: type[BaseException] | None,
-            exc: BaseException | None,
-            tb: Any,
-        ) -> bool:
-            return exc_type is not None and issubclass(exc_type, self.exceptions)
-
-
 def write_files_to_temp(files: list[str]) -> TempFileList:
     fd, temp_path = tempfile.mkstemp(prefix="rg-files-", suffix=".lst")
     os.close(fd)
