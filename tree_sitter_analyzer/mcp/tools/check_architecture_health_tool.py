@@ -68,7 +68,12 @@ class CheckArchitectureHealthTool(BaseMCPTool):
                     },
                     "layer_rules": {
                         "type": "object",
-                        "description": "Custom layer dependency rules",
+                        "description": (
+                            "Layer dependency rules. "
+                            'Format: {"layer_name": {"allowed_deps": ["dep_layer"]}}. '
+                            'Example: {"services": {"allowed_deps": ["models", "utils"]}, '
+                            '"models": {"allowed_deps": ["utils"]}}'
+                        ),
                     },
                     "output_format": {
                         "type": "string",
@@ -84,6 +89,19 @@ class CheckArchitectureHealthTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if "path" not in arguments or not arguments["path"]:
             raise ValueError("'path' is required")
+        layer_rules = arguments.get("layer_rules")
+        if layer_rules is not None:
+            if not isinstance(layer_rules, dict):
+                raise ValueError(
+                    "layer_rules must be a dict mapping layer names to their rules. "
+                    'Example: {"services": {"allowed_deps": ["models", "utils"]}}'
+                )
+            for layer_name, rules in layer_rules.items():
+                if not isinstance(rules, dict) or "allowed_deps" not in rules:
+                    raise ValueError(
+                        f"layer_rules['{layer_name}'] must have an 'allowed_deps' key. "
+                        'Example: {"allowed_deps": ["models", "utils"]}'
+                    )
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

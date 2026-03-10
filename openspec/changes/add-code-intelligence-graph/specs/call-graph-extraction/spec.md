@@ -2,7 +2,7 @@
 
 **Change ID**: `add-code-intelligence-graph`
 **Spec ID**: `call-graph-extraction`
-**Status**: Implemented (v2 — 2026-02-14)
+**Status**: Partially Implemented (v3 — 2026-03-11)
 
 ---
 
@@ -68,10 +68,24 @@ Extract function/method call sites from Python source code using tree-sitter que
 **When** CallGraphBuilder.build_for_file() is called
 **Then** a FileCallGraph is returned with correct caller-callee edges
 
-#### Scenario: Find callers of a function
-**Given** a call graph built from a directory of Python files
-**When** find_callers("validate", depth=2) is called
-**Then** direct and transitive callers are returned up to depth 2
+#### Scenario: Find callers of a function with depth=1 (direct only)
+**Given** a call chain A() → B() → C()
+**When** find_callers("C", depth=1) is called
+**Then** only B is returned (direct caller), A is excluded (too deep)
+
+#### Scenario: Find callers with depth=2 (transitive)
+**Given** a call chain A() → B() → C()
+**When** find_callers("C", depth=2) is called
+**Then** both B (depth=1) and A (depth=2) are returned
+
+#### Scenario: depth=0 returns empty
+**When** find_callers("C", depth=0) is called
+**Then** an empty list is returned
+
+#### Scenario: No duplicates in results
+**Given** multiple paths to the same caller
+**When** find_callers is called
+**Then** each CallSite appears exactly once
 
 ---
 
@@ -80,4 +94,4 @@ Extract function/method call sites from Python source code using tree-sitter que
 - [x] call_expression query captures simple calls, method calls, chained calls
 - [x] CallSite model correctly populated from query results
 - [x] CallGraphBuilder builds correct edges for single-file scenarios
-- [x] find_callers and find_callees work with depth limiting
+- [ ] find_callers and find_callees work with depth limiting (BFS, v3)

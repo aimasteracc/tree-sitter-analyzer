@@ -188,19 +188,44 @@ class CallGraphBuilder:
         return None
 
     def find_callers(self, symbol_name: str, depth: int = 1) -> list[CallSite]:
-        """Find all call sites that call the given symbol."""
-        callers: list[CallSite] = []
-        for _file_path, sites in self._call_sites.items():
-            for site in sites:
-                if site.callee_name == symbol_name:
-                    callers.append(site)
-        return callers
+        """Find call sites that call symbol_name, up to depth levels transitively."""
+        result: list[CallSite] = []
+        visited_callers: set[str] = set()
+        current_targets: set[str] = {symbol_name}
+        for _ in range(depth):
+            next_targets: set[str] = set()
+            for sites in self._call_sites.values():
+                for site in sites:
+                    if (
+                        site.callee_name in current_targets
+                        and site.caller_function not in visited_callers
+                    ):
+                        result.append(site)
+                        if site.caller_function:
+                            visited_callers.add(site.caller_function)
+                            next_targets.add(site.caller_function)
+            current_targets = next_targets
+            if not current_targets:
+                break
+        return result
 
     def find_callees(self, function_name: str, depth: int = 1) -> list[CallSite]:
-        """Find all symbols called by the given function."""
-        callees: list[CallSite] = []
-        for _file_path, sites in self._call_sites.items():
-            for site in sites:
-                if site.caller_function == function_name:
-                    callees.append(site)
-        return callees
+        """Find call sites called by function_name, up to depth levels transitively."""
+        result: list[CallSite] = []
+        visited_callees: set[str] = set()
+        current_callers: set[str] = {function_name}
+        for _ in range(depth):
+            next_callers: set[str] = set()
+            for sites in self._call_sites.values():
+                for site in sites:
+                    if (
+                        site.caller_function in current_callers
+                        and site.callee_name not in visited_callees
+                    ):
+                        result.append(site)
+                        visited_callees.add(site.callee_name)
+                        next_callers.add(site.callee_name)
+            current_callers = next_callers
+            if not current_callers:
+                break
+        return result

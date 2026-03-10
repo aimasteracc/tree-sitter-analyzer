@@ -285,6 +285,8 @@ class ArchitectureReport:
     dead_symbols: list[str] = field(default_factory=list)
     coupling_matrix: dict[str, dict[str, int]] = field(default_factory=dict)
     test_coverage: TestCoverageReport | None = None
+    unstable_modules: list[ModuleMetrics] = field(default_factory=list)
+    hotspot_modules: list[ModuleMetrics] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -331,4 +333,22 @@ class ArchitectureReport:
             "test_coverage": self.test_coverage.to_dict()
             if self.test_coverage
             else None,
+            "unstable_modules": [
+                {
+                    "path": m.path,
+                    "instability": m.instability,
+                    "efferent_coupling": m.efferent_coupling,
+                    "afferent_coupling": m.afferent_coupling,
+                }
+                for m in self.unstable_modules
+            ],
+            "hotspot_modules": [
+                {
+                    "path": m.path,
+                    "instability": m.instability,
+                    "efferent_coupling": m.efferent_coupling,
+                    "hotspot_score": m.instability * m.efferent_coupling,
+                }
+                for m in self.hotspot_modules
+            ],
         }
