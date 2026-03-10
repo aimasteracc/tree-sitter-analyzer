@@ -202,3 +202,21 @@ class TestCallGraphDepthTraversal:
         """depth=0 must return empty list."""
         callers = chain_builder.find_callers("b", depth=0)
         assert callers == []
+
+    def test_find_callers_depth_exceeds_chain_terminates(self, chain_builder):
+        """depth > chain length: BFS terminates early when no more callers exist."""
+        # chain is only 2 levels deep (a→b→c); depth=10 must still return just [b, a]
+        callers = chain_builder.find_callers("c", depth=10)
+        caller_names = [c.caller_function for c in callers]
+        assert "b" in caller_names
+        assert "a" in caller_names
+        assert len(callers) == 2  # no phantom extra results
+
+    def test_find_callees_depth_exceeds_chain_terminates(self, chain_builder):
+        """depth > chain length: find_callees BFS terminates early when no more callees exist."""
+        # chain is only 2 levels deep (a→b→c); depth=10 must still return just [b, c]
+        callees = chain_builder.find_callees("a", depth=10)
+        callee_names = [c.callee_name for c in callees]
+        assert "b" in callee_names
+        assert "c" in callee_names
+        assert len(callees) == 2  # no phantom extra results

@@ -188,6 +188,20 @@ class TestStabilityMetrics:
                 )
 
 
+    def test_stability_metrics_reuses_existing_module_metrics(self, components):
+        """stability_metrics skips recomputing coupling when module_metrics already populated."""
+        dg, si = components
+        dg.add_edge(DependencyEdge("a/m.py", "b/m.py", "b"))
+        dg.add_edge(DependencyEdge("a/m.py", "c/m.py", "c"))
+        dg.add_edge(DependencyEdge("a/m.py", "d/m.py", "d"))
+        m = ArchitectureMetrics(dg, si)
+        # coupling_metrics runs first and populates module_metrics;
+        # stability_metrics must use that cached value (False branch of 'if not report.module_metrics')
+        report = m.compute_report(".", checks=["coupling_metrics", "stability_metrics"])
+        assert isinstance(report.unstable_modules, list)
+        assert len(report.module_metrics) > 0
+
+
 class TestHotspotDetection:
     """Tests for hotspots check - AH-016."""
 
@@ -239,3 +253,16 @@ class TestHotspotDetection:
         m = ArchitectureMetrics(dg, si)
         report = m.compute_report(".", checks=["hotspots"])
         assert isinstance(report.hotspot_modules, list)
+
+    def test_hotspots_reuses_existing_module_metrics(self, components):
+        """hotspots skips recomputing coupling when module_metrics already populated."""
+        dg, si = components
+        dg.add_edge(DependencyEdge("caller/m.py", "hot/m.py", "hot"))
+        for i in range(8):
+            dg.add_edge(DependencyEdge("hot/m.py", f"dep{i}/m.py", f"dep{i}"))
+        m = ArchitectureMetrics(dg, si)
+        # coupling_metrics runs first; hotspots uses cached module_metrics
+        # (False branch of 'if not report.module_metrics')
+        report = m.compute_report(".", checks=["coupling_metrics", "hotspots"])
+        hotspot_paths = [mod.path for mod in report.hotspot_modules]
+        assert "hot" in hotspot_paths
