@@ -1112,7 +1112,7 @@ class JavaPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".java", ".jsp", ".jspx"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> JavaElementExtractor:
         """Create a new element extractor instance."""
         return JavaElementExtractor()
 
