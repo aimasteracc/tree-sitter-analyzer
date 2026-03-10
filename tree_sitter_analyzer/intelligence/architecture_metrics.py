@@ -90,6 +90,28 @@ class ArchitectureMetrics:
                 test_file_predicate=test_file_predicate,
             )
 
+        if "stability_metrics" in checks:
+            if not report.module_metrics:
+                report.module_metrics = self._compute_coupling(scope)
+            report.unstable_modules = sorted(
+                [m for m in report.module_metrics.values() if m.instability > 0.7],
+                key=lambda m: m.instability,
+                reverse=True,
+            )
+
+        if "hotspots" in checks:
+            if not report.module_metrics:
+                report.module_metrics = self._compute_coupling(scope)
+            report.hotspot_modules = sorted(
+                [
+                    m
+                    for m in report.module_metrics.values()
+                    if m.instability > 0.7 and m.efferent_coupling >= 3
+                ],
+                key=lambda m: m.instability * m.efferent_coupling,
+                reverse=True,
+            )
+
         report.score = self._compute_score(report)
         return report
 

@@ -145,3 +145,60 @@ class TestCallGraphBuilderFindCallees:
         assert "foo" in callee_names
         assert "bar" in callee_names
         assert "baz" not in callee_names
+
+
+class TestCallGraphDepthTraversal:
+    """Tests for depth parameter BFS traversal - CGE-004 v3."""
+
+    @pytest.fixture
+    def chain_builder(self, builder):
+        """
+        Build call chain: a() → b() → c()
+        a.py defines a(), calls b()
+        b.py defines b(), calls c()
+        """
+        builder._call_sites["a.py"] = [
+            CallSite("a.py", "a", "b", None, 2, "b()"),
+        ]
+        builder._call_sites["b.py"] = [
+            CallSite("b.py", "b", "c", None, 2, "c()"),
+        ]
+        return builder
+
+    def test_find_callers_depth1_returns_direct_only(self, chain_builder):
+        """depth=1: find_callers('b') returns only [a]."""
+        callers = chain_builder.find_callers("b", depth=1)
+        caller_names = [c.caller_function for c in callers]
+        assert "a" in caller_names
+
+    def test_find_callers_depth1_excludes_transitive(self, chain_builder):
+        """depth=1: find_callers('c') returns [b], NOT [a]."""
+        callers = chain_builder.find_callers("c", depth=1)
+        caller_names = [c.caller_function for c in callers]
+        assert "b" in caller_names
+        assert "a" not in caller_names
+
+    def test_find_callers_depth2_returns_transitive(self, chain_builder):
+        """depth=2: find_callers('c') returns both b (direct) and a (transitive)."""
+        callers = chain_builder.find_callers("c", depth=2)
+        caller_names = [c.caller_function for c in callers]
+        assert "b" in caller_names
+        assert "a" in caller_names
+
+    def test_find_callees_depth1_returns_direct_only(self, chain_builder):
+        """depth=1: find_callees('a') returns [b], NOT [c]."""
+        callees = chain_builder.find_callees("a", depth=1)
+        callee_names = [c.callee_name for c in callees]
+        assert "b" in callee_names
+        assert "c" not in callee_names
+
+    def test_find_callers_no_duplicates(self, chain_builder):
+        """No duplicate CallSite entries in results."""
+        callers = chain_builder.find_callers("c", depth=3)
+        caller_names = [c.caller_function for c in callers]
+        assert len(caller_names) == len(set(caller_names))
+
+    def test_find_callers_depth0_returns_empty(self, chain_builder):
+        """depth=0 must return empty list."""
+        callers = chain_builder.find_callers("b", depth=0)
+        assert callers == []

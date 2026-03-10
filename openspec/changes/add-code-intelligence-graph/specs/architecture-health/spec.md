@@ -2,7 +2,7 @@
 
 **Change ID**: `add-code-intelligence-graph`
 **Spec ID**: `architecture-health`
-**Status**: Implemented (v4 — 2026-02-14)
+**Status**: Partially Implemented (v5 — 2026-03-11)
 
 ---
 
@@ -236,6 +236,51 @@ The `test_coverage` overtested detection must scope counts by `(file_path, symbo
 **When** test coverage analysis runs with `overtested_threshold=10`
 **Then** `process` from `src/engine.py` is in `overtested_symbols` with `test_ref_count=15`
 
+### Requirement 15: Stability Metrics Check (v5)
+**ID**: AH-015
+**Priority**: High
+
+Report modules that exceed the instability threshold, sorted for prioritized refactoring.
+
+#### Scenario: Report unstable modules
+**Given** a module with Ca=1, Ce=5 (instability=0.833)
+**When** check_architecture_health is called with checks=["stability_metrics"]
+**Then** result.unstable_modules contains the module with instability=0.833
+
+#### Scenario: Stable modules excluded (strict threshold)
+**Given** a module with Ca=3, Ce=7 (instability exactly 0.7)
+**When** stability_metrics check runs
+**Then** the module is NOT in unstable_modules (threshold is strictly > 0.7)
+
+#### Scenario: Works without coupling_metrics in checks
+**Given** only checks=["stability_metrics"] specified
+**When** the check runs
+**Then** coupling is computed internally and unstable_modules is populated
+
+#### Scenario: Sorted by instability descending
+**Given** multiple unstable modules with different instability values
+**Then** unstable_modules[0].instability >= unstable_modules[1].instability
+
+### Requirement 16: Hotspot Detection (v5)
+**ID**: AH-016
+**Priority**: High
+
+Identify modules that are both highly unstable AND heavily coupled — the most dangerous refactoring targets.
+
+#### Scenario: High instability + high efferent coupling = hotspot
+**Given** a module with instability=0.85 and efferent_coupling=8
+**When** check_architecture_health is called with checks=["hotspots"]
+**Then** result.hotspot_modules contains the module
+
+#### Scenario: Low coupling excludes from hotspot
+**Given** a module with instability=0.9 but efferent_coupling=1 (< 3)
+**When** hotspots check runs
+**Then** the module is NOT in hotspot_modules
+
+#### Scenario: Sorted by hotspot_score (instability × efferent_coupling) descending
+**Given** multiple hotspot modules with different scores
+**Then** hotspot_modules are sorted so highest score comes first
+
 ---
 
 ## Acceptance Criteria
@@ -254,3 +299,5 @@ The `test_coverage` overtested detection must scope counts by `(file_path, symbo
 - [x] (v3) `test_coverage` check detects untested/overtested/test-only symbols
 - [x] (v4) `test_coverage` excludes `@property` and inner functions from untested list (AH-013)
 - [x] (v4) `test_coverage` overtested scoped by `(file, name)` to avoid cross-class aggregation (AH-014)
+- [ ] (v5) `stability_metrics` check returns unstable_modules sorted by instability desc (AH-015)
+- [ ] (v5) `hotspots` check returns hotspot_modules sorted by instability×Ce desc (AH-016)
