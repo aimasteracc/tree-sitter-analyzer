@@ -324,3 +324,6 @@ tests/debug_artifacts/
 /output.toon
 /test_mcp_output.toon
 /test_mcp_suppress_output.toon
+
+# Claude Code 机器私有设置
+.claude/settings.local.json
