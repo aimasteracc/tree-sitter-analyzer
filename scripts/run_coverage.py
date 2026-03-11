@@ -19,7 +19,7 @@ def run_quick_test():
         cmd,
         capture_output=True,
         text=True,
-        cwd=os.path.dirname(os.path.abspath(__file__)),
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
 
     # Write output
@@ -61,7 +61,7 @@ def run_coverage():
         cmd,
         capture_output=True,
         text=True,
-        cwd=os.path.dirname(os.path.abspath(__file__)),
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )
 
     # Write output to file
