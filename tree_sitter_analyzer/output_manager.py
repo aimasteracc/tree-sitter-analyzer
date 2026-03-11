@@ -297,11 +297,6 @@ def output_error(message: str) -> None:
     _output_manager.error(message)
 
 
-def output_success(message: str) -> None:
-    """Output success message using the global output manager"""
-    _output_manager.success(message)
-
-
 def output_json(data: Any) -> None:
     """Output JSON data using the global output manager"""
     _output_manager.output_json(data)
@@ -325,17 +320,6 @@ def output_query_results(results: Any) -> None:
 def output_statistics(stats: dict[str, Any]) -> None:
     """Output statistics"""
     _output_manager.output_statistics(stats)
-
-
-def output_languages(languages: list[str], title: str = "Supported Languages") -> None:
-    """Output available languages"""
-    _output_manager.language_list(languages, title)
-
-
-def output_queries(queries: list[str], language: str = "All") -> None:
-    """Output available queries"""
-    query_dict = {q: f"Query {q}" for q in queries}
-    _output_manager.query_list(query_dict, language)
 
 
 def output_extensions(extensions: list[str]) -> None:

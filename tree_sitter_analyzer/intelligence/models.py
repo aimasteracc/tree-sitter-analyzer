@@ -95,6 +95,7 @@ class DependencyEdge:
     is_external: bool = False
     line: int = 0
     is_type_check_only: bool = False
+    is_lazy_import: bool = False  # 方法/函数体内的懒加载 import，不形成模块级循环
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -105,6 +106,7 @@ class DependencyEdge:
             "is_external": self.is_external,
             "line": self.line,
             "is_type_check_only": self.is_type_check_only,
+            "is_lazy_import": self.is_lazy_import,
         }
 
 

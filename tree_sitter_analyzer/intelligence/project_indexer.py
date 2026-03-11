@@ -285,6 +285,11 @@ class ProjectIndexer:
         # dict-dispatch, callback-passing, and other non-call references.
         self._extract_attribute_refs(tree.root_node, rel_path)
 
+        # 3c. Extract isinstance/issubclass argument references.
+        # isinstance(x, SomeClass) 中的 SomeClass 不会被调用图或属性引用捕获，
+        # 需单独提取，避免将仅通过 isinstance 使用的类误判为死代码。
+        self._extract_isinstance_refs(tree.root_node, rel_path)
+
         # 4. Add call sites as symbol references for cross-referencing
         for call_site in call_sites:
             self._symbol_index.add_reference(
@@ -580,6 +585,105 @@ class ProjectIndexer:
         for child in node.children:
             self._walk_for_attribute_refs(child, file_path)
 
+    # ------------------------------------------------------------------
+    # isinstance/issubclass 参数引用提取 (fix-intelligence-graph)
+    # ------------------------------------------------------------------
+
+    # 需要提取类型参数的内置函数集合
+    _TYPE_CHECK_BUILTINS = frozenset({"isinstance", "issubclass"})
+
+    def _extract_isinstance_refs(self, root_node: Any, file_path: str) -> None:
+        """走读 AST，提取 isinstance/issubclass 第二参数中的类名引用。
+
+        isinstance(x, SomeClass) 和 isinstance(x, (A, B)) 中的类名
+        不会被调用图或属性引用捕获，单独提取以避免死代码误报。
+        """
+        self._walk_for_isinstance_refs(root_node, file_path)
+
+    def _walk_for_isinstance_refs(self, node: Any, file_path: str) -> None:
+        """递归走读 AST，处理 isinstance/issubclass 调用节点。"""
+        if node.type == "call":
+            self._process_isinstance_call(node, file_path)
+
+        for child in node.children:
+            self._walk_for_isinstance_refs(child, file_path)
+
+    def _process_isinstance_call(self, call_node: Any, file_path: str) -> None:
+        """从 isinstance/issubclass 调用中提取类型参数引用。
+
+        AST 结构：
+          call
+            function: identifier("isinstance")
+            arguments: argument_list
+              positional_argument: ...   (第一个参数：被检查对象)
+              ,
+              positional_argument: identifier/tuple (第二个参数：类型)
+        """
+        # 找到 function 子节点（被调函数名）
+        func_name = None
+        for child in call_node.children:
+            if child.type in ("identifier", "attribute"):
+                func_name = self._node_text(child)
+                break
+
+        if func_name not in self._TYPE_CHECK_BUILTINS:
+            return
+
+        # 找到 argument_list 子节点
+        for child in call_node.children:
+            if child.type == "argument_list":
+                self._extract_type_args_from_argument_list(child, file_path)
+                return
+
+    def _extract_type_args_from_argument_list(
+        self, arg_list_node: Any, file_path: str
+    ) -> None:
+        """从 argument_list 中提取第二个参数（类型参数）的类名引用。
+
+        第二参数可以是：
+        - 单个标识符：isinstance(x, SomeClass)
+        - 元组：isinstance(x, (ClassA, ClassB))
+        """
+        # 收集实际参数（跳过逗号和括号）
+        args = [
+            c
+            for c in arg_list_node.children
+            if c.type not in (",", "(", ")", "comment")
+            and c.type != "positional_separator"
+        ]
+        if len(args) < 2:
+            return
+
+        type_arg = args[1]  # 第二个参数是类型
+        line = type_arg.start_point[0] + 1
+
+        if type_arg.type == "identifier":
+            # isinstance(x, SomeClass)
+            name = self._node_text(type_arg)
+            if name and not name.startswith("__"):
+                self._symbol_index.add_reference(
+                    SymbolReference(
+                        symbol_name=name,
+                        file_path=file_path,
+                        line=line,
+                        ref_type="type_check",
+                    )
+                )
+        elif type_arg.type == "tuple":
+            # isinstance(x, (ClassA, ClassB))
+            for item in type_arg.children:
+                if item.type == "identifier":
+                    name = self._node_text(item)
+                    if name and not name.startswith("__"):
+                        self._symbol_index.add_reference(
+                            SymbolReference(
+                                symbol_name=name,
+                                file_path=file_path,
+                                line=item.start_point[0] + 1,
+                                ref_type="type_check",
+                            )
+                        )
+
     def _extract_imports(
         self, root_node: Any, file_path: str, source_code: str
     ) -> None:
@@ -592,6 +696,7 @@ class ProjectIndexer:
         file_path: str,
         source_code: str,
         is_type_check_only: bool = False,
+        is_inside_function: bool = False,
     ) -> None:
         """Recursively walk AST for import nodes.
 
@@ -600,11 +705,16 @@ class ProjectIndexer:
             file_path: Relative file path.
             source_code: Full source code.
             is_type_check_only: Whether we're inside an ``if TYPE_CHECKING:`` block.
+            is_inside_function: Whether we're inside a function/method body（懒加载 import）.
         """
         if node.type == "import_statement":
-            self._process_import_statement(node, file_path, is_type_check_only)
+            self._process_import_statement(
+                node, file_path, is_type_check_only, is_inside_function
+            )
         elif node.type == "import_from_statement":
-            self._process_import_from_statement(node, file_path, is_type_check_only)
+            self._process_import_from_statement(
+                node, file_path, is_type_check_only, is_inside_function
+            )
         elif node.type == "if_statement":
             # Detect `if TYPE_CHECKING:` blocks
             in_type_checking = self._is_type_checking_guard(node)
@@ -614,11 +724,25 @@ class ProjectIndexer:
                     file_path,
                     source_code,
                     is_type_check_only=in_type_checking or is_type_check_only,
+                    is_inside_function=is_inside_function,
+                )
+            return
+        elif node.type in ("function_definition", "async_function_definition"):
+            # 进入函数/方法体，后续的 import 都是懒加载
+            for child in node.children:
+                self._walk_for_imports(
+                    child,
+                    file_path,
+                    source_code,
+                    is_type_check_only=is_type_check_only,
+                    is_inside_function=True,
                 )
             return
 
         for child in node.children:
-            self._walk_for_imports(child, file_path, source_code, is_type_check_only)
+            self._walk_for_imports(
+                child, file_path, source_code, is_type_check_only, is_inside_function
+            )
 
     @staticmethod
     def _is_type_checking_guard(if_node: Any) -> bool:
@@ -632,7 +756,11 @@ class ProjectIndexer:
         return False
 
     def _process_import_statement(
-        self, node: Any, file_path: str, is_type_check_only: bool = False
+        self,
+        node: Any,
+        file_path: str,
+        is_type_check_only: bool = False,
+        is_lazy_import: bool = False,
     ) -> None:
         """Process 'import X' or 'import X as Y' statements."""
         for child in node.children:
@@ -645,6 +773,7 @@ class ProjectIndexer:
                     line=node.start_point[0] + 1,
                     is_relative=False,
                     is_type_check_only=is_type_check_only,
+                    is_lazy_import=is_lazy_import,
                 )
             elif child.type == "aliased_import":
                 for sub in child.children:
@@ -657,11 +786,16 @@ class ProjectIndexer:
                             line=node.start_point[0] + 1,
                             is_relative=False,
                             is_type_check_only=is_type_check_only,
+                            is_lazy_import=is_lazy_import,
                         )
                         break
 
     def _process_import_from_statement(
-        self, node: Any, file_path: str, is_type_check_only: bool = False
+        self,
+        node: Any,
+        file_path: str,
+        is_type_check_only: bool = False,
+        is_lazy_import: bool = False,
     ) -> None:
         """Process 'from X import Y, Z' or 'from X import *' statements.
 
@@ -738,6 +872,7 @@ class ProjectIndexer:
                 line=node.start_point[0] + 1,
                 is_relative=is_relative,
                 is_type_check_only=is_type_check_only,
+                is_lazy_import=is_lazy_import,
             )
 
     def _add_import_edge(
@@ -748,6 +883,7 @@ class ProjectIndexer:
         line: int,
         is_relative: bool,
         is_type_check_only: bool = False,
+        is_lazy_import: bool = False,
     ) -> None:
         """Resolve an import and add a dependency edge."""
         # Need absolute path of source file for relative import resolution
@@ -771,6 +907,7 @@ class ProjectIndexer:
                 is_external=False,
                 line=line,
                 is_type_check_only=is_type_check_only,
+                is_lazy_import=is_lazy_import,
             )
             self._dep_graph.add_edge(edge)
         elif resolved.is_external:
@@ -783,6 +920,7 @@ class ProjectIndexer:
                 is_external=True,
                 line=line,
                 is_type_check_only=is_type_check_only,
+                is_lazy_import=is_lazy_import,
             )
             self._dep_graph.add_edge(edge)
 

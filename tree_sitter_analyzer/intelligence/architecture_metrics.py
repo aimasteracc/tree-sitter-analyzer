@@ -192,11 +192,16 @@ class ArchitectureMetrics:
             all_files = [f for f in all_files if self._file_in_scope(f, scope)]
         scoped_set = set(all_files)
         for f in all_files:
-            # Use edges to filter out TYPE_CHECKING-only imports
+            # 过滤掉 TYPE_CHECKING import 和懒加载（函数体内）import：
+            # 这两类 import 不会在模块加载时形成运行时循环依赖。
             edges = self._dep_graph.get_edges_for_file(f)
             runtime_deps: list[str] = []
             for edge in edges:
-                if edge.target_file and not edge.is_type_check_only:
+                if (
+                    edge.target_file
+                    and not edge.is_type_check_only
+                    and not edge.is_lazy_import
+                ):
                     if not scope or edge.target_file in scoped_set:
                         if edge.target_file not in runtime_deps:
                             runtime_deps.append(edge.target_file)
