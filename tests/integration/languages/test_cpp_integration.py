@@ -5,12 +5,10 @@ C++ 插件集成测试：命名空间提取准确性验证。
 使用真实 tree-sitter 解析器，不使用 Mock。
 """
 
-import pytest
 import tree_sitter
 import tree_sitter_cpp
 
 from tree_sitter_analyzer.languages.cpp_plugin import CppElementExtractor, CppPlugin
-
 
 # --------------------------------------------------------------------------
 # 测试用 C++ 源码片段
