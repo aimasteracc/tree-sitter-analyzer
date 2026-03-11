@@ -297,16 +297,18 @@ class JavaElementExtractor(ElementExtractor):
         return packages
 
     def _reset_caches(self) -> None:
-        """Reset performance caches"""
+        """Reset performance caches only.
+
+        Business state (self.annotations, self.current_package) is intentionally
+        NOT cleared here — it is written by extract_annotations() and
+        extract_packages() and must persist across multiple extract_*() calls
+        within a single file analysis.
+        """
         self._node_text_cache.clear()
         self._processed_nodes.clear()
         self._element_cache.clear()
         self._annotation_cache.clear()
         self._signature_cache.clear()
-        self.annotations.clear()
-        self.current_package = (
-            ""  # Reset package state to avoid cross-test contamination
-        )
 
     def _traverse_and_extract_iterative(
         self,
@@ -1110,7 +1112,7 @@ class JavaPlugin(LanguagePlugin):
         """Get supported file extensions."""
         return [".java", ".jsp", ".jspx"]
 
-    def create_extractor(self) -> ElementExtractor:
+    def create_extractor(self) -> JavaElementExtractor:
         """Create a new element extractor instance."""
         return JavaElementExtractor()
 
@@ -1266,14 +1268,30 @@ class JavaPlugin(LanguagePlugin):
 
         try:
             extractor = self.create_extractor()
-            return {
+
+            # Extract shared state first: extract_functions() and extract_classes()
+            # call _find_annotations_for_line_cached() which reads extractor.annotations,
+            # and extract_classes() uses extractor.current_package for full qualified names.
+            # Both must be populated before the element extractors run.
+            annotations = extractor.extract_annotations(tree, source_code)
+            packages = extractor.extract_packages(tree, source_code)
+
+            result = {
                 "functions": extractor.extract_functions(tree, source_code),
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
-                "packages": extractor.extract_packages(tree, source_code),
-                "annotations": extractor.extract_annotations(tree, source_code),
+                "packages": packages,
+                "annotations": annotations,
             }
+
+            # Sync state back to self.extractor so callers can inspect the last
+            # analysis result via plugin.extractor (aligns with GoPlugin pattern).
+            self.extractor.annotations = extractor.annotations
+            self.extractor.current_package = extractor.current_package
+            self.extractor.imports = extractor.imports
+
+            return result
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
             return {

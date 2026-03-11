@@ -73,6 +73,8 @@ class CppElementExtractor(ElementExtractor):
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
+        # 先扫命名空间，确保 current_namespace 在提取类名前已被填充
+        self._pre_extract_namespace(tree.root_node)
 
         classes: list[Class] = []
 
@@ -195,13 +197,25 @@ class CppElementExtractor(ElementExtractor):
         return packages
 
     def _reset_caches(self) -> None:
-        """Reset performance caches"""
+        """清除性能缓存，同时重置命名空间状态以便下次提取。"""
         self._node_text_cache.clear()
         self._processed_nodes.clear()
         self._element_cache.clear()
         self._comment_cache.clear()
         self._complexity_cache.clear()
         self.current_namespace = ""
+
+    def _pre_extract_namespace(self, root_node: "tree_sitter.Node") -> None:
+        """在类/结构体提取前预扫描命名空间，确保 current_namespace 已被填充。
+
+        解决顺序依赖问题：extract_classes() 调用 _reset_caches() 后
+        current_namespace 被清空，若不重新扫描，所有类的限定名都会丢失命名空间前缀。
+        """
+        for child in root_node.children:
+            if child.type == "namespace_definition":
+                # 复用已有逻辑来设置 self.current_namespace
+                self._extract_namespace_info(child)
+                return  # 只取第一个顶层命名空间
 
     def _traverse_and_extract_iterative(
         self,

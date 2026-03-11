@@ -150,12 +150,12 @@ class KotlinElementExtractor(ElementExtractor):
         return packages
 
     def _reset_caches(self) -> None:
-        """Reset performance caches"""
+        """清除性能缓存，不触碰业务状态。
+
+        current_package 由 extract_classes() 内的 _extract_package() 负责填充，
+        此处无需清除，以保持方法职责单一。
+        """
         self._node_text_cache.clear()
-        # Keep current_package if already extracted?
-        # Usually safe to re-extract or clear.
-        if not self.source_code:
-            self.current_package = ""
 
     def _traverse_and_extract(
         self,

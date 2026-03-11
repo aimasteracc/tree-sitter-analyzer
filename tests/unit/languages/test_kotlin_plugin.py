@@ -593,3 +593,51 @@ enum class Color {
         classes = extractor.extract_classes(tree, code)
 
         assert isinstance(classes, list)
+
+
+# ---------------------------------------------------------------------------
+# AC-KT-001~004: _reset_caches 清理行为单元测试（纯 Mock，无需解析器）
+# ---------------------------------------------------------------------------
+
+
+class TestKotlinResetCachesCleanup:
+    """验证 _reset_caches() 只清除性能缓存，不触碰业务状态 current_package。"""
+
+    def test_reset_caches_does_not_clear_package_when_source_empty(self) -> None:
+        """AC-KT-001: source_code 为空时，_reset_caches() 不应清除 current_package。"""
+        extractor = KotlinElementExtractor()
+        extractor.current_package = "com.example.app"
+        extractor.source_code = ""  # 空字符串 → 旧代码会触发清空
+
+        extractor._reset_caches()
+
+        assert extractor.current_package == "com.example.app", (
+            "source_code 为空时 current_package 不应被清除"
+        )
+
+    def test_reset_caches_does_not_clear_package_when_source_set(self) -> None:
+        """AC-KT-002: source_code 有值时，_reset_caches() 也不应清除 current_package。"""
+        extractor = KotlinElementExtractor()
+        extractor.current_package = "com.example.app"
+        extractor.source_code = "package com.example.app\nclass Foo {}"
+
+        extractor._reset_caches()
+
+        assert extractor.current_package == "com.example.app"
+
+    def test_reset_caches_clears_node_text_cache(self) -> None:
+        """AC-KT-004: _reset_caches() 应清除 _node_text_cache。"""
+        extractor = KotlinElementExtractor()
+        extractor._node_text_cache[(0, 5)] = "hello"
+        extractor._reset_caches()
+
+        assert len(extractor._node_text_cache) == 0
+
+    def test_reset_caches_has_no_conditional_on_source_code(self) -> None:
+        """_reset_caches() 的实现不应包含 source_code 相关条件判断。"""
+        import inspect
+
+        source = inspect.getsource(KotlinElementExtractor._reset_caches)
+        assert "source_code" not in source, (
+            "_reset_caches() 不应包含 'source_code' 条件判断，应只清缓存"
+        )

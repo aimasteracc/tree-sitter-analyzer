@@ -692,3 +692,79 @@ class TestCppPluginLegacyTests:
         path = os.path.join("examples", "sample.cpp")
         out = await p.analyze_file(path, SimpleNamespace())
         assert out is not None
+
+
+# ---------------------------------------------------------------------------
+# AC-CPP-001~005: 命名空间预提取单元测试
+# ---------------------------------------------------------------------------
+
+
+class TestCppNamespacePreExtraction:
+    """CppElementExtractor 命名空间预提取行为的单元测试（Mock 隔离）。"""
+
+    @pytest.fixture
+    def extractor(self) -> CppElementExtractor:
+        """创建干净的提取器实例。"""
+        return CppElementExtractor()
+
+    # --- AC-CPP-004: _reset_caches 清除性能缓存且清空 current_namespace ---
+
+    def test_reset_caches_clears_current_namespace(
+        self, extractor: CppElementExtractor
+    ) -> None:
+        """_reset_caches() 应将 current_namespace 重置为空字符串。"""
+        extractor.current_namespace = "MyApp"
+        extractor._reset_caches()
+        assert extractor.current_namespace == ""
+
+    def test_reset_caches_clears_node_text_cache(
+        self, extractor: CppElementExtractor
+    ) -> None:
+        """_reset_caches() 应清除 _node_text_cache。"""
+        extractor._node_text_cache[(0, 10)] = "cached"
+        extractor._reset_caches()
+        assert len(extractor._node_text_cache) == 0
+
+    # --- AC-CPP-001~002: _pre_extract_namespace 方法必须存在并能设置 current_namespace ---
+
+    def test_pre_extract_namespace_method_exists(
+        self, extractor: CppElementExtractor
+    ) -> None:
+        """_pre_extract_namespace 方法应存在于 CppElementExtractor 上。"""
+        assert hasattr(extractor, "_pre_extract_namespace"), (
+            "_pre_extract_namespace 方法不存在，需要实现"
+        )
+
+    def test_pre_extract_namespace_sets_current_namespace(
+        self, extractor: CppElementExtractor
+    ) -> None:
+        """_pre_extract_namespace 遇到 namespace_definition 时应设置 current_namespace。"""
+        # 构造一个带 namespace_definition 子节点的 mock 根节点
+        namespace_child = Mock()
+        namespace_child.type = "namespace_definition"
+
+        root = Mock()
+        root.children = [namespace_child]
+
+        # _extract_namespace_info 会被调用来设置 current_namespace
+        extractor.source_code = "namespace MyApp { class Foo {}; }"
+        extractor.content_lines = extractor.source_code.split("\n")
+
+        # 用 patch 拦截 _extract_namespace_info，验证它被调用
+        with patch.object(
+            extractor, "_extract_namespace_info"
+        ) as mock_extract:
+            extractor._pre_extract_namespace(root)
+            mock_extract.assert_called_once_with(namespace_child)
+
+    def test_pre_extract_namespace_no_namespace_node_noop(
+        self, extractor: CppElementExtractor
+    ) -> None:
+        """没有 namespace_definition 节点时，_pre_extract_namespace 不应修改 current_namespace。"""
+        root = Mock()
+        root.children = [Mock(type="class_specifier"), Mock(type="preproc_include")]
+        extractor.current_namespace = ""
+
+        extractor._pre_extract_namespace(root)
+
+        assert extractor.current_namespace == ""
