@@ -320,6 +320,8 @@ class PHPElementExtractor(ElementExtractor):
         """
         self.source_code = source_code
         self.content_lines = source_code.splitlines()
+        # 独立扫描命名空间，消除对 extract_classes() 调用顺序的依赖
+        self._extract_namespace(tree.root_node)
 
         functions: list[Function] = []
 

@@ -745,3 +745,86 @@ class TestPHPIntegration:
 
         count = plugin._count_nodes(tree.root_node)
         assert count > 0
+
+
+# ---------------------------------------------------------------------------
+# AC-PHP-001~004: 函数命名空间独立提取单元测试
+# ---------------------------------------------------------------------------
+
+# 含有命名空间的函数代码
+PHP_FUNCTION_IN_NAMESPACE = """\
+<?php
+namespace App\\Services;
+
+function processOrder(int $orderId): bool
+{
+    return true;
+}
+
+function cancelOrder(int $orderId): void
+{
+}
+"""
+
+PHP_FUNCTION_NO_NAMESPACE = """\
+<?php
+
+function globalHelper(): string
+{
+    return 'hello';
+}
+"""
+
+
+class TestPHPFunctionNamespaceStandalone:
+    """AC-PHP-001~003: extract_functions() 在任何调用顺序下均能正确提取命名空间。"""
+
+    def test_extract_functions_standalone_includes_namespace(self):
+        """AC-PHP-001: 单独调用 extract_functions()，命名空间内的函数名应含命名空间前缀。"""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(PHP_FUNCTION_IN_NAMESPACE, plugin)
+        extractor = plugin.create_extractor()
+
+        # 不先调用 extract_classes()，直接提取函数
+        functions = extractor.extract_functions(tree, PHP_FUNCTION_IN_NAMESPACE)
+
+        assert len(functions) >= 1
+        process_order = next(
+            (f for f in functions if "processOrder" in f.name), None
+        )
+        assert process_order is not None, "未找到 processOrder 函数"
+        assert "App\\Services" in process_order.name, (
+            f"期望函数名包含命名空间 'App\\\\Services'，实际为 '{process_order.name}'"
+        )
+
+    def test_extract_functions_after_classes_same_namespace(self):
+        """AC-PHP-002: extract_classes() 之后调用 extract_functions()，结果与独立调用一致。"""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(PHP_FUNCTION_IN_NAMESPACE, plugin)
+        extractor = plugin.create_extractor()
+
+        # 先调用 extract_classes（原有路径）
+        extractor.extract_classes(tree, PHP_FUNCTION_IN_NAMESPACE)
+        # 再调用 extract_functions
+        functions = extractor.extract_functions(tree, PHP_FUNCTION_IN_NAMESPACE)
+
+        process_order = next(
+            (f for f in functions if "processOrder" in f.name), None
+        )
+        assert process_order is not None
+        assert "App\\Services" in process_order.name
+
+    def test_extract_functions_no_namespace_plain_name(self):
+        """AC-PHP-003: 没有命名空间时，函数名不应有多余的反斜杠前缀。"""
+        plugin = PHPPlugin()
+        tree = get_tree_for_code(PHP_FUNCTION_NO_NAMESPACE, plugin)
+        extractor = plugin.create_extractor()
+
+        functions = extractor.extract_functions(tree, PHP_FUNCTION_NO_NAMESPACE)
+
+        assert len(functions) >= 1
+        helper = next((f for f in functions if "globalHelper" in f.name), None)
+        assert helper is not None
+        assert not helper.name.startswith("\\"), (
+            f"没有命名空间时函数名不应有前缀 '\\\\'，实际为 '{helper.name}'"
+        )
