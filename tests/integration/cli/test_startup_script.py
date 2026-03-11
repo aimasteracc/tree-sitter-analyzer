@@ -24,8 +24,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 class TestStartupScriptFunctions:
     """Test startup script functionality."""
 
-    @patch("start_mcp_server.check_dependencies")
-    @patch("start_mcp_server.asyncio.run")
+    @patch("scripts.start_mcp_server.check_dependencies")
+    @patch("scripts.start_mcp_server.asyncio.run")
     def test_main_execution_with_dependencies_ok(
         self, mock_asyncio_run, mock_check_deps
     ):
