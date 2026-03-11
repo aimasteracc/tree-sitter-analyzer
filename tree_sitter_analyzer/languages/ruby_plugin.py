@@ -54,7 +54,7 @@ class RubyElementExtractor(ElementExtractor):
         super().__init__()
         self.source_code: str = ""
         self.content_lines: list[str] = []
-        self.current_module: str = ""
+        # current_module 已移除：从未被赋值或读取，是未实现功能的残留死代码
 
         # Performance optimization caches - use position-based keys for deterministic caching
         self._node_text_cache: dict[tuple[int, int], str] = {}
@@ -63,11 +63,10 @@ class RubyElementExtractor(ElementExtractor):
         self._file_encoding: str | None = None
 
     def _reset_caches(self) -> None:
-        """Reset all internal caches for a new file analysis."""
+        """清除性能缓存，不触碰业务状态。"""
         self._node_text_cache.clear()
         self._processed_nodes.clear()
         self._element_cache.clear()
-        self.current_module = ""
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """

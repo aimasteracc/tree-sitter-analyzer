@@ -881,3 +881,45 @@ class TestCSharpIntegration:
             code = f.read()
         # Just verify it can be read without errors
         assert len(code) > 0
+
+
+# ---------------------------------------------------------------------------
+# AC-CS-001~004: _reset_caches 职责清理单元测试（纯 Mock，无需解析器）
+# ---------------------------------------------------------------------------
+
+
+class TestCSharpResetCachesCleanup:
+    """验证 _reset_caches() 只清除性能缓存，不触碰 current_namespace 业务状态。"""
+
+    def test_reset_caches_does_not_clear_current_namespace(self) -> None:
+        """AC-CS-001: _reset_caches() 不应清除 current_namespace。"""
+        extractor = CSharpElementExtractor()
+        extractor.current_namespace = "MyApp.Services"
+
+        extractor._reset_caches()
+
+        assert extractor.current_namespace == "MyApp.Services", (
+            "_reset_caches() 不应清除 current_namespace，该状态由 _extract_namespace() 管理"
+        )
+
+    def test_reset_caches_source_has_no_current_namespace_assignment(self) -> None:
+        """AC-CS-002: _reset_caches() 源码中不应包含 current_namespace 赋值。"""
+        import inspect
+
+        source = inspect.getsource(CSharpElementExtractor._reset_caches)
+        assert "current_namespace" not in source, (
+            "_reset_caches() 不应包含 'current_namespace' 赋值，应只清缓存"
+        )
+
+    def test_reset_caches_still_clears_performance_caches(self) -> None:
+        """AC-CS-004: _reset_caches() 应继续清除性能缓存。"""
+        extractor = CSharpElementExtractor()
+        extractor._node_text_cache[(0, 5)] = "hello"
+        extractor._processed_nodes.add((0, 5))
+        extractor._element_cache[((0, 0), "class")] = object()
+
+        extractor._reset_caches()
+
+        assert len(extractor._node_text_cache) == 0
+        assert len(extractor._processed_nodes) == 0
+        assert len(extractor._element_cache) == 0

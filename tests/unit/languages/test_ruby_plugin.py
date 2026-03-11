@@ -467,17 +467,16 @@ class TestRubyExtractorHelpers:
     """Test RubyElementExtractor helper methods."""
 
     def test_reset_caches(self):
-        """Test cache reset functionality."""
+        """_reset_caches 只清性能缓存，current_module 已作为死代码删除。"""
         extractor = RubyElementExtractor()
         extractor._node_text_cache["test"] = "value"
         extractor._processed_nodes.add(1)
-        extractor.current_module = "TestModule"
 
         extractor._reset_caches()
 
         assert len(extractor._node_text_cache) == 0
         assert len(extractor._processed_nodes) == 0
-        assert extractor.current_module == ""
+        # current_module 是死代码，已从 __init__ 删除，此处不再断言
 
     def test_determine_visibility_default(self):
         """Test default visibility determination."""
@@ -601,3 +600,45 @@ class TestRubyIntegration:
         # Superclass extraction may vary - check it's not None
         assert dog.superclass is not None
         assert cat.superclass is not None
+
+
+# ---------------------------------------------------------------------------
+# AC-RB-001~004: current_module 死代码清理单元测试（纯 Mock，无需解析器）
+# ---------------------------------------------------------------------------
+
+
+class TestRubyDeadCodeCleanup:
+    """验证 current_module 死代码已被删除：不应出现在实例属性或 _reset_caches 中。"""
+
+    def test_extractor_has_no_current_module_attribute(self) -> None:
+        """AC-RB-001: RubyElementExtractor 实例不应有 current_module 属性。"""
+        from tree_sitter_analyzer.languages.ruby_plugin import RubyElementExtractor
+
+        extractor = RubyElementExtractor()
+        assert not hasattr(extractor, "current_module"), (
+            "current_module 是死代码（从未被赋值或读取），应从 __init__ 中删除"
+        )
+
+    def test_reset_caches_source_has_no_current_module(self) -> None:
+        """AC-RB-002: _reset_caches() 源码中不应包含 current_module。"""
+        import inspect
+
+        from tree_sitter_analyzer.languages.ruby_plugin import RubyElementExtractor
+
+        source = inspect.getsource(RubyElementExtractor._reset_caches)
+        assert "current_module" not in source, (
+            "_reset_caches() 不应包含 'current_module'，该字段是死代码"
+        )
+
+    def test_reset_caches_still_clears_performance_caches(self) -> None:
+        """AC-RB-004: 删除死代码后，_reset_caches() 应继续清除性能缓存。"""
+        from tree_sitter_analyzer.languages.ruby_plugin import RubyElementExtractor
+
+        extractor = RubyElementExtractor()
+        extractor._node_text_cache[(0, 5)] = "hello"
+        extractor._processed_nodes.add((0, 5))
+
+        extractor._reset_caches()
+
+        assert len(extractor._node_text_cache) == 0
+        assert len(extractor._processed_nodes) == 0

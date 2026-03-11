@@ -66,12 +66,15 @@ class CSharpElementExtractor(ElementExtractor):
         self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:
-        """Reset all internal caches for a new file analysis."""
+        """清除性能缓存，不触碰业务状态。
+
+        命名空间状态由各 extract_* 方法按需调用 _extract_namespace() 填充，
+        此处无需清除，以保持方法职责单一。
+        """
         self._node_text_cache.clear()
         self._processed_nodes.clear()
         self._element_cache.clear()
         self._attribute_cache.clear()
-        self.current_namespace = ""
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """
