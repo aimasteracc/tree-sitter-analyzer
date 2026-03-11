@@ -10,8 +10,9 @@ import asyncio
 import sys
 from pathlib import Path
 
-# Add the current directory to Python path
-sys.path.insert(0, str(Path(__file__).parent))
+# 将项目根目录（scripts/ 的上级）加入 Python path，
+# 确保从任意工作目录运行 `python scripts/start_mcp_server.py` 都能找到 tree_sitter_analyzer 包
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 from tree_sitter_analyzer.project_detector import detect_project_root
