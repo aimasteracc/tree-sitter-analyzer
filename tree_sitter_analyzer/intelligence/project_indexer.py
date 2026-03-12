@@ -31,6 +31,12 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
+# 非 Python 语言支持的文件扩展名（语言名称 -> 扩展名集合）
+_LANGUAGE_EXTENSIONS: dict[str, frozenset[str]] = {
+    "java": frozenset({".java"}),
+    "cpp": frozenset({".cpp", ".cc", ".cxx", ".hpp", ".hxx", ".h"}),
+}
+
 # Directories to skip during scanning
 _SKIP_DIRS = frozenset(
     {
@@ -81,6 +87,10 @@ class ProjectIndexer:
         self._indexed = False
         self._indexed_files: set[str] = set()
         self._parser: Any = None
+        # 非 Python 语言解析器缓存（按需创建）
+        self._language_parsers: dict[str, Any] = {}
+        # 插件管理器（懒加载，避免循环导入）
+        self._plugin_manager: Any = None
 
     @property
     def symbol_index(self) -> SymbolIndex:
@@ -190,8 +200,8 @@ class ProjectIndexer:
             self._indexed = True
             return
 
-        py_files = self._discover_python_files(target)
-        logger.info(f"Indexing {len(py_files)} Python files under {target}")
+        py_files = self._discover_source_files(target)
+        logger.info(f"Indexing {len(py_files)} source files under {target}")
 
         for file_path in py_files:
             try:
@@ -206,15 +216,19 @@ class ProjectIndexer:
             f"{sum(len(v) for v in self._symbol_index.get_all_references().values())} references"
         )
 
-    def _discover_python_files(self, root: str) -> list[str]:
-        """Discover Python files under *root* using two-phase prioritisation.
+    def _discover_source_files(self, root: str) -> list[str]:
+        """Discover all indexable source files under *root*.
 
-        Phase 1: collect all **source** files (non-test).
-        Phase 2: collect **test** files.
-
-        This guarantees that core source directories (e.g. ``mcp/``) are always
-        indexed even when ``_MAX_FILES`` would otherwise truncate them.
+        包含 Python 文件（.py）和受支持的非 Python 语言文件（.java、.cpp 等）。
+        使用两阶段优先：源文件在前，测试文件在后。
         """
+        # 构建所有支持的扩展名集合
+        non_py_extensions: frozenset[str] = frozenset(
+            ext
+            for exts in _LANGUAGE_EXTENSIONS.values()
+            for ext in exts
+        )
+
         source_files: list[str] = []
         test_files: list[str] = []
 
@@ -227,13 +241,19 @@ class ProjectIndexer:
             ]
 
             for filename in filenames:
-                if filename.endswith(".py"):
-                    full_path = os.path.join(dirpath, filename)
-                    rel = os.path.relpath(full_path, root).replace("\\", "/")
-                    if self.is_test_file(rel):
-                        test_files.append(full_path)
-                    else:
-                        source_files.append(full_path)
+                _, ext = os.path.splitext(filename)
+                is_py = ext == ".py"
+                is_non_py = ext in non_py_extensions
+
+                if not (is_py or is_non_py):
+                    continue
+
+                full_path = os.path.join(dirpath, filename)
+                rel = os.path.relpath(full_path, root).replace("\\", "/")
+                if is_py and self.is_test_file(rel):
+                    test_files.append(full_path)
+                else:
+                    source_files.append(full_path)
 
         # Combine: source first, then tests — honour the global cap
         combined = source_files + test_files
@@ -247,8 +267,18 @@ class ProjectIndexer:
             combined = combined[:_MAX_FILES]
         return combined
 
+    def _discover_python_files(self, root: str) -> list[str]:
+        """Discover Python files only (backward compat alias)."""
+        # 保留此方法供外部测试引用，内部使用 _discover_source_files
+        all_files = self._discover_source_files(root)
+        return [f for f in all_files if f.endswith(".py")]
+
     def _index_single_file(self, file_path: str) -> None:
-        """Index a single Python file: extract symbols, calls, imports."""
+        """Index a single source file: extract symbols, calls, imports.
+
+        Python 文件走原有路径（精确的导入解析、调用图）；
+        非 Python 文件（Java、C++ 等）走插件路径（symbol 提取）。
+        """
         if file_path in self._indexed_files:
             return
 
@@ -261,6 +291,15 @@ class ProjectIndexer:
 
         # Use relative path for consistent indexing
         rel_path = self._relative_path(file_path)
+
+        # 非 Python 文件走插件路径
+        _, ext = os.path.splitext(file_path)
+        if ext != ".py":
+            language = self._detect_language_for_ext(ext)
+            if language:
+                self._index_file_via_plugin(file_path, rel_path, language, source_code)
+            self._indexed_files.add(file_path)
+            return
 
         # 1. Extract call sites using CallGraphBuilder
         call_sites = self._call_graph.extract_calls_from_source(source_code, rel_path)
@@ -793,5 +832,136 @@ class ProjectIndexer:
         if isinstance(text, bytes):
             return text.decode("utf-8")
         return str(text)
+
+    # ------------------------------------------------------------------
+    # 多语言支持：插件路径 (fix-intelligence-graph multi-language)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _detect_language_for_ext(ext: str) -> str | None:
+        """根据文件扩展名返回语言名称（仅支持已配置的非 Python 语言）。"""
+        for language, extensions in _LANGUAGE_EXTENSIONS.items():
+            if ext in extensions:
+                return language
+        return None
+
+    def _get_plugin_manager(self) -> Any:
+        """获取（或懒加载）PluginManager 实例。"""
+        if self._plugin_manager is None:
+            try:
+                from tree_sitter_analyzer.plugins.manager import PluginManager
+
+                pm = PluginManager()
+                pm.load_plugins()
+                self._plugin_manager = pm
+            except Exception as e:
+                logger.debug(f"无法加载 PluginManager: {e}")
+        return self._plugin_manager
+
+    def _get_language_parser(self, language: str) -> Any:
+        """获取（或懒加载）指定语言的 tree-sitter 解析器。
+
+        不支持或未安装的语言返回 None。
+        """
+        if language in self._language_parsers:
+            return self._language_parsers[language]
+
+        if not TREE_SITTER_AVAILABLE:
+            return None
+
+        try:
+            import importlib
+
+            lang_module = importlib.import_module(f"tree_sitter_{language}")
+            language_obj = tree_sitter.Language(lang_module.language())
+            parser = tree_sitter.Parser()
+            if hasattr(parser, "set_language"):
+                parser.set_language(language_obj)
+            else:
+                parser.language = language_obj
+            self._language_parsers[language] = parser
+            return parser
+        except Exception as e:
+            logger.debug(f"无法为 {language} 创建 tree-sitter 解析器: {e}")
+            self._language_parsers[language] = None
+            return None
+
+    def _index_file_via_plugin(
+        self,
+        file_path: str,
+        rel_path: str,
+        language: str,
+        source_code: str,
+    ) -> None:
+        """通过语言插件提取符号，写入 SymbolIndex。
+
+        AC-ML-006：插件或解析器不可用时静默跳过，不崩溃。
+        """
+        plugin_manager = self._get_plugin_manager()
+        if plugin_manager is None:
+            return
+
+        try:
+            plugin = plugin_manager.get_plugin(language)
+        except Exception:
+            return
+        if plugin is None:
+            return
+
+        parser = self._get_language_parser(language)
+        if parser is None:
+            return
+
+        try:
+            tree = parser.parse(source_code.encode("utf-8"))
+            extractor = plugin.create_extractor()
+
+            # 提取类定义
+            try:
+                classes = extractor.extract_classes(tree, source_code)
+                for cls in classes:
+                    self._symbol_index.add_definition(
+                        SymbolDefinition(
+                            name=cls.name,
+                            file_path=rel_path,
+                            line=getattr(cls, "start_line", 0),
+                            end_line=getattr(cls, "end_line", 0),
+                            symbol_type="class",
+                            modifiers=list(getattr(cls, "modifiers", None) or []),
+                            docstring=getattr(cls, "docstring", None),
+                        )
+                    )
+            except Exception as e:
+                logger.debug(f"提取 {rel_path} 的类定义失败: {e}")
+
+            # 提取函数/方法定义
+            try:
+                functions = extractor.extract_functions(tree, source_code)
+                for func in functions:
+                    symbol_type = (
+                        "method" if getattr(func, "is_method", False) else "function"
+                    )
+                    params = getattr(func, "parameters", None) or []
+                    # 参数可能是字符串列表或其他格式，统一转为字符串列表
+                    if params and not isinstance(params[0], str):
+                        params = [str(p) for p in params]
+                    self._symbol_index.add_definition(
+                        SymbolDefinition(
+                            name=func.name,
+                            file_path=rel_path,
+                            line=getattr(func, "start_line", 0),
+                            end_line=getattr(func, "end_line", 0),
+                            symbol_type=symbol_type,
+                            parameters=list(params),
+                            return_type=getattr(func, "return_type", None),
+                            modifiers=list(getattr(func, "modifiers", None) or []),
+                            docstring=getattr(func, "docstring", None),
+                        )
+                    )
+            except Exception as e:
+                logger.debug(f"提取 {rel_path} 的函数定义失败: {e}")
+
+        except Exception as e:
+            logger.debug(f"插件索引 {rel_path} 失败: {e}")
 
     # reset() was removed in v3 (dead code — MCP server sets _indexer=None instead).
