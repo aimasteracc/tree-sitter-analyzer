@@ -35,18 +35,18 @@ class TestOutputFormatValidator:
         """Test that multiple format parameters raise ValueError."""
         validator = OutputFormatValidator()
 
-        # Test various combinations
-        with pytest.raises(ValueError, match="Output Format Parameter Error"):
+        # Test various combinations - accept both English and Japanese error messages
+        with pytest.raises(ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"):
             validator.validate_output_format_exclusion(
                 {"total_only": True, "count_only_matches": True}
             )
 
-        with pytest.raises(ValueError, match="Output Format Parameter Error"):
+        with pytest.raises(ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"):
             validator.validate_output_format_exclusion(
                 {"total_only": True, "summary_only": True}
             )
 
-        with pytest.raises(ValueError, match="Output Format Parameter Error"):
+        with pytest.raises(ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"):
             validator.validate_output_format_exclusion(
                 {
                     "count_only_matches": True,
