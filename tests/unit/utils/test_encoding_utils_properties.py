@@ -114,7 +114,7 @@ class TestEncodingCacheProperties:
         """Clearing cache should reset size to 0."""
         # Add some entries
         for i in range(10):
-            data = f"test {i}".encode("utf-8")
+            data = f"test {i}".encode()
             detect_encoding(data)
 
         clear_encoding_cache()

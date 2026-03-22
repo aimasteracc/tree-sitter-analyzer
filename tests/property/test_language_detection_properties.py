@@ -22,7 +22,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".py"))
     )
     @settings(max_examples=50)
@@ -61,7 +61,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".js"))
     )
     @settings(max_examples=50)
@@ -80,7 +80,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".ts"))
     )
     @settings(max_examples=50)
@@ -99,7 +99,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".go"))
     )
     @settings(max_examples=50)
@@ -118,7 +118,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".rs"))
     )
     @settings(max_examples=50)
@@ -137,7 +137,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".cs"))
     )
     @settings(max_examples=50)
@@ -156,7 +156,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".css"))
     )
     @settings(max_examples=50)
@@ -175,7 +175,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".html"))
     )
     @settings(max_examples=50)
@@ -194,7 +194,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".yaml"))
     )
     @settings(max_examples=50)
@@ -213,7 +213,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".yml"))
     )
     @settings(max_examples=50)
@@ -232,7 +232,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".sql"))
     )
     @settings(max_examples=50)
@@ -251,7 +251,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".unknown"))
     )
     @settings(max_examples=50)
@@ -295,7 +295,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".py"))
     )
     @settings(max_examples=50)
@@ -317,12 +317,12 @@ class TestLanguageDetectionProperties:
         file_path1=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".py")),
         file_path2=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ).map(lambda s: Path(s + ".py")),
     )
     @settings(max_examples=30)
@@ -394,7 +394,7 @@ class TestLanguageDetectionStateful(RuleBasedStateMachine):
         file_name=st.text(
             min_size=1,
             max_size=50,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>.|'),
         ),
         extension=st.sampled_from(
             [

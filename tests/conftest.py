@@ -260,7 +260,9 @@ def _reset_all_singletons():
 
     # Reset file output factory
     try:
-        from tree_sitter_analyzer.mcp.utils.file_output_factory import FileOutputManagerFactory
+        from tree_sitter_analyzer.mcp.utils.file_output_factory import (
+            FileOutputManagerFactory,
+        )
 
         FileOutputManagerFactory._instances.clear()
     except (ImportError, AttributeError):
