@@ -180,15 +180,14 @@ async def cleanup_asyncio_tasks():
         pass
 
 
-@pytest.fixture(autouse=True)
-def reset_global_singletons():
-    """Reset all global singletons after each test."""
+def _reset_all_singletons():
+    """Reset all global singletons. Called before and after each test for isolation."""
     # Reset analysis engine
     try:
         from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
 
         UnifiedAnalysisEngine._reset_instance()
-    except ImportError:
+    except (ImportError, AttributeError):
         pass
 
     # Reset language detector cache
@@ -218,11 +217,10 @@ def reset_global_singletons():
     except (ImportError, AttributeError):
         pass
 
-    # Reset MCP-related singletons for parallel test safety
+    # Reset MCP-related singletons
     try:
         from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
 
-        # Clear the cache without importing the singleton variable
         clear_cache()
     except (ImportError, AttributeError):
         pass
@@ -230,30 +228,29 @@ def reset_global_singletons():
     try:
         from tree_sitter_analyzer.mcp.utils import gitignore_detector
 
-        # Reset detector by setting module attribute
         if hasattr(gitignore_detector, "_default_detector"):
-            gitignore_detector._default_detector = None  # noqa: SLF001
+            gitignore_detector._default_detector = None
     except (ImportError, AttributeError):
         pass
 
+    # Reset language and query loaders
     try:
         from tree_sitter_analyzer import language_loader
 
-        # Reset loader by setting module attribute
         if hasattr(language_loader, "_loader_instance"):
-            language_loader._loader_instance = None  # noqa: SLF001
+            language_loader._loader_instance = None
     except (ImportError, AttributeError):
         pass
 
     try:
         from tree_sitter_analyzer import query_loader
 
-        # Reset query loader by setting module attribute
         if hasattr(query_loader, "_query_loader_instance"):
-            query_loader._query_loader_instance = None  # noqa: SLF001
+            query_loader._query_loader_instance = None
     except (ImportError, AttributeError):
         pass
 
+    # Reset engine manager
     try:
         from tree_sitter_analyzer.core.engine_manager import EngineManager
 
@@ -261,100 +258,21 @@ def reset_global_singletons():
     except (ImportError, AttributeError):
         pass
 
+    # Reset file output factory
     try:
-        from tree_sitter_analyzer.mcp.utils.file_output_factory import (
-            FileOutputManagerFactory,
-        )
+        from tree_sitter_analyzer.mcp.utils.file_output_factory import FileOutputManagerFactory
 
         FileOutputManagerFactory._instances.clear()
     except (ImportError, AttributeError):
         pass
 
+
+@pytest.fixture(autouse=True)
+def reset_global_singletons():
+    """Reset all global singletons before and after each test for isolation."""
+    _reset_all_singletons()
     yield
-
-    # Reset after test
-    try:
-        from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
-
-        UnifiedAnalysisEngine._reset_instance()
-    except ImportError:
-        pass
-
-    try:
-        from tree_sitter_analyzer.core.language_detector import LanguageDetector
-
-        if hasattr(LanguageDetector, "_instance"):
-            LanguageDetector._instance = None
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer.core.query import QueryExecutor
-
-        if hasattr(QueryExecutor, "_cache"):
-            QueryExecutor._cache.clear()
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
-
-        FormatterRegistry.clear()
-        FormatterRegistry.register_builtin_formatters()
-    except (ImportError, AttributeError):
-        pass
-
-    # Reset MCP-related singletons after test
-    try:
-        from tree_sitter_analyzer.mcp.utils.search_cache import clear_cache
-
-        # Clear the cache without importing the singleton variable
-        clear_cache()
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer.mcp.utils import gitignore_detector
-
-        # Reset detector by setting module attribute
-        if hasattr(gitignore_detector, "_default_detector"):
-            gitignore_detector._default_detector = None  # noqa: SLF001
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer import language_loader
-
-        # Reset loader by setting module attribute
-        if hasattr(language_loader, "_loader_instance"):
-            language_loader._loader_instance = None  # noqa: SLF001
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer import query_loader
-
-        # Reset query loader by setting module attribute
-        if hasattr(query_loader, "_query_loader_instance"):
-            query_loader._query_loader_instance = None  # noqa: SLF001
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer.core.engine_manager import EngineManager
-
-        EngineManager.reset_instances()
-    except (ImportError, AttributeError):
-        pass
-
-    try:
-        from tree_sitter_analyzer.mcp.utils.file_output_factory import (
-            FileOutputManagerFactory,
-        )
-
-        FileOutputManagerFactory._instances.clear()
-    except (ImportError, AttributeError):
-        pass
+    _reset_all_singletons()
 
 
 @pytest.fixture(autouse=True)
