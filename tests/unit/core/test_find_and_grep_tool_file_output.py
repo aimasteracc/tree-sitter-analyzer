@@ -82,7 +82,10 @@ def nested_hello():
     async def test_basic_file_output(self, find_and_grep_tool, temp_project_dir):
         """Test basic file output functionality"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock fd output (file discovery)
             fd_output = f"{temp_project_dir}/test1.py\n{temp_project_dir}/test2.js\n"
@@ -141,7 +144,10 @@ def nested_hello():
     ):
         """Test suppress_output functionality"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
@@ -184,7 +190,10 @@ def nested_hello():
     ):
         """Test group_by_file mode with file output"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock outputs with multiple matches in same file
             fd_output = f"{temp_project_dir}/test1.py\n"
@@ -228,7 +237,10 @@ def nested_hello():
     async def test_summary_only_with_output(self, find_and_grep_tool, temp_project_dir):
         """Test summary_only mode with file output"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n{temp_project_dir}/test2.js\n"
@@ -269,7 +281,10 @@ def nested_hello():
     async def test_count_only_mode(self, find_and_grep_tool, temp_project_dir):
         """Test count_only_matches mode"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
@@ -300,7 +315,10 @@ def nested_hello():
     async def test_total_only_mode(self, find_and_grep_tool, temp_project_dir):
         """Test total_only mode"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
@@ -328,7 +346,10 @@ def nested_hello():
     async def test_file_filtering_options(self, find_and_grep_tool, temp_project_dir):
         """Test various file filtering options with output"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
@@ -361,7 +382,10 @@ def nested_hello():
     ):
         """Test error handling when file output fails"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock successful fd and rg outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
@@ -395,7 +419,10 @@ def nested_hello():
     async def test_fd_failure_handling(self, find_and_grep_tool, temp_project_dir):
         """Test handling of fd command failure"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock fd failure
             mock_run.return_value = (1, b"", b"fd error")
@@ -417,7 +444,10 @@ def nested_hello():
     async def test_rg_failure_handling(self, find_and_grep_tool, temp_project_dir):
         """Test handling of ripgrep command failure"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock successful fd but failed rg
             fd_output = f"{temp_project_dir}/test1.py\n"
@@ -443,7 +473,10 @@ def nested_hello():
     async def test_no_files_found(self, find_and_grep_tool, temp_project_dir):
         """Test behavior when no files are found by fd"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock fd returning no files
             mock_run.return_value = (0, b"", b"")
@@ -468,7 +501,10 @@ def nested_hello():
     async def test_sorting_options(self, find_and_grep_tool, temp_project_dir):
         """Test file sorting options"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock fd output with multiple files
             fd_output = f"{temp_project_dir}/test1.py\n{temp_project_dir}/test2.js\n{temp_project_dir}/README.md\n"
@@ -519,7 +555,10 @@ def nested_hello():
     ):
         """Test complex workflow combining multiple features with file output"""
         with patch(
-            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture"
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch(
+            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
         ) as mock_run:
             # Mock outputs for complex search
             fd_output = (

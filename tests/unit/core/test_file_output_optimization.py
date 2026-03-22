@@ -57,8 +57,13 @@ async def test_search_content_with_output_file_and_suppress_output(
     async def mock_run_command(cmd, **kwargs):
         return (0, rg_output.encode(), b"")
 
+    # Mock check_external_command to return True for rg
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -136,8 +141,13 @@ async def test_find_and_grep_with_output_file_and_suppress_output(
         else:  # rg command
             return (0, rg_output.encode(), b"")
 
+    # Mock check_external_command to return True for fd and rg
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -207,8 +217,13 @@ async def test_search_content_output_file_without_suppress_output(
     async def mock_run_command(cmd, **kwargs):
         return (0, rg_output.encode(), b"")
 
+    # Mock check_external_command to return True
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -275,8 +290,13 @@ async def test_find_and_grep_output_file_auto_extension_detection(
         else:  # rg command
             return (0, rg_output.encode(), b"")
 
+    # Mock check_external_command to return True
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -354,8 +374,13 @@ async def test_search_content_large_results_token_optimization(monkeypatch, tmp_
     async def mock_run_command(cmd, **kwargs):
         return (0, rg_output.encode(), b"")
 
+    # Mock check_external_command to return True
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.search_content_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -436,8 +461,13 @@ async def test_find_and_grep_combined_optimization_features(monkeypatch, tmp_pat
         else:  # rg command
             return (0, rg_output.encode(), b"")
 
+    # Mock check_external_command to return True
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -571,8 +601,13 @@ async def test_list_files_with_output_file_and_suppress_output(monkeypatch, tmp_
     async def mock_run_command(cmd, **kwargs):
         return (0, fd_output.encode(), b"")
 
+    # Mock check_external_command to return True
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -624,8 +659,13 @@ async def test_list_files_count_only_with_output_file(monkeypatch, tmp_path):
     async def mock_run_command(cmd, **kwargs):
         return (0, fd_output.encode(), b"")
 
+    # Mock check_external_command to return True
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -676,8 +716,13 @@ async def test_list_files_output_file_without_suppress_output(monkeypatch, tmp_p
     async def mock_run_command(cmd, **kwargs):
         return (0, fd_output.encode(), b"")
 
+    # Mock check_external_command to return True
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
@@ -721,8 +766,13 @@ async def test_list_files_large_results_token_optimization(monkeypatch, tmp_path
     async def mock_run_command(cmd, **kwargs):
         return (0, fd_output.encode(), b"")
 
+    # Mock check_external_command to return True
     monkeypatch.setattr(
-        "tree_sitter_analyzer.mcp.tools.fd_rg_utils.run_command_capture",
+        "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.check_external_command",
+        lambda cmd: True,
+    )
+    monkeypatch.setattr(
+        "tree_sitter_analyzer.mcp.tools.list_files_tool.fd_rg_utils.run_command_capture",
         mock_run_command,
     )
 
