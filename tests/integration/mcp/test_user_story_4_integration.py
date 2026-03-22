@@ -207,6 +207,8 @@ This will find all Java files and count TODO comments.
             mcp_server.set_project_path("")
         assert "cannot be empty" in str(exc_info.value)
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_find_and_grep_tool_basic(self, mcp_server, temp_project):
         """T016: find_and_grep ツールの基本機能テスト"""
@@ -239,6 +241,10 @@ This will find all Java files and count TODO comments.
 
         assert found_todos, "TODO comments should be found in Java files"
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_find_and_grep_two_stage_search(self, mcp_server, temp_project):
         """find_and_grep ツールの2段階検索テスト"""
@@ -269,6 +275,8 @@ This will find all Java files and count TODO comments.
 
         assert found_function, "find_java_files function should be found"
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_find_and_grep_optimization_features(self, mcp_server, temp_project):
         """find_and_grep ツールの最適化機能テスト"""
@@ -404,6 +412,8 @@ This will find all Java files and count TODO comments.
 
         assert service_java_found, "Service.java should be in file statistics"
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_integrated_workflow_scenario_1(self, mcp_server, temp_project):
         """統合ワークフローシナリオ1: プロジェクト分析→検索→詳細確認"""
@@ -441,6 +451,10 @@ This will find all Java files and count TODO comments.
                 assert "TODO: implement data processing" in file_content
                 break
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_integrated_workflow_scenario_2(self, mcp_server, temp_project):
         """統合ワークフローシナリオ2: 言語別分析→特定言語検索→複雑度確認"""
@@ -484,6 +498,8 @@ This will find all Java files and count TODO comments.
         assert "total_files_analyzed" in complexity
         assert complexity["total_files_analyzed"] > 0
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_integrated_workflow_scenario_3(self, mcp_server, temp_project):
         """統合ワークフローシナリオ3: プロジェクト変更→境界更新→再分析"""

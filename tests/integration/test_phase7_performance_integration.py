@@ -487,6 +487,8 @@ export default GeneratedComponent{i};
 """
             (js_root / f"GeneratedComponent{i}.js").write_text(js_content)
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_large_scale_file_analysis_performance(self, large_scale_project):
         """大規模ファイル分析のパフォーマンステスト"""
@@ -558,6 +560,8 @@ export default GeneratedComponent{i};
             f"実行時間: {metrics['execution_time']:.2f}秒, メモリ: {metrics['memory_mb']:.2f}MB"
         )
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_concurrent_search_performance(self, large_scale_project):
         """同時検索のパフォーマンステスト"""
@@ -693,6 +697,8 @@ export default GeneratedComponent{i};
         print(f"メモリ増加: {memory_growth:.2f}MB")
         print(f"平均実行時間: {avg_execution_time:.2f}秒")
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_scalability_limits(self, large_scale_project):
         """スケーラビリティ限界テスト"""
@@ -805,6 +811,8 @@ export default GeneratedComponent{i};
                 f"成功率 {result['success_rate']:.2%}, メモリ {result['memory_mb']:.2f}MB"
             )
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_sustained_load_performance(self, large_scale_project):
         """持続負荷パフォーマンステスト"""
@@ -885,6 +893,8 @@ export default GeneratedComponent{i};
         print(f"平均実行時間: {avg_execution_time:.2f}秒")
         print(f"平均メモリ使用量: {avg_memory:.2f}MB")
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_resource_cleanup_efficiency(self, large_scale_project):
         """リソースクリーンアップ効率性テスト"""

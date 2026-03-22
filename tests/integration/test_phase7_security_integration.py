@@ -640,6 +640,8 @@ echo "Potentially dangerous operation"
             len(exposed_data) == 0
         ), f"Sensitive data exposure detected: {exposed_data}"
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_concurrent_security_stress(self, secure_test_project):
         """同時セキュリティストレステスト"""

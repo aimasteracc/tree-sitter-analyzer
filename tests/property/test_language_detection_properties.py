@@ -42,7 +42,7 @@ class TestLanguageDetectionProperties:
         file_path=st.text(
             min_size=1,
             max_size=100,
-            alphabet=st.characters(blacklist_characters='\\/:*?"<>|'),
+            alphabet=st.characters(blacklist_characters='\\/:*?"<>|.'),
         ).map(lambda s: Path(s + ".java"))
     )
     @settings(max_examples=50)

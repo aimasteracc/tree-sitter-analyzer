@@ -167,6 +167,8 @@ public class Example {
         assert "success" in result
         assert result.get("matches", []) == [] or result.get("count", 0) == 0
 
+    @pytest.mark.requires_fd
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_find_and_grep_error_handling(self, find_grep_tool):
         """find_and_grep ツールのエラーハンドリングテスト"""
