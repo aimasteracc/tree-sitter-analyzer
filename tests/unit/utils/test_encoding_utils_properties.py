@@ -102,7 +102,7 @@ class TestEncodingCacheProperties:
         """Cache size should be bounded after many operations."""
         # Perform many encoding detections
         for i in range(200):
-            data = f"test content {i}".encode("utf-8")
+            data = f"test content {i}".encode()
             detect_encoding(data)
 
         cache_size = get_encoding_cache_size()

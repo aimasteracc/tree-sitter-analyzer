@@ -4,8 +4,7 @@
 Uses Hypothesis to verify CodeElement and AnalysisResult properties.
 """
 
-from hypothesis import given, settings
-from hypothesis import strategies as st
+from hypothesis import given, settings, strategies as st
 
 from tree_sitter_analyzer.models import (
     AnalysisResult,
