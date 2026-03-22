@@ -1323,7 +1323,10 @@ class TestRunParallelRgSearches:
     @pytest.mark.asyncio
     async def test_run_single_command(self):
         """Test running single command."""
-        with patch("asyncio.create_subprocess_exec") as mock_subprocess:
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch("asyncio.create_subprocess_exec") as mock_subprocess:
             mock_proc = AsyncMock()
             mock_proc.returncode = 0
             mock_proc.communicate.return_value = (b"output", b"")
@@ -1340,7 +1343,10 @@ class TestRunParallelRgSearches:
     @pytest.mark.asyncio
     async def test_run_multiple_commands(self):
         """Test running multiple commands."""
-        with patch("asyncio.create_subprocess_exec") as mock_subprocess:
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch("asyncio.create_subprocess_exec") as mock_subprocess:
             mock_proc = AsyncMock()
             mock_proc.returncode = 0
             mock_proc.communicate.return_value = (b"output", b"")
@@ -1358,7 +1364,10 @@ class TestRunParallelRgSearches:
     @pytest.mark.asyncio
     async def test_run_with_timeout(self):
         """Test running with timeout."""
-        with patch("asyncio.create_subprocess_exec") as mock_subprocess:
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.fd_rg_utils.check_external_command",
+            return_value=True,
+        ), patch("asyncio.create_subprocess_exec") as mock_subprocess:
             mock_proc = AsyncMock()
             mock_proc.returncode = 0
             mock_proc.communicate.return_value = (b"output", b"")

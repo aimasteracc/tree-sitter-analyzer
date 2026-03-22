@@ -534,6 +534,7 @@ class TestSecurityBestPractices:
         assert hasattr(security_validator, "validate_path")
         assert hasattr(security_validator, "is_safe_path")
 
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_input_sanitization(self, safe_project_structure):
         """入力サニタイゼーションの確認"""
@@ -557,6 +558,7 @@ class TestSecurityBestPractices:
             # 正常な入力は処理される
             assert result["success"] is True
 
+    @pytest.mark.requires_fd
     @pytest.mark.asyncio
     async def test_resource_limits(self, safe_project_structure):
         """リソース制限の確認"""
@@ -575,6 +577,7 @@ class TestSecurityBestPractices:
         if "count" in result:
             assert result["count"] <= 10000  # 実装で定義された上限
 
+    @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_timeout_protection(self, safe_project_structure):
         """タイムアウト保護の確認"""

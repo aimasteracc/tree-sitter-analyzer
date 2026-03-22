@@ -264,6 +264,7 @@ class TestSingleToolPerformance:
         print(f"query_code実行時間: {metrics['execution_time']:.2f}秒")
         print(f"メモリ使用量: {metrics['memory_used'] / 1024 / 1024:.2f}MB")
 
+    @pytest.mark.requires_fd
     @pytest.mark.asyncio
     async def test_list_files_performance(
         self, large_project_structure, performance_monitor
@@ -447,6 +448,7 @@ class TestCompositeWorkflowPerformance:
 class TestLargeScalePerformance:
     """大規模プロジェクト対応のパフォーマンステスト（10,000ファイル対応）"""
 
+    @pytest.mark.requires_fd
     @pytest.mark.asyncio
     async def test_large_project_file_listing(
         self, large_project_structure, performance_monitor
