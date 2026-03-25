@@ -19,7 +19,7 @@ import os
 import tempfile
 import threading
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
@@ -37,10 +37,10 @@ from tree_sitter_analyzer.core.parser import ParseResult
 from tree_sitter_analyzer.exceptions import AnalysisError, ParseError
 from tree_sitter_analyzer.models import AnalysisResult
 
-
 # =============================================================================
 # Test Classes from test_engine.py (original)
 # =============================================================================
+
 
 @pytest.fixture
 def engine():
@@ -160,6 +160,7 @@ class Greeter:
 # Test Classes from test_engine_unification.py
 # =============================================================================
 
+
 class TestUnifiedEngineSingleton:
     """Verify that UnifiedAnalysisEngine acts as a singleton."""
 
@@ -258,6 +259,7 @@ class TestUnifiedEngineCompatibilityProperties:
 # =============================================================================
 # Test Classes from test_analysis_engine.py
 # =============================================================================
+
 
 class TestUnifiedAnalysisEngineInit:
     """Test cases for UnifiedAnalysisEngine initialization and singleton pattern."""
@@ -738,6 +740,7 @@ class TestMockLanguagePlugin:
 # Test Classes from test_core_engine_comprehensive.py
 # =============================================================================
 
+
 class TestAnalysisEngineInitComprehensive:
     """Test AnalysisEngine initialization"""
 
@@ -1057,6 +1060,7 @@ class TestAnalysisEngineConcurrency:
 # =============================================================================
 # Test Classes from test_core_engine_extended.py
 # =============================================================================
+
 
 class TestAnalysisEngineEdgeCases:
     """Test edge cases and error conditions in AnalysisEngine."""
@@ -1379,6 +1383,7 @@ class TestAnalysisEnginePerformanceExtended:
 # Test Classes from test_engine_manager.py
 # =============================================================================
 
+
 class TestEngineManagerGetInstance:
     """Test cases for get_instance method."""
 
@@ -1658,6 +1663,7 @@ class TestEngineManagerEdgeCases:
 # =============================================================================
 # Test Classes from test_engine_security_regression.py
 # =============================================================================
+
 
 class TestEngineSecurityRegression:
     """Regression tests for security boundaries"""

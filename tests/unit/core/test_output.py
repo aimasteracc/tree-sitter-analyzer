@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Tests for Output Manager
+Output 模块单元测试
 
-This module tests the output management functionality including
-various output formats, quiet mode, and structured data output.
+Tests for OutputManager and OutputFormatValidator classes.
 """
 
 import json
@@ -11,7 +10,10 @@ from io import StringIO
 
 import pytest
 
-# Import the module under test
+from tree_sitter_analyzer.mcp.tools.output_format_validator import (
+    OutputFormatValidator,
+    get_default_validator,
+)
 from tree_sitter_analyzer.output_manager import (
     OutputManager,
     output_data,
@@ -35,8 +37,13 @@ def output_manager():
     return OutputManager()
 
 
-class TestOutputManager:
-    """Test cases for OutputManager class"""
+# =============================================================================
+# OutputManager Tests
+# =============================================================================
+
+
+class TestOutputManagerInit:
+    """OutputManager 初始化测试"""
 
     def test_output_manager_initialization(self):
         """Test OutputManager initializes correctly"""
@@ -49,6 +56,10 @@ class TestOutputManager:
 
         manager_json = OutputManager(json_output=True)
         assert manager_json.json_output
+
+
+class TestOutputManagerBasicOutput:
+    """OutputManager 基本输出测试"""
 
     def test_output_info(self, monkeypatch, output_manager):
         """Test info output"""
@@ -95,6 +106,18 @@ class TestOutputManager:
         assert parsed["key"] == "value"
         assert parsed["number"] == 42
 
+    def test_output_section(self, monkeypatch, output_manager):
+        """Test section output"""
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        output_manager.output_section("Test Section")
+        output = mock_stdout.getvalue()
+        assert "--- Test Section ---" in output
+
+
+class TestOutputManagerDataOutput:
+    """OutputManager 数据输出测试"""
+
     def test_output_data_dict(self, monkeypatch, output_manager):
         """Test data output with dictionary"""
         mock_stdout = StringIO()
@@ -102,6 +125,7 @@ class TestOutputManager:
         test_data = {"name": "test", "value": 123}
         output_manager.output_data(test_data)
         output = mock_stdout.getvalue()
+
         # Expect JSON format output
         parsed = json.loads(output.strip())
         assert parsed["name"] == "test"
@@ -114,6 +138,7 @@ class TestOutputManager:
         test_data = ["item1", "item2", "item3"]
         output_manager.output_data(test_data)
         output = mock_stdout.getvalue()
+
         # Expect JSON format output
         parsed = json.loads(output.strip())
         assert parsed == ["item1", "item2", "item3"]
@@ -126,13 +151,9 @@ class TestOutputManager:
         output = mock_stdout.getvalue()
         assert "Simple string output" in output
 
-    def test_output_section(self, monkeypatch, output_manager):
-        """Test section output"""
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-        output_manager.output_section("Test Section")
-        output = mock_stdout.getvalue()
-        assert "--- Test Section ---" in output
+
+class TestOutputManagerQueryResults:
+    """OutputManager 查询结果输出测试"""
 
     def test_output_query_results(self, monkeypatch, output_manager):
         """Test query results output"""
@@ -159,6 +180,10 @@ class TestOutputManager:
         assert "class_declaration" in output
         assert "method_declaration" in output
         assert "public class Test" in output
+
+
+class TestOutputManagerModes:
+    """OutputManager 模式测试"""
 
     def test_quiet_mode(self, monkeypatch):
         """Test quiet mode suppresses output"""
@@ -187,8 +212,13 @@ class TestOutputManager:
         assert parsed["test"] is True
 
 
+# =============================================================================
+# Module-Level Functions Tests
+# =============================================================================
+
+
 class TestModuleLevelFunctions:
-    """Test module-level convenience functions"""
+    """模块级别便捷函数测试"""
 
     def test_output_info_function(self, monkeypatch):
         """Test module-level output_info function"""
@@ -259,7 +289,7 @@ class TestModuleLevelFunctions:
 
 
 class TestSpecializedOutputFunctions:
-    """Test specialized output functions"""
+    """专用输出函数测试"""
 
     def test_output_statistics(self, monkeypatch):
         """Test statistics output"""
@@ -315,8 +345,13 @@ class TestSpecializedOutputFunctions:
             assert ext in output
 
 
+# =============================================================================
+# Edge Cases Tests
+# =============================================================================
+
+
 class TestOutputManagerEdgeCases:
-    """Test edge cases and error conditions"""
+    """边缘情况测试"""
 
     def test_output_manager_with_none_data(self, output_manager):
         """Test output manager handles None data gracefully"""
@@ -357,3 +392,131 @@ class TestOutputManagerEdgeCases:
         assert parsed["project"]["name"] == "test-project"
         assert "java" in parsed["project"]["languages"]
         assert parsed["project"]["statistics"]["classes"] == 10
+
+
+# =============================================================================
+# OutputFormatValidator Tests
+# =============================================================================
+
+
+class TestOutputFormatValidator:
+    """OutputFormatValidator 测试"""
+
+    def test_single_format_parameter_valid(self):
+        """Test that single format parameter is valid."""
+        validator = OutputFormatValidator()
+
+        # Each format parameter should be valid individually
+        validator.validate_output_format_exclusion({"total_only": True})
+        validator.validate_output_format_exclusion({"count_only_matches": True})
+        validator.validate_output_format_exclusion({"summary_only": True})
+        validator.validate_output_format_exclusion({"group_by_file": True})
+        validator.validate_output_format_exclusion({"suppress_output": True})
+
+    def test_no_format_parameter_valid(self):
+        """Test that no format parameter is valid (normal mode)."""
+        validator = OutputFormatValidator()
+        validator.validate_output_format_exclusion({})
+        validator.validate_output_format_exclusion({"query": "test"})
+
+    def test_multiple_format_parameters_raises_error(self):
+        """Test that multiple format parameters raise ValueError."""
+        validator = OutputFormatValidator()
+
+        # Test various combinations - accept both English and Japanese error messages
+        with pytest.raises(ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"):
+            validator.validate_output_format_exclusion(
+                {"total_only": True, "count_only_matches": True}
+            )
+
+        with pytest.raises(ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"):
+            validator.validate_output_format_exclusion(
+                {"total_only": True, "summary_only": True}
+            )
+
+        with pytest.raises(ValueError, match="Output Format Parameter Error|出力形式パラメータエラー"):
+            validator.validate_output_format_exclusion(
+                {
+                    "count_only_matches": True,
+                    "group_by_file": True,
+                    "summary_only": True,
+                }
+            )
+
+    def test_error_message_contains_token_guidance(self):
+        """Test that error messages include token efficiency guidance."""
+        validator = OutputFormatValidator()
+
+        try:
+            validator.validate_output_format_exclusion(
+                {"total_only": True, "summary_only": True}
+            )
+            assert False, "Should have raised ValueError"
+        except ValueError as e:
+            error_msg = str(e)
+            # Check for key elements
+            assert "total_only" in error_msg
+            assert "summary_only" in error_msg
+            assert "~10 tokens" in error_msg or "トークン" in error_msg
+            assert "Mutually Exclusive" in error_msg or "相互排他的" in error_msg
+
+    def test_get_active_format(self):
+        """Test getting the active format from arguments."""
+        validator = OutputFormatValidator()
+
+        assert validator.get_active_format({}) == "normal"
+        assert validator.get_active_format({"query": "test"}) == "normal"
+        assert validator.get_active_format({"total_only": True}) == "total_only"
+        assert (
+            validator.get_active_format({"count_only_matches": True})
+            == "count_only_matches"
+        )
+        assert validator.get_active_format({"summary_only": True}) == "summary_only"
+        assert validator.get_active_format({"group_by_file": True}) == "group_by_file"
+        assert (
+            validator.get_active_format({"suppress_output": True}) == "suppress_output"
+        )
+
+    def test_get_default_validator(self):
+        """Test getting the default validator instance."""
+        validator1 = get_default_validator()
+        validator2 = get_default_validator()
+
+        # Should return the same instance
+        assert validator1 is validator2
+        assert isinstance(validator1, OutputFormatValidator)
+
+    def test_false_values_ignored(self):
+        """Test that False values are ignored (not treated as specified)."""
+        validator = OutputFormatValidator()
+
+        # False values should be ignored
+        validator.validate_output_format_exclusion(
+            {
+                "total_only": False,
+                "count_only_matches": False,
+                "summary_only": True,  # Only this one is active
+            }
+        )
+
+        # This should also be valid
+        validator.validate_output_format_exclusion(
+            {
+                "total_only": False,
+                "count_only_matches": False,
+                "summary_only": False,
+                "group_by_file": False,
+            }
+        )
+
+    def test_language_detection(self):
+        """Test language detection mechanism."""
+        validator = OutputFormatValidator()
+
+        # Default should be 'en'
+        lang = validator._detect_language()
+        assert lang in ["en", "ja"]
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])
