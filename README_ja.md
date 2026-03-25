@@ -10,7 +10,7 @@
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🚀 **AI時代のエンタープライズグレードコード解析ツール** - 深いAI統合 · 強力な検索 · 17言語対応 · インテリジェント分析
+> 🔎 **大規模リポジトリ向けのAI用エビデンスベースコードナビゲーション** - MCP統合 · 最小コンテキスト取得 · 重い前処理なしの検索
 
 ---
 
@@ -30,6 +30,22 @@
 
 <!-- GIF プレースホルダー - 作成手順は docs/assets/demo-placeholder.md を参照 -->
 *デモGIF準備中 - SMARTワークフローとAI統合のデモンストレーション*
+
+---
+
+## 🎯 Tree-sitter Analyzer が解決すること
+
+Tree-sitter Analyzer は、大規模コードベースで AI アシスタントが本当に必要な部分だけを読めるようにする、オープンソースの MCP / CLI ツールキットです。
+
+- **ファイル丸ごと投入ではなく最小コンテキスト**: AI に渡す前に、本当に必要なコード断片だけを絞り込みます
+- **エビデンスベースの解析**: tree-sitter の構造解析と `fd` / `ripgrep` を組み合わせて、関連ファイル・シンボル・経路を見つけます
+- **重い前処理に依存しない**: フルインデックスが遅い、古くなりやすい、保守しづらいリポジトリでも使いやすい設計です
+
+### よくあるユースケース
+
+- 非常に大きなファイルやモジュールの役割を、全文を AI に渡さずに理解する
+- 複雑なリポジトリで、業務ロジックや UI ハンドラ、バグに関係するコード経路を追跡する
+- Java など巨大コードベースで、AI に解析や変更依頼を出す前にコンテキストを絞り込む
 
 ---
 
@@ -62,6 +78,8 @@ uv run tree-sitter-analyzer --show-supported-languages
 ## 🤖 AI統合
 
 MCPプロトコルでAIアシスタントにTree-sitter Analyzerを設定します。
+
+特に、非常に大きなファイル、ノイズの多いリポジトリ全体コンテキスト、あるいは一括投入コストが高いレガシーコードで効果を発揮します。
 
 ### Claude Desktop / Cursor / Roo Code
 

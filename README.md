@@ -10,7 +10,7 @@
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🚀 **Enterprise-Grade Code Analysis Tool for the AI Era** - Deep AI Integration · Powerful Search · 17 Languages · Intelligent Analysis
+> 🔎 **Evidence-based code navigation for AI on large repositories** - MCP integration · Minimal context retrieval · Search without heavy preprocessing
 
 ---
 
@@ -31,6 +31,22 @@
 
 <!-- GIF placeholder - see docs/assets/demo-placeholder.md for creation instructions -->
 *Demo GIF coming soon - showcasing AI integration with SMART workflow*
+
+---
+
+## 🎯 Why Tree-sitter Analyzer
+
+Tree-sitter Analyzer is an open-source MCP and CLI toolkit for helping AI assistants read only what matters in large codebases.
+
+- **Minimal context, not whole-file stuffing**: retrieve the smallest useful code regions before sending them to AI
+- **Evidence-based analysis**: combine tree-sitter structure with `fd` and `ripgrep` to surface relevant files, symbols, and paths
+- **No heavy preprocessing required**: useful on messy repositories where full indexing can be slow, stale, or difficult to maintain
+
+### Common Use Cases
+
+- Understand what a very large file or module is doing without loading the entire file into an AI prompt
+- Trace business logic, UI handlers, or bug-related code paths across a complex repository
+- Narrow AI context for Java and other large codebases before asking for analysis or changes
 
 ---
 
@@ -63,6 +79,8 @@ uv run tree-sitter-analyzer --show-supported-languages
 ## 🤖 AI Integration
 
 Configure your AI assistant to use Tree-sitter Analyzer via MCP protocol.
+
+This works especially well when your assistant struggles with very large files, noisy repository-wide context, or legacy code that is too expensive to load all at once.
 
 ### Claude Desktop / Cursor / Roo Code
 
