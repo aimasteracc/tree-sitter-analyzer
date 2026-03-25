@@ -10,7 +10,7 @@
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🚀 **AI时代的企业级代码分析工具** - 深度AI集成 · 强大搜索 · 17种语言 · 智能分析
+> 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
 
 ---
 
@@ -30,6 +30,22 @@
 
 <!-- GIF占位符 - 创建说明请参见 docs/assets/demo-placeholder.md -->
 *演示GIF即将推出 - 展示SMART工作流的AI集成*
+
+---
+
+## 🎯 Tree-sitter Analyzer 解决什么问题
+
+Tree-sitter Analyzer 是一个开源的 MCP 和 CLI 工具集，帮助 AI 助手在大型代码库中只读取真正需要的部分。
+
+- **不是整文件硬塞，而是最小上下文**: 在把代码交给 AI 之前，先缩小到最有用的代码片段
+- **基于证据的分析**: 结合 tree-sitter 的结构解析与 `fd`、`ripgrep`，定位相关文件、符号和路径
+- **不依赖重型预处理**: 对那些全库索引慢、易过期、难维护的复杂仓库更友好
+
+### 常见使用场景
+
+- 不把整个大文件都塞给 AI，也能理解某个超大文件或模块到底在做什么
+- 在复杂仓库里追踪业务逻辑、UI 处理链路或与 bug 相关的代码路径
+- 在 Java 等大型代码库中，先缩小 AI 所需上下文，再让它继续分析或修改
 
 ---
 
@@ -62,6 +78,8 @@ uv run tree-sitter-analyzer --show-supported-languages
 ## 🤖 AI集成
 
 通过MCP协议配置AI助手使用Tree-sitter Analyzer。
+
+当你的 AI 助手面对超大文件、噪音很多的全仓库上下文，或者一次性加载成本很高的遗留代码时，这种方式尤其有用。
 
 ### Claude Desktop / Cursor / Roo Code
 
