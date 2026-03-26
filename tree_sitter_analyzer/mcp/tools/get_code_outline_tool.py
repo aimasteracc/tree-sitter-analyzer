@@ -26,6 +26,7 @@ from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
+from ..utils.format_helper import format_as_json, format_as_toon
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -91,6 +92,15 @@ class GetCodeOutlineTool(BaseMCPTool):
                     ),
                     "default": False,
                 },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "toon"],
+                    "description": (
+                        "Output format: 'toon' for compact TOON format (50-70% token savings), "
+                        "or 'json' for standard JSON. Default 'toon'."
+                    ),
+                    "default": "toon",
+                },
             },
             "required": ["file_path"],
             "additionalProperties": False,
@@ -123,6 +133,12 @@ class GetCodeOutlineTool(BaseMCPTool):
         for bool_field in ("include_fields", "include_imports"):
             if bool_field in arguments and not isinstance(arguments[bool_field], bool):
                 raise ValueError(f"{bool_field} must be a boolean")
+
+        # 验证 output_format
+        if "output_format" in arguments:
+            output_format = arguments["output_format"]
+            if output_format not in ("json", "toon"):
+                return False  # 无效格式返回 False
 
         return True
 
@@ -279,6 +295,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             language = arguments.get("language")
             include_fields = arguments.get("include_fields", False)
             include_imports = arguments.get("include_imports", False)
+            output_format = arguments.get("output_format", "toon")
 
             resolved_path = self.resolve_and_validate_file_path(file_path)
 
@@ -309,7 +326,15 @@ class GetCodeOutlineTool(BaseMCPTool):
                 include_imports=include_imports,
             )
 
-            return {"success": True, "outline": outline}
+            result = {"success": True, "outline": outline}
+
+            # 根据 output_format 格式化输出
+            if output_format == "toon":
+                formatted_text = format_as_toon(result)
+            else:  # json
+                formatted_text = format_as_json(result)
+
+            return [{"type": "text", "text": formatted_text}]
 
         except Exception as e:
             self.logger.error(f"Error in get_code_outline: {e}")
@@ -323,6 +348,7 @@ class GetCodeOutlineTool(BaseMCPTool):
                 "Return a hierarchical structural outline of a source file "
                 "(package → class → method tree with line numbers) "
                 "WITHOUT reading the method bodies. "
+                "Supports TOON format (default) for 50-70% token savings. "
                 "Use this BEFORE extract_code_section to navigate large files efficiently. "
                 "Enables outline-first retrieval: understand structure first, "
                 "then fetch only the specific code you need."

@@ -12,7 +12,6 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import GetCodeOutlineTool
 
-
 # ---------------------------------------------------------------------------
 # 测试辅助：构造 mock 分析结果
 # ---------------------------------------------------------------------------
@@ -425,6 +424,8 @@ class TestGetCodeOutlineToolExecute:
     @pytest.mark.asyncio
     async def test_execute_returns_success(self):
         """正常路径下 execute 应返回 success=True 及 outline。"""
+        import json
+
         mock_result = self._make_mock_result()
 
         with (
@@ -436,7 +437,16 @@ class TestGetCodeOutlineToolExecute:
             mock_path.return_value.exists.return_value = True
             self.tool.analysis_engine.analyze = AsyncMock(return_value=mock_result)
 
-            result = await self.tool.execute({"file_path": "MyService.java"})
+            # 显式请求 JSON 格式以便测试结构
+            content_blocks = await self.tool.execute({"file_path": "MyService.java", "output_format": "json"})
+
+        # 验证返回 MCP 内容块列表
+        assert isinstance(content_blocks, list)
+        assert len(content_blocks) == 1
+        assert content_blocks[0]["type"] == "text"
+
+        # 解析 JSON 内容
+        result = json.loads(content_blocks[0]["text"])
 
         assert result["success"] is True
         assert "outline" in result
@@ -494,6 +504,8 @@ class TestGetCodeOutlineToolExecute:
     @pytest.mark.asyncio
     async def test_execute_with_include_fields(self):
         """include_fields=True 时 outline.classes[*] 含 fields 键。"""
+        import json
+
         field = MagicMock()
         field.element_type = "variable"
         field.name = "count"
@@ -522,9 +534,13 @@ class TestGetCodeOutlineToolExecute:
         ):
             mock_path.return_value.exists.return_value = True
             self.tool.analysis_engine.analyze = AsyncMock(return_value=mock_result)
-            result = await self.tool.execute(
-                {"file_path": "Counter.java", "include_fields": True}
+            # 显式请求 JSON 格式以便测试结构
+            content_blocks = await self.tool.execute(
+                {"file_path": "Counter.java", "include_fields": True, "output_format": "json"}
             )
+
+        # 解析 JSON 内容
+        result = json.loads(content_blocks[0]["text"])
 
         assert "fields" in result["outline"]["classes"][0]
         assert result["outline"]["classes"][0]["fields"][0]["name"] == "count"
