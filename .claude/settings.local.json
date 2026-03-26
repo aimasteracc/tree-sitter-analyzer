@@ -14,7 +14,16 @@
       "Bash(bun:*)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(python:*)",
+      "Bash(uv run python:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(uv pip install:*)",
+      "Bash(mutmut run:*)",
+      "Bash(uv run mutmut:*)",
+      "Bash(git ls-files:*)"
     ]
   }
 }

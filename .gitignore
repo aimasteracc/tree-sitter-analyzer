@@ -327,3 +327,6 @@ tests/debug_artifacts/
 
 # Internal design documents (not for public)
 docs/designs/tree-sitter-analyzer-*.md
+
+# gstack compiled binaries (110MB+, tracked by historical mistake)
+.claude/skills/gstack/bin/*.exe
