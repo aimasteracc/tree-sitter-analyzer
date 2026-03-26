@@ -249,12 +249,11 @@ class ToonEncoder:
         data = task.data
         obj_id = id(data)
 
-        # Check for circular reference
+        # Check for circular reference (优雅降级：返回占位符)
         if obj_id in seen_ids:
-            raise ToonEncodeError(
-                "Circular reference detected",
-                data="<circular reference>",
-            )
+            indent_str = " " * (task.indent * 2)
+            output.append(f"{indent_str}[...]")
+            return  # 跳过后续处理
         seen_ids.add(obj_id)
 
         # Add end task first (will be processed last)
@@ -321,12 +320,10 @@ class ToonEncoder:
 
         obj_id = id(items)
 
-        # Check for circular reference
+        # Check for circular reference (优雅降级：返回占位符)
         if obj_id in seen_ids:
-            raise ToonEncodeError(
-                "Circular reference detected in list",
-                data="<circular reference>",
-            )
+            output.append("[...]")
+            return  # 跳过后续处理
         seen_ids.add(obj_id)
 
         # For simple lists, encode inline
@@ -371,12 +368,11 @@ class ToonEncoder:
 
         obj_id = id(items)
 
-        # Check for circular reference
+        # Check for circular reference (优雅降级：返回占位符)
         if obj_id in seen_ids:
-            raise ToonEncodeError(
-                "Circular reference detected in array table",
-                data="<circular reference>",
-            )
+            indent_str = "  " * indent
+            output.append(f"{indent_str}[...]")
+            return  # 跳过后续处理
         seen_ids.add(obj_id)
 
         try:
@@ -424,6 +420,13 @@ class ToonEncoder:
                             str(self.encode_value(v, seen_ids)) for v in value.values()
                         )
                         row_values.append(f"({dict_values})")
+                    elif isinstance(value, str):
+                        # 仅对"长内容"字段（docstring、description 等）进行截断
+                        # 结构化字段（name、type、visibility 等）保持完整
+                        if key in ("docstring", "description", "content", "comment", "body", "text", "message"):
+                            row_values.append(self._simplify_compact_value(value))
+                        else:
+                            row_values.append(self.encode_value(value, seen_ids))
                     else:
                         row_values.append(self.encode_value(value, seen_ids))
                 row = self.delimiter.join(row_values)
@@ -541,28 +544,26 @@ class ToonEncoder:
             if isinstance(item, list):
                 obj_id = id(item)
                 if obj_id in seen_ids:
-                    raise ToonEncodeError(
-                        "Circular reference detected in nested list",
-                        data="<circular reference>",
-                    )
-                seen_ids.add(obj_id)
-                try:
-                    encoded_items.append(self._encode_simple_list(item, seen_ids))
-                finally:
-                    seen_ids.discard(obj_id)
+                    # 优雅降级：添加占位符
+                    encoded_items.append("[...]")
+                else:
+                    seen_ids.add(obj_id)
+                    try:
+                        encoded_items.append(self._encode_simple_list(item, seen_ids))
+                    finally:
+                        seen_ids.discard(obj_id)
             elif isinstance(item, dict):
                 obj_id = id(item)
                 if obj_id in seen_ids:
-                    raise ToonEncodeError(
-                        "Circular reference detected in nested dict",
-                        data="<circular reference>",
-                    )
-                # For dicts in simple lists, use JSON-like format
-                seen_ids.add(obj_id)
-                try:
-                    encoded_items.append(self._encode_inline_dict(item, seen_ids))
-                finally:
-                    seen_ids.discard(obj_id)
+                    # 优雅降级：添加占位符
+                    encoded_items.append("{...}")
+                else:
+                    # For dicts in simple lists, use JSON-like format
+                    seen_ids.add(obj_id)
+                    try:
+                        encoded_items.append(self._encode_inline_dict(item, seen_ids))
+                    finally:
+                        seen_ids.discard(obj_id)
             else:
                 encoded_items.append(self.encode_value(item, seen_ids))
 
@@ -866,6 +867,13 @@ class ToonEncoder:
                         str(self.encode_value(v, seen_ids)) for v in value.values()
                     )
                     row_values.append(f"({dict_values})")
+                elif isinstance(value, str):
+                    # 仅对"长内容"字段（docstring、description 等）进行截断
+                    # 结构化字段（name、type、visibility 等）保持完整
+                    if key in ("docstring", "description", "content", "comment", "body", "text", "message"):
+                        row_values.append(self._simplify_compact_value(value))
+                    else:
+                        row_values.append(self.encode_value(value, seen_ids))
                 else:
                     row_values.append(self.encode_value(value, seen_ids))
             row = self.delimiter.join(row_values)
