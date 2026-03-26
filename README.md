@@ -10,12 +10,21 @@
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🔎 **Evidence-based code navigation for AI on large repositories** - MCP integration · Minimal context retrieval · Search without heavy preprocessing
+> **Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development** — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
+
+Its job is not just to parse code. Its job is to help humans and AI agents fetch only the code context they actually need, safely, quickly, and with structural precision.
+
+```
+find the right files → find the right matches → extract the right structure → send only the right context
+```
+
+**17 languages · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
 
 ---
 
 ## ✨ What's New in v1.10.4
 
+- **`get_code_outline` MCP tool**: Outline-first navigation — returns hierarchical structure (package → class → method tree with line numbers) without body content. Use before `extract_code_section` to navigate large files at 60-80% lower token cost.
 - **Vertex AI Compatibility**: Fixed MCP tool JSON Schema compatibility with Vertex AI API by removing `oneOf`/`anyOf`/`allOf` constraints
 - **Format Change Management System**: Complete system for tracking and managing format changes with database tracking and pre-commit validation
 - **Behavior Profile Comparison**: CLI tool for comparing code analysis behavior profiles between versions
@@ -191,6 +200,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 | Feature | Description | Learn More |
 |---------|-------------|------------|
 | **SMART Workflow** | Set-Map-Analyze-Retrieve-Trace methodology | [Guide](docs/smart-workflow.md) |
+| **Outline-First Navigation** | `get_code_outline` — hierarchical structure map before content retrieval | [MCP Tools](docs/api/mcp_tools_specification.md) |
 | **MCP Protocol** | Native AI assistant integration | [API Docs](docs/api/mcp_tools_specification.md) |
 | **Token Optimization** | Up to 95% token reduction | [Features](docs/features.md) |
 | **File Search** | fd-based high-performance discovery | [CLI Reference](docs/cli-reference.md) |

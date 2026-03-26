@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr:*)",
+      "Bash(uv run:*)",
+      "Bash(gh api:*)",
+      "Bash(git clone:*)",
+      "Bash(git -C:*)",
+      "Bash(mkdir:*)",
+      "Bash(ls:*)",
+      "Bash(pwd:*)",
+      "Bash(echo:*)",
+      "Bash(./setup:*)",
+      "Bash(bun:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git checkout:*)"
+    ]
+  }
+}

@@ -15,12 +15,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "analyze_scale_tool",
         "class": "AnalyzeScaleTool",
     },
-    # Future tools will be added here
-    # "read_code_partial": {
-    #     "description": "Read partial content from code files",
-    #     "module": "read_partial_tool",
-    #     "class": "ReadPartialTool",
-    # },
+    "get_code_outline": {
+        "description": (
+            "Return hierarchical outline (package → class → method) without body content. "
+            "Use before extract_code_section for outline-first navigation."
+        ),
+        "module": "get_code_outline_tool",
+        "class": "GetCodeOutlineTool",
+    },
 }
 
 __all__ = [
