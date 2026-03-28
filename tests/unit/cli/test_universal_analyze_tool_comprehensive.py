@@ -98,7 +98,8 @@ class TestArgumentValidation:
             "analysis_type": "detailed",
             "include_ast": True,
             "include_queries": True,
-        , "output_format": "json"}
+            "output_format": "json",
+        }
         assert tool.validate_arguments(args) is True
 
     def test_validate_arguments_missing_file_path(self):
@@ -326,7 +327,8 @@ class TestExecution:
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_ast": True,
-            , "output_format": "json"}
+                "output_format": "json",
+            }
             result = await tool.execute(args)
 
             assert "ast_info" in result
@@ -364,7 +366,8 @@ class TestExecution:
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_queries": True,
-            , "output_format": "json"}
+                "output_format": "json",
+            }
             result = await tool.execute(args)
 
             assert "available_queries" in result
