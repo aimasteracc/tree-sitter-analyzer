@@ -74,6 +74,7 @@ from .tools.list_files_tool import ListFilesTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
+from .tools.trace_impact_tool import TraceImpactTool
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
 
@@ -129,6 +130,8 @@ class TreeSitterAnalyzerMCPServer:
         self.find_and_grep_tool = FindAndGrepTool(project_root)  # find_and_grep
         # Outline-first navigation tool
         self.get_code_outline_tool = GetCodeOutlineTool(project_root)  # get_code_outline
+        # Impact analysis tool
+        self.trace_impact_tool = TraceImpactTool(project_root)  # trace_impact
 
         # Intent Aliases resolver (intent-based tool names → canonical names)
         self.intent_alias_resolver = IntentAliasResolver()
@@ -432,6 +435,7 @@ class TreeSitterAnalyzerMCPServer:
                 Tool(**self.search_content_tool.get_tool_definition()),
                 Tool(**self.find_and_grep_tool.get_tool_definition()),
                 Tool(**self.get_code_outline_tool.get_tool_definition()),
+                Tool(**self.trace_impact_tool.get_tool_definition()),
             ]
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -565,6 +569,9 @@ class TreeSitterAnalyzerMCPServer:
 
                 elif name == "get_code_outline":
                     result = await self.get_code_outline_tool.execute(arguments)
+
+                elif name == "trace_impact":
+                    result = await self.trace_impact_tool.execute(arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")

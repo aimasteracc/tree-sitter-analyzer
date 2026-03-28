@@ -23,6 +23,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "get_code_outline_tool",
         "class": "GetCodeOutlineTool",
     },
+    "trace_impact": {
+        "description": (
+            "Find all usage sites of a symbol (method/class/function) to assess change impact. "
+            "Uses ripgrep for fast search with optional language filtering."
+        ),
+        "module": "trace_impact_tool",
+        "class": "TraceImpactTool",
+    },
 }
 
 __all__ = [
