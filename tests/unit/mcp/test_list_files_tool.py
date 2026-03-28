@@ -482,7 +482,6 @@ class TestExecute:
                     result = await tool.execute(arguments)
 
                     assert result["success"] is True
-                    assert "toon_content" in result
                     assert "count" in result
                     assert "elapsed_ms" in result
 

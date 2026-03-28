@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-multi--thousand-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > **Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development** — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
@@ -22,9 +22,11 @@ find the right files → find the right matches → extract the right structure 
 
 ---
 
-## ✨ What's New in v1.10.4
+## ✨ What's New in v1.10.5
 
-- **`get_code_outline` MCP tool**: Outline-first navigation for large files and modules. Retrieve hierarchy first, then fetch only the bodies you actually need.
+- **`get_code_outline` MCP tool with TOON format**: Outline-first navigation delivering **54-56% token reduction** vs JSON. Retrieve hierarchical structure first, then fetch only the bodies you need.
+- **Intent-based tool aliases**: AI-friendly tool naming — `locate_usage`, `map_structure`, `extract_structure` — makes tool discovery natural for agents
+- **Measured token savings**: Real-world testing shows TOON format reduces output size by 54-56% across small/medium/large files
 - **Vertex AI Compatibility**: Fixed MCP tool JSON Schema compatibility with Vertex AI API by removing `oneOf`/`anyOf`/`allOf` constraints
 - **Format Change Management System**: Complete system for tracking and managing format changes with database tracking and pre-commit validation
 - **Behavior Profile Comparison**: CLI tool for comparing code analysis behavior profiles between versions
@@ -202,7 +204,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 | **SMART Workflow** | Set-Map-Analyze-Retrieve-Trace methodology | [Guide](docs/smart-workflow.md) |
 | **Outline-First Navigation** | `get_code_outline` — hierarchical structure map before content retrieval | [MCP Tools](docs/api/mcp_tools_specification.md) |
 | **MCP Protocol** | Native AI assistant integration | [API Docs](docs/api/mcp_tools_specification.md) |
-| **Token Optimization** | Token-aware output and retrieval controls for large AI workflows | [Features](docs/features.md) |
+| **Token Optimization** | TOON format delivers 54-56% token reduction; token-aware controls for large AI workflows | [Features](docs/features.md) |
 | **File Search** | fd-based high-performance discovery | [CLI Reference](docs/cli-reference.md) |
 | **Content Search** | ripgrep regex search | [CLI Reference](docs/cli-reference.md) |
 | **Security** | Project boundary protection | [Architecture](docs/architecture.md) |

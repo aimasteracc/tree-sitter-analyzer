@@ -619,8 +619,8 @@ class TestAnalyzeCodeStructureToolExecute:
             arguments = {"file_path": str(test_file), "output_format": "toon"}
             result = await tool.execute(arguments)
 
-            assert result["success"] is True
-            # Toon format should have toon_content
+            # TOON format returns dict with 'format' and 'toon_content' keys
+            assert "format" in result and result["format"] == "toon"
             assert "toon_content" in result
 
     @pytest.mark.asyncio

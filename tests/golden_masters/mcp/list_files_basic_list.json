@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "count": 1,
+  "truncated": false,
+  "elapsed_ms": 1008,
+  "results": [
+    {
+      "path": "C:/Users/aisheng.yu/AppData/Local/Temp/tmpir6f4112/test_example.py",
+      "is_dir": false,
+      "size_bytes": 155,
+      "mtime": 1774624250,
+      "ext": "py"
+    }
+  ]
+}
