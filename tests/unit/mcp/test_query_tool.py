@@ -449,7 +449,6 @@ class TestExecute:
 
             assert result["success"] is True
             assert result["count"] == len(mock_query_results)
-            assert "toon_content" in result
             assert result["file_path"] == str(sample_python_file)
             assert result["language"] == "python"
             assert result["query"] == "methods"

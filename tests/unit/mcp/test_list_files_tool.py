@@ -798,5 +798,4 @@ class TestExecute:
 
                     # Verify results were truncated
                     assert result["truncated"] is True
-                    # In toon format, results are in toon_content
-                    assert "toon_content" in result
+                    assert result["count"] == 10000  # Hard cap
