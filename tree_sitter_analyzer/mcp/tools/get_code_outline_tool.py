@@ -334,7 +334,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             else:  # json
                 formatted_text = format_as_json(result)
 
-            return [{"type": "text", "text": formatted_text}]
+            return {"content": [{"type": "text", "text": formatted_text}]}
 
         except Exception as e:
             self.logger.error(f"Error in get_code_outline: {e}")

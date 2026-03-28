@@ -734,11 +734,14 @@ class TreeSitterAnalyzerMCPServer:
         elif name == "query_code":
             return await self.query_tool.execute(arguments)
         elif name == "list_files":
-            return await self.list_files_tool.execute(arguments)
+            result: dict[str, Any] = await self.list_files_tool.execute(arguments)
+            return result
         elif name == "search_content":
-            return await self.search_content_tool.execute(arguments)
+            result = await self.search_content_tool.execute(arguments)
+            return result
         elif name == "find_and_grep":
-            return await self.find_and_grep_tool.execute(arguments)
+            result = await self.find_and_grep_tool.execute(arguments)
+            return result
         elif name == "get_code_outline":
             return await self.get_code_outline_tool.execute(arguments)
         else:

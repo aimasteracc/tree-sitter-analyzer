@@ -15,15 +15,13 @@ Test Coverage:
 """
 
 import json
-import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
 from tree_sitter_analyzer.core.analysis_session import AnalysisSession
-from tree_sitter_analyzer.exceptions import SessionIntegrityError
 
 
 class TestAnalysisSessionCreation:
@@ -391,7 +389,7 @@ class TestSessionRetention:
 
     def test_default_retention_90_days(self):
         """默认保留策略应为 90 天"""
-        session = AnalysisSession(
+        _ = AnalysisSession(
             input_files=["/file.py"],
             output_format="toon"
         )

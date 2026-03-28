@@ -99,6 +99,7 @@ class AnalysisSession:
         self.file_hashes = self._calculate_file_hashes(input_files)
 
         # Git commit
+        self.git_commit: str | None
         if git_commit:
             # 手动提供的 git_commit 优先
             self.git_commit = git_commit
@@ -140,7 +141,7 @@ class AnalysisSession:
         Returns:
             {file_path: sha256_hash} 字典，文件不存在时 hash 为 None
         """
-        hashes = {}
+        hashes: dict[str, str | None] = {}
         for file_path in file_paths:
             path = Path(file_path)
             if not path.exists():

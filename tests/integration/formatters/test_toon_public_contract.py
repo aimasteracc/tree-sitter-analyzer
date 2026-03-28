@@ -135,7 +135,7 @@ class TestToonEncoderPublicContract:
             assert "[...]" in output or "..." in output
         except RecursionError:
             # 如果抛出递归错误，说明契约被打破
-            raise AssertionError("Circular reference caused stack overflow - contract broken!")
+            raise AssertionError("Circular reference caused stack overflow - contract broken!") from None
 
     def test_contract_priority_fields_order_respected(self):
         """契约：高优先级字段优先保留（当字段数超限时）"""

@@ -17,11 +17,9 @@ Features:
 - Case-sensitive (大文字小文字を区別)
 """
 
-from typing import Dict
-
 
 # Intent Alias マッピング: 意図ベースの名前 → 実装ベースの tool名
-INTENT_ALIASES: Dict[str, str] = {
+INTENT_ALIASES: dict[str, str] = {
     # Search & Find 系
     "locate_usage": "search_content",  # 使用箇所を特定する
     "find_usage": "search_content",  # 使用箇所を見つける（locate_usage の代替）
@@ -46,7 +44,7 @@ class IntentAliasResolver:
         tool_name = resolver.resolve("locate_usage")  # → "search_content"
     """
 
-    def __init__(self, aliases: Dict[str, str] | None = None) -> None:
+    def __init__(self, aliases: dict[str, str] | None = None) -> None:
         """
         Initialize IntentAliasResolver
 
@@ -112,7 +110,7 @@ def get_tool_name_from_alias(name: str) -> str:
     return resolver.resolve(name)
 
 
-def get_all_aliases() -> Dict[str, str]:
+def get_all_aliases() -> dict[str, str]:
     """
     全ての intent alias マッピングを取得
 

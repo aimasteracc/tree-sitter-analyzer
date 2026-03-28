@@ -134,7 +134,7 @@ class ToonEncoder:
         self.max_depth = max_depth
         self.normalize_paths = normalize_paths
         # 性能优化：缓存同构数组检测结果 (Performance: cache homogeneity checks)
-        self._homogeneity_cache = {}
+        self._homogeneity_cache: dict[int, bool] = {}
 
     def encode(self, data: Any, indent: int = 0) -> str:
         """
@@ -904,7 +904,8 @@ class ToonEncoder:
         # 性能优化：检查缓存
         items_id = id(items)
         if items_id in self._homogeneity_cache:
-            return self._homogeneity_cache[items_id]
+            cached_result: bool = self._homogeneity_cache[items_id]
+            return cached_result
 
         # 1. 检查所有元素都是 dict
         if not all(isinstance(item, dict) for item in items):

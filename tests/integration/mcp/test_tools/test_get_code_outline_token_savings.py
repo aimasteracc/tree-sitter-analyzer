@@ -13,7 +13,6 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import GetCodeOutlineTool
 
-
 # ---------------------------------------------------------------------------
 # 测试用代码片段（小/中/大三种规模）
 # ---------------------------------------------------------------------------
@@ -385,7 +384,7 @@ class TestTokenSavingsGetCodeOutline:
                 f"  JSON: {json_length} chars"
             )
 
-            print(f"\n小文件 Token 节省效果:")
+            print("\n小文件 Token 节省效果:")
             print(f"  TOON: {toon_length} chars")
             print(f"  JSON: {json_length} chars")
             print(f"  节省: {reduction:.1%}")
@@ -421,7 +420,7 @@ class TestTokenSavingsGetCodeOutline:
                 f"  JSON: {json_length} chars"
             )
 
-            print(f"\n中文件 Token 节省效果:")
+            print("\n中文件 Token 节省效果:")
             print(f"  TOON: {toon_length} chars")
             print(f"  JSON: {json_length} chars")
             print(f"  节省: {reduction:.1%}")
@@ -457,7 +456,7 @@ class TestTokenSavingsGetCodeOutline:
                 f"  JSON: {json_length} chars"
             )
 
-            print(f"\n大文件 Token 节省效果:")
+            print("\n大文件 Token 节省效果:")
             print(f"  TOON: {toon_length} chars")
             print(f"  JSON: {json_length} chars")
             print(f"  节省: {reduction:.1%}")
@@ -546,10 +545,10 @@ class TestTokenSavingsGetCodeOutline:
             # 保守估计：取 3 chars/token 作为混合文本的平均值
             approx_tokens = char_count / 3
 
-            print(f"\nToken 近似估算:")
+            print("\nToken 近似估算:")
             print(f"  字符数: {char_count}")
             print(f"  估算 Token 数: {approx_tokens:.0f}")
-            print(f"  (基于 3 chars/token 的保守估计)")
+            print("  (基于 3 chars/token 的保守估计)")
 
             # 验证这个近似值是合理的（至少有一些字符）
             assert char_count > 0
