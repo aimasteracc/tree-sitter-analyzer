@@ -72,8 +72,9 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
 
         # Run tests with coverage
-        # Note: marker filter uses 'and' to exclude tests requiring BOTH ripgrep AND fd
+        # Exclude tests requiring ripgrep or fd as they may not be available in all CI environments
         uv run pytest tests/ -n auto -v --tb=short --maxfail=10 \
+          -m "not requires_ripgrep and not requires_fd" \
           --cov=tree_sitter_analyzer \
           --cov-report=xml \
           --cov-report=html \
