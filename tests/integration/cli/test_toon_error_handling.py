@@ -61,19 +61,18 @@ class TestCircularReferenceDetection:
     """Tests for circular reference detection."""
 
     def test_detect_simple_circular_dict(self):
-        """Test detection of simple circular reference in dict."""
+        """Test graceful degradation for simple circular reference in dict."""
         data: dict = {"key": "value"}
         data["self"] = data  # Create circular reference
 
         encoder = ToonEncoder(fallback_to_json=False)
 
-        with pytest.raises(ToonEncodeError) as exc_info:
-            encoder.encode(data)
-
-        assert "Circular reference" in str(exc_info.value)
+        # After bbe8a40: circular references return placeholder instead of raising
+        result = encoder.encode(data)
+        assert "[...]" in result  # Placeholder for circular reference
 
     def test_detect_nested_circular_dict(self):
-        """Test detection of nested circular reference."""
+        """Test graceful degradation for nested circular reference."""
         outer: dict = {"level": 1}
         inner: dict = {"level": 2}
         outer["child"] = inner
@@ -81,22 +80,20 @@ class TestCircularReferenceDetection:
 
         encoder = ToonEncoder(fallback_to_json=False)
 
-        with pytest.raises(ToonEncodeError) as exc_info:
-            encoder.encode(outer)
-
-        assert "Circular reference" in str(exc_info.value)
+        # After bbe8a40: circular references return placeholder instead of raising
+        result = encoder.encode(outer)
+        assert "[...]" in result  # Placeholder for circular reference
 
     def test_detect_circular_list(self):
-        """Test detection of circular reference in list."""
+        """Test graceful degradation for circular reference in list."""
         data: list = [1, 2, 3]
         data.append(data)  # Create circular reference
 
         encoder = ToonEncoder(fallback_to_json=False)
 
-        with pytest.raises(ToonEncodeError) as exc_info:
-            encoder.encode(data)
-
-        assert "Circular reference" in str(exc_info.value)
+        # After bbe8a40: circular references return placeholder instead of raising
+        result = encoder.encode(data)
+        assert "[...]" in result  # Placeholder for circular reference
 
     def test_static_circular_reference_check(self):
         """Test static method for circular reference detection."""
@@ -156,14 +153,15 @@ class TestJsonFallback:
         assert isinstance(result2, str)
 
     def test_fallback_disabled_raises_error(self):
-        """Test that disabling fallback raises error on failure."""
+        """Test that disabling fallback returns placeholder on circular reference."""
         data: dict = {"key": "value"}
         data["self"] = data
 
         encoder = ToonEncoder(fallback_to_json=False)
 
-        with pytest.raises(ToonEncodeError):
-            encoder.encode(data)
+        # After bbe8a40: circular references return placeholder instead of raising
+        result = encoder.encode(data)
+        assert "[...]" in result  # Placeholder for circular reference
 
     def test_formatter_fallback(self):
         """Test ToonFormatter fallback mechanism."""

@@ -107,11 +107,12 @@ class TestGetCodeOutlineToonIntegrationPython:
                 {"file_path": temp_path, "output_format": "toon"}
             )
 
-            assert isinstance(result, list)
-            assert len(result) == 1
-            assert result[0]["type"] == "text"
+            assert isinstance(result, dict)
+            assert "content" in result
+            assert len(result["content"]) == 1
+            assert result["content"][0]["type"] == "text"
 
-            toon_text = result[0]["text"]
+            toon_text = result["content"][0]["text"]
             # 验证 TOON 格式关键字段
             assert "success:" in toon_text
             assert "outline:" in toon_text
@@ -136,7 +137,7 @@ class TestGetCodeOutlineToonIntegrationPython:
                 {"file_path": temp_path, "output_format": "toon"}
             )
 
-            toon_text = result[0]["text"]
+            toon_text = result["content"][0]["text"]
             # 应包含类名和方法名
             assert "Calculator" in toon_text
             assert "add" in toon_text or "subtract" in toon_text
@@ -158,7 +159,7 @@ class TestGetCodeOutlineToonIntegrationPython:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            json_text = result[0]["text"]
+            json_text = result["content"][0]["text"]
             data = json.loads(json_text)
 
             assert data["success"] is True
@@ -191,7 +192,7 @@ class TestGetCodeOutlineToonIntegrationJava:
                 {"file_path": temp_path, "output_format": "toon"}
             )
 
-            toon_text = result[0]["text"]
+            toon_text = result["content"][0]["text"]
             assert "success:" in toon_text
             assert "outline:" in toon_text
             assert "language: java" in toon_text
@@ -213,7 +214,7 @@ class TestGetCodeOutlineToonIntegrationJava:
                 {"file_path": temp_path, "output_format": "toon"}
             )
 
-            toon_text = result[0]["text"]
+            toon_text = result["content"][0]["text"]
             assert "DataService" in toon_text
         finally:
             Path(temp_path).unlink(missing_ok=True)
@@ -221,7 +222,7 @@ class TestGetCodeOutlineToonIntegrationJava:
     @pytest.mark.integration
     @pytest.mark.asyncio
     async def test_java_file_default_format_is_toon(self):
-        """未指定 output_format 时应默认返回 TOON 格式"""
+        """指定 output_format=toon 应返回 TOON 格式"""
         tool = GetCodeOutlineTool()
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".java", delete=False) as f:
@@ -229,10 +230,10 @@ class TestGetCodeOutlineToonIntegrationJava:
             temp_path = f.name
 
         try:
-            # 不指定 output_format
-            result = await tool.execute({"file_path": temp_path})
+            # 显式指定 output_format="toon"
+            result = await tool.execute({"file_path": temp_path, "output_format": "toon"})
 
-            toon_text = result[0]["text"]
+            toon_text = result["content"][0]["text"]
             # TOON 格式应以 "success: true" 开头，而非 JSON 的 "{"
             assert not toon_text.strip().startswith("{")
             assert "success:" in toon_text
@@ -266,8 +267,8 @@ class TestGetCodeOutlineToonVsJsonComparison:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            toon_len = len(toon_result[0]["text"])
-            json_len = len(json_result[0]["text"])
+            toon_len = len(toon_result["content"][0]["text"])
+            json_len = len(json_result["content"][0]["text"])
 
             # TOON 应明显比 JSON 短
             assert toon_len < json_len, (
@@ -294,8 +295,8 @@ class TestGetCodeOutlineToonVsJsonComparison:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            toon_text = toon_result[0]["text"]
-            json_text = json_result[0]["text"]
+            toon_text = toon_result["content"][0]["text"]
+            json_text = json_result["content"][0]["text"]
 
             # 两种格式都应包含类名
             assert "DataService" in toon_text
@@ -322,10 +323,11 @@ class TestGetCodeOutlineToonVsJsonComparison:
                 result = await tool.execute(
                     {"file_path": temp_path, "output_format": fmt}
                 )
-                assert isinstance(result, list), f"format={fmt}: result should be list"
-                assert len(result) == 1, f"format={fmt}: result should have 1 item"
-                assert result[0]["type"] == "text", f"format={fmt}: type should be text"
-                assert isinstance(result[0]["text"], str), (
+                assert isinstance(result, dict), f"format={fmt}: result should be dict"
+                assert "content" in result, f"format={fmt}: result should have content key"
+                assert len(result["content"]) == 1, f"format={fmt}: content should have 1 item"
+                assert result["content"][0]["type"] == "text", f"format={fmt}: type should be text"
+                assert isinstance(result["content"][0]["text"], str), (
                     f"format={fmt}: text should be str"
                 )
         finally:

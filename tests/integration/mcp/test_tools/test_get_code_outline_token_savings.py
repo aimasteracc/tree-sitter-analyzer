@@ -489,8 +489,8 @@ class TestTokenSavingsGetCodeOutline:
                     {"file_path": temp_path, "output_format": "json"}
                 )
 
-                toon_length = len(toon_result[0]["text"])
-                json_length = len(json_result[0]["text"])
+                toon_length = len(toon_result["content"][0]["text"])
+                json_length = len(json_result["content"][0]["text"])
                 reduction = (json_length - toon_length) / json_length
 
                 results.append({
@@ -538,7 +538,7 @@ class TestTokenSavingsGetCodeOutline:
                 {"file_path": temp_path, "output_format": "toon"}
             )
 
-            toon_text = toon_result[0]["text"]
+            toon_text = toon_result["content"][0]["text"]
             char_count = len(toon_text)
 
             # 近似 Token 计算（英文约 4 chars/token，中文约 1-2 chars/token）

@@ -106,14 +106,15 @@ class TestToonEncoderEdgeCases:
         assert isinstance(result, str)
 
     def test_encode_safe_with_fallback_disabled(self):
-        """Test encode_safe without fallback returns error message."""
+        """Test encode_safe without fallback returns placeholder for circular reference."""
         from tree_sitter_analyzer.formatters.toon_encoder import ToonEncoder
 
         encoder = ToonEncoder(fallback_to_json=False)
         data: dict = {}
         data["self"] = data
         result = encoder.encode_safe(data)
-        assert "ToonEncodeError" in result
+        # After bbe8a40: circular references return placeholder instead of error
+        assert "[...]" in result
 
     def test_detect_circular_reference_with_list(self):
         """Test circular reference detection with list."""
@@ -268,9 +269,8 @@ class TestToonEncoderEdgeCases:
         assert output == ["[]"]
 
     def test_handle_list_start_circular_reference(self):
-        """Test _handle_list_start with circular reference."""
+        """Test _handle_list_start with circular reference returns placeholder."""
         from tree_sitter_analyzer.formatters.toon_encoder import (
-            ToonEncodeError,
             ToonEncoder,
             _Task,
             _TaskType,
@@ -284,8 +284,10 @@ class TestToonEncoderEdgeCases:
         output: list[str] = []
         seen_ids: set[int] = {obj_id}  # Already seen
 
-        with pytest.raises(ToonEncodeError):
-            encoder._handle_list_start(task, stack, output, seen_ids)
+        # After bbe8a40: circular references return placeholder instead of raising
+        encoder._handle_list_start(task, stack, output, seen_ids)
+        result = "".join(output)
+        assert "[...]" in result
 
     def test_handle_array_table_empty(self):
         """Test _handle_array_table with empty list."""
@@ -304,9 +306,8 @@ class TestToonEncoderEdgeCases:
         assert output == ["[]"]
 
     def test_handle_array_table_circular_reference(self):
-        """Test _handle_array_table with circular reference."""
+        """Test _handle_array_table with circular reference returns placeholder."""
         from tree_sitter_analyzer.formatters.toon_encoder import (
-            ToonEncodeError,
             ToonEncoder,
             _Task,
             _TaskType,
@@ -319,8 +320,10 @@ class TestToonEncoderEdgeCases:
         output: list[str] = []
         seen_ids: set[int] = {obj_id}  # Already seen
 
-        with pytest.raises(ToonEncodeError):
-            encoder._handle_array_table(task, output, seen_ids)
+        # After bbe8a40: circular references return placeholder instead of raising
+        encoder._handle_array_table(task, output, seen_ids)
+        result = "".join(output)
+        assert "[...]" in result
 
     def test_fallback_to_json_exception(self):
         """Test _fallback_to_json when json.dumps fails."""
