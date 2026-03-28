@@ -489,7 +489,9 @@ def function_two(): pass
                 "output_format": "toon",
             }
         )
-        assert "success" in result or "table" in result or "content" in result
+        # TOON format returns dict with 'format' and 'toon_content' keys
+        assert "format" in result and result["format"] == "toon"
+        assert "toon_content" in result
 
     @pytest.mark.asyncio
     async def test_execute_nonexistent_file(self, analyze_code_structure_tool):
