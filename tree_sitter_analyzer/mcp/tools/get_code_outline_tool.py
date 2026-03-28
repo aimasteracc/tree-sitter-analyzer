@@ -295,7 +295,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             language = arguments.get("language")
             include_fields = arguments.get("include_fields", False)
             include_imports = arguments.get("include_imports", False)
-            output_format = arguments.get("output_format", "toon")
+            output_format = arguments.get("output_format", "json")
 
             resolved_path = self.resolve_and_validate_file_path(file_path)
 

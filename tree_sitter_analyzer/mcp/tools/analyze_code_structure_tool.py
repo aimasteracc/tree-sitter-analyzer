@@ -338,7 +338,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             language = args.get("language")
             output_file = args.get("output_file")
             suppress_output = args.get("suppress_output", False)
-            output_format = args.get("output_format", "toon")
+            output_format = args.get("output_format", "json")
 
             # Use unified resolution and validation
             resolved_path = self.resolve_and_validate_file_path(file_path)

@@ -270,7 +270,7 @@ class FindAndGrepTool(BaseMCPTool):
             }
 
         self.validate_arguments(arguments)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         roots = self._validate_roots(arguments["roots"])  # absolute validated
 
         # fd step
@@ -510,7 +510,7 @@ class FindAndGrepTool(BaseMCPTool):
                 # Handle output suppression and file output for grouped results
                 output_file = arguments.get("output_file")
                 suppress_output = arguments.get("suppress_output", False)
-                output_format = arguments.get("output_format", "toon")
+                output_format = arguments.get("output_format", "json")
 
                 # Handle file output if requested
                 if output_file:
@@ -574,7 +574,7 @@ class FindAndGrepTool(BaseMCPTool):
                 # Handle output suppression and file output for summary results
                 output_file = arguments.get("output_file")
                 suppress_output = arguments.get("suppress_output", False)
-                output_format = arguments.get("output_format", "toon")
+                output_format = arguments.get("output_format", "json")
 
                 # Handle file output if requested
                 if output_file:
@@ -632,7 +632,7 @@ class FindAndGrepTool(BaseMCPTool):
                 suppress_output = arguments.get("suppress_output", False)
 
                 # Get output format
-                output_format = arguments.get("output_format", "toon")
+                output_format = arguments.get("output_format", "json")
 
                 # Add results to response unless suppressed
                 # Only suppress results if both suppress_output is True AND output_file is provided
