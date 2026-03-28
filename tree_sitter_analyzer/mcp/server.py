@@ -64,6 +64,7 @@ from ..project_detector import detect_project_root
 from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
+from .intent_aliases import IntentAliasResolver
 from .resources import CodeFileResource, ProjectStatsResource
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
@@ -128,6 +129,9 @@ class TreeSitterAnalyzerMCPServer:
         self.find_and_grep_tool = FindAndGrepTool(project_root)  # find_and_grep
         # Outline-first navigation tool
         self.get_code_outline_tool = GetCodeOutlineTool(project_root)  # get_code_outline
+
+        # Intent Aliases resolver (intent-based tool names → canonical names)
+        self.intent_alias_resolver = IntentAliasResolver()
 
         # Optional universal tool to satisfy initialization tests
         # Allow tests to control initialization by checking if UniversalAnalyzeTool is available
@@ -446,6 +450,15 @@ class TreeSitterAnalyzerMCPServer:
                     f"MCP tool call: {name} with args: {list(arguments.keys())}"
                 )
 
+                # Resolve intent aliases to canonical tool names
+                # This enables AI agents to use intent-based names like "locate_usage"
+                # while maintaining backward compatibility with original names
+                try:
+                    name = self.intent_alias_resolver.resolve(name)
+                except ValueError:
+                    # Unknown tool/alias - will be caught by the "Unknown tool" check below
+                    pass
+
                 # Validate file path security (server-side early rejection for compatibility)
                 # Note: Tools also validate paths, but they use shared caching to avoid redundant work.
                 if "file_path" in arguments:
@@ -680,6 +693,49 @@ class TreeSitterAnalyzerMCPServer:
             logger.info(f"Set project path to: {project_path}")
         except (ValueError, OSError):
             pass  # Silently ignore logging errors during shutdown
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """
+        Test helper method to call tools directly (bypassing MCP protocol).
+
+        This method simulates what handle_call_tool does but can be called
+        directly for integration testing without needing the full MCP server.
+
+        Args:
+            name: Tool name (can be an alias like "locate_usage")
+            arguments: Tool arguments
+
+        Returns:
+            Tool execution result
+
+        Raises:
+            ValueError: If tool name is unknown or arguments are invalid
+        """
+        # Resolve intent aliases to canonical tool names
+        try:
+            name = self.intent_alias_resolver.resolve(name)
+        except ValueError:
+            raise ValueError(f"Unknown tool: {name}")
+
+        # Route to the appropriate tool
+        if name == "check_code_scale":
+            return await self.analyze_scale_tool.execute(arguments)
+        elif name == "analyze_code_structure":
+            return await self.analyze_code_structure_tool.execute(arguments)
+        elif name == "extract_code_section":
+            return await self.read_partial_tool.execute(arguments)
+        elif name == "query_code":
+            return await self.query_tool.execute(arguments)
+        elif name == "list_files":
+            return await self.list_files_tool.execute(arguments)
+        elif name == "search_content":
+            return await self.search_content_tool.execute(arguments)
+        elif name == "find_and_grep":
+            return await self.find_and_grep_tool.execute(arguments)
+        elif name == "get_code_outline":
+            return await self.get_code_outline_tool.execute(arguments)
+        else:
+            raise ValueError(f"Unknown tool: {name}")
 
     async def run(self) -> None:
         """

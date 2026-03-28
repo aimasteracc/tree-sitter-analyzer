@@ -330,3 +330,6 @@ docs/designs/tree-sitter-analyzer-*.md
 
 # gstack compiled binaries (110MB+, tracked by historical mistake)
 .claude/skills/gstack/bin/*.exe
+
+# Claude local settings
+.claude/settings.local.json
