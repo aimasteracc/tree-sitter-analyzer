@@ -35,7 +35,6 @@ find the right files → find the right matches → extract the right structure 
 - **Documentation and workflow polish**: clearer local-first positioning for AI-assisted development, large-repo retrieval, and secure MCP usage
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
-
 ---
 
 ## 🎬 See It In Action

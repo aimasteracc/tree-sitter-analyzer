@@ -286,15 +286,15 @@ class TestApplyToonFormatToResponse:
         }
         response = apply_toon_format_to_response(result, "toon")
 
-        # Should NOT contain redundant fields
-        assert "results" not in response
-
-        # Should contain metadata and TOON content
+        # TOON format returns minimal response - only format and toon_content
         assert response["format"] == "toon"
         assert "toon_content" in response
-        assert response["success"] is True
-        assert response["count"] == 5
-        assert response["elapsed_ms"] == 100
+
+        # All other fields should NOT be duplicated (they're in toon_content)
+        assert "results" not in response
+        assert "success" not in response
+        assert "count" not in response
+        assert "elapsed_ms" not in response
 
     def test_toon_format_removes_all_redundant_fields(self):
         """Test that all redundant field types are removed."""
