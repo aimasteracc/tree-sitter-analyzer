@@ -86,7 +86,7 @@ class TestArgumentValidation:
     def test_validate_arguments_valid_minimal(self):
         """Test validation with minimal valid arguments"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": "test.py"}
+        args = {"file_path": "test.py", "output_format": "json"}
         assert tool.validate_arguments(args) is True
 
     def test_validate_arguments_valid_complete(self):
@@ -98,7 +98,7 @@ class TestArgumentValidation:
             "analysis_type": "detailed",
             "include_ast": True,
             "include_queries": True,
-        }
+        , "output_format": "json"}
         assert tool.validate_arguments(args) is True
 
     def test_validate_arguments_missing_file_path(self):
@@ -112,7 +112,7 @@ class TestArgumentValidation:
     def test_validate_arguments_invalid_file_path_type(self):
         """Test validation fails with non-string file_path"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": 123}
+        args = {"file_path": 123, "output_format": "json"}
 
         with pytest.raises(ValueError, match="file_path must be a string"):
             tool.validate_arguments(args)
@@ -120,7 +120,7 @@ class TestArgumentValidation:
     def test_validate_arguments_empty_file_path(self):
         """Test validation fails with empty file_path"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": "   "}
+        args = {"file_path": "   ", "output_format": "json"}
 
         with pytest.raises(ValueError, match="file_path cannot be empty"):
             tool.validate_arguments(args)
@@ -128,7 +128,7 @@ class TestArgumentValidation:
     def test_validate_arguments_invalid_language_type(self):
         """Test validation fails with non-string language"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": "test.py", "language": 123}
+        args = {"file_path": "test.py", "language": 123, "output_format": "json"}
 
         with pytest.raises(ValueError, match="language must be a string"):
             tool.validate_arguments(args)
@@ -136,7 +136,7 @@ class TestArgumentValidation:
     def test_validate_arguments_invalid_analysis_type(self):
         """Test validation fails with invalid analysis_type"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": "test.py", "analysis_type": "invalid"}
+        args = {"file_path": "test.py", "analysis_type": "invalid", "output_format": "json"}
 
         with pytest.raises(ValueError, match="analysis_type must be one of"):
             tool.validate_arguments(args)
@@ -144,7 +144,7 @@ class TestArgumentValidation:
     def test_validate_arguments_invalid_include_ast_type(self):
         """Test validation fails with non-boolean include_ast"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": "test.py", "include_ast": "true"}
+        args = {"file_path": "test.py", "include_ast": "true", "output_format": "json"}
 
         with pytest.raises(ValueError, match="include_ast must be a boolean"):
             tool.validate_arguments(args)
@@ -152,7 +152,7 @@ class TestArgumentValidation:
     def test_validate_arguments_invalid_include_queries_type(self):
         """Test validation fails with non-boolean include_queries"""
         tool = UniversalAnalyzeTool()
-        args = {"file_path": "test.py", "include_queries": "true"}
+        args = {"file_path": "test.py", "include_queries": "true", "output_format": "json"}
 
         with pytest.raises(ValueError, match="include_queries must be a boolean"):
             tool.validate_arguments(args)
@@ -174,7 +174,7 @@ class TestExecution:
     async def test_execute_file_not_found(self, tmp_path):
         """Test execution fails when file doesn't exist"""
         tool = UniversalAnalyzeTool(str(tmp_path))
-        args = {"file_path": "nonexistent.py"}
+        args = {"file_path": "nonexistent.py", "output_format": "json"}
 
         with pytest.raises(AnalysisError, match="file does not exist"):
             await tool.execute(args)
@@ -187,7 +187,7 @@ class TestExecution:
         test_file.write_text("content")
 
         tool = UniversalAnalyzeTool(str(tmp_path))
-        args = {"file_path": str(test_file)}
+        args = {"file_path": str(test_file), "output_format": "json"}
 
         with pytest.raises(AnalysisError, match="Could not detect language"):
             await tool.execute(args)
@@ -199,7 +199,7 @@ class TestExecution:
         test_file.write_text("print('hello')")
 
         tool = UniversalAnalyzeTool(str(tmp_path))
-        args = {"file_path": str(test_file), "language": "unsupported_lang"}
+        args = {"file_path": str(test_file), "language": "unsupported_lang", "output_format": "json"}
 
         with pytest.raises(AnalysisError, match="not supported"):
             await tool.execute(args)
@@ -211,7 +211,7 @@ class TestExecution:
         test_file.write_text("print('hello')")
 
         tool = UniversalAnalyzeTool(str(tmp_path))
-        args = {"file_path": str(test_file), "analysis_type": "invalid_type"}
+        args = {"file_path": str(test_file), "analysis_type": "invalid_type", "output_format": "json"}
 
         with pytest.raises(AnalysisError, match="Invalid analysis_type"):
             await tool.execute(args)
@@ -247,7 +247,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "basic"}
+            args = {"file_path": str(test_file), "analysis_type": "basic", "output_format": "json"}
             result = await tool.execute(args)
 
             assert "file_path" in result
@@ -286,7 +286,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "detailed"}
+            args = {"file_path": str(test_file), "analysis_type": "detailed", "output_format": "json"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "detailed"
@@ -326,7 +326,7 @@ class TestExecution:
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_ast": True,
-            }
+            , "output_format": "json"}
             result = await tool.execute(args)
 
             assert "ast_info" in result
@@ -364,7 +364,7 @@ class TestExecution:
                 "file_path": str(test_file),
                 "analysis_type": "basic",
                 "include_queries": True,
-            }
+            , "output_format": "json"}
             result = await tool.execute(args)
 
             assert "available_queries" in result
@@ -399,7 +399,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "structure"}
+            args = {"file_path": str(test_file), "analysis_type": "structure", "output_format": "json"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "structure"
@@ -435,7 +435,7 @@ class TestExecution:
         with patch.object(
             tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
         ):
-            args = {"file_path": str(test_file), "analysis_type": "metrics"}
+            args = {"file_path": str(test_file), "analysis_type": "metrics", "output_format": "json"}
             result = await tool.execute(args)
 
             assert result["analysis_type"] == "metrics"
@@ -572,7 +572,7 @@ class TestEdgeCases:
                 with patch.object(
                     tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
                 ):
-                    args = {"file_path": str(test_file)}
+                    args = {"file_path": str(test_file), "output_format": "json"}
                     result = await tool.execute(args)
 
                     assert result["language"] == "python"
@@ -604,7 +604,7 @@ class TestEdgeCases:
                 with patch.object(
                     tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
                 ):
-                    args = {"file_path": str(test_file)}
+                    args = {"file_path": str(test_file), "output_format": "json"}
                     result = await tool.execute(args)
 
                     assert result["language"] == "python"
@@ -634,7 +634,7 @@ class TestEdgeCases:
                 with patch.object(
                     tool.analysis_engine, "analyze", AsyncMock(return_value=mock_result)
                 ):
-                    args = {"file_path": str(test_file)}
+                    args = {"file_path": str(test_file), "output_format": "json"}
 
                     with pytest.raises(RuntimeError, match="Failed to analyze"):
                         await tool.execute(args)
