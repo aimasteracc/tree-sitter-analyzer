@@ -371,8 +371,8 @@ class TestTokenSavingsGetCodeOutline:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            toon_length = len(toon_result[0]["text"])
-            json_length = len(json_result[0]["text"])
+            toon_length = len(toon_result["content"][0]["text"])
+            json_length = len(json_result["content"][0]["text"])
 
             # 计算减少比例
             reduction = (json_length - toon_length) / json_length
@@ -409,8 +409,8 @@ class TestTokenSavingsGetCodeOutline:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            toon_length = len(toon_result[0]["text"])
-            json_length = len(json_result[0]["text"])
+            toon_length = len(toon_result["content"][0]["text"])
+            json_length = len(json_result["content"][0]["text"])
 
             reduction = (json_length - toon_length) / json_length
 
@@ -445,8 +445,8 @@ class TestTokenSavingsGetCodeOutline:
                 {"file_path": temp_path, "output_format": "json"}
             )
 
-            toon_length = len(toon_result[0]["text"])
-            json_length = len(json_result[0]["text"])
+            toon_length = len(toon_result["content"][0]["text"])
+            json_length = len(json_result["content"][0]["text"])
 
             reduction = (json_length - toon_length) / json_length
 

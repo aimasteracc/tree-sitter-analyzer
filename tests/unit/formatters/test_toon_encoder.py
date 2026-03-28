@@ -314,24 +314,24 @@ class TestToonEncoderCircularReference:
     """Tests for circular reference detection."""
 
     def test_detect_circular_reference_in_dict(self):
-        """Test detection of circular reference in dictionary."""
+        """Test graceful degradation for circular reference in dictionary."""
         encoder = ToonEncoder(fallback_to_json=False)
         data = {"key": "value"}
         data["self"] = data  # Create circular reference
 
-        with pytest.raises(ToonEncodeError) as exc_info:
-            encoder.encode(data)
-        assert "Circular reference detected" in str(exc_info.value)
+        # After bbe8a40: circular references return placeholder instead of raising
+        result = encoder.encode(data)
+        assert "[...]" in result  # Placeholder for circular reference
 
     def test_detect_circular_reference_in_list(self):
-        """Test detection of circular reference in list."""
+        """Test graceful degradation for circular reference in list."""
         encoder = ToonEncoder(fallback_to_json=False)
         data = [1, 2, 3]
         data.append(data)  # Create circular reference
 
-        with pytest.raises(ToonEncodeError) as exc_info:
-            encoder.encode(data)
-        assert "Circular reference detected" in str(exc_info.value)
+        # After bbe8a40: circular references return placeholder instead of raising
+        result = encoder.encode(data)
+        assert "[...]" in result  # Placeholder for circular list reference
 
     def test_detect_circular_reference_static_method(self):
         """Test static method for circular reference detection."""

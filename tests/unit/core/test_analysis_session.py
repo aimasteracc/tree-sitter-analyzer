@@ -415,8 +415,9 @@ class TestSessionMetadataFields:
             output_format="toon"
         )
 
-        # 应该能解析为 datetime
-        dt = datetime.fromisoformat(session.timestamp)
+        # 应该能解析为 datetime (handle 'Z' suffix for UTC)
+        timestamp_str = session.timestamp.replace('Z', '+00:00')
+        dt = datetime.fromisoformat(timestamp_str)
         assert isinstance(dt, datetime)
 
     def test_tools_used_preserves_order(self):

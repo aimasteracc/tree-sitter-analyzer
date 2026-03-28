@@ -68,7 +68,8 @@ async def test_read_partial_batch_toon_default_strips_json_details() -> None:
                         "file_path": str(p / "a.txt"),
                         "sections": [{"start_line": 1, "end_line": 3, "label": "head"}],
                     }
-                ]
+                ],
+                "output_format": "toon",
             }
         )
 
