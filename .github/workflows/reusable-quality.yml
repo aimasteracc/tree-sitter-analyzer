@@ -53,6 +53,7 @@ jobs:
       - name: Set up Python 3.11
         run: uv python install 3.11
       - name: Run Bandit
+        shell: bash {0}  # Remove -e flag to allow error handling
         run: |
           set +e  # Don't exit on error
           uv sync --all-extras
