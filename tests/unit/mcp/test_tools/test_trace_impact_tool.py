@@ -33,8 +33,7 @@ class TestTraceImpactToolBasic:
         assert "symbol" in definition["inputSchema"]["properties"]
         assert definition["inputSchema"]["required"] == ["symbol"]
 
-    @pytest.mark.asyncio
-    async def test_validate_arguments_valid(self):
+    def test_validate_arguments_valid(self):
         """Test argument validation with valid inputs"""
         valid_args = {
             "symbol": "processPayment",
@@ -45,49 +44,44 @@ class TestTraceImpactToolBasic:
             "exclude_patterns": ["**/test/**"],
         }
         # Should not raise
-        await self.tool.validate_arguments(valid_args)
+        result = self.tool.validate_arguments(valid_args)
+        assert result is True
 
-    @pytest.mark.asyncio
-    async def test_validate_arguments_missing_symbol(self):
+    def test_validate_arguments_missing_symbol(self):
         """Test argument validation with missing symbol"""
         invalid_args = {}
         with pytest.raises(ValueError, match="symbol parameter is required"):
-            await self.tool.validate_arguments(invalid_args)
+            self.tool.validate_arguments(invalid_args)
 
-    @pytest.mark.asyncio
-    async def test_validate_arguments_empty_symbol(self):
+    def test_validate_arguments_empty_symbol(self):
         """Test argument validation with empty symbol"""
         invalid_args = {"symbol": "   "}
         with pytest.raises(ValueError, match="symbol parameter is required"):
-            await self.tool.validate_arguments(invalid_args)
+            self.tool.validate_arguments(invalid_args)
 
-    @pytest.mark.asyncio
-    async def test_validate_arguments_invalid_file_path_type(self):
+    def test_validate_arguments_invalid_file_path_type(self):
         """Test argument validation with invalid file_path type"""
         invalid_args = {"symbol": "test", "file_path": 123}
         with pytest.raises(ValueError, match="file_path must be a string"):
-            await self.tool.validate_arguments(invalid_args)
+            self.tool.validate_arguments(invalid_args)
 
-    @pytest.mark.asyncio
-    async def test_validate_arguments_invalid_case_sensitive_type(self):
+    def test_validate_arguments_invalid_case_sensitive_type(self):
         """Test argument validation with invalid case_sensitive type"""
         invalid_args = {"symbol": "test", "case_sensitive": "true"}
         with pytest.raises(ValueError, match="case_sensitive must be a boolean"):
-            await self.tool.validate_arguments(invalid_args)
+            self.tool.validate_arguments(invalid_args)
 
-    @pytest.mark.asyncio
-    async def test_validate_arguments_invalid_max_results(self):
+    def test_validate_arguments_invalid_max_results(self):
         """Test argument validation with invalid max_results"""
         invalid_args = {"symbol": "test", "max_results": -1}
         with pytest.raises(ValueError, match="max_results must be a positive integer"):
-            await self.tool.validate_arguments(invalid_args)
+            self.tool.validate_arguments(invalid_args)
 
-    @pytest.mark.asyncio
-    async def test_validate_arguments_invalid_exclude_patterns_type(self):
+    def test_validate_arguments_invalid_exclude_patterns_type(self):
         """Test argument validation with invalid exclude_patterns type"""
         invalid_args = {"symbol": "test", "exclude_patterns": "not a list"}
         with pytest.raises(ValueError, match="exclude_patterns must be an array"):
-            await self.tool.validate_arguments(invalid_args)
+            self.tool.validate_arguments(invalid_args)
 
 
 class TestTraceImpactToolExecution:

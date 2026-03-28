@@ -722,7 +722,7 @@ class TreeSitterAnalyzerMCPServer:
         try:
             name = self.intent_alias_resolver.resolve(name)
         except ValueError:
-            raise ValueError(f"Unknown tool: {name}")
+            raise ValueError(f"Unknown tool: {name}") from None
 
         # Route to the appropriate tool
         if name == "check_code_scale":

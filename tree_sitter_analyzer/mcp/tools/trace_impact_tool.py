@@ -118,12 +118,15 @@ class TraceImpactTool(BaseMCPTool):
             },
         }
 
-    async def validate_arguments(self, arguments: dict[str, Any]) -> None:
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate input arguments.
 
         Args:
             arguments: Tool arguments to validate
+
+        Returns:
+            True if arguments are valid
 
         Raises:
             ValueError: If arguments are invalid
@@ -164,6 +167,8 @@ class TraceImpactTool(BaseMCPTool):
                 if not isinstance(pattern, str):
                     raise ValueError("exclude_patterns must contain only strings")
 
+        return True
+
     @handle_mcp_errors("trace_impact")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
@@ -176,7 +181,7 @@ class TraceImpactTool(BaseMCPTool):
             Dictionary with usage sites, call count, and metadata
         """
         # 验证参数
-        await self.validate_arguments(arguments)
+        self.validate_arguments(arguments)
 
         # 提取参数
         symbol = arguments["symbol"].strip()
