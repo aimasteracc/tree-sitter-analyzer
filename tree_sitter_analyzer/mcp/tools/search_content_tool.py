@@ -59,7 +59,7 @@ class SearchContentTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "search_content",
-            "description": """Search text content inside files using ripgrep. Supports regex patterns, case sensitivity, context lines, and various output formats. Can search in directories or specific files.
+            "description": """Find usage — search all occurrences of a pattern across the project. Fast content search with ripgrep: locate function calls, variable references, string literals, or any text pattern. Use this for impact analysis, refactoring preparation, or understanding how code is used.
 
 ⚡ IMPORTANT: Token Efficiency Guide
 Choose output format parameters based on your needs to minimize token usage and maximize performance with efficient search strategies:
