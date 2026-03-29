@@ -1,0 +1,422 @@
+# ============================================================================
+# YAML Golden Corpus - Grammar Coverage MECE Test
+# ============================================================================
+#
+# This file provides comprehensive coverage of YAML syntax features to verify
+# tree-sitter-yaml parser completeness.
+#
+# Coverage includes:
+# - Block mappings (key: value)
+# - Block sequences (lists with -)
+# - Flow mappings ({key: value})
+# - Flow sequences ([item1, item2])
+# - Scalars (plain, single-quoted, double-quoted, literal, folded)
+# - Anchors and aliases (&anchor, *alias)
+# - Tags (!!str, !!int, !!bool, etc.)
+# - Multi-document streams (---)
+# - Complex nested structures
+# ============================================================================
+
+# ============================================================================
+# BLOCK MAPPINGS (most common YAML structure)
+# ============================================================================
+
+# Simple block mapping
+simple_mapping:
+  key1: value1
+  key2: value2
+  key3: value3
+
+# Nested block mappings
+nested_mapping:
+  level1:
+    level2:
+      level3:
+        deep_key: deep_value
+        another_key: another_value
+
+# Block mapping with various scalar types
+typed_mapping:
+  string_value: hello world
+  integer_value: 42
+  float_value: 3.14159
+  boolean_true: true
+  boolean_false: false
+  null_value: null
+  empty_value:
+
+# ============================================================================
+# BLOCK SEQUENCES (lists)
+# ============================================================================
+
+# Simple block sequence
+simple_list:
+  - item1
+  - item2
+  - item3
+  - item4
+
+# Nested block sequences
+nested_lists:
+  - - subitem1_1
+    - subitem1_2
+  - - subitem2_1
+    - subitem2_2
+  - - subitem3_1
+    - subitem3_2
+
+# Block sequence of mappings
+list_of_objects:
+  - name: Alice
+    age: 30
+    active: true
+  - name: Bob
+    age: 25
+    active: false
+  - name: Charlie
+    age: 35
+    active: true
+
+# Complex mixed structure
+mixed_structure:
+  users:
+    - id: 1
+      username: user1
+      roles:
+        - admin
+        - developer
+    - id: 2
+      username: user2
+      roles:
+        - viewer
+        - tester
+
+# ============================================================================
+# FLOW STYLE (inline JSON-like syntax)
+# ============================================================================
+
+# Flow mapping
+flow_mapping_example: {key1: value1, key2: value2, key3: value3}
+
+# Flow sequence
+flow_sequence_example: [item1, item2, item3, item4, item5]
+
+# Nested flow structures
+nested_flow: {outer: {inner: {deep: value}}}
+
+# Mixed flow and block
+mixed_flow_block:
+  block_key: [flow, array, items]
+  another_key: {flow: mapping}
+
+# ============================================================================
+# SCALAR TYPES
+# ============================================================================
+
+scalars:
+  # Plain scalar (unquoted)
+  plain: this is a plain scalar
+
+  # Single-quoted scalar (literal, no escaping)
+  single_quoted: 'single quoted string with ''escaped'' quotes'
+
+  # Double-quoted scalar (allows escape sequences)
+  double_quoted: "double quoted with \n newline and \t tab"
+
+  # Literal block scalar (preserves line breaks)
+  literal_block: |
+    This is a literal block scalar.
+    Line breaks are preserved.
+    Each line is kept as-is.
+    Trailing newlines are kept.
+
+  # Folded block scalar (folds line breaks into spaces)
+  folded_block: >
+    This is a folded block scalar.
+    Line breaks are converted to spaces.
+    Only paragraph breaks (double newline) are preserved.
+
+    Like this paragraph break.
+
+  # Literal block with strip indicator (|-) removes trailing newlines
+  literal_strip: |-
+    No trailing newlines
+    will be present
+
+  # Folded block with keep indicator (|+) keeps trailing newlines
+  folded_keep: >+
+    This keeps
+    trailing newlines
+
+# ============================================================================
+# ANCHORS AND ALIASES (references)
+# ============================================================================
+
+# Define anchors
+anchors:
+  # Anchor definition
+  default_config: &default_settings
+    timeout: 30
+    retry: 3
+    debug: false
+
+  # Another anchor
+  database_config: &db_config
+    host: localhost
+    port: 5432
+    database: mydb
+    username: admin
+
+# Use aliases (references to anchors)
+aliases:
+  # Alias reference
+  app_config: *default_settings
+
+  # Alias reference
+  db_connection: *db_config
+
+  # Merge key (<<) with alias
+  custom_config:
+    <<: *default_settings
+    timeout: 60
+    custom_field: custom_value
+
+# ============================================================================
+# TAGS (explicit type annotations)
+# ============================================================================
+
+tags:
+  # String tag
+  explicit_string: !!str 12345
+
+  # Integer tag
+  explicit_int: !!int 42
+
+  # Float tag
+  explicit_float: !!float 3.14
+
+  # Boolean tag
+  explicit_bool: !!bool true
+
+  # Null tag
+  explicit_null: !!null
+
+  # Binary tag
+  explicit_binary: !!binary R0lGODlhAQABAAAAACw=
+
+  # Timestamp tag
+  explicit_timestamp: !!timestamp 2024-01-15T10:30:00Z
+
+  # Map tag
+  explicit_map: !!map {a: 1, b: 2}
+
+  # Sequence tag
+  explicit_seq: !!seq [1, 2, 3]
+
+# ============================================================================
+# COMPLEX NESTED STRUCTURES
+# ============================================================================
+
+complex_application_config:
+  application:
+    name: MyApp
+    version: "1.0.0"
+    environment: production
+
+  server:
+    host: 0.0.0.0
+    port: 8080
+    ssl:
+      enabled: true
+      certificate: /path/to/cert.pem
+      key: /path/to/key.pem
+
+  database:
+    primary:
+      type: postgresql
+      connection:
+        host: db.example.com
+        port: 5432
+        database: production_db
+        credentials: &db_creds
+          username: app_user
+          password: secret123
+      pool:
+        min: 5
+        max: 20
+
+    replica:
+      type: postgresql
+      connection:
+        host: replica.example.com
+        port: 5432
+        database: production_db
+        credentials: *db_creds
+      pool:
+        min: 3
+        max: 15
+
+  cache:
+    enabled: true
+    backend: redis
+    servers:
+      - host: redis1.example.com
+        port: 6379
+        weight: 100
+      - host: redis2.example.com
+        port: 6379
+        weight: 50
+
+  logging:
+    level: info
+    handlers:
+      - type: file
+        path: /var/log/app.log
+        max_size: 100MB
+        backup_count: 10
+      - type: syslog
+        host: syslog.example.com
+        port: 514
+        protocol: udp
+
+  features:
+    authentication: true
+    authorization: true
+    rate_limiting:
+      enabled: true
+      requests_per_minute: 100
+    monitoring:
+      enabled: true
+      endpoints:
+        - /health
+        - /metrics
+        - /status
+
+# ============================================================================
+# EDGE CASES AND SPECIAL SYNTAX
+# ============================================================================
+
+edge_cases:
+  # Empty mapping
+  empty_mapping: {}
+
+  # Empty sequence
+  empty_sequence: []
+
+  # Multiline plain scalar
+  multiline_plain: this is a very long plain scalar that spans
+    multiple lines and should be treated as a single value
+    when parsed by the YAML parser
+
+  # Number-like strings (remain strings)
+  number_string: "12345"
+  float_string: "3.14"
+  bool_string: "true"
+
+  # Special characters in keys
+  "key with spaces": value1
+  "key:with:colons": value2
+  "key-with-dashes": value3
+  "key_with_underscores": value4
+
+# ============================================================================
+# REAL-WORLD DATA EXAMPLES
+# ============================================================================
+
+# CI/CD configuration example
+ci_cd_pipeline:
+  stages:
+    - build
+    - test
+    - deploy
+
+  build_job:
+    stage: build
+    script:
+      - npm install
+      - npm run build
+    artifacts:
+      paths:
+        - dist/
+        - build/
+
+  test_job:
+    stage: test
+    script:
+      - npm run test
+      - npm run lint
+    coverage: '/Coverage: \d+\.\d+%/'
+
+  deploy_production:
+    stage: deploy
+    script:
+      - ./deploy.sh production
+    environment:
+      name: production
+      url: https://example.com
+    only:
+      - main
+
+# Kubernetes-style configuration
+kubernetes_deployment:
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: web-app
+    labels:
+      app: web
+      tier: frontend
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: web
+    template:
+      metadata:
+        labels:
+          app: web
+      spec:
+        containers:
+          - name: web-container
+            image: nginx:1.21
+            ports:
+              - containerPort: 80
+                protocol: TCP
+            env:
+              - name: ENVIRONMENT
+                value: production
+              - name: LOG_LEVEL
+                value: info
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "250m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+
+---
+# ============================================================================
+# MULTI-DOCUMENT STREAM (second document)
+# ============================================================================
+
+document_id: 2
+document_type: configuration
+settings:
+  key1: value1
+  key2: value2
+
+---
+# ============================================================================
+# MULTI-DOCUMENT STREAM (third document)
+# ============================================================================
+
+document_id: 3
+document_type: metadata
+metadata:
+  created: 2024-01-15
+  author: test
+  tags:
+    - yaml
+    - corpus
+    - testing

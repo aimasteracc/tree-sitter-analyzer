@@ -1,0 +1,17 @@
+{
+  "language": "scala",
+  "node_types": {
+    "package_clause": 1,
+    "import_declaration": 3,
+    "object_definition": 6,
+    "val_definition": 28,
+    "function_definition": 56,
+    "class_definition": 17,
+    "function_declaration": 10,
+    "trait_definition": 10,
+    "lambda_expression": 6,
+    "var_definition": 3,
+    "type_definition": 5,
+    "case_clause": 15
+  }
+}

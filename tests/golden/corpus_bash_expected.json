@@ -1,0 +1,17 @@
+{
+  "language": "bash",
+  "node_types": {
+    "variable_assignment": 48,
+    "command_substitution": 12,
+    "command": 131,
+    "declaration_command": 17,
+    "function_definition": 11,
+    "if_statement": 14,
+    "pipeline": 10,
+    "redirected_statement": 14,
+    "while_statement": 5,
+    "for_statement": 5,
+    "case_statement": 3,
+    "process_substitution": 5
+  }
+}
