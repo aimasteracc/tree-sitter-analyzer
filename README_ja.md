@@ -4,25 +4,29 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-品質とテスト)
+[![Tests](https://img.shields.io/badge/tests-8470%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **大規模リポジトリ向けのAI用エビデンスベースコードナビゲーション** - MCP統合 · 最小コンテキスト取得 · 重い前処理なしの検索
 
 ---
 
-## ✨ v1.10.4 最新情報
+## ✨ v1.10.5 最新情報
 
-- **Vertex AI互換性修正**: `oneOf`/`anyOf`/`allOf`制約を削除し、MCPツールのVertex AI API互換性を修正
-- **フォーマット変更管理システム**: フォーマット変更検出と動作プロファイル比較機能を追加
-- **言語サポート強化**: Go、Rust、Kotlinがコア依存関係に昇格
-- **C++フォーマッター**: C++コードフォーマット機能を追加
-- **8,409テスト** 100%パス率、80.33%カバレッジ
+- **`get_code_outline` MCPツール + TOON形式**: アウトライン優先ナビゲーション、JSON形式と比較して**54-56% トークン削減**。階層構造を先に取得し、必要なコード本体のみを抽出
+- **`trace_impact` MCPツール**: 軽量な呼び出し元検索ツール、ripgrepを使用——グラフデータベース不要の影響分析
+- **意図ベースツールエイリアス**: AI フレンドリーなツール名（`locate_usage`、`map_structure`）により、ツール発見が自然に
+- **分析セッション追跡**: セッションIDと操作履歴により、複数ステップのSMARTワークフローを監査
+- **23の重要なバグ修正**: TOON形式の返却構造、デフォルト出力形式、テストアサーション——**プロジェクト完全動作**
+- **実測トークン削減**: 実ファイルでのテストにより、TOON形式が小/中/大ファイルで54-56%の出力サイズ削減を確認
+- **テストカバレッジ強化**: 8,470テスト（100%パス）、88.68%カバレッジ（v1.10.4から8.35%向上）
+- **クロスプラットフォーム検証**: すべてのテストがUbuntu、Windows、macOS × Python 3.10-3.13で合格
 
 📖 完全なバージョン履歴は **[変更履歴](CHANGELOG.md)** をご覧ください。
+---
 
 ---
 
