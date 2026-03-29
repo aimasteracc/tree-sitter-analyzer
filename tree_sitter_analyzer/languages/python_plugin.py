@@ -191,6 +191,7 @@ class PythonElementExtractor(ElementExtractor):
             "module",
             "class_definition",
             "function_definition",
+            "decorated_definition",  # 支持装饰的函数/类（@classmethod, @staticmethod, @property等）
             "if_statement",
             "for_statement",
             "while_statement",
