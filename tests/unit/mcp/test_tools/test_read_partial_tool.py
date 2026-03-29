@@ -532,15 +532,32 @@ class TestReadPartialToolExecuteBatch:
     async def test_execute_batch_too_many_sections_per_file_with_truncate(self):
         """Test that batch mode truncates sections when allow_truncate=True."""
         tool = ReadPartialTool()
-        sections = [{"start_line": i} for i in range(60)]
-        args = {
-            "requests": [{"file_path": "test.py", "sections": sections}],
-            "allow_truncate": True,
-        }
-        result = await tool._execute_batch(args)
-        assert result["truncated"] is True
-        if "results" in result:
-            assert len(result["results"][0]["sections"]) == 50  # max_sections_per_file
+        # Create enough content for 60 sections
+        test_content = "\n".join([f"line{i}" for i in range(1, 121)])
+
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        try:
+            with patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ):
+                # Create 60 sections (exceeds max_sections_per_file of 50)
+                sections = [{"start_line": i * 2 + 1, "end_line": i * 2 + 2} for i in range(60)]
+                args = {
+                    "requests": [{"file_path": "test.py", "sections": sections}],
+                    "allow_truncate": True,
+                }
+                result = await tool._execute_batch(args)
+                assert result["truncated"] is True
+                if "results" in result:
+                    assert len(result["results"][0]["sections"]) == 50  # max_sections_per_file
+        finally:
+            if test_file.exists():
+                test_file.unlink()
 
     @pytest.mark.asyncio
     async def test_execute_batch_file_not_found(self):
