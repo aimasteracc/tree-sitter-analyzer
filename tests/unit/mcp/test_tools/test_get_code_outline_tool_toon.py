@@ -130,8 +130,8 @@ class TestGetCodeOutlineToolToonExecution:
                             mock_format_json.assert_not_called()
 
                             # 返回结果应包含 TOON 格式的文本
-                            assert result[0]["type"] == "text"
-                            assert "success: true" in result[0]["text"]
+                            assert result["content"][0]["type"] == "text"
+                            assert "success: true" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
     async def test_execute_with_json_format_calls_format_as_json(self):
@@ -178,8 +178,8 @@ class TestGetCodeOutlineToolToonExecution:
                             mock_format_toon.assert_not_called()
 
                             # 返回结果应包含 JSON 格式的文本
-                            assert result[0]["type"] == "text"
-                            assert '{"success": true}' in result[0]["text"]
+                            assert result["content"][0]["type"] == "text"
+                            assert '{"success": true}' in result["content"][0]["text"]
 
     @pytest.mark.asyncio
     async def test_execute_defaults_to_toon_when_format_not_specified(self):
@@ -258,7 +258,7 @@ class TestGetCodeOutlineToolToonStructure:
                     }
 
                     result = await tool.execute(args)
-                    toon_text = result[0]["text"]
+                    toon_text = result["content"][0]["text"]
 
                     # 验证 TOON 格式包含关键字段
                     assert "success:" in toon_text
@@ -295,7 +295,7 @@ class TestGetCodeOutlineToolToonStructure:
                     }
 
                     result = await tool.execute(args)
-                    toon_text = result[0]["text"]
+                    toon_text = result["content"][0]["text"]
 
                     # TOON 格式不应该有 JSON 的括号和引号
                     # (注意：某些字符串仍需要引号，如包含特殊字符的)

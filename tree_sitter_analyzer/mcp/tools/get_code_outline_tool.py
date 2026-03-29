@@ -295,7 +295,7 @@ class GetCodeOutlineTool(BaseMCPTool):
             language = arguments.get("language")
             include_fields = arguments.get("include_fields", False)
             include_imports = arguments.get("include_imports", False)
-            output_format = arguments.get("output_format", "json")
+            output_format = arguments.get("output_format", "toon")
 
             resolved_path = self.resolve_and_validate_file_path(file_path)
 
@@ -334,8 +334,8 @@ class GetCodeOutlineTool(BaseMCPTool):
             else:  # json
                 formatted_text = format_as_json(result)
 
-            # Return MCP content blocks directly (not wrapped in {"content": [...]})
-            return [{"type": "text", "text": formatted_text}]
+            # Return MCP format (wrapped in content key for MCP server compatibility)
+            return {"content": [{"type": "text", "text": formatted_text}]}
 
         except Exception as e:
             self.logger.error(f"Error in get_code_outline: {e}")

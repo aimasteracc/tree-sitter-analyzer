@@ -438,15 +438,17 @@ class TestGetCodeOutlineToolExecute:
             self.tool.analysis_engine.analyze = AsyncMock(return_value=mock_result)
 
             # 显式请求 JSON 格式以便测试结构
-            content_blocks = await self.tool.execute({"file_path": "MyService.java", "output_format": "json"})
+            response = await self.tool.execute({"file_path": "MyService.java", "output_format": "json"})
 
-        # 验证返回 MCP 内容块列表
-        assert isinstance(content_blocks, list)
-        assert len(content_blocks) == 1
-        assert content_blocks[0]["type"] == "text"
+        # 验证返回 MCP 格式（包含 content 键）
+        assert isinstance(response, dict)
+        assert "content" in response
+        assert isinstance(response["content"], list)
+        assert len(response["content"]) == 1
+        assert response["content"][0]["type"] == "text"
 
         # 解析 JSON 内容
-        result = json.loads(content_blocks[0]["text"])
+        result = json.loads(response["content"][0]["text"])
 
         assert result["success"] is True
         assert "outline" in result
@@ -535,12 +537,12 @@ class TestGetCodeOutlineToolExecute:
             mock_path.return_value.exists.return_value = True
             self.tool.analysis_engine.analyze = AsyncMock(return_value=mock_result)
             # 显式请求 JSON 格式以便测试结构
-            content_blocks = await self.tool.execute(
+            response = await self.tool.execute(
                 {"file_path": "Counter.java", "include_fields": True, "output_format": "json"}
             )
 
         # 解析 JSON 内容
-        result = json.loads(content_blocks[0]["text"])
+        result = json.loads(response["content"][0]["text"])
 
         assert "fields" in result["outline"]["classes"][0]
         assert result["outline"]["classes"][0]["fields"][0]["name"] == "count"
