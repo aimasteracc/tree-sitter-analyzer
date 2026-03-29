@@ -328,13 +328,14 @@ class GetCodeOutlineTool(BaseMCPTool):
 
             result = {"success": True, "outline": outline}
 
-            # 根据 output_format 格式化输出
+            # Format the result based on output_format
             if output_format == "toon":
                 formatted_text = format_as_toon(result)
             else:  # json
                 formatted_text = format_as_json(result)
 
-            return {"content": [{"type": "text", "text": formatted_text}]}
+            # Return MCP content blocks directly (not wrapped in {"content": [...]})
+            return [{"type": "text", "text": formatted_text}]
 
         except Exception as e:
             self.logger.error(f"Error in get_code_outline: {e}")

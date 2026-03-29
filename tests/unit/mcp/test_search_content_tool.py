@@ -469,8 +469,8 @@ class TestExecute:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        # In toon format, summary_only may not be in response
-                        assert "toon_content" in result
+                        # JSON format (default) should have summary field
+                        assert "summary" in result
 
     @pytest.mark.asyncio
     async def test_execute_group_by_file_mode(self, tool, sample_project_structure):

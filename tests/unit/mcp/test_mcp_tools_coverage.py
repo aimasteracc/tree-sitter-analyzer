@@ -139,8 +139,9 @@ def standalone_function():
                     "output_file": f"{tmpdir}/output",
                 }
             )
-            # TOON format with output_file writes to file and returns success message
-            assert "success" in result or "message" in result
+            # TOON format returns minimal response with format and toon_content
+            assert result["format"] == "toon"
+            assert "toon_content" in result
 
     @pytest.mark.asyncio
     async def test_execute_with_suppress_output(self, query_tool, temp_python_file):
