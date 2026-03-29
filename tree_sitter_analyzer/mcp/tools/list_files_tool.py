@@ -54,7 +54,7 @@ class ListFilesTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "list_files",
-            "description": "List files and directories using fd with advanced filtering options. Supports glob patterns, file types, size filters, and more. Returns file paths with metadata or just counts, with optional file output and token optimization.",
+            "description": "Map project structure — discover which files exist. Fast file search with glob patterns, type filters, and size constraints. Use this to explore unfamiliar codebases and locate relevant files before diving into content. Supports token optimization with count-only mode and file output.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

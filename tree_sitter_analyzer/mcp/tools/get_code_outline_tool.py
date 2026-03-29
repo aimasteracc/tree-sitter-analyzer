@@ -346,12 +346,11 @@ class GetCodeOutlineTool(BaseMCPTool):
         return {
             "name": "get_code_outline",
             "description": (
-                "Return a hierarchical structural outline of a source file "
-                "(package → class → method tree with line numbers) "
-                "WITHOUT reading the method bodies. "
-                "Supports TOON format (default) for 50-70% token savings. "
-                "Use this BEFORE extract_code_section to navigate large files efficiently. "
-                "Enables outline-first retrieval: understand structure first, "
+                "Navigate structure — get the complete map before reading bodies. "
+                "Returns hierarchical outline (package → class → method tree with line numbers) "
+                "WITHOUT method bodies. Use this BEFORE extract_code_section to explore large files efficiently. "
+                "TOON format (default) delivers 54-56% token savings vs JSON. "
+                "Enables outline-first navigation: understand architecture first, "
                 "then fetch only the specific code you need."
             ),
             "inputSchema": self.get_tool_schema(),
