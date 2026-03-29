@@ -25,16 +25,16 @@ find the right files → find the right matches → extract the right structure 
 ## ✨ What's New in v1.10.5
 
 - **`get_code_outline` MCP tool with TOON format**: Outline-first navigation delivering **54-56% token reduction** vs JSON. Retrieve hierarchical structure first, then fetch only the bodies you need.
-- **Intent-based tool aliases**: AI-friendly tool naming — `locate_usage`, `map_structure`, `extract_structure` — makes tool discovery natural for agents
+- **`trace_impact` MCP tool**: Lightweight call site finder using ripgrep — impact analysis without graph database overhead
+- **Intent-based tool aliases**: AI-friendly tool naming (`locate_usage`, `map_structure`) makes tool discovery natural for agents
+- **Analysis session tracking**: Audit multi-step SMART workflows with session IDs and operation history
+- **23 critical bug fixes**: TOON format return structure, default output format, test assertions - **project fully operational**
 - **Measured token savings**: Real-world testing shows TOON format reduces output size by 54-56% across small/medium/large files
-- **Vertex AI Compatibility**: Fixed MCP tool JSON Schema compatibility with Vertex AI API by removing `oneOf`/`anyOf`/`allOf` constraints
-- **Format Change Management System**: Complete system for tracking and managing format changes with database tracking and pre-commit validation
-- **Behavior Profile Comparison**: CLI tool for comparing code analysis behavior profiles between versions
-- **Enhanced Language Support**: Added Go, Rust, and Kotlin to core dependencies for comprehensive systems programming language support
-- **C++ Formatter**: Dedicated formatter with Bandit security scanning
-- **Documentation and workflow polish**: clearer local-first positioning for AI-assisted development, large-repo retrieval, and secure MCP usage
+- **Enhanced test coverage**: 8,470 tests (100% pass), 88.68% coverage (↑8.35% from v1.10.4)
+- **Cross-platform verified**: All tests pass on Ubuntu, Windows, macOS × Python 3.10-3.13
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
+---
 ---
 
 ## 🎬 See It In Action
