@@ -64,14 +64,17 @@ from ..project_detector import detect_project_root
 from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
+from .intent_aliases import IntentAliasResolver
 from .resources import CodeFileResource, ProjectStatsResource
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.find_and_grep_tool import FindAndGrepTool
+from .tools.get_code_outline_tool import GetCodeOutlineTool
 from .tools.list_files_tool import ListFilesTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
+from .tools.trace_impact_tool import TraceImpactTool
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
 
@@ -125,6 +128,13 @@ class TreeSitterAnalyzerMCPServer:
         self.list_files_tool = ListFilesTool(project_root)  # list_files
         self.search_content_tool = SearchContentTool(project_root)  # search_content
         self.find_and_grep_tool = FindAndGrepTool(project_root)  # find_and_grep
+        # Outline-first navigation tool
+        self.get_code_outline_tool = GetCodeOutlineTool(project_root)  # get_code_outline
+        # Impact analysis tool
+        self.trace_impact_tool = TraceImpactTool(project_root)  # trace_impact
+
+        # Intent Aliases resolver (intent-based tool names → canonical names)
+        self.intent_alias_resolver = IntentAliasResolver()
 
         # Optional universal tool to satisfy initialization tests
         # Allow tests to control initialization by checking if UniversalAnalyzeTool is available
@@ -424,6 +434,8 @@ class TreeSitterAnalyzerMCPServer:
                 Tool(**self.list_files_tool.get_tool_definition()),
                 Tool(**self.search_content_tool.get_tool_definition()),
                 Tool(**self.find_and_grep_tool.get_tool_definition()),
+                Tool(**self.get_code_outline_tool.get_tool_definition()),
+                Tool(**self.trace_impact_tool.get_tool_definition()),
             ]
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -441,6 +453,15 @@ class TreeSitterAnalyzerMCPServer:
                 logger.info(
                     f"MCP tool call: {name} with args: {list(arguments.keys())}"
                 )
+
+                # Resolve intent aliases to canonical tool names
+                # This enables AI agents to use intent-based names like "locate_usage"
+                # while maintaining backward compatibility with original names
+                try:
+                    name = self.intent_alias_resolver.resolve(name)
+                except ValueError:
+                    # Unknown tool/alias - will be caught by the "Unknown tool" check below
+                    pass
 
                 # Validate file path security (server-side early rejection for compatibility)
                 # Note: Tools also validate paths, but they use shared caching to avoid redundant work.
@@ -545,6 +566,12 @@ class TreeSitterAnalyzerMCPServer:
 
                 elif name == "find_and_grep":
                     result = await self.find_and_grep_tool.execute(arguments)
+
+                elif name == "get_code_outline":
+                    result = await self.get_code_outline_tool.execute(arguments)
+
+                elif name == "trace_impact":
+                    result = await self.trace_impact_tool.execute(arguments)
 
                 else:
                     raise ValueError(f"Unknown tool: {name}")
@@ -659,6 +686,7 @@ class TreeSitterAnalyzerMCPServer:
         self.list_files_tool.set_project_path(project_path)
         self.search_content_tool.set_project_path(project_path)
         self.find_and_grep_tool.set_project_path(project_path)
+        self.get_code_outline_tool.set_project_path(project_path)
 
         # Update universal tool if available
         if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
@@ -672,6 +700,52 @@ class TreeSitterAnalyzerMCPServer:
             logger.info(f"Set project path to: {project_path}")
         except (ValueError, OSError):
             pass  # Silently ignore logging errors during shutdown
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """
+        Test helper method to call tools directly (bypassing MCP protocol).
+
+        This method simulates what handle_call_tool does but can be called
+        directly for integration testing without needing the full MCP server.
+
+        Args:
+            name: Tool name (can be an alias like "locate_usage")
+            arguments: Tool arguments
+
+        Returns:
+            Tool execution result
+
+        Raises:
+            ValueError: If tool name is unknown or arguments are invalid
+        """
+        # Resolve intent aliases to canonical tool names
+        try:
+            name = self.intent_alias_resolver.resolve(name)
+        except ValueError:
+            raise ValueError(f"Unknown tool: {name}") from None
+
+        # Route to the appropriate tool
+        if name == "check_code_scale":
+            return await self.analyze_scale_tool.execute(arguments)
+        elif name == "analyze_code_structure":
+            return await self.analyze_code_structure_tool.execute(arguments)
+        elif name == "extract_code_section":
+            return await self.read_partial_tool.execute(arguments)
+        elif name == "query_code":
+            return await self.query_tool.execute(arguments)
+        elif name == "list_files":
+            result: dict[str, Any] = await self.list_files_tool.execute(arguments)
+            return result
+        elif name == "search_content":
+            result = await self.search_content_tool.execute(arguments)
+            return result
+        elif name == "find_and_grep":
+            result = await self.find_and_grep_tool.execute(arguments)
+            return result
+        elif name == "get_code_outline":
+            return await self.get_code_outline_tool.execute(arguments)
+        else:
+            raise ValueError(f"Unknown tool: {name}")
 
     async def run(self) -> None:
         """

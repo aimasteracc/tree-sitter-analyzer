@@ -4,27 +4,37 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-multi--thousand-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🔎 **Evidence-based code navigation for AI on large repositories** - MCP integration · Minimal context retrieval · Search without heavy preprocessing
+> **Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development** — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
+
+Its job is not just to parse code. Its job is to help humans and AI agents fetch only the code context they actually need, safely, quickly, and with structural precision.
+
+```
+find the right files → find the right matches → extract the right structure → send only the right context
+```
+
+**17 languages · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
 
 ---
 
-## ✨ What's New in v1.10.4
+## ✨ What's New in v1.10.5
 
+- **`get_code_outline` MCP tool with TOON format**: Outline-first navigation delivering **54-56% token reduction** vs JSON. Retrieve hierarchical structure first, then fetch only the bodies you need.
+- **Intent-based tool aliases**: AI-friendly tool naming — `locate_usage`, `map_structure`, `extract_structure` — makes tool discovery natural for agents
+- **Measured token savings**: Real-world testing shows TOON format reduces output size by 54-56% across small/medium/large files
 - **Vertex AI Compatibility**: Fixed MCP tool JSON Schema compatibility with Vertex AI API by removing `oneOf`/`anyOf`/`allOf` constraints
 - **Format Change Management System**: Complete system for tracking and managing format changes with database tracking and pre-commit validation
 - **Behavior Profile Comparison**: CLI tool for comparing code analysis behavior profiles between versions
 - **Enhanced Language Support**: Added Go, Rust, and Kotlin to core dependencies for comprehensive systems programming language support
 - **C++ Formatter**: Dedicated formatter with Bandit security scanning
-- **8,409 tests** with 100% pass rate and 80.33% coverage
+- **Documentation and workflow polish**: clearer local-first positioning for AI-assisted development, large-repo retrieval, and secure MCP usage
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
-
 ---
 
 ## 🎬 See It In Action
@@ -36,7 +46,7 @@
 
 ## 🎯 Why Tree-sitter Analyzer
 
-Tree-sitter Analyzer is an open-source MCP and CLI toolkit for helping AI assistants read only what matters in large codebases.
+Tree-sitter Analyzer is an open-source, local-first code context engine for helping AI assistants read only what matters in large codebases.
 
 - **Minimal context, not whole-file stuffing**: retrieve the smallest useful code regions before sending them to AI
 - **Evidence-based analysis**: combine tree-sitter structure with `fd` and `ripgrep` to surface relevant files, symbols, and paths
@@ -191,8 +201,9 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 | Feature | Description | Learn More |
 |---------|-------------|------------|
 | **SMART Workflow** | Set-Map-Analyze-Retrieve-Trace methodology | [Guide](docs/smart-workflow.md) |
+| **Outline-First Navigation** | `get_code_outline` — hierarchical structure map before content retrieval | [MCP Tools](docs/api/mcp_tools_specification.md) |
 | **MCP Protocol** | Native AI assistant integration | [API Docs](docs/api/mcp_tools_specification.md) |
-| **Token Optimization** | Up to 95% token reduction | [Features](docs/features.md) |
+| **Token Optimization** | TOON format delivers 54-56% token reduction; token-aware controls for large AI workflows | [Features](docs/features.md) |
 | **File Search** | fd-based high-performance discovery | [CLI Reference](docs/cli-reference.md) |
 | **Content Search** | ripgrep regex search | [CLI Reference](docs/cli-reference.md) |
 | **Security** | Project boundary protection | [Architecture](docs/architecture.md) |
@@ -203,7 +214,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 | Metric | Value |
 |--------|-------|
-| **Tests** | 6,246 passed ✅ |
+| **Tests** | Multi-thousand automated tests |
 | **Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 | **Platforms** | Windows, macOS, Linux |
@@ -266,8 +277,7 @@ MIT License - see [LICENSE](LICENSE) file.
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 2,411 tests ✅ |
-| **Test Pass Rate** | 100% (2,411/2,411) |
+| **Test Suite** | Multi-thousand automated tests across unit, integration, regression, property, benchmark, and compatibility layers |
 | **Code Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 
@@ -303,12 +313,12 @@ uv run pytest tests/benchmarks/ --benchmark-only
 
 ### Test Categories
 
-- **Unit Tests** (2,087 tests): Test individual components in isolation
-- **Integration Tests** (187 tests): Test component interactions
-- **Regression Tests** (70 tests): Ensure backward compatibility and format stability
-- **Property Tests** (75 tests): Hypothesis-based property testing
-- **Benchmark Tests** (20 tests): Performance monitoring and regression detection
-- **Compatibility Tests** (30 tests): Cross-version compatibility validation
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test component interactions
+- **Regression Tests**: Ensure backward compatibility and format stability
+- **Property Tests**: Use Hypothesis-based invariant checking
+- **Benchmark Tests**: Track performance and regression signals
+- **Compatibility Tests**: Validate cross-version behavior
 
 ### CI/CD Integration
 

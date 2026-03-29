@@ -549,6 +549,35 @@ class FileRestrictionError(SecurityError):
         self.allowed_patterns = allowed_patterns
 
 
+class SessionIntegrityError(TreeSitterAnalyzerError):
+    """Raised when analysis session integrity check fails."""
+
+    def __init__(
+        self,
+        message: str,
+        session_id: str | None = None,
+        file_path: str | Path | None = None,
+        expected_hash: str | None = None,
+        actual_hash: str | None = None,
+        **kwargs: Any,
+    ) -> None:
+        context = kwargs.pop("context", {})
+        if session_id:
+            context["session_id"] = session_id
+        if file_path:
+            context["file_path"] = str(file_path)
+        if expected_hash:
+            context["expected_hash"] = expected_hash
+        if actual_hash:
+            context["actual_hash"] = actual_hash
+
+        super().__init__(message, context=context, **kwargs)
+        self.session_id = session_id
+        self.file_path = str(file_path) if file_path else None
+        self.expected_hash = expected_hash
+        self.actual_hash = actual_hash
+
+
 # Enhanced error response utilities for MCP
 def create_mcp_error_response(
     exception: Exception,

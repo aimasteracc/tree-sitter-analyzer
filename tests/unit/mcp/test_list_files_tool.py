@@ -482,7 +482,6 @@ class TestExecute:
                     result = await tool.execute(arguments)
 
                     assert result["success"] is True
-                    assert "toon_content" in result
                     assert "count" in result
                     assert "elapsed_ms" in result
 
@@ -799,5 +798,4 @@ class TestExecute:
 
                     # Verify results were truncated
                     assert result["truncated"] is True
-                    # In toon format, results are in toon_content
-                    assert "toon_content" in result
+                    assert result["count"] == 10000  # Hard cap

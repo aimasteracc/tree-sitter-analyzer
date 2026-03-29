@@ -950,9 +950,7 @@ async def test_search_content_optimize_paths(monkeypatch, tmp_path):
 
     assert result["success"] is True
     assert result["count"] == 1
-
-    # In toon format, results are in toon_content
-    assert "toon_content" in result
+    assert "results" in result
 
 
 @pytest.mark.unit

@@ -45,7 +45,11 @@ async def test_analyze_scale_metrics_batch_toon_default_strips_json_details() ->
 
         tool = AnalyzeScaleTool(project_root=temp_dir)
         res = await tool.execute(
-            {"file_paths": [str(p / "a.py")], "metrics_only": True}
+            {
+                "file_paths": [str(p / "a.py")],
+                "metrics_only": True,
+                "output_format": "toon",
+            }
         )
 
         assert res.get("format") == "toon"

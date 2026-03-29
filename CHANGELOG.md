@@ -1,5 +1,39 @@
 # Changelog
 
+## [1.10.5] - 2026-03-28
+
+### ✨ New Features
+
+#### `get_code_outline` MCP Tool with TOON Format
+- **Added**: Outline-first navigation tool returning hierarchical package → class → method tree with line numbers
+  - **Purpose**: Enable "map before you fetch" workflow for LLM code analysis
+  - **TOON Format**: Tree-Oriented Object Notation - delivers 54-56% token reduction vs JSON
+  - **Default Output**: TOON format for maximum token efficiency
+  - **JSON Option**: Available via `output_format="json"` for structured data consumers
+  - **Impact**: Significantly reduces LLM token consumption when navigating large codebases
+
+### 🔧 Technical Implementation
+- **Files Added**:
+  - `tree_sitter_analyzer/mcp/tools/get_code_outline_tool.py` - Core tool implementation
+  - `tests/unit/mcp/test_tools/test_get_code_outline_tool.py` - 37 unit tests
+  - `tests/unit/mcp/test_tools/test_get_code_outline_tool_toon.py` - 12 TOON format unit tests
+  - `tests/integration/mcp/test_tools/test_get_code_outline_toon_integration.py` - 9 integration tests
+  - `tests/integration/mcp/test_tools/test_get_code_outline_token_savings.py` - 5 token savings verification tests
+- **Integration**: Registered in `tree_sitter_analyzer/mcp/server.py`
+- **Format Helpers**: Reusable TOON formatting utilities in `tree_sitter_analyzer/mcp/utils/format_helper.py`
+
+### 📊 Quality Metrics
+- **Tests**: 63 new tests for `get_code_outline` (100% pass rate)
+  - 37 unit tests (basic functionality)
+  - 12 TOON format unit tests (format correctness)
+  - 9 integration tests (real tree-sitter parsing)
+  - 5 token savings tests (verified 54-56% reduction)
+- **Token Savings**: Measured on small (~20 lines), medium (~100 lines), and large (~250 lines) files
+- **Coverage**: TOON format unit tests achieve comprehensive edge case coverage
+- **Breaking Changes**: None - new feature, backward compatible
+
+---
+
 ## [1.10.4] - 2026-01-08
 
 ### 🐛 Bug Fixes

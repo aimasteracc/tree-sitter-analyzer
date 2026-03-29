@@ -527,8 +527,7 @@ class TestExecute:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        # In toon format, output_file info is in toon_content
-                        assert "toon_content" in result
+                        assert "file_saved" in result or "file_save_error" in result
 
     @pytest.mark.asyncio
     async def test_execute_with_suppress_output(self, tool, sample_project_structure):
@@ -565,8 +564,7 @@ class TestExecute:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        # In toon format, output_file info is in toon_content
-                        assert "toon_content" in result
+                        assert "file_saved" in result or "file_save_error" in result
 
     @pytest.mark.asyncio
     async def test_execute_with_optimize_paths(self, tool, sample_project_structure):
@@ -601,8 +599,7 @@ class TestExecute:
                         result = await tool.execute(arguments)
 
                         assert result["success"] is True
-                        # In toon format, results are in toon_content
-                        assert "toon_content" in result
+                        assert "count" in result
 
     @pytest.mark.asyncio
     async def test_execute_rg_failure(self, tool, sample_project_structure):

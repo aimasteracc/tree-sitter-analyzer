@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "count": 1,
+  "truncated": false,
+  "elapsed_ms": 821,
+  "results": [
+    {
+      "file": "C:\\Users\\aisheng.yu\\AppData\\Local\\Temp\\tmpkafe72hl\\test_example.py",
+      "line": 2,
+      "text": "def example_function():",
+      "matches": [
+        [
+          4,
+          20
+        ]
+      ]
+    }
+  ]
+}

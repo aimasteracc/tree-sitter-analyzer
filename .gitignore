@@ -324,3 +324,12 @@ tests/debug_artifacts/
 /output.toon
 /test_mcp_output.toon
 /test_mcp_suppress_output.toon
+
+# Internal design documents (not for public)
+docs/designs/tree-sitter-analyzer-*.md
+
+# gstack compiled binaries (110MB+, tracked by historical mistake)
+.claude/skills/gstack/bin/*.exe
+
+# Claude local settings
+.claude/settings.local.json

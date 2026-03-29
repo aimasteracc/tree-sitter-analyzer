@@ -311,7 +311,7 @@ class ListFilesTool(BaseMCPTool):
             # Handle file output for count_only mode
             output_file = arguments.get("output_file")
             suppress_output = arguments.get("suppress_output", False)
-            output_format = arguments.get("output_format", "toon")
+            output_format = arguments.get("output_format", "json")
 
             if output_file:
                 file_manager = FileOutputManager(self.project_root)
@@ -406,7 +406,7 @@ class ListFilesTool(BaseMCPTool):
         # Handle file output for detailed results
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         if output_file:
             file_manager = FileOutputManager(self.project_root)

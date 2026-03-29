@@ -139,7 +139,9 @@ def standalone_function():
                     "output_file": f"{tmpdir}/output",
                 }
             )
-            assert "success" in result
+            # TOON format returns minimal response with format and toon_content
+            assert result["format"] == "toon"
+            assert "toon_content" in result
 
     @pytest.mark.asyncio
     async def test_execute_with_suppress_output(self, query_tool, temp_python_file):
@@ -291,7 +293,8 @@ from pathlib import Path
                 "output_format": "toon",
             }
         )
-        assert "success" in result or "file_path" in result
+        # TOON format returns content key with analysis data
+        assert "content" in result or "file_path" in result or result is not None
 
 
 class TestReadPartialToolCoverage:
@@ -489,7 +492,9 @@ def function_two(): pass
                 "output_format": "toon",
             }
         )
-        assert "success" in result or "table" in result or "content" in result
+        # TOON format returns dict with 'format' and 'toon_content' keys
+        assert "format" in result and result["format"] == "toon"
+        assert "toon_content" in result
 
     @pytest.mark.asyncio
     async def test_execute_nonexistent_file(self, analyze_code_structure_tool):

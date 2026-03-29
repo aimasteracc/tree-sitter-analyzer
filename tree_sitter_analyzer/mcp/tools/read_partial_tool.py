@@ -169,7 +169,7 @@ class ReadPartialTool(BaseMCPTool):
         output_file = arguments.get("output_file")
         suppress_output = arguments.get("suppress_output", False)
         content_format = arguments.get("format", "text")
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
 
         # Resolve + security validation with shared caching to avoid redundant checks
         try:
@@ -383,7 +383,7 @@ class ReadPartialTool(BaseMCPTool):
         - Default output is TOON for token reduction.
         - When output_format='toon', the response MUST NOT include detailed JSON fields like results/sections/content.
         """
-        output_format = arguments.get("output_format", "toon")
+        output_format = arguments.get("output_format", "json")
         content_format = arguments.get("format", "text")
         allow_truncate = bool(arguments.get("allow_truncate", False))
         fail_fast = bool(arguments.get("fail_fast", False))

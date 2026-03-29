@@ -326,6 +326,7 @@ exclude = [
     "/.mypy_cache",
     "/.coverage",
     "/htmlcov",
+    "/.claude",
 ]
 
 [tool.hatch.metadata]
