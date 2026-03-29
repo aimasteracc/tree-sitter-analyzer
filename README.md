@@ -1,5 +1,7 @@
 # 🌳 Tree-sitter Analyzer
 
+[![SafeSkill 78/100](https://img.shields.io/badge/SafeSkill-78%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/aimasteracc-tree-sitter-analyzer)
+
 **English** | **[日本語](README_ja.md)** | **[简体中文](README_zh.md)**
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
