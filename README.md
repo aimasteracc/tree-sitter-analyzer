@@ -229,6 +229,82 @@ uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 
 ---
 
+## 🔒 Security & Architecture
+
+Tree-sitter Analyzer is designed with **security-by-default** principles for AI-assisted development workflows.
+
+### Security Model
+
+**Project Boundary Enforcement**
+- All MCP tools validate file paths against project root boundaries
+- No access to files outside the configured project directory
+- Symlink traversal prevention
+- Path normalization prevents `../` escape attempts
+
+**Input Validation**
+- JSON Schema validation on all MCP tool parameters
+- Type-safe Python API with strict mypy compliance
+- Sanitized user inputs before shell command execution
+- Pattern validation for glob/regex searches
+
+**No Remote Execution**
+- 100% local processing — no cloud dependencies
+- No telemetry or data collection
+- No network calls except optional PyPI version checks
+- Source code analysis stays on your machine
+
+**Secure Defaults**
+- Read-only file operations by default
+- Explicit opt-in required for any file modifications
+- Sandboxed subprocess execution for external tools (fd, ripgrep)
+- Environment variable isolation
+
+### Architecture Principles
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  AI Assistant (Claude Desktop / Cursor / Roo Code)     │
+└────────────────────┬────────────────────────────────────┘
+                     │ MCP Protocol (JSON-RPC)
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  MCP Server Layer                                       │
+│  • Input validation (JSON Schema)                       │
+│  • Project boundary checks                              │
+│  • Tool dispatch                                        │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Analysis Engine                                        │
+│  • Tree-sitter AST parsing (17 languages)               │
+│  • Fast file search (fd)                                │
+│  • Content search (ripgrep)                             │
+│  • Output formatting (JSON / TOON)                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Security Boundaries**:
+1. **MCP Protocol**: AI can only call explicitly defined tools with validated schemas
+2. **Project Root**: File operations confined to configured directory
+3. **Read-Only**: No destructive operations without explicit user consent
+4. **Local-First**: All processing happens on your machine
+
+### Security Testing
+
+- **8,470+ automated tests** including security-focused edge cases
+- **100% mypy type safety** prevents entire classes of bugs
+- **CI/CD security scans**: Bandit (Python security), safety (dependency vulnerabilities)
+- **Manual security review** of all MCP tool implementations
+
+### Reporting Security Issues
+
+Found a security concern? Please email aimasteracc@gmail.com or open a private security advisory on GitHub.
+
+**We do NOT use automated security badge services** — our security posture is documented through architecture, testing, and code review, not third-party scores.
+
+---
+
 ## 🛠️ Development
 
 ### Setup
