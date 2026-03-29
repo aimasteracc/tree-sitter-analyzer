@@ -242,8 +242,8 @@ def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
 - [x] 编写单元测试（纯 mock）- 37 basic + 12 TOON format tests
 - [x] 编写集成测试（真实文件）- 9 integration tests (all passing)
 - [x] 编写 token 节省验证测试 - 5 tests (verified 54-56% reduction)
-- [ ] 更新文档
-- [ ] 运行完整测试套件确保无回归
+- [x] 更新文档
+- [x] 运行完整测试套件确保无回归
 - [x] 更新 CHANGELOG.md
 
 ## 成功标准
