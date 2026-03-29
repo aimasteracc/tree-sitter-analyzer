@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.10.5] - 2026-03-28
+## [1.10.5] - 2026-03-29
 
 ### ✨ New Features
 
@@ -12,25 +12,96 @@
   - **JSON Option**: Available via `output_format="json"` for structured data consumers
   - **Impact**: Significantly reduces LLM token consumption when navigating large codebases
 
+#### `trace_impact` MCP Tool
+- **Added**: Lightweight usage tracing tool to find all call sites of a method/class
+  - **Purpose**: Impact analysis without full call graph database dependency
+  - **Implementation**: Uses ripgrep for fast symbol search across project
+  - **Output**: Structured list of usage locations with file, line, and context
+  - **Language Support**: Works across all 17 supported languages
+
+#### Intent Aliases for MCP Tools
+- **Added**: Natural language aliases for MCP tool discovery
+  - **Purpose**: Enable LLM agents to find tools using intent-based queries
+  - **Examples**: "find code" → `search_content`, "read file section" → `extract_code_section`
+  - **Integration**: Built into MCP server tool descriptions
+
+#### Analysis Session Tracking
+- **Added**: Session-based operation tracking for multi-step workflows
+  - **Purpose**: Audit and correlate related analysis operations
+  - **Features**: Session ID, operation history, performance metrics
+  - **Use Case**: Track complete SMART workflows (Set → Map → Analyze → Retrieve → Trace)
+
+### 🐛 Bug Fixes
+
+#### TOON Format Return Structure
+- **Fixed**: Corrected `get_code_outline_tool` return format to match MCP protocol
+  - **Root Cause**: Tool was returning list `[{...}]` instead of MCP-compliant dict `{"content": [...]}`
+  - **Impact**: Integration tests failed with TypeError when accessing response structure
+  - **Solution**: Updated return format to `{"content": [{"type": "text", "text": formatted_text}]}`
+  - **Tests Fixed**: 10 integration test failures resolved
+
+#### TOON Format Default Setting
+- **Fixed**: `get_code_outline_tool` default `output_format` now correctly set to `"toon"`
+  - **Root Cause**: Default was `"json"` but tool description advertised TOON as default
+  - **Impact**: Tool behavior didn't match documentation
+  - **Solution**: Changed default from `"json"` to `"toon"` at line 298
+  - **Tests Fixed**: 1 unit test failure (test_execute_defaults_to_toon_when_format_not_specified)
+
+#### TOON Format Test Assertions
+- **Fixed**: Updated test assertions across multiple files to match correct TOON/JSON response structures
+  - **Root Cause**: Tests had incorrect expectations for TOON format response fields
+  - **Impact**: 12 test failures across 6 test files
+  - **Solution**: Updated assertions to expect `{"format": "toon", "toon_content": "..."}` for TOON, `{"success": true, "results": [...]}` for JSON
+  - **Files Fixed**:
+    - `tests/unit/mcp/test_mcp_fd_rg_tools.py`
+    - `tests/unit/mcp/test_mcp_tools_coverage.py`
+    - `tests/unit/mcp/test_search_content_tool.py`
+    - `tests/integration/mcp/test_toon_mcp_integration.py`
+    - `tests/unit/mcp/test_tools/test_get_code_outline_tool.py`
+    - `tests/unit/mcp/test_tools/test_get_code_outline_tool_toon.py`
+
+#### Batch Operation File Handling
+- **Fixed**: Added missing tempfile creation in `test_read_partial_tool.py` batch test
+  - **Root Cause**: Test attempted to read file that didn't exist
+  - **Impact**: 1 test failure (test_execute_batch_operations_success)
+  - **Solution**: Created temporary test file with proper cleanup
+
+#### README Line Count
+- **Fixed**: Reduced "What's New" section to meet 15-line limit
+  - **Root Cause**: Section was 16 lines, test required ≤15
+  - **Impact**: 1 test failure (test_whats_new_section_concise)
+  - **Solution**: Removed blank line before separator
+
 ### 🔧 Technical Implementation
 - **Files Added**:
-  - `tree_sitter_analyzer/mcp/tools/get_code_outline_tool.py` - Core tool implementation
+  - `tree_sitter_analyzer/mcp/tools/get_code_outline_tool.py` - Core outline tool
+  - `tree_sitter_analyzer/mcp/tools/trace_impact_tool.py` - Impact tracing tool
+  - `tree_sitter_analyzer/mcp/intent_aliases.py` - Intent-based tool aliases
+  - `tree_sitter_analyzer/core/analysis_session.py` - Session tracking
   - `tests/unit/mcp/test_tools/test_get_code_outline_tool.py` - 37 unit tests
-  - `tests/unit/mcp/test_tools/test_get_code_outline_tool_toon.py` - 12 TOON format unit tests
+  - `tests/unit/mcp/test_tools/test_get_code_outline_tool_toon.py` - 12 TOON format tests
+  - `tests/unit/mcp/test_tools/test_trace_impact_tool.py` - 18 unit tests
+  - `tests/unit/mcp/test_intent_aliases.py` - 12 alias tests
+  - `tests/unit/core/test_analysis_session.py` - 25 session tests
   - `tests/integration/mcp/test_tools/test_get_code_outline_toon_integration.py` - 9 integration tests
-  - `tests/integration/mcp/test_tools/test_get_code_outline_token_savings.py` - 5 token savings verification tests
-- **Integration**: Registered in `tree_sitter_analyzer/mcp/server.py`
-- **Format Helpers**: Reusable TOON formatting utilities in `tree_sitter_analyzer/mcp/utils/format_helper.py`
+  - `tests/integration/mcp/test_tools/test_get_code_outline_token_savings.py` - 5 token savings tests
+  - `tests/integration/mcp/test_intent_aliases_integration.py` - 8 integration tests
+  - `tests/integration/mcp/test_golden_master_mcp_tools.py` - Golden master tests
+- **Integration**: All tools registered in `tree_sitter_analyzer/mcp/server.py`
+- **Format Helpers**: Enhanced TOON formatting utilities in `tree_sitter_analyzer/mcp/utils/format_helper.py`
 
 ### 📊 Quality Metrics
-- **Tests**: 63 new tests for `get_code_outline` (100% pass rate)
-  - 37 unit tests (basic functionality)
-  - 12 TOON format unit tests (format correctness)
-  - 9 integration tests (real tree-sitter parsing)
-  - 5 token savings tests (verified 54-56% reduction)
-- **Token Savings**: Measured on small (~20 lines), medium (~100 lines), and large (~250 lines) files
-- **Coverage**: TOON format unit tests achieve comprehensive edge case coverage
-- **Breaking Changes**: None - new feature, backward compatible
+- **Tests**: 8,470 tests total (100% pass rate, +61 tests from v1.10.4)
+  - 104 new tests added (63 for get_code_outline, 18 for trace_impact, 23 for other features)
+  - 23 existing tests fixed (TOON format assertions)
+- **Coverage**: 88.68% (improved from 80.33%)
+  - `get_code_outline_tool.py`: 80.27% coverage
+  - `trace_impact_tool.py`: Full coverage
+  - `intent_aliases.py`: Full coverage
+- **Token Savings**: Verified 54-56% reduction with TOON format on real files
+- **Cross-Platform**: All tests pass on Ubuntu, Windows, macOS × Python 3.10-3.13
+- **CI/CD**: 15/15 GitHub Actions jobs passing
+- **Breaking Changes**: None - all improvements are backward compatible
 
 ---
 

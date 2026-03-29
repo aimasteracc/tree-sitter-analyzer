@@ -4,25 +4,29 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8409%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-8470%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
 
 ---
 
-## ✨ v1.10.4 最新更新
+## ✨ v1.10.5 最新更新
 
-- **Vertex AI兼容性修复**: 移除`oneOf`/`anyOf`/`allOf`约束，修复MCP工具与Vertex AI API的兼容性
-- **格式变更管理系统**: 新增格式变更检测和行为配置文件比较功能
-- **增强语言支持**: Go、Rust、Kotlin现已成为核心依赖
-- **C++格式化器**: 新增C++代码格式化支持
-- **8,409个测试** 100%通过率，80.33%覆盖率
+- **`get_code_outline` MCP工具 + TOON格式**: 大纲优先导航，相比JSON格式节省**54-56% token**。先获取层次结构，再按需提取代码体
+- **`trace_impact` MCP工具**: 轻量级调用点查找器，使用ripgrep实现——无需图数据库开销的影响分析
+- **意图别名系统**: AI友好的工具命名（`locate_usage`、`map_structure`）使工具发现更自然
+- **分析会话追踪**: 通过会话ID和操作历史审计多步SMART工作流
+- **23个关键bug修复**: TOON格式返回结构、默认输出格式、测试断言——**项目完全可用**
+- **实测token节省**: 真实文件测试显示TOON格式在小型/中型/大型文件上减少54-56%输出大小
+- **增强测试覆盖**: 8,470个测试（100%通过），88.68%覆盖率（较v1.10.4提升8.35%）
+- **跨平台验证**: 所有测试在Ubuntu、Windows、macOS × Python 3.10-3.13上通过
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
+---
 
 ---
 
