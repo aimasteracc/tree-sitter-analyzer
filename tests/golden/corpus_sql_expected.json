@@ -1,0 +1,23 @@
+{
+  "language": "sql",
+  "node_types": {
+    "create_table": 6,
+    "create_index": 10,
+    "create_view": 3,
+    "create_function": 2,
+    "select": 75,
+    "insert": 7,
+    "update": 7,
+    "delete": 6,
+    "from": 82,
+    "where": 44,
+    "join": 18,
+    "group_by": 10,
+    "order_by": 17,
+    "column_definition": 43,
+    "subquery": 12,
+    "case": 10,
+    "cte": 5,
+    "window_function": 9
+  }
+}

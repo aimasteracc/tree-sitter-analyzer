@@ -32,6 +32,17 @@
 - **Depends on:** Semantic Golden Master Tests 实现
 - **Effort:** S (human: ~30min / CC: ~5min)
 
+### **Priority:** P0
+**Fix golden master test infrastructure before Grammar Coverage implementation**
+- **What:** Debug and fix format mismatch in `test_golden_master_regression.py` (1 of 4 Python tests failing)
+- **Why:** Grammar Coverage golden corpus tests extend this infrastructure. If base tests are broken, new tests inherit the same issues.
+- **Pros:** Clean foundation for corpus tests, prevents confusing errors during Grammar Coverage implementation
+- **Cons:** 1-2 hour delay before starting Grammar Coverage work
+- **Context:** Current failure: expected format `name,type,start,end` but getting `name,visibility,(start,end)`. Root cause unknown. Tests affected: `TestCompactGoldenMasterRegression`, `TestFullGoldenMasterRegression`, `TestCsvGoldenMasterRegression`. File: `tests/integration/core/test_golden_master_regression.py`
+- **Depends on:** None — must be fixed before Grammar Coverage Phase 1.1
+- **Effort:** S (human: ~2h / CC: ~15min)
+- **Blocking:** Grammar Coverage MECE implementation (all phases)
+
 ---
 
 ## Core — Edge Cases & Error Handling
@@ -149,6 +160,17 @@
 - **Context:** `parse_analysis_result()` 在 semantic golden master 辅助模块中。Section 4 Performance Review 发现 N+1
 - **Depends on:** Semantic Golden Master Tests 实现
 - **Effort:** M (human: ~4h / CC: ~25min)
+
+### **Priority:** P2
+**Benchmark universal traversal performance vs whitelist**
+- **What:** For each of 6 plugins migrated to universal traversal, benchmark large file parsing (1000+ LOC) and compare to whitelist baseline
+- **Why:** CEO plan target: <10% performance regression. Must verify this holds in practice.
+- **Pros:** Prevents shipping performance regressions, validates architectural assumption
+- **Cons:** Adds benchmark infrastructure (15-20 min per language)
+- **Context:** Universal traversal visits ALL nodes vs whitelist visiting only container nodes. Could be slower for deeply nested files. Grammar Coverage plan Phase 4 migration (python_plugin.py, javascript_plugin.py, typescript_plugin.py, java_plugin.py, c_plugin.py, cpp_plugin.py)
+- **Depends on:** Phase 4 universal traversal migration (Grammar Coverage MECE)
+- **Effort:** M (human: ~1 day / CC: ~2h) — 6 plugins × 20 min each
+- **Blocking:** Phase 4 completion (Grammar Coverage)
 
 ---
 

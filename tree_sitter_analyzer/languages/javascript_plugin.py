@@ -360,7 +360,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             end_line_idx = min(len(self.content_lines), end_line)
             raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
 
-            return Function(
+            func = Function(
                 name=name,
                 start_line=start_line,
                 end_line=end_line,
@@ -377,6 +377,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
+            # Add node_type for grammar coverage tracking
+            func.node_type = node.type
+            return func
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
@@ -424,7 +427,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Function(
+            func = Function(
                 name=name,
                 start_line=start_line,
                 end_line=end_line,
@@ -441,6 +444,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
+            # Add node_type for grammar coverage tracking
+            func.node_type = "arrow_function"
+            return func
         except Exception as e:
             log_debug(f"Failed to extract arrow function info: {e}")
             return None
@@ -478,7 +484,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Function(
+            func = Function(
                 name=name,
                 start_line=start_line,
                 end_line=end_line,
@@ -496,6 +502,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_method=True,
                 framework_type=self.framework_type,
             )
+            # Add node_type for grammar coverage tracking
+            func.node_type = "method_definition"
+            return func
         except Exception as e:
             log_debug(f"Failed to extract method info: {e}")
             raise
@@ -524,7 +533,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Function(
+            func = Function(
                 name=name,
                 start_line=start_line,
                 end_line=end_line,
@@ -541,6 +550,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
+            # Add node_type for grammar coverage tracking
+            func.node_type = "generator_function_declaration"
+            return func
         except Exception as e:
             log_debug(f"Failed to extract generator function info: {e}")
             return None
@@ -578,7 +590,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Class(
+            cls = Class(
                 name=class_name,
                 start_line=start_line,
                 end_line=end_line,
@@ -592,13 +604,21 @@ class JavaScriptElementExtractor(ElementExtractor):
                 framework_type=self.framework_type,
                 is_exported=self._is_exported_class(class_name),
             )
+            # Add node_type for grammar coverage tracking
+            # Note: tree-sitter-javascript uses 'class' for both declarations and expressions
+            cls.node_type = node.type if node.type in ["class_declaration", "class"] else "class_declaration"
+            return cls
         except Exception as e:
             log_debug(f"Failed to extract class info: {e}")
             return None
 
     def _extract_variable_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract var declaration variables"""
-        return self._extract_variables_from_declaration(node, "var")
+        vars = self._extract_variables_from_declaration(node, "var")
+        # Add node_type for grammar coverage tracking
+        for var in vars:
+            var.node_type = "variable_declaration"
+        return vars
 
     def _extract_lexical_variable_optimized(
         self, node: "tree_sitter.Node"
@@ -607,7 +627,11 @@ class JavaScriptElementExtractor(ElementExtractor):
         # Determine if it's let or const
         node_text = self._get_node_text_optimized(node)
         kind = "let" if node_text.strip().startswith("let") else "const"
-        return self._extract_variables_from_declaration(node, kind)
+        vars = self._extract_variables_from_declaration(node, kind)
+        # Add node_type for grammar coverage tracking
+        for var in vars:
+            var.node_type = "lexical_declaration"
+        return vars
 
     def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
         """Extract class property definition"""
@@ -641,7 +665,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Variable(
+            var = Variable(
                 name=prop_name,
                 start_line=start_line,
                 end_line=end_line,
@@ -652,6 +676,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_constant=False,  # Class properties are not const
                 initializer=prop_value,
             )
+            # Add node_type for grammar coverage tracking
+            var.node_type = "property_definition"
+            return var
         except Exception as e:
             log_debug(f"Failed to extract property info: {e}")
             return None
@@ -882,7 +909,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Use first import name or "unknown"
             primary_name = import_names[0] if import_names else "unknown"
 
-            return Import(
+            imp = Import(
                 name=primary_name,
                 start_line=start_line,
                 end_line=end_line,
@@ -892,6 +919,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 module_name=module_path,
                 imported_names=import_names,
             )
+            # Add node_type for grammar coverage tracking
+            imp.node_type = "import_statement"
+            return imp
 
         except Exception as e:
             log_debug(f"Failed to extract import info: {e}")
@@ -968,7 +998,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
             source = import_match.group(1)
 
-            return Import(
+            imp = Import(
                 name="dynamic_import",
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
@@ -978,6 +1008,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 module_name=source,
                 imported_names=["dynamic_import"],
             )
+            # Add node_type for grammar coverage tracking
+            imp.node_type = "call_expression"  # dynamic import() is a call expression
+            return imp
         except Exception as e:
             log_debug(f"Failed to extract dynamic import: {e}")
             return None
@@ -1009,6 +1042,8 @@ class JavaScriptElementExtractor(ElementExtractor):
                     module_name=module_path,
                     imported_names=[var_name],
                 )
+                # Add node_type for grammar coverage tracking
+                import_obj.node_type = "variable_declaration"  # CommonJS require is a variable declaration
                 imports.append(import_obj)
 
         except Exception as e:

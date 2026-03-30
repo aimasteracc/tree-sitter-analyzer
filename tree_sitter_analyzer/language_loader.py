@@ -28,28 +28,30 @@ class LanguageLoader:
 
     # 対応言語とモジュールのマッピング（最適化：frozendict使用を検討）
     LANGUAGE_MODULES = {
-        "java": "tree_sitter_java",
-        "javascript": "tree_sitter_javascript",
-        "typescript": "tree_sitter_typescript",
-        "tsx": "tree_sitter_typescript",
-        "python": "tree_sitter_python",
+        "bash": "tree_sitter_bash",
         "c": "tree_sitter_c",
         "cpp": "tree_sitter_cpp",
-        "rust": "tree_sitter_rust",
-        "go": "tree_sitter_go",
-        "markdown": "tree_sitter_markdown",
-        "sql": "tree_sitter_sql",
         "csharp": "tree_sitter_c_sharp",
         "cs": "tree_sitter_c_sharp",  # C# alias
-        # Web languages
-        "html": "tree_sitter_html",
         "css": "tree_sitter_css",
+        "go": "tree_sitter_go",
+        "html": "tree_sitter_html",
+        "java": "tree_sitter_java",
+        "javascript": "tree_sitter_javascript",
+        "json": "tree_sitter_json",
+        "kotlin": "tree_sitter_kotlin",
+        "markdown": "tree_sitter_markdown",
+        "php": "tree_sitter_php",
+        "python": "tree_sitter_python",
+        "ruby": "tree_sitter_ruby",
+        "rust": "tree_sitter_rust",
+        "scala": "tree_sitter_scala",
+        "sql": "tree_sitter_sql",
+        "swift": "tree_sitter_swift",
+        "tsx": "tree_sitter_typescript",
+        "typescript": "tree_sitter_typescript",
         "yaml": "tree_sitter_yaml",
         "yml": "tree_sitter_yaml",  # YAML alias
-        # Additional languages
-        "php": "tree_sitter_php",
-        "ruby": "tree_sitter_ruby",
-        "kotlin": "tree_sitter_kotlin",
     }
 
     # TypeScript特別処理（TypeScriptとTSX）

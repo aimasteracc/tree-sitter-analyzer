@@ -1,0 +1,14 @@
+{
+  "language": "javascript",
+  "node_types": {
+    "function_declaration": 8,
+    "function_expression": 2,
+    "arrow_function": 4,
+    "method_definition": 19,
+    "generator_function_declaration": 2,
+    "class_declaration": 3,
+    "variable_declaration": 3,
+    "lexical_declaration": 35,
+    "import_statement": 6
+  }
+}

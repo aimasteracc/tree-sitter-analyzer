@@ -47,6 +47,7 @@ class CodeElement(ABC):
     language: str = "unknown"
     docstring: str | None = None  # JavaDoc/docstring for this element
     element_type: str = "unknown"
+    node_type: str | None = None  # Tree-sitter node type for grammar coverage tracking
 
     def to_summary_item(self) -> dict[str, Any]:
         return {
