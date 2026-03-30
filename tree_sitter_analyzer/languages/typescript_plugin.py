@@ -14,14 +14,14 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     import tree_sitter
 
+    from ..core.request import AnalysisRequest
+
 try:
     import tree_sitter
 
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
-
-from ..core.analysis_engine import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..language_loader import loader
 from ..models import (
@@ -1979,7 +1979,7 @@ class TypeScriptPlugin(LanguagePlugin):
             for ext in self.get_file_extensions()
         )
 
-    def get_plugin_info(self) -> dict:
+    def get_plugin_info(self) -> dict[str, Any]:
         """Get information about this plugin"""
         return {
             "name": "TypeScript Plugin",
@@ -2050,9 +2050,9 @@ class TypeScriptPlugin(LanguagePlugin):
             variables = extractor.extract_variables(tree, source_code)
             imports = extractor.extract_imports(tree, source_code)
             exports = extractor.extract_exports(tree, source_code)
-            patterns = extractor.extract_patterns(tree, source_code)
-            namespaces = extractor.extract_namespaces(tree, source_code)
-            ambient_decls = extractor.extract_ambient_declarations(tree, source_code)
+            patterns = extractor.extract_patterns(tree, source_code)  # type: ignore[attr-defined]
+            namespaces = extractor.extract_namespaces(tree, source_code)  # type: ignore[attr-defined]
+            ambient_decls = extractor.extract_ambient_declarations(tree, source_code)  # type: ignore[attr-defined]
 
             elements.extend(functions)
             elements.extend(classes)
@@ -2099,9 +2099,9 @@ class TypeScriptPlugin(LanguagePlugin):
         all_elements.extend(extractor.extract_variables(tree, source_code))
         all_elements.extend(extractor.extract_imports(tree, source_code))
         all_elements.extend(extractor.extract_exports(tree, source_code))
-        all_elements.extend(extractor.extract_patterns(tree, source_code))
-        all_elements.extend(extractor.extract_namespaces(tree, source_code))
-        all_elements.extend(extractor.extract_ambient_declarations(tree, source_code))
+        all_elements.extend(extractor.extract_patterns(tree, source_code))  # type: ignore[attr-defined]
+        all_elements.extend(extractor.extract_namespaces(tree, source_code))  # type: ignore[attr-defined]
+        all_elements.extend(extractor.extract_ambient_declarations(tree, source_code))  # type: ignore[attr-defined]
 
         return all_elements
 
