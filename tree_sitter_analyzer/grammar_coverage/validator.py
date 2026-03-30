@@ -187,7 +187,6 @@ async def _get_covered_node_types_from_plugin(
     Returns:
         被插件覆盖的节点类型集合
     """
-    import tree_sitter
 
     from ..core.request import AnalysisRequest
     from ..plugins.manager import PluginManager
