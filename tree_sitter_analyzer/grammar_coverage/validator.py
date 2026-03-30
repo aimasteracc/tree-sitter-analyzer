@@ -71,51 +71,6 @@ def _count_node_types(node: Any) -> Counter[str]:
     return counts
 
 
-def _get_tree_sitter_module(language: str) -> Any:
-    """
-    动态导入对应语言的 tree-sitter 模块
-
-    Args:
-        language: 语言名称
-
-    Returns:
-        tree-sitter 语言模块
-
-    Raises:
-        ImportError: 如果语言模块不存在
-    """
-    language_modules = {
-        "python": "tree_sitter_python",
-        "javascript": "tree_sitter_javascript",
-        "typescript": "tree_sitter_typescript",
-        "java": "tree_sitter_java",
-        "c": "tree_sitter_c",
-        "cpp": "tree_sitter_cpp",
-        "go": "tree_sitter_go",
-        "ruby": "tree_sitter_ruby",
-        "rust": "tree_sitter_rust",
-        "php": "tree_sitter_php",
-        "kotlin": "tree_sitter_kotlin",
-        "swift": "tree_sitter_swift",
-        "scala": "tree_sitter_scala",
-        "bash": "tree_sitter_bash",
-        "yaml": "tree_sitter_yaml",
-        "json": "tree_sitter_json",
-        "sql": "tree_sitter_sql",
-    }
-
-    module_name = language_modules.get(language)
-    if not module_name:
-        raise ImportError(f"No tree-sitter module found for language: {language}")
-
-    try:
-        return __import__(module_name)
-    except ImportError as e:
-        raise ImportError(
-            f"Failed to import {module_name} for language {language}: {e}"
-        ) from e
-
-
 def _get_language_extension(language: str) -> str:
     """
     获取语言对应的文件扩展名
@@ -147,6 +102,9 @@ def _get_language_extension(language: str) -> str:
         "yaml": "yaml",
         "json": "json",
         "sql": "sql",
+        "css": "css",
+        "html": "html",
+        "markdown": "md",
     }
 
     if language not in extensions:
@@ -173,12 +131,12 @@ def _parse_corpus_file(corpus_path: Path, language: str) -> dict[str, int]:
     if not corpus_path.exists():
         raise FileNotFoundError(f"Corpus file not found: {corpus_path}")
 
-    # 导入 tree-sitter 和语言模块
-    import tree_sitter
+    # 使用 language_loader 创建 parser（正确处理 TypeScript 等多语言 API）
+    from ..language_loader import loader
 
-    ts_module = _get_tree_sitter_module(language)
-    lang = tree_sitter.Language(ts_module.language())
-    parser = tree_sitter.Parser(lang)
+    parser = loader.create_parser_safely(language)
+    if parser is None:
+        raise ImportError(f"Failed to create parser for language: {language}")
 
     # 解析文件
     source_code = corpus_path.read_text(encoding="utf-8")
@@ -262,10 +220,12 @@ async def _get_covered_node_types_from_plugin(
             if hasattr(element, "start_line") and hasattr(element, "end_line"):
                 extracted_positions.add((element.start_line, element.end_line))
 
-        # 3. 解析文件获取完整 AST
-        ts_module = _get_tree_sitter_module(language)
-        lang = tree_sitter.Language(ts_module.language())
-        parser = tree_sitter.Parser(lang)
+        # 3. 解析文件获取完整 AST（使用 language_loader）
+        from ..language_loader import loader
+
+        parser = loader.create_parser_safely(language)
+        if parser is None:
+            raise ImportError(f"Failed to create parser for language: {language}")
 
         source_code = corpus_path.read_text(encoding="utf-8")
         tree = parser.parse(source_code.encode("utf-8"))
