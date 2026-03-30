@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Expression, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
@@ -32,6 +32,7 @@ class RustElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
         self.impl_blocks: list[dict[str, Any]] = []
         self.modules: list[dict[str, Any]] = []
+        self.macros: list[Expression] = []
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -56,7 +57,7 @@ class RustElementExtractor(ElementExtractor):
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
-        """Extract Rust struct, enum, trait, and impl definitions"""
+        """Extract Rust struct, enum, trait, type alias, and impl definitions"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
@@ -70,6 +71,7 @@ class RustElementExtractor(ElementExtractor):
             "struct_item": self._extract_struct,
             "enum_item": self._extract_enum,
             "trait_item": self._extract_trait,
+            "type_item": self._extract_type_alias,
             "impl_item": self._extract_impl,  # Impl blocks are treated as related to classes
         }
 
@@ -86,22 +88,24 @@ class RustElementExtractor(ElementExtractor):
             # Creating a Class object for impl block to represent it in the structure
             pass
 
-        log_debug(f"Extracted {len(classes)} Rust structs/enums/traits")
+        log_debug(f"Extracted {len(classes)} Rust structs/enums/traits/types")
         return classes
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
-        """Extract Rust struct fields"""
+        """Extract Rust struct fields, constants, and static items"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
         variables: list[Variable] = []
 
-        # We extract fields from struct definitions
+        # Extract fields, constants, and static items
         extractors = {
             "field_declaration": self._extract_field,
+            "const_item": self._extract_const,
+            "static_item": self._extract_static,
         }
 
         self._traverse_and_extract(
@@ -110,7 +114,7 @@ class RustElementExtractor(ElementExtractor):
             variables,
         )
 
-        log_debug(f"Extracted {len(variables)} Rust fields")
+        log_debug(f"Extracted {len(variables)} Rust fields/constants/statics")
         return variables
 
     def extract_imports(
@@ -137,6 +141,147 @@ class RustElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(imports)} Rust imports")
         return imports
 
+    def extract_macros(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Rust macro definitions"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        macros: list[Expression] = []
+
+        # Extract macro definitions
+        extractors = {
+            "macro_definition": self._extract_macro_definition,
+        }
+
+        self._traverse_and_extract(
+            tree.root_node,
+            extractors,
+            macros,
+        )
+
+        log_debug(f"Extracted {len(macros)} Rust macro definitions")
+        return macros
+
+    def extract_attributes(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Rust attributes (standalone top-level attributes)"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        attributes: list[Expression] = []
+
+        # Extract standalone attribute items
+        extractors = {
+            "attribute_item": self._extract_attribute_item,
+        }
+
+        self._traverse_and_extract(
+            tree.root_node,
+            extractors,
+            attributes,
+        )
+
+        log_debug(f"Extracted {len(attributes)} Rust attributes")
+        return attributes
+
+    def extract_doc_comments(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Rust doc comments (including markers)"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        doc_comments: list[Expression] = []
+
+        # Extract line comments to capture doc comment markers
+        self._traverse_and_extract_doc_comments(tree.root_node, doc_comments)
+
+        log_debug(f"Extracted {len(doc_comments)} Rust doc comments")
+        return doc_comments
+
+    def _traverse_and_extract_doc_comments(
+        self, node: "tree_sitter.Node", results: list[Expression]
+    ) -> None:
+        """Recursively traverse and extract doc comments with markers"""
+        if node.type == "line_comment":
+            # Check if this has inner or outer doc comment markers
+            has_doc_marker = False
+            for child in node.children:
+                if child.type in ("inner_doc_comment_marker", "outer_doc_comment_marker"):
+                    has_doc_marker = True
+                    break
+
+            if has_doc_marker:
+                raw_text = self._get_node_text(node)
+                start_line = node.start_point[0] + 1
+                end_line = node.end_point[0] + 1
+
+                # Determine if inner or outer
+                marker_type = "outer"
+                for child in node.children:
+                    if child.type == "inner_doc_comment_marker":
+                        marker_type = "inner"
+                        break
+
+                expr = Expression(
+                    name=f"{marker_type}_doc_comment",
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=raw_text.strip(),
+                    language="rust",
+                    expression_kind="doc_comment",
+                    node_type="line_comment",
+                )
+                results.append(expr)
+
+        for child in node.children:
+            self._traverse_and_extract_doc_comments(child, results)
+
+    def _extract_attribute_item(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract attribute item"""
+        try:
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract attribute name and content
+            attr_name = "unknown"
+            for child in node.children:
+                if child.type == "attribute":
+                    # Get the first identifier or meta_item
+                    for subchild in child.children:
+                        if subchild.type == "identifier":
+                            attr_name = self._get_node_text(subchild)
+                            break
+                        elif subchild.type == "meta_item":
+                            # For #[derive(...)] the meta_item contains 'derive'
+                            for meta_subchild in subchild.children:
+                                if meta_subchild.type == "identifier":
+                                    attr_name = self._get_node_text(meta_subchild)
+                                    break
+                            break
+                    break
+
+            expr = Expression(
+                name=attr_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="rust",
+                expression_kind="attribute",
+                node_type="attribute_item",
+            )
+            return expr
+        except Exception as e:
+            log_error(f"Error extracting Rust attribute: {e}")
+            return None
+
     def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
         """Extract import statement (use declaration)"""
         try:
@@ -157,9 +302,46 @@ class RustElementExtractor(ElementExtractor):
                 raw_text=raw_text,
                 language="rust",
                 import_statement=raw_text,
+                node_type="use_declaration",
             )
         except Exception as e:
             log_error(f"Error extracting Rust import: {e}")
+            return None
+
+    def _extract_macro_definition(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract macro definition (macro_rules!)"""
+        try:
+            # Get macro name from the identifier child
+            name = "unknown"
+            for child in node.children:
+                if child.type == "identifier":
+                    name = self._get_node_text(child)
+                    break
+
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract macro rules count
+            rules_count = 0
+            for child in node.children:
+                if child.type == "macro_rule":
+                    rules_count += 1
+
+            expr = Expression(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="rust",
+                expression_kind="macro_definition",
+                node_type="macro_definition",
+            )
+            # Store macro-specific metadata
+            expr.rules_count = rules_count
+            return expr
+        except Exception as e:
+            log_error(f"Error extracting Rust macro definition: {e}")
             return None
 
     def _reset_caches(self) -> None:
@@ -284,6 +466,7 @@ class RustElementExtractor(ElementExtractor):
                 return_type=return_type,
                 visibility=visibility,
                 docstring=docstring,
+                node_type="function_item",
             )
             # Attach Rust-specific attributes
             func.is_async = is_async
@@ -306,6 +489,10 @@ class RustElementExtractor(ElementExtractor):
         """Extract trait information"""
         return self._extract_type_def(node, "trait")
 
+    def _extract_type_alias(self, node: "tree_sitter.Node") -> Class | None:
+        """Extract type alias information"""
+        return self._extract_type_def(node, "type")
+
     def _extract_type_def(
         self, node: "tree_sitter.Node", type_name: str
     ) -> Class | None:
@@ -322,6 +509,14 @@ class RustElementExtractor(ElementExtractor):
 
             raw_text = self._get_node_text(node)
 
+            # Map type_name to actual node_type
+            node_type_map = {
+                "struct": "struct_item",
+                "enum": "enum_item",
+                "trait": "trait_item",
+                "type": "type_item",
+            }
+
             cls = Class(
                 name=name,
                 start_line=start_line,
@@ -330,6 +525,7 @@ class RustElementExtractor(ElementExtractor):
                 language="rust",
                 class_type=type_name,
                 visibility=visibility,
+                node_type=node_type_map.get(type_name, f"{type_name}_item"),
             )
 
             # Extract implemented traits (for structs/enums) or supertraits (for traits)
@@ -396,9 +592,96 @@ class RustElementExtractor(ElementExtractor):
                 variable_type=field_type,
                 visibility=visibility,
                 docstring=docstring,
+                node_type="field_declaration",
             )
         except Exception as e:
             log_error(f"Error extracting Rust field: {e}")
+            return None
+
+    def _extract_const(self, node: "tree_sitter.Node") -> Variable | None:
+        """Extract const item"""
+        try:
+            name_node = node.child_by_field_name("name")
+            type_node = node.child_by_field_name("type")
+            value_node = node.child_by_field_name("value")
+
+            if not name_node:
+                return None
+
+            name = self._get_node_text(name_node)
+            const_type = self._get_node_text(type_node) if type_node else None
+            initializer = self._get_node_text(value_node) if value_node else None
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            visibility = self._extract_visibility(node)
+
+            raw_text = self._get_node_text(node)
+            docstring = self._extract_docstring(node)
+
+            return Variable(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="rust",
+                variable_type=const_type,
+                visibility=visibility,
+                docstring=docstring,
+                is_constant=True,
+                initializer=initializer,
+                node_type="const_item",
+            )
+        except Exception as e:
+            log_error(f"Error extracting Rust const: {e}")
+            return None
+
+    def _extract_static(self, node: "tree_sitter.Node") -> Variable | None:
+        """Extract static item"""
+        try:
+            name_node = node.child_by_field_name("name")
+            type_node = node.child_by_field_name("type")
+            value_node = node.child_by_field_name("value")
+
+            if not name_node:
+                return None
+
+            name = self._get_node_text(name_node)
+            static_type = self._get_node_text(type_node) if type_node else None
+            initializer = self._get_node_text(value_node) if value_node else None
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            visibility = self._extract_visibility(node)
+
+            # Check for mut modifier
+            is_mutable = False
+            for child in node.children:
+                if child.type == "mutable_specifier" or (
+                    child.type == "mut" or self._get_node_text(child) == "mut"
+                ):
+                    is_mutable = True
+                    break
+
+            raw_text = self._get_node_text(node)
+            docstring = self._extract_docstring(node)
+
+            var = Variable(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="rust",
+                variable_type=static_type,
+                visibility=visibility,
+                docstring=docstring,
+                is_static=True,
+                initializer=initializer,
+                node_type="static_item",
+            )
+            # Store mutability as dynamic attribute
+            var.is_mutable = is_mutable
+            return var
+        except Exception as e:
+            log_error(f"Error extracting Rust static: {e}")
             return None
 
     def _extract_visibility(self, node: "tree_sitter.Node") -> str:
@@ -542,6 +825,9 @@ class RustPlugin(LanguagePlugin):
             all_elements.extend(elements_dict.get("classes", []))
             all_elements.extend(elements_dict.get("variables", []))
             all_elements.extend(elements_dict.get("imports", []))
+            all_elements.extend(elements_dict.get("macros", []))
+            all_elements.extend(elements_dict.get("attributes", []))
+            all_elements.extend(elements_dict.get("doc_comments", []))
 
             # Count nodes
             node_count = (
@@ -632,7 +918,15 @@ class RustPlugin(LanguagePlugin):
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements."""
         if tree is None:
-            return {"functions": [], "classes": [], "variables": []}
+            return {
+                "functions": [],
+                "classes": [],
+                "variables": [],
+                "imports": [],
+                "macros": [],
+                "attributes": [],
+                "doc_comments": [],
+            }
 
         try:
             # Reset extractor state
@@ -653,18 +947,30 @@ class RustPlugin(LanguagePlugin):
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
+                "macros": extractor.extract_macros(tree, source_code),
+                "attributes": extractor.extract_attributes(tree, source_code),
+                "doc_comments": extractor.extract_doc_comments(tree, source_code),
             }
 
             # Capture side-effects
             if isinstance(extractor, RustElementExtractor):
                 self.extractor.modules = extractor.modules
                 self.extractor.impl_blocks = extractor.impl_blocks
+                self.extractor.macros = extractor.macros
 
             return result
 
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
-            return {"functions": [], "classes": [], "variables": []}
+            return {
+                "functions": [],
+                "classes": [],
+                "variables": [],
+                "imports": [],
+                "macros": [],
+                "attributes": [],
+                "doc_comments": [],
+            }
 
     def supports_file(self, file_path: str) -> bool:
         """Check if this plugin supports the given file."""
