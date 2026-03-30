@@ -401,6 +401,10 @@ module = [
     "tree_sitter_cpp.*",
     "tree_sitter_markdown.*",
     "tree_sitter_c.*",
+    "tree_sitter_swift.*",
+    "tree_sitter_scala.*",
+    "tree_sitter_json.*",
+    "tree_sitter_bash.*",
 ]
 ignore_missing_imports = true
 

@@ -6,9 +6,9 @@ This script parses a source file and counts all named node types.
 """
 
 import sys
-import json
-from pathlib import Path
 from collections import Counter
+from pathlib import Path
+
 import tree_sitter
 
 
