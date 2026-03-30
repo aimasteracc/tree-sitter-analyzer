@@ -21,7 +21,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Expression, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_error
 
@@ -675,11 +675,22 @@ class PHPElementExtractor(ElementExtractor):
             # Extract use clauses
             for child in node.children:
                 if child.type == "namespace_use_clause":
-                    name_node = child.child_by_field_name("name")
-                    alias_node = child.child_by_field_name("alias")
+                    # The namespace_use_clause has: qualified_name, optional "as", optional name (alias)
+                    qualified_name_node = None
+                    alias_node = None
+                    seen_as = False
 
-                    if name_node:
-                        import_name = self._get_node_text_optimized(name_node)
+                    for grandchild in child.children:
+                        if grandchild.type == "qualified_name":
+                            qualified_name_node = grandchild
+                        elif grandchild.type == "as":
+                            seen_as = True
+                        elif grandchild.type == "name" and seen_as:
+                            # This is the alias after "as"
+                            alias_node = grandchild
+
+                    if qualified_name_node:
+                        import_name = self._get_node_text_optimized(qualified_name_node)
                         alias = None
                         if alias_node:
                             alias = self._get_node_text_optimized(alias_node)
@@ -697,6 +708,56 @@ class PHPElementExtractor(ElementExtractor):
             log_error(f"Error extracting use statement: {e}")
 
         return imports
+
+    def extract_php_tags(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """
+        Extract PHP opening tags (<?php).
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of Expression elements representing PHP tags
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.splitlines()
+
+        php_tags: list[Expression] = []
+
+        # Iterative traversal
+        stack: list[tree_sitter.Node] = [tree.root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type == "php_tag":
+                try:
+                    raw_text = self._get_node_text_optimized(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    php_tags.append(
+                        Expression(
+                            name="php_tag",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text,
+                            language="php",
+                            expression_kind="php_tag",
+                            preview=raw_text,
+                        )
+                    )
+                except Exception as e:
+                    log_error(f"Error extracting PHP tag: {e}")
+
+            # Add children to stack
+            for child in reversed(node.children):
+                stack.append(child)
+
+        return php_tags
 
 
 class PHPPlugin(LanguagePlugin):
@@ -795,9 +856,10 @@ class PHPPlugin(LanguagePlugin):
             functions = extractor.extract_functions(tree, content)
             variables = extractor.extract_variables(tree, content)
             imports = extractor.extract_imports(tree, content)
+            php_tags = extractor.extract_php_tags(tree, content)  # type: ignore[attr-defined]
 
             # Combine all elements
-            all_elements = classes + functions + variables + imports
+            all_elements = classes + functions + variables + imports + php_tags
 
             return AnalysisResult(
                 language=self.get_language_name(),
