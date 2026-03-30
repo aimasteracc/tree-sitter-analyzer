@@ -401,6 +401,10 @@ module = [
     "tree_sitter_cpp.*",
     "tree_sitter_markdown.*",
     "tree_sitter_c.*",
+    "tree_sitter_swift.*",
+    "tree_sitter_scala.*",
+    "tree_sitter_json.*",
+    "tree_sitter_bash.*",
 ]
 ignore_missing_imports = true
 
@@ -522,7 +526,7 @@ dev = [
     "types-jsonschema",
     "types-PyYAML",
     "types-cachetools",
-    "mypy==1.18.2",
+    "mypy==1.19.1",
     "hypothesis>=6.0.0",
     "pytest-xdist>=3.8.0",
     "pytest-benchmark>=5.1.0",
