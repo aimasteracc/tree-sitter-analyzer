@@ -138,6 +138,22 @@ class ElementExtractor(ABC):
         # Default implementation returns empty list
         return []
 
+    def extract_expressions(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
+        """
+        Extract expressions from the syntax tree.
+
+        Args:
+            tree: Tree-sitter AST
+            source_code: Original source code
+
+        Returns:
+            List of extracted expression objects
+        """
+        # Default implementation returns empty list
+        return []
+
     def extract_all_elements(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[CodeElement]:
