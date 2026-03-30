@@ -222,6 +222,25 @@
 
 ---
 
+## P2: Refactoring & Tech Debt
+
+### **Priority:** P2
+**Split python_plugin.py into Multiple Modules**
+- **What:** Refactor `python_plugin.py` (~1800 LOC) into multiple focused modules:
+  - `python_plugin.py` — Main plugin class, public API
+  - `python_extractor.py` — Core extraction logic (functions, classes, variables)
+  - `python_expressions.py` — Expression extraction (lambdas, comprehensions, expressions)
+  - `python_utils.py` — Helper utilities (signature parsing, text extraction)
+- **Why:** Current file violates 800 LOC guideline from CLAUDE.md after Python coverage fix implementation (Wave 2: added 12 expression node types)
+- **Pros:** Improved maintainability, follows file size conventions, better code organization
+- **Cons:** Requires updating imports in ~30 test files
+- **Context:** Python plugin achieved 100% grammar coverage (57/57 node types) after Wave 2 implementation (lambdas, comprehensions, expressions). File size grew from ~1200 to ~1800 LOC. Code is well-tested with 90%+ coverage.
+- **Depends on:** Python coverage fix completion (Wave 2 — COMPLETED)
+- **Effort:** M (human: 2-3h / CC: ~30min)
+- **Risk:** Low (well-tested code, pure refactor, no logic changes)
+
+---
+
 ## Completed
 
 _(This section will be populated as items are completed and shipped)_

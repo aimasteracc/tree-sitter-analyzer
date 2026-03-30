@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Package, Variable
+from ..models import Class, Expression, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
@@ -85,6 +85,8 @@ class JavaElementExtractor(ElementExtractor):
         extractors = {
             "method_declaration": self._extract_method_optimized,
             "constructor_declaration": self._extract_method_optimized,
+            "annotation_type_element_declaration": self._extract_method_optimized,
+            "compact_constructor_declaration": self._extract_method_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -115,6 +117,8 @@ class JavaElementExtractor(ElementExtractor):
             "class_declaration": self._extract_class_optimized,
             "interface_declaration": self._extract_class_optimized,
             "enum_declaration": self._extract_class_optimized,
+            "annotation_type_declaration": self._extract_class_optimized,
+            "record_declaration": self._extract_class_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -170,6 +174,8 @@ class JavaElementExtractor(ElementExtractor):
                 "class_declaration",
                 "interface_declaration",
                 "enum_declaration",
+                "annotation_type_declaration",
+                "record_declaration",
             ]:
                 # After package and imports come class declarations, so stop
                 break
@@ -332,13 +338,30 @@ class JavaElementExtractor(ElementExtractor):
             "interface_body",
             "enum_body",
             "enum_body_declarations",  # Required for enum methods/fields/constructors
+            "annotation_type_body",  # Annotation type bodies
             "class_declaration",
             "interface_declaration",
             "enum_declaration",
+            "annotation_type_declaration",
+            "record_declaration",
             "method_declaration",
             "constructor_declaration",
+            "compact_constructor_declaration",
             "block",
             "modifiers",  # Annotation nodes can appear inside modifiers
+            # Additional containers for literals and expressions
+            "return_statement",
+            "argument_list",
+            "object_creation_expression",
+            "expression_statement",
+            "local_variable_declaration",
+            "field_access",
+            "method_invocation",
+            "binary_expression",
+            "assignment_expression",
+            "if_statement",
+            "while_statement",
+            "for_statement",
         }
 
         # Iterative DFS stack: (node, depth)
@@ -421,7 +444,7 @@ class JavaElementExtractor(ElementExtractor):
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 
     def _process_field_batch(
-        self, batch: list["tree_sitter.Node"], extractors: dict, results: list[Any]
+        self, batch: list["tree_sitter.Node"], extractors: dict[str, Any], results: list[Any]
     ) -> None:
         """Process field nodes with caching using position-based keys"""
         for node in batch:
@@ -533,6 +556,8 @@ class JavaElementExtractor(ElementExtractor):
                 "class_declaration": "class",
                 "interface_declaration": "interface",
                 "enum_declaration": "enum",
+                "annotation_type_declaration": "annotation",
+                "record_declaration": "record",
             }
             class_type = class_type_map.get(node.type, "class")
 
@@ -1005,6 +1030,8 @@ class JavaElementExtractor(ElementExtractor):
                 "class_declaration",
                 "interface_declaration",
                 "enum_declaration",
+                "annotation_type_declaration",
+                "record_declaration",
             ]:
                 return True
             parent = parent.parent
@@ -1018,6 +1045,8 @@ class JavaElementExtractor(ElementExtractor):
                 "class_declaration",
                 "interface_declaration",
                 "enum_declaration",
+                "annotation_type_declaration",
+                "record_declaration",
             ]:
                 for child in parent.children:
                     if child.type == "identifier":
@@ -1086,6 +1115,106 @@ class JavaElementExtractor(ElementExtractor):
             return None
         except Exception as e:
             log_debug(f"Failed to extract class name: {e}")
+            return None
+
+    def extract_boolean_literals(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract boolean literals (true/false) from Java code"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        literals: list[Expression] = []
+
+        # Use optimized traversal for boolean literals
+        extractors = {
+            "true": self._extract_boolean_literal,
+            "false": self._extract_boolean_literal,
+        }
+
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, literals, "boolean_literal"
+        )
+
+        log_debug(f"Extracted {len(literals)} boolean literals")
+        return literals
+
+    def _extract_boolean_literal(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract a boolean literal expression"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            literal_text = self._get_node_text_optimized(node)
+
+            # Extract raw text
+            start_line_idx = max(0, start_line - 1)
+            end_line_idx = min(len(self.content_lines), end_line)
+            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
+
+            return Expression(
+                name=literal_text,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="java",
+                expression_kind="boolean_literal",
+                preview=literal_text,
+                node_type=node.type,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract boolean literal: {e}")
+            return None
+
+    def extract_block_comments(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract block comments from Java code"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        comments: list[Expression] = []
+
+        # Use optimized traversal for block comments
+        extractors = {
+            "block_comment": self._extract_block_comment,
+        }
+
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, comments, "comment"
+        )
+
+        log_debug(f"Extracted {len(comments)} block comments")
+        return comments
+
+    def _extract_block_comment(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract a block comment"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            comment_text = self._get_node_text_optimized(node)
+
+            # Extract raw text
+            start_line_idx = max(0, start_line - 1)
+            end_line_idx = min(len(self.content_lines), end_line)
+            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
+
+            # Use first 50 chars for preview
+            preview = comment_text[:50] if len(comment_text) > 50 else comment_text
+
+            return Expression(
+                name=f"comment_line_{start_line}",
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="java",
+                expression_kind="block_comment",
+                preview=preview,
+                node_type=node.type,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract block comment: {e}")
             return None
 
 
@@ -1168,6 +1297,8 @@ class JavaPlugin(LanguagePlugin):
                 all_elements.extend(elements_dict.get("variables", []))
                 all_elements.extend(elements_dict.get("imports", []))
                 all_elements.extend(elements_dict.get("packages", []))
+                all_elements.extend(elements_dict.get("boolean_literals", []))
+                all_elements.extend(elements_dict.get("block_comments", []))
 
                 # Extract packages and annotations if available
                 packages = elements_dict.get("packages", [])
@@ -1266,13 +1397,17 @@ class JavaPlugin(LanguagePlugin):
 
         try:
             extractor = self.create_extractor()
+            # Cast to JavaElementExtractor for type checking
+            java_extractor = extractor if isinstance(extractor, JavaElementExtractor) else JavaElementExtractor()
             return {
-                "functions": extractor.extract_functions(tree, source_code),
-                "classes": extractor.extract_classes(tree, source_code),
-                "variables": extractor.extract_variables(tree, source_code),
-                "imports": extractor.extract_imports(tree, source_code),
-                "packages": extractor.extract_packages(tree, source_code),
-                "annotations": extractor.extract_annotations(tree, source_code),
+                "functions": java_extractor.extract_functions(tree, source_code),
+                "classes": java_extractor.extract_classes(tree, source_code),
+                "variables": java_extractor.extract_variables(tree, source_code),
+                "imports": java_extractor.extract_imports(tree, source_code),
+                "packages": java_extractor.extract_packages(tree, source_code),
+                "annotations": java_extractor.extract_annotations(tree, source_code),
+                "boolean_literals": java_extractor.extract_boolean_literals(tree, source_code),
+                "block_comments": java_extractor.extract_block_comments(tree, source_code),
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
@@ -1283,6 +1418,8 @@ class JavaPlugin(LanguagePlugin):
                 "imports": [],
                 "packages": [],
                 "annotations": [],
+                "boolean_literals": [],
+                "block_comments": [],
             }
 
     def supports_file(self, file_path: str) -> bool:

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_info, log_warning
+from ..utils import log_debug, log_error, log_info, log_warning, safe_preview
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -628,9 +628,7 @@ class YAMLElementExtractor(ElementExtractor):
                     doc_index = self._get_document_index(node)
 
                     element = YAMLElement(
-                        name=comment_text[:50] + "..."
-                        if len(comment_text) > 50
-                        else comment_text,
+                        name=safe_preview(comment_text),
                         start_line=start_line,
                         end_line=end_line,
                         raw_text=raw_text,

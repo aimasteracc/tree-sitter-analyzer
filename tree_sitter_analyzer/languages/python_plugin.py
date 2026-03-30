@@ -24,7 +24,17 @@ except ImportError:
 
 from ..core.analysis_engine import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
+from ..models import (
+    AnalysisResult,
+    Class,
+    CodeElement,
+    Comprehension,
+    Expression,
+    Function,
+    Import,
+    Lambda,
+    Variable,
+)
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
@@ -69,6 +79,7 @@ class PythonElementExtractor(ElementExtractor):
         # Use optimized traversal for multiple function types
         extractors = {
             "function_definition": self._extract_function_optimized,
+            "lambda": self._extract_lambda,  # NEW
         }
 
         if tree is not None and tree.root_node is not None:
@@ -151,6 +162,71 @@ class PythonElementExtractor(ElementExtractor):
 
         return variables
 
+    def extract_comprehensions(
+        self,
+        tree: "tree_sitter.Tree",
+        source_code: str,
+    ) -> list[Comprehension]:
+        """
+        Extract all comprehensions and generator expressions.
+
+        Args:
+            tree: Tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of Comprehension elements
+        """
+        self.source_code = source_code or ""
+        self.content_lines = self.source_code.split("\n")
+        # Reset processed nodes to allow re-traversal for different element types
+        self._processed_nodes.clear()
+
+        extractors = {
+            "list_comprehension": self._extract_comprehension,
+            "set_comprehension": self._extract_comprehension,
+            "dictionary_comprehension": self._extract_comprehension,
+            "generator_expression": self._extract_comprehension,
+        }
+
+        results: list[Comprehension] = []
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, results, "comprehension"
+        )
+        return results
+
+    def extract_expressions(
+        self,
+        tree: "tree_sitter.Tree",
+        source_code: str,
+    ) -> list[Expression]:
+        """
+        Extract expression-level constructs.
+
+        Args:
+            tree: Tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of Expression elements
+        """
+        self.source_code = source_code or ""
+        self.content_lines = self.source_code.split("\n")
+        # Reset processed nodes to allow re-traversal for different element types
+        self._processed_nodes.clear()
+
+        extractors = {
+            "conditional_expression": self._extract_expression,
+            "subscript": self._extract_expression,
+            "list": self._extract_expression,
+        }
+
+        results: list[Expression] = []
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, results, "expression"
+        )
+        return results
+
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -198,6 +274,17 @@ class PythonElementExtractor(ElementExtractor):
             "with_statement",
             "try_statement",
             "block",
+            "expression_statement",  # Allow traversal through expression statements
+            "assignment",  # Allow traversal through assignments
+            # NEW: Expression containers (for grammar coverage)
+            "list",
+            "subscript",
+            "conditional_expression",
+            "lambda",
+            "list_comprehension",
+            "set_comprehension",
+            "dictionary_comprehension",
+            "generator_expression",
         }
 
         node_stack = [(root_node, 0)]
@@ -350,7 +437,7 @@ class PythonElementExtractor(ElementExtractor):
             if not function_info:
                 return None
 
-            name, parameters, is_async, decorators, return_type = function_info
+            name, parameters, is_async, decorators, return_type, param_defaults = function_info
 
             # Extract docstring
             docstring = self._extract_docstring_for_line(start_line)
@@ -377,6 +464,7 @@ class PythonElementExtractor(ElementExtractor):
                 raw_text=raw_text,
                 language="python",
                 parameters=parameters,
+                parameter_defaults=param_defaults,
                 return_type=return_type or "Any",
                 is_async=is_async,
                 is_generator="yield" in raw_text,
@@ -401,7 +489,7 @@ class PythonElementExtractor(ElementExtractor):
 
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
-    ) -> tuple[str, list[str], bool, list[str], str | None] | None:
+    ) -> tuple[str, list[str], bool, list[str], str | None, dict[str, str]] | None:
         """Parse function signature for Python functions"""
         try:
             name = None
@@ -409,6 +497,7 @@ class PythonElementExtractor(ElementExtractor):
             is_async = False
             decorators = []
             return_type = None
+            param_defaults: dict[str, str] = {}
 
             # Check for async keyword
             node_text = self._get_node_text_optimized(node)
@@ -448,10 +537,13 @@ class PythonElementExtractor(ElementExtractor):
                             decorator_text = decorator_text[1:].strip()
                         decorators.append(decorator_text)
 
+            # Extract parameters and defaults
+            parameters_node = None
             for child in node.children:
                 if child.type == "identifier":
                     name = child.text.decode("utf8") if child.text else None
                 elif child.type == "parameters":
+                    parameters_node = child
                     parameters = self._extract_parameters_from_node_optimized(child)
                 elif child.type == "type" and not return_type:
                     # Only use this if we didn't extract from text
@@ -463,7 +555,22 @@ class PythonElementExtractor(ElementExtractor):
                     ):
                         return_type = type_text
 
-            return name or "", parameters, is_async, decorators, return_type
+            # Extract parameter defaults
+            if parameters_node:
+                for param in parameters_node.children:
+                    if param.type == "default_parameter":
+                        param_name = None
+                        default_value = None
+                        for subchild in param.children:
+                            if subchild.type == "identifier":
+                                param_name = self._get_node_text_optimized(subchild)
+                            elif subchild.type not in ("=", ",", ":", "type"):
+                                default_value = self._get_node_text_optimized(subchild)
+
+                        if param_name and default_value:
+                            param_defaults[param_name] = default_value
+
+            return name or "", parameters, is_async, decorators, return_type, param_defaults
         except Exception:
             return None
 
@@ -495,6 +602,192 @@ class PythonElementExtractor(ElementExtractor):
                 parameters.append(param_text)
 
         return parameters
+
+    def _extract_lambda(self, node: "tree_sitter.Node") -> Lambda | None:
+        """
+        Extract lambda expression.
+
+        Args:
+            node: lambda node
+
+        Returns:
+            Lambda element or None if extraction fails
+        """
+        from ..utils.text_utils import safe_preview
+
+        try:
+            # Extract parameters
+            params = []
+            lambda_params = None
+            for child in node.children:
+                if child.type == "lambda_parameters":
+                    lambda_params = child
+                    break
+
+            if lambda_params:
+                for param in lambda_params.children:
+                    if param.type == "identifier":
+                        param_text = self._get_node_text_optimized(param)
+                        if param_text:
+                            params.append(param_text)
+                    elif param.type == "default_parameter":
+                        # Handle default parameters: extract name and default value
+                        param_name = None
+                        for subchild in param.children:
+                            if subchild.type == "identifier":
+                                param_name = self._get_node_text_optimized(subchild)
+                                params.append(param_name)
+                                break
+
+            # Extract body preview
+            body_node = None
+            for child in node.children:
+                if child.type not in ("lambda", "lambda_parameters", ":", ","):
+                    body_node = child
+                    break
+
+            if not body_node:
+                return None
+
+            body_text = self._get_node_text_optimized(body_node)
+            body_preview = safe_preview(body_text) if body_text else ""
+
+            # Get full lambda text for raw_text
+            lambda_text = self._get_node_text_optimized(node)
+
+            return Lambda(
+                name="<lambda>",  # Lambdas don't have names
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=lambda_text or "",
+                language="python",
+                parameters=params,
+                body_preview=body_preview,
+                node_type="lambda",
+            )
+
+        except Exception:
+            return None
+
+    def _extract_comprehension(self, node: "tree_sitter.Node") -> Comprehension | None:
+        """
+        Extract list/set/dict comprehension or generator expression.
+
+        Args:
+            node: comprehension node
+
+        Returns:
+            Comprehension element or None if extraction fails
+        """
+        from ..utils.text_utils import safe_preview
+
+        try:
+            # Determine comprehension type from node type
+            comp_type_map = {
+                "list_comprehension": "list",
+                "set_comprehension": "set",
+                "dictionary_comprehension": "dict",
+                "generator_expression": "generator",
+            }
+            comp_type = comp_type_map.get(node.type, "unknown")
+
+            # Extract target variable (e.g., "x" in "x for x in ...")
+            target_var = ""
+            iterable_text = ""
+            has_cond = False
+
+            # Find for_in_clause
+            for child in node.children:
+                if child.type == "for_in_clause":
+                    # Extract target (left side)
+                    for subchild in child.children:
+                        if subchild.type == "identifier" or subchild.type == "pattern_list":
+                            target_var = self._get_node_text_optimized(subchild) or ""
+                            break
+
+                    # Extract iterable (after "in")
+                    found_in = False
+                    for subchild in child.children:
+                        if found_in and subchild.type not in (",", ")"):
+                            iterable_text = self._get_node_text_optimized(subchild) or ""
+                            break
+                        if subchild.type == "in":
+                            found_in = True
+
+                    break
+
+                if child.type == "if_clause":
+                    has_cond = True
+
+            if not target_var:
+                # Try to extract any identifier as fallback
+                for child in node.children:
+                    if child.type == "identifier":
+                        target_var = self._get_node_text_optimized(child) or ""
+                        break
+
+            iterable_preview = safe_preview(iterable_text) if iterable_text else ""
+
+            # Get full comprehension text
+            comp_text = self._get_node_text_optimized(node)
+
+            return Comprehension(
+                name=f"<{comp_type}_comprehension>",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=comp_text or "",
+                language="python",
+                comprehension_type=comp_type,
+                target_variable=target_var,
+                iterable_preview=iterable_preview,
+                has_condition=has_cond,
+                node_type=node.type,
+            )
+
+        except Exception:
+            return None
+
+    def _extract_expression(self, node: "tree_sitter.Node") -> Expression | None:
+        """
+        Extract expression (conditional, subscript, list literal).
+
+        Args:
+            node: expression node
+
+        Returns:
+            Expression element or None if extraction fails
+        """
+        from ..utils.text_utils import safe_preview
+
+        try:
+            # Determine expression kind from node type
+            expr_kind_map = {
+                "conditional_expression": "conditional",
+                "subscript": "subscript",
+                "list": "list",
+            }
+            expr_kind = expr_kind_map.get(node.type, node.type)
+
+            # Get expression text
+            expr_text = self._get_node_text_optimized(node)
+            if not expr_text:
+                return None
+
+            expr_preview = safe_preview(expr_text)
+
+            return Expression(
+                name=f"<{expr_kind}>",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=expr_text,
+                language="python",
+                expression_kind=expr_kind,
+                preview=expr_preview,
+                node_type=node.type,
+            )
+
+        except Exception:
+            return None
 
     def _extract_docstring_for_line(self, target_line: int) -> str | None:
         """Extract docstring for the specified line"""
@@ -1573,6 +1866,10 @@ class PythonPlugin(LanguagePlugin):
                 elements.extend(extractor.extract_classes(tree, source_code))
                 elements.extend(extractor.extract_variables(tree, source_code))
                 elements.extend(extractor.extract_imports(tree, source_code))
+
+                # Extract comprehensions and expressions (for grammar coverage)
+                elements.extend(extractor.extract_comprehensions(tree, source_code))
+                elements.extend(extractor.extract_expressions(tree, source_code))
 
                 from ..utils.tree_sitter_compat import count_nodes_iterative
 

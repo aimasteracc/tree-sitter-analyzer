@@ -62,6 +62,7 @@ class Function(CodeElement):
     """Generic function/method representation"""
 
     parameters: list[str] = field(default_factory=list)
+    parameter_defaults: dict[str, str] = field(default_factory=dict)  # param name -> default value
     return_type: str | None = None
     modifiers: list[str] = field(default_factory=list)
     is_async: bool = False
@@ -165,6 +166,61 @@ class Package(CodeElement):
     """Generic package declaration representation"""
 
     element_type: str = "package"
+
+
+@dataclass(frozen=False)
+class Lambda(CodeElement):
+    """Lambda expression representation
+
+    Represents anonymous functions (lambda expressions) in Python.
+
+    Example:
+        lambda x: x + 1
+        lambda x, y=10: x + y
+    """
+
+    parameters: list[str] = field(default_factory=list)
+    body_preview: str = ""  # First 50 chars of lambda body
+    element_type: str = "lambda"
+
+
+@dataclass(frozen=False)
+class Comprehension(CodeElement):
+    """List/set/dict comprehension or generator expression
+
+    Represents all forms of comprehensions in Python.
+
+    Examples:
+        [x**2 for x in range(10)]  # list
+        {x**2 for x in range(10)}  # set
+        {x: x**2 for x in range(10)}  # dict
+        (x**2 for x in range(10))  # generator
+        [x for x in range(100) if x % 2 == 0]  # with condition
+    """
+
+    comprehension_type: str = ""  # "list", "set", "dict", or "generator"
+    target_variable: str = ""  # "x" in "x for x in ..."
+    iterable_preview: str = ""  # Preview of iterable expression
+    has_condition: bool = False
+    element_type: str = "comprehension"
+
+
+@dataclass(frozen=False)
+class Expression(CodeElement):
+    """Generic expression (conditional, subscript, list literals)
+
+    Represents various expression-level constructs in Python.
+
+    Examples:
+        value if condition else fallback  # conditional
+        my_list[0]  # subscript
+        my_dict['key']  # subscript
+        [1, 2, 3]  # list literal
+    """
+
+    expression_kind: str = ""  # "conditional", "subscript", or "list"
+    preview: str = ""  # First 50 chars of expression
+    element_type: str = "expression"
 
 
 # ========================================
