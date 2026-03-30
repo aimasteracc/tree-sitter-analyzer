@@ -21,7 +21,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Expression, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_error
 
@@ -592,6 +592,79 @@ class RubyElementExtractor(ElementExtractor):
 
         return None
 
+    def extract_control_flow_and_syntax(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """
+        Extract control flow and syntax elements for complete grammar coverage.
+
+        Extracts: break, next, redo, while, until, unless, for, elsif, in,
+        element_reference, splat_argument, hash_splat_argument, do, while_modifier,
+        until_modifier, heredoc_end
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of Expression elements
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.splitlines()
+
+        expressions: list[Expression] = []
+
+        # Node types to extract as expressions
+        control_flow_types = {
+            "break",
+            "next",
+            "redo",
+            "while",
+            "until",
+            "unless",
+            "for",
+            "elsif",
+            "in",
+            "element_reference",
+            "splat_argument",
+            "hash_splat_argument",
+            "do",
+            "while_modifier",
+            "until_modifier",
+            "heredoc_end",
+        }
+
+        # Iterative traversal
+        stack: list[tree_sitter.Node] = [tree.root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type in control_flow_types:
+                try:
+                    raw_text = self._get_node_text_optimized(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    expressions.append(
+                        Expression(
+                            name=node.type,
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text,
+                            language="ruby",
+                            expression_kind=node.type,
+                        )
+                    )
+                except Exception as e:
+                    log_error(f"Error extracting {node.type} element: {e}")
+
+            # Add children to stack
+            for child in reversed(node.children):
+                stack.append(child)
+
+        return expressions
+
 
 class RubyPlugin(LanguagePlugin):
     """
@@ -689,9 +762,10 @@ class RubyPlugin(LanguagePlugin):
             functions = extractor.extract_functions(tree, content)
             variables = extractor.extract_variables(tree, content)
             imports = extractor.extract_imports(tree, content)
+            control_flow = extractor.extract_control_flow_and_syntax(tree, content)  # type: ignore[attr-defined]
 
             # Combine all elements
-            all_elements = classes + functions + variables + imports
+            all_elements = classes + functions + variables + imports + control_flow
 
             return AnalysisResult(
                 language=self.get_language_name(),

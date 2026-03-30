@@ -23,7 +23,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..core.analysis_engine import AnalysisRequest
+from ..core.request import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..language_loader import loader
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
@@ -159,25 +159,20 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def extract_exports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[dict[str, Any]]:
-        """Extract JavaScript export statements"""
+    ) -> list[CodeElement]:
+        """Extract JavaScript export statements as CodeElement objects"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
-        exports: list[dict[str, Any]] = []
+        exports: list[CodeElement] = []
 
         # Extract ES6 exports
         for child in tree.root_node.children:
             if child.type == "export_statement":
-                export_info = self._extract_export_info(child)
-                if export_info:
-                    exports.append(export_info)
+                export_element = self._extract_export_element(child)
+                if export_element:
+                    exports.append(export_element)
 
-        # Also check for CommonJS exports
-        commonjs_exports = self._extract_commonjs_exports(tree, source_code)
-        exports.extend(commonjs_exports)
-
-        self.exports = exports
         log_debug(f"Extracted {len(exports)} JavaScript exports")
         return exports
 
@@ -719,6 +714,10 @@ class JavaScriptElementExtractor(ElementExtractor):
             for child in node.children:
                 if child.type == "identifier":
                     var_name = self._get_node_text_optimized(child)
+                elif child.type in ["object_pattern", "array_pattern"]:
+                    # 处理解构赋值 (destructuring assignment)
+                    # 使用整个模式作为变量名（用于 grammar coverage 追踪）
+                    var_name = self._get_node_text_optimized(child)
                 elif child.type == "=" and child.next_sibling:
                     # Get the value after the assignment operator
                     value_node = child.next_sibling
@@ -1052,8 +1051,37 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         return imports
 
+    def _extract_export_element(self, node: "tree_sitter.Node") -> CodeElement | None:
+        """Extract export statement as CodeElement for grammar coverage"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            export_text = self._get_node_text_optimized(node)
+
+            # Parse export type to extract names
+            export_info = self._parse_export_statement(export_text)
+            if export_info:
+                _export_type, names, _is_default = export_info
+                export_name = names[0] if names else "export"
+            else:
+                export_name = "export"
+
+            element = CodeElement(
+                name=export_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=export_text,
+                language="javascript",
+                element_type="export",
+                node_type="export_statement",
+            )
+            return element
+        except Exception as e:
+            log_debug(f"Failed to extract export element: {e}")
+            return None
+
     def _extract_export_info(self, node: "tree_sitter.Node") -> dict[str, Any] | None:
-        """Extract export information"""
+        """Extract export information (legacy method for compatibility)"""
         try:
             export_text = self._get_node_text_optimized(node)
 
@@ -1259,7 +1287,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         return elements
 
-    def _get_variable_kind(self, var_data: dict | str) -> str:
+    def _get_variable_kind(self, var_data: dict[str, Any] | str) -> str:
         """Get variable declaration kind from variable data or raw text"""
         if isinstance(var_data, dict):
             raw_text = var_data.get("raw_text", "")
@@ -1445,7 +1473,7 @@ class JavaScriptPlugin(LanguagePlugin):
             for ext in self.get_file_extensions()
         )
 
-    def get_plugin_info(self) -> dict:
+    def get_plugin_info(self) -> dict[str, Any]:
         """Get information about this plugin"""
         return {
             "name": "JavaScript Plugin",
@@ -1591,6 +1619,7 @@ class JavaScriptPlugin(LanguagePlugin):
                 elements.extend(extractor.extract_classes(tree, source_code))
                 elements.extend(extractor.extract_variables(tree, source_code))
                 elements.extend(extractor.extract_imports(tree, source_code))
+                elements.extend(extractor.extract_exports(tree, source_code))
 
                 from ..utils.tree_sitter_compat import count_nodes_iterative
 
@@ -1619,7 +1648,7 @@ class JavaScriptPlugin(LanguagePlugin):
                 error_message=str(e),
             )
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict:
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict[str, Any]:
         """Extract elements from source code using tree-sitter AST"""
         try:
             if tree is None or not hasattr(tree, "root_node") or tree.root_node is None:
