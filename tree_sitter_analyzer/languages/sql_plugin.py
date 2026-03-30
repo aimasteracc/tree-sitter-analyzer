@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 try:
@@ -2280,7 +2280,7 @@ class SQLElementExtractor(ElementExtractor):
             root_node: Root node of the tree
             elements: List to append extracted elements to
         """
-        stack: list["tree_sitter.Node"] = [root_node]
+        stack: list[tree_sitter.Node] = [root_node]
 
         while stack:
             node = stack.pop()
@@ -2330,7 +2330,7 @@ class SQLElementExtractor(ElementExtractor):
             "unary_expression",
         }
 
-        stack: list["tree_sitter.Node"] = [root_node]
+        stack: list[tree_sitter.Node] = [root_node]
 
         while stack:
             node = stack.pop()
@@ -2381,7 +2381,7 @@ class SQLElementExtractor(ElementExtractor):
             "assignment",
         }
 
-        stack: list["tree_sitter.Node"] = [root_node]
+        stack: list[tree_sitter.Node] = [root_node]
 
         while stack:
             node = stack.pop()
@@ -2428,7 +2428,7 @@ class SQLElementExtractor(ElementExtractor):
             "frame_definition",
         }
 
-        stack: list["tree_sitter.Node"] = [root_node]
+        stack: list[tree_sitter.Node] = [root_node]
 
         while stack:
             node = stack.pop()
@@ -2467,7 +2467,7 @@ class SQLElementExtractor(ElementExtractor):
             root_node: Root node of the tree
             elements: List to append extracted elements to
         """
-        stack: list["tree_sitter.Node"] = [root_node]
+        stack: list[tree_sitter.Node] = [root_node]
 
         while stack:
             node = stack.pop()
@@ -2506,7 +2506,7 @@ class SQLElementExtractor(ElementExtractor):
             root_node: Root node of the tree
             elements: List to append extracted elements to
         """
-        stack: list["tree_sitter.Node"] = [root_node]
+        stack: list[tree_sitter.Node] = [root_node]
 
         while stack:
             node = stack.pop()
@@ -2545,7 +2545,7 @@ class SQLElementExtractor(ElementExtractor):
             root_node: Root node of the tree
             elements: List to append extracted elements to
         """
-        stack: list["tree_sitter.Node"] = [root_node]
+        stack: list[tree_sitter.Node] = [root_node]
 
         while stack:
             node = stack.pop()
@@ -2585,7 +2585,7 @@ class SQLElementExtractor(ElementExtractor):
         """
         # Simple traversal - keywords are covered by their parent constructs
         # This method exists to ensure the traversal visits all nodes
-        stack: list["tree_sitter.Node"] = [root_node]
+        stack: list[tree_sitter.Node] = [root_node]
 
         while stack:
             node = stack.pop()
