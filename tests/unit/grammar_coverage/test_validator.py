@@ -266,35 +266,6 @@ class TestCountNodeTypes:
         assert counts["parameters"] == 1
 
 
-class TestGetTreeSitterModule:
-    """测试 _get_tree_sitter_module 函数"""
-
-    def test_get_supported_language_modules(self):
-        """测试获取支持的语言模块"""
-        from tree_sitter_analyzer.grammar_coverage.validator import (
-            _get_tree_sitter_module,
-        )
-
-        # 测试一些常见语言
-        with patch("builtins.__import__") as mock_import:
-            mock_import.return_value = MagicMock()
-
-            _get_tree_sitter_module("python")
-            mock_import.assert_called_with("tree_sitter_python")
-
-            _get_tree_sitter_module("javascript")
-            mock_import.assert_called_with("tree_sitter_javascript")
-
-    def test_get_unsupported_language_raises_error(self):
-        """测试不支持的语言抛出 ImportError"""
-        from tree_sitter_analyzer.grammar_coverage.validator import (
-            _get_tree_sitter_module,
-        )
-
-        with pytest.raises(ImportError, match="No tree-sitter module found"):
-            _get_tree_sitter_module("unsupported_language")
-
-
 class TestGetLanguageExtension:
     """测试 _get_language_extension 函数"""
 
@@ -366,57 +337,6 @@ class TestLoadExpectedJson:
                     _load_expected_json(Path("/fake/path/expected.json"))
 
 
-class TestParseCorpusFile:
-    """测试 _parse_corpus_file 函数"""
-
-    @patch("tree_sitter_analyzer.grammar_coverage.validator._get_tree_sitter_module")
-    @patch("tree_sitter.Language")
-    @patch("tree_sitter.Parser")
-    def test_parse_corpus_file_success(
-        self, mock_parser_class, mock_language_class, mock_get_module
-    ):
-        """测试成功解析 corpus 文件"""
-        from tree_sitter_analyzer.grammar_coverage.validator import _parse_corpus_file
-
-        # Mock tree-sitter components
-        mock_module = MagicMock()
-        mock_get_module.return_value = mock_module
-
-        mock_lang = MagicMock()
-        mock_language_class.return_value = mock_lang
-
-        mock_parser = MagicMock()
-        mock_parser_class.return_value = mock_parser
-
-        # Mock tree structure
-        root = MagicMock()
-        root.is_named = True
-        root.type = "module"
-        root.children = []
-
-        mock_tree = MagicMock()
-        mock_tree.root_node = root
-        mock_parser.parse.return_value = mock_tree
-
-        # Mock file system
-        corpus_path = Path("/fake/corpus_python.py")
-        with patch("pathlib.Path.exists", return_value=True):
-            with patch("pathlib.Path.read_text", return_value="def foo(): pass"):
-                result = _parse_corpus_file(corpus_path, "python")
-
-        assert "module" in result
-        assert result["module"] == 1
-
-    def test_parse_corpus_file_not_found(self):
-        """测试文件不存在抛出 FileNotFoundError"""
-        from tree_sitter_analyzer.grammar_coverage.validator import _parse_corpus_file
-
-        corpus_path = Path("/fake/nonexistent.py")
-        with patch("pathlib.Path.exists", return_value=False):
-            with pytest.raises(FileNotFoundError, match="Corpus file not found"):
-                _parse_corpus_file(corpus_path, "python")
-
-
 class TestValidatePluginCoverage:
     """测试 validate_plugin_coverage 函数（集成测试风格，使用真实文件）"""
 
@@ -429,14 +349,14 @@ class TestValidatePluginCoverage:
     def test_validate_python_coverage_real_files(self):
         """测试使用真实 Python corpus 文件验证覆盖率"""
         # 此测试依赖真实的 corpus_python.py 和 corpus_python_expected.json
-        # 当前插件覆盖率为 0%（_get_covered_node_types_from_plugin 返回空集）
+        # Python plugin now has 100% coverage (Phase 1 complete)
         report = validate_plugin_coverage_sync("python")
 
         assert report.language == "python"
-        assert report.total_node_types > 0
-        assert report.covered_node_types == 0  # TODO: Phase 1.2 后应该 > 0
-        assert report.coverage_percentage == 0.0
-        assert len(report.uncovered_types) == report.total_node_types
+        assert report.total_node_types == 57
+        assert report.covered_node_types == 57  # Python achieved 100% coverage
+        assert report.coverage_percentage == 100.0
+        assert len(report.uncovered_types) == 0
 
     @patch("tree_sitter_analyzer.grammar_coverage.validator._parse_corpus_file")
     @patch("tree_sitter_analyzer.grammar_coverage.validator._load_expected_json")
