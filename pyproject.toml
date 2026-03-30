@@ -491,6 +491,9 @@ capabilities = [
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+exclude = [
+    "corpus/",  # Test corpus files - demonstration code, not production
+]
 
 [tool.ruff.lint]
 select = [
