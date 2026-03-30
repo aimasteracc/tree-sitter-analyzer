@@ -211,11 +211,16 @@ def _load_expected_json(expected_path: Path) -> dict[str, Any]:
         return data
 
 
-def _get_covered_node_types_from_plugin(
+async def _get_covered_node_types_from_plugin(
     corpus_path: Path, language: str
 ) -> set[str]:
     """
     通过运行插件提取，收集被覆盖的节点类型
+
+    此函数通过比较解析树和提取的元素来推断覆盖的节点类型：
+    1. 解析 corpus 文件获取完整 AST
+    2. 运行插件提取获取元素及其位置
+    3. 遍历 AST，标记与提取元素位置重叠的节点类型为"已覆盖"
 
     Args:
         corpus_path: corpus 文件路径
@@ -223,27 +228,22 @@ def _get_covered_node_types_from_plugin(
 
     Returns:
         被插件覆盖的节点类型集合
-
-    Note:
-        此函数通过以下步骤实现：
-        1. 调用 analyze_file(corpus_path) 获取提取的元素
-        2. 收集所有元素的 node_type 字段
-        3. 返回 node type 集合
     """
-    from ..core.analysis_engine import AnalysisRequest
+    import tree_sitter
+
+    from ..core.request import AnalysisRequest
     from ..plugins.manager import PluginManager
 
     covered_types: set[str] = set()
 
     try:
-        # 获取插件管理器和分析引擎
+        # 1. 获取插件并运行提取
         plugin_manager = PluginManager()
         plugin = plugin_manager.get_plugin(language)
 
         if not plugin:
             raise ImportError(f"No plugin available for language: {language}")
 
-        # 创建分析请求
         request = AnalysisRequest(
             file_path=str(corpus_path),
             language=language,
@@ -251,23 +251,60 @@ def _get_covered_node_types_from_plugin(
             include_details=True,
         )
 
-        # 同步调用异步的 analyze_file 方法
-        result = anyio.run(plugin.analyze_file, str(corpus_path), request)
+        result = await plugin.analyze_file(str(corpus_path), request)
 
-        # 收集所有元素的 node_type 字段
-        if result and hasattr(result, "elements"):
-            for element in result.elements:
-                if hasattr(element, "node_type") and element.node_type:
-                    covered_types.add(element.node_type)
+        if not result or not hasattr(result, "elements") or not result.elements:
+            return covered_types
+
+        # 2. 构建提取元素的位置集合 (start_line, end_line)
+        extracted_positions: set[tuple[int, int]] = set()
+        for element in result.elements:
+            if hasattr(element, "start_line") and hasattr(element, "end_line"):
+                extracted_positions.add((element.start_line, element.end_line))
+
+        # 3. 解析文件获取完整 AST
+        ts_module = _get_tree_sitter_module(language)
+        lang = tree_sitter.Language(ts_module.language())
+        parser = tree_sitter.Parser(lang)
+
+        source_code = corpus_path.read_text(encoding="utf-8")
+        tree = parser.parse(source_code.encode("utf-8"))
+
+        # 4. 遍历 AST，标记与提取位置重叠的节点类型
+        def walk_tree(node: Any) -> None:
+            if not node.is_named:
+                # 只关注命名节点
+                for child in node.children:
+                    walk_tree(child)
+                return
+
+            # 计算节点的行范围（tree-sitter 使用 0-based，我们的元素使用 1-based）
+            node_start = node.start_point[0] + 1
+            node_end = node.end_point[0] + 1
+
+            # 检查是否与任何提取的元素位置重叠
+            for ext_start, ext_end in extracted_positions:
+                # 如果节点范围与提取的元素范围重叠，标记为已覆盖
+                if (node_start <= ext_end) and (node_end >= ext_start):
+                    covered_types.add(node.type)
+                    break
+
+            # 递归处理子节点
+            for child in node.children:
+                walk_tree(child)
+
+        walk_tree(tree.root_node)
 
     except Exception as e:
         # 记录错误但不中断流程，返回空集
         import sys
+        import traceback
 
         print(
             f"Warning: Failed to extract covered types from plugin: {e}",
             file=sys.stderr,
         )
+        traceback.print_exc(file=sys.stderr)
 
     return covered_types
 
@@ -310,8 +347,7 @@ async def validate_plugin_coverage(language: str) -> CoverageReport:
     expected_node_types = expected_data.get("node_types", {})
 
     # 获取插件覆盖的 node types
-    # TODO: Phase 1.2 - 实现插件覆盖检测
-    covered_types_set = _get_covered_node_types_from_plugin(corpus_path, language)
+    covered_types_set = await _get_covered_node_types_from_plugin(corpus_path, language)
     covered_count = len(covered_types_set)
 
     # 计算未覆盖的类型
