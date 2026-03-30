@@ -15,6 +15,9 @@ import anyio
 if TYPE_CHECKING:
     import tree_sitter
 
+    from ..core.request import AnalysisRequest
+    from ..models import AnalysisResult
+
 try:
     import tree_sitter
 
@@ -22,11 +25,16 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..core.analysis_engine import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, CodeElement, Expression, Function
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+
+# Import at runtime for analyze_file method
+try:
+    from ..core.request import AnalysisRequest as _AnalysisRequest
+except ImportError:
+    _AnalysisRequest = None  # type: ignore[misc, assignment]
 
 
 class BashElementExtractor(ElementExtractor):
@@ -124,15 +132,21 @@ class BashElementExtractor(ElementExtractor):
 
         return expressions
 
-    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_classes(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
         """Bash does not have classes"""
         return []
 
-    def extract_variables(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_variables(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
         """Bash variable extraction not implemented in this phase"""
         return []
 
-    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_imports(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
         """Bash does not have traditional imports (source statements are handled separately)"""
         return []
 
@@ -171,6 +185,7 @@ class BashElementExtractor(ElementExtractor):
             "redirected_statement",
             "pipeline",
             "declaration_command",
+            "variable_assignment",
             "array",
             "test_command",
             "heredoc_redirect",
@@ -181,7 +196,6 @@ class BashElementExtractor(ElementExtractor):
             "string",
             "binary_expression",
             "unary_expression",
-            "test_command",
             "subscript",
         }
 
@@ -604,15 +618,21 @@ class BashPlugin(LanguagePlugin):
         extractor = self.get_extractor()
         return extractor.extract_functions(tree, source_code)
 
-    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_classes(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
         """Extract classes from the tree (Bash has no classes)"""
         return []
 
-    def extract_variables(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_variables(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
         """Extract variables from the tree"""
         return []
 
-    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_imports(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Any]:
         """Extract imports from the tree"""
         return []
 
@@ -653,7 +673,7 @@ class BashPlugin(LanguagePlugin):
             for ext in self.get_file_extensions()
         )
 
-    def get_plugin_info(self) -> dict:
+    def get_plugin_info(self) -> dict[str, Any]:
         """Get information about this plugin"""
         return {
             "name": "Bash Plugin",
@@ -671,8 +691,8 @@ class BashPlugin(LanguagePlugin):
         }
 
     async def analyze_file(
-        self, file_path: str, request: AnalysisRequest
-    ) -> AnalysisResult:
+        self, file_path: str, request: "AnalysisRequest"
+    ) -> "AnalysisResult":
         """Analyze a Bash file and return the analysis results"""
         if not TREE_SITTER_AVAILABLE:
             return AnalysisResult(
