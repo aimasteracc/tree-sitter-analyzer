@@ -174,6 +174,25 @@ class ScalaElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(comments)} Scala comments")
         return comments
 
+    def extract_annotations(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Scala annotations"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        annotations: list[Expression] = []
+
+        extractors = {
+            "annotation": self._extract_annotation,
+        }
+
+        self._traverse_and_extract(tree.root_node, extractors, annotations)
+
+        log_debug(f"Extracted {len(annotations)} Scala annotations")
+        return annotations
+
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -494,6 +513,42 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala comment: {e}")
             return None
 
+    def _extract_annotation(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract Scala annotation"""
+        try:
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract annotation name from the tree
+            # annotation -> @ stable_type_identifier
+            annotation_name = "unknown"
+            for child in node.children:
+                if child.type in (
+                    "stable_type_identifier",
+                    "type_identifier",
+                    "identifier",
+                ):
+                    annotation_name = self._get_node_text(child)
+                    break
+                # Handle simple identifier after @
+                if child.type == "identifier":
+                    annotation_name = self._get_node_text(child)
+                    break
+
+            return Expression(
+                name=annotation_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="scala",
+                expression_kind="annotation",
+                node_type="annotation",
+            )
+        except Exception as e:
+            log_error(f"Error extracting Scala annotation: {e}")
+            return None
+
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get node text with caching using position-based keys"""
         cache_key = (node.start_byte, node.end_byte)
@@ -633,6 +688,7 @@ class ScalaPlugin(LanguagePlugin):
             all_elements.extend(elements_dict.get("imports", []))
             all_elements.extend(elements_dict.get("packages", []))
             all_elements.extend(elements_dict.get("comments", []))
+            all_elements.extend(elements_dict.get("annotations", []))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
@@ -717,6 +773,7 @@ class ScalaPlugin(LanguagePlugin):
                 "imports": [],
                 "packages": [],
                 "comments": [],
+                "annotations": [],
             }
 
         try:
@@ -729,6 +786,7 @@ class ScalaPlugin(LanguagePlugin):
                 "imports": extractor.extract_imports(tree, source_code),
                 "packages": extractor.extract_packages(tree, source_code),
                 "comments": extractor.extract_comments(tree, source_code),  # type: ignore[attr-defined]
+                "annotations": extractor.extract_annotations(tree, source_code),
             }
 
         except Exception as e:
@@ -740,6 +798,7 @@ class ScalaPlugin(LanguagePlugin):
                 "imports": [],
                 "packages": [],
                 "comments": [],
+                "annotations": [],
             }
 
     def supports_file(self, file_path: str) -> bool:

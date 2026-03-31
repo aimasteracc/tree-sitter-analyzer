@@ -197,7 +197,7 @@ class RubyElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
         """
-        Extract Ruby methods.
+        Extract Ruby methods with visibility tracking.
 
         Args:
             tree: Parsed tree-sitter tree
@@ -211,41 +211,68 @@ class RubyElementExtractor(ElementExtractor):
 
         functions: list[Function] = []
 
-        # Iterative traversal
-        stack: list[tuple[tree_sitter.Node, str]] = [(tree.root_node, "")]
+        # Iterative traversal with visibility state tracking
+        # Stack: (node, parent_class, current_visibility)
+        stack: list[tuple[tree_sitter.Node, str, str]] = [(tree.root_node, "", "public")]
 
         while stack:
-            node, parent_class = stack.pop()
+            node, parent_class, current_visibility = stack.pop()
 
             if node.type == "method":
-                func_elem = self._extract_method_element(node, parent_class)
+                func_elem = self._extract_method_element(node, parent_class, current_visibility)
                 if func_elem:
                     functions.append(func_elem)
             elif node.type == "singleton_method":
-                func_elem = self._extract_singleton_method_element(node, parent_class)
+                func_elem = self._extract_singleton_method_element(node, parent_class, current_visibility)
                 if func_elem:
                     functions.append(func_elem)
             elif node.type == "call":
                 # Check for attr_accessor, attr_reader, attr_writer
-                func_elems = self._extract_attr_methods(node, parent_class)
+                func_elems = self._extract_attr_methods(node, parent_class, current_visibility)
                 functions.extend(func_elems)
 
-            # Track parent class for methods
+            # Track parent class and visibility for methods
             new_parent = parent_class
+            new_visibility = current_visibility
+
             if node.type in ("class", "module"):
+                # Entering a new class/module scope - reset visibility to public
+                new_visibility = "public"
                 for child in node.children:
                     if child.type in ("constant", "scope_resolution"):
                         new_parent = self._get_node_text_optimized(child)
                         break
+            elif node.type == "body_statement":
+                # Process body_statement children in order to track visibility state
+                # Ruby visibility modifiers are standalone identifiers within body_statement
+                children_with_visibility = []
+                temp_visibility = current_visibility
 
-            # Add children to stack
+                for child in node.children:
+                    # Check if this child is a visibility modifier identifier
+                    if child.type == "identifier":
+                        identifier_text = self._get_node_text_optimized(child)
+                        if identifier_text in ("private", "protected", "public"):
+                            # Update visibility state for subsequent methods
+                            temp_visibility = identifier_text
+                            continue  # Don't process visibility modifier itself
+
+                    # Add child with current visibility state
+                    children_with_visibility.append((child, new_parent, temp_visibility))
+
+                # Push children in reverse order to process in correct order
+                for child, parent, visibility in reversed(children_with_visibility):
+                    stack.append((child, parent, visibility))
+                continue  # Skip default child processing
+
+            # Add children to stack (only if not body_statement which is handled above)
             for child in reversed(node.children):
-                stack.append((child, new_parent))
+                stack.append((child, new_parent, new_visibility))
 
         return functions
 
     def _extract_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: "tree_sitter.Node", parent_class: str, visibility: str = "public"
     ) -> Function | None:
         """
         Extract a method element.
@@ -253,6 +280,7 @@ class RubyElementExtractor(ElementExtractor):
         Args:
             node: Method node
             parent_class: Name of the parent class
+            visibility: Current visibility state (default: "public")
 
         Returns:
             Function element or None if extraction fails
@@ -264,7 +292,6 @@ class RubyElementExtractor(ElementExtractor):
                 return None
 
             name = self._get_node_text_optimized(name_node)
-            visibility = self._determine_visibility(node)
 
             # Extract parameters
             parameters: list[str] = []
@@ -299,7 +326,7 @@ class RubyElementExtractor(ElementExtractor):
             return None
 
     def _extract_singleton_method_element(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: "tree_sitter.Node", parent_class: str, visibility: str = "public"
     ) -> Function | None:
         """
         Extract a singleton (class) method element.
@@ -307,6 +334,7 @@ class RubyElementExtractor(ElementExtractor):
         Args:
             node: Singleton method node
             parent_class: Name of the parent class
+            visibility: Current visibility state (default: "public")
 
         Returns:
             Function element or None if extraction fails
@@ -318,7 +346,6 @@ class RubyElementExtractor(ElementExtractor):
                 return None
 
             name = self._get_node_text_optimized(name_node)
-            visibility = self._determine_visibility(node)
 
             # Extract parameters
             parameters: list[str] = []
@@ -353,7 +380,7 @@ class RubyElementExtractor(ElementExtractor):
             return None
 
     def _extract_attr_methods(
-        self, node: "tree_sitter.Node", parent_class: str
+        self, node: "tree_sitter.Node", parent_class: str, visibility: str = "public"
     ) -> list[Function]:
         """
         Extract attr_accessor, attr_reader, attr_writer methods.
@@ -361,6 +388,7 @@ class RubyElementExtractor(ElementExtractor):
         Args:
             node: Call node
             parent_class: Name of the parent class
+            visibility: Current visibility state (default: "public")
 
         Returns:
             List of Function elements
@@ -407,7 +435,7 @@ class RubyElementExtractor(ElementExtractor):
                             ),
                             start_line=node.start_point[0] + 1,
                             end_line=node.end_point[0] + 1,
-                            visibility="public",
+                            visibility=visibility,
                             is_static=False,
                             is_async=False,
                             is_abstract=False,

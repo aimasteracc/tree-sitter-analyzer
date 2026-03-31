@@ -226,6 +226,8 @@ class TypeScriptElementExtractor(ElementExtractor):
             "assignment_expression",
             "type_alias_declaration",
             "enum_declaration",
+            "decorator",  # 添加 decorator 节点支持装饰器包裹的元素提取
+            "public_field_definition",  # 添加 public_field_definition 支持装饰的字段
         }
 
         node_stack = [(root_node, 0)]
