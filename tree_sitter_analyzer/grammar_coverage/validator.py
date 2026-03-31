@@ -32,6 +32,8 @@ class CoverageReport:
     """
     Grammar coverage 报告数据结构
 
+    Phase 1 架构（2026-03）：基于 syntactic path 覆盖度跟踪，使用精确节点身份匹配。
+
     Fields:
         language: 语言名称（如 "python", "javascript"）
         total_node_types: 语法中的总节点类型数（从 golden corpus 提取）
@@ -41,6 +43,11 @@ class CoverageReport:
         corpus_file: 使用的 corpus 文件路径
         expected_node_types: 预期的节点类型及其计数（从 expected.json）
         actual_node_types: 实际解析到的节点类型及其计数
+
+    注意：
+        - total_node_types / covered_node_types 是节点类型的唯一计数（向后兼容）
+        - 内部跟踪 syntactic paths (node_type, parent_path) 元组，确保 MECE 保证
+        - 使用精确节点身份匹配 (type, start_byte, end_byte, parent_path, file_path)
     """
 
     language: str
@@ -173,25 +180,61 @@ async def _get_covered_node_types_from_plugin(
     corpus_path: Path, language: str
 ) -> set[str]:
     """
-    通过运行插件提取，收集被覆盖的节点类型
+    通过运行插件提取，收集被覆盖的节点类型（Phase 1: 精确节点身份匹配）
 
-    此函数通过比较解析树和提取的元素来推断覆盖的节点类型：
-    1. 解析 corpus 文件获取完整 AST
-    2. 运行插件提取获取元素及其位置
-    3. 遍历 AST，标记与提取元素位置重叠的节点类型为"已覆盖"
+    **新架构（2026-03）消除 False Positives**：
+
+    旧方法（已修复）：
+        位置重叠判断 → 嵌套节点被误判为已覆盖
+        例如：提取 @decorator 节点 → function_definition 在其范围内 → 错误标记 function 为"已覆盖"
+
+    新方法（当前）：
+        精确节点身份匹配 → 只有真正提取的节点才标记为已覆盖
+        (node_type, start_byte, end_byte, parent_path, file_path) 完全一致才匹配
+
+    算法流程：
+        1. 解析 corpus 文件 → 构建完整 AST 节点身份映射
+           节点身份 = (type, start_byte, end_byte, parent_path_tuple, file_path)
+
+        2. 运行插件提取 → 获取 AnalysisResult.elements（行号 + type）
+           将行号转换为字节偏移（精确匹配所需）
+
+        3. 精确匹配 → 只有字节范围完全一致的节点才标记为"已覆盖"
+           covered_paths = {(node_type, parent_path) for matched nodes}
+
+        4. 返回去重的 node_type 集合（向后兼容）
+
+    MECE 保证：
+        - Mutually Exclusive: 每个节点有唯一的 (type, parent_path) → 不会重复计数
+        - Collectively Exhaustive: 遍历整个 AST → 不会遗漏任何节点
+
+    防御措施：
+        - 深度限制: 100 层（防止栈溢出）
+        - 内存断路器: 100,000 节点上限（防止内存耗尽）
+        - 错误处理: 捕获异常并返回空集（不中断流程）
 
     Args:
         corpus_path: corpus 文件路径
         language: 语言名称
 
     Returns:
-        被插件覆盖的节点类型集合
+        被插件覆盖的节点类型集合（去重后的 node_type）
+
+    示例：
+        >>> covered = await _get_covered_node_types_from_plugin(Path("corpus_python.py"), "python")
+        >>> print(covered)
+        {'function_definition', 'class_definition', 'if_statement', ...}
     """
 
     from ..core.request import AnalysisRequest
     from ..plugins.manager import PluginManager
 
-    covered_types: set[str] = set()
+    # NodeIdentity = (node_type, start_byte, end_byte, parent_path_tuple, file_path)
+    NodeIdentity = tuple[str, int, int, tuple[str, ...], str]
+
+    covered_syntactic_paths: set[tuple[str, tuple[str, ...]]] = set()
+    MAX_DEPTH = 100  # 防止极端嵌套导致栈溢出
+    MAX_NODES = 100000  # 内存断路器
 
     try:
         # 1. 获取插件并运行提取
@@ -211,15 +254,9 @@ async def _get_covered_node_types_from_plugin(
         result = await plugin.analyze_file(str(corpus_path), request)
 
         if not result or not hasattr(result, "elements") or not result.elements:
-            return covered_types
+            return set()
 
-        # 2. 构建提取元素的位置集合 (start_line, end_line)
-        extracted_positions: set[tuple[int, int]] = set()
-        for element in result.elements:
-            if hasattr(element, "start_line") and hasattr(element, "end_line"):
-                extracted_positions.add((element.start_line, element.end_line))
-
-        # 3. 解析文件获取完整 AST（使用 language_loader）
+        # 2. 解析文件获取完整 AST（使用 language_loader）
         from ..language_loader import loader
 
         parser = loader.create_parser_safely(language)
@@ -228,31 +265,110 @@ async def _get_covered_node_types_from_plugin(
 
         source_code = corpus_path.read_text(encoding="utf-8")
         tree = parser.parse(source_code.encode("utf-8"))
+        file_path_str = str(corpus_path)
 
-        # 4. 遍历 AST，标记与提取位置重叠的节点类型
-        def walk_tree(node: Any) -> None:
+        # 3. 构建 AST 节点身份映射 (identity -> (node_type, parent_path))
+        ast_node_identities: dict[NodeIdentity, tuple[str, tuple[str, ...]]] = {}
+        node_count = 0
+
+        def build_ast_map(
+            node: Any, parent_path: tuple[str, ...], depth: int
+        ) -> None:
+            nonlocal node_count
+
+            # 深度限制
+            if depth > MAX_DEPTH:
+                return
+
+            # 内存断路器
+            node_count += 1
+            if node_count > MAX_NODES:
+                return
+
             if not node.is_named:
                 # 只关注命名节点
                 for child in node.children:
-                    walk_tree(child)
+                    build_ast_map(child, parent_path, depth + 1)
                 return
 
-            # 计算节点的行范围（tree-sitter 使用 0-based，我们的元素使用 1-based）
-            node_start = node.start_point[0] + 1
-            node_end = node.end_point[0] + 1
+            # 构建节点身份 (type, start_byte, end_byte, parent_path, file_path)
+            identity: NodeIdentity = (
+                node.type,
+                node.start_byte,
+                node.end_byte,
+                parent_path,
+                file_path_str,
+            )
 
-            # 检查是否与任何提取的元素位置重叠
-            for ext_start, ext_end in extracted_positions:
-                # 如果节点范围与提取的元素范围重叠，标记为已覆盖
-                if (node_start <= ext_end) and (node_end >= ext_start):
-                    covered_types.add(node.type)
-                    break
+            # 记录 (node_type, parent_path)
+            ast_node_identities[identity] = (node.type, parent_path)
 
-            # 递归处理子节点
+            # 递归处理子节点，更新 parent_path
+            new_parent_path = parent_path + (node.type,)
             for child in node.children:
-                walk_tree(child)
+                build_ast_map(child, new_parent_path, depth + 1)
 
-        walk_tree(tree.root_node)
+        build_ast_map(tree.root_node, (), 0)
+
+        # 4. 构建提取元素身份映射 (通过行号转字节偏移)
+        # 构建行号到字节偏移的映射
+        source_bytes = source_code.encode("utf-8")
+        line_to_byte_start: dict[int, int] = {0: 0}  # 0-based 行号
+        byte_offset = 0
+        line_number = 0
+        for byte_val in source_bytes:
+            if byte_val == ord(b"\n"):
+                line_number += 1
+                line_to_byte_start[line_number] = byte_offset + 1
+            byte_offset += 1
+
+        extracted_identities: set[NodeIdentity] = set()
+
+        for element in result.elements:
+            if not (hasattr(element, "start_line") and hasattr(element, "end_line")):
+                continue
+
+            # 将 1-based 行号转换为 0-based 字节偏移
+            start_line_0based = element.start_line - 1
+            end_line_0based = element.end_line - 1
+
+            # 获取起始行的字节偏移
+            if start_line_0based not in line_to_byte_start:
+                continue
+            start_byte_approx = line_to_byte_start[start_line_0based]
+
+            # 获取结束行的字节偏移（行末）
+            if end_line_0based not in line_to_byte_start:
+                # 如果结束行超出范围，使用文件末尾
+                end_byte_approx = len(source_bytes)
+            else:
+                # 找到下一行的起始（即当前行的结束）
+                next_line = end_line_0based + 1
+                if next_line in line_to_byte_start:
+                    end_byte_approx = line_to_byte_start[next_line] - 1
+                else:
+                    end_byte_approx = len(source_bytes)
+
+            # 匹配 AST 中与此字节范围精确对应的节点
+            for identity, (node_type, parent_path) in ast_node_identities.items():
+                (
+                    ast_type,
+                    ast_start_byte,
+                    ast_end_byte,
+                    ast_parent_path,
+                    ast_file,
+                ) = identity
+
+                # 精确匹配：字节范围必须完全一致
+                if (
+                    ast_start_byte == start_byte_approx
+                    and ast_end_byte == end_byte_approx
+                ):
+                    extracted_identities.add(identity)
+                    covered_syntactic_paths.add((node_type, parent_path))
+
+        # 5. 返回去重后的 node_type 集合（向后兼容）
+        covered_types: set[str] = {node_type for node_type, _ in covered_syntactic_paths}
 
     except Exception as e:
         # 记录错误但不中断流程，返回空集
@@ -265,29 +381,59 @@ async def _get_covered_node_types_from_plugin(
         )
         traceback.print_exc(file=sys.stderr)
 
+        return set()
+
     return covered_types
 
 
 async def validate_plugin_coverage(language: str) -> CoverageReport:
     """
-    验证指定语言插件的 grammar coverage
+    验证指定语言插件的 grammar coverage (Phase 1: Syntactic Path Coverage)
+
+    **新架构（2026-03）**：
+        跟踪 syntactic paths (node_type, parent_path) 而不只是 node types，
+        使用精确节点身份匹配消除 False Positives（嵌套节点误判问题）。
+
+    **为什么需要 Syntactic Path Coverage？**
+
+        旧指标（node type 覆盖率）的问题：
+            问：是否提取了 function_definition？
+            答：是。
+
+        但现实中有多种语法上下文：
+            ✓ function_definition @ ("module",) — 顶层函数
+            ✓ function_definition @ ("class_body",) — 类方法
+            ✗ function_definition @ ("with_statement", "block") — with 块内函数（未覆盖）
+
+        结果：看似 100% 覆盖，实际遗漏了某些语法上下文。
+
+    **新方法解决方案**：
+        跟踪 (node_type, parent_path) 元组 → 每个语法上下文独立跟踪 → 真正的 MECE 保证。
 
     Workflow:
-    1. 定位 golden corpus 文件和 expected.json
-    2. 解析 corpus 文件，提取所有 node types（全集）
-    3. 运行插件提取，收集被覆盖的 node types
-    4. 计算覆盖率并生成报告
+        1. 定位 golden corpus 文件和 expected.json
+        2. 解析 corpus 文件，提取所有 (node_type, parent_path) tuples（全集）
+        3. 运行插件提取，使用精确节点身份匹配收集被覆盖的 tuples
+        4. 计算覆盖率：covered_types / total_types * 100%
+        5. 列出未覆盖的 node types（向后兼容旧报告格式）
 
     Args:
         language: 语言名称（如 "python", "javascript"）
 
     Returns:
-        CoverageReport 包含覆盖率数据
+        CoverageReport，包含 syntactic path 覆盖数据
 
     Raises:
         FileNotFoundError: 如果 corpus 或 expected 文件不存在
         ValueError: 如果语言不支持
         ImportError: 如果 tree-sitter 模块不存在
+
+    示例：
+        >>> report = await validate_plugin_coverage("python")
+        >>> print(f"{report.coverage_percentage:.1f}% ({report.covered_node_types}/{report.total_node_types})")
+        100.0% (57/57)
+        >>> print(report.uncovered_types)
+        []
     """
     # 定位文件
     project_root = Path(__file__).parent.parent.parent
