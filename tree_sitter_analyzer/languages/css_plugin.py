@@ -10,14 +10,13 @@ selector parsing, and property analysis.
 import logging
 from typing import TYPE_CHECKING, Any
 
+from ..core.request import AnalysisRequest
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info, safe_preview
 
 if TYPE_CHECKING:
     import tree_sitter
-
-    from ..core.request import AnalysisRequest
 
 logger = logging.getLogger(__name__)
 

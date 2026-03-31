@@ -14,14 +14,14 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.request import AnalysisRequest
-
 try:
     import tree_sitter
 
     TREE_SITTER_AVAILABLE = True
 except ImportError:
     TREE_SITTER_AVAILABLE = False
+
+from ..core.request import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..language_loader import loader
 from ..models import (
