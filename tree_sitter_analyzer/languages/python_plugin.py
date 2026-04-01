@@ -33,6 +33,7 @@ from ..models import (
     Function,
     Import,
     Lambda,
+    Package,
     Variable,
 )
 from ..plugins.base import ElementExtractor, LanguagePlugin
@@ -1204,7 +1205,9 @@ class PythonElementExtractor(ElementExtractor):
         walk_tree(root_node)
         return imports
 
-    def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_packages(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Package]:
         """Extract Python package information from file path"""
         import os
 
@@ -1691,7 +1694,7 @@ class PythonPlugin(LanguagePlugin):
             for ext in self.get_file_extensions()
         )
 
-    def get_plugin_info(self) -> dict:
+    def get_plugin_info(self) -> dict[str, Any]:
         """Get information about this plugin"""
         return {
             "name": "Python Plugin",
@@ -1868,7 +1871,7 @@ class PythonPlugin(LanguagePlugin):
                 elements.extend(extractor.extract_imports(tree, source_code))
 
                 # Extract comprehensions and expressions (for grammar coverage)
-                elements.extend(extractor.extract_comprehensions(tree, source_code))
+                elements.extend(extractor.extract_comprehensions(tree, source_code))  # type: ignore[attr-defined]
                 elements.extend(extractor.extract_expressions(tree, source_code))
 
                 from ..utils.tree_sitter_compat import count_nodes_iterative
@@ -1898,7 +1901,9 @@ class PythonPlugin(LanguagePlugin):
                 error_message=str(e),
             )
 
-    def execute_query(self, tree: "tree_sitter.Tree", query_name: str) -> dict:
+    def execute_query(
+        self, tree: "tree_sitter.Tree", query_name: str
+    ) -> dict[str, Any]:
         """Execute a specific query on the tree"""
         try:
             language = self.get_tree_sitter_language()
@@ -1922,16 +1927,18 @@ class PythonPlugin(LanguagePlugin):
             log_error(f"Query execution failed: {e}")
             return {"error": str(e)}
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_elements(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[CodeElement]:
         """Extract elements from source code using tree-sitter AST"""
         extractor = self.get_extractor()
-        elements = []
+        elements: list[CodeElement] = []
 
         try:
             elements.extend(extractor.extract_functions(tree, source_code))
-            elements.extend(extractor.extract_classes(tree, source_code))  # type: ignore
-            elements.extend(extractor.extract_variables(tree, source_code))  # type: ignore
-            elements.extend(extractor.extract_imports(tree, source_code))  # type: ignore
+            elements.extend(extractor.extract_classes(tree, source_code))
+            elements.extend(extractor.extract_variables(tree, source_code))
+            elements.extend(extractor.extract_imports(tree, source_code))
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
 

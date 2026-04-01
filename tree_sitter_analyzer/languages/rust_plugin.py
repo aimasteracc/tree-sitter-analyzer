@@ -338,7 +338,7 @@ class RustElementExtractor(ElementExtractor):
                 node_type="macro_definition",
             )
             # Store macro-specific metadata
-            expr.rules_count = rules_count
+            expr.rules_count = rules_count  # type: ignore[attr-defined]
             return expr
         except Exception as e:
             log_error(f"Error extracting Rust macro definition: {e}")
@@ -678,7 +678,7 @@ class RustElementExtractor(ElementExtractor):
                 node_type="static_item",
             )
             # Store mutability as dynamic attribute
-            var.is_mutable = is_mutable
+            var.is_mutable = is_mutable  # type: ignore[attr-defined]
             return var
         except Exception as e:
             log_error(f"Error extracting Rust static: {e}")
@@ -947,9 +947,9 @@ class RustPlugin(LanguagePlugin):
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
-                "macros": extractor.extract_macros(tree, source_code),
-                "attributes": extractor.extract_attributes(tree, source_code),
-                "doc_comments": extractor.extract_doc_comments(tree, source_code),
+                "macros": extractor.extract_macros(tree, source_code),  # type: ignore[attr-defined]
+                "attributes": extractor.extract_attributes(tree, source_code),  # type: ignore[attr-defined]
+                "doc_comments": extractor.extract_doc_comments(tree, source_code),  # type: ignore[attr-defined]
             }
 
             # Capture side-effects

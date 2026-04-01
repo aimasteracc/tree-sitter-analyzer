@@ -35,7 +35,7 @@ class SQLFormatterBase:
         return self._format_grouped_elements(grouped_elements, file_path)
 
     def group_elements_by_type(
-        self, elements: list[SQLElement]
+        self, elements: list[Any]
     ) -> dict[SQLElementType, list[SQLElement]]:
         """Group elements by SQL type"""
         from ..models import SQLElement as SQLElementClass
