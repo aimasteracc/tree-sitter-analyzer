@@ -1,5 +1,11 @@
 # Sample.php
 
+## Imports
+```php
+import App\Contracts\UserInterface
+import App\Traits\Timestampable
+```
+
 ## Classes Overview
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|

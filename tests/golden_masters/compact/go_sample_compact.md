@@ -5,7 +5,7 @@
 |----------|-------|
 | Package | sample |
 | Funcs | 0 |
-| Types | 9 |
+| Types | 10 |
 
 ## Funcs
 | Func | Sig | V | L | Doc |

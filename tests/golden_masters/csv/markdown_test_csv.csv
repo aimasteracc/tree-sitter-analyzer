@@ -45,8 +45,7 @@ ordered,Ordered List (3 items),-,48,54
 ordered,Ordered List (2 items),-,50,52
 task,Task List (3 items),-,55,59
 table,3x4,-,94,99
-blockquote,"Blockquote: This is a blockquote.
-It can span mult",-,87,91
+blockquote,Blockquote: This is a blockquote. It can span mult,-,87,91
 blockquote,Blockquote: This is a nested blockquote.,-,90,91
 horizontal_rule,Horizontal Rule,-,102,103
 horizontal_rule,Horizontal Rule,-,104,105

@@ -5,7 +5,7 @@
 |----------|-------|
 | Package | sample |
 | Functions | 0 |
-| Types | 9 |
+| Types | 10 |
 | Variables | 0 |
 
 ## Imports
@@ -35,6 +35,7 @@ import ""time""
 | Name | Visibility | Lines |
 |------|------------|-------|
 | Status | exported | 33-33 |
+| StringSlice | exported | 248-248 |
 | Handler | exported | 251-251 |
 | Middleware | exported | 254-254 |
 
