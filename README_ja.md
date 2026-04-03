@@ -202,6 +202,19 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 ---
 
+## 🔬 文法カバレッジ（MECEフレームワーク）
+
+Tree-sitter Analyzerは、対応全17言語にわたる文法カバレッジ検証で**誤検知ゼロ**を保証します。
+
+### フェーズ1：MECEアーキテクチャ（2026-03）
+
+**新アーキテクチャ**：
+- ノードタイプだけでなく**構文パス** `(node_type, parent_path)` を追跡
+- **完全なノード同一性マッチング**（type + バイト範囲 + 親チェーン + ファイルパス）
+- ネストしたノードの誤分類を排除（ラッパーノードによる誤検知なし）
+
+---
+
 ## 🏆 品質とテスト
 
 | 指標 | 値 |
