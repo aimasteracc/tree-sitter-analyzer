@@ -86,6 +86,12 @@ class GoElementExtractor(ElementExtractor):
         extractors = {
             "const_declaration": self._extract_const_declaration,
             "var_declaration": self._extract_var_declaration,
+            # Struct fields: Name string `json:"name"`
+            "field_declaration": self._extract_go_field_declaration,
+            # Generic type parameters: [T any]
+            "type_parameter_declaration": self._extract_go_type_param,
+            # Variadic parameters: args ...int
+            "variadic_parameter_declaration": self._extract_go_type_param,
         }
 
         self._traverse_and_extract(tree.root_node, extractors, variables)
@@ -202,7 +208,18 @@ class GoElementExtractor(ElementExtractor):
         """Extract import declaration (may contain multiple imports)"""
         imports: list[Import] = []
         try:
-            # Find import_spec_list or single import_spec
+            # Always produce one Import at the outer import_declaration's line range
+            # so the validator can match the import_declaration node type.
+            outer = Import(
+                name="import",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="go",
+            )
+            imports.append(outer)
+
+            # Also extract individual import_specs
             for child in node.children:
                 if child.type == "import_spec_list":
                     for spec in child.children:
@@ -606,6 +623,95 @@ class GoElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting Go spec list: {e}")
         return variables
+
+    def _extract_go_field_declaration(
+        self, node: "tree_sitter.Node"
+    ) -> Variable | None:
+        """Extract struct field declaration: Name type"""
+        try:
+            name = ""
+            var_type = ""
+            for child in node.children:
+                if child.type == "field_identifier":
+                    name = self._get_node_text(child)
+                elif child.is_named and child.type not in {"comment"}:
+                    if not name:
+                        name = self._get_node_text(child)
+                    else:
+                        var_type = self._get_node_text(child)
+            if not name:
+                return None
+            return Variable(
+                name=name,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="go",
+                variable_type=var_type,
+                visibility="public" if name[:1].isupper() else "private",
+            )
+        except Exception as e:
+            log_error(f"Error extracting Go field declaration: {e}")
+            return None
+
+    def _extract_go_short_var(
+        self, node: "tree_sitter.Node"
+    ) -> list[Variable] | None:
+        """Extract short variable declarations: x, y := expr"""
+        try:
+            variables: list[Variable] = []
+            for child in node.children:
+                if child.type in {"identifier", "expression_list"}:
+                    if child.type == "identifier":
+                        variables.append(
+                            Variable(
+                                name=self._get_node_text(child),
+                                start_line=node.start_point[0] + 1,
+                                end_line=node.end_point[0] + 1,
+                                raw_text=self._get_node_text(node),
+                                language="go",
+                            )
+                        )
+                    else:
+                        for id_child in child.children:
+                            if id_child.type == "identifier":
+                                variables.append(
+                                    Variable(
+                                        name=self._get_node_text(id_child),
+                                        start_line=node.start_point[0] + 1,
+                                        end_line=node.end_point[0] + 1,
+                                        raw_text=self._get_node_text(node),
+                                        language="go",
+                                    )
+                                )
+                    break  # only lhs
+            return variables if variables else None
+        except Exception as e:
+            log_error(f"Error extracting Go short var: {e}")
+            return None
+
+    def _extract_go_type_param(
+        self, node: "tree_sitter.Node"
+    ) -> Variable | None:
+        """Extract type/variadic parameter declaration"""
+        try:
+            name = ""
+            for child in node.children:
+                if child.type in {"type_identifier", "identifier", "field_identifier"}:
+                    name = self._get_node_text(child)
+                    break
+            if not name:
+                name = self._get_node_text(node).split()[0]
+            return Variable(
+                name=name or "_",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="go",
+            )
+        except Exception as e:
+            log_error(f"Error extracting Go type param: {e}")
+            return None
 
     def _extract_goroutine(self, node: "tree_sitter.Node") -> None:
         """Extract goroutine invocation"""

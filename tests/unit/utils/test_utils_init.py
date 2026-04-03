@@ -247,7 +247,7 @@ class TestNoExtraExports:
         public_items = [name for name in dir(utils) if not name.startswith("_")]
 
         # These are submodules, not items to export
-        submodules = ["logging", "tree_sitter_compat"]
+        submodules = ["logging", "tree_sitter_compat", "text_utils"]
 
         for item in public_items:
             if item in submodules:

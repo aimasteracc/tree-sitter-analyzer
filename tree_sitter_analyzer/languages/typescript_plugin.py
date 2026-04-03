@@ -134,6 +134,8 @@ class TypeScriptElementExtractor(ElementExtractor):
             "lexical_declaration": self._extract_lexical_variable_optimized,
             "property_definition": self._extract_property_optimized,
             "property_signature": self._extract_property_signature_optimized,
+            # Class field declarations: public name: string = ""
+            "public_field_definition": self._extract_property_optimized,
         }
 
         self._traverse_and_extract_iterative(

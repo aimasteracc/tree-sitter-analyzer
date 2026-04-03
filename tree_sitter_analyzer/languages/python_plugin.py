@@ -430,8 +430,11 @@ class PythonElementExtractor(ElementExtractor):
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information with detailed metadata"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # When function is wrapped in decorated_definition, report the outer
+            # node's line range so the validator matches decorated_definition too.
+            outer = node.parent if (node.parent and node.parent.type == "decorated_definition") else node
+            start_line = outer.start_point[0] + 1
+            end_line = outer.end_point[0] + 1
 
             # Extract function details
             function_info = self._parse_function_signature_optimized(node)
@@ -880,8 +883,10 @@ class PythonElementExtractor(ElementExtractor):
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information with detailed metadata"""
         try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
+            # When class is wrapped in decorated_definition, use outer node's range
+            outer = node.parent if (node.parent and node.parent.type == "decorated_definition") else node
+            start_line = outer.start_point[0] + 1
+            end_line = outer.end_point[0] + 1
 
             # Extract class name
             class_name = None

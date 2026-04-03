@@ -5,12 +5,12 @@
 |----------|-------|
 | Package | math |
 | Methods | 36 |
-| Fields | 10 |
+| Fields | 13 |
 
 ## Methods
 | Method | Sig | V | L | Cx | Doc |
 |--------|-----|---|---|----|----|
-| max | (T,T):T | + | 25-27 | 2 | - |
+| max | (T,T):T | + | 24-27 | 2 | - |
 | Container | ():void | + | 33-33 | 1 | - |
 | Container | (T):void | + | 34-34 | 1 | - |
 | ~Container | ():void | + | 35-35 | 1 | - |
@@ -40,7 +40,7 @@
 | name | ():str | + | 146-146 | 1 | - |
 | print | ():void | + | 148-150 | 1 | - |
 | operator<< | (ostream&,const Circle&):ostream& | + | 160-163 | 1 | - |
-| swap_values | (T&,T&):void | + | 176-180 | 1 | - |
+| swap_values | (T&,T&):void | + | 175-180 | 1 | - |
 | add | (i,int b =):i | + | 185-187 | 1 | - |
 | add | (d,d):d | + | 190-192 | 1 | - |
 | process | (vector<int>&,function<int(int)>):void | + | 195-199 | 2 | - |

@@ -106,12 +106,13 @@ class TestWrapperNodesFalsPositives:
         ):
             covered = await _get_covered_node_types_from_plugin(corpus_path, "python")
 
-        # 关键断言：精确节点匹配后，只有真正提取的节点被标记
-        # Mock 测试中 plugin 返回 start_line=1, end_line=5（1-based）
-        # 但 mock nodes 的字节位置无法与真实行号准确对应
-        # 因此 mock 测试无法匹配任何节点（需要真实 tree-sitter 解析）
-        # 这个测试现在验证：在无法精确匹配时，不会产生 false positive
-        assert len(covered) == 0  # Mock 环境下无精确匹配
+        # 关键断言（行号匹配 2026-04）：
+        # element(start=1,end=5) → 0-based(0,4)
+        # decorated_definition(0,0)-(4,0) → 0-4 → MATCH ✓
+        # function_definition(1,0)-(4,0) → 1-4 → no match（起始行不同）✗
+        # module(0,0)-(4,0) → 0-4 → MATCH ✓（显式设置了 start_point）
+        assert "decorated_definition" in covered
+        assert "function_definition" not in covered  # 核心：无 false positive
 
     @pytest.mark.asyncio
     async def test_typescript_export_class_wrapper(self):
@@ -177,8 +178,10 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/file.ts"), "typescript"
             )
 
-        # 精确匹配：Mock 环境无法产生真实字节对齐，因此无匹配
-        assert len(covered) == 0
+        # 行号匹配：export_statement(0-2) 和 class_declaration(0-2) 都与 element(0-2) 精确匹配
+        # 同行节点均被覆盖（已知 line-based 的正常行为）
+        assert "export_statement" in covered
+        assert "class_declaration" in covered
 
     @pytest.mark.asyncio
     async def test_rust_attribute_function_wrapper(self):
@@ -243,8 +246,10 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/file.rs"), "rust"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：attribute_item(0-2) 与 element(0-2) 精确匹配
+        # function_item(1-2) 起始行不同，不匹配（无 false positive）
+        assert "attribute_item" in covered
+        assert "function_item" not in covered
 
     @pytest.mark.asyncio
     async def test_ruby_visibility_method_wrapper(self):
@@ -375,8 +380,10 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.py"), "python"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：decorated_definition(0-5) 与 element(0-5) 精确匹配
+        # function_definition(1-5) 起始行不同，不匹配（核心：无 false positive）
+        assert "decorated_definition" in covered
+        assert "function_definition" not in covered
 
     @pytest.mark.asyncio
     async def test_multi_layer_nesting_python(self):
@@ -452,8 +459,10 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.py"), "python"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：outer decorated_definition(0-6) 与 element(0-6) 精确匹配
+        # inner decorated_definition(1-6) 和 function_definition(2-6) 不匹配（起始行不同）
+        assert "decorated_definition" in covered
+        assert "function_definition" not in covered
 
     @pytest.mark.asyncio
     async def test_wrapper_node_boundary_same_start_line(self):
@@ -517,8 +526,10 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.ts"), "typescript"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：export_statement(0-0) 和 class_declaration(0-0) 同行，均匹配 element(0-0)
+        # 同行节点行号一致，均被覆盖（已知行号匹配的正常行为）
+        assert "export_statement" in covered
+        assert "class_declaration" in covered
 
     @pytest.mark.asyncio
     async def test_wrapper_node_partial_overlap(self):
@@ -583,8 +594,10 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.txt"), "generic"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：child_node(4-9) 与 element(4-9) 精确匹配
+        # wrapper_node(0-9) 起始行不同，不匹配（无 false positive）
+        assert "child_node" in covered
+        assert "wrapper_node" not in covered
 
     @pytest.mark.asyncio
     async def test_typescript_decorator_method_wrapper(self):
@@ -649,8 +662,10 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.ts"), "typescript"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：decorator(0-2) 与 element(0-2) 精确匹配
+        # method_definition(1-2) 起始行不同，不匹配（无 false positive）
+        assert "decorator" in covered
+        assert "method_definition" not in covered
 
     @pytest.mark.asyncio
     async def test_multiple_wrappers_same_level(self):
@@ -732,8 +747,9 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.py"), "python"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：dec1(0-2) 与 element(0-2) 精确匹配，dec2(4-6) 和 func1/func2 不匹配
+        assert "decorated_definition" in covered
+        assert "function_definition" not in covered
 
     @pytest.mark.asyncio
     async def test_deeply_nested_wrappers_three_levels(self):
@@ -812,8 +828,12 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.txt"), "generic"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：wrapper_level1(0-10) 与 element(0-10) 精确匹配
+        # level2/level3/actual_node 起始行不同，均不匹配（无 false positive）
+        assert "wrapper_level1" in covered
+        assert "wrapper_level2" not in covered
+        assert "wrapper_level3" not in covered
+        assert "actual_node" not in covered
 
     @pytest.mark.asyncio
     async def test_wrapper_with_multiple_children(self):
@@ -895,8 +915,12 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.txt"), "generic"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：wrapper(0-10) 与 element(0-10) 精确匹配
+        # 三个子节点(1-3, 4-6, 7-10) 起始行不同，均不匹配
+        assert "wrapper" in covered
+        assert "child_type_a" not in covered
+        assert "child_type_b" not in covered
+        assert "child_type_c" not in covered
 
     @pytest.mark.asyncio
     async def test_no_wrapper_direct_extraction(self):
@@ -952,8 +976,8 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.py"), "python"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：function_definition(0-5) 与 element(0-5) 精确匹配（正常直接提取）
+        assert "function_definition" in covered
 
     @pytest.mark.asyncio
     async def test_adjacent_nodes_no_overlap(self):
@@ -1019,8 +1043,9 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.py"), "python"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：func1(0-2) 与 element(0-2) 精确匹配；func2(4-6) 不匹配（正确区分相邻节点）
+        assert "function_definition" in covered  # func1 覆盖
+        # func2 虽然类型相同，但它的行范围(4-6)与 element(0-2) 不匹配，不增加新 type
 
 
 class TestDepthLimitFalsePositives:
@@ -1095,8 +1120,8 @@ class TestDepthLimitFalsePositives:
                 Path("/fake/test.txt"), "generic"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered) == 0
+        # 行号匹配：node_level_0(0-99) 与 element(0-99) 精确匹配；其余层起始行不同
+        assert "node_level_0" in covered
 
     @pytest.mark.asyncio
     async def test_nesting_100_layers_should_trigger_limit(self):
@@ -1287,7 +1312,10 @@ class TestDepthLimitFalsePositives:
             covered = await _get_covered_node_types_from_plugin(
                 Path("/fake/test.txt"), "generic"
             )
-            assert len(covered) == 0  # Mock 环境无匹配
+        # 行号匹配：node1(0-10) 与 element(0-10) 精确匹配；深度限制防止无限循环
+        assert "node1" in covered
+        # node2(1-10) 起始行不同，不匹配（无 false positive）
+        assert "node2" not in covered
 
     @pytest.mark.asyncio
     async def test_extreme_nesting_1000_layers(self):
@@ -1349,7 +1377,8 @@ class TestDepthLimitFalsePositives:
             covered = await _get_covered_node_types_from_plugin(
                 Path("/fake/test.txt"), "generic"
             )
-            assert len(covered) == 0  # Mock 环境无匹配
+        # 行号匹配：node_0(0-1000) 与 element(0-1000) 精确匹配（深度限制内的第一个节点）
+        assert "node_0" in covered
 
 
 class TestMultiFileScenarios:
@@ -1421,9 +1450,9 @@ class TestMultiFileScenarios:
                 Path("/project/file2.py"), "python"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered1) == 0
-        assert len(covered2) == 0
+        # 行号匹配：function_definition(0-4) 与 element(0-4) 精确匹配
+        assert "function_definition" in covered1
+        assert "function_definition" in covered2  # 同 mock，相同结果
 
     @pytest.mark.asyncio
     async def test_same_position_range_different_files(self):
@@ -1560,9 +1589,10 @@ class TestMultiFileScenarios:
                 Path("/file2.py"), "python"
             )
 
-        # 精确匹配：Mock 环境无匹配
-        assert len(covered1) == 0
-        assert len(covered2) == 0
+        # 行号匹配：file1 的 function_definition(0-4) 匹配，file2 的 class_definition(0-4) 匹配
+        assert "function_definition" in covered1
+        assert "class_definition" in covered2
+        assert "class_definition" not in covered1  # 跨文件不冲突
 
     @pytest.mark.asyncio
     async def test_empty_file_path_boundary(self):
@@ -1836,6 +1866,8 @@ class TestBoundaryCases:
         root.type = "module"
         root.start_byte = 0
         root.end_byte = 2  # "()"
+        root.start_point = (0, 0)  # line 0, col 0
+        root.end_point = (0, 2)    # line 0, col 2
         root.children = [token1, token2]
 
         tree = MagicMock()

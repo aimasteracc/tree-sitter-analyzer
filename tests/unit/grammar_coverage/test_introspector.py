@@ -80,7 +80,11 @@ class TestGetAllNodeTypes:
 
     def test_all_supported_languages_work(self) -> None:
         """测试所有支持的语言都能正常提取节点类型。"""
+        from tree_sitter_analyzer.language_loader import loader
+
         for language in LANGUAGE_MODULE_MAP.keys():
+            if not loader.is_language_available(language):
+                continue  # skip languages not installed in this environment
             node_types = get_all_node_types(language)
             assert len(node_types) > 0, f"No node types for {language}"
             assert node_types == sorted(node_types)
@@ -247,7 +251,11 @@ class TestGetLanguageSummary:
         """测试所有支持语言的摘要生成。"""
         DATA_FORMAT_LANGUAGES = {"yaml", "json"}
 
+        from tree_sitter_analyzer.language_loader import loader
+
         for language in LANGUAGE_MODULE_MAP.keys():
+            if not loader.is_language_available(language):
+                continue  # skip languages not installed in this environment
             summary = get_language_summary(language)
 
             assert summary["total_count"] > 0, f"No types for {language}"
@@ -311,9 +319,13 @@ class TestCrossLanguageConsistency:
 
         function_keywords = ["function", "method", "func", "class"]
 
+        from tree_sitter_analyzer.language_loader import loader
+
         for language in LANGUAGE_MODULE_MAP.keys():
             if language in DATA_FORMAT_LANGUAGES:
                 continue  # 跳过数据格式语言
+            if not loader.is_language_available(language):
+                continue  # skip languages not installed in this environment
 
             all_types = get_all_node_types(language)
             extractable = auto_detect_extractable_types(all_types)
@@ -330,7 +342,11 @@ class TestCrossLanguageConsistency:
         # 数据格式语言可能没有可提取节点
         DATA_FORMAT_LANGUAGES = {"yaml", "json"}
 
+        from tree_sitter_analyzer.language_loader import loader
+
         for language in LANGUAGE_MODULE_MAP.keys():
+            if not loader.is_language_available(language):
+                continue  # skip languages not installed in this environment
             summary = get_language_summary(language)
 
             # 语法节点数通常在 10-500 之间（JSON 较少）

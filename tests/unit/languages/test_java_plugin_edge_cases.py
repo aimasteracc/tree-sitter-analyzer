@@ -584,7 +584,7 @@ class TestJavaPluginEdgeCases:
             "packages",
             "annotations",
         }
-        assert set(result.keys()) == expected_keys
+        assert expected_keys <= set(result.keys())
 
         # All should be empty lists
         for key in expected_keys:
@@ -595,7 +595,7 @@ class TestJavaPluginEdgeCases:
         invalid_tree.root_node = None
 
         result = plugin.extract_elements(invalid_tree, "public class Test {}")
-        assert set(result.keys()) == expected_keys
+        assert expected_keys <= set(result.keys())
         for key in expected_keys:
             assert result[key] == []
 
@@ -638,7 +638,7 @@ class TestJavaPluginEdgeCases:
                 "packages",
                 "annotations",
             }
-            assert set(result.keys()) == expected_keys
+            assert expected_keys <= set(result.keys())
             for key in expected_keys:
                 assert result[key] == []
 

@@ -7,6 +7,20 @@ Field,StatusPending,StatusPending:Status,public,37-37,,-
 Field,StatusRunning,StatusRunning:None,public,38-38,,-
 Field,StatusCompleted,StatusCompleted:None,public,39-39,,-
 Field,StatusFailed,StatusFailed:None,public,40-40,,-
+Field,Host,Host:string,public,45-45,,-
+Field,Port,Port:int,public,46-46,,-
+Field,Timeout,Timeout:time.Duration,public,47-47,,-
+Field,Debug,Debug:bool,public,48-48,,-
+Field,metadata,metadata:map[string]string,private,49-49,,-
+Field,name,name:string,private,72-72,,-
+Field,config,config:*Config,private,73-73,,-
+Field,running,running:bool,private,74-74,,-
+Field,mu,mu:sync.RWMutex,private,75-75,,-
+Field,done,done:chan struct{},private,76-76,,-
+Field,workers,workers:int,private,207-207,,-
+Field,jobs,jobs:chan func(),private,208-208,,-
+Field,wg,wg:sync.WaitGroup,private,209-209,,-
+Field,middlewares,middlewares:None,private,257-257,,-
 Field,lastErr,lastErr:error,private,281-281,,-
 Method,NewService,"(string:name, *Config:config):*Service",public,80-86,1,-
 Method,Name,():string,public,89-91,1,-

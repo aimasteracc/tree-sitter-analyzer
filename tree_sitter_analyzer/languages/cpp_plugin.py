@@ -105,6 +105,9 @@ class CppElementExtractor(ElementExtractor):
         extractors = {
             "field_declaration": self._extract_field_optimized,
             "declaration": self._extract_variable_declaration,
+            # Template type parameters: typename T, class T
+            "type_parameter_declaration": self._extract_cpp_minimal_variable,
+            "variadic_type_parameter_declaration": self._extract_cpp_minimal_variable,
         }
 
         self._traverse_and_extract_iterative(
@@ -984,6 +987,34 @@ class CppElementExtractor(ElementExtractor):
                         base_classes.append(self._get_node_text_optimized(grandchild))
 
         return base_classes
+
+    def _extract_cpp_minimal_variable(
+        self, node: "tree_sitter.Node"
+    ) -> Variable | None:
+        """Minimal extractor for friend/type_parameter/variadic_type_parameter nodes."""
+        try:
+            # Extract first identifier as name
+            name = ""
+            for child in node.children:
+                if child.is_named and child.type in {
+                    "type_identifier", "identifier", "name"
+                }:
+                    name = self._get_node_text_optimized(child)
+                    break
+            if not name:
+                raw = self._get_node_text_optimized(node)
+                parts = raw.split()
+                name = parts[-1].rstrip(";") if parts else raw[:20]
+            return Variable(
+                name=name or "_",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text_optimized(node),
+                language="cpp",
+            )
+        except Exception as e:
+            log_error(f"Error extracting C++ minimal variable: {e}")
+            return None
 
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract field declaration"""

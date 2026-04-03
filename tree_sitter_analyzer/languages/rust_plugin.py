@@ -44,10 +44,14 @@ class RustElementExtractor(ElementExtractor):
 
         functions: list[Function] = []
 
-        # Use tree traversal to find function_item
+        # Use tree traversal to find function_item and trait function signatures
         self._traverse_and_extract(
             tree.root_node,
-            {"function_item": self._extract_function},
+            {
+                "function_item": self._extract_function,
+                # Trait method signatures without body: fn foo(&self) -> T;
+                "function_signature_item": self._extract_function,
+            },
             functions,
         )
 
@@ -73,6 +77,8 @@ class RustElementExtractor(ElementExtractor):
             "trait_item": self._extract_trait,
             "type_item": self._extract_type_alias,
             "impl_item": self._extract_impl,  # Impl blocks are treated as related to classes
+            # Module definitions: mod utils { ... } or mod utils;
+            "mod_item": self._extract_mod_as_class,
         }
 
         self._traverse_and_extract(
@@ -101,11 +107,13 @@ class RustElementExtractor(ElementExtractor):
 
         variables: list[Variable] = []
 
-        # Extract fields, constants, and static items
+        # Extract fields, constants, static items, and local let bindings
         extractors = {
             "field_declaration": self._extract_field,
             "const_item": self._extract_const,
             "static_item": self._extract_static,
+            # Local variable bindings: let x: T = expr;
+            "let_declaration": self._extract_let_declaration,
         }
 
         self._traverse_and_extract(
@@ -370,6 +378,58 @@ class RustElementExtractor(ElementExtractor):
         for child in node.children:
             self._traverse_and_extract(child, extractors, results)
 
+    def _extract_let_declaration(
+        self, node: "tree_sitter.Node"
+    ) -> "Variable | None":
+        """Extract Rust let binding: let name: type = expr;"""
+        try:
+            from ..models import Variable
+
+            name_node = node.child_by_field_name("pattern")
+            name = (
+                self._get_node_text(name_node)
+                if name_node
+                else self._get_node_text(node).split()[1]
+            )
+            type_node = node.child_by_field_name("type")
+            var_type = self._get_node_text(type_node) if type_node else ""
+            return Variable(
+                name=name or "_",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="rust",
+                variable_type=var_type,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Rust let_declaration: {e}")
+            return None
+
+    def _extract_mod_as_class(
+        self, node: "tree_sitter.Node"
+    ) -> "Class | None":
+        """Extract mod_item as a Class-like entity: mod utils { ... }"""
+        try:
+            from ..models import Class
+
+            name_node = node.child_by_field_name("name")
+            name = self._get_node_text(name_node) if name_node else ""
+            if not name:
+                return None
+            visibility = self._extract_visibility(node)
+            return Class(
+                name=name,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text(node),
+                language="rust",
+                class_type="module",
+                visibility=visibility,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Rust mod_item: {e}")
+            return None
+
     def _extract_modules(self, node: "tree_sitter.Node") -> None:
         """Extract module information"""
         if node.type == "mod_item":
@@ -542,8 +602,8 @@ class RustElementExtractor(ElementExtractor):
             log_error(f"Error extracting Rust {type_name}: {e}")
             return None
 
-    def _extract_impl(self, node: "tree_sitter.Node") -> None:
-        """Extract impl block information"""
+    def _extract_impl(self, node: "tree_sitter.Node") -> Class | None:
+        """Extract impl block as a Class entity and record in impl_blocks."""
         try:
             trait_node = node.child_by_field_name("trait")
             type_node = node.child_by_field_name("type")
@@ -562,8 +622,20 @@ class RustElementExtractor(ElementExtractor):
                         },
                     }
                 )
+                # Return a Class so the validator can match impl_item nodes
+                name = f"{type_name} impl {trait_name}" if trait_name else f"{type_name} impl"
+                return Class(
+                    name=name,
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    raw_text=self._get_node_text(node),
+                    language="rust",
+                    class_type="impl",
+                    visibility=self._extract_visibility(node),
+                )
         except Exception as e:
             log_error(f"Error extracting impl block: {e}")
+        return None
 
     def _extract_field(self, node: "tree_sitter.Node") -> Variable | None:
         """Extract struct field"""

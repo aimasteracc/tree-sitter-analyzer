@@ -229,7 +229,12 @@ async def _get_covered_node_types_from_plugin(
     from ..core.request import AnalysisRequest
     from ..plugins.manager import PluginManager
 
-    # NodeIdentity = (node_type, start_byte, end_byte, parent_path_tuple, file_path)
+    # NodeIdentity = (node_type, start_line, end_line, parent_path_tuple, file_path)
+    # Phase 1 修订（2026-04）：从字节偏移改为行号匹配，解决缩进代码误判问题。
+    # 原字节匹配问题：line_to_byte_start 返回行首字节，而 AST 节点起始字节在缩进之后，
+    # 两者永远不等，导致所有缩进节点（方法、字段等）均无法被标记为已覆盖。
+    # 行号匹配保持 MECE：(start_line, end_line, parent_path) 三元组仍可唯一标识节点，
+    # 同时正确处理 decorated_definition vs inner function_definition 等嵌套情况。
     NodeIdentity = tuple[str, int, int, tuple[str, ...], str]
 
     covered_syntactic_paths: set[tuple[str, tuple[str, ...]]] = set()
@@ -291,11 +296,12 @@ async def _get_covered_node_types_from_plugin(
                     build_ast_map(child, parent_path, depth + 1)
                 return
 
-            # 构建节点身份 (type, start_byte, end_byte, parent_path, file_path)
+            # 构建节点身份 (type, start_line, end_line, parent_path, file_path)
+            # 使用 0-based 行号，与 node.start_point[0] / node.end_point[0] 一致
             identity: NodeIdentity = (
                 node.type,
-                node.start_byte,
-                node.end_byte,
+                node.start_point[0],
+                node.end_point[0],
                 parent_path,
                 file_path_str,
             )
@@ -310,60 +316,31 @@ async def _get_covered_node_types_from_plugin(
 
         build_ast_map(tree.root_node, (), 0)
 
-        # 4. 构建提取元素身份映射 (通过行号转字节偏移)
-        # 构建行号到字节偏移的映射
-        source_bytes = source_code.encode("utf-8")
-        line_to_byte_start: dict[int, int] = {0: 0}  # 0-based 行号
-        byte_offset = 0
-        line_number = 0
-        for byte_val in source_bytes:
-            if byte_val == ord(b"\n"):
-                line_number += 1
-                line_to_byte_start[line_number] = byte_offset + 1
-            byte_offset += 1
-
+        # 4. 用行号匹配：element 的 1-based 行号 → 0-based → 与 AST 节点行号对比
         extracted_identities: set[NodeIdentity] = set()
 
         for element in result.elements:
             if not (hasattr(element, "start_line") and hasattr(element, "end_line")):
                 continue
 
-            # 将 1-based 行号转换为 0-based 字节偏移
-            start_line_0based = element.start_line - 1
-            end_line_0based = element.end_line - 1
+            # 将插件输出的 1-based 行号转为 0-based
+            elem_start_0 = element.start_line - 1
+            elem_end_0 = element.end_line - 1
 
-            # 获取起始行的字节偏移
-            if start_line_0based not in line_to_byte_start:
-                continue
-            start_byte_approx = line_to_byte_start[start_line_0based]
-
-            # 获取结束行的字节偏移（行末）
-            if end_line_0based not in line_to_byte_start:
-                # 如果结束行超出范围，使用文件末尾
-                end_byte_approx = len(source_bytes)
-            else:
-                # 找到下一行的起始（即当前行的结束）
-                next_line = end_line_0based + 1
-                if next_line in line_to_byte_start:
-                    end_byte_approx = line_to_byte_start[next_line] - 1
-                else:
-                    end_byte_approx = len(source_bytes)
-
-            # 匹配 AST 中与此字节范围精确对应的节点
+            # 匹配 AST 中 start_line / end_line 完全一致的节点
             for identity, (node_type, parent_path) in ast_node_identities.items():
                 (
-                    ast_type,
-                    ast_start_byte,
-                    ast_end_byte,
-                    ast_parent_path,
-                    ast_file,
+                    _ast_type,
+                    ast_start_line,
+                    ast_end_line,
+                    _ast_parent_path,
+                    _ast_file,
                 ) = identity
 
-                # 精确匹配：字节范围必须完全一致
-                if (
-                    ast_start_byte == start_byte_approx
-                    and ast_end_byte == end_byte_approx
-                ):
+                # 精确行号匹配：起始行和结束行均需相同
+                # MECE 保证：(start_line, end_line, parent_path) 三元组唯一标识节点，
+                # decorated_definition 与内部 function_definition 起始行不同，不会混淆
+                if ast_start_line == elem_start_0 and ast_end_line == elem_end_0:
                     extracted_identities.add(identity)
                     covered_syntactic_paths.add((node_type, parent_path))
 

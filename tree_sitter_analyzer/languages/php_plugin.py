@@ -592,7 +592,13 @@ class PHPElementExtractor(ElementExtractor):
             # Extract constant names
             for child in node.children:
                 if child.type == "const_element":
+                    # Find name: try field_name first, then node type "name"
                     name_node = child.child_by_field_name("name")
+                    if name_node is None:
+                        for gc in child.children:
+                            if gc.is_named and gc.type == "name":
+                                name_node = gc
+                                break
                     if name_node:
                         name = self._get_node_text_optimized(name_node)
                         full_name = f"{parent_class}::{name}" if parent_class else name
@@ -602,6 +608,8 @@ class PHPElementExtractor(ElementExtractor):
                                 name=full_name,
                                 start_line=node.start_point[0] + 1,
                                 end_line=node.end_point[0] + 1,
+                                raw_text=self._get_node_text_optimized(node),
+                                language="php",
                                 visibility=visibility,
                                 is_static=True,
                                 is_constant=True,
@@ -642,12 +650,68 @@ class PHPElementExtractor(ElementExtractor):
             if node.type == "namespace_use_declaration":
                 import_elems = self._extract_use_statement(node)
                 imports.extend(import_elems)
+            elif node.type == "namespace_definition":
+                # namespace Foo\Bar; or namespace Foo\Bar { ... }
+                imp = self._extract_namespace_as_import(node)
+                if imp:
+                    imports.append(imp)
+            elif node.type == "use_declaration":
+                # use TraitName; inside a class body
+                imp = self._extract_trait_use_as_import(node)
+                if imp:
+                    imports.append(imp)
 
             # Add children to stack
             for child in reversed(node.children):
                 stack.append(child)
 
         return imports
+
+    def _extract_namespace_as_import(
+        self, node: "tree_sitter.Node"
+    ) -> Import | None:
+        """Extract namespace_definition as an Import-like entity."""
+        try:
+            name_node = node.child_by_field_name("name")
+            name = self._get_node_text_optimized(name_node) if name_node else ""
+            if not name:
+                for child in node.children:
+                    if child.is_named and child.type != "declaration_list":
+                        name = self._get_node_text_optimized(child)
+                        break
+            return Import(
+                name=name or "namespace",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text_optimized(node),
+                language="php",
+                module_name=name or "namespace",
+            )
+        except Exception as e:
+            log_error(f"Error extracting PHP namespace_definition: {e}")
+            return None
+
+    def _extract_trait_use_as_import(
+        self, node: "tree_sitter.Node"
+    ) -> Import | None:
+        """Extract use_declaration (trait use) as an Import."""
+        try:
+            names: list[str] = []
+            for child in node.children:
+                if child.type == "name":
+                    names.append(self._get_node_text_optimized(child))
+            module = ", ".join(names) if names else "trait"
+            return Import(
+                name=module,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text_optimized(node),
+                language="php",
+                module_name=module,
+            )
+        except Exception as e:
+            log_error(f"Error extracting PHP use_declaration: {e}")
+            return None
 
     def _extract_use_statement(self, node: "tree_sitter.Node") -> list[Import]:
         """

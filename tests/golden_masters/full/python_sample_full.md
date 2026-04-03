@@ -11,12 +11,12 @@ from functools import reduce
 ## Classes Overview
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|
-| Person | class | public | 14-28 | 2 | 1 |
+| Person | class | public | 13-28 | 2 | 1 |
 | Animal | class | public | 31-45 | 3 | 0 |
 | Dog | class | public | 48-61 | 3 | 0 |
 | Cat | class | public | 64-78 | 3 | 0 |
 
-## Person (14-28)
+## Person (13-28)
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----| 
@@ -28,7 +28,7 @@ from functools import reduce
 | Method | Signature | Vis | Lines | Cx | Doc |
 |--------|-----------|-----|-------|----|----| 
 | __init__ | (self:Any, name:str, species:str):Any | + | 34-36 | 1 | - |
-| make_sound | (self:Any):str | + | 39-41 | 1 | Make the sound characteristic of this animal. |
+| make_sound | (self:Any):str | + | 38-41 | 1 | Make the sound characteristic of this animal. |
 | describe | (self:Any):str | + | 43-45 | 1 | Describe the animal. |
 
 ## Dog (48-61)
@@ -45,7 +45,7 @@ from functools import reduce
 |--------|-----------|-----|-------|----|----| 
 | __init__ | (self:Any, name:str):Any | + | 67-69 | 1 | - |
 | make_sound | (self:Any):str | + | 71-73 | 1 | Cats meow. |
-| purr | ():str [static] | + | 76-78 | 1 | Cats can purr. |
+| purr | ():str [static] | + | 75-78 | 1 | Cats can purr. |
 
 ## Module Functions
 | Method | Signature | Vis | Lines | Cx | Doc |
@@ -60,5 +60,5 @@ from functools import reduce
 | lambda_and_higher_order_functions | ():Any | + | 171-186 | 6 | Demonstrate lambda functions and higher-order f... |
 | decorator_example | (func:Any):Any | + | 189-198 | 1 | A simple decorator example. |
 | wrapper | (*args:Any, **kwargs:Any):Any | + | 192-196 | 1 | - |
-| decorated_function | (message:str):str | + | 202-204 | 1 | A function that uses the decorator. |
+| decorated_function | (message:str):str | + | 201-204 | 1 | A function that uses the decorator. |
 | main | ():Any | + | 207-252 | 1 | Main function to demonstrate all features. |
