@@ -349,9 +349,9 @@ class TestCrossLanguageConsistency:
                 continue  # skip languages not installed in this environment
             summary = get_language_summary(language)
 
-            # 语法节点数通常在 10-500 之间（JSON 较少）
+            # 语法节点数通常在 10-600 之间（SQL 有 527 个节点）
             assert (
-                10 <= summary["total_count"] <= 500
+                10 <= summary["total_count"] <= 600
             ), f"Unusual node count for {language}: {summary['total_count']}"
 
             # 数据格式语言可能没有可提取节点（它们主要是结构性节点）
