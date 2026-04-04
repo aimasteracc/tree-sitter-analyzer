@@ -1453,7 +1453,7 @@ class TestJavaPlugin:
             "packages",
             "annotations",
         }
-        assert set(result.keys()) == expected_keys
+        assert expected_keys <= set(result.keys())
 
         # All should be empty lists
         for key in expected_keys:
@@ -1513,7 +1513,7 @@ class TestJavaPlugin:
                                     "packages",
                                     "annotations",
                                 }
-                                assert set(result.keys()) == expected_keys
+                                assert expected_keys <= set(result.keys())
                                 for key in expected_keys:
                                     assert result[key] == []
 

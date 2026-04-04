@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Package, Variable
+from ..models import Class, Expression, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
@@ -111,6 +111,7 @@ class KotlinElementExtractor(ElementExtractor):
 
         extractors = {
             "import_header": self._extract_import,
+            "import": self._extract_import,
         }
 
         self._traverse_and_extract(
@@ -423,19 +424,35 @@ class KotlinElementExtractor(ElementExtractor):
             return None
 
     def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
-        """Extract import header"""
+        """Extract import header or import node"""
         try:
+            # Skip the 'import' keyword node (has no children with identifier)
+            # Only process the parent import node which contains qualified_identifier
+            if node.type == "import" and not any(
+                "identifier" in child.type for child in node.children
+            ):
+                return None
+
             # import_header -> 'import' identifier .*
+            # import -> 'import' qualified_identifier
             raw_text = self._get_node_text(node)
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
 
-            # Parse name
-            parts = raw_text.split()
-            if len(parts) > 1:
-                name = parts[1]
-            else:
-                name = "unknown"
+            # Parse name from qualified_identifier child or raw text
+            name = "unknown"
+
+            # Try to find qualified_identifier child
+            for child in node.children:
+                if "identifier" in child.type:
+                    name = self._get_node_text(child)
+                    break
+
+            # Fallback to parsing raw text
+            if name == "unknown":
+                parts = raw_text.split()
+                if len(parts) > 1:
+                    name = parts[1]
 
             return Import(
                 name=name,
@@ -470,6 +487,144 @@ class KotlinElementExtractor(ElementExtractor):
         """Extract KDoc"""
         # Similar to Rust/Java logic
         return None
+
+    def extract_type_aliases(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Class]:
+        """Extract Kotlin type aliases"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        type_aliases: list[Class] = []
+
+        self._traverse_and_extract(
+            tree.root_node,
+            {"type_alias": self._extract_type_alias},
+            type_aliases,
+        )
+
+        log_debug(f"Extracted {len(type_aliases)} Kotlin type aliases")
+        return type_aliases
+
+    def _extract_type_alias(self, node: "tree_sitter.Node") -> Class | None:
+        """Extract type alias as a Class element"""
+        try:
+            # type_alias -> 'typealias' identifier '=' type
+            name = "unknown"
+
+            # Find identifier
+            for child in node.children:
+                if child.type == "identifier":
+                    name = self._get_node_text(child)
+                    break
+
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            raw_text = self._get_node_text(node)
+
+            return Class(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="kotlin",
+                class_type="type_alias",
+                visibility="public",
+            )
+        except Exception as e:
+            log_error(f"Error extracting Kotlin type alias: {e}")
+            return None
+
+    def extract_comments(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Kotlin block comments"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        comments: list[Expression] = []
+
+        self._traverse_and_extract(
+            tree.root_node,
+            {"block_comment": self._extract_comment},
+            comments,
+        )
+
+        log_debug(f"Extracted {len(comments)} Kotlin block comments")
+        return comments
+
+    def _extract_comment(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract block comment as Expression element"""
+        try:
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Create preview (first 50 chars)
+            preview = raw_text[:50] if len(raw_text) > 50 else raw_text
+
+            return Expression(
+                name="block_comment",
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="kotlin",
+                expression_kind="block_comment",
+                preview=preview,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Kotlin block comment: {e}")
+            return None
+
+    def extract_annotated_expressions(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Kotlin annotated expressions"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        annotated_exprs: list[Expression] = []
+
+        self._traverse_and_extract(
+            tree.root_node,
+            {"annotated_expression": self._extract_annotated_expr},
+            annotated_exprs,
+        )
+
+        log_debug(f"Extracted {len(annotated_exprs)} Kotlin annotated expressions")
+        return annotated_exprs
+
+    def _extract_annotated_expr(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract annotated expression as Expression element"""
+        try:
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract annotation name for preview
+            annotation_name = "annotation"
+            for child in node.children:
+                if child.type == "annotation":
+                    annotation_name = self._get_node_text(child)
+                    break
+
+            preview = annotation_name[:50] if len(annotation_name) > 50 else annotation_name
+
+            return Expression(
+                name="annotated_expression",
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="kotlin",
+                expression_kind="annotated_expression",
+                preview=preview,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Kotlin annotated expression: {e}")
+            return None
 
 
 class KotlinPlugin(LanguagePlugin):
@@ -541,6 +696,9 @@ class KotlinPlugin(LanguagePlugin):
             all_elements.extend(elements_dict.get("variables", []))
             all_elements.extend(elements_dict.get("imports", []))
             all_elements.extend(elements_dict.get("packages", []))
+            all_elements.extend(elements_dict.get("type_aliases", []))
+            all_elements.extend(elements_dict.get("comments", []))
+            all_elements.extend(elements_dict.get("annotated_expressions", []))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
@@ -624,6 +782,9 @@ class KotlinPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
+                "type_aliases": [],
+                "comments": [],
+                "annotated_expressions": [],
             }
 
         try:
@@ -635,6 +796,11 @@ class KotlinPlugin(LanguagePlugin):
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
                 "packages": extractor.extract_packages(tree, source_code),
+                "type_aliases": extractor.extract_type_aliases(tree, source_code),  # type: ignore[attr-defined]
+                "comments": extractor.extract_comments(tree, source_code),  # type: ignore[attr-defined]
+                "annotated_expressions": extractor.extract_annotated_expressions(  # type: ignore[attr-defined]
+                    tree, source_code
+                ),
             }
 
         except Exception as e:
@@ -645,6 +811,9 @@ class KotlinPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
+                "type_aliases": [],
+                "comments": [],
+                "annotated_expressions": [],
             }
 
     def supports_file(self, file_path: str) -> bool:

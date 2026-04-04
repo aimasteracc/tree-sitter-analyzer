@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Expression, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
@@ -136,6 +136,36 @@ class CElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(imports)} C includes")
         return imports
 
+    def extract_expressions(
+        self, tree: "tree_sitter.Tree | None", source_code: str
+    ) -> list[Expression]:
+        """Extract C preprocessor conditional expressions"""
+        if tree is None or tree.root_node is None:
+            return []
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        expressions: list[Expression] = []
+
+        # Extract preprocessor conditionals and related expressions
+        extractors = {
+            "preproc_if": self._extract_preproc_conditional,
+            "preproc_ifdef": self._extract_preproc_conditional,
+            "preproc_elif": self._extract_preproc_conditional,
+            "preproc_else": self._extract_preproc_conditional,
+            "preproc_defined": self._extract_preproc_defined,
+            "preproc_directive": self._extract_preproc_directive,
+            "parenthesized_declarator": self._extract_parenthesized_declarator,
+        }
+
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, expressions, "expression"
+        )
+
+        log_debug(f"Extracted {len(expressions)} C preprocessor expressions")
+        return expressions
+
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -164,6 +194,13 @@ class CElementExtractor(ElementExtractor):
             "field_declaration_list",
             "declaration_list",
             "type_definition",  # For typedef structs
+            "preproc_if",
+            "preproc_ifdef",
+            "preproc_elif",
+            "preproc_else",
+            "preproc_call",  # Contains preproc_directive
+            "function_declarator",  # For parenthesized_declarator
+            "pointer_declarator",  # For parenthesized_declarator
         }
 
         node_stack = [(root_node, 0)]
@@ -873,6 +910,107 @@ class CElementExtractor(ElementExtractor):
 
         return None
 
+    def _extract_preproc_conditional(
+        self, node: "tree_sitter.Node"
+    ) -> Expression | None:
+        """Extract preprocessor conditional directives (if/ifdef/elif/else)"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            raw_text = self._get_node_text_optimized(node)
+
+            # Get first line as preview (the directive line)
+            preview = raw_text.split("\n")[0] if raw_text else ""
+
+            # Determine the expression kind
+            expression_kind = node.type.replace("preproc_", "")
+
+            # Extract name from the conditional (if available)
+            name = preview.strip()
+
+            return Expression(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="c",
+                node_type=node.type,
+                expression_kind=expression_kind,
+                preview=preview,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract preprocessor conditional: {e}")
+            return None
+
+    def _extract_preproc_defined(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract preprocessor defined() expressions"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            raw_text = self._get_node_text_optimized(node)
+
+            return Expression(
+                name=raw_text,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="c",
+                node_type=node.type,
+                expression_kind="defined",
+                preview=raw_text,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract preproc_defined: {e}")
+            return None
+
+    def _extract_preproc_directive(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract generic preprocessor directives (like #undef)"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            raw_text = self._get_node_text_optimized(node)
+
+            return Expression(
+                name=raw_text,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="c",
+                node_type=node.type,
+                expression_kind="directive",
+                preview=raw_text,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract preproc_directive: {e}")
+            return None
+
+    def _extract_parenthesized_declarator(
+        self, node: "tree_sitter.Node"
+    ) -> Expression | None:
+        """Extract parenthesized declarators (function pointers in declarations)"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            raw_text = self._get_node_text_optimized(node)
+
+            return Expression(
+                name=raw_text,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="c",
+                node_type=node.type,
+                expression_kind="parenthesized_declarator",
+                preview=raw_text,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract parenthesized_declarator: {e}")
+            return None
+
 
 class CPlugin(LanguagePlugin):
     """C language plugin implementation"""
@@ -950,6 +1088,7 @@ class CPlugin(LanguagePlugin):
             all_elements.extend(elements_dict.get("classes", []))
             all_elements.extend(elements_dict.get("variables", []))
             all_elements.extend(elements_dict.get("imports", []))
+            all_elements.extend(elements_dict.get("expressions", []))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
@@ -1025,6 +1164,7 @@ class CPlugin(LanguagePlugin):
                 "classes": [],
                 "variables": [],
                 "imports": [],
+                "expressions": [],
             }
 
         try:
@@ -1034,6 +1174,7 @@ class CPlugin(LanguagePlugin):
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
+                "expressions": extractor.extract_expressions(tree, source_code),
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
@@ -1042,4 +1183,5 @@ class CPlugin(LanguagePlugin):
                 "classes": [],
                 "variables": [],
                 "imports": [],
+                "expressions": [],
             }

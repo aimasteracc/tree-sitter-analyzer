@@ -12,6 +12,7 @@
     "lambda_expression": 6,
     "var_definition": 3,
     "type_definition": 5,
-    "case_clause": 15
+    "case_clause": 15,
+    "annotation": 1
   }
 }

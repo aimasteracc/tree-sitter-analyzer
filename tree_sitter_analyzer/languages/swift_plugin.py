@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Expression, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
@@ -113,6 +113,45 @@ class SwiftElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(imports)} Swift imports")
         return imports
 
+    def extract_comments(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Swift comments (including multiline comments)"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        comments: list[Expression] = []
+
+        extractors = {
+            "comment": self._extract_comment,
+            "multiline_comment": self._extract_comment,
+        }
+
+        self._traverse_and_extract(tree.root_node, extractors, comments)
+
+        log_debug(f"Extracted {len(comments)} Swift comments")
+        return comments
+
+    def extract_operators(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Function]:
+        """Extract Swift operator declarations"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        operators: list[Function] = []
+
+        extractors = {
+            "operator_declaration": self._extract_operator_declaration,
+        }
+
+        self._traverse_and_extract(tree.root_node, extractors, operators)
+
+        log_debug(f"Extracted {len(operators)} Swift operator declarations")
+        return operators
+
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -160,6 +199,67 @@ class SwiftElementExtractor(ElementExtractor):
             )
         except Exception as e:
             log_error(f"Error extracting Swift import: {e}")
+            return None
+
+    def _extract_comment(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract comment (both single-line and multiline)"""
+        try:
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Determine comment type
+            comment_type = "multiline_comment" if node.type == "multiline_comment" else "comment"
+
+            # Get preview (first 50 chars)
+            preview = raw_text[:50] if len(raw_text) > 50 else raw_text
+
+            return Expression(
+                name=comment_type,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="swift",
+                expression_kind=comment_type,
+                preview=preview,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Swift comment: {e}")
+            return None
+
+    def _extract_operator_declaration(
+        self, node: "tree_sitter.Node"
+    ) -> Function | None:
+        """Extract operator declaration"""
+        try:
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract operator name and type (infix, prefix, postfix)
+            # Examples: "infix operator **: MultiplicationPrecedence"
+            match = re.search(r"(infix|prefix|postfix)\s+operator\s+([^\s:]+)", raw_text)
+            if match:
+                op_type = match.group(1)
+                op_name = match.group(2)
+                name = f"{op_type} operator {op_name}"
+            else:
+                name = "operator"
+
+            return Function(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="swift",
+                parameters=[],
+                return_type="",
+                visibility="internal",
+                docstring=None,
+                is_public=False,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Swift operator declaration: {e}")
             return None
 
     def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
@@ -743,6 +843,8 @@ class SwiftPlugin(LanguagePlugin):
             all_elements.extend(elements_dict.get("functions", []))
             all_elements.extend(elements_dict.get("classes", []))
             all_elements.extend(elements_dict.get("variables", []))
+            all_elements.extend(elements_dict.get("comments", []))
+            all_elements.extend(elements_dict.get("operators", []))
 
             # Count nodes
             node_count = (
@@ -820,6 +922,8 @@ class SwiftPlugin(LanguagePlugin):
                 "functions": [],
                 "classes": [],
                 "variables": [],
+                "comments": [],
+                "operators": [],
             }
 
         try:
@@ -830,6 +934,8 @@ class SwiftPlugin(LanguagePlugin):
                 "functions": extractor.extract_functions(tree, source_code),
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
+                "comments": extractor.extract_comments(tree, source_code),  # type: ignore[attr-defined]
+                "operators": extractor.extract_operators(tree, source_code),  # type: ignore[attr-defined]
             }
 
             return result
@@ -841,6 +947,8 @@ class SwiftPlugin(LanguagePlugin):
                 "functions": [],
                 "classes": [],
                 "variables": [],
+                "comments": [],
+                "operators": [],
             }
 
     def supports_file(self, file_path: str) -> bool:

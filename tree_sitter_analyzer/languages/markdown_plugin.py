@@ -19,7 +19,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..core.analysis_engine import AnalysisRequest
+from ..core.request import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, CodeElement
 from ..models import Class as ModelClass
@@ -27,7 +27,7 @@ from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error
+from ..utils import log_debug, log_error, safe_preview
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
 
 
@@ -1153,11 +1153,7 @@ class MarkdownElementExtractor(ElementExtractor):
                     content = "\n".join(content_lines).strip()
 
                     blockquote = MarkdownElement(
-                        name=(
-                            f"Blockquote: {content[:50]}..."
-                            if len(content) > 50
-                            else f"Blockquote: {content}"
-                        ),
+                        name=f"Blockquote: {safe_preview(content)}",
                         start_line=start_line,
                         end_line=end_line,
                         raw_text=raw_text,

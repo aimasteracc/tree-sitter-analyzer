@@ -32,6 +32,7 @@ LANGUAGE_MODULE_MAP = {
     "bash": "tree_sitter_bash",
     "yaml": "tree_sitter_yaml",
     "json": "tree_sitter_json",
+    "sql": "tree_sitter_sql",
 }
 
 # 可提取节点的后缀模式（表示语义实体）

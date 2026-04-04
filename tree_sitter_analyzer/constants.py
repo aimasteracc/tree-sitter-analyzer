@@ -14,6 +14,9 @@ ELEMENT_TYPE_VARIABLE = "variable"
 ELEMENT_TYPE_IMPORT = "import"
 ELEMENT_TYPE_PACKAGE = "package"
 ELEMENT_TYPE_ANNOTATION = "annotation"
+ELEMENT_TYPE_LAMBDA = "lambda"
+ELEMENT_TYPE_COMPREHENSION = "comprehension"
+ELEMENT_TYPE_EXPRESSION = "expression"
 
 # SQL element types
 ELEMENT_TYPE_SQL_TABLE = "table"
@@ -31,6 +34,9 @@ ELEMENT_TYPE_MAPPING = {
     "Import": ELEMENT_TYPE_IMPORT,
     "Package": ELEMENT_TYPE_PACKAGE,
     "Annotation": ELEMENT_TYPE_ANNOTATION,
+    "Lambda": ELEMENT_TYPE_LAMBDA,
+    "Comprehension": ELEMENT_TYPE_COMPREHENSION,
+    "Expression": ELEMENT_TYPE_EXPRESSION,
 }
 
 # Legacy class name to element type mapping
@@ -41,6 +47,9 @@ LEGACY_CLASS_MAPPING = {
     "Import": ELEMENT_TYPE_IMPORT,
     "Package": ELEMENT_TYPE_PACKAGE,
     "Annotation": ELEMENT_TYPE_ANNOTATION,
+    "Lambda": ELEMENT_TYPE_LAMBDA,
+    "Comprehension": ELEMENT_TYPE_COMPREHENSION,
+    "Expression": ELEMENT_TYPE_EXPRESSION,
     # SQL element mappings
     "SQLTable": ELEMENT_TYPE_SQL_TABLE,
     "SQLView": ELEMENT_TYPE_SQL_VIEW,

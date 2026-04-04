@@ -288,6 +288,7 @@ def __magic_method__(self, other):
         # Mock parameters child
         mock_parameters = Mock()
         mock_parameters.type = "parameters"
+        mock_parameters.children = []  # Empty parameter list
 
         # Mock type child
         mock_type = Mock()
@@ -297,6 +298,7 @@ def __magic_method__(self, other):
 
         # Mock helper methods
         with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
+            # Provide enough mock values: node text, type text
             mock_get_text.side_effect = ["def test_function", "str"]
 
             with patch.object(
@@ -307,12 +309,13 @@ def __magic_method__(self, other):
                 result = extractor._parse_function_signature_optimized(mock_node)
 
                 assert result is not None
-                name, parameters, is_async, decorators, return_type = result
+                name, parameters, is_async, decorators, return_type, param_defaults = result
                 assert name == "test_function"
                 assert parameters == ["param1", "param2"]
                 assert is_async is False
                 assert decorators == []
                 assert return_type == "str"
+                assert isinstance(param_defaults, dict)
 
     def test_parse_function_signature_async(self, extractor):
         """Test async function signature parsing"""
@@ -338,9 +341,10 @@ def __magic_method__(self, other):
                 result = extractor._parse_function_signature_optimized(mock_node)
 
                 assert result is not None
-                name, parameters, is_async, decorators, return_type = result
+                name, parameters, is_async, decorators, return_type, param_defaults = result
                 assert name == "async_function"
                 assert is_async is True
+                assert isinstance(param_defaults, dict)
 
     def test_extract_parameters_from_node_optimized(self, extractor):
         """Test parameter extraction from node"""
@@ -500,6 +504,7 @@ def __magic_method__(self, other):
                 False,
                 ["property"],
                 "str",
+                {"param2": "0"},  # param_defaults dict
             )
 
             with patch.object(
@@ -545,7 +550,7 @@ def __magic_method__(self, other):
         with patch.object(
             extractor, "_parse_function_signature_optimized"
         ) as mock_parse:
-            mock_parse.return_value = ("_private_function", [], False, [], None)
+            mock_parse.return_value = ("_private_function", [], False, [], None, {})
 
             with patch.object(
                 extractor, "_extract_docstring_for_line"
@@ -574,7 +579,7 @@ def __magic_method__(self, other):
         with patch.object(
             extractor, "_parse_function_signature_optimized"
         ) as mock_parse:
-            mock_parse.return_value = ("__init__", ["self"], False, [], None)
+            mock_parse.return_value = ("__init__", ["self"], False, [], None, {})
 
             with patch.object(
                 extractor, "_extract_docstring_for_line"

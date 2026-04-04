@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Package, Variable
+from ..models import Class, Expression, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
@@ -154,6 +154,44 @@ class ScalaElementExtractor(ElementExtractor):
                     break
 
         return packages
+
+    def extract_comments(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Scala block comments"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        comments: list[Expression] = []
+
+        extractors = {
+            "block_comment": self._extract_comment,
+        }
+
+        self._traverse_and_extract(tree.root_node, extractors, comments)
+
+        log_debug(f"Extracted {len(comments)} Scala comments")
+        return comments
+
+    def extract_annotations(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """Extract Scala annotations"""
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        annotations: list[Expression] = []
+
+        extractors = {
+            "annotation": self._extract_annotation,
+        }
+
+        self._traverse_and_extract(tree.root_node, extractors, annotations)
+
+        log_debug(f"Extracted {len(annotations)} Scala annotations")
+        return annotations
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
@@ -331,6 +369,9 @@ class ScalaElementExtractor(ElementExtractor):
 
             raw_text = self._get_node_text(node)
 
+            # Extract docstring
+            docstring = self._extract_docstring(node)
+
             return Class(
                 name=name,
                 start_line=start_line,
@@ -340,6 +381,7 @@ class ScalaElementExtractor(ElementExtractor):
                 class_type=kind,
                 visibility=visibility,
                 package_name=self.current_package,
+                docstring=docstring,
             )
 
         except Exception as e:
@@ -448,6 +490,65 @@ class ScalaElementExtractor(ElementExtractor):
             log_error(f"Error extracting Scala import: {e}")
             return None
 
+    def _extract_comment(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract Scala block comment"""
+        try:
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Get preview (first 50 chars)
+            preview = raw_text[:50] if len(raw_text) > 50 else raw_text
+
+            return Expression(
+                name="block_comment",
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="scala",
+                expression_kind="block_comment",
+                preview=preview,
+            )
+        except Exception as e:
+            log_error(f"Error extracting Scala comment: {e}")
+            return None
+
+    def _extract_annotation(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract Scala annotation"""
+        try:
+            raw_text = self._get_node_text(node)
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract annotation name from the tree
+            # annotation -> @ stable_type_identifier
+            annotation_name = "unknown"
+            for child in node.children:
+                if child.type in (
+                    "stable_type_identifier",
+                    "type_identifier",
+                    "identifier",
+                ):
+                    annotation_name = self._get_node_text(child)
+                    break
+                # Handle simple identifier after @
+                if child.type == "identifier":
+                    annotation_name = self._get_node_text(child)
+                    break
+
+            return Expression(
+                name=annotation_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="scala",
+                expression_kind="annotation",
+                node_type="annotation",
+            )
+        except Exception as e:
+            log_error(f"Error extracting Scala annotation: {e}")
+            return None
+
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get node text with caching using position-based keys"""
         cache_key = (node.start_byte, node.end_byte)
@@ -466,9 +567,54 @@ class ScalaElementExtractor(ElementExtractor):
             return ""
 
     def _extract_docstring(self, node: "tree_sitter.Node") -> str | None:
-        """Extract Scaladoc comments"""
+        """Extract Scaladoc comments (/** ... */)"""
         # Scala uses /** ... */ for documentation comments
-        # This would require looking at comment nodes before the function/class
+        # Look for block_comment nodes that immediately precede this node
+        if not node.parent:
+            return None
+
+        # Find the immediately preceding block_comment sibling
+        prev_comment = None
+        prev_sibling = None
+
+        for sibling in node.parent.children:
+            if sibling == node:
+                break
+            prev_sibling = sibling
+
+        # Check if the previous sibling is a block_comment
+        if prev_sibling and prev_sibling.type == "block_comment":
+            prev_comment = prev_sibling
+        # Also check for block_comment that might be separated by whitespace
+        elif prev_sibling and prev_sibling.type != "block_comment":
+            # Look for the last block_comment before this node
+            for sibling in node.parent.children:
+                if sibling == node:
+                    break
+                if sibling.type == "block_comment":
+                    # Only use it if it's close to our node (within a few lines)
+                    if node.start_point[0] - sibling.end_point[0] <= 2:
+                        prev_comment = sibling
+
+        if prev_comment:
+            comment_text = self._get_node_text(prev_comment)
+            if comment_text.startswith("/**") and not comment_text.startswith("/***"):
+                # Extract content without /** and */
+                content = comment_text[3:]
+                if content.endswith("*/"):
+                    content = content[:-2]
+                # Clean up leading * on each line
+                lines = content.split("\n")
+                cleaned_lines = []
+                for line in lines:
+                    stripped = line.strip()
+                    if stripped.startswith("*"):
+                        stripped = stripped[1:].strip()
+                    if stripped:  # Only add non-empty lines
+                        cleaned_lines.append(stripped)
+                if cleaned_lines:
+                    return "\n".join(cleaned_lines)
+
         return None
 
 
@@ -541,6 +687,8 @@ class ScalaPlugin(LanguagePlugin):
             all_elements.extend(elements_dict.get("variables", []))
             all_elements.extend(elements_dict.get("imports", []))
             all_elements.extend(elements_dict.get("packages", []))
+            all_elements.extend(elements_dict.get("comments", []))
+            all_elements.extend(elements_dict.get("annotations", []))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
@@ -624,6 +772,8 @@ class ScalaPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
+                "comments": [],
+                "annotations": [],
             }
 
         try:
@@ -635,6 +785,8 @@ class ScalaPlugin(LanguagePlugin):
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
                 "packages": extractor.extract_packages(tree, source_code),
+                "comments": extractor.extract_comments(tree, source_code),  # type: ignore[attr-defined]
+                "annotations": extractor.extract_annotations(tree, source_code),
             }
 
         except Exception as e:
@@ -645,6 +797,8 @@ class ScalaPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
+                "comments": [],
+                "annotations": [],
             }
 
     def supports_file(self, file_path: str) -> bool:

@@ -1,5 +1,10 @@
 # com.example.kotlin.Sample.kt
 
+## Imports
+```kotlin
+import java.util.Collections
+```
+
 ## Classes & Objects
 | Name | Type | Visibility | Lines | Props | Methods |
 |------|------|------------|-------|-------|---------|

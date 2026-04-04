@@ -349,14 +349,11 @@ class TestKotlinPluginMissingLines:
         ):
             result = plugin.extract_elements(mock_tree, "fun test() {}")
 
-            # Should return empty dict on exception
-            assert result == {
-                "functions": [],
-                "classes": [],
-                "variables": [],
-                "imports": [],
-                "packages": [],
-            }
+            # Should return empty dict on exception (superset check — new keys may be added)
+            required_keys = {"functions", "classes", "variables", "imports", "packages"}
+            assert required_keys <= set(result.keys())
+            for key in required_keys:
+                assert result[key] == []
 
 
 @pytest.mark.skipif(

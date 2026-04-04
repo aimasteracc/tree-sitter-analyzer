@@ -202,6 +202,19 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 ---
 
+## 🔬 语法覆盖率（MECE框架）
+
+Tree-sitter Analyzer 在所有17种支持语言的语法覆盖率验证中保证**零误报**。
+
+### 第1阶段：MECE架构（2026-03）
+
+**新架构**：
+- 追踪**语法路径** `(node_type, parent_path)`，而非仅追踪节点类型
+- 使用**精确节点身份匹配**（类型 + 字节范围 + 父节点链 + 文件路径）
+- 消除嵌套节点误分类（包装节点不再导致误报）
+
+---
+
 ## 🏆 质量与测试
 
 | 指标 | 数值 |

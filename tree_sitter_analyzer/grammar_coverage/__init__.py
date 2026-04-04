@@ -14,12 +14,26 @@ Grammar Coverage Validation Module
 - get_structural_types: 识别结构性节点类型
 """
 
+from .auto_discovery import (
+    AutoDiscoveryEngine,
+    CoverageGapReport,
+    NodeStats,
+    WrapperCandidate,
+)
 from .corpus_generator import (
     generate_and_save_corpus,
     generate_corpus_by_category,
     generate_minimal_code_for_node_type,
     save_corpus_files,
     validate_generated_code,
+)
+from .grammar_snapshot import (
+    LanguageSnapshot,
+    SnapshotDiff,
+    check_snapshot,
+    diff_snapshot,
+    load_snapshot,
+    take_snapshot,
 )
 from .introspector import (
     auto_detect_extractable_types,
@@ -36,6 +50,18 @@ from .validator import (
 )
 
 __all__ = [
+    # Auto-Discovery Engine (Phase 3)
+    "AutoDiscoveryEngine",
+    "CoverageGapReport",
+    "NodeStats",
+    "WrapperCandidate",
+    # Grammar Snapshot & CI Guard
+    "LanguageSnapshot",
+    "SnapshotDiff",
+    "take_snapshot",
+    "load_snapshot",
+    "diff_snapshot",
+    "check_snapshot",
     # Validator
     "CoverageReport",
     "validate_plugin_coverage",

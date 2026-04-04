@@ -4,7 +4,7 @@ package:
   name: sample
   line_range: (10, 10)
 classes:
-  [9]{name,visibility,line_range(a,b)}:
+  [10]{name,visibility,line_range(a,b)}:
     Status,public,(33,33)
     Config,public,(44,50)
     Reader,public,(53,56)
@@ -12,6 +12,7 @@ classes:
     ReadWriter,public,(65,68)
     Service,public,(71,77)
     WorkerPool,public,(206,210)
+    StringSlice,public,(248,248)
     Handler,public,(251,251)
     Middleware,public,(254,254)
 methods:
@@ -35,7 +36,7 @@ methods:
     WithTimeout,public,(267,275)
     WithRetry,public,(278,293)
 fields:
-  [9]{name,type,line_range(a,b)}:
+  [23]{name,type,line_range(a,b)}:
     ErrNotFound,,(21,21)
     DefaultTimeout,,(24,24)
     MaxRetries,,(28,28)
@@ -44,17 +45,32 @@ fields:
     StatusRunning,,(38,38)
     StatusCompleted,,(39,39)
     StatusFailed,,(40,40)
+    Host,,(45,45)
+    Port,,(46,46)
+    Timeout,,(47,47)
+    Debug,,(48,48)
+    metadata,,(49,49)
+    name,,(72,72)
+    config,,(73,73)
+    running,,(74,74)
+    mu,,(75,75)
+    done,,(76,76)
+    workers,,(207,207)
+    jobs,,(208,208)
+    wg,,(209,209)
+    middlewares,,(257,257)
     lastErr,,(281,281)
 imports:
-  [5]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+  [6]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    import,false,false,,(12,18)
     context,false,false,"\"context\"",(13,13)
     errors,false,false,"\"errors\"",(14,14)
     fmt,false,false,"\"fmt\"",(15,15)
     sync,false,false,"\"sync\"",(16,16)
     time,false,false,"\"time\"",(17,17)
 statistics:
-  class_count: 9
+  class_count: 10
   method_count: 18
-  field_count: 9
-  import_count: 5
+  field_count: 23
+  import_count: 6
   total_lines: 294

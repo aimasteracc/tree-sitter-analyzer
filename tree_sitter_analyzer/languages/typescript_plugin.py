@@ -21,10 +21,19 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..core.analysis_engine import AnalysisRequest
+from ..core.request import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..language_loader import loader
-from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
+from ..models import (
+    AnalysisResult,
+    Class,
+    CodeElement,
+    Expression,
+    Function,
+    Import,
+    Package,
+    Variable,
+)
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
@@ -73,6 +82,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             "method_definition": self._extract_method_optimized,
             "generator_function_declaration": self._extract_generator_function_optimized,
             "method_signature": self._extract_method_signature_optimized,
+            "function_signature": self._extract_function_signature_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -124,6 +134,8 @@ class TypeScriptElementExtractor(ElementExtractor):
             "lexical_declaration": self._extract_lexical_variable_optimized,
             "property_definition": self._extract_property_optimized,
             "property_signature": self._extract_property_signature_optimized,
+            # Class field declarations: public name: string = ""
+            "public_field_definition": self._extract_property_optimized,
         }
 
         self._traverse_and_extract_iterative(
@@ -216,6 +228,8 @@ class TypeScriptElementExtractor(ElementExtractor):
             "assignment_expression",
             "type_alias_declaration",
             "enum_declaration",
+            "decorator",  # 添加 decorator 节点支持装饰器包裹的元素提取
+            "public_field_definition",  # 添加 public_field_definition 支持装饰的字段
         }
 
         node_stack = [(root_node, 0)]
@@ -367,6 +381,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_arrow=False,
                 is_method=False,
                 framework_type=self.framework_type,
+                node_type=node.type,
             )
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
@@ -437,6 +452,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_arrow=True,
                 is_method=False,
                 framework_type=self.framework_type,
+                node_type="arrow_function",
             )
         except Exception as e:
             log_debug(f"Failed to extract arrow function info: {e}")
@@ -497,6 +513,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_method=True,
                 framework_type=self.framework_type,
                 visibility=visibility,
+                node_type="method_definition",
             )
         except Exception as e:
             log_debug(f"Failed to extract method info: {e}")
@@ -554,6 +571,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_arrow=False,
                 is_method=True,
                 framework_type=self.framework_type,
+                node_type="method_signature",
             )
         except Exception as e:
             log_debug(f"Failed to extract method signature info: {e}")
@@ -604,9 +622,56 @@ class TypeScriptElementExtractor(ElementExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
                 # TypeScript-specific properties handled above
+                node_type="generator_function_declaration",
             )
         except Exception as e:
             log_debug(f"Failed to extract generator function info: {e}")
+            return None
+
+    def _extract_function_signature_optimized(
+        self, node: "tree_sitter.Node"
+    ) -> Function | None:
+        """Extract function signature (overload declaration without body)"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            # Extract function signature details (similar to method signature)
+            function_info = self._parse_function_signature_optimized(node)
+            if not function_info:
+                return None
+
+            name, parameters, is_async, _, return_type, generics = function_info
+
+            # Skip if no name found
+            if name is None:
+                return None
+
+            # Extract TSDoc
+            tsdoc = self._extract_tsdoc_for_line(start_line)
+
+            # Extract raw text
+            raw_text = self._get_node_text_optimized(node)
+
+            return Function(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="typescript",
+                parameters=parameters,
+                return_type=return_type or "any",
+                is_async=is_async,
+                docstring=tsdoc,
+                complexity_score=0,  # Signatures have no complexity
+                # TypeScript-specific properties
+                is_arrow=False,
+                is_method=False,
+                framework_type=self.framework_type,
+                node_type="function_signature",
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract function signature info: {e}")
             return None
 
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
@@ -1636,6 +1701,197 @@ class TypeScriptElementExtractor(ElementExtractor):
         self._complexity_cache[node_id] = complexity
         return complexity
 
+    def extract_exports(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """
+        Extract export clauses and specifiers.
+
+        Captures export statements like: export { foo, bar as baz }
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+
+        exports: list[Expression] = []
+        stack = [tree.root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type in ["export_clause", "export_specifier"]:
+                try:
+                    raw_text = self._get_node_text_optimized(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    exports.append(
+                        Expression(
+                            name=node.type,
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text,
+                            language="typescript",
+                            expression_kind=node.type,
+                            preview=raw_text,
+                            node_type=node.type,
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting {node.type}: {e}")
+
+            for child in reversed(node.children):
+                stack.append(child)
+
+        log_debug(f"Extracted {len(exports)} export elements")
+        return exports
+
+    def extract_patterns(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """
+        Extract destructuring patterns (array_pattern, pair_pattern).
+
+        Captures patterns like: const [a, b] = [1, 2] and const {x: y} = {x: 10}
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+
+        patterns: list[Expression] = []
+        stack = [tree.root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type in ["array_pattern", "pair_pattern"]:
+                try:
+                    raw_text = self._get_node_text_optimized(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    patterns.append(
+                        Expression(
+                            name=node.type,
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text,
+                            language="typescript",
+                            expression_kind=node.type,
+                            preview=raw_text,
+                            node_type=node.type,
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting {node.type}: {e}")
+
+            for child in reversed(node.children):
+                stack.append(child)
+
+        log_debug(f"Extracted {len(patterns)} pattern elements")
+        return patterns
+
+    def extract_namespaces(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Package]:
+        """
+        Extract namespace declarations (internal_module).
+
+        Captures: namespace MyNamespace { ... }
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+
+        namespaces: list[Package] = []
+        stack = [tree.root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type == "internal_module":
+                try:
+                    # Extract namespace name
+                    namespace_name = "unknown"
+                    for child in node.children:
+                        if child.type == "identifier":
+                            namespace_name = self._get_node_text_optimized(child)
+                            break
+
+                    raw_text = self._get_node_text_optimized(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    namespaces.append(
+                        Package(
+                            name=namespace_name,
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text,
+                            language="typescript",
+                            node_type="internal_module",
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting internal_module: {e}")
+
+            for child in reversed(node.children):
+                stack.append(child)
+
+        log_debug(f"Extracted {len(namespaces)} namespace elements")
+        return namespaces
+
+    def extract_ambient_declarations(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Package]:
+        """
+        Extract ambient declarations (declare module).
+
+        Captures: declare module "test" { ... }
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+
+        declarations: list[Package] = []
+        stack = [tree.root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type == "ambient_declaration":
+                try:
+                    # Extract module name from string literal
+                    module_name = "unknown"
+                    for child in node.children:
+                        if child.type == "string":
+                            module_name = self._get_node_text_optimized(child).strip(
+                                '"'
+                            ).strip("'")
+                            break
+                        elif child.type == "identifier":
+                            module_name = self._get_node_text_optimized(child)
+                            break
+
+                    raw_text = self._get_node_text_optimized(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    declarations.append(
+                        Package(
+                            name=module_name,
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text,
+                            language="typescript",
+                            node_type="ambient_declaration",
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting ambient_declaration: {e}")
+
+            for child in reversed(node.children):
+                stack.append(child)
+
+        log_debug(f"Extracted {len(declarations)} ambient declaration elements")
+        return declarations
+
     def extract_elements(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[CodeElement]:
@@ -1647,6 +1903,10 @@ class TypeScriptElementExtractor(ElementExtractor):
         all_elements.extend(self.extract_classes(tree, source_code))
         all_elements.extend(self.extract_variables(tree, source_code))
         all_elements.extend(self.extract_imports(tree, source_code))
+        all_elements.extend(self.extract_exports(tree, source_code))
+        all_elements.extend(self.extract_patterns(tree, source_code))
+        all_elements.extend(self.extract_namespaces(tree, source_code))
+        all_elements.extend(self.extract_ambient_declarations(tree, source_code))
 
         return all_elements
 
@@ -1723,7 +1983,7 @@ class TypeScriptPlugin(LanguagePlugin):
             for ext in self.get_file_extensions()
         )
 
-    def get_plugin_info(self) -> dict:
+    def get_plugin_info(self) -> dict[str, Any]:
         """Get information about this plugin"""
         return {
             "name": "TypeScript Plugin",
@@ -1793,11 +2053,19 @@ class TypeScriptPlugin(LanguagePlugin):
             classes = extractor.extract_classes(tree, source_code)
             variables = extractor.extract_variables(tree, source_code)
             imports = extractor.extract_imports(tree, source_code)
+            exports = extractor.extract_exports(tree, source_code)
+            patterns = extractor.extract_patterns(tree, source_code)  # type: ignore[attr-defined]
+            namespaces = extractor.extract_namespaces(tree, source_code)  # type: ignore[attr-defined]
+            ambient_decls = extractor.extract_ambient_declarations(tree, source_code)  # type: ignore[attr-defined]
 
             elements.extend(functions)
             elements.extend(classes)
             elements.extend(variables)
             elements.extend(imports)
+            elements.extend(exports)
+            elements.extend(patterns)
+            elements.extend(namespaces)
+            elements.extend(ambient_decls)
 
             def count_nodes(node: "tree_sitter.Node") -> int:
                 count = 1
@@ -1834,6 +2102,10 @@ class TypeScriptPlugin(LanguagePlugin):
         all_elements.extend(extractor.extract_classes(tree, source_code))
         all_elements.extend(extractor.extract_variables(tree, source_code))
         all_elements.extend(extractor.extract_imports(tree, source_code))
+        all_elements.extend(extractor.extract_exports(tree, source_code))
+        all_elements.extend(extractor.extract_patterns(tree, source_code))  # type: ignore[attr-defined]
+        all_elements.extend(extractor.extract_namespaces(tree, source_code))  # type: ignore[attr-defined]
+        all_elements.extend(extractor.extract_ambient_declarations(tree, source_code))  # type: ignore[attr-defined]
 
         return all_elements
 
