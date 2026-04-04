@@ -33,15 +33,8 @@
 - **Effort:** S (human: ~30min / CC: ~5min)
 
 ### **Priority:** P0
-**Fix golden master test infrastructure before Grammar Coverage implementation**
-- **What:** Debug and fix format mismatch in `test_golden_master_regression.py` (1 of 4 Python tests failing)
-- **Why:** Grammar Coverage golden corpus tests extend this infrastructure. If base tests are broken, new tests inherit the same issues.
-- **Pros:** Clean foundation for corpus tests, prevents confusing errors during Grammar Coverage implementation
-- **Cons:** 1-2 hour delay before starting Grammar Coverage work
-- **Context:** Current failure: expected format `name,type,start,end` but getting `name,visibility,(start,end)`. Root cause unknown. Tests affected: `TestCompactGoldenMasterRegression`, `TestFullGoldenMasterRegression`, `TestCsvGoldenMasterRegression`. File: `tests/integration/core/test_golden_master_regression.py`
-- **Depends on:** None — must be fixed before Grammar Coverage Phase 1.1
-- **Effort:** S (human: ~2h / CC: ~15min)
-- **Blocking:** Grammar Coverage MECE implementation (all phases)
+~~**Fix golden master test infrastructure before Grammar Coverage implementation**~~
+**Completed:** v1.10.6 (2026-04-04)
 
 ---
 
