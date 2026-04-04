@@ -137,7 +137,7 @@ class CElementExtractor(ElementExtractor):
         return imports
 
     def extract_expressions(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Expression]:
         """Extract C preprocessor conditional expressions"""
         if tree is None or tree.root_node is None:

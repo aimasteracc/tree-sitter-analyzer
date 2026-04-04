@@ -198,7 +198,7 @@ class CppElementExtractor(ElementExtractor):
         return packages
 
     def extract_enums(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Class]:
         """Extract C++ enum definitions"""
         if tree is None or tree.root_node is None:
@@ -219,7 +219,7 @@ class CppElementExtractor(ElementExtractor):
         return enums
 
     def extract_preprocessor_conditionals(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Expression]:
         """Extract C++ preprocessor conditional directives (#if, #ifdef, etc.)"""
         if tree is None or tree.root_node is None:
@@ -243,7 +243,7 @@ class CppElementExtractor(ElementExtractor):
         return conditionals
 
     def extract_concepts(
-        self, tree: "tree_sitter.Tree", source_code: str
+        self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[Expression]:
         """Extract C++20 concept definitions"""
         if tree is None or tree.root_node is None:
