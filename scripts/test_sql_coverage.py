@@ -7,8 +7,9 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from tree_sitter_analyzer.language_loader import create_parser_safely
 import tree_sitter
+
+from tree_sitter_analyzer.language_loader import create_parser_safely
 
 
 def collect_node_types(node: "tree_sitter.Node", types_dict: dict[str, int]) -> None:
@@ -42,7 +43,9 @@ def main():
         print(f"  {node_type:40s} {count:5d}")
 
     # Check coverage
-    from tree_sitter_analyzer.grammar_coverage.validator import validate_plugin_coverage_sync
+    from tree_sitter_analyzer.grammar_coverage.validator import (
+        validate_plugin_coverage_sync,
+    )
     result = validate_plugin_coverage_sync('sql')
 
     print(f"\n{'='*70}")

@@ -23,7 +23,6 @@ import pytest
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor, SQLPlugin
 from tree_sitter_analyzer.models import (
     CodeElement,
-    SQLElement,
     SQLElementType,
     SQLTable,
     SQLTrigger,
