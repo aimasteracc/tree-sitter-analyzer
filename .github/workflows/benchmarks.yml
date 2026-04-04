@@ -152,7 +152,7 @@ jobs:
       shell: bash
 
     - name: Run Formatting Benchmarks
-      if: inputs.benchmark-scope == 'all' || inputs.benchmark-scope == 'formatting'
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'formatting'
       run: |
         echo "### 📝 Formatting Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -258,6 +258,7 @@ jobs:
           benchmark-*.json
           benchmark-*-output.txt
         retention-days: 30
+        if-no-files-found: warn
 
     - name: Save as new baseline
       if: github.ref == 'refs/heads/main' && github.event_name == 'push' && !failure()
