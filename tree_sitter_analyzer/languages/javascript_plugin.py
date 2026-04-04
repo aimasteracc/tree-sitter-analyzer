@@ -165,6 +165,7 @@ class JavaScriptElementExtractor(ElementExtractor):
         self.content_lines = source_code.split("\n")
 
         exports: list[CodeElement] = []
+        legacy_exports: list[dict[str, Any]] = []
 
         # Extract ES6 exports
         for child in tree.root_node.children:
@@ -172,7 +173,16 @@ class JavaScriptElementExtractor(ElementExtractor):
                 export_element = self._extract_export_element(child)
                 if export_element:
                     exports.append(export_element)
+                # Also populate legacy self.exports for _is_exported_class
+                legacy_info = self._extract_export_info(child)
+                if legacy_info:
+                    legacy_exports.append(legacy_info)
 
+        # Also check for CommonJS exports (needed for _is_exported_class)
+        commonjs_exports = self._extract_commonjs_exports(tree, source_code)
+        legacy_exports.extend(commonjs_exports)
+
+        self.exports = legacy_exports
         log_debug(f"Extracted {len(exports)} JavaScript exports")
         return exports
 

@@ -135,7 +135,7 @@ class SQLElementExtractor(ElementExtractor):
                 self._extract_transactions(tree.root_node, expression_elements)
                 self._extract_comments(tree.root_node, expression_elements)
                 self._extract_select_statements(tree.root_node, expression_elements)
-                self._extract_keywords_and_others(tree.root_node)
+                # _extract_keywords_and_others removed — it was a no-op traversal
 
                 # Apply platform compatibility adapter if available (SQL elements only)
                 if self.adapter:
@@ -2572,24 +2572,6 @@ class SQLElementExtractor(ElementExtractor):
 
             stack.extend(reversed(node.children))
 
-    def _extract_keywords_and_others(self, root_node: "tree_sitter.Node") -> None:
-        """
-        Visit all remaining node types including keywords for 100% grammar coverage.
-
-        This method ensures all keyword nodes and other structural nodes are visited
-        to achieve complete grammar coverage. Note: Keywords are not extracted as
-        elements since they're covered by their parent constructs.
-
-        Args:
-            root_node: Root node of the tree
-        """
-        # Simple traversal - keywords are covered by their parent constructs
-        # This method exists to ensure the traversal visits all nodes
-        stack: list[tree_sitter.Node] = [root_node]
-
-        while stack:
-            node = stack.pop()
-            stack.extend(reversed(node.children))
 
 
 class SQLPlugin(LanguagePlugin):

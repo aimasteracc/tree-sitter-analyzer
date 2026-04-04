@@ -137,14 +137,31 @@ def load_snapshot(
         )
 
     with open(p, encoding="utf-8") as f:
-        data: dict[str, Any] = json.load(f)
+        try:
+            data: dict[str, Any] = json.load(f)
+        except json.JSONDecodeError as e:
+            raise json.JSONDecodeError(
+                f"Corrupt grammar snapshot at {p}: {e.msg}",
+                e.doc,
+                e.pos,
+            ) from e
 
     result: dict[str, LanguageSnapshot] = {}
     for lang, entry in data.items():
+        if not isinstance(entry, dict):
+            log_warning(f"Skipping malformed snapshot entry for '{lang}': expected dict")
+            continue
+        node_types = entry.get("node_types", [])
+        if not isinstance(node_types, list):
+            log_warning(f"Skipping '{lang}': node_types must be a list, got {type(node_types).__name__}")
+            continue
+        node_count = entry.get("node_count", len(node_types))
+        if not isinstance(node_count, int):
+            node_count = len(node_types)
         result[lang] = LanguageSnapshot(
             language=lang,
-            node_types=entry["node_types"],
-            node_count=entry["node_count"],
+            node_types=node_types,
+            node_count=node_count,
             package_version=entry.get("package_version", "unknown"),
         )
     return result
@@ -214,6 +231,9 @@ def check_snapshot(
         baseline = load_snapshot(baseline_path)
     except FileNotFoundError as e:
         print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    except json.JSONDecodeError as e:
+        print(f"ERROR: Corrupt snapshot file — {e}", file=sys.stderr)
         return 1
 
     diffs = diff_snapshot(baseline)

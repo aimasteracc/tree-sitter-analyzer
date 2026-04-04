@@ -201,6 +201,8 @@ class CppElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """Extract C++ enum definitions"""
+        if tree is None or tree.root_node is None:
+            return []
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
@@ -220,6 +222,8 @@ class CppElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Expression]:
         """Extract C++ preprocessor conditional directives (#if, #ifdef, etc.)"""
+        if tree is None or tree.root_node is None:
+            return []
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
@@ -242,6 +246,8 @@ class CppElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Expression]:
         """Extract C++20 concept definitions"""
+        if tree is None or tree.root_node is None:
+            return []
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 

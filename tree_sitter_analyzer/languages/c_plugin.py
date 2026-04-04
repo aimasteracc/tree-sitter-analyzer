@@ -140,6 +140,8 @@ class CElementExtractor(ElementExtractor):
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Expression]:
         """Extract C preprocessor conditional expressions"""
+        if tree is None or tree.root_node is None:
+            return []
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()

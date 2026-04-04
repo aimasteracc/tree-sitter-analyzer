@@ -241,6 +241,52 @@
 
 ---
 
+## Grammar Coverage — Phase 1.2 Follow-up
+
+### **Priority:** P1
+**Fix validator O(N×M) matching loop — CI timeout risk**
+- **What:** Build a lookup dict `(start_line, end_line) → list[(node_type, parent_path)]` during AST scan, so element matching is O(M) not O(N×M)
+- **Why:** At MAX_NODES=100k and 1k elements per file, the inner loop runs 100M Python comparisons (~100s per language, 20min+ for all 17 languages in CI)
+- **Context:** `_get_covered_node_types_from_plugin` in `tree_sitter_analyzer/grammar_coverage/validator.py`
+- **Effort:** S (human: ~2h / CC: ~15min)
+
+### **Priority:** P1
+**Fix wrapper detection false positives — `body` field in `_WRAPPER_FIELDS`**
+- **What:** Remove `"body"` from `_WRAPPER_FIELDS` or significantly raise `wrapper_threshold` (currently 30.0)
+- **Why:** Every compound statement (for/if/while/with/try) uses the `body` field, causing near-100% false positive rate. Output is currently meaningless.
+- **Context:** `_WRAPPER_FIELDS` in `tree_sitter_analyzer/grammar_coverage/auto_discovery.py`
+- **Effort:** S (human: ~1h / CC: ~10min)
+
+### **Priority:** P2
+**Fix coverage inflation from single-line construct matching**
+- **What:** After line-number matching, filter to only nodes whose `node_type` matches `element.element_type` or `element.node_type`; or switch to column-level matching
+- **Why:** Single-line constructs (`class Foo: pass`) produce multiple AST nodes sharing the same `(start_line, end_line)`, inflating coverage numbers by 3-5x per extraction
+- **Context:** `_get_covered_node_types_from_plugin` in `validator.py`
+- **Effort:** M (human: ~3h / CC: ~20min)
+
+### **Priority:** P2
+**Fix Go plugin double-counting imports**
+- **What:** Decide whether the synthetic outer `import_declaration` element should be excluded from `AnalysisResult.elements` or kept (currently both outer and inner specs are returned)
+- **Why:** Every Go `import "fmt"` emits 2 Import elements; multi-import blocks emit N+1. Import counts and deduplication logic gets wrong numbers.
+- **Context:** `_extract_import_declaration` in `tree_sitter_analyzer/languages/go_plugin.py`
+- **Effort:** S (human: ~1h / CC: ~10min)
+
+### **Priority:** P2
+**Investigate Python decorated function `start_line` semantics**
+- **What:** Consider storing both `decorator_start_line` and `def_start_line` rather than overloading `start_line`
+- **Why:** `Function.start_line` now points to the `@decorator` line, not the `def` line. Consumers doing "go to definition" or line-based lookup get the wrong line. Two functions with the same decorator could have identical `(name, start_line)`.
+- **Context:** `_extract_function_optimized` in `tree_sitter_analyzer/languages/python_plugin.py`
+- **Effort:** M (human: ~2h / CC: ~20min) — requires updating golden masters again
+
+### **Priority:** P3
+**Fix Rust/Scala/Kotlin recursive traversal stack overflow**
+- **What:** Convert `_traverse_and_extract` in Rust, Scala, Kotlin plugins from recursive DFS to iterative with explicit stack
+- **Why:** Python default recursion limit is 1000. Deeply nested code (macro expansions, generated code) can exceed this, crashing the analysis silently.
+- **Context:** `ScalaElementExtractor._traverse_and_extract`, `KotlinElementExtractor._traverse_and_extract`, `RustElementExtractor._traverse_and_extract`
+- **Effort:** M (human: ~2h / CC: ~20min)
+
+---
+
 ## Completed
 
 _(This section will be populated as items are completed and shipped)_

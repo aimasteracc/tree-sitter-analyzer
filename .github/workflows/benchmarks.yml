@@ -43,6 +43,8 @@ jobs:
   benchmarks:
     name: Performance Benchmarks (${{ inputs.benchmark-scope || 'all' }})
     runs-on: ubuntu-latest
+    env:
+      BENCHMARK_SCOPE: ${{ inputs.benchmark-scope || 'all' }}
 
     steps:
     - name: Checkout code
@@ -81,7 +83,7 @@ jobs:
           benchmark-baseline-
 
     - name: Run Analysis Benchmarks
-      if: inputs.benchmark-scope == 'all' || inputs.benchmark-scope == 'analysis'
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'analysis'
       run: |
         echo "### ⚡ Analysis Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -104,7 +106,7 @@ jobs:
       shell: bash
 
     - name: Run Query Benchmarks
-      if: inputs.benchmark-scope == 'all' || inputs.benchmark-scope == 'query'
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'query'
       run: |
         echo "### 🔍 Query Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -127,7 +129,7 @@ jobs:
       shell: bash
 
     - name: Run Cache Benchmarks
-      if: inputs.benchmark-scope == 'all' || inputs.benchmark-scope == 'cache'
+      if: env.BENCHMARK_SCOPE == 'all' || env.BENCHMARK_SCOPE == 'cache'
       run: |
         echo "### 💾 Cache Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
