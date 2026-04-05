@@ -26,6 +26,10 @@ from uuid import uuid4
 _git_commit_cache: tuple[str, float] | None = None  # (hash, timestamp)
 _GIT_CACHE_TTL = 5.0  # seconds
 
+# ファイルハッシュ mtime キャッシュ {path: (mtime, sha256)}
+# mtime が変わっていなければ再計算不要
+_file_hash_cache: dict[str, tuple[float, str]] = {}
+
 
 class AnalysisSession:
     """
@@ -138,7 +142,10 @@ class AnalysisSession:
 
     def _calculate_file_hashes(self, file_paths: list[str]) -> dict[str, str | None]:
         """
-        计算文件的 SHA256 hash
+        计算文件的 SHA256 hash（带 mtime 缓存）
+
+        如果文件的 mtime 没有变化，直接复用缓存的 hash 值，
+        避免对同一工作流中反复分析的文件重复计算。
 
         Args:
             file_paths: 文件路径列表
@@ -154,14 +161,26 @@ class AnalysisSession:
                 continue
 
             try:
+                current_mtime = path.stat().st_mtime
+
+                # mtime キャッシュチェック
+                cached = _file_hash_cache.get(file_path)
+                if cached is not None:
+                    cached_mtime, cached_hash = cached
+                    if cached_mtime == current_mtime:
+                        hashes[file_path] = cached_hash
+                        continue
+
+                # キャッシュミス：SHA256 を計算してキャッシュに保存
                 sha256_hash = hashlib.sha256()
                 with open(path, "rb") as f:
-                    # 分块读取，避免大文件内存问题
                     for chunk in iter(lambda: f.read(8192), b""):
                         sha256_hash.update(chunk)
-                hashes[file_path] = sha256_hash.hexdigest()
+                digest = sha256_hash.hexdigest()
+                _file_hash_cache[file_path] = (current_mtime, digest)
+                hashes[file_path] = digest
+
             except Exception:
-                # 读取失败时设为 None
                 hashes[file_path] = None
 
         return hashes

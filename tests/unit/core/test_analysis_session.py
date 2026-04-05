@@ -114,9 +114,15 @@ class TestAnalysisSessionCreation:
 class TestFileHashCalculation:
     """测试文件 SHA256 hash 计算"""
 
+    def setup_method(self) -> None:
+        """每个测试前清除文件哈希缓存，避免测试间干扰"""
+        import tree_sitter_analyzer.core.analysis_session as mod
+        mod._file_hash_cache.clear()
+
+    @patch("pathlib.Path.stat", return_value=MagicMock(st_mtime=1000.0))
     @patch("builtins.open", new_callable=mock_open, read_data=b"file content")
     @patch("pathlib.Path.exists", return_value=True)
-    def test_file_hash_calculation_sha256(self, mock_exists, mock_file):
+    def test_file_hash_calculation_sha256(self, mock_exists, mock_file, mock_stat):
         """计算文件 SHA256 hash"""
         session = AnalysisSession(
             input_files=["/path/to/file.py"],
@@ -137,9 +143,10 @@ class TestFileHashCalculation:
 
         assert session.file_hashes["/nonexistent/file.py"] is None
 
+    @patch("pathlib.Path.stat", return_value=MagicMock(st_mtime=1000.0))
     @patch("builtins.open", new_callable=mock_open, read_data=b"content1")
     @patch("pathlib.Path.exists", return_value=True)
-    def test_multiple_files_hash_calculation(self, mock_exists, mock_file):
+    def test_multiple_files_hash_calculation(self, mock_exists, mock_file, mock_stat):
         """多个文件的 hash 计算"""
         session = AnalysisSession(
             input_files=["/file1.py", "/file2.py"],
