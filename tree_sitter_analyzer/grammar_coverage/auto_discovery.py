@@ -73,12 +73,13 @@ class CoverageGapReport:
 
 
 # Wrapper 检测使用的字段名（覆盖多种语言的装饰性字段）
+# 注意："body" 被移除——几乎所有复合语句（for/if/while/with/try）都有 body 字段，
+# 保留会导致近 100% 误报率，使 wrapper 检测结果无意义。
 _WRAPPER_FIELDS = (
     "definition",
     "decorator",
     "attribute",
     "annotation",
-    "body",
     "expression",
 )
 
