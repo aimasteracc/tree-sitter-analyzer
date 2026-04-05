@@ -17,7 +17,8 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+from ...core.analysis_engine import get_analysis_engine
+from ...core.request import AnalysisRequest
 from ...formatters.formatter_registry import FormatterRegistry
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
@@ -473,9 +474,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return {
             "name": "analyze_code_structure",
             "description": (
-                "Analyze code structure and generate detailed overview tables "
-                "(classes, methods, fields) with line positions for large files, "
-                "optionally save to file"
+                "Generate a human-readable table of a file's structure — classes, methods, "
+                "fields with line numbers and complexity scores. Best for large files where "
+                "you want a quick overview before reading sections. Saves to file for reuse."
             ),
             "inputSchema": self.get_tool_schema(),
         }

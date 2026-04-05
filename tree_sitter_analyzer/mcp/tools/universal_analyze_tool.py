@@ -17,7 +17,8 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+from ...core.analysis_engine import get_analysis_engine
+from ...core.request import AnalysisRequest
 from ...language_detector import detect_language_from_file, is_language_supported
 from ...mcp.utils import get_performance_monitor
 from ...utils import setup_logger
@@ -63,7 +64,12 @@ class UniversalAnalyzeTool(BaseMCPTool):
         """
         return {
             "name": "analyze_code_universal",
-            "description": "Universal code analysis for multiple programming languages with automatic language detection",
+            "description": (
+                "Extract code structure — parse any source file and return its classes, "
+                "functions, imports, and variables as structured data. Supports 17 languages "
+                "with auto-detection. Use when you need to understand what a file contains "
+                "without reading the full source."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
