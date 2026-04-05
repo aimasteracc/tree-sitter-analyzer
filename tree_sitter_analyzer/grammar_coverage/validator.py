@@ -302,15 +302,36 @@ async def _get_covered_node_types_from_plugin(
 
         build_ast_map(tree.root_node, (), 0)
 
+        # 文件根节点类型——它们跨越整个文件，会掩盖真实的顶层声明。
+        # 遇到这些类型时跳过，取下一个候选项。
+        _ROOT_NODE_TYPES = frozenset(
+            {
+                "module",
+                "program",
+                "source_file",
+                "translation_unit",
+                "chunk",
+                "document",
+            }
+        )
+
         # 4. 用行号匹配：element 的 1-based 行号 → 0-based → O(1) 查询索引
         # 原来是 O(N×M) 双重循环，现在是 O(M) 单次遍历。
+        #
+        # 单行构造膨胀修复：跳过根节点后，只取第一个条目（最外层语义节点）。
+        # build_ast_map 以 DFS 顺序插入：父节点先于子节点。
+        # 例如 `class Foo: pass`（行 0-0）：
+        #   line_index[(0,0)] = [class_definition, identifier, block, pass_statement]
+        # 取第一个非根节点 → 只有 class_definition 被标记为已覆盖，而不是全部 4 个。
         for element in result.elements:
             if not (hasattr(element, "start_line") and hasattr(element, "end_line")):
                 continue
 
             key = (element.start_line - 1, element.end_line - 1)
             for node_type, parent_path in line_index.get(key, []):
-                covered_syntactic_paths.add((node_type, parent_path))
+                if node_type not in _ROOT_NODE_TYPES:
+                    covered_syntactic_paths.add((node_type, parent_path))
+                    break
 
         # 5. 返回去重后的 node_type 集合（向后兼容）
         covered_types: set[str] = {node_type for node_type, _ in covered_syntactic_paths}
