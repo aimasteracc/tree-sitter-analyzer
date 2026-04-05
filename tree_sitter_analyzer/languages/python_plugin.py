@@ -430,11 +430,14 @@ class PythonElementExtractor(ElementExtractor):
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information with detailed metadata"""
         try:
-            # When function is wrapped in decorated_definition, report the outer
-            # node's line range so the validator matches decorated_definition too.
+            # start_line = def 行（go-to-definition に正しい行を返す）
+            # decorator_start_line = 外側の decorated_definition の先頭行
+            start_line = node.start_point[0] + 1
             outer = node.parent if (node.parent and node.parent.type == "decorated_definition") else node
-            start_line = outer.start_point[0] + 1
             end_line = outer.end_point[0] + 1
+            decorator_start_line: int | None = (
+                outer.start_point[0] + 1 if outer is not node else None
+            )
 
             # Extract function details
             function_info = self._parse_function_signature_optimized(node)
@@ -483,6 +486,7 @@ class PythonElementExtractor(ElementExtractor):
                 framework_type=self.framework_type,
                 is_property="property" in decorators,
                 is_classmethod="classmethod" in decorators,
+                decorator_start_line=decorator_start_line,
             )
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
@@ -883,10 +887,14 @@ class PythonElementExtractor(ElementExtractor):
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information with detailed metadata"""
         try:
-            # When class is wrapped in decorated_definition, use outer node's range
+            # start_line = class 行（go-to-definition に正しい行を返す）
+            # decorator_start_line = 外側の decorated_definition の先頭行
+            start_line = node.start_point[0] + 1
             outer = node.parent if (node.parent and node.parent.type == "decorated_definition") else node
-            start_line = outer.start_point[0] + 1
             end_line = outer.end_point[0] + 1
+            decorator_start_line: int | None = (
+                outer.start_point[0] + 1 if outer is not node else None
+            )
 
             # Extract class name
             class_name = None
@@ -956,6 +964,7 @@ class PythonElementExtractor(ElementExtractor):
                 is_exception=any(
                     "Exception" in sc or "Error" in sc for sc in superclasses
                 ),
+                decorator_start_line=decorator_start_line,
             )
         except Exception as e:
             log_debug(f"Failed to extract class info: {e}")
