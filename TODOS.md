@@ -40,25 +40,11 @@
 
 ## Core — Edge Cases & Error Handling
 
-### **Priority:** P1
-**Initialize session directory on first use**
-- **What:** `~/.tsa/sessions/` 不存在时自动创建（mkdir -p）
-- **Why:** 首次使用 session recording 会失败
-- **Pros:** 零配置，开箱即用
-- **Cons:** None（标准做法）
-- **Context:** `AnalysisSession.save_to_audit_log()` 在 `core/analysis_session.py` 中实现
-- **Depends on:** Analysis Sessions 实现
-- **Effort:** XS (human: ~15min / CC: ~3min)
+~~**Initialize session directory on first use**~~
+**Completed:** Already implemented — `save_to_audit_log()` uses `mkdir(parents=True, exist_ok=True)`
 
-### **Priority:** P1
-**Prevent session ID collisions**
-- **What:** 使用 `{timestamp}-{uuid4}` 格式生成 session_id
-- **Why:** 同一秒内多个 session 会覆盖彼此的文件
-- **Pros:** 保证唯一性，无需额外冲突检测
-- **Cons:** ID 长度增加（36 → 50 字符）
-- **Context:** Session ID 在 `AnalysisSession.__init__()` 中生成
-- **Depends on:** Analysis Sessions 实现
-- **Effort:** XS (human: ~10min / CC: ~2min)
+~~**Prevent session ID collisions**~~
+**Completed:** Already implemented — session_id format is `{YYYYMMDD-HHMMSS}-{uuid4}`
 
 ### **Priority:** P1
 **Handle replay of deleted files**
@@ -134,15 +120,8 @@
 - **Depends on:** Analysis Sessions 实现
 - **Effort:** S (human: ~1.5h / CC: ~12min)
 
-### **Priority:** P2
-**Cache git commit hash for 5 seconds**
-- **What:** 缓存 `git rev-parse HEAD` 结果 5 秒（同一工作流复用）
-- **Why:** 每次 session 创建都 subprocess git（~50ms）
-- **Pros:** session 创建速度提升（SMART 工作流场景）
-- **Cons:** 5 秒内 git commit 变化会读到旧值（可接受）
-- **Context:** Git commit 在 `AnalysisSession.__init__()` 中获取。Section 4 推荐缓存
-- **Depends on:** Analysis Sessions 实现
-- **Effort:** XS (human: ~30min / CC: ~5min)
+~~**Cache git commit hash for 5 seconds**~~
+**Completed:** v1.10.6 (2026-04-05) — module-level `_git_commit_cache` with 5s TTL
 
 ### **Priority:** P2
 **Optimize parse_analysis_result() with tree-sitter**
@@ -234,52 +213,33 @@
 
 ---
 
-## Grammar Coverage — Phase 1.2 Follow-up
-
-### **Priority:** P1
-**Fix validator O(N×M) matching loop — CI timeout risk**
-- **What:** Build a lookup dict `(start_line, end_line) → list[(node_type, parent_path)]` during AST scan, so element matching is O(M) not O(N×M)
-- **Why:** At MAX_NODES=100k and 1k elements per file, the inner loop runs 100M Python comparisons (~100s per language, 20min+ for all 17 languages in CI)
-- **Context:** `_get_covered_node_types_from_plugin` in `tree_sitter_analyzer/grammar_coverage/validator.py`
-- **Effort:** S (human: ~2h / CC: ~15min)
-
-### **Priority:** P1
-**Fix wrapper detection false positives — `body` field in `_WRAPPER_FIELDS`**
-- **What:** Remove `"body"` from `_WRAPPER_FIELDS` or significantly raise `wrapper_threshold` (currently 30.0)
-- **Why:** Every compound statement (for/if/while/with/try) uses the `body` field, causing near-100% false positive rate. Output is currently meaningless.
-- **Context:** `_WRAPPER_FIELDS` in `tree_sitter_analyzer/grammar_coverage/auto_discovery.py`
-- **Effort:** S (human: ~1h / CC: ~10min)
-
-### **Priority:** P2
-**Fix coverage inflation from single-line construct matching**
-- **What:** After line-number matching, filter to only nodes whose `node_type` matches `element.element_type` or `element.node_type`; or switch to column-level matching
-- **Why:** Single-line constructs (`class Foo: pass`) produce multiple AST nodes sharing the same `(start_line, end_line)`, inflating coverage numbers by 3-5x per extraction
-- **Context:** `_get_covered_node_types_from_plugin` in `validator.py`
-- **Effort:** M (human: ~3h / CC: ~20min)
-
-### **Priority:** P2
-**Fix Go plugin double-counting imports**
-- **What:** Decide whether the synthetic outer `import_declaration` element should be excluded from `AnalysisResult.elements` or kept (currently both outer and inner specs are returned)
-- **Why:** Every Go `import "fmt"` emits 2 Import elements; multi-import blocks emit N+1. Import counts and deduplication logic gets wrong numbers.
-- **Context:** `_extract_import_declaration` in `tree_sitter_analyzer/languages/go_plugin.py`
-- **Effort:** S (human: ~1h / CC: ~10min)
-
-### **Priority:** P2
-**Investigate Python decorated function `start_line` semantics**
-- **What:** Consider storing both `decorator_start_line` and `def_start_line` rather than overloading `start_line`
-- **Why:** `Function.start_line` now points to the `@decorator` line, not the `def` line. Consumers doing "go to definition" or line-based lookup get the wrong line. Two functions with the same decorator could have identical `(name, start_line)`.
-- **Context:** `_extract_function_optimized` in `tree_sitter_analyzer/languages/python_plugin.py`
-- **Effort:** M (human: ~2h / CC: ~20min) — requires updating golden masters again
-
-### **Priority:** P3
-**Fix Rust/Scala/Kotlin recursive traversal stack overflow**
-- **What:** Convert `_traverse_and_extract` in Rust, Scala, Kotlin plugins from recursive DFS to iterative with explicit stack
-- **Why:** Python default recursion limit is 1000. Deeply nested code (macro expansions, generated code) can exceed this, crashing the analysis silently.
-- **Context:** `ScalaElementExtractor._traverse_and_extract`, `KotlinElementExtractor._traverse_and_extract`, `RustElementExtractor._traverse_and_extract`
-- **Effort:** M (human: ~2h / CC: ~20min)
-
 ---
 
 ## Completed
 
-_(This section will be populated as items are completed and shipped)_
+~~**Fix golden master test infrastructure before Grammar Coverage implementation**~~
+**Completed:** v1.10.6 (2026-04-04)
+
+~~**Fix validator O(N×M) matching loop — CI timeout risk**~~
+**Completed:** v1.10.6 (2026-04-05) — O(N) line_index build + O(M) lookup
+
+~~**Fix wrapper detection false positives — `body` field in `_WRAPPER_FIELDS`**~~
+**Completed:** v1.10.6 (2026-04-05) — removed `body`, decorated_definition now scores correctly
+
+~~**Fix coverage inflation from single-line construct matching**~~
+**Completed:** v1.10.6 (2026-04-05) — first-match + skip root nodes
+
+~~**Fix Go plugin double-counting imports**~~
+**Completed:** v1.10.6 (2026-04-05) — removed synthetic outer import_declaration
+
+~~**Investigate Python decorated function `start_line` semantics**~~
+**Completed:** v1.10.6 (2026-04-05) — start_line=def line, decorator_start_line field added
+
+~~**Fix Rust/Scala/Kotlin recursive traversal stack overflow**~~
+**Completed:** v1.10.6 (2026-04-05) — converted to iterative DFS
+
+~~**Split python_plugin.py into Multiple Modules**~~
+**Completed:** v1.10.6 (2026-04-05) — python_extractor.py (1599L) + python_plugin.py (386L)
+
+~~**Update tool descriptions for intent-based naming**~~
+**Completed:** v1.10.6 (2026-04-05) — 4 MCP tools updated

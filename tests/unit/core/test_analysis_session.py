@@ -331,6 +331,11 @@ class TestSessionValidation:
 class TestGitIntegration:
     """测试 Git commit 记录功能"""
 
+    def setup_method(self) -> None:
+        """每个测试前清除 git commit 缓存，避免测试间干扰"""
+        import tree_sitter_analyzer.core.analysis_session as mod
+        mod._git_commit_cache = None
+
     @patch("subprocess.run")
     def test_auto_detect_git_commit(self, mock_run):
         """自动检测当前 git commit"""
