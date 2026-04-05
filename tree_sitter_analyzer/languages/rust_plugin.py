@@ -216,40 +216,32 @@ class RustElementExtractor(ElementExtractor):
     def _traverse_and_extract_doc_comments(
         self, node: "tree_sitter.Node", results: list[Expression]
     ) -> None:
-        """Recursively traverse and extract doc comments with markers"""
-        if node.type == "line_comment":
-            # Check if this has inner or outer doc comment markers
-            has_doc_marker = False
-            for child in node.children:
-                if child.type in ("inner_doc_comment_marker", "outer_doc_comment_marker"):
-                    has_doc_marker = True
-                    break
-
-            if has_doc_marker:
-                raw_text = self._get_node_text(node)
-                start_line = node.start_point[0] + 1
-                end_line = node.end_point[0] + 1
-
-                # Determine if inner or outer
-                marker_type = "outer"
-                for child in node.children:
-                    if child.type == "inner_doc_comment_marker":
-                        marker_type = "inner"
-                        break
-
-                expr = Expression(
-                    name=f"{marker_type}_doc_comment",
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text.strip(),
-                    language="rust",
-                    expression_kind="doc_comment",
-                    node_type="line_comment",
+        """Iterative traversal to extract doc comments (stack-safe)."""
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            if current.type == "line_comment":
+                has_doc_marker = any(
+                    c.type in ("inner_doc_comment_marker", "outer_doc_comment_marker")
+                    for c in current.children
                 )
-                results.append(expr)
-
-        for child in node.children:
-            self._traverse_and_extract_doc_comments(child, results)
+                if has_doc_marker:
+                    raw_text = self._get_node_text(current)
+                    start_line = current.start_point[0] + 1
+                    end_line = current.end_point[0] + 1
+                    marker_type = "inner" if any(
+                        c.type == "inner_doc_comment_marker" for c in current.children
+                    ) else "outer"
+                    results.append(Expression(
+                        name=f"{marker_type}_doc_comment",
+                        start_line=start_line,
+                        end_line=end_line,
+                        raw_text=raw_text.strip(),
+                        language="rust",
+                        expression_kind="doc_comment",
+                        node_type="line_comment",
+                    ))
+            stack.extend(reversed(current.children))
 
     def _extract_attribute_item(self, node: "tree_sitter.Node") -> Expression | None:
         """Extract attribute item"""
@@ -369,14 +361,16 @@ class RustElementExtractor(ElementExtractor):
         extractors: dict[str, Any],
         results: list[Any],
     ) -> None:
-        """Recursive traversal to find and extract elements"""
-        if node.type in extractors:
-            element = extractors[node.type](node)
-            if element:
-                results.append(element)
-
-        for child in node.children:
-            self._traverse_and_extract(child, extractors, results)
+        """Iterative traversal to find and extract elements (stack-safe)."""
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            if current.type in extractors:
+                element = extractors[current.type](current)
+                if element:
+                    results.append(element)
+            # Push children in reverse order so leftmost is processed first
+            stack.extend(reversed(current.children))
 
     def _extract_let_declaration(
         self, node: "tree_sitter.Node"
