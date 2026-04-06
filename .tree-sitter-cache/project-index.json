@@ -1,0 +1,240 @@
+{
+  "project_root": ".",
+  "created_at": 1775488658.3003542,
+  "updated_at": 1775489666.9770517,
+  "file_count": 1031,
+  "language_distribution": {
+    "other": 52,
+    "python": 658,
+    "markdown": 237,
+    "typescript": 5,
+    "php": 2,
+    "csharp": 3,
+    "yaml": 2,
+    "cpp": 2,
+    "java": 6,
+    "javascript": 4,
+    "c": 2,
+    "kotlin": 2,
+    "ruby": 3,
+    "json": 34,
+    "css": 3,
+    "go": 2,
+    "html": 3,
+    "rust": 2,
+    "sql": 2,
+    "toml": 1,
+    "shell": 3,
+    "powershell": 1,
+    "scala": 1,
+    "swift": 1
+  },
+  "top_level_structure": [
+    {
+      "name": "tests",
+      "type": "directory",
+      "file_count": 551,
+      "subdirectories": [
+        {
+          "name": "unit",
+          "file_count": 288
+        },
+        {
+          "name": "integration",
+          "file_count": 111
+        },
+        {
+          "name": "golden_masters",
+          "file_count": 79
+        },
+        {
+          "name": "golden",
+          "file_count": 45
+        },
+        {
+          "name": "test_data",
+          "file_count": 6
+        },
+        {
+          "name": "fixtures",
+          "file_count": 5
+        },
+        {
+          "name": "platform_profiles",
+          "file_count": 5
+        },
+        {
+          "name": "property",
+          "file_count": 3
+        },
+        {
+          "name": "regression",
+          "file_count": 3
+        },
+        {
+          "name": "benchmarks",
+          "file_count": 2
+        },
+        {
+          "name": "compatibility",
+          "file_count": 1
+        }
+      ]
+    },
+    {
+      "name": "tree_sitter_analyzer",
+      "type": "directory",
+      "file_count": 179,
+      "subdirectories": [
+        {
+          "name": "mcp",
+          "file_count": 37
+        },
+        {
+          "name": "formatters",
+          "file_count": 24
+        },
+        {
+          "name": "languages",
+          "file_count": 23
+        },
+        {
+          "name": "queries",
+          "file_count": 18
+        },
+        {
+          "name": "cli",
+          "file_count": 16
+        },
+        {
+          "name": "core",
+          "file_count": 11
+        },
+        {
+          "name": "grammar_coverage",
+          "file_count": 11
+        },
+        {
+          "name": "platform_compat",
+          "file_count": 9
+        },
+        {
+          "name": "security",
+          "file_count": 4
+        },
+        {
+          "name": "utils",
+          "file_count": 4
+        },
+        {
+          "name": "plugins",
+          "file_count": 3
+        }
+      ]
+    },
+    {
+      "name": "openspec",
+      "type": "directory",
+      "file_count": 79,
+      "subdirectories": [
+        {
+          "name": "changes",
+          "file_count": 78
+        }
+      ]
+    },
+    {
+      "name": "docs",
+      "type": "directory",
+      "file_count": 78,
+      "subdirectories": [
+        {
+          "name": "ja",
+          "file_count": 22
+        },
+        {
+          "name": "skills",
+          "file_count": 10
+        },
+        {
+          "name": "grammar-coverage",
+          "file_count": 5
+        },
+        {
+          "name": "api",
+          "file_count": 3
+        },
+        {
+          "name": "assets",
+          "file_count": 1
+        },
+        {
+          "name": "designs",
+          "file_count": 1
+        }
+      ]
+    },
+    {
+      "name": "examples",
+      "type": "directory",
+      "file_count": 45
+    },
+    {
+      "name": "scripts",
+      "type": "directory",
+      "file_count": 27
+    },
+    {
+      "name": "compatibility_test",
+      "type": "directory",
+      "file_count": 18,
+      "subdirectories": [
+        {
+          "name": "utils",
+          "file_count": 4
+        },
+        {
+          "name": "scripts",
+          "file_count": 2
+        },
+        {
+          "name": "templates",
+          "file_count": 2
+        },
+        {
+          "name": "config",
+          "file_count": 1
+        },
+        {
+          "name": "reports",
+          "file_count": 1
+        },
+        {
+          "name": "results",
+          "file_count": 1
+        }
+      ]
+    },
+    {
+      "name": "corpus",
+      "type": "directory",
+      "file_count": 6,
+      "subdirectories": [
+        {
+          "name": "python",
+          "file_count": 6
+        }
+      ]
+    }
+  ],
+  "key_files": [
+    "CLAUDE.md",
+    "pyproject.toml",
+    "README.md"
+  ],
+  "entry_points": [
+    "tree_sitter_analyzer/__main__.py"
+  ],
+  "custom_notes": "",
+  "schema_version": "1.0"
+}

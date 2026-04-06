@@ -360,44 +360,81 @@ class ProjectIndexManager:
                 result.append(ep)
         return result
 
+    # Directories that are build/cache artifacts — exclude from structure output
+    _ARTIFACT_DIRS: frozenset[str] = frozenset(
+        {
+            "__pycache__",
+            ".git",
+            ".tree-sitter-cache",
+            "node_modules",
+            ".venv",
+            "venv",
+            ".mypy_cache",
+            ".ruff_cache",
+            ".pytest_cache",
+            "dist",
+            "build",
+            "target",
+            "htmlcov",
+            "coverage",
+            ".coverage",
+            "comprehensive_test_results",
+            ".tox",
+            ".eggs",
+            "*.egg-info",
+        }
+    )
+
     def _build_top_level_structure(
         self, root_path: Path, all_files: list[str]
     ) -> list[dict[str, Any]]:
-        """Return depth-1 directory entries with per-directory file counts."""
+        """Return depth-1 directory entries with file counts and depth-2 breakdown."""
         dir_counts: dict[str, int] = {}
-        # Always compare against the resolved absolute path so relative roots work
+        # sub_counts[top_dir][sub_dir] = file_count
+        sub_counts: dict[str, dict[str, int]] = {}
+
         abs_root = root_path.resolve()
         root_str = str(abs_root) + os.sep
 
         for filepath in all_files:
-            # Normalise to absolute before comparison
             abs_fp = str(Path(filepath).resolve()) if not os.path.isabs(filepath) else filepath
             if abs_fp.startswith(root_str):
                 rel = abs_fp[len(root_str):]
             elif abs_fp == str(abs_root):
-                continue  # The root itself is not a file we descend into
+                continue
             else:
-                rel = filepath
+                continue  # skip files outside the project root entirely
 
             parts = rel.split(os.sep)
             if len(parts) >= 2:
                 top_dir = parts[0]
+                if top_dir in self._ARTIFACT_DIRS or top_dir.startswith("."):
+                    continue
                 dir_counts[top_dir] = dir_counts.get(top_dir, 0) + 1
+                # Collect depth-2 breakdown
+                if len(parts) >= 3:
+                    sub_dir = parts[1]
+                    if sub_dir not in self._ARTIFACT_DIRS and not sub_dir.startswith("."):
+                        sub_counts.setdefault(top_dir, {})
+                        sub_counts[top_dir][sub_dir] = (
+                            sub_counts[top_dir].get(sub_dir, 0) + 1
+                        )
 
-        # Also include root-level directories that may have 0 files scanned
-        try:
-            for entry in root_path.iterdir():
-                if entry.is_dir() and not entry.name.startswith("."):
-                    if entry.name not in dir_counts:
-                        dir_counts[entry.name] = 0
-        except OSError:
-            pass
-
-        # Sort by file count descending
-        structure: list[dict[str, Any]] = [
-            {"name": name, "type": "directory", "file_count": count}
-            for name, count in sorted(
-                dir_counts.items(), key=lambda kv: (-kv[1], kv[0])
-            )
-        ]
+        # Sort by file count descending; only include dirs that actually have files
+        structure: list[dict[str, Any]] = []
+        for name, count in sorted(dir_counts.items(), key=lambda kv: (-kv[1], kv[0])):
+            entry: dict[str, Any] = {
+                "name": name,
+                "type": "directory",
+                "file_count": count,
+            }
+            # Attach sub-directory breakdown if it exists
+            if name in sub_counts:
+                entry["subdirectories"] = [
+                    {"name": sname, "file_count": scount}
+                    for sname, scount in sorted(
+                        sub_counts[name].items(), key=lambda kv: (-kv[1], kv[0])
+                    )
+                ]
+            structure.append(entry)
         return structure
