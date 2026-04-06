@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 from dataclasses import asdict, dataclass
@@ -141,6 +142,36 @@ _ENTRY_POINT_NAMES: set[str] = {
     "cmd/main.go",
 }
 
+# Fallback descriptions for well-known directory names
+_DIR_CONVENTIONS: dict[str, str] = {
+    "tests": "Test suite",
+    "test": "Test suite",
+    "unit": "Unit tests",
+    "integration": "Integration tests",
+    "golden": "Golden master test fixtures",
+    "golden_masters": "Golden master test fixtures",
+    "fixtures": "Test fixtures",
+    "docs": "Documentation",
+    "doc": "Documentation",
+    "examples": "Example code files",
+    "scripts": "Build and utility scripts",
+    "tools": "Tool implementations",
+    "utils": "Shared utilities",
+    "core": "Core implementation",
+    "cli": "Command-line interface",
+    "api": "API layer",
+    "models": "Data models",
+    "config": "Configuration",
+    "resources": "Resource files",
+    "assets": "Static assets",
+    "security": "Security and validation",
+    "formatters": "Output formatters",
+    "languages": "Language-specific configurations",
+    "queries": "Query definitions",
+    "plugins": "Plugin system",
+    "platform_compat": "Platform compatibility",
+}
+
 
 @dataclass
 class ProjectIndex:
@@ -156,13 +187,15 @@ class ProjectIndex:
     entry_points: list[str]
     custom_notes: str
     schema_version: str
+    readme_excerpt: str
+    module_descriptions: dict[str, str]
 
 
 class ProjectIndexManager:
     """Manage the persistent project index stored on disk."""
 
     CACHE_FILE = ".tree-sitter-cache/project-index.json"
-    SCHEMA_VERSION = "1.0"
+    SCHEMA_VERSION = "1.1"
 
     def __init__(self, project_root: str) -> None:
         self.project_root = project_root
@@ -203,6 +236,8 @@ class ProjectIndexManager:
                 entry_points=list(data.get("entry_points", [])),
                 custom_notes=str(data.get("custom_notes", "")),
                 schema_version=str(data["schema_version"]),
+                readme_excerpt=str(data.get("readme_excerpt", "")),
+                module_descriptions=dict(data.get("module_descriptions", {})),
             )
         except (KeyError, TypeError, ValueError) as err:
             logger.warning("Malformed project index data: %s", err)
@@ -262,6 +297,11 @@ class ProjectIndexManager:
         # Build top-level directory structure (depth 1 dirs only, count files)
         top_level = self._build_top_level_structure(root_path, all_files)
 
+        # Extract semantic information
+        readme_excerpt = self._extract_readme_excerpt(root_path)
+        top_dirs = [item["name"] for item in top_level]
+        module_descriptions = self._extract_module_descriptions(root_path, top_dirs)
+
         existing = self.load()
         created_at = existing.created_at if existing else now
 
@@ -276,6 +316,8 @@ class ProjectIndexManager:
             entry_points=entry_points,
             custom_notes="",
             schema_version=self.SCHEMA_VERSION,
+            readme_excerpt=readme_excerpt,
+            module_descriptions=module_descriptions,
         )
 
     # ------------------------------------------------------------------
@@ -438,3 +480,137 @@ class ProjectIndexManager:
                 ]
             structure.append(entry)
         return structure
+
+    @staticmethod
+    def _extract_readme_excerpt(root_path: Path) -> str:
+        """Extract the first meaningful paragraph from README.md (max 200 chars).
+
+        Prefers blockquote lines (``> ...``), then falls back to the first
+        non-heading non-badge paragraph.
+        """
+        for candidate in ("README.md", "README.rst", "README.txt", "README"):
+            readme = root_path / candidate
+            if readme.is_file():
+                try:
+                    text = readme.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+
+                def _clean(line: str) -> str:
+                    """Strip markdown formatting from a line."""
+                    s = re.sub(r"\*\*|(?<!\*)\*(?!\*)|`", "", line)
+                    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
+                    return s.strip()
+
+                def _is_noise(line: str) -> bool:
+                    """Return True for lines that are not useful descriptions."""
+                    s = line.strip()
+                    if not s:
+                        return True
+                    if s.startswith("#"):
+                        return True
+                    # Badge / shield lines
+                    if "shields.io" in s or s.startswith("[!["):
+                        return True
+                    # Image lines
+                    if s.startswith("!["):
+                        return True
+                    # Language-navigation lines (many pipe characters)
+                    if s.count("|") >= 2:
+                        return True
+                    # Code fence lines
+                    if s.startswith("```") or s.startswith("~~~"):
+                        return True
+                    return False
+
+                # First pass: prefer blockquote lines
+                for line in text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith(">"):
+                        inner = stripped.lstrip(">").strip()
+                        if inner and not _is_noise(inner):
+                            cleaned = _clean(inner)
+                            if cleaned:
+                                return cleaned[:200]
+
+                # Second pass: first non-noise non-blockquote paragraph line
+                for line in text.splitlines():
+                    stripped = line.strip()
+                    if stripped.startswith(">"):
+                        continue
+                    if _is_noise(stripped):
+                        continue
+                    cleaned = _clean(stripped)
+                    if cleaned:
+                        return cleaned[:200]
+        return ""
+
+    @staticmethod
+    def _read_module_docstring(init_path: Path) -> str:
+        """Extract the module-level docstring from a Python __init__.py file."""
+        if not init_path.is_file():
+            return ""
+        try:
+            source = init_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
+        # Match triple-quoted strings at the top of the file (after optional shebang/encoding)
+        pattern = re.compile(
+            r'^(?:#[^\n]*\n)*\s*(?:"""(.*?)"""|\'\'\'(.*?)\'\'\')',
+            re.DOTALL,
+        )
+        m = pattern.match(source)
+        if not m:
+            return ""
+        raw = m.group(1) if m.group(1) is not None else m.group(2)
+        # Take first non-empty line of the docstring
+        for line in raw.splitlines():
+            cleaned = line.strip()
+            if cleaned:
+                return cleaned[:80]
+        return ""
+
+    @classmethod
+    def _describe_dir(cls, dir_path: Path, dir_name: str) -> str:
+        """Return a short description for a directory."""
+        # 1. Try __init__.py docstring
+        doc = cls._read_module_docstring(dir_path / "__init__.py")
+        if doc:
+            return doc[:80]
+        # 2. Fall back to convention table
+        return _DIR_CONVENTIONS.get(dir_name.lower(), "")
+
+    def _extract_module_descriptions(
+        self, root_path: Path, top_dirs: list[str]
+    ) -> dict[str, str]:
+        """
+        Return a mapping of relative directory path → short description.
+
+        Covers depth-1 and depth-2 directories.
+        """
+        descriptions: dict[str, str] = {}
+
+        for top_name in top_dirs:
+            top_path = root_path / top_name
+            if not top_path.is_dir():
+                continue
+            desc = self._describe_dir(top_path, top_name)
+            if desc:
+                descriptions[top_name] = desc
+
+            # Depth-2
+            try:
+                for sub in sorted(top_path.iterdir()):
+                    if not sub.is_dir():
+                        continue
+                    if sub.name in self._ARTIFACT_DIRS or sub.name.startswith("."):
+                        continue
+                    rel = f"{top_name}/{sub.name}"
+                    sub_desc = self._describe_dir(sub, sub.name)
+                    if sub_desc:
+                        descriptions[rel] = sub_desc
+            except OSError:
+                pass
+
+        return descriptions

@@ -9,59 +9,104 @@ First call auto-builds the index; subsequent calls return instantly from cache.
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 from ..utils.project_index import ProjectIndex, ProjectIndexManager
 from .base_tool import BaseMCPTool
 
+# Languages that are not "real" programming languages for display purposes
+_NON_CODE_LANGUAGES: frozenset[str] = frozenset(
+    {"other", "markdown", "json", "yaml", "toml", "xml", "rst", "latex"}
+)
 
-def _format_compact(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
-    """Render project summary as compact text — ~5x fewer tokens than JSON."""
+
+def _format_toon(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
+    """Render project summary as TOON-style structured text."""
     lines: list[str] = []
 
-    # Dominant language
-    top_lang = (
-        max(index.language_distribution, key=lambda k: index.language_distribution[k])
-        if index.language_distribution
-        else "unknown"
-    )
-    freshness = "fresh" if is_fresh else f"stale ({age_hours:.1f}h old)"
-    lines.append(
-        f"{top_lang.capitalize()} project | {index.file_count} files | index: {freshness}"
-    )
+    resolved = Path(index.project_root).resolve()
+    project_name = resolved.name or resolved.parent.name
+
+    # --- Header block ---
+    lines.append(f"project: {project_name}")
+
+    if index.readme_excerpt:
+        lines.append(f"purpose: {index.readme_excerpt}")
+
+    # Top-3 real programming languages — require ≥10 files to filter out
+    # fixture-only languages (e.g. 6 Java test samples in a Python project)
+    total_files = max(index.file_count, 1)
+    code_langs = [
+        (k, v)
+        for k, v in index.language_distribution.items()
+        if k not in _NON_CODE_LANGUAGES and (v >= 10 or v / total_files >= 0.02)
+    ]
+    code_langs.sort(key=lambda kv: -kv[1])
+    top_langs = [k for k, _ in code_langs[:3]]
+    if top_langs:
+        lines.append(f"language: {'  '.join(top_langs)}")
 
     # Entry points
     if index.entry_points:
-        lines.append(f"Entry:  {', '.join(index.entry_points)}")
+        lines.append(f"entry:    {'  '.join(index.entry_points)}")
+    else:
+        lines.append("entry:    n/a")
 
     # Key config files
     if index.key_files:
-        lines.append(f"Config: {'  '.join(index.key_files)}")
+        lines.append(f"config:   {'  '.join(index.key_files)}")
 
-    # Top languages (skip "other", cap at 6)
-    lang_items = sorted(
-        ((k, v) for k, v in index.language_distribution.items() if k != "other"),
-        key=lambda kv: -kv[1],
-    )[:6]
-    if lang_items:
-        lang_str = "  ".join(f"{k}({v})" for k, v in lang_items)
-        lines.append(f"Langs:  {lang_str}")
+    lines.append("")  # blank separator before structure
 
-    # Custom notes
-    if index.custom_notes:
-        lines.append(f"Notes:  {index.custom_notes}")
+    # --- Structure block ---
+    lines.append("structure:")
 
-    lines.append("")  # blank separator
+    has_descriptions = bool(index.module_descriptions)
+    # Column width for directory name (including trailing slash)
+    DIR_COL = 26
 
-    # Directory tree
+    shown_top = 0
     for item in index.top_level_structure:
+        if shown_top >= 10:
+            break
         name = item["name"]
-        count = item.get("file_count", 0)
-        lines.append(f"{name + '/':<26}{count:>5}")
+        dir_label = name + "/"
+        desc = index.module_descriptions.get(name, "") if has_descriptions else ""
+        subdirs = item.get("subdirectories", [])
+        sub_descs = [
+            index.module_descriptions.get(f"{name}/{s['name']}", "")
+            for s in subdirs
+            if has_descriptions
+        ]
+
+        # Skip directories with no description and no described subdirectories
+        # (they add visual noise without informational value)
+        if not desc and not any(sub_descs):
+            continue
+
+        if desc:
+            padding = max(1, DIR_COL - len(dir_label))
+            lines.append(f"  {dir_label}{' ' * padding}{desc}")
+        else:
+            lines.append(f"  {dir_label}")
+
+        shown_top += 1
+
+        # Sub-directories (depth-2): only show those with a description
+        shown_sub = 0
         for sub in item.get("subdirectories", []):
+            if shown_sub >= 5:
+                break
             sname = sub["name"]
-            scount = sub.get("file_count", 0)
-            lines.append(f"  {sname + '/':<24}{scount:>5}")
+            rel_key = f"{name}/{sname}"
+            sub_desc = index.module_descriptions.get(rel_key, "") if has_descriptions else ""
+            if not sub_desc:
+                continue  # skip undescribed subdirs — noise without signal
+            sub_label = sname + "/"
+            padding = max(1, DIR_COL - 2 - len(sub_label))
+            lines.append(f"    {sub_label}{' ' * padding}{sub_desc}")
+            shown_sub += 1
 
     return "\n".join(lines)
 
@@ -164,13 +209,14 @@ class GetProjectSummaryTool(BaseMCPTool):
                     },
                     "format": {
                         "type": "string",
-                        "enum": ["compact", "json"],
+                        "enum": ["toon", "json"],
                         "description": (
-                            "Output format. 'compact' (default) returns a concise text "
-                            "summary (~5x fewer tokens). 'json' returns the full "
+                            "Output format. 'toon' (default) returns a concise "
+                            "TOON-style structured text summary with semantic "
+                            "directory descriptions. 'json' returns the full "
                             "structured object."
                         ),
-                        "default": "compact",
+                        "default": "toon",
                     },
                 },
                 "additionalProperties": False,
@@ -184,7 +230,7 @@ class GetProjectSummaryTool(BaseMCPTool):
         """Load (or build) the project index and return a summary."""
         force_refresh: bool = bool(arguments.get("force_refresh", False))
         include_notes: bool = bool(arguments.get("include_notes", True))
-        output_format: str = str(arguments.get("format", "compact"))
+        output_format: str = str(arguments.get("format", "toon"))
 
         project_root = self.project_root or "."
         manager = ProjectIndexManager(project_root)
@@ -204,11 +250,11 @@ class GetProjectSummaryTool(BaseMCPTool):
 
         age_hours = round((time.time() - index.updated_at) / 3600, 2)
 
-        if output_format == "compact":
-            text = _format_compact(index, age_hours, is_fresh)
+        if output_format in ("toon", "compact"):
+            text = _format_toon(index, age_hours, is_fresh)
             if include_notes and index.custom_notes:
-                pass  # already included in _format_compact
-            return {"format": "compact", "summary": text}
+                text += f"\nnotes: {index.custom_notes}"
+            return {"format": "toon", "summary": text}
 
         # json format
         quick_start = _make_quick_start(index)
@@ -222,6 +268,8 @@ class GetProjectSummaryTool(BaseMCPTool):
             "key_files": index.key_files,
             "entry_points": index.entry_points,
             "quick_start": quick_start,
+            "readme_excerpt": index.readme_excerpt,
+            "module_descriptions": index.module_descriptions,
         }
         if include_notes:
             result["custom_notes"] = index.custom_notes
