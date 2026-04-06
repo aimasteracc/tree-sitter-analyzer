@@ -73,6 +73,7 @@ from .tools.check_tools_tool import CheckToolsTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
 from .tools.list_files_tool import ListFilesTool
+from .tools.modification_guard_tool import ModificationGuardTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
@@ -137,6 +138,8 @@ class TreeSitterAnalyzerMCPServer:
         # Diagnostic and batch tools
         self.check_tools_tool = CheckToolsTool(project_root)  # check_tools
         self.batch_search_tool = BatchSearchTool(project_root)  # batch_search
+        # Pre-modification safety check tool
+        self.modification_guard_tool = ModificationGuardTool(project_root)  # modification_guard
 
         # Intent Aliases resolver (intent-based tool names → canonical names)
         self.intent_alias_resolver = IntentAliasResolver()
@@ -227,7 +230,10 @@ Claude cannot do natively:
 ## Three Iron Rules (ALWAYS / NEVER)
 
 ### ALWAYS — before editing code
-- **ALWAYS** call `trace_impact` before modifying any public function, class, or variable
+- **ALWAYS** call `modification_guard` before modifying any public function, class, or variable.
+  - It returns safety_verdict: SAFE / CAUTION / REVIEW / UNSAFE
+  - If verdict is UNSAFE, stop and show the user the impact report before proceeding
+  - Use `trace_impact` only for general usage lookup, not pre-modification checks
 - **ALWAYS** call `check_code_scale` before Reading any file over 200 lines
 
 ### NEVER — do not substitute built-in tools for these
@@ -236,7 +242,7 @@ Claude cannot do natively:
 - **NEVER** use built-in Read to open large files directly (call `check_code_scale`
   first, then `extract_code_section` for targeted sections)
 - **NEVER** modify code depended on by multiple callers without first calling
-  `trace_impact` to understand the blast radius
+  `modification_guard` to understand the blast radius
 
 ### When you CAN use built-in tools instead of this MCP
 - File < 100 lines: Read directly, no need for `check_code_scale`
@@ -251,11 +257,12 @@ Claude cannot do natively:
 2. `get_code_outline` — understand architecture of key files
 3. `check_code_scale` — evaluate files you need to read deeply
 
-### Modifying code (REQUIRED sequence)
-1. `analyze_code_structure` or `query_code` — understand the structure you're changing
-2. `trace_impact` — confirm scope of impact
-3. [make the change]
-4. `trace_impact` — verify all affected call sites are handled
+### 修改代码时（REQUIRED sequence）
+1. `modification_guard` — 获取安全报告（safety_verdict）
+2. If verdict is UNSAFE: show the user the report, ask for confirmation
+3. `analyze_code_structure` or `query_code` — understand the structure you're changing
+4. [make the change]
+5. `trace_impact` — verify all affected call sites are handled
 
 ### Debugging
 1. `search_content` — locate the problem
@@ -269,7 +276,8 @@ Claude cannot do natively:
 - `analyze_code_structure` — detailed map: every element with full metadata
 - `extract_code_section` — surgical extraction by line range (use after outline)
 - `query_code` — syntax-correct element extraction via tree-sitter queries
-- `trace_impact` — find all callers/usages of a symbol (REQUIRED before editing)
+- `modification_guard` — pre-modification safety check (REQUIRED before editing public symbols)
+- `trace_impact` — find all callers/usages of a symbol (general usage lookup)
 - `search_content` — ripgrep content search (text/regex patterns)
 - `find_and_grep` — two-stage: file filter then content search (large projects)
 - `list_files` — file discovery with time/size/type filters
@@ -521,6 +529,7 @@ Claude cannot do natively:
                 Tool(**self.trace_impact_tool.get_tool_definition()),
                 Tool(**self.check_tools_tool.get_tool_definition()),
                 Tool(**self.batch_search_tool.get_tool_definition()),
+                Tool(**self.modification_guard_tool.get_tool_definition()),
             ]
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -664,6 +673,9 @@ Claude cannot do natively:
                 elif name == "batch_search":
                     result = await self.batch_search_tool.execute(arguments)
 
+                elif name == "modification_guard":
+                    result = await self.modification_guard_tool.execute(arguments)
+
                 else:
                     raise ValueError(f"Unknown tool: {name}")
 
@@ -780,6 +792,7 @@ Claude cannot do natively:
         self.get_code_outline_tool.set_project_path(project_path)
         self.check_tools_tool.set_project_path(project_path)
         self.batch_search_tool.set_project_path(project_path)
+        self.modification_guard_tool.set_project_path(project_path)
 
         # Update universal tool if available
         if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
@@ -841,6 +854,9 @@ Claude cannot do natively:
             return await self.check_tools_tool.execute(arguments)
         elif name == "batch_search":
             return await self.batch_search_tool.execute(arguments)
+        elif name == "modification_guard":
+            result = await self.modification_guard_tool.execute(arguments)
+            return result
         else:
             raise ValueError(f"Unknown tool: {name}")
 
