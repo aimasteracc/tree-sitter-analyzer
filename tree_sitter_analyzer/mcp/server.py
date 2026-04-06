@@ -69,9 +69,11 @@ from .resources import CodeFileResource, ProjectStatsResource
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.batch_search_tool import BatchSearchTool
+from .tools.build_project_index_tool import BuildProjectIndexTool
 from .tools.check_tools_tool import CheckToolsTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
+from .tools.get_project_summary_tool import GetProjectSummaryTool
 from .tools.list_files_tool import ListFilesTool
 from .tools.modification_guard_tool import ModificationGuardTool
 from .tools.query_tool import QueryTool
@@ -140,6 +142,9 @@ class TreeSitterAnalyzerMCPServer:
         self.batch_search_tool = BatchSearchTool(project_root)  # batch_search
         # Pre-modification safety check tool
         self.modification_guard_tool = ModificationGuardTool(project_root)  # modification_guard
+        # Persistent project index tools
+        self.get_project_summary_tool = GetProjectSummaryTool(project_root)  # get_project_summary
+        self.build_project_index_tool = BuildProjectIndexTool(project_root)  # build_project_index
 
         # Intent Aliases resolver (intent-based tool names → canonical names)
         self.intent_alias_resolver = IntentAliasResolver()
@@ -252,6 +257,11 @@ Claude cannot do natively:
 
 ## Standard Workflows
 
+### At the start of any session (do this FIRST)
+1. `get_project_summary` — retrieve cached architecture (instant if index exists)
+   - If index_age_hours > 24 or is_fresh=false: call build_project_index to refresh
+   - This replaces the need to call list_files + get_code_outline for orientation
+
 ### Exploring a new codebase
 1. `list_files` — understand project structure
 2. `get_code_outline` — understand architecture of key files
@@ -281,6 +291,8 @@ Claude cannot do natively:
 - `search_content` — ripgrep content search (text/regex patterns)
 - `find_and_grep` — two-stage: file filter then content search (large projects)
 - `list_files` — file discovery with time/size/type filters
+- `get_project_summary` — instant architecture overview (cross-session memory)
+- `build_project_index` — rebuild and persist project structure index
 """
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -530,6 +542,8 @@ Claude cannot do natively:
                 Tool(**self.check_tools_tool.get_tool_definition()),
                 Tool(**self.batch_search_tool.get_tool_definition()),
                 Tool(**self.modification_guard_tool.get_tool_definition()),
+                Tool(**self.get_project_summary_tool.get_tool_definition()),
+                Tool(**self.build_project_index_tool.get_tool_definition()),
             ]
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -676,6 +690,12 @@ Claude cannot do natively:
                 elif name == "modification_guard":
                     result = await self.modification_guard_tool.execute(arguments)
 
+                elif name == "get_project_summary":
+                    result = await self.get_project_summary_tool.execute(arguments)
+
+                elif name == "build_project_index":
+                    result = await self.build_project_index_tool.execute(arguments)
+
                 else:
                     raise ValueError(f"Unknown tool: {name}")
 
@@ -793,6 +813,8 @@ Claude cannot do natively:
         self.check_tools_tool.set_project_path(project_path)
         self.batch_search_tool.set_project_path(project_path)
         self.modification_guard_tool.set_project_path(project_path)
+        self.get_project_summary_tool.set_project_path(project_path)
+        self.build_project_index_tool.set_project_path(project_path)
 
         # Update universal tool if available
         if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
@@ -857,6 +879,10 @@ Claude cannot do natively:
         elif name == "modification_guard":
             result = await self.modification_guard_tool.execute(arguments)
             return result
+        elif name == "get_project_summary":
+            return await self.get_project_summary_tool.execute(arguments)
+        elif name == "build_project_index":
+            return await self.build_project_index_tool.execute(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
