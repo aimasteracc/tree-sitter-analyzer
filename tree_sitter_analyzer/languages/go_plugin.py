@@ -208,18 +208,9 @@ class GoElementExtractor(ElementExtractor):
         """Extract import declaration (may contain multiple imports)"""
         imports: list[Import] = []
         try:
-            # Always produce one Import at the outer import_declaration's line range
-            # so the validator can match the import_declaration node type.
-            outer = Import(
-                name="import",
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=self._get_node_text(node),
-                language="go",
-            )
-            imports.append(outer)
-
-            # Also extract individual import_specs
+            # Extract individual import_specs only.
+            # The outer import_declaration block is not emitted — it was previously
+            # added for grammar coverage but caused double-counting (N+1 imports per block).
             for child in node.children:
                 if child.type == "import_spec_list":
                     for spec in child.children:

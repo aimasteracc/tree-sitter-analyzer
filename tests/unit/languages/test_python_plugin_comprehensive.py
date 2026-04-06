@@ -232,7 +232,7 @@ def __magic_method__(self, other):
 
         # Mock extract_text_slice to return test text
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.languages.python_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = "test text"
 
@@ -265,7 +265,7 @@ def __magic_method__(self, other):
 
         # Mock extract_text_slice to raise exception
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.languages.python_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
 
@@ -969,7 +969,7 @@ def __magic_method__(self, other):
 
         # Should not process deeply nested nodes
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.log_warning"
+            "tree_sitter_analyzer.languages.python_extractor.log_warning"
         ) as mock_log:
             extractor._traverse_and_extract_iterative(
                 root_node, extractors, results, "function"
@@ -1045,7 +1045,7 @@ def __magic_method__(self, other):
             mock_node_copy.end_point = (0, 10)
 
             with patch(
-                "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+                "tree_sitter_analyzer.languages.python_extractor.extract_text_slice"
             ) as mock_extract:
                 mock_extract.return_value = f"text_{i}"
                 extractor._get_node_text_optimized(mock_node_copy)
@@ -1100,7 +1100,7 @@ class クラス名:
         mock_node.end_point = (len(extractor.content_lines) - 1, 0)
 
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.languages.python_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = unicode_code
             result = extractor._get_node_text_optimized(mock_node)

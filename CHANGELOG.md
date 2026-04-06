@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.10.7] - 2026-04-05
+
+### Added
+- `decorator_start_line` field on `Function` and `Class` models — when a Python function or class is decorated, this holds the decorator line number while `start_line` correctly points to the `def`/`class` line for go-to-definition.
+
+### Fixed
+- **Go plugin**: removed synthetic outer `import_declaration` element — every `import (...)` block was emitting N+1 Import elements (one outer wrapper plus one per spec). Now only the individual specs are returned.
+- **Grammar coverage validator**: O(N×M) matching loop replaced with O(N) line_index build + O(M) per-element lookup. 17-language full validation no longer risks CI timeout.
+- **Coverage inflation**: single-line constructs like `class Foo: pass` no longer inflate coverage by 3-5x. First-match-plus-skip-root approach correctly attributes coverage to the outermost semantic node.
+- **Wrapper detection**: removed `"body"` from `_WRAPPER_FIELDS` — virtually every compound statement (`for`/`if`/`while`/`try`) has a `body` field, causing near-100% false positive rate. `decorated_definition` now correctly ranks first.
+- **Python `start_line`**: reverted to point to the `def`/`class` line instead of the decorator line.
+- **Rust/Kotlin/Scala traversal**: converted `_traverse_and_extract` from recursive DFS to iterative stack, preventing stack overflow on deeply nested generated code.
+- **Benchmark CI**: `continue-on-error: true` on artifact download step so trend analysis job doesn't fail when no prior benchmark results exist.
+
+### Performance
+- `AnalysisSession`: 5-second cache for `git rev-parse HEAD` — repeated session creation in the same workflow no longer forks a subprocess per file.
+- `AnalysisSession`: mtime-based file hash cache — unchanged files skip SHA256 recomputation on repeated analysis.
+- **MCP tool descriptions**: rewritten to lead with user intent ("Extract code structure", "Check file size before reading", etc.) — AI agents pick the right tool faster.
+
+### Changed
+- `python_plugin.py` split into `python_plugin.py` (386 lines, plugin shell) and `python_extractor.py` (1599 lines, extraction logic) — file was 1959 lines.
+
 ## [1.10.6] - 2026-04-04
 
 ### Added

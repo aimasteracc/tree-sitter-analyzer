@@ -61,8 +61,7 @@ fields:
     middlewares,,(257,257)
     lastErr,,(281,281)
 imports:
-  [6]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    import,false,false,,(12,18)
+  [5]{name,is_static,is_wildcard,statement,line_range(a,b)}:
     context,false,false,"\"context\"",(13,13)
     errors,false,false,"\"errors\"",(14,14)
     fmt,false,false,"\"fmt\"",(15,15)
@@ -72,5 +71,5 @@ statistics:
   class_count: 10
   method_count: 18
   field_count: 23
-  import_count: 6
+  import_count: 5
   total_lines: 294

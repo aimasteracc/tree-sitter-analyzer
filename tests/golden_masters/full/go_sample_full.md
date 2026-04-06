@@ -10,13 +10,6 @@
 
 ## Imports
 ```go
-import (
-	"context"
-	"errors"
-	"fmt"
-	"sync"
-	"time"
-)
 import ""context""
 import ""errors""
 import ""fmt""

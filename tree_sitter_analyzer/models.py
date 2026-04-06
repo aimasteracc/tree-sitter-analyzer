@@ -91,6 +91,9 @@ class Function(CodeElement):
     is_property: bool = False
     is_classmethod: bool = False
     is_staticmethod: bool = False
+    # When decorated, the line of the first decorator (outer node start).
+    # start_line remains the `def` line for go-to-definition compatibility.
+    decorator_start_line: int | None = None
 
 
 @dataclass(frozen=False)
@@ -122,6 +125,9 @@ class Class(CodeElement):
     is_dataclass: bool = False
     is_abstract: bool = False
     is_exception: bool = False
+    # When decorated, the line of the first decorator (outer node start).
+    # start_line remains the `class` line for go-to-definition compatibility.
+    decorator_start_line: int | None = None
 
 
 @dataclass(frozen=False)

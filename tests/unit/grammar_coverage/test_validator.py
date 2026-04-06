@@ -355,9 +355,11 @@ class TestValidatePluginCoverage:
 
         assert report.language == "python"
         assert report.total_node_types == 57
-        # 精确匹配后，只有真正提取的节点类型被计数
-        # Python plugin 主要提取 9 种核心类型（见 expected.json）
-        assert report.covered_node_types >= 5  # 至少覆盖核心类型
+        # 精确匹配后，只有真正提取的节点类型被计数（回归保护下限）
+        # start_line = def 行后，decorated_definition 不再作为独立覆盖项；
+        # 实际覆盖：function_definition, class_definition, expression_statement,
+        # import_from_statement（4 种）。
+        assert report.covered_node_types >= 3  # 至少覆盖核心类型
         assert report.coverage_percentage > 0.0
 
     @patch("tree_sitter_analyzer.grammar_coverage.validator._parse_corpus_file")

@@ -178,10 +178,11 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/file.ts"), "typescript"
             )
 
-        # 行号匹配：export_statement(0-2) 和 class_declaration(0-2) 都与 element(0-2) 精确匹配
-        # 同行节点均被覆盖（已知 line-based 的正常行为）
+        # 修复后（第一匹配 + 跳过根节点）：
+        # program 被跳过，export_statement 是第一个非根节点 → 只有它被标记。
+        # class_declaration 不被标记（它是 export_statement 的子节点，排在第二位）。
         assert "export_statement" in covered
-        assert "class_declaration" in covered
+        assert "class_declaration" not in covered
 
     @pytest.mark.asyncio
     async def test_rust_attribute_function_wrapper(self):
@@ -526,10 +527,10 @@ class TestWrapperNodesFalsPositives:
                 Path("/fake/test.ts"), "typescript"
             )
 
-        # 行号匹配：export_statement(0-0) 和 class_declaration(0-0) 同行，均匹配 element(0-0)
-        # 同行节点行号一致，均被覆盖（已知行号匹配的正常行为）
+        # 修复后（第一匹配 + 跳过根节点）：
+        # program 被跳过，export_statement 是第一个非根节点 → 只有它被标记。
         assert "export_statement" in covered
-        assert "class_declaration" in covered
+        assert "class_declaration" not in covered
 
     @pytest.mark.asyncio
     async def test_wrapper_node_partial_overlap(self):
@@ -1904,8 +1905,9 @@ class TestBoundaryCases:
                 Path("/fake/tokens.py"), "python"
             )
 
-        # Only module marked (no named children)
-        assert "module" in covered
+        # module は根ノードとしてスキップされるため covered は空。
+        # 名前なしノード（括弧）は元々カウントされない。
+        assert "module" not in covered
         assert "(" not in covered  # Unnamed nodes not counted
 
     @pytest.mark.asyncio

@@ -164,14 +164,15 @@ class KotlinElementExtractor(ElementExtractor):
         extractors: dict[str, Any],
         results: list[Any],
     ) -> None:
-        """Recursive traversal to find and extract elements"""
-        if node.type in extractors:
-            element = extractors[node.type](node)
-            if element:
-                results.append(element)
-
-        for child in node.children:
-            self._traverse_and_extract(child, extractors, results)
+        """Iterative traversal to find and extract elements (stack-safe)."""
+        stack = [node]
+        while stack:
+            current = stack.pop()
+            if current.type in extractors:
+                element = extractors[current.type](current)
+                if element:
+                    results.append(element)
+            stack.extend(reversed(current.children))
 
     def _extract_package(self, node: "tree_sitter.Node") -> None:
         """Extract package declaration"""

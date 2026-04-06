@@ -16,10 +16,19 @@ Features:
 import hashlib
 import json
 import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+# Git commit hash キャッシュ（同一ワークフロー内で繰り返し呼ばれる場合に備え、5秒間保持）
+_git_commit_cache: tuple[str, float] | None = None  # (hash, timestamp)
+_GIT_CACHE_TTL = 5.0  # seconds
+
+# ファイルハッシュ mtime キャッシュ {path: (mtime, sha256)}
+# mtime が変わっていなければ再計算不要
+_file_hash_cache: dict[str, tuple[float, str]] = {}
 
 
 class AnalysisSession:
@@ -133,7 +142,10 @@ class AnalysisSession:
 
     def _calculate_file_hashes(self, file_paths: list[str]) -> dict[str, str | None]:
         """
-        计算文件的 SHA256 hash
+        计算文件的 SHA256 hash（带 mtime 缓存）
+
+        如果文件的 mtime 没有变化，直接复用缓存的 hash 值，
+        避免对同一工作流中反复分析的文件重复计算。
 
         Args:
             file_paths: 文件路径列表
@@ -149,39 +161,59 @@ class AnalysisSession:
                 continue
 
             try:
+                current_mtime = path.stat().st_mtime
+
+                # mtime キャッシュチェック
+                cached = _file_hash_cache.get(file_path)
+                if cached is not None:
+                    cached_mtime, cached_hash = cached
+                    if cached_mtime == current_mtime:
+                        hashes[file_path] = cached_hash
+                        continue
+
+                # キャッシュミス：SHA256 を計算してキャッシュに保存
                 sha256_hash = hashlib.sha256()
                 with open(path, "rb") as f:
-                    # 分块读取，避免大文件内存问题
                     for chunk in iter(lambda: f.read(8192), b""):
                         sha256_hash.update(chunk)
-                hashes[file_path] = sha256_hash.hexdigest()
+                digest = sha256_hash.hexdigest()
+                _file_hash_cache[file_path] = (current_mtime, digest)
+                hashes[file_path] = digest
+
             except Exception:
-                # 读取失败时设为 None
                 hashes[file_path] = None
 
         return hashes
 
     def _detect_git_commit(self) -> str | None:
         """
-        自动检测当前 git commit
+        自动检测当前 git commit（带5秒缓存，避免同一工作流重复 subprocess 调用）
 
         Returns:
             Git commit hash，如果不在 git repo 中返回 None
         """
+        global _git_commit_cache
+
+        # 检查缓存是否有效
+        now = time.monotonic()
+        if _git_commit_cache is not None:
+            cached_hash, cached_time = _git_commit_cache
+            if now - cached_time < _GIT_CACHE_TTL:
+                return cached_hash
+
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
                 capture_output=True,
                 text=True,
-                check=False,  # 不自动抛出异常，手动检查 returncode
+                check=False,
             )
-            # 检查命令是否成功
             if result.returncode != 0:
                 return None
-            # 去除换行符
-            return result.stdout.strip()
+            commit_hash = result.stdout.strip()
+            _git_commit_cache = (commit_hash, now)
+            return commit_hash
         except FileNotFoundError:
-            # git 命令不存在
             return None
 
     def to_dict(self) -> dict[str, Any]:

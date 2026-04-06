@@ -17,7 +17,8 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+from ...core.analysis_engine import get_analysis_engine
+from ...core.request import AnalysisRequest
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils.file_metrics import compute_file_metrics
@@ -840,7 +841,11 @@ class AnalyzeScaleTool(BaseMCPTool):
         """
         return {
             "name": "check_code_scale",
-            "description": "Analyze code scale, complexity, and structure metrics with LLM-optimized guidance for efficient large file analysis and token-aware workflow recommendations",
+            "description": (
+                "Check file size before reading — get line count, function count, complexity "
+                "score, and token estimate. Use this first on any unfamiliar file so you know "
+                "whether to read it whole or use extract_code_section / get_code_outline instead."
+            ),
             "inputSchema": self.get_tool_schema(),
         }
 

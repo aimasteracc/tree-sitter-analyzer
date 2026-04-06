@@ -235,7 +235,6 @@ async def _get_covered_node_types_from_plugin(
     # 两者永远不等，导致所有缩进节点（方法、字段等）均无法被标记为已覆盖。
     # 行号匹配保持 MECE：(start_line, end_line, parent_path) 三元组仍可唯一标识节点，
     # 同时正确处理 decorated_definition vs inner function_definition 等嵌套情况。
-    NodeIdentity = tuple[str, int, int, tuple[str, ...], str]
 
     covered_syntactic_paths: set[tuple[str, tuple[str, ...]]] = set()
     MAX_DEPTH = 100  # 防止极端嵌套导致栈溢出
@@ -270,10 +269,11 @@ async def _get_covered_node_types_from_plugin(
 
         source_code = corpus_path.read_text(encoding="utf-8")
         tree = parser.parse(source_code.encode("utf-8"))
-        file_path_str = str(corpus_path)
 
-        # 3. 构建 AST 节点身份映射 (identity -> (node_type, parent_path))
-        ast_node_identities: dict[NodeIdentity, tuple[str, tuple[str, ...]]] = {}
+        # 3. 构建 AST 节点行号索引（O(N) 构建，O(1) 查询）
+        # key: (start_line_0based, end_line_0based) → list of (node_type, parent_path)
+        # 替换原来的 identity dict：匹配只需要行号，不需要遍历全部节点。
+        line_index: dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]] = {}
         node_count = 0
 
         def build_ast_map(
@@ -281,68 +281,57 @@ async def _get_covered_node_types_from_plugin(
         ) -> None:
             nonlocal node_count
 
-            # 深度限制
             if depth > MAX_DEPTH:
                 return
 
-            # 内存断路器
             node_count += 1
             if node_count > MAX_NODES:
                 return
 
             if not node.is_named:
-                # 只关注命名节点
                 for child in node.children:
                     build_ast_map(child, parent_path, depth + 1)
                 return
 
-            # 构建节点身份 (type, start_line, end_line, parent_path, file_path)
-            # 使用 0-based 行号，与 node.start_point[0] / node.end_point[0] 一致
-            identity: NodeIdentity = (
-                node.type,
-                node.start_point[0],
-                node.end_point[0],
-                parent_path,
-                file_path_str,
-            )
+            key = (node.start_point[0], node.end_point[0])
+            line_index.setdefault(key, []).append((node.type, parent_path))
 
-            # 记录 (node_type, parent_path)
-            ast_node_identities[identity] = (node.type, parent_path)
-
-            # 递归处理子节点，更新 parent_path
             new_parent_path = parent_path + (node.type,)
             for child in node.children:
                 build_ast_map(child, new_parent_path, depth + 1)
 
         build_ast_map(tree.root_node, (), 0)
 
-        # 4. 用行号匹配：element 的 1-based 行号 → 0-based → 与 AST 节点行号对比
-        extracted_identities: set[NodeIdentity] = set()
+        # 文件根节点类型——它们跨越整个文件，会掩盖真实的顶层声明。
+        # 遇到这些类型时跳过，取下一个候选项。
+        _ROOT_NODE_TYPES = frozenset(
+            {
+                "module",
+                "program",
+                "source_file",
+                "translation_unit",
+                "chunk",
+                "document",
+            }
+        )
 
+        # 4. 用行号匹配：element 的 1-based 行号 → 0-based → O(1) 查询索引
+        # 原来是 O(N×M) 双重循环，现在是 O(M) 单次遍历。
+        #
+        # 单行构造膨胀修复：跳过根节点后，只取第一个条目（最外层语义节点）。
+        # build_ast_map 以 DFS 顺序插入：父节点先于子节点。
+        # 例如 `class Foo: pass`（行 0-0）：
+        #   line_index[(0,0)] = [class_definition, identifier, block, pass_statement]
+        # 取第一个非根节点 → 只有 class_definition 被标记为已覆盖，而不是全部 4 个。
         for element in result.elements:
             if not (hasattr(element, "start_line") and hasattr(element, "end_line")):
                 continue
 
-            # 将插件输出的 1-based 行号转为 0-based
-            elem_start_0 = element.start_line - 1
-            elem_end_0 = element.end_line - 1
-
-            # 匹配 AST 中 start_line / end_line 完全一致的节点
-            for identity, (node_type, parent_path) in ast_node_identities.items():
-                (
-                    _ast_type,
-                    ast_start_line,
-                    ast_end_line,
-                    _ast_parent_path,
-                    _ast_file,
-                ) = identity
-
-                # 精确行号匹配：起始行和结束行均需相同
-                # MECE 保证：(start_line, end_line, parent_path) 三元组唯一标识节点，
-                # decorated_definition 与内部 function_definition 起始行不同，不会混淆
-                if ast_start_line == elem_start_0 and ast_end_line == elem_end_0:
-                    extracted_identities.add(identity)
+            key = (element.start_line - 1, element.end_line - 1)
+            for node_type, parent_path in line_index.get(key, []):
+                if node_type not in _ROOT_NODE_TYPES:
                     covered_syntactic_paths.add((node_type, parent_path))
+                    break
 
         # 5. 返回去重后的 node_type 集合（向后兼容）
         covered_types: set[str] = {node_type for node_type, _ in covered_syntactic_paths}
