@@ -1,0 +1,23 @@
+# Dependabot configuration
+# Python (pip/uv) は除外 — Dependabot が uv.lock を再生成しないため CI が壊れる。
+# Python 依存更新は手動: uv lock --upgrade && git commit uv.lock pyproject.toml
+version: 2
+updates:
+  # GitHub Actions のみ自動更新（uv.lock と無関係なので安全）
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
