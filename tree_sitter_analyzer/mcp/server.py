@@ -257,10 +257,10 @@ Claude cannot do natively:
 2. `get_code_outline` — understand architecture of key files
 3. `check_code_scale` — evaluate files you need to read deeply
 
-### 修改代码时（REQUIRED sequence）
-1. `modification_guard` — 获取安全报告（safety_verdict）
-2. If verdict is UNSAFE: show the user the report, ask for confirmation
-3. `analyze_code_structure` or `query_code` — understand the structure you're changing
+### Modifying code (REQUIRED sequence)
+1. `modification_guard` — get safety report (safety_verdict: SAFE/CAUTION/REVIEW/UNSAFE)
+2. If verdict is UNSAFE: show the user the report, ask for confirmation before proceeding
+3. `analyze_code_structure` or `query_code` — understand the structure you are changing
 4. [make the change]
 5. `trace_impact` — verify all affected call sites are handled
 
