@@ -68,6 +68,8 @@ from .intent_aliases import IntentAliasResolver
 from .resources import CodeFileResource, ProjectStatsResource
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
+from .tools.batch_search_tool import BatchSearchTool
+from .tools.check_tools_tool import CheckToolsTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
 from .tools.list_files_tool import ListFilesTool
@@ -132,6 +134,9 @@ class TreeSitterAnalyzerMCPServer:
         self.get_code_outline_tool = GetCodeOutlineTool(project_root)  # get_code_outline
         # Impact analysis tool
         self.trace_impact_tool = TraceImpactTool(project_root)  # trace_impact
+        # Diagnostic and batch tools
+        self.check_tools_tool = CheckToolsTool(project_root)  # check_tools
+        self.batch_search_tool = BatchSearchTool(project_root)  # batch_search
 
         # Intent Aliases resolver (intent-based tool names → canonical names)
         self.intent_alias_resolver = IntentAliasResolver()
@@ -191,6 +196,84 @@ class TreeSitterAnalyzerMCPServer:
             raise RuntimeError(
                 "Server not fully initialized. Please wait for initialization to complete."
             )
+
+    def _get_mcp_instructions(self) -> str:
+        """
+        Return usage instructions injected into MCP InitializationOptions.
+
+        These instructions tell Claude *when* to use this MCP vs. built-in tools,
+        establishing the cognitive boundary that makes the MCP effective.
+        """
+        return """# Tree-sitter Analyzer — Claude's Code Memory
+
+## You have capabilities here that your built-in tools lack
+
+Your built-in tools can search files and read files. This MCP gives you three things
+Claude cannot do natively:
+
+1. **Semantic-level code structure understanding** (tree-sitter): not string search,
+   but syntactic structure — which symbols are classes/functions/variables/imports,
+   and their relationships. Use `analyze_code_structure` and `query_code`, not grep.
+
+2. **Active impact tracing before modifications**: every time you change code, you
+   don't know what you've affected. `trace_impact` tells you how many places depend
+   on a symbol. Without it, your edits are blind.
+
+3. **Precision navigation of large files**: no need to Read an entire large file.
+   `check_code_scale` evaluates first, `get_code_outline` shows structure,
+   `extract_code_section` fetches only what you need.
+   Saves 70% of tokens while giving you more complete understanding.
+
+## Three Iron Rules (ALWAYS / NEVER)
+
+### ALWAYS — before editing code
+- **ALWAYS** call `trace_impact` before modifying any public function, class, or variable
+- **ALWAYS** call `check_code_scale` before Reading any file over 200 lines
+
+### NEVER — do not substitute built-in tools for these
+- **NEVER** use built-in Grep to understand code structure (use `query_code` or
+  `analyze_code_structure` — grep finds strings, these tools find syntax)
+- **NEVER** use built-in Read to open large files directly (call `check_code_scale`
+  first, then `extract_code_section` for targeted sections)
+- **NEVER** modify code depended on by multiple callers without first calling
+  `trace_impact` to understand the blast radius
+
+### When you CAN use built-in tools instead of this MCP
+- File < 100 lines: Read directly, no need for `check_code_scale`
+- Private methods (underscore prefix) in same file: no need for `trace_impact`
+- Pure documentation or comment edits: no need for `trace_impact`
+- One-off simple text search: `search_content` or built-in Grep are both fine
+
+## Standard Workflows
+
+### Exploring a new codebase
+1. `list_files` — understand project structure
+2. `get_code_outline` — understand architecture of key files
+3. `check_code_scale` — evaluate files you need to read deeply
+
+### Modifying code (REQUIRED sequence)
+1. `analyze_code_structure` or `query_code` — understand the structure you're changing
+2. `trace_impact` — confirm scope of impact
+3. [make the change]
+4. `trace_impact` — verify all affected call sites are handled
+
+### Debugging
+1. `search_content` — locate the problem
+2. `find_and_grep` — cross-directory search in large projects (filter by file type first,
+   then search content — two-stage vs single-stage)
+3. `analyze_code_structure` — understand the context around the problem code
+
+## Tool Quick Reference
+- `check_code_scale` — file size/complexity triage (call before Read on large files)
+- `get_code_outline` — navigation map: hierarchy without bodies (use for structure)
+- `analyze_code_structure` — detailed map: every element with full metadata
+- `extract_code_section` — surgical extraction by line range (use after outline)
+- `query_code` — syntax-correct element extraction via tree-sitter queries
+- `trace_impact` — find all callers/usages of a symbol (REQUIRED before editing)
+- `search_content` — ripgrep content search (text/regex patterns)
+- `find_and_grep` — two-stage: file filter then content search (large projects)
+- `list_files` — file discovery with time/size/type filters
+"""
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
@@ -257,7 +340,7 @@ class TreeSitterAnalyzerMCPServer:
             language = detect_language_from_file(resolved_path, project_root=base_root)
 
         # Create analysis request
-        from ..core.analysis_engine import AnalysisRequest
+        from ..core.analysis_engine import AnalysisRequest  # type: ignore[attr-defined]
 
         request = AnalysisRequest(
             file_path=resolved_path,
@@ -406,7 +489,7 @@ class TreeSitterAnalyzerMCPServer:
         server: Server = Server(self.name)
 
         # Register tools using @server decorators (standard MCP pattern)
-        @server.list_tools()  # type: ignore[untyped-decorator]
+        @server.list_tools()  # type: ignore[untyped-decorator,no-untyped-call]
         async def handle_list_tools() -> list[Tool]:
             """List all available tools."""
             logger.info("Client requesting tools list")
@@ -436,6 +519,8 @@ class TreeSitterAnalyzerMCPServer:
                 Tool(**self.find_and_grep_tool.get_tool_definition()),
                 Tool(**self.get_code_outline_tool.get_tool_definition()),
                 Tool(**self.trace_impact_tool.get_tool_definition()),
+                Tool(**self.check_tools_tool.get_tool_definition()),
+                Tool(**self.batch_search_tool.get_tool_definition()),
             ]
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -573,6 +658,12 @@ class TreeSitterAnalyzerMCPServer:
                 elif name == "trace_impact":
                     result = await self.trace_impact_tool.execute(arguments)
 
+                elif name == "check_tools":
+                    result = await self.check_tools_tool.execute(arguments)
+
+                elif name == "batch_search":
+                    result = await self.batch_search_tool.execute(arguments)
+
                 else:
                     raise ValueError(f"Unknown tool: {name}")
 
@@ -687,6 +778,8 @@ class TreeSitterAnalyzerMCPServer:
         self.search_content_tool.set_project_path(project_path)
         self.find_and_grep_tool.set_project_path(project_path)
         self.get_code_outline_tool.set_project_path(project_path)
+        self.check_tools_tool.set_project_path(project_path)
+        self.batch_search_tool.set_project_path(project_path)
 
         # Update universal tool if available
         if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
@@ -744,6 +837,10 @@ class TreeSitterAnalyzerMCPServer:
             return result
         elif name == "get_code_outline":
             return await self.get_code_outline_tool.execute(arguments)
+        elif name == "check_tools":
+            return await self.check_tools_tool.execute(arguments)
+        elif name == "batch_search":
+            return await self.batch_search_tool.execute(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -759,7 +856,7 @@ class TreeSitterAnalyzerMCPServer:
         server = self.create_server()
 
         # Initialize server options with required capabilities field
-        from mcp.server.models import ServerCapabilities
+        from mcp.server.models import ServerCapabilities  # type: ignore[attr-defined]
         from mcp.types import (
             LoggingCapability,
             PromptsCapability,
@@ -778,6 +875,7 @@ class TreeSitterAnalyzerMCPServer:
             server_name=self.name,
             server_version=self.version,
             capabilities=capabilities,
+            instructions=self._get_mcp_instructions(),
         )
 
         try:

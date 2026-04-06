@@ -22,7 +22,10 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+from ...core.analysis_engine import (  # type: ignore[attr-defined]
+    AnalysisRequest,
+    get_analysis_engine,
+)
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
@@ -346,12 +349,27 @@ class GetCodeOutlineTool(BaseMCPTool):
         return {
             "name": "get_code_outline",
             "description": (
-                "Navigate structure — get the complete map before reading bodies. "
-                "Returns hierarchical outline (package → class → method tree with line numbers) "
-                "WITHOUT method bodies. Use this BEFORE extract_code_section to explore large files efficiently. "
+                "Get the structural navigation map of a file — hierarchy of packages, classes, "
+                "and methods with line numbers, WITHOUT the method bodies. "
+                "\n\n"
+                "This is the outline-first workflow: understand the architecture, then use "
+                "extract_code_section to fetch only the specific code you need. "
                 "TOON format (default) delivers 54-56% token savings vs JSON. "
-                "Enables outline-first navigation: understand architecture first, "
-                "then fetch only the specific code you need."
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- After check_code_scale shows a file is > 200 lines — get the map before diving in\n"
+                "- When you need to understand a file's class/method organization without reading bodies\n"
+                "- To locate which line range contains the method you want before extract_code_section\n"
+                "- To understand a file's architecture at a glance (inheritance, method count, line spans)\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- When you need the actual code content (method bodies) — use extract_code_section\n"
+                "- When you're searching for specific text patterns — use search_content instead\n"
+                "- Files < 100 lines — just Read them directly, an outline adds no value\n"
+                "\n"
+                "IMPORTANT: get_code_outline = navigation map (structure without content). "
+                "analyze_code_structure = detailed map (every element with full metadata, visibility, "
+                "complexity). Use outline for navigation, use analyze_code_structure for deep analysis."
             ),
             "inputSchema": self.get_tool_schema(),
         }

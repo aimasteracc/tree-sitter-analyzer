@@ -54,7 +54,30 @@ class ListFilesTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "list_files",
-            "description": "Map project structure — discover which files exist. Fast file search with glob patterns, type filters, and size constraints. Use this to explore unfamiliar codebases and locate relevant files before diving into content. Supports token optimization with count-only mode and file output.",
+            "description": (
+                "Discover which files exist in a project — the starting point for codebase "
+                "exploration. Supports glob patterns, file type filters, size constraints, "
+                "and time-based filters (recently modified files). "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- At the start of working with an unfamiliar codebase — map the structure first\n"
+                "- Finding files modified recently (changed_within='1d') to understand active areas\n"
+                "- Locating files by extension, size range, or directory depth\n"
+                "- Filtering for executable files, symlinks, or empty files (types parameter)\n"
+                "- Getting a file count before deciding how to approach a large project\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- When you need to search file contents — use search_content or find_and_grep\n"
+                "- When you already know the file path — use check_code_scale or Read directly\n"
+                "\n"
+                "ADVANTAGE over built-in Glob: list_files supports filters that built-in tools "
+                "lack — file size ranges (size=['<10K', '>1K']), modification time "
+                "(changed_within='7d', changed_before='2024-01-01'), file types "
+                "('x'=executable, 'e'=empty, 'l'=symlink), and directory depth limits. "
+                "\n\n"
+                "IMPORTANT: This is a discovery tool, not a search tool. Use it to find files, "
+                "then use other tools to understand their contents."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {

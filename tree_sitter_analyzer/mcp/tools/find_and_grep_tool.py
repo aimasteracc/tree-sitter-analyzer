@@ -48,7 +48,34 @@ class FindAndGrepTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "find_and_grep",
-            "description": "Locate relevant code — find files matching pattern then search content. Two-stage precision: filter by filename first, then search within matches. Use this when you know both what kind of files (*.java, test_*) and what content pattern you're looking for. Combines structural and semantic search with token optimization.",
+            "description": (
+                "Two-stage search for large projects: filter files by name/type first, "
+                "then search content within the matched files. "
+                "\n\n"
+                "This is the large-project tool. For small projects (< 1000 files), "
+                "search_content alone is simpler and sufficient. Use find_and_grep when you "
+                "need both file-type precision AND content matching — it eliminates irrelevant "
+                "files before ripgrep runs, keeping results clean and fast. "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- Large codebases where search_content returns too much noise across all file types\n"
+                "- When you know BOTH the file pattern (*.java, test_*) AND the content pattern\n"
+                "- Multi-language projects where you want to scope to one language's files\n"
+                "- Searching only within test files, config files, or a specific module\n"
+                "\n"
+                "WHEN NOT TO USE (use search_content instead):\n"
+                "- Small projects (< 1000 files) — the two-stage overhead is unnecessary\n"
+                "- When you only have a content pattern and don't care about file type\n"
+                "- When you only have a filename pattern and don't need content search — use list_files\n"
+                "\n"
+                "DIFFERENCE from search_content:\n"
+                "- search_content: single-stage ripgrep across all files (or specified roots)\n"
+                "- find_and_grep: stage 1 = fd to filter files by name/type/size, "
+                "stage 2 = ripgrep only within those files\n"
+                "\n"
+                "IMPORTANT: Both 'pattern' (file stage) and 'query' (content stage) are optional, "
+                "but providing both gives the highest signal-to-noise ratio."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -56,10 +56,28 @@ class TraceImpactTool(BaseMCPTool):
         return {
             "name": "trace_impact",
             "description": (
-                "Trace impact — find all usage sites of a symbol to assess change impact. "
-                "Searches for occurrences of a method, class, or function name across the project. "
-                "Optionally filters by language (same as source file) to reduce noise. "
-                "Useful for understanding blast radius before refactoring or deprecating code."
+                "Find every caller and usage site of a symbol across the entire project. "
+                "\n\n"
+                "REQUIRED before modifying any public function, class, or variable. "
+                "Without this, you are editing blindly — you do not know what breaks. "
+                "This tool answers: 'if I change X, what else changes?' "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- ALWAYS call this before renaming, removing, or changing the signature of any "
+                "public method, class, or exported variable\n"
+                "- Before refactoring code used across multiple files\n"
+                "- To understand the blast radius of a deprecation\n"
+                "- To verify that a symbol is truly unused before deletion\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- Private/internal methods (single-underscore prefix) within the same file — "
+                "the impact is local and visible in context\n"
+                "- Pure comment or docstring edits — no callers are affected\n"
+                "- Adding a brand-new symbol that has no existing usages\n"
+                "\n"
+                "IMPORTANT: Provide file_path when available — this filters results to the same "
+                "language, eliminating cross-language false positives. "
+                "Set word_match=true (the default) to avoid substring noise."
             ),
             "inputSchema": {
                 "type": "object",

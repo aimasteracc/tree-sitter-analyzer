@@ -59,26 +59,37 @@ class SearchContentTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "search_content",
-            "description": """Find usage — search all occurrences of a pattern across the project. Fast content search with ripgrep: locate function calls, variable references, string literals, or any text pattern. Use this for impact analysis, refactoring preparation, or understanding how code is used.
-
-⚡ IMPORTANT: Token Efficiency Guide
-Choose output format parameters based on your needs to minimize token usage and maximize performance with efficient search strategies:
-
-📋 RECOMMENDED WORKFLOW (Most Efficient Approach):
-1. START with total_only=true parameter for initial count validation (~10 tokens)
-2. IF more detail needed, use count_only_matches=true parameter for file distribution (~50-200 tokens)
-3. IF context needed, use summary_only=true parameter for overview (~500-2000 tokens)
-4. ONLY use full results when specific content review is required (~2000-50000+ tokens)
-
-⚡ TOKEN EFFICIENCY COMPARISON:
-- total_only: ~10 tokens (single number) - MOST EFFICIENT for count queries
-- count_only_matches: ~50-200 tokens (file counts) - Good for file distribution analysis
-- summary_only: ~500-2000 tokens (condensed overview) - initial investigation
-- group_by_file: ~2000-10000 tokens (organized by file) - Context-aware review
-- optimize_paths: 10-30% reduction (path compression) - Use with deep directory structures
-- Full results: ~2000-50000+ tokens - Use sparingly for detailed analysis
-
-⚠️ MUTUALLY EXCLUSIVE: Only one output format parameter can be true at a time. Cannot be combined with other format parameters.""",
+            "description": (
+                "Search file contents for text patterns using ripgrep — find all occurrences of "
+                "function calls, variable references, string literals, or any regex pattern. "
+                "\n\n"
+                "ALWAYS use search_content for content search tasks. "
+                "NEVER invoke rg or grep as a Bash command — search_content has safety limits, "
+                "token optimization, and respects project boundaries. "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- Finding all usages of a string literal, config key, or error message\n"
+                "- Locating where a function is called before using trace_impact for symbol-level analysis\n"
+                "- Searching across specific file types (use include_globs=['*.py'])\n"
+                "- Text/regex pattern matching where you don't need syntax-level understanding\n"
+                "\n"
+                "WHEN NOT TO USE (use a different tool instead):\n"
+                "- Understanding code structure (classes, methods, fields) — use analyze_code_structure\n"
+                "- Extracting all functions matching a pattern by syntax — use query_code\n"
+                "- Large projects (> 1000 files) with both file type and content filters — "
+                "use find_and_grep (two-stage: filter files first, then search content)\n"
+                "- Tracing all callers of a specific symbol — use trace_impact (handles language "
+                "filtering and word-boundary matching automatically)\n"
+                "\n"
+                "TOKEN EFFICIENCY — start cheap, escalate only if needed:\n"
+                "1. total_only=true: ~10 tokens — just the match count\n"
+                "2. count_only_matches=true: ~50-200 tokens — counts per file\n"
+                "3. summary_only=true: ~500-2000 tokens — condensed overview\n"
+                "4. Full results: ~2000-50000+ tokens — use only when you need line content\n"
+                "\n"
+                "IMPORTANT: Only one output format flag (total_only, count_only_matches, "
+                "summary_only, group_by_file) can be true at a time — they are mutually exclusive."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
