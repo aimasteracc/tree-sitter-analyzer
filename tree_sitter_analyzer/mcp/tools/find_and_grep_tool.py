@@ -279,10 +279,14 @@ class FindAndGrepTool(BaseMCPTool):
                 [path_val] if isinstance(path_val, str) else path_val
             )
 
-        if "roots" not in arguments or not isinstance(arguments["roots"], list):
+        if "roots" not in arguments:
             raise ValueError(
-                "'roots' (list of directories) is required. "
-                "Example: roots=['.'] to search from project root"
+                "roots is required. Example: roots=['.'] to search from project root"
+            )
+        if not isinstance(arguments["roots"], list):
+            raise ValueError(
+                "roots is required and must be an array (list) of directory paths. "
+                "Example: roots=['.']"
             )
         if (
             "query" not in arguments

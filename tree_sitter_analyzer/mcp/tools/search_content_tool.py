@@ -273,8 +273,7 @@ class SearchContentTool(BaseMCPTool):
         if "roots" not in arguments and "files" not in arguments:
             provided = [k for k in arguments if k not in ("query",)]
             raise ValueError(
-                "Either 'roots' (list of directories) or 'files' (list of file paths) "
-                f"must be provided. Got keys: {provided}"
+                f"Either roots or files must be provided. Got keys: {provided}"
             )
         for key in [
             "case",
