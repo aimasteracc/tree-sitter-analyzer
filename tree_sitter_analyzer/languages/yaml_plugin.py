@@ -8,6 +8,7 @@ scalars, anchors, aliases, and comments.
 """
 
 import logging
+import re
 import threading
 from typing import TYPE_CHECKING, Any, cast
 
@@ -469,13 +470,23 @@ class YAMLElementExtractor(ElementExtractor):
 
         return text, "unknown", None
 
+    # Matches integers and decimals/scientific notation (YAML 1.2 core schema).
+    # Deliberately excludes bare words like 'inf'/'nan' which float() accepts
+    # but YAML 1.2 treats as plain strings (not numeric scalars).
+    _NUMBER_RE = re.compile(
+        r"^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?$"
+        r"|^[-+]?0[xX][0-9a-fA-F]+"   # hex
+        r"|^[-+]?0[oO][0-7]+"          # octal
+    )
+
     def _is_number(self, text: str) -> bool:
-        """Check if text represents a number."""
-        try:
-            float(text)
-            return True
-        except ValueError:
-            return False
+        """Check if text represents a numeric scalar (YAML 1.2 core schema).
+
+        Uses a regex pattern instead of float() to avoid classifying YAML 1.1
+        special words ('inf', 'nan') as numbers — they are plain strings in
+        YAML 1.2, which is the schema tree-sitter-yaml follows.
+        """
+        return bool(self._NUMBER_RE.match(text))
 
     def _extract_sequences(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
