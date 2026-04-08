@@ -1,0 +1,32 @@
+{
+  "language": "css",
+  "node_types": {
+    "adjacent_sibling_selector": 2,
+    "at_rule": 2,
+    "attribute_selector": 9,
+    "binary_query": 4,
+    "call_expression": 52,
+    "charset_statement": 1,
+    "child_selector": 5,
+    "class_selector": 29,
+    "comment": 26,
+    "declaration": 164,
+    "descendant_selector": 5,
+    "feature_query": 11,
+    "id_selector": 2,
+    "import_statement": 3,
+    "keyframe_block": 9,
+    "keyframe_block_list": 4,
+    "keyframes_statement": 4,
+    "keyword_query": 7,
+    "media_statement": 8,
+    "namespace_statement": 2,
+    "pseudo_class_selector": 13,
+    "pseudo_element_selector": 7,
+    "rule_set": 71,
+    "selectors": 71,
+    "sibling_selector": 2,
+    "supports_statement": 4,
+    "unary_query": 3
+  }
+}

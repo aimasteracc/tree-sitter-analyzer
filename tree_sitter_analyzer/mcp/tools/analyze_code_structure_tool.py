@@ -474,9 +474,32 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return {
             "name": "analyze_code_structure",
             "description": (
-                "Generate a human-readable table of a file's structure — classes, methods, "
-                "fields with line numbers and complexity scores. Best for large files where "
-                "you want a quick overview before reading sections. Saves to file for reuse."
+                "Generate a complete structural analysis of a file — every class, method, "
+                "and field with line numbers, visibility, return types, parameter counts, "
+                "complexity scores, and annotations. "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- Deep-dive analysis of a single file before refactoring or code review\n"
+                "- Identifying complexity hotspots (methods with high cyclomatic complexity)\n"
+                "- Understanding a class hierarchy before adding new behavior\n"
+                "- Getting exact line ranges for every method before using trace_impact\n"
+                "- Generating a structured report of a file's composition\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- You just need to navigate a large file quickly — use get_code_outline "
+                "(outline = navigation map without bodies; analyze_code_structure = full "
+                "metadata table — more detailed, more tokens)\n"
+                "- Searching for text patterns — use search_content or query_code\n"
+                "- Files you haven't triaged yet — call check_code_scale first\n"
+                "\n"
+                "DIFFERENCE from get_code_outline:\n"
+                "- get_code_outline: compact hierarchy tree, optimized for navigation "
+                "(54-56% fewer tokens)\n"
+                "- analyze_code_structure: full metadata per element including visibility, "
+                "complexity, annotations, return types — use for detailed analysis, "
+                "not just navigation\n"
+                "\n"
+                "Saves output to file by default for reuse across tool calls."
             ),
             "inputSchema": self.get_tool_schema(),
         }

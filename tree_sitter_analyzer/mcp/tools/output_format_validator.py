@@ -6,8 +6,6 @@ Ensures mutual exclusion of output format parameters to prevent conflicts
 and provides multilingual error messages with token efficiency guidance.
 """
 
-import locale
-import os
 from typing import Any
 
 
@@ -33,21 +31,7 @@ class OutputFormatValidator:
     }
 
     def _detect_language(self) -> str:
-        """Detect preferred language from environment."""
-        # Check environment variables for language preference
-        lang = os.environ.get("LANG", "")
-        if lang.startswith("ja"):
-            return "ja"
-
-        # Check locale
-        try:
-            current_locale = locale.getlocale()[0]
-            if current_locale and current_locale.startswith("ja"):
-                return "ja"
-        except Exception:
-            pass  # nosec
-
-        # Default to English
+        """Always use English for MCP tool error messages sent to Claude."""
         return "en"
 
     def _get_error_message(self, specified_formats: list[str]) -> str:

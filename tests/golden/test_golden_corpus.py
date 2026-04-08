@@ -61,6 +61,9 @@ class TestGoldenCorpus:
         "yaml": "yaml",
         "json": "json",
         "sql": "sql",
+        "css": "css",
+        "html": "html",
+        "markdown": "md",
     }
 
     @pytest.fixture
@@ -144,6 +147,9 @@ class TestGoldenCorpus:
             "yaml": "tree_sitter_yaml",
             "json": "tree_sitter_json",
             "sql": "tree_sitter_sql",
+            "css": "tree_sitter_css",
+            "html": "tree_sitter_html",
+            "markdown": "tree_sitter_markdown",
         }
 
         module_name = language_modules.get(language)
@@ -266,6 +272,9 @@ class TestGoldenCorpus:
             "yaml",
             "json",
             "sql",
+            "css",
+            "html",
+            "markdown",
         ],
     )
     def test_golden_corpus(self, language: str, golden_dir: Path) -> None:

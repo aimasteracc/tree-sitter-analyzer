@@ -84,8 +84,91 @@ def get_language_config(language: str) -> dict:
                 "interface_declaration",
             ],
         },
+        "css": {
+            "module": "tree_sitter_css",
+            "language_func": "language",
+            "extension": "css",
+            "critical_nodes": [
+                "rule_set",
+                "at_rule",
+                "media_statement",
+                "import_statement",
+                "keyframes_statement",
+                "supports_statement",
+                "charset_statement",
+                "namespace_statement",
+                "declaration",
+                "selectors",
+                "class_selector",
+                "id_selector",
+                "pseudo_class_selector",
+                "pseudo_element_selector",
+                "attribute_selector",
+                "descendant_selector",
+                "child_selector",
+                "sibling_selector",
+                "adjacent_sibling_selector",
+                "keyframe_block",
+                "keyframe_block_list",
+                "feature_query",
+                "binary_query",
+                "unary_query",
+                "keyword_query",
+                "call_expression",
+                "comment",
+            ],
+        },
+        "html": {
+            "module": "tree_sitter_html",
+            "language_func": "language",
+            "extension": "html",
+            "critical_nodes": [
+                "element",
+                "self_closing_tag",
+                "script_element",
+                "style_element",
+                "start_tag",
+                "end_tag",
+                "attribute",
+                "attribute_name",
+                "quoted_attribute_value",
+                "doctype",
+                "comment",
+                "text",
+                "entity",
+                "raw_text",
+                "erroneous_end_tag",
+            ],
+        },
+        "markdown": {
+            "module": "tree_sitter_markdown",
+            "language_func": "language",
+            "extension": "md",
+            "critical_nodes": [
+                "atx_heading",
+                "setext_heading",
+                "fenced_code_block",
+                "indented_code_block",
+                "paragraph",
+                "block_quote",
+                "list",
+                "list_item",
+                "pipe_table",
+                "link_reference_definition",
+                "thematic_break",
+                "html_block",
+                "task_list_marker_checked",
+                "task_list_marker_unchecked",
+                "info_string",
+                "code_fence_content",
+                "minus_metadata",
+                "atx_h1_marker",
+                "atx_h2_marker",
+                "atx_h3_marker",
+            ],
+        },
     }
-    return configs.get(language, {})
+    return configs.get(language, {})  # type: ignore[return-value]
 
 
 def parse_corpus_file(corpus_path: Path, language: str) -> dict[str, int]:
@@ -193,14 +276,14 @@ def main() -> None:
     """Main entry point."""
     if len(sys.argv) < 2:
         print("Usage: python scripts/generate_expected_counts.py <language>")
-        print("Languages: rust, php, kotlin, all")
+        print("Languages: rust, php, kotlin, css, html, markdown, all")
         sys.exit(1)
 
     language_arg = sys.argv[1].lower()
     golden_dir = Path(__file__).parent.parent / "tests" / "golden"
 
     if language_arg == "all":
-        languages = ["rust", "php", "kotlin"]
+        languages = ["rust", "php", "kotlin", "css", "html", "markdown"]
         for lang in languages:
             generate_expected_json(lang, golden_dir)
     else:
