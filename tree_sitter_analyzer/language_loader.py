@@ -52,13 +52,15 @@ class LanguageLoader:
         "typescript": "tree_sitter_typescript",
         "yaml": "tree_sitter_yaml",
         "yml": "tree_sitter_yaml",  # YAML alias
+        "jsonc": "tree_sitter_json",  # JSON with comments alias
+        "json5": "tree_sitter_json",  # JSON5 alias
     }
 
     # TypeScript特別処理（TypeScriptとTSX）
     TYPESCRIPT_DIALECTS = {"typescript": "typescript", "tsx": "tsx"}
 
     @property
-    def SUPPORTED_LANGUAGES(self) -> list:
+    def SUPPORTED_LANGUAGES(self) -> list[str]:
         """サポートされている言語のリストを取得するプロパティ"""
         return list(self.LANGUAGE_MODULES.keys())
 
@@ -228,7 +230,7 @@ class LanguageLoader:
         """Create a parser for the specified language (alias for create_parser_safely)"""
         return self.create_parser_safely(language)
 
-    def get_supported_languages(self) -> list:
+    def get_supported_languages(self) -> list[str]:
         """
         サポートされている言語のリストを取得（最適化：結果キャッシュ）
 

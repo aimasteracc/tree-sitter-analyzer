@@ -253,6 +253,13 @@ class SearchContentTool(BaseMCPTool):
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        # Normalize path aliases before validation
+        if "path" in arguments and "roots" not in arguments and "files" not in arguments:
+            path_val = arguments.pop("path")
+            arguments["roots"] = (
+                [path_val] if isinstance(path_val, str) else path_val
+            )
+
         # Validate output format exclusion first
         validator = get_default_validator()
         validator.validate_output_format_exclusion(arguments)
@@ -264,7 +271,11 @@ class SearchContentTool(BaseMCPTool):
         ):
             raise ValueError("query is required and must be a non-empty string")
         if "roots" not in arguments and "files" not in arguments:
-            raise ValueError("Either roots or files must be provided")
+            provided = [k for k in arguments if k not in ("query",)]
+            raise ValueError(
+                "Either 'roots' (list of directories) or 'files' (list of file paths) "
+                f"must be provided. Got keys: {provided}"
+            )
         for key in [
             "case",
             "encoding",

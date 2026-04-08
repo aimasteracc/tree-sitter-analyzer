@@ -22,7 +22,7 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
-from ...core.analysis_engine import (  # type: ignore[attr-defined]
+from ...core.analysis_engine import (
     AnalysisRequest,
     get_analysis_engine,
 )
@@ -286,6 +286,169 @@ class GetCodeOutlineTool(BaseMCPTool):
                 getattr(imp, "import_statement", getattr(imp, "name", ""))
                 for imp in imports
             ]
+
+        # For markup languages (HTML/CSS), enrich outline with tag/rule elements
+        # when no class/method structure is present.
+        markup_elements = [
+            e for e in elements if getattr(e, "element_type", "") == "html_element"
+        ]
+        css_elements = [
+            e for e in elements if getattr(e, "element_type", "") == "css_rule"
+        ]
+        if markup_elements and not classes:
+            outline["html_elements"] = [
+                {
+                    "tag": getattr(e, "tag_name", getattr(e, "name", "?")),
+                    "class": getattr(e, "element_class", ""),
+                    "line_start": getattr(e, "start_line", 0),
+                    "line_end": getattr(e, "end_line", 0),
+                    "attributes": list(getattr(e, "attributes", {}).keys()),
+                }
+                for e in markup_elements
+            ]
+            outline["statistics"]["html_element_count"] = len(markup_elements)
+        if css_elements and not classes:
+            outline["css_rules"] = [
+                {
+                    "selector": getattr(e, "selector", getattr(e, "name", "?")),
+                    "class": getattr(e, "element_class", ""),
+                    "line_start": getattr(e, "start_line", 0),
+                    "line_end": getattr(e, "end_line", 0),
+                }
+                for e in css_elements
+            ]
+            outline["statistics"]["css_rule_count"] = len(css_elements)
+
+        # SQL: tables / views / procedures / triggers / indexes
+        # (sql_function has element_type="function" so it already appears in
+        # top_level_functions above)
+        _SQL_TYPES = {"table", "view", "procedure", "trigger", "index"}
+        sql_elements = [
+            e for e in elements if getattr(e, "element_type", "") in _SQL_TYPES
+        ]
+        if sql_elements and not classes:
+            by_type: dict[str, list[dict[str, Any]]] = {}
+            for e in sql_elements:
+                etype = getattr(e, "element_type", "unknown")
+                by_type.setdefault(etype, []).append(
+                    {
+                        "name": getattr(e, "name", "?"),
+                        "line_start": getattr(e, "start_line", 0),
+                        "line_end": getattr(e, "end_line", 0),
+                    }
+                )
+            outline["sql_objects"] = by_type
+            outline["statistics"]["sql_object_count"] = len(sql_elements)
+
+        # Markdown: headings and code blocks make the most useful outline.
+        # Guard with language="markdown" to avoid collision with SQL's element_type="table".
+        _MD_HEADING_TYPES = {"heading"}
+        _MD_BLOCK_TYPES = {"code_block", "table", "list", "task_list"}
+        md_headings = [
+            e
+            for e in elements
+            if getattr(e, "element_type", "") in _MD_HEADING_TYPES
+            and getattr(e, "language", "") == "markdown"
+        ]
+        md_blocks = [
+            e
+            for e in elements
+            if getattr(e, "element_type", "") in _MD_BLOCK_TYPES
+            and getattr(e, "language", "") == "markdown"
+        ]
+        if (md_headings or md_blocks) and not classes:
+            if md_headings:
+                outline["headings"] = [
+                    {
+                        "text": getattr(e, "name", "?"),
+                        "level": getattr(e, "level", 0),
+                        "line_start": getattr(e, "start_line", 0),
+                        "line_end": getattr(e, "end_line", 0),
+                    }
+                    for e in md_headings
+                ]
+                outline["statistics"]["heading_count"] = len(md_headings)
+            if md_blocks:
+                outline["blocks"] = [
+                    {
+                        "type": getattr(e, "element_type", "?"),
+                        "name": getattr(e, "name", "?"),
+                        "line_start": getattr(e, "start_line", 0),
+                        "line_end": getattr(e, "end_line", 0),
+                    }
+                    for e in md_blocks
+                ]
+                outline["statistics"]["block_count"] = len(md_blocks)
+
+        # YAML: documents and top-level mappings
+        # Guard with language="yaml" to avoid collision with JSON's element_type="document".
+        yaml_docs = [
+            e
+            for e in elements
+            if getattr(e, "element_type", "") == "document"
+            and getattr(e, "language", "") == "yaml"
+        ]
+        yaml_mappings = [
+            e
+            for e in elements
+            if getattr(e, "element_type", "") == "mapping"
+            and getattr(e, "nesting_level", 1) == 0
+        ]
+        if (yaml_docs or yaml_mappings) and not classes:
+            if yaml_docs:
+                outline["yaml_documents"] = [
+                    {
+                        "index": getattr(e, "document_index", i),
+                        "line_start": getattr(e, "start_line", 0),
+                        "line_end": getattr(e, "end_line", 0),
+                    }
+                    for i, e in enumerate(yaml_docs)
+                ]
+                outline["statistics"]["yaml_document_count"] = len(yaml_docs)
+            if yaml_mappings:
+                outline["yaml_top_keys"] = [
+                    {
+                        "key": getattr(e, "key", getattr(e, "name", "?")),
+                        "value_type": getattr(e, "value_type", "?"),
+                        "line_start": getattr(e, "start_line", 0),
+                        "line_end": getattr(e, "end_line", 0),
+                    }
+                    for e in yaml_mappings
+                ]
+                outline["statistics"]["yaml_top_key_count"] = len(yaml_mappings)
+
+        # JSON: document root + top-level properties (nesting_level == 1)
+        json_doc = next(
+            (e for e in elements if getattr(e, "element_type", "") == "document"
+             and getattr(e, "language", "") == "json"),
+            None,
+        )
+        json_props = [
+            e
+            for e in elements
+            if getattr(e, "element_type", "") in ("property", "pair")
+            and getattr(e, "nesting_level", 0) == 1
+        ]
+        if (json_doc is not None or json_props) and not classes:
+            if json_doc is not None:
+                outline["json_root"] = {
+                    "type": getattr(json_doc, "value_type", "unknown"),
+                    "child_count": getattr(json_doc, "child_count", None),
+                    "line_start": getattr(json_doc, "start_line", 0),
+                    "line_end": getattr(json_doc, "end_line", 0),
+                }
+            if json_props:
+                outline["json_top_keys"] = [
+                    {
+                        "key": getattr(e, "key", getattr(e, "name", "?")),
+                        "value_type": getattr(e, "value_type", "?"),
+                        "child_count": getattr(e, "child_count", None),
+                        "line_start": getattr(e, "start_line", 0),
+                        "line_end": getattr(e, "end_line", 0),
+                    }
+                    for e in json_props
+                ]
+                outline["statistics"]["json_top_key_count"] = len(json_props)
 
         return outline
 

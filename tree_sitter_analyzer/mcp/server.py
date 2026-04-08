@@ -360,7 +360,7 @@ Claude cannot do natively:
             language = detect_language_from_file(resolved_path, project_root=base_root)
 
         # Create analysis request
-        from ..core.analysis_engine import AnalysisRequest  # type: ignore[attr-defined]
+        from ..core.analysis_engine import AnalysisRequest
 
         request = AnalysisRequest(
             file_path=resolved_path,
@@ -509,7 +509,7 @@ Claude cannot do natively:
         server: Server = Server(self.name)
 
         # Register tools using @server decorators (standard MCP pattern)
-        @server.list_tools()  # type: ignore[untyped-decorator,no-untyped-call]
+        @server.list_tools()  # type: ignore[untyped-decorator]
         async def handle_list_tools() -> list[Tool]:
             """List all available tools."""
             logger.info("Client requesting tools list")
@@ -898,7 +898,7 @@ Claude cannot do natively:
         server = self.create_server()
 
         # Initialize server options with required capabilities field
-        from mcp.server.models import ServerCapabilities  # type: ignore[attr-defined]
+        from mcp.server.models import ServerCapabilities
         from mcp.types import (
             LoggingCapability,
             PromptsCapability,

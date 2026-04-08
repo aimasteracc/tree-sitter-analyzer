@@ -117,9 +117,16 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         Raises:
             ValueError: If arguments are invalid
         """
+        # Normalize file alias
+        if "file" in arguments and "file_path" not in arguments:
+            arguments["file_path"] = arguments.pop("file")
+
         # Check required fields
         if "file_path" not in arguments:
-            raise ValueError("Required field 'file_path' is missing")
+            raise ValueError(
+                "Required field 'file_path' is missing. "
+                "Tip: use 'file_path' (not 'file' or 'path') for this tool"
+            )
 
         # Validate file_path
         file_path = arguments["file_path"]
@@ -261,6 +268,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             "file_path": result.file_path,
             "language": result.language,
             "package": package_info,
+            # Pass raw elements so language-specific formatters (e.g. HtmlFormatter)
+            # can access MarkupElement / StyleElement objects directly.
+            "elements": result.elements,
             "classes": [
                 {
                     "name": getattr(cls, "name", "unknown"),
@@ -408,6 +418,10 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 table_output = table_output.replace("\r\n", "\n").replace("\r", "\n")
                 table_output = table_output.rstrip()
 
+                # Remove raw element objects before JSON serialization —
+                # they were only needed for language-specific formatters (e.g. HtmlFormatter).
+                structure_dict.pop("elements", None)
+
                 # Extract metadata from structure dict
                 metadata = {}
                 if "statistics" in structure_dict:
@@ -426,6 +440,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "file_path": file_path,
                     "language": language,
                     "metadata": metadata,
+                    "elements": structure_dict,
                     "table_output": table_output,
                 }
 

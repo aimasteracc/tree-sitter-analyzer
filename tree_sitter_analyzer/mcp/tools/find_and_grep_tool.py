@@ -272,8 +272,18 @@ class FindAndGrepTool(BaseMCPTool):
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        # Normalize path aliases before validation
+        if "path" in arguments and "roots" not in arguments:
+            path_val = arguments.pop("path")
+            arguments["roots"] = (
+                [path_val] if isinstance(path_val, str) else path_val
+            )
+
         if "roots" not in arguments or not isinstance(arguments["roots"], list):
-            raise ValueError("roots is required and must be an array")
+            raise ValueError(
+                "'roots' (list of directories) is required. "
+                "Example: roots=['.'] to search from project root"
+            )
         if (
             "query" not in arguments
             or not isinstance(arguments["query"], str)

@@ -17,6 +17,10 @@ from .engine_manager import EngineManager
 from .performance import PerformanceContext, PerformanceMonitor
 from .request import AnalysisRequest
 
+# Explicit re-export so `from .analysis_engine import AnalysisRequest` passes
+# mypy --strict (attr-defined check).
+__all__ = ["AnalysisRequest", "get_analysis_engine"]
+
 
 class UnsupportedLanguageError(Exception):
     """Unsupported language error"""

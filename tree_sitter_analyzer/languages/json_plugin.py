@@ -81,6 +81,8 @@ class JSONElement(CodeElement):
             **kwargs,
         )
         self.element_type = element_type
+        # Mirror element_type in .type so formatters using e.get("type") also work.
+        self.type = element_type
         self.key = key
         self.value = value
         self.value_type = value_type

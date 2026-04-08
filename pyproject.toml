@@ -78,6 +78,7 @@ dependencies = [
     "tree-sitter-rust>=0.20.0",
     "tree-sitter-kotlin>=0.3.0",
     "detect-secrets>=1.5.0",
+    "tree-sitter-json>=0.23.0",
 ]
 
 # Add C# to optional dependencies
@@ -299,6 +300,7 @@ sql = "tree_sitter_analyzer.languages.sql_plugin:SQLPlugin"
 php = "tree_sitter_analyzer.languages.php_plugin:PHPPlugin"
 ruby = "tree_sitter_analyzer.languages.ruby_plugin:RubyPlugin"
 yaml = "tree_sitter_analyzer.languages.yaml_plugin:YAMLPlugin"
+json = "tree_sitter_analyzer.languages.json_plugin:JSONPlugin"
 go = "tree_sitter_analyzer.languages.go_plugin:GoPlugin"
 rust = "tree_sitter_analyzer.languages.rust_plugin:RustPlugin"
 kotlin = "tree_sitter_analyzer.languages.kotlin_plugin:KotlinPlugin"
