@@ -552,6 +552,7 @@ def _register_language_formatters_safe() -> None:
         from .html_formatter import HtmlFormatter
         from .java_formatter import JavaTableFormatter
         from .javascript_formatter import JavaScriptTableFormatter
+        from .json_formatter import JSONFormatter
         from .kotlin_formatter import KotlinTableFormatter
         from .markdown_formatter import MarkdownFormatter
         from .php_formatter import PHPTableFormatter
@@ -591,6 +592,9 @@ def _register_language_formatters_safe() -> None:
             "hpp": CppTableFormatter,
             "yaml": YAMLFormatter,
             "yml": YAMLFormatter,
+            "json": JSONFormatter,
+            "jsonc": JSONFormatter,
+            "json5": JSONFormatter,
             "css": CSSFormatter,
             "html": HtmlFormatter,
             "htm": HtmlFormatter,

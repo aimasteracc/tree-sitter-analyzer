@@ -268,6 +268,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             "file_path": result.file_path,
             "language": result.language,
             "package": package_info,
+            # Pass raw elements so language-specific formatters (e.g. HtmlFormatter)
+            # can access MarkupElement / StyleElement objects directly.
+            "elements": result.elements,
             "classes": [
                 {
                     "name": getattr(cls, "name", "unknown"),
@@ -414,6 +417,10 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 # Ensure output format matches CLI exactly
                 table_output = table_output.replace("\r\n", "\n").replace("\r", "\n")
                 table_output = table_output.rstrip()
+
+                # Remove raw element objects before JSON serialization —
+                # they were only needed for language-specific formatters (e.g. HtmlFormatter).
+                structure_dict.pop("elements", None)
 
                 # Extract metadata from structure dict
                 metadata = {}

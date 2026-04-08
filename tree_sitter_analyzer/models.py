@@ -49,6 +49,11 @@ class CodeElement(ABC):
     element_type: str = "unknown"
     node_type: str | None = None  # Tree-sitter node type for grammar coverage tracking
 
+    def get(self, key: str, default: Any = None) -> Any:
+        """Dict-style attribute access so formatters can use e.get('element_type')
+        interchangeably on both CodeElement objects and plain dicts."""
+        return getattr(self, key, default)
+
     def to_summary_item(self) -> dict[str, Any]:
         return {
             "name": self.name,
