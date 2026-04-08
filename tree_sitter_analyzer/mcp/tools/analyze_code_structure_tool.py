@@ -117,9 +117,16 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         Raises:
             ValueError: If arguments are invalid
         """
+        # Normalize file alias
+        if "file" in arguments and "file_path" not in arguments:
+            arguments["file_path"] = arguments.pop("file")
+
         # Check required fields
         if "file_path" not in arguments:
-            raise ValueError("Required field 'file_path' is missing")
+            raise ValueError(
+                "Required field 'file_path' is missing. "
+                "Tip: use 'file_path' (not 'file' or 'path') for this tool"
+            )
 
         # Validate file_path
         file_path = arguments["file_path"]
@@ -426,6 +433,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "file_path": file_path,
                     "language": language,
                     "metadata": metadata,
+                    "elements": structure_dict,
                     "table_output": table_output,
                 }
 
