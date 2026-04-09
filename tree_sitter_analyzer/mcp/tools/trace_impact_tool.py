@@ -373,8 +373,14 @@ class TraceImpactTool(BaseMCPTool):
         # 解析 JSON 输出
         matches = parse_rg_json_lines_to_matches(stdout)
 
-        # 限制结果数量
-        if len(matches) > max_results:
+        # Capture true total BEFORE truncating for display.
+        # impact_level and call_count must reflect the actual number of callers,
+        # not the display-capped count. If max_results=5 and there are 695 matches,
+        # call_count must be 695 and impact_level must be "high", not "low".
+        true_total = len(matches)
+
+        # 限制结果数量（只影响显示，不影响 call_count）
+        if true_total > max_results:
             matches = matches[:max_results]
             truncated = True
         else:
@@ -390,8 +396,8 @@ class TraceImpactTool(BaseMCPTool):
             }
             usages.append(usage)
 
-        # 计算影响等级
-        total_count = len(usages)
+        # 计算影响等级（使用真实总数，而非截断后的显示数）
+        total_count = true_total
         impact = _get_impact_level(total_count)
 
         # 构建响应
