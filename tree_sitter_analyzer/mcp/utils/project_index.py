@@ -436,18 +436,16 @@ class ProjectIndexManager:
         sub_counts: dict[str, dict[str, int]] = {}
 
         abs_root = root_path.resolve()
-        root_str = str(abs_root) + os.sep
 
         for filepath in all_files:
-            abs_fp = str(Path(filepath).resolve()) if not os.path.isabs(filepath) else filepath
-            if abs_fp.startswith(root_str):
-                rel = abs_fp[len(root_str):]
-            elif abs_fp == str(abs_root):
-                continue
-            else:
-                continue  # skip files outside the project root entirely
+            fp = Path(filepath)
+            abs_fp = fp.resolve() if not fp.is_absolute() else fp
+            try:
+                rel_path = abs_fp.relative_to(abs_root)
+            except ValueError:
+                continue  # skip files outside the project root
 
-            parts = rel.split(os.sep)
+            parts = rel_path.parts
             if len(parts) >= 2:
                 top_dir = parts[0]
                 if top_dir in self._ARTIFACT_DIRS or top_dir.startswith("."):
