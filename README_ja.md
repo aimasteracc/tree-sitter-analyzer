@@ -4,26 +4,25 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8470%20passed-brightgreen.svg)](#-品質とテスト)
+[![Tests](https://img.shields.io/badge/tests-8890%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **大規模リポジトリ向けのAI用エビデンスベースコードナビゲーション** - MCP統合 · 最小コンテキスト取得 · 重い前処理なしの検索
 
+*Claudeはコードベース全体を読む必要がありません。あなたも、もう必要ない。*
+
 ---
 
-## ✨ v1.10.5 最新情報
+## ✨ v1.10.8 最新情報
 
-- **`get_code_outline` MCPツール + TOON形式**: アウトライン優先ナビゲーション、JSON形式と比較して**54-56% トークン削減**。階層構造を先に取得し、必要なコード本体のみを抽出
-- **`trace_impact` MCPツール**: 軽量な呼び出し元検索ツール、ripgrepを使用——グラフデータベース不要の影響分析
-- **意図ベースツールエイリアス**: AI フレンドリーなツール名（`locate_usage`、`map_structure`）により、ツール発見が自然に
-- **分析セッション追跡**: セッションIDと操作履歴により、複数ステップのSMARTワークフローを監査
-- **23の重要なバグ修正**: TOON形式の返却構造、デフォルト出力形式、テストアサーション——**プロジェクト完全動作**
-- **実測トークン削減**: 実ファイルでのテストにより、TOON形式が小/中/大ファイルで54-56%の出力サイズ削減を確認
-- **テストカバレッジ強化**: 8,470テスト（100%パス）、88.68%カバレッジ（v1.10.4から8.35%向上）
-- **クロスプラットフォーム検証**: すべてのテストがUbuntu、Windows、macOS × Python 3.10-3.13で合格
+- **Spring/JPAコードベースが完全にナビゲート可能に**: Claudeが `@Controller`・`@Transactional`・`@ManyToMany`・`@Bean` を正確に認識。ソース全体を読まずにSpringアーキテクチャを理解できる。spring-petclinic・caffeine・spring-framework・nettyで検証済み
+- **信頼できる影響分析**: `modification_guard` が正確なSAFE/UNSAFEを返す。`trace_impact` は表示上限に関わらず真の呼び出し元数を返す——HIGH IMPACTのシンボルがLOWに誤分類されない
+- **17種類の新しいセマンティッククエリ**: `spring_bean`・`spring_transactional`・`spring_request_mapping`・`junit5_test`・`volatile_field`・`record_declaration` など——ASTノードではなく意図で検索
+- **大規模ファイルも安心**: 6,500行のnettyファイルをクラッシュなしで分析。`get_code_outline` でフルファイル読み込み比89〜92%のトークン削減
+- **tree-sitter 0.25+ 完全対応**: `#match?` 述語が復元——Spring/JPAクエリフィルタリングが最新版で動作
 
 📖 完全なバージョン履歴は **[変更履歴](CHANGELOG.md)** をご覧ください。
 ---
@@ -202,6 +201,19 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 ---
 
+## 🔬 文法カバレッジ（MECEフレームワーク）
+
+Tree-sitter Analyzerは、対応全17言語にわたる文法カバレッジ検証で**誤検知ゼロ**を保証します。
+
+### フェーズ1：MECEアーキテクチャ（2026-03）
+
+**新アーキテクチャ**：
+- ノードタイプだけでなく**構文パス** `(node_type, parent_path)` を追跡
+- **完全なノード同一性マッチング**（type + バイト範囲 + 親チェーン + ファイルパス）
+- ネストしたノードの誤分類を排除（ラッパーノードによる誤検知なし）
+
+---
+
 ## 🏆 品質とテスト
 
 | 指標 | 値 |
@@ -218,6 +230,82 @@ uv run pytest tests/ -v
 # カバレッジレポートを生成
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 ```
+
+---
+
+## 🔒 セキュリティとアーキテクチャ
+
+Tree-sitter Analyzerは、AI支援開発ワークフローのための**デフォルトで安全**な設計原則に基づいています。
+
+### セキュリティモデル
+
+**プロジェクト境界の強制**
+- すべてのMCPツールは、プロジェクトルート境界に対してファイルパスを検証
+- 設定されたプロジェクトディレクトリ外のファイルへのアクセス不可
+- シンボリックリンクトラバーサル防止
+- パス正規化により `../` エスケープを防止
+
+**入力検証**
+- すべてのMCPツールパラメータでJSON Schemaバリデーション
+- 厳格なmypy準拠による型安全なPython API
+- シェルコマンド実行前のユーザー入力サニタイズ
+- glob/regex検索のパターン検証
+
+**リモート実行なし**
+- 100%ローカル処理 — クラウド依存なし
+- テレメトリやデータ収集なし
+- オプションのPyPIバージョンチェック以外のネットワーク呼び出しなし
+- ソースコード分析はあなたのマシン上に留まる
+
+**安全なデフォルト**
+- デフォルトで読み取り専用ファイル操作
+- ファイル変更には明示的なオプトインが必要
+- 外部ツール（fd、ripgrep）のサンドボックス化されたサブプロセス実行
+- 環境変数の分離
+
+### アーキテクチャ原則
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  AIアシスタント（Claude Desktop / Cursor / Roo Code）  │
+└────────────────────┬────────────────────────────────────┘
+                     │ MCPプロトコル（JSON-RPC）
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  MCPサーバー層                                          │
+│  • 入力検証（JSON Schema）                              │
+│  • プロジェクト境界チェック                             │
+│  • ツールディスパッチ                                   │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  分析エンジン                                           │
+│  • Tree-sitter AST解析（17言語）                        │
+│  • 高速ファイル検索（fd）                               │
+│  • コンテンツ検索（ripgrep）                            │
+│  • 出力フォーマット（JSON / TOON）                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**主要なセキュリティ境界**:
+1. **MCPプロトコル**: AIは検証済みスキーマを持つ明示的に定義されたツールのみ呼び出し可能
+2. **プロジェクトルート**: ファイル操作は設定されたディレクトリに限定
+3. **読み取り専用**: 明示的なユーザー同意なしに破壊的操作なし
+4. **ローカルファースト**: すべての処理はあなたのマシン上で実行
+
+### セキュリティテスト
+
+- **8,890以上の自動テスト**（セキュリティ重視のエッジケースを含む）
+- **100% mypy型安全**により、バグのクラス全体を防止
+- **CI/CDセキュリティスキャン**: Bandit（Pythonセキュリティ）、safety（依存関係の脆弱性）
+- すべてのMCPツール実装の**手動セキュリティレビュー**
+
+### セキュリティ問題の報告
+
+セキュリティ上の懸念を発見しましたか？aimasteracc@gmail.comまでメールするか、GitHubでプライベートセキュリティアドバイザリを開いてください。
+
+**自動化されたセキュリティバッジサービスは使用していません** — 当プロジェクトのセキュリティ姿勢は、サードパーティのスコアではなく、アーキテクチャ、テスト、コードレビューによって文書化されています。
 
 ---
 

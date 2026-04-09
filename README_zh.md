@@ -4,26 +4,25 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8470%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-8890%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
 
+*Claude 不需要读完整个代码库。你也不用了。*
+
 ---
 
-## ✨ v1.10.5 最新更新
+## ✨ v1.10.8 最新更新
 
-- **`get_code_outline` MCP工具 + TOON格式**: 大纲优先导航，相比JSON格式节省**54-56% token**。先获取层次结构，再按需提取代码体
-- **`trace_impact` MCP工具**: 轻量级调用点查找器，使用ripgrep实现——无需图数据库开销的影响分析
-- **意图别名系统**: AI友好的工具命名（`locate_usage`、`map_structure`）使工具发现更自然
-- **分析会话追踪**: 通过会话ID和操作历史审计多步SMART工作流
-- **23个关键bug修复**: TOON格式返回结构、默认输出格式、测试断言——**项目完全可用**
-- **实测token节省**: 真实文件测试显示TOON格式在小型/中型/大型文件上减少54-56%输出大小
-- **增强测试覆盖**: 8,470个测试（100%通过），88.68%覆盖率（较v1.10.4提升8.35%）
-- **跨平台验证**: 所有测试在Ubuntu、Windows、macOS × Python 3.10-3.13上通过
+- **Spring/JPA 代码库现在完全可导航**: Claude 正确识别 `@Controller`、`@Transactional`、`@ManyToMany`、`@Bean`——无需阅读原始代码即可理解 Spring 架构。已用 spring-petclinic、caffeine、spring-framework、netty 验证
+- **可信赖的影响分析**: `modification_guard` 返回准确的 SAFE/UNSAFE 判定。`trace_impact` 返回真实调用方数量——HIGH IMPACT 符号不再被错误降级为 LOW
+- **17 种新语义查询**: `spring_bean`、`spring_transactional`、`spring_request_mapping`、`junit5_test`、`volatile_field`、`record_declaration` 等——按意图查询，而非 AST 节点
+- **大文件无障碍**: 6,500 行 netty 文件不崩溃分析。`get_code_outline` 相比全文读取节省 89〜92% token
+- **tree-sitter 0.25+ 完全兼容**: `#match?` 谓词已恢复——Spring/JPA 查询过滤在最新版本正常工作
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 ---
@@ -202,6 +201,19 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 ---
 
+## 🔬 语法覆盖率（MECE框架）
+
+Tree-sitter Analyzer 在所有17种支持语言的语法覆盖率验证中保证**零误报**。
+
+### 第1阶段：MECE架构（2026-03）
+
+**新架构**：
+- 追踪**语法路径** `(node_type, parent_path)`，而非仅追踪节点类型
+- 使用**精确节点身份匹配**（类型 + 字节范围 + 父节点链 + 文件路径）
+- 消除嵌套节点误分类（包装节点不再导致误报）
+
+---
+
 ## 🏆 质量与测试
 
 | 指标 | 数值 |
@@ -218,6 +230,82 @@ uv run pytest tests/ -v
 # 生成覆盖率报告
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 ```
+
+---
+
+## 🔒 安全与架构
+
+Tree-sitter Analyzer采用**默认安全**原则设计，专为AI辅助开发工作流程打造。
+
+### 安全模型
+
+**项目边界强制**
+- 所有MCP工具都会根据项目根目录边界验证文件路径
+- 无法访问配置的项目目录之外的文件
+- 防止符号链接遍历
+- 路径规范化防止 `../` 转义尝试
+
+**输入验证**
+- 对所有MCP工具参数进行JSON Schema验证
+- 具有严格mypy合规性的类型安全Python API
+- 在shell命令执行前对用户输入进行清理
+- 对glob/regex搜索进行模式验证
+
+**无远程执行**
+- 100%本地处理——无云依赖
+- 无遥测或数据收集
+- 除可选的PyPI版本检查外无网络调用
+- 源代码分析保留在您的计算机上
+
+**安全默认值**
+- 默认为只读文件操作
+- 任何文件修改都需要明确选择加入
+- 外部工具（fd、ripgrep）的沙盒子进程执行
+- 环境变量隔离
+
+### 架构原则
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  AI助手 (Claude Desktop / Cursor / Roo Code)           │
+└────────────────────┬────────────────────────────────────┘
+                     │ MCP协议 (JSON-RPC)
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  MCP服务器层                                            │
+│  • 输入验证 (JSON Schema)                              │
+│  • 项目边界检查                                         │
+│  • 工具调度                                            │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  分析引擎                                               │
+│  • Tree-sitter AST解析 (17种语言)                      │
+│  • 快速文件搜索 (fd)                                   │
+│  • 内容搜索 (ripgrep)                                  │
+│  • 输出格式化 (JSON / TOON)                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+**关键安全边界**：
+1. **MCP协议**：AI只能调用经过验证模式的明确定义的工具
+2. **项目根目录**：文件操作限制在配置的目录内
+3. **只读**：没有明确的用户同意不进行破坏性操作
+4. **本地优先**：所有处理都在您的计算机上进行
+
+### 安全测试
+
+- **8,890+自动化测试**包括以安全为重点的边缘案例
+- **100% mypy类型安全**防止整类bug
+- **CI/CD安全扫描**：Bandit（Python安全）、safety（依赖漏洞）
+- **手动安全审查**所有MCP工具实现
+
+### 报告安全问题
+
+发现安全问题？请发送电子邮件至aimasteracc@gmail.com或在GitHub上开启私人安全咨询。
+
+**我们不使用自动化安全徽章服务**——我们的安全态势是通过架构、测试和代码审查来记录的，而不是第三方评分。
 
 ---
 

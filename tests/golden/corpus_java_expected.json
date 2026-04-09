@@ -1,0 +1,27 @@
+{
+  "language": "java",
+  "node_types": {
+    "method_declaration": 65,
+    "constructor_declaration": 10,
+    "class_declaration": 19,
+    "interface_declaration": 6,
+    "enum_declaration": 3,
+    "record_declaration": 2,
+    "annotation_type_declaration": 3,
+    "field_declaration": 24,
+    "local_variable_declaration": 23,
+    "annotation": 1,
+    "marker_annotation": 8,
+    "import_declaration": 5,
+    "package_declaration": 1,
+    "lambda_expression": 7,
+    "method_reference": 10,
+    "generic_type": 30,
+    "type_parameters": 11,
+    "type_parameter": 13,
+    "wildcard": 3,
+    "type_pattern": 3,
+    "switch_expression": 3,
+    "instanceof_expression": 2
+  }
+}

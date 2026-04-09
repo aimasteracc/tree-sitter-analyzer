@@ -147,42 +147,52 @@ JAVA_QUERIES: dict[str, str] = {
       name: (identifier) @name) @static_methods
     """,
     # --- Spring Framework Annotations ---
+    # NOTE: Java annotations with no arguments are "marker_annotation" nodes in
+    # tree-sitter (e.g. @Controller, @Entity, @Bean). Annotations WITH arguments
+    # are "annotation" nodes (e.g. @Table(name="x")).  We must match BOTH.
+    # The (#match? ...) predicate is applied manually by _execute_newest_api()
+    # because tree-sitter-python 0.25+ QueryCursor does not apply it automatically.
     "spring_controller": """
-    (class_declaration
-      (modifiers (annotation
-        name: (identifier) @annotation_name
-        (#match? @annotation_name "Controller|RestController")))
+    ((class_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
       name: (identifier) @controller_name) @spring_controller
+     (#match? @annotation_name "^(Controller|RestController)$"))
     """,
     "spring_service": """
-    (class_declaration
-      (modifiers (annotation
-        name: (identifier) @annotation_name
-        (#match? @annotation_name "Service")))
+    ((class_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
       name: (identifier) @service_name) @spring_service
+     (#match? @annotation_name "^Service$"))
     """,
     "spring_repository": """
-    (class_declaration
-      (modifiers (annotation
-        name: (identifier) @annotation_name
-        (#match? @annotation_name "Repository")))
+    ((class_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
       name: (identifier) @repository_name) @spring_repository
+     (#match? @annotation_name "^Repository$"))
     """,
     # --- JPA Annotations ---
     "jpa_entity": """
-    (class_declaration
-      (modifiers (annotation
-        name: (identifier) @annotation_name
-        (#match? @annotation_name "Entity")))
+    ((class_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
       name: (identifier) @entity_name) @jpa_entity
+     (#match? @annotation_name "^Entity$"))
     """,
     "jpa_id_field": """
-    (field_declaration
-      (modifiers (annotation
-        name: (identifier) @annotation_name
-        (#match? @annotation_name "Id")))
+    ((field_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
       declarator: (variable_declarator
         name: (identifier) @field_name)) @jpa_id_field
+     (#match? @annotation_name "^Id$"))
     """,
     # --- Structural Information Extraction Queries ---
     "javadoc_comment": """
@@ -261,6 +271,132 @@ JAVA_QUERIES: dict[str, str] = {
           name: (identifier) @method_name
           parameters: (formal_parameters) @parameters)*)) @interface_method
     """,
+    # --- Java 16+ Language Features ---
+    "record_declaration": """
+    (record_declaration
+      name: (identifier) @record_name) @record_declaration
+    """,
+    "sealed_class": """
+    (class_declaration
+      name: (identifier) @class_name) @sealed_class
+    """,
+    # --- Spring Framework: Configuration & Beans ---
+    "spring_bean": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @spring_bean
+     (#match? @annotation_name "^Bean$"))
+    """,
+    "spring_configuration": """
+    ((class_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @class_name) @spring_configuration
+     (#match? @annotation_name "^Configuration$"))
+    """,
+    "spring_component": """
+    ((class_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @class_name) @spring_component
+     (#match? @annotation_name "^Component$"))
+    """,
+    "spring_transactional": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @spring_transactional
+     (#match? @annotation_name "^Transactional$"))
+    """,
+    "spring_autowired": """
+    ((field_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      declarator: (variable_declarator name: (identifier) @field_name)) @spring_autowired
+     (#match? @annotation_name "^Autowired$"))
+    """,
+    "spring_request_mapping": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @spring_request_mapping
+     (#match? @annotation_name "^(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)$"))
+    """,
+    "spring_event_listener": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @spring_event_listener
+     (#match? @annotation_name "^EventListener$"))
+    """,
+    "spring_scheduled": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @spring_scheduled
+     (#match? @annotation_name "^Scheduled$"))
+    """,
+    # --- Testing Queries ---
+    "junit5_test": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @junit5_test
+     (#match? @annotation_name "^Test$"))
+    """,
+    "junit5_lifecycle": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @junit5_lifecycle
+     (#match? @annotation_name "^(BeforeEach|AfterEach|BeforeAll|AfterAll)$"))
+    """,
+    "parameterized_test": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @parameterized_test
+     (#match? @annotation_name "^ParameterizedTest$"))
+    """,
+    # --- Concurrency Queries ---
+    "volatile_field": """
+    (field_declaration
+      (modifiers "volatile") @modifier
+      declarator: (variable_declarator
+        name: (identifier) @field_name)) @volatile_field
+    """,
+    "spring_async": """
+    ((method_declaration
+      (modifiers
+        [(marker_annotation name: (identifier) @annotation_name)
+         (annotation name: (identifier) @annotation_name)])
+      name: (identifier) @method_name) @spring_async
+     (#match? @annotation_name "^Async$"))
+    """,
+    "synchronized_method": """
+    (method_declaration
+      (modifiers "synchronized") @modifier
+      name: (identifier) @method_name) @synchronized_method
+    """,
+    # --- Exception Handling ---
+    "throws_declaration": """
+    (method_declaration
+      (throws
+        (type_identifier) @exception_type)
+      name: (identifier) @method_name) @throws_declaration
+    """,
 }
 
 # Query descriptions
@@ -314,6 +450,23 @@ JAVA_QUERY_DESCRIPTIONS: dict[str, str] = {
     "generic_type": "Extract generic types",
     "method_with_annotations": "Extract methods with annotations",
     "jpa_id_field": "Extract JPA ID fields",
+    "record_declaration": "Extract Java 16+ record declarations",
+    "sealed_class": "Extract Java 17+ sealed class declarations",
+    "spring_bean": "Extract @Bean annotated methods in @Configuration classes",
+    "spring_configuration": "Extract @Configuration annotated classes",
+    "spring_component": "Extract @Component annotated classes",
+    "spring_transactional": "Extract @Transactional annotated methods",
+    "spring_autowired": "Extract @Autowired injection points (fields)",
+    "spring_request_mapping": "Extract HTTP mapping annotated methods (@GetMapping, @PostMapping, etc.)",
+    "spring_event_listener": "Extract @EventListener annotated methods",
+    "spring_scheduled": "Extract @Scheduled annotated methods",
+    "junit5_test": "Extract @Test annotated JUnit 5 test methods",
+    "junit5_lifecycle": "Extract JUnit 5 lifecycle methods (@BeforeEach, @AfterEach, etc.)",
+    "parameterized_test": "Extract @ParameterizedTest annotated methods",
+    "volatile_field": "Extract volatile field declarations",
+    "spring_async": "Extract @Async annotated methods",
+    "synchronized_method": "Extract synchronized method declarations",
+    "throws_declaration": "Extract methods with throws clauses",
 }
 
 
@@ -382,12 +535,12 @@ def get_query(name: str) -> str:
     )
 
 
-def get_all_queries() -> dict:
+def get_all_queries() -> dict[str, dict[str, str]]:
     """Get all available queries."""
     return ALL_QUERIES
 
 
-def list_queries() -> list:
+def list_queries() -> list[str]:
     """List all available query names."""
     return list(ALL_QUERIES.keys())
 

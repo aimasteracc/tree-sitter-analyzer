@@ -114,8 +114,8 @@ class TestCLIRegression:
         assert data["language"] == "java"
         assert data["line_count"] == 1420
         assert (
-            data["element_count"] == 85
-        )  # Total elements (methods, classes, fields, imports, package)
+            data["element_count"] == 158
+        )  # Total elements (methods, classes, fields, imports, package, expressions)
         assert data["success"] is True
 
         # Verify elements structure
@@ -128,12 +128,14 @@ class TestCLIRegression:
         variables = [e for e in elements if e["type"] == "variable"]
         imports = [e for e in elements if e["type"] == "import"]
         packages = [e for e in elements if e["type"] == "package"]
+        expressions = [e for e in elements if e["type"] == "expression"]
 
         assert len(functions) == 66  # All methods including constructor
         assert len(classes) == 1  # BigService class
         assert len(variables) == 9  # Class fields
         assert len(imports) == 8  # Import statements
         assert len(packages) == 1  # Package declaration
+        assert len(expressions) == 73  # Expression elements (Java plugin improvement)
 
     def test_advanced_text_command_consistency(self, bigservice_path):
         """Test --advanced --output-format=text command produces consistent output"""

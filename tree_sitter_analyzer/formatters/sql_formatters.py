@@ -35,11 +35,16 @@ class SQLFormatterBase:
         return self._format_grouped_elements(grouped_elements, file_path)
 
     def group_elements_by_type(
-        self, elements: list[SQLElement]
+        self, elements: list[Any]
     ) -> dict[SQLElementType, list[SQLElement]]:
         """Group elements by SQL type"""
+        from ..models import SQLElement as SQLElementClass
+
         grouped: dict[SQLElementType, list[SQLElement]] = {}
         for element in elements:
+            # Skip non-SQLElement objects (e.g., Expression elements for grammar coverage)
+            if not isinstance(element, SQLElementClass):
+                continue
             element_type = element.sql_element_type
             if element_type not in grouped:
                 grouped[element_type] = []

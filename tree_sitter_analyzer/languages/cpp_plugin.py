@@ -13,11 +13,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Expression, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
 
@@ -105,6 +105,9 @@ class CppElementExtractor(ElementExtractor):
         extractors = {
             "field_declaration": self._extract_field_optimized,
             "declaration": self._extract_variable_declaration,
+            # Template type parameters: typename T, class T
+            "type_parameter_declaration": self._extract_cpp_minimal_variable,
+            "variadic_type_parameter_declaration": self._extract_cpp_minimal_variable,
         }
 
         self._traverse_and_extract_iterative(
@@ -194,6 +197,201 @@ class CppElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(packages)} C++ namespaces")
         return packages
 
+    def extract_enums(
+        self, tree: "tree_sitter.Tree | None", source_code: str
+    ) -> list[Class]:
+        """Extract C++ enum definitions"""
+        if tree is None or tree.root_node is None:
+            return []
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+        self._reset_caches()
+
+        enums: list[Class] = []
+
+        extractors = {
+            "enum_specifier": self._extract_enum,
+        }
+
+        self._traverse_and_extract_iterative(tree.root_node, extractors, enums, "enum")
+
+        log_debug(f"Extracted {len(enums)} C++ enums")
+        return enums
+
+    def extract_preprocessor_conditionals(
+        self, tree: "tree_sitter.Tree | None", source_code: str
+    ) -> list[Expression]:
+        """Extract C++ preprocessor conditional directives (#if, #ifdef, etc.)"""
+        if tree is None or tree.root_node is None:
+            return []
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+
+        conditionals: list[Expression] = []
+
+        extractors = {
+            "preproc_if": self._extract_preproc_conditional,
+            "preproc_ifdef": self._extract_preproc_conditional,
+            "preproc_ifndef": self._extract_preproc_conditional,
+        }
+
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, conditionals, "preprocessor"
+        )
+
+        log_debug(f"Extracted {len(conditionals)} C++ preprocessor conditionals")
+        return conditionals
+
+    def extract_concepts(
+        self, tree: "tree_sitter.Tree | None", source_code: str
+    ) -> list[Expression]:
+        """Extract C++20 concept definitions"""
+        if tree is None or tree.root_node is None:
+            return []
+        self.source_code = source_code
+        self.content_lines = source_code.split("\n")
+
+        concepts: list[Expression] = []
+
+        extractors = {
+            "concept_definition": self._extract_concept,
+        }
+
+        self._traverse_and_extract_iterative(
+            tree.root_node, extractors, concepts, "concept"
+        )
+
+        log_debug(f"Extracted {len(concepts)} C++ concepts")
+        return concepts
+
+    def _extract_enum(self, node: "tree_sitter.Node") -> Class | None:
+        """Extract enum or enum class definition"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            enum_name = None
+            base_type = None
+            is_scoped = False
+
+            for child in node.children:
+                if child.type == "class" or child.type == "struct":
+                    is_scoped = True
+                elif child.type == "type_identifier":
+                    enum_name = self._get_node_text_optimized(child)
+                elif child.type == "sized_type_specifier":
+                    base_type = self._get_node_text_optimized(child)
+                elif child.type in ["primitive_type", "type_identifier"]:
+                    if not enum_name:
+                        continue
+                    # This is the base type after ':'
+                    if base_type is None:
+                        base_type = self._get_node_text_optimized(child)
+
+            if not enum_name:
+                # Anonymous enum
+                enum_name = f"<anonymous_enum_line_{start_line}>"
+
+            raw_text = self._get_node_text_optimized(node)
+            docstring = self._extract_comment_for_line(start_line)
+
+            modifiers = []
+            if is_scoped:
+                modifiers.append("scoped")
+            if base_type:
+                modifiers.append(f"base_type:{base_type}")
+
+            return Class(
+                name=enum_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="cpp",
+                class_type="enum",
+                modifiers=modifiers,
+                docstring=docstring,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract enum: {e}")
+            return None
+
+    def _extract_preproc_conditional(
+        self, node: "tree_sitter.Node"
+    ) -> Expression | None:
+        """Extract preprocessor conditional directive"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            raw_text = self._get_node_text_optimized(node)
+
+            # Get the directive type (#if, #ifdef, #ifndef)
+            directive_type = node.type
+            condition = ""
+
+            # Extract condition for preproc_if
+            if node.type == "preproc_if":
+                for child in node.children:
+                    if child.type in [
+                        "binary_expression",
+                        "identifier",
+                        "number_literal",
+                        "unary_expression",
+                    ]:
+                        condition = self._get_node_text_optimized(child)
+                        break
+            elif node.type in ["preproc_ifdef", "preproc_ifndef"]:
+                # Get identifier
+                for child in node.children:
+                    if child.type == "identifier":
+                        condition = self._get_node_text_optimized(child)
+                        break
+
+            name = f"{directive_type}_{condition}".strip("_") or directive_type
+
+            return Expression(
+                name=name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="cpp",
+                expression_kind=directive_type,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract preprocessor conditional: {e}")
+            return None
+
+    def _extract_concept(self, node: "tree_sitter.Node") -> Expression | None:
+        """Extract C++20 concept definition"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+
+            concept_name = None
+
+            for child in node.children:
+                if child.type == "identifier":
+                    concept_name = self._get_node_text_optimized(child)
+
+            if not concept_name:
+                return None
+
+            raw_text = self._get_node_text_optimized(node)
+            docstring = self._extract_comment_for_line(start_line)
+
+            return Expression(
+                name=concept_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="cpp",
+                expression_kind="concept",
+                docstring=docstring,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract concept: {e}")
+            return None
+
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -225,6 +423,11 @@ class CppElementExtractor(ElementExtractor):
             "field_declaration_list",
             "compound_statement",
             "template_declaration",
+            "template_parameter_list",
+            "enumerator_list",
+            "preproc_if",
+            "preproc_ifdef",
+            "preproc_ifndef",
         }
 
         node_stack = [(root_node, 0)]
@@ -539,6 +742,18 @@ class CppElementExtractor(ElementExtractor):
                         func.modifiers = func.modifiers or []
                         if "template" not in func.modifiers:
                             func.modifiers.append("template")
+
+                        # CRITICAL: Use template_declaration's line range to cover template_parameter_list
+                        # This ensures variadic_type_parameter_declaration and other template parameters
+                        # are included in the coverage overlap check
+                        func.start_line = node.start_point[0] + 1
+                        func.end_line = node.end_point[0] + 1
+
+                        # Update raw_text to include template declaration
+                        start_line_idx = max(0, func.start_line - 1)
+                        end_line_idx = min(len(self.content_lines), func.end_line)
+                        func.raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
+
                         return func
             return None
         except Exception as e:
@@ -728,6 +943,16 @@ class CppElementExtractor(ElementExtractor):
                         cls.modifiers = cls.modifiers or []
                         if "template" not in cls.modifiers:
                             cls.modifiers.append("template")
+
+                        # CRITICAL: Use template_declaration's line range to cover template_parameter_list
+                        cls.start_line = node.start_point[0] + 1
+                        cls.end_line = node.end_point[0] + 1
+
+                        # Update raw_text to include template declaration
+                        start_line_idx = max(0, cls.start_line - 1)
+                        end_line_idx = min(len(self.content_lines), cls.end_line)
+                        cls.raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
+
                         return cls
                 elif child.type == "struct_specifier":
                     # Mark child as processed to prevent double extraction
@@ -739,6 +964,16 @@ class CppElementExtractor(ElementExtractor):
                         cls.modifiers = cls.modifiers or []
                         if "template" not in cls.modifiers:
                             cls.modifiers.append("template")
+
+                        # CRITICAL: Use template_declaration's line range to cover template_parameter_list
+                        cls.start_line = node.start_point[0] + 1
+                        cls.end_line = node.end_point[0] + 1
+
+                        # Update raw_text to include template declaration
+                        start_line_idx = max(0, cls.start_line - 1)
+                        end_line_idx = min(len(self.content_lines), cls.end_line)
+                        cls.raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
+
                         return cls
             return None
         except Exception as e:
@@ -758,6 +993,34 @@ class CppElementExtractor(ElementExtractor):
                         base_classes.append(self._get_node_text_optimized(grandchild))
 
         return base_classes
+
+    def _extract_cpp_minimal_variable(
+        self, node: "tree_sitter.Node"
+    ) -> Variable | None:
+        """Minimal extractor for friend/type_parameter/variadic_type_parameter nodes."""
+        try:
+            # Extract first identifier as name
+            name = ""
+            for child in node.children:
+                if child.is_named and child.type in {
+                    "type_identifier", "identifier", "name"
+                }:
+                    name = self._get_node_text_optimized(child)
+                    break
+            if not name:
+                raw = self._get_node_text_optimized(node)
+                parts = raw.split()
+                name = parts[-1].rstrip(";") if parts else raw[:20]
+            return Variable(
+                name=name or "_",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text_optimized(node),
+                language="cpp",
+            )
+        except Exception as e:
+            log_error(f"Error extracting C++ minimal variable: {e}")
+            return None
 
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract field declaration"""
@@ -1249,6 +1512,9 @@ class CppPlugin(LanguagePlugin):
             all_elements.extend(elements_dict.get("variables", []))
             all_elements.extend(elements_dict.get("imports", []))
             all_elements.extend(elements_dict.get("packages", []))
+            all_elements.extend(elements_dict.get("enums", []))
+            all_elements.extend(elements_dict.get("preprocessor", []))
+            all_elements.extend(elements_dict.get("concepts", []))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
@@ -1325,6 +1591,9 @@ class CppPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
+                "enums": [],
+                "preprocessor": [],
+                "concepts": [],
             }
 
         try:
@@ -1335,6 +1604,9 @@ class CppPlugin(LanguagePlugin):
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
                 "packages": extractor.extract_packages(tree, source_code),
+                "enums": extractor.extract_enums(tree, source_code),  # type: ignore[attr-defined]
+                "preprocessor": extractor.extract_preprocessor_conditionals(tree, source_code),  # type: ignore[attr-defined]
+                "concepts": extractor.extract_concepts(tree, source_code),  # type: ignore[attr-defined]
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
@@ -1344,4 +1616,7 @@ class CppPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
                 "packages": [],
+                "enums": [],
+                "preprocessor": [],
+                "concepts": [],
             }

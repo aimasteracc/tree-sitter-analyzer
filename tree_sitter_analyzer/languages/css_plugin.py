@@ -10,14 +10,13 @@ selector parsing, and property analysis.
 import logging
 from typing import TYPE_CHECKING, Any
 
+from ..core.request import AnalysisRequest
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_info
+from ..utils import log_debug, log_error, log_info, safe_preview
 
 if TYPE_CHECKING:
     import tree_sitter
-
-    from ..core.analysis_engine import AnalysisRequest
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +164,7 @@ class CssElementExtractor(ElementExtractor):
                 element_class = "at_rule"
                 name = selector or "unknown_at_rule"
             else:
-                selector = self._extract_node_text(node, source_code)[:50]
+                selector = safe_preview(self._extract_node_text(node, source_code))
                 properties = {}
                 element_class = "other"
                 name = selector or "unknown"
@@ -289,7 +288,7 @@ class CssElementExtractor(ElementExtractor):
                             return first_line.split("{")[0].strip()
                         return first_line
                     return parts[0]
-            return node_text[:50]  # Truncate for readability
+            return safe_preview(node_text)  # Truncate for readability
         except Exception:
             return "unknown"
 

@@ -17,7 +17,8 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+from ...core.analysis_engine import get_analysis_engine
+from ...core.request import AnalysisRequest
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils.file_metrics import compute_file_metrics
@@ -840,7 +841,32 @@ class AnalyzeScaleTool(BaseMCPTool):
         """
         return {
             "name": "check_code_scale",
-            "description": "Analyze code scale, complexity, and structure metrics with LLM-optimized guidance for efficient large file analysis and token-aware workflow recommendations",
+            "description": (
+                "Triage a file's size and complexity before reading it — returns line count, "
+                "function count, class count, complexity score, and token estimate. "
+                "\n\n"
+                "ALWAYS call this before using the built-in Read tool on any file you haven't "
+                "seen before, especially if it might be large. "
+                "NEVER Read a large file without first calling check_code_scale — you risk "
+                "consuming thousands of tokens on content you don't need. "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- Before reading any unfamiliar file (takes <100ms, saves thousands of tokens)\n"
+                "- To decide whether to use Read (small file) vs get_code_outline + "
+                "extract_code_section (large file)\n"
+                "- To identify complexity hotspots before a refactoring session\n"
+                "- To get a token estimate before deciding which files to include in context\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- Files you already know are small (< 100 lines) — just Read them directly\n"
+                "- When you need the actual code content, not just the metrics — pair this with "
+                "get_code_outline or extract_code_section for the content\n"
+                "\n"
+                "DECISION GUIDE based on results:\n"
+                "- < 200 lines: Read the whole file directly\n"
+                "- 200-500 lines: Use get_code_outline first, then extract_code_section\n"
+                "- > 500 lines: ALWAYS use get_code_outline + extract_code_section, never Read whole"
+            ),
             "inputSchema": self.get_tool_schema(),
         }
 

@@ -29,10 +29,12 @@ fields:
     unknown,,(48,48)
     unknown,,(49,49)
     unknown,,(63,63)
-imports: []
+imports:
+  [1]{name,is_static,is_wildcard,statement,line_range(a,b)}:
+    java.util.Collections,false,false,import java.util.Collections,(3,3)
 statistics:
   class_count: 8
   method_count: 8
   field_count: 4
-  import_count: 0
+  import_count: 1
   total_lines: 66

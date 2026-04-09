@@ -1,0 +1,16 @@
+{
+  "language": "php",
+  "node_types": {
+    "arrow_function": 6,
+    "class_declaration": 8,
+    "const_declaration": 5,
+    "enum_declaration": 2,
+    "function_definition": 15,
+    "interface_declaration": 3,
+    "method_declaration": 45,
+    "namespace_definition": 3,
+    "namespace_use_declaration": 7,
+    "property_declaration": 16,
+    "trait_declaration": 3
+  }
+}

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 try:
@@ -26,6 +26,7 @@ except ImportError:
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import (
     Class,
+    Expression,
     Function,
     Import,
     SQLColumn,
@@ -93,26 +94,28 @@ class SQLElementExtractor(ElementExtractor):
 
     def extract_sql_elements(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[SQLElement]:
+    ) -> list[SQLElement | Expression]:
         """
         Extract all SQL elements with enhanced metadata.
 
         This is the new enhanced extraction method that returns SQL-specific
         element types with detailed metadata including columns, constraints,
-        parameters, and dependencies.
+        parameters, and dependencies, plus Expression elements for comprehensive
+        grammar coverage.
 
         Args:
             tree: Tree-sitter AST tree parsed from SQL source
             source_code: Original SQL source code as string
 
         Returns:
-            List of SQLElement objects with detailed metadata
+            List of SQLElement and Expression objects
         """
         self.source_code = source_code or ""
         self.content_lines = self.source_code.split("\n")
         self._reset_caches()
 
         sql_elements: list[SQLElement] = []
+        expression_elements: list[Expression] = []
 
         if tree is not None and tree.root_node is not None:
             try:
@@ -124,7 +127,17 @@ class SQLElementExtractor(ElementExtractor):
                 self._extract_sql_triggers(tree.root_node, sql_elements)
                 self._extract_sql_indexes(tree.root_node, sql_elements)
 
-                # Apply platform compatibility adapter if available
+                # Extract additional elements for grammar coverage
+                self._extract_dml_statements(tree.root_node, expression_elements)
+                self._extract_expressions(tree.root_node, expression_elements)
+                self._extract_query_clauses(tree.root_node, expression_elements)
+                self._extract_window_functions(tree.root_node, expression_elements)
+                self._extract_transactions(tree.root_node, expression_elements)
+                self._extract_comments(tree.root_node, expression_elements)
+                self._extract_select_statements(tree.root_node, expression_elements)
+                # _extract_keywords_and_others removed — it was a no-op traversal
+
+                # Apply platform compatibility adapter if available (SQL elements only)
                 if self.adapter:
                     if self.diagnostic_mode:
                         log_debug(
@@ -143,7 +156,10 @@ class SQLElementExtractor(ElementExtractor):
                 # Post-process to fix platform-specific parsing errors
                 sql_elements = self._validate_and_fix_elements(sql_elements)
 
-                log_debug(f"Extracted {len(sql_elements)} SQL elements with metadata")
+                log_debug(
+                    f"Extracted {len(sql_elements)} SQL elements + "
+                    f"{len(expression_elements)} expression elements"
+                )
             except Exception as e:
                 log_error(
                     f"Error during enhanced SQL extraction on {self.platform_info}: {e}"
@@ -152,10 +168,14 @@ class SQLElementExtractor(ElementExtractor):
                     "Suggestion: Check platform compatibility documentation or enable diagnostic mode for more details."
                 )
                 # Return empty list or partial results to allow other languages to continue
-                if not sql_elements:
-                    sql_elements = []
+                if not sql_elements and not expression_elements:
+                    return []
 
-        return sql_elements
+        # Combine SQL elements and expression elements
+        all_elements: list[SQLElement | Expression] = []
+        all_elements.extend(sql_elements)
+        all_elements.extend(expression_elements)
+        return all_elements
 
     def _validate_and_fix_elements(
         self, elements: list[SQLElement]
@@ -2246,6 +2266,312 @@ class SQLElementExtractor(ElementExtractor):
                     log_debug(
                         f"Failed to create regex-extracted index {index_name}: {e}"
                     )
+
+    def _extract_dml_statements(
+        self, root_node: "tree_sitter.Node", elements: list[Expression]
+    ) -> None:
+        """
+        Extract DML statements (INSERT, UPDATE, DELETE) for grammar coverage.
+
+        This method creates Expression elements for DML statements to ensure
+        all DML-related node types are covered.
+
+        Args:
+            root_node: Root node of the tree
+            elements: List to append extracted elements to
+        """
+        stack: list[tree_sitter.Node] = [root_node]
+
+        while stack:
+            node = stack.pop()
+
+            # Extract DML statements
+            if node.type in ("insert", "update", "delete"):
+                try:
+                    raw_text = self._get_node_text(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    elements.append(
+                        Expression(
+                            name=f"{node.type.upper()}_statement",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text[:200] if len(raw_text) > 200 else raw_text,
+                            language="sql",
+                            expression_kind=node.type,
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting {node.type}: {e}")
+
+            # Add children to stack
+            stack.extend(reversed(node.children))
+
+    def _extract_expressions(
+        self, root_node: "tree_sitter.Node", elements: list[Expression]
+    ) -> None:
+        """
+        Extract expressions (CASE, CAST, BETWEEN, EXISTS, etc.) for grammar coverage.
+
+        This method creates Expression elements for various SQL expressions to ensure
+        all expression-related node types are covered.
+
+        Args:
+            root_node: Root node of the tree
+            elements: List to append extracted elements to
+        """
+        expression_types = {
+            "case",
+            "cast",
+            "between_expression",
+            "exists",
+            "parenthesized_expression",
+            "unary_expression",
+        }
+
+        stack: list[tree_sitter.Node] = [root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type in expression_types:
+                try:
+                    raw_text = self._get_node_text(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    elements.append(
+                        Expression(
+                            name=f"{node.type}_expr",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text[:200] if len(raw_text) > 200 else raw_text,
+                            language="sql",
+                            expression_kind=node.type,
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting expression {node.type}: {e}")
+
+            stack.extend(reversed(node.children))
+
+    def _extract_query_clauses(
+        self, root_node: "tree_sitter.Node", elements: list[Expression]
+    ) -> None:
+        """
+        Extract query clauses (ORDER BY, LIMIT, OFFSET, CTE, etc.) for grammar coverage.
+
+        This method creates Expression elements for query clauses to ensure
+        all clause-related node types are covered.
+
+        Args:
+            root_node: Root node of the tree
+            elements: List to append extracted elements to
+        """
+        clause_types = {
+            "order_by",
+            "order_target",
+            "direction",
+            "limit",
+            "offset",
+            "cte",
+            "set_operation",
+            "returning",
+            "assignment",
+        }
+
+        stack: list[tree_sitter.Node] = [root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type in clause_types:
+                try:
+                    raw_text = self._get_node_text(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    elements.append(
+                        Expression(
+                            name=f"{node.type}_clause",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text[:200] if len(raw_text) > 200 else raw_text,
+                            language="sql",
+                            expression_kind=node.type,
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting clause {node.type}: {e}")
+
+            stack.extend(reversed(node.children))
+
+    def _extract_window_functions(
+        self, root_node: "tree_sitter.Node", elements: list[Expression]
+    ) -> None:
+        """
+        Extract window functions and specifications for grammar coverage.
+
+        This method creates Expression elements for window functions to ensure
+        all window-related node types are covered.
+
+        Args:
+            root_node: Root node of the tree
+            elements: List to append extracted elements to
+        """
+        window_types = {
+            "window_function",
+            "window_specification",
+            "window_frame",
+            "partition_by",
+            "frame_definition",
+        }
+
+        stack: list[tree_sitter.Node] = [root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type in window_types:
+                try:
+                    raw_text = self._get_node_text(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    elements.append(
+                        Expression(
+                            name=f"{node.type}_window",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text[:200] if len(raw_text) > 200 else raw_text,
+                            language="sql",
+                            expression_kind=node.type,
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting window {node.type}: {e}")
+
+            stack.extend(reversed(node.children))
+
+    def _extract_transactions(
+        self, root_node: "tree_sitter.Node", elements: list[Expression]
+    ) -> None:
+        """
+        Extract transaction statements for grammar coverage.
+
+        This method creates Expression elements for transaction statements to ensure
+        all transaction-related node types are covered.
+
+        Args:
+            root_node: Root node of the tree
+            elements: List to append extracted elements to
+        """
+        stack: list[tree_sitter.Node] = [root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type == "transaction":
+                try:
+                    raw_text = self._get_node_text(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    elements.append(
+                        Expression(
+                            name="transaction_stmt",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text[:200] if len(raw_text) > 200 else raw_text,
+                            language="sql",
+                            expression_kind="transaction",
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting transaction: {e}")
+
+            stack.extend(reversed(node.children))
+
+    def _extract_comments(
+        self, root_node: "tree_sitter.Node", elements: list[Expression]
+    ) -> None:
+        """
+        Extract comments for grammar coverage.
+
+        This method creates Expression elements for comments to ensure
+        all comment nodes are covered.
+
+        Args:
+            root_node: Root node of the tree
+            elements: List to append extracted elements to
+        """
+        stack: list[tree_sitter.Node] = [root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type == "comment":
+                try:
+                    raw_text = self._get_node_text(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    elements.append(
+                        Expression(
+                            name="comment",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text[:200] if len(raw_text) > 200 else raw_text,
+                            language="sql",
+                            expression_kind="comment",
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting comment: {e}")
+
+            stack.extend(reversed(node.children))
+
+    def _extract_select_statements(
+        self, root_node: "tree_sitter.Node", elements: list[Expression]
+    ) -> None:
+        """
+        Extract standalone SQL statements for grammar coverage.
+
+        This method creates Expression elements for SQL statements to ensure
+        all statement-related constructs and keywords are covered.
+
+        Args:
+            root_node: Root node of the tree
+            elements: List to append extracted elements to
+        """
+        stack: list[tree_sitter.Node] = [root_node]
+
+        while stack:
+            node = stack.pop()
+
+            # Extract statement nodes (these span full queries including HAVING, JOIN, etc.)
+            if node.type == "statement":
+                try:
+                    raw_text = self._get_node_text(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    elements.append(
+                        Expression(
+                            name="SQL_statement",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text[:200] if len(raw_text) > 200 else raw_text,
+                            language="sql",
+                            expression_kind="statement",
+                        )
+                    )
+                except Exception as e:
+                    log_debug(f"Error extracting statement: {e}")
+
+            stack.extend(reversed(node.children))
+
 
 
 class SQLPlugin(LanguagePlugin):

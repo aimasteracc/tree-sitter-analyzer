@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 try:

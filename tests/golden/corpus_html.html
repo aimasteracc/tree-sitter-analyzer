@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="description" content="Tree-sitter HTML grammar corpus test file">
+  <title>Grammar Coverage &amp; Test Page &mdash; HTML Corpus</title>
+  <link rel="stylesheet" href="styles/main.css" type="text/css">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <!-- Preload critical font resources -->
+  <link rel="preload" href="fonts/sans.woff2" as="font" crossorigin>
+  <style>
+    /* style_element with raw_text CSS content */
+    :root {
+      --primary: #2563eb;
+      --secondary: #7c3aed;
+      --text: #1f2937;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+    }
+
+    header {
+      background: var(--primary);
+      color: #fff;
+      padding: 1rem 2rem;
+    }
+
+    nav ul {
+      list-style: none;
+      display: flex;
+      gap: 1rem;
+      margin: 0;
+      padding: 0;
+    }
+
+    .card {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    th, td {
+      border: 1px solid #d1d5db;
+      padding: 0.5rem 1rem;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     HEADER / NAV
+     ============================================================ -->
+<header role="banner">
+  <h1>HTML Corpus &mdash; Grammar Coverage Test</h1>
+  <nav aria-label="Primary navigation">
+    <ul>
+      <li><a href="#about">About &amp; Overview</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+  </nav>
+</header>
+
+<!-- Main landmark wraps the primary page content -->
+<main id="main-content">
+
+  <!-- ============================================================
+       SECTION: About — exercises text, entity, attribute types
+       ============================================================ -->
+  <section id="about" class="card" aria-labelledby="about-heading">
+    <h2 id="about-heading">About This Page</h2>
+    <p>
+      This document exercises <em>every</em> named node type in the
+      tree&#8209;sitter HTML grammar. Entities used here include:
+      &amp; (ampersand), &lt; (less-than), &gt; (greater-than),
+      &quot; (double-quote), &apos; (apostrophe), &copy; (copyright),
+      &reg; (registered), &#169; (decimal entity), &#xA9; (hex entity).
+    </p>
+    <p>
+      Attributes appear in multiple forms: <code>href="..."</code>
+      (double-quoted), <code>lang='en'</code> (single-quoted),
+      and boolean attributes such as <code>disabled</code> and
+      <code>checked</code>.
+    </p>
+    <hr>
+  </section>
+
+  <!-- ============================================================
+       SECTION: Self-closing / void elements
+       ============================================================ -->
+  <section id="features" class='card'>
+    <h2>Self-Closing &amp; Void Elements</h2>
+
+    <!-- img with double-quoted attributes -->
+    <figure>
+      <img src="images/sample.png" alt="Sample image" width="640" height="480">
+      <figcaption>A sample image using a self-closing void element.</figcaption>
+    </figure>
+
+    <!-- Explicit line-break -->
+    <p>Line one.<br>Line two after a &lt;br&gt; element.</p>
+
+    <!-- Horizontal rule already used above; here is another -->
+    <hr class="divider">
+
+    <!-- input elements — various types, boolean attributes -->
+    <form id="demo-form" action="/submit" method="post" enctype='multipart/form-data'>
+      <fieldset>
+        <legend>Sample Form Fields</legend>
+
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" placeholder="Enter name" required>
+        <br>
+
+        <label for="email">E-mail</label>
+        <input type='email' id='email' name='email' autocomplete='email'>
+        <br>
+
+        <label for="qty">Quantity</label>
+        <input type="number" id="qty" name="qty" min="0" max="99" value="1">
+        <br>
+
+        <!-- Checked checkbox — boolean attribute -->
+        <label>
+          <input type="checkbox" name="agree" checked> I agree to the terms
+        </label>
+        <br>
+
+        <!-- Disabled submit -->
+        <input type="submit" value="Submit" disabled>
+      </fieldset>
+    </form>
+  </section>
+
+  <!-- ============================================================
+       SECTION: Table
+       ============================================================ -->
+  <section class="card">
+    <h2>Data Table</h2>
+    <table summary="Node type coverage table">
+      <thead>
+        <tr>
+          <th scope="col">Node Type</th>
+          <th scope="col">Example</th>
+          <th scope="col">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>doctype</code></td>
+          <td><code>&lt;!DOCTYPE html&gt;</code></td>
+          <td>First line of document</td>
+        </tr>
+        <tr>
+          <td><code>comment</code></td>
+          <td><code>&lt;!-- ... --&gt;</code></td>
+          <td>HTML comment nodes</td>
+        </tr>
+        <tr>
+          <td><code>entity</code></td>
+          <td><code>&amp;amp;</code> &amp;copy; &#169;</td>
+          <td>Named &amp; numeric entities</td>
+        </tr>
+        <tr>
+          <td><code>raw_text</code></td>
+          <td>&lt;script&gt; / &lt;style&gt;</td>
+          <td>Unparsed content inside script/style</td>
+        </tr>
+        <tr>
+          <td><code>erroneous_end_tag</code></td>
+          <td><code>&lt;/span&gt;</code> (orphan)</td>
+          <td>End tag with no matching open tag</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============================================================
+       SECTION: Lists & misc semantic elements
+       ============================================================ -->
+  <section class="card">
+    <h2>Lists &amp; Semantic Elements</h2>
+
+    <article>
+      <header>
+        <h3>Ordered List Example</h3>
+        <time datetime="2024-01-15">January 15, 2024</time>
+      </header>
+      <ol type="1" start='1'>
+        <li>First item &mdash; contains an em-dash entity</li>
+        <li>Second item with <strong>bold</strong> and <em>italic</em> text</li>
+        <li>Third item with a <a href="https://example.com" target="_blank" rel='noopener noreferrer'>link</a></li>
+      </ol>
+    </article>
+
+    <aside>
+      <h3>Unordered List</h3>
+      <ul>
+        <li>Alpha &amp; Beta</li>
+        <li>Gamma &lt; Delta</li>
+        <li>Epsilon &gt; Zeta</li>
+      </ul>
+    </aside>
+
+    <details open>
+      <summary>Expandable Section</summary>
+      <p>
+        Hidden content revealed on expand.
+        Special chars: &laquo; left guillemet &raquo; right guillemet.
+      </p>
+    </details>
+  </section>
+
+  <!-- ============================================================
+       SECTION: Definition list & blockquote
+       ============================================================ -->
+  <section class="card">
+    <h2>Definition List</h2>
+    <dl>
+      <dt>start_tag</dt>
+      <dd>The opening tag of an element, e.g. <code>&lt;div&gt;</code></dd>
+      <dt>end_tag</dt>
+      <dd>The closing tag of an element, e.g. <code>&lt;/div&gt;</code></dd>
+      <dt>self_closing_tag</dt>
+      <dd>A void element that has no matching end tag, e.g. <code>&lt;br&gt;</code></dd>
+    </dl>
+
+    <blockquote cite="https://spec.example.org">
+      &ldquo;Parse trees are fundamental to language tooling.&rdquo;
+    </blockquote>
+  </section>
+
+</main>
+
+<!-- Stray / erroneous end tags — exercising erroneous_end_tag and erroneous_end_tag_name -->
+</span>
+</article>
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer role="contentinfo">
+  <small>&copy; 2024 Grammar Test Corp. All rights reserved. &#x1F4C4;</small>
+  <address>
+    Contact: <a href="mailto:test@example.com">test@example.com</a>
+  </address>
+</footer>
+
+<!-- ============================================================
+     SCRIPT — script_element with raw_text JavaScript
+     ============================================================ -->
+<script type="text/javascript">
+  /* raw_text: tree-sitter does NOT parse this as HTML */
+  (function () {
+    'use strict';
+
+    var entities = ['&amp;', '&lt;', '&gt;', '&copy;'];
+    var count = entities.length;
+
+    function init() {
+      var form = document.getElementById('demo-form');
+      if (!form) return;
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var username = document.getElementById('username').value;
+        if (username.trim() === '') {
+          alert('Username cannot be empty');
+          return;
+        }
+        console.log('Submitted: ' + username + ' (' + count + ' entities loaded)');
+      });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  }());
+</script>
+
+<!-- XHTML-style self-closing tags section -->
+<section id="self-closing-xhtml">
+  <img src="logo.png" alt="Logo" width="200" height="50" />
+  <br />
+  <hr />
+  <input type="text" name="search" placeholder="Search..." />
+  <input type="hidden" name="token" value="abc123" />
+  <link rel="alternate" href="/feed.xml" type="application/rss+xml" />
+  <meta name="author" content="Test Author" />
+</section>
+
+</body>
+</html>

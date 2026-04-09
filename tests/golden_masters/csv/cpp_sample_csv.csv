@@ -1,5 +1,7 @@
 Type,Name,Signature,Visibility,Lines,Complexity,Doc
 Field,PI,PI:double,public,21-21,,-
+Field,T,T:None,private,24-24,,-
+Field,T,T:None,private,30-30,,-
 Field,x,x:int,public,63-63,,-
 Field,y,y:int,public,64-64,,-
 Field,width_,width_:double,private,123-123,,-
@@ -9,7 +11,8 @@ Field,radius_,radius_:double,private,156-156,,-
 Field,static_value,static_value:int,private,170-170,,-
 Field,APP_NAME,APP_NAME:string,public,171-171,,-
 Field,MAX_SIZE,MAX_SIZE:int,public,172-172,,-
-Method,max,"(a:T, b:T):T",public,25-27,2,-
+Field,T,T:None,private,175-175,,-
+Method,max,"(a:T, b:T):T",public,24-27,2,-
 Method,Container,():void,public,33-33,1,-
 Method,Container,(value:T):void,public,34-34,1,-
 Method,~Container,():void,public,35-35,1,-
@@ -39,7 +42,7 @@ Method,perimeter,():double,public,145-145,1,-
 Method,name,():string,public,146-146,1,-
 Method,print,():void,public,148-150,1,-
 Method,operator<<,"(os:ostream&, c:const Circle&):ostream&",public,160-163,1,-
-Method,swap_values,"(a:T&, b:T&):void",public,176-180,1,-
+Method,swap_values,"(a:T&, b:T&):void",public,175-180,1,-
 Method,add,"(a:int, 0:int b =):int",public,185-187,1,-
 Method,add,"(a:double, b:double):double",public,190-192,1,-
 Method,process,"(vec:vector<int>&, transformer:function<int(int)>):void",public,195-199,2,-

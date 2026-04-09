@@ -1,0 +1,544 @@
+@charset "UTF-8";
+
+@namespace url("http://www.w3.org/1999/xhtml");
+@namespace svg url("http://www.w3.org/2000/svg");
+
+@import "style.css";
+@import url("base.css") screen;
+@import url("print.css") print;
+
+/* ==========================================================================
+   Basic Rule Sets — tag_name, class_selector, id_selector
+   ========================================================================== */
+
+html {
+  box-sizing: border-box;
+  font-size: 16px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #ffffff;
+  color: #333333;
+}
+
+h1 {
+  font-size: 2em;
+  line-height: 1.2;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header--sticky {
+  position: sticky;
+  top: 0;
+}
+
+#main-content {
+  padding: 20px;
+}
+
+#sidebar {
+  width: 300px;
+  float: left;
+}
+
+/* ==========================================================================
+   Combinators — descendant, child, sibling, adjacent
+   ========================================================================== */
+
+nav ul {
+  list-style: none;
+  padding: 0;
+}
+
+nav > ul > li {
+  display: inline-block;
+}
+
+h2 + p {
+  margin-top: 0;
+}
+
+h2 ~ p {
+  color: #555555;
+}
+
+/* ==========================================================================
+   Universal Selector
+   ========================================================================== */
+
+* {
+  box-sizing: inherit;
+}
+
+*.highlight {
+  background-color: #ffff00;
+}
+
+/* ==========================================================================
+   Attribute Selectors — attribute_selector, attribute_name
+   ========================================================================== */
+
+[href] {
+  color: #0000ff;
+}
+
+[type="text"] {
+  border: 1px solid #cccccc;
+}
+
+[class~="warning"] {
+  color: #ff0000;
+}
+
+[lang|="en"] {
+  font-family: serif;
+}
+
+a[href^="https"] {
+  padding-right: 16px;
+}
+
+a[href$=".pdf"] {
+  background-image: url("pdf-icon.png");
+}
+
+a[href*="example"] {
+  text-decoration: underline;
+}
+
+/* ==========================================================================
+   Pseudo-class Selectors
+   ========================================================================== */
+
+a:hover {
+  color: #0066cc;
+  text-decoration: none;
+}
+
+a:visited {
+  color: #6600cc;
+}
+
+a:focus {
+  outline: 2px solid #0066cc;
+}
+
+li:first-child {
+  font-weight: bold;
+}
+
+li:last-child {
+  border-bottom: none;
+}
+
+li:nth-child(2n+1) {
+  background-color: #f5f5f5;
+}
+
+li:nth-child(even) {
+  background-color: #eeeeee;
+}
+
+p:not(.special) {
+  font-size: 1em;
+}
+
+input:checked {
+  accent-color: #0066cc;
+}
+
+/* ==========================================================================
+   Pseudo-element Selectors
+   ========================================================================== */
+
+p::first-line {
+  font-variant: small-caps;
+}
+
+p::first-letter {
+  font-size: 2em;
+  float: left;
+}
+
+.clearfix::before,
+.clearfix::after {
+  content: "";
+  display: table;
+}
+
+.clearfix::after {
+  clear: both;
+}
+
+/* ==========================================================================
+   Namespace Selector
+   ========================================================================== */
+
+svg|a {
+  text-decoration: none;
+}
+
+svg|a:hover {
+  opacity: 0.8;
+}
+
+/* ==========================================================================
+   Nesting Selector (PostCSS / CSS Nesting)
+   ========================================================================== */
+
+.card {
+  padding: 16px;
+  border-radius: 4px;
+
+  & .card__title {
+    font-size: 1.5em;
+    margin-bottom: 8px;
+  }
+
+  &:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+}
+
+/* ==========================================================================
+   Declarations — integer_value, float_value, color_value, unit
+   ========================================================================== */
+
+.values-showcase {
+  /* integer_value */
+  z-index: 100;
+  column-count: 3;
+
+  /* float_value with unit */
+  opacity: 0.75;
+  line-height: 1.5;
+  font-size: 1.25rem;
+
+  /* color_value */
+  color: #1a2b3c;
+  background-color: #ff6600;
+  border-color: #abc;
+
+  /* plain_value */
+  display: flex;
+  position: absolute;
+  overflow: hidden;
+  text-transform: uppercase;
+
+  /* string_value */
+  font-family: "Helvetica Neue", "Arial", sans-serif;
+  content: "Hello \0041 World";
+
+  /* !important */
+  visibility: visible !important;
+}
+
+/* ==========================================================================
+   Call Expressions — call_expression, function_name
+   ========================================================================== */
+
+.colors {
+  color: rgb(255, 128, 0);
+  background-color: rgba(0, 0, 0, 0.5);
+  border-color: hsl(200, 50%, 60%);
+  outline-color: hsla(120, 75%, 45%, 0.8);
+  background-image: url("background.png");
+  background-image: linear-gradient(to bottom, #ffffff, #000000);
+  filter: drop-shadow(2px 4px 6px #000000);
+  transform: translateX(100px) rotate(45deg);
+}
+
+/* ==========================================================================
+   Parenthesized Values — parenthesized_value
+   ========================================================================== */
+
+.layout {
+  width: calc(100% - 40px);
+  height: calc(50vh - 2rem);
+  padding: max(16px, 2vw);
+  font-size: clamp(1rem, 2.5vw, 2rem);
+  transform: translate(calc(50% - 10px), 0);
+}
+
+/* ==========================================================================
+   CSS Custom Properties (Variables)
+   ========================================================================== */
+
+:root {
+  --primary-color: #0066cc;
+  --secondary-color: #ff6600;
+  --font-size-base: 16px;
+  --spacing-unit: 8px;
+  --border-radius: 4px;
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.themed-button {
+  color: var(--primary-color);
+  background-color: var(--secondary-color);
+  font-size: var(--font-size-base);
+  padding: calc(var(--spacing-unit) * 2);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
+
+/* ==========================================================================
+   Grid Value
+   ========================================================================== */
+
+.grid-layout {
+  display: grid;
+  grid-template: "header header" auto
+                 "sidebar main"  1fr
+                 "footer footer" auto
+                 / 200px 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+/* ==========================================================================
+   @media Statements — media_statement, feature_query, feature_name
+   ========================================================================== */
+
+@media screen {
+  body {
+    font-size: 16px;
+  }
+}
+
+@media print {
+  body {
+    font-size: 12pt;
+    color: #000000;
+  }
+  nav {
+    display: none;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .container {
+    padding: 0 16px;
+  }
+  .grid-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1440px) {
+  .container {
+    max-width: 960px;
+  }
+}
+
+@media not print {
+  .screen-only {
+    display: block;
+  }
+}
+
+@media only screen and (min-resolution: 2dppx) {
+  .logo {
+    background-image: url("logo@2x.png");
+    background-size: 100px 50px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary-color: #66aaff;
+    --background: #1a1a1a;
+  }
+  body {
+    background-color: var(--background);
+    color: #f0f0f0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   @supports Statements — supports_statement
+   ========================================================================== */
+
+@supports (display: grid) {
+  .grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+}
+
+@supports (display: flex) and (gap: 1px) {
+  .flex-container {
+    display: flex;
+    gap: 16px;
+  }
+}
+
+@supports not (display: grid) {
+  .grid-container {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+
+@supports (--custom: value) {
+  .using-custom-props {
+    color: var(--primary-color, #000000);
+  }
+}
+
+/* ==========================================================================
+   @keyframes — keyframes_statement, keyframes_name, from, to
+   ========================================================================== */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(10px);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  from {
+    box-shadow: 0 0 0 0 rgba(0, 102, 204, 0.7);
+  }
+  to {
+    box-shadow: 0 0 0 10px rgba(0, 102, 204, 0);
+  }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.animated {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+/* ==========================================================================
+   @font-face — at_rule
+   ========================================================================== */
+
+@font-face {
+  font-family: "CustomFont";
+  src: url("fonts/custom.woff2") format("woff2"),
+       url("fonts/custom.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "CustomFont";
+  src: url("fonts/custom-bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* ==========================================================================
+   Escape Sequences in String Content
+   ========================================================================== */
+
+.escaped-content::before {
+  content: "\00AB";
+}
+
+.escaped-content::after {
+  content: "\00BB";
+}
+
+.special-chars {
+  font-family: "\41 rial", sans-serif;
+}
+
+/* ==========================================================================
+   Additional Selectors for Coverage
+   ========================================================================== */
+
+form input[type="submit"],
+form button[type="submit"] {
+  background-color: var(--primary-color);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  padding: 8px 16px !important;
+}
+
+table > thead > tr > th {
+  font-weight: bold;
+  text-align: left;
+  padding: 8px;
+}
+
+dl dt + dd {
+  margin-top: 0;
+}
+
+section ~ aside {
+  border-left: 1px solid #cccccc;
+}
+
+// This is a JS-style single-line comment (js_comment)
+.js-comment-demo {
+  color: #333333;
+}
+
+/* ==========================================================================
+   Selectors Group (multiple selectors)
+   ========================================================================== */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: bold;
+  line-height: 1.3;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+}
+
+pre,
+code,
+kbd,
+samp {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 0.9em;
+}

@@ -1,0 +1,25 @@
+{
+  "language": "markdown",
+  "node_types": {
+    "atx_h1_marker": 1,
+    "atx_h2_marker": 14,
+    "atx_h3_marker": 19,
+    "atx_heading": 37,
+    "block_quote": 6,
+    "code_fence_content": 6,
+    "fenced_code_block": 6,
+    "html_block": 3,
+    "indented_code_block": 1,
+    "info_string": 5,
+    "link_reference_definition": 8,
+    "list": 17,
+    "list_item": 88,
+    "minus_metadata": 1,
+    "paragraph": 139,
+    "pipe_table": 4,
+    "setext_heading": 2,
+    "task_list_marker_checked": 5,
+    "task_list_marker_unchecked": 5,
+    "thematic_break": 16
+  }
+}

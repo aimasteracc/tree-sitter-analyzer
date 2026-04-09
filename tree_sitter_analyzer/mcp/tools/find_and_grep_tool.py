@@ -48,7 +48,34 @@ class FindAndGrepTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "find_and_grep",
-            "description": "Two-stage search: first use fd to find files matching criteria, then use ripgrep to search content within those files. Combines file filtering with content search for precise results with advanced token optimization (summary_only, group_by_file, total_only, suppress_output).",
+            "description": (
+                "Two-stage search for large projects: filter files by name/type first, "
+                "then search content within the matched files. "
+                "\n\n"
+                "This is the large-project tool. For small projects (< 1000 files), "
+                "search_content alone is simpler and sufficient. Use find_and_grep when you "
+                "need both file-type precision AND content matching — it eliminates irrelevant "
+                "files before ripgrep runs, keeping results clean and fast. "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- Large codebases where search_content returns too much noise across all file types\n"
+                "- When you know BOTH the file pattern (*.java, test_*) AND the content pattern\n"
+                "- Multi-language projects where you want to scope to one language's files\n"
+                "- Searching only within test files, config files, or a specific module\n"
+                "\n"
+                "WHEN NOT TO USE (use search_content instead):\n"
+                "- Small projects (< 1000 files) — the two-stage overhead is unnecessary\n"
+                "- When you only have a content pattern and don't care about file type\n"
+                "- When you only have a filename pattern and don't need content search — use list_files\n"
+                "\n"
+                "DIFFERENCE from search_content:\n"
+                "- search_content: single-stage ripgrep across all files (or specified roots)\n"
+                "- find_and_grep: stage 1 = fd to filter files by name/type/size, "
+                "stage 2 = ripgrep only within those files\n"
+                "\n"
+                "IMPORTANT: Both 'pattern' (file stage) and 'query' (content stage) are optional, "
+                "but providing both gives the highest signal-to-noise ratio."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -245,8 +272,22 @@ class FindAndGrepTool(BaseMCPTool):
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        if "roots" not in arguments or not isinstance(arguments["roots"], list):
-            raise ValueError("roots is required and must be an array")
+        # Normalize path aliases before validation
+        if "path" in arguments and "roots" not in arguments:
+            path_val = arguments.pop("path")
+            arguments["roots"] = (
+                [path_val] if isinstance(path_val, str) else path_val
+            )
+
+        if "roots" not in arguments:
+            raise ValueError(
+                "roots is required. Example: roots=['.'] to search from project root"
+            )
+        if not isinstance(arguments["roots"], list):
+            raise ValueError(
+                "roots is required and must be an array (list) of directory paths. "
+                "Example: roots=['.']"
+            )
         if (
             "query" not in arguments
             or not isinstance(arguments["query"], str)

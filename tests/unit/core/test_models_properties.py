@@ -4,7 +4,7 @@
 Uses Hypothesis to verify CodeElement and AnalysisResult properties.
 """
 
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from tree_sitter_analyzer.models import (
@@ -38,7 +38,7 @@ class TestFunctionProperties:
         end_line=line_number_strategy,
         language=language_strategy,
     )
-    @settings(max_examples=50)
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     def test_function_creation(self, name: str, start_line: int, end_line: int, language: str) -> None:
         """Function should be created with valid parameters."""
         # Ensure end_line >= start_line

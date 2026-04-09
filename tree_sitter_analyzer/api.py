@@ -110,6 +110,10 @@ def analyze_file(
                     "language": elem.language,
                 }
 
+                # Add node_type for grammar coverage tracking
+                if hasattr(elem, "node_type") and elem.node_type is not None:
+                    elem_dict["node_type"] = elem.node_type
+
                 # Add type-specific fields
                 if hasattr(elem, "module_path"):
                     elem_dict["module_path"] = elem.module_path
@@ -250,6 +254,10 @@ def analyze_code(
                     "raw_text": elem.raw_text,
                     "language": elem.language,
                 }
+
+                # Add node_type for grammar coverage tracking
+                if hasattr(elem, "node_type") and elem.node_type is not None:
+                    elem_dict["node_type"] = elem.node_type
 
                 # Add type-specific fields
                 if hasattr(elem, "module_path"):

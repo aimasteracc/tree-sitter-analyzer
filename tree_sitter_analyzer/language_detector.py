@@ -87,6 +87,10 @@ class LanguageDetector:
         # YAML系
         ".yaml": "yaml",
         ".yml": "yaml",
+        # Shell/Bash系
+        ".sh": "bash",
+        ".bash": "bash",
+        ".zsh": "bash",
     }
 
     # Ambiguous extensions (map to multiple languages)
@@ -112,23 +116,25 @@ class LanguageDetector:
 
     # Tree-sitter supported languages
     SUPPORTED_LANGUAGES = {
-        "java",
-        "javascript",
-        "typescript",
-        "python",
+        "bash",
         "c",
         "cpp",
         "csharp",
-        "rust",
-        "go",
-        "kotlin",
-        "php",
-        "ruby",
-        "markdown",
-        "html",
         "css",
+        "go",
+        "html",
+        "java",
+        "javascript",
         "json",
+        "kotlin",
+        "markdown",
+        "php",
+        "python",
+        "ruby",
+        "rust",
         "sql",
+        "swift",
+        "typescript",
         "yaml",
     }
 

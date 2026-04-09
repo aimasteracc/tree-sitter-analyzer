@@ -23,7 +23,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..core.analysis_engine import AnalysisRequest
+from ..core.request import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..language_loader import loader
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
@@ -159,25 +159,30 @@ class JavaScriptElementExtractor(ElementExtractor):
 
     def extract_exports(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[dict[str, Any]]:
-        """Extract JavaScript export statements"""
+    ) -> list[CodeElement]:
+        """Extract JavaScript export statements as CodeElement objects"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
-        exports: list[dict[str, Any]] = []
+        exports: list[CodeElement] = []
+        legacy_exports: list[dict[str, Any]] = []
 
         # Extract ES6 exports
         for child in tree.root_node.children:
             if child.type == "export_statement":
-                export_info = self._extract_export_info(child)
-                if export_info:
-                    exports.append(export_info)
+                export_element = self._extract_export_element(child)
+                if export_element:
+                    exports.append(export_element)
+                # Also populate legacy self.exports for _is_exported_class
+                legacy_info = self._extract_export_info(child)
+                if legacy_info:
+                    legacy_exports.append(legacy_info)
 
-        # Also check for CommonJS exports
+        # Also check for CommonJS exports (needed for _is_exported_class)
         commonjs_exports = self._extract_commonjs_exports(tree, source_code)
-        exports.extend(commonjs_exports)
+        legacy_exports.extend(commonjs_exports)
 
-        self.exports = exports
+        self.exports = legacy_exports
         log_debug(f"Extracted {len(exports)} JavaScript exports")
         return exports
 
@@ -360,7 +365,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             end_line_idx = min(len(self.content_lines), end_line)
             raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
 
-            return Function(
+            func = Function(
                 name=name,
                 start_line=start_line,
                 end_line=end_line,
@@ -377,6 +382,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
+            # Add node_type for grammar coverage tracking
+            func.node_type = node.type
+            return func
         except Exception as e:
             log_error(f"Failed to extract function info: {e}")
             import traceback
@@ -424,7 +432,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Function(
+            func = Function(
                 name=name,
                 start_line=start_line,
                 end_line=end_line,
@@ -441,6 +449,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
+            # Add node_type for grammar coverage tracking
+            func.node_type = "arrow_function"
+            return func
         except Exception as e:
             log_debug(f"Failed to extract arrow function info: {e}")
             return None
@@ -478,7 +489,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Function(
+            func = Function(
                 name=name,
                 start_line=start_line,
                 end_line=end_line,
@@ -496,6 +507,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_method=True,
                 framework_type=self.framework_type,
             )
+            # Add node_type for grammar coverage tracking
+            func.node_type = "method_definition"
+            return func
         except Exception as e:
             log_debug(f"Failed to extract method info: {e}")
             raise
@@ -524,7 +538,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Function(
+            func = Function(
                 name=name,
                 start_line=start_line,
                 end_line=end_line,
@@ -541,6 +555,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_method=False,
                 framework_type=self.framework_type,
             )
+            # Add node_type for grammar coverage tracking
+            func.node_type = "generator_function_declaration"
+            return func
         except Exception as e:
             log_debug(f"Failed to extract generator function info: {e}")
             return None
@@ -578,7 +595,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Class(
+            cls = Class(
                 name=class_name,
                 start_line=start_line,
                 end_line=end_line,
@@ -592,13 +609,21 @@ class JavaScriptElementExtractor(ElementExtractor):
                 framework_type=self.framework_type,
                 is_exported=self._is_exported_class(class_name),
             )
+            # Add node_type for grammar coverage tracking
+            # Note: tree-sitter-javascript uses 'class' for both declarations and expressions
+            cls.node_type = node.type if node.type in ["class_declaration", "class"] else "class_declaration"
+            return cls
         except Exception as e:
             log_debug(f"Failed to extract class info: {e}")
             return None
 
     def _extract_variable_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract var declaration variables"""
-        return self._extract_variables_from_declaration(node, "var")
+        vars = self._extract_variables_from_declaration(node, "var")
+        # Add node_type for grammar coverage tracking
+        for var in vars:
+            var.node_type = "variable_declaration"
+        return vars
 
     def _extract_lexical_variable_optimized(
         self, node: "tree_sitter.Node"
@@ -607,7 +632,11 @@ class JavaScriptElementExtractor(ElementExtractor):
         # Determine if it's let or const
         node_text = self._get_node_text_optimized(node)
         kind = "let" if node_text.strip().startswith("let") else "const"
-        return self._extract_variables_from_declaration(node, kind)
+        vars = self._extract_variables_from_declaration(node, kind)
+        # Add node_type for grammar coverage tracking
+        for var in vars:
+            var.node_type = "lexical_declaration"
+        return vars
 
     def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
         """Extract class property definition"""
@@ -641,7 +670,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Extract raw text
             raw_text = self._get_node_text_optimized(node)
 
-            return Variable(
+            var = Variable(
                 name=prop_name,
                 start_line=start_line,
                 end_line=end_line,
@@ -652,6 +681,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 is_constant=False,  # Class properties are not const
                 initializer=prop_value,
             )
+            # Add node_type for grammar coverage tracking
+            var.node_type = "property_definition"
+            return var
         except Exception as e:
             log_debug(f"Failed to extract property info: {e}")
             return None
@@ -691,6 +723,10 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Find identifier and value in children
             for child in node.children:
                 if child.type == "identifier":
+                    var_name = self._get_node_text_optimized(child)
+                elif child.type in ["object_pattern", "array_pattern"]:
+                    # 处理解构赋值 (destructuring assignment)
+                    # 使用整个模式作为变量名（用于 grammar coverage 追踪）
                     var_name = self._get_node_text_optimized(child)
                 elif child.type == "=" and child.next_sibling:
                     # Get the value after the assignment operator
@@ -882,7 +918,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Use first import name or "unknown"
             primary_name = import_names[0] if import_names else "unknown"
 
-            return Import(
+            imp = Import(
                 name=primary_name,
                 start_line=start_line,
                 end_line=end_line,
@@ -892,6 +928,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 module_name=module_path,
                 imported_names=import_names,
             )
+            # Add node_type for grammar coverage tracking
+            imp.node_type = "import_statement"
+            return imp
 
         except Exception as e:
             log_debug(f"Failed to extract import info: {e}")
@@ -968,7 +1007,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
             source = import_match.group(1)
 
-            return Import(
+            imp = Import(
                 name="dynamic_import",
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
@@ -978,6 +1017,9 @@ class JavaScriptElementExtractor(ElementExtractor):
                 module_name=source,
                 imported_names=["dynamic_import"],
             )
+            # Add node_type for grammar coverage tracking
+            imp.node_type = "call_expression"  # dynamic import() is a call expression
+            return imp
         except Exception as e:
             log_debug(f"Failed to extract dynamic import: {e}")
             return None
@@ -1009,6 +1051,8 @@ class JavaScriptElementExtractor(ElementExtractor):
                     module_name=module_path,
                     imported_names=[var_name],
                 )
+                # Add node_type for grammar coverage tracking
+                import_obj.node_type = "variable_declaration"  # CommonJS require is a variable declaration
                 imports.append(import_obj)
 
         except Exception as e:
@@ -1017,8 +1061,37 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         return imports
 
+    def _extract_export_element(self, node: "tree_sitter.Node") -> CodeElement | None:
+        """Extract export statement as CodeElement for grammar coverage"""
+        try:
+            start_line = node.start_point[0] + 1
+            end_line = node.end_point[0] + 1
+            export_text = self._get_node_text_optimized(node)
+
+            # Parse export type to extract names
+            export_info = self._parse_export_statement(export_text)
+            if export_info:
+                _export_type, names, _is_default = export_info
+                export_name = names[0] if names else "export"
+            else:
+                export_name = "export"
+
+            element = CodeElement(
+                name=export_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=export_text,
+                language="javascript",
+                element_type="export",
+                node_type="export_statement",
+            )
+            return element
+        except Exception as e:
+            log_debug(f"Failed to extract export element: {e}")
+            return None
+
     def _extract_export_info(self, node: "tree_sitter.Node") -> dict[str, Any] | None:
-        """Extract export information"""
+        """Extract export information (legacy method for compatibility)"""
         try:
             export_text = self._get_node_text_optimized(node)
 
@@ -1224,7 +1297,7 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         return elements
 
-    def _get_variable_kind(self, var_data: dict | str) -> str:
+    def _get_variable_kind(self, var_data: dict[str, Any] | str) -> str:
         """Get variable declaration kind from variable data or raw text"""
         if isinstance(var_data, dict):
             raw_text = var_data.get("raw_text", "")
@@ -1410,7 +1483,7 @@ class JavaScriptPlugin(LanguagePlugin):
             for ext in self.get_file_extensions()
         )
 
-    def get_plugin_info(self) -> dict:
+    def get_plugin_info(self) -> dict[str, Any]:
         """Get information about this plugin"""
         return {
             "name": "JavaScript Plugin",
@@ -1556,6 +1629,7 @@ class JavaScriptPlugin(LanguagePlugin):
                 elements.extend(extractor.extract_classes(tree, source_code))
                 elements.extend(extractor.extract_variables(tree, source_code))
                 elements.extend(extractor.extract_imports(tree, source_code))
+                elements.extend(extractor.extract_exports(tree, source_code))
 
                 from ..utils.tree_sitter_compat import count_nodes_iterative
 
@@ -1584,7 +1658,7 @@ class JavaScriptPlugin(LanguagePlugin):
                 error_message=str(e),
             )
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict:
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> dict[str, Any]:
         """Extract elements from source code using tree-sitter AST"""
         try:
             if tree is None or not hasattr(tree, "root_node") or tree.root_node is None:

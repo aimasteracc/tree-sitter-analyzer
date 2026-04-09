@@ -1,0 +1,20 @@
+{
+  "language": "html",
+  "node_types": {
+    "attribute": 97,
+    "attribute_name": 97,
+    "comment": 18,
+    "doctype": 1,
+    "element": 141,
+    "end_tag": 116,
+    "entity": 48,
+    "erroneous_end_tag": 2,
+    "quoted_attribute_value": 92,
+    "raw_text": 2,
+    "script_element": 1,
+    "self_closing_tag": 7,
+    "start_tag": 136,
+    "style_element": 1,
+    "text": 106
+  }
+}

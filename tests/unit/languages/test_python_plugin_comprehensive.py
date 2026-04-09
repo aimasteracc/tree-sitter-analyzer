@@ -232,7 +232,7 @@ def __magic_method__(self, other):
 
         # Mock extract_text_slice to return test text
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.languages.python_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = "test text"
 
@@ -265,7 +265,7 @@ def __magic_method__(self, other):
 
         # Mock extract_text_slice to raise exception
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.languages.python_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.side_effect = Exception("Test error")
 
@@ -288,6 +288,7 @@ def __magic_method__(self, other):
         # Mock parameters child
         mock_parameters = Mock()
         mock_parameters.type = "parameters"
+        mock_parameters.children = []  # Empty parameter list
 
         # Mock type child
         mock_type = Mock()
@@ -297,6 +298,7 @@ def __magic_method__(self, other):
 
         # Mock helper methods
         with patch.object(extractor, "_get_node_text_optimized") as mock_get_text:
+            # Provide enough mock values: node text, type text
             mock_get_text.side_effect = ["def test_function", "str"]
 
             with patch.object(
@@ -307,12 +309,13 @@ def __magic_method__(self, other):
                 result = extractor._parse_function_signature_optimized(mock_node)
 
                 assert result is not None
-                name, parameters, is_async, decorators, return_type = result
+                name, parameters, is_async, decorators, return_type, param_defaults = result
                 assert name == "test_function"
                 assert parameters == ["param1", "param2"]
                 assert is_async is False
                 assert decorators == []
                 assert return_type == "str"
+                assert isinstance(param_defaults, dict)
 
     def test_parse_function_signature_async(self, extractor):
         """Test async function signature parsing"""
@@ -338,9 +341,10 @@ def __magic_method__(self, other):
                 result = extractor._parse_function_signature_optimized(mock_node)
 
                 assert result is not None
-                name, parameters, is_async, decorators, return_type = result
+                name, parameters, is_async, decorators, return_type, param_defaults = result
                 assert name == "async_function"
                 assert is_async is True
+                assert isinstance(param_defaults, dict)
 
     def test_extract_parameters_from_node_optimized(self, extractor):
         """Test parameter extraction from node"""
@@ -500,6 +504,7 @@ def __magic_method__(self, other):
                 False,
                 ["property"],
                 "str",
+                {"param2": "0"},  # param_defaults dict
             )
 
             with patch.object(
@@ -545,7 +550,7 @@ def __magic_method__(self, other):
         with patch.object(
             extractor, "_parse_function_signature_optimized"
         ) as mock_parse:
-            mock_parse.return_value = ("_private_function", [], False, [], None)
+            mock_parse.return_value = ("_private_function", [], False, [], None, {})
 
             with patch.object(
                 extractor, "_extract_docstring_for_line"
@@ -574,7 +579,7 @@ def __magic_method__(self, other):
         with patch.object(
             extractor, "_parse_function_signature_optimized"
         ) as mock_parse:
-            mock_parse.return_value = ("__init__", ["self"], False, [], None)
+            mock_parse.return_value = ("__init__", ["self"], False, [], None, {})
 
             with patch.object(
                 extractor, "_extract_docstring_for_line"
@@ -964,7 +969,7 @@ def __magic_method__(self, other):
 
         # Should not process deeply nested nodes
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.log_warning"
+            "tree_sitter_analyzer.languages.python_extractor.log_warning"
         ) as mock_log:
             extractor._traverse_and_extract_iterative(
                 root_node, extractors, results, "function"
@@ -1040,7 +1045,7 @@ def __magic_method__(self, other):
             mock_node_copy.end_point = (0, 10)
 
             with patch(
-                "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+                "tree_sitter_analyzer.languages.python_extractor.extract_text_slice"
             ) as mock_extract:
                 mock_extract.return_value = f"text_{i}"
                 extractor._get_node_text_optimized(mock_node_copy)
@@ -1095,7 +1100,7 @@ class クラス名:
         mock_node.end_point = (len(extractor.content_lines) - 1, 0)
 
         with patch(
-            "tree_sitter_analyzer.languages.python_plugin.extract_text_slice"
+            "tree_sitter_analyzer.languages.python_extractor.extract_text_slice"
         ) as mock_extract:
             mock_extract.return_value = unicode_code
             result = extractor._get_node_text_optimized(mock_node)

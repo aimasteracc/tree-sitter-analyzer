@@ -3,7 +3,7 @@
 ## Info
 | Property | Value |
 |----------|-------|
-| Package |  |
+| Package | MathConstants |
 | Methods | 3 |
 | Fields | 4 |
 

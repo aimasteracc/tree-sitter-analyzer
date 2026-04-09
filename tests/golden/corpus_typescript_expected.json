@@ -1,0 +1,25 @@
+{
+  "language": "typescript",
+  "node_types": {
+    "function_declaration": 17,
+    "arrow_function": 5,
+    "method_definition": 21,
+    "generator_function_declaration": 2,
+    "class_declaration": 8,
+    "abstract_class_declaration": 1,
+    "interface_declaration": 8,
+    "type_alias_declaration": 17,
+    "enum_declaration": 3,
+    "lexical_declaration": 32,
+    "variable_declaration": 1,
+    "import_statement": 6,
+    "export_statement": 13,
+    "generic_type": 12,
+    "intersection_type": 2,
+    "union_type": 11,
+    "internal_module": 2,
+    "decorator": 3,
+    "type_annotation": 147,
+    "type_predicate": 1
+  }
+}

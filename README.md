@@ -4,10 +4,10 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-multi--thousand-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-8890%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > **Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development** — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
@@ -18,23 +18,21 @@ Its job is not just to parse code. Its job is to help humans and AI agents fetch
 find the right files → find the right matches → extract the right structure → send only the right context
 ```
 
+*Claude doesn't need to read your entire codebase. Neither do you.*
+
 **17 languages · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
 
 ---
 
-## ✨ What's New in v1.10.5
+## ✨ What's New in v1.10.8
 
-- **`get_code_outline` MCP tool with TOON format**: Outline-first navigation delivering **54-56% token reduction** vs JSON. Retrieve hierarchical structure first, then fetch only the bodies you need.
-- **`trace_impact` MCP tool**: Lightweight call site finder using ripgrep — impact analysis without graph database overhead
-- **Intent-based tool aliases**: AI-friendly tool naming (`locate_usage`, `map_structure`) makes tool discovery natural for agents
-- **Analysis session tracking**: Audit multi-step SMART workflows with session IDs and operation history
-- **23 critical bug fixes**: TOON format return structure, default output format, test assertions - **project fully operational**
-- **Measured token savings**: Real-world testing shows TOON format reduces output size by 54-56% across small/medium/large files
-- **Enhanced test coverage**: 8,470 tests (100% pass), 88.68% coverage (↑8.35% from v1.10.4)
-- **Cross-platform verified**: All tests pass on Ubuntu, Windows, macOS × Python 3.10-3.13
+- **Spring/JPA codebases are now fully navigable**: Claude correctly sees `@Controller`, `@Transactional`, `@ManyToMany`, `@Bean` — understand Spring architecture without reading raw source. Validated against spring-petclinic, caffeine, spring-framework, netty.
+- **Impact analysis you can trust**: `modification_guard` now gives accurate SAFE/UNSAFE verdicts. `trace_impact` returns the real caller count — not a capped display number — so HIGH IMPACT symbols are never silently downgraded to LOW.
+- **17 new semantic Java queries**: `spring_bean`, `spring_transactional`, `spring_request_mapping`, `junit5_test`, `volatile_field`, `record_declaration` and more — query by intent, not by AST node.
+- **Large files without limits**: 6,500-line netty files analyzed without crash. `get_code_outline` delivers 89–92% token savings over full file reads.
+- **tree-sitter 0.25+ compatible**: `#match?` predicates restored — all Spring/JPA query filtering works on latest tree-sitter installations.
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
----
 ---
 
 ## 🎬 See It In Action
@@ -210,6 +208,66 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 ---
 
+## 🔬 Grammar Coverage (MECE Framework)
+
+Tree-sitter Analyzer guarantees **zero False Positives** in grammar coverage validation across all 17 supported languages.
+
+### Phase 1: MECE Architecture (2026-03)
+
+**New Architecture**:
+- Tracks **syntactic paths** `(node_type, parent_path)` instead of just node types
+- Uses **exact node identity matching** (type + byte range + parent chain + file path)
+- Eliminates nested node misclassification (wrapper nodes no longer cause False Positives)
+
+**Why It Matters**:
+
+```python
+# OLD method: Position overlap → False Positives
+@decorator       # Plugin extracts this
+def foo():       # Validator incorrectly marks this as "covered" (it's not!)
+    pass
+
+# NEW method: Exact identity matching → Zero False Positives
+# Only nodes actually extracted by the plugin are marked as covered
+```
+
+### Validation Commands
+
+```bash
+# Validate single language
+python -c "from tree_sitter_analyzer.grammar_coverage.validator import validate_plugin_coverage_sync; r = validate_plugin_coverage_sync('python'); print(f'{r.coverage_percentage:.1f}% coverage')"
+
+# Validate all languages
+python -c "
+from tree_sitter_analyzer.grammar_coverage.validator import validate_plugin_coverage_sync
+langs = ['python', 'javascript', 'java', 'go', 'typescript', 'c', 'cpp', 'rust', 'ruby', 'php', 'kotlin', 'swift', 'scala', 'bash', 'yaml', 'json', 'sql']
+for lang in langs:
+    r = validate_plugin_coverage_sync(lang)
+    status = '✅' if r.coverage_percentage == 100.0 else '❌'
+    print(f'{status} {lang}: {r.coverage_percentage:.1f}% ({r.covered_node_types}/{r.total_node_types})')
+"
+```
+
+**Example Output** (new format):
+
+```
+✅ python: 100.0% (57/57 node types covered)
+✅ javascript: 100.0% (58/58 node types covered)
+✅ typescript: 100.0% (114/114 node types covered)
+...
+✅ sql: 100.0% (155/155 node types covered)
+```
+
+### MECE Guarantees
+
+- **Mutually Exclusive**: Each node has a unique `(type, parent_path)` → no double counting
+- **Collectively Exhaustive**: Full AST traversal → no missing nodes
+- **Zero False Positives**: Exact matching → only truly extracted nodes marked as covered
+
+📖 **[Grammar Coverage Framework](docs/grammar-coverage-framework.md)** for technical details and architecture.
+
+---
+
 ## 🏆 Quality & Testing
 
 | Metric | Value |
@@ -226,6 +284,82 @@ uv run pytest tests/ -v
 # Generate coverage report
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 ```
+
+---
+
+## 🔒 Security & Architecture
+
+Tree-sitter Analyzer is designed with **security-by-default** principles for AI-assisted development workflows.
+
+### Security Model
+
+**Project Boundary Enforcement**
+- All MCP tools validate file paths against project root boundaries
+- No access to files outside the configured project directory
+- Symlink traversal prevention
+- Path normalization prevents `../` escape attempts
+
+**Input Validation**
+- JSON Schema validation on all MCP tool parameters
+- Type-safe Python API with strict mypy compliance
+- Sanitized user inputs before shell command execution
+- Pattern validation for glob/regex searches
+
+**No Remote Execution**
+- 100% local processing — no cloud dependencies
+- No telemetry or data collection
+- No network calls except optional PyPI version checks
+- Source code analysis stays on your machine
+
+**Secure Defaults**
+- Read-only file operations by default
+- Explicit opt-in required for any file modifications
+- Sandboxed subprocess execution for external tools (fd, ripgrep)
+- Environment variable isolation
+
+### Architecture Principles
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  AI Assistant (Claude Desktop / Cursor / Roo Code)     │
+└────────────────────┬────────────────────────────────────┘
+                     │ MCP Protocol (JSON-RPC)
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  MCP Server Layer                                       │
+│  • Input validation (JSON Schema)                       │
+│  • Project boundary checks                              │
+│  • Tool dispatch                                        │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Analysis Engine                                        │
+│  • Tree-sitter AST parsing (17 languages)               │
+│  • Fast file search (fd)                                │
+│  • Content search (ripgrep)                             │
+│  • Output formatting (JSON / TOON)                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key Security Boundaries**:
+1. **MCP Protocol**: AI can only call explicitly defined tools with validated schemas
+2. **Project Root**: File operations confined to configured directory
+3. **Read-Only**: No destructive operations without explicit user consent
+4. **Local-First**: All processing happens on your machine
+
+### Security Testing
+
+- **8,890+ automated tests** including security-focused edge cases
+- **100% mypy type safety** prevents entire classes of bugs
+- **CI/CD security scans**: Bandit (Python security), safety (dependency vulnerabilities)
+- **Manual security review** of all MCP tool implementations
+
+### Reporting Security Issues
+
+Found a security concern? Please email aimasteracc@gmail.com or open a private security advisory on GitHub.
+
+**We do NOT use automated security badge services** — our security posture is documented through architecture, testing, and code review, not third-party scores.
 
 ---
 

@@ -22,7 +22,7 @@ import pytest
 
 from tree_sitter_analyzer.languages.sql_plugin import SQLElementExtractor, SQLPlugin
 from tree_sitter_analyzer.models import (
-    SQLElement,
+    CodeElement,
     SQLElementType,
     SQLTable,
     SQLTrigger,
@@ -550,7 +550,7 @@ SELECT * FROM employees;
 
         assert isinstance(sql_elements, list)
         for elem in sql_elements:
-            assert isinstance(elem, SQLElement)
+            assert isinstance(elem, CodeElement)
 
     # ==================== Edge Cases ====================
 

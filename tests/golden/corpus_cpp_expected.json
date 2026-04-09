@@ -1,0 +1,25 @@
+{
+  "language": "cpp",
+  "node_types": {
+    "function_definition": 54,
+    "template_function": 3,
+    "lambda_expression": 9,
+    "class_specifier": 14,
+    "struct_specifier": 4,
+    "template_declaration": 13,
+    "namespace_definition": 2,
+    "using_declaration": 3,
+    "field_declaration": 28,
+    "parameter_declaration": 56,
+    "operator_cast": 2,
+    "new_expression": 4,
+    "delete_expression": 3,
+    "enum_specifier": 3,
+    "alias_declaration": 4,
+    "operator_name": 12,
+    "friend_declaration": 2,
+    "destructor_name": 2,
+    "virtual_specifier": 5,
+    "template_method": 1
+  }
+}

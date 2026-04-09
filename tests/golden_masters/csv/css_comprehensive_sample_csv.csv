@@ -362,9 +362,5 @@ button;
 @font-face,css_rule,@font-face,0,1456,1460
 img,css_rule,img,3,1463,1467
 html,css_rule,html,1,1470,1472
-@supports (scroll-behavior: smooth) {
-    html {
- ,css_rule,@supports (scroll-behavior: smooth) {
-    html {
- ,0,1474,1478
+@supports (scroll-behavior: smooth) {     html ...,css_rule,@supports (scroll-behavior: smooth) {     html ...,0,1474,1478
 html,css_rule,html,1,1475,1477

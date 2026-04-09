@@ -1,4 +1,7 @@
 Type,Name,Signature,Visibility,Lines,Complexity,Doc
+Field,User::STATUS_ACTIVE,User::STATUS_ACTIVE:const,public,20-20,,-
+Field,User::STATUS_INACTIVE,User::STATUS_INACTIVE:const,public,21-21,,-
+Field,User::MAX_LOGIN_ATTEMPTS,User::MAX_LOGIN_ATTEMPTS:const,private,22-22,,-
 Field,User::id,User::id:int,private,25-25,,-
 Field,User::username,User::username:string,public,26-26,,-
 Field,User::email,User::email:string,public,27-27,,-

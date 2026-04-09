@@ -1,0 +1,13 @@
+{
+  "language": "json",
+  "node_types": {
+    "object": 99,
+    "array": 39,
+    "pair": 354,
+    "string": 518,
+    "number": 162,
+    "true": 27,
+    "false": 9,
+    "null": 6
+  }
+}
