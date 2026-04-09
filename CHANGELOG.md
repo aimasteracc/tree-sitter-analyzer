@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.10.8] - 2026-04-10
+
+### Fixed
+
+- **Java annotation extraction completely restored**: `analyze_code_structure` was returning `annotations=[]` for all Java methods, classes, and fields. Four independent root causes fixed: (1) wrong extraction order in `extract_elements()` — annotations extracted after functions/classes; (2) `_reset_caches()` was clearing `self.annotations` source data instead of only the lookup cache; (3) `analyze_code_structure_tool.py` hardcoded `"annotations": []` instead of reading from model objects; (4) `field_declaration` was missing from `container_node_types` so field annotations (`@ManyToMany`, `@Column`) were never traversed. Validated against spring-petclinic.
+- **Java `implements` generic type arguments preserved**: `re.findall(r"\b[A-Z]\w*")` was splitting `LocalCache<K, V>` into `['LocalCache', 'K', 'V']`. Replaced with `_split_type_list()` using angle-bracket depth counter. Validated against caffeine `BoundedLocalCache.java` (34 inner classes).
+- **Java class annotation bleeding fixed**: `@Override` from a preceding method was being attributed to the next class declaration via ±2-line proximity heuristic. Replaced with `_extract_annotations_from_modifiers()` that reads directly from the AST `modifiers` node. Validated against caffeine.
+- **`trace_impact` `call_count` reflects true total**: `call_count` was computed from `len(usages)` after truncation by `max_results`, making HIGH IMPACT symbols appear LOW when `max_results` was set. Now `true_total` is captured before truncation. Validated against spring-framework (`@Component`: 695 usages with `max_results=5` now correctly returns `call_count=695, impact_level="high"`).
+- **`query_code` `#match?` predicate restored for tree-sitter 0.25+**: `QueryCursor.matches()` in tree-sitter 0.25+ does not apply custom predicates (`#match?`, `#not-match?`) automatically. Added `_parse_match_predicates()` and `_apply_match_predicates()` to manually filter in `_execute_newest_api()`. All Spring/JPA semantic queries (`spring_controller`, `jpa_entity`, etc.) now correctly filter by annotation name.
+- **Java `marker_annotation` node type handled in queries**: Annotations without arguments (e.g. `@Controller`, `@Entity`, `@Bean`) are `marker_annotation` nodes in tree-sitter, while annotations with arguments are `annotation` nodes. Spring/JPA queries were only matching `annotation`, returning 0 results for bare annotations. All affected queries updated to use alternation `[(marker_annotation ...) (annotation ...)]`.
+- **YAML scalar `inf`/`nan` classification**: `float('inf')` is valid Python but YAML 1.2 treats `inf` as a plain string. `_is_number()` now uses a regex matching YAML 1.2 core schema numeric patterns instead of `float()`.
+
+### Added
+
+- **17 new Java query types**: Spring ecosystem (`spring_bean`, `spring_configuration`, `spring_component`, `spring_transactional`, `spring_autowired`, `spring_request_mapping`, `spring_event_listener`, `spring_scheduled`), testing (`junit5_test`, `junit5_lifecycle`, `parameterized_test`), Java 16+ (`record_declaration`, `sealed_class`), concurrency (`volatile_field`, `spring_async`, `synchronized_method`), exceptions (`throws_declaration`).
+
+### Testing
+
+- 32 new TDD tests across 4 test files, validated against spring-petclinic, caffeine, spring-framework, and netty.
+- 8,789 total tests passing, 0 failures.
+- netty large-file stability: 6,500-line files analyzed without crash; `get_code_outline` achieves 89–92% token savings vs full file read.
+
 ## [1.10.7] - 2026-04-05
 
 ### Added

@@ -4,10 +4,10 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-multi--thousand-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-8890%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > **Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development** — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
@@ -18,23 +18,21 @@ Its job is not just to parse code. Its job is to help humans and AI agents fetch
 find the right files → find the right matches → extract the right structure → send only the right context
 ```
 
+*Claude doesn't need to read your entire codebase. Neither do you.*
+
 **17 languages · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
 
 ---
 
-## ✨ What's New in v1.10.5
+## ✨ What's New in v1.10.8
 
-- **`get_code_outline` MCP tool with TOON format**: Outline-first navigation delivering **54-56% token reduction** vs JSON. Retrieve hierarchical structure first, then fetch only the bodies you need.
-- **`trace_impact` MCP tool**: Lightweight call site finder using ripgrep — impact analysis without graph database overhead
-- **Intent-based tool aliases**: AI-friendly tool naming (`locate_usage`, `map_structure`) makes tool discovery natural for agents
-- **Analysis session tracking**: Audit multi-step SMART workflows with session IDs and operation history
-- **23 critical bug fixes**: TOON format return structure, default output format, test assertions - **project fully operational**
-- **Measured token savings**: Real-world testing shows TOON format reduces output size by 54-56% across small/medium/large files
-- **Enhanced test coverage**: 8,470 tests (100% pass), 88.68% coverage (↑8.35% from v1.10.4)
-- **Cross-platform verified**: All tests pass on Ubuntu, Windows, macOS × Python 3.10-3.13
+- **Spring/JPA codebases are now fully navigable**: Claude correctly sees `@Controller`, `@Transactional`, `@ManyToMany`, `@Bean` — understand Spring architecture without reading raw source. Validated against spring-petclinic, caffeine, spring-framework, netty.
+- **Impact analysis you can trust**: `modification_guard` now gives accurate SAFE/UNSAFE verdicts. `trace_impact` returns the real caller count — not a capped display number — so HIGH IMPACT symbols are never silently downgraded to LOW.
+- **17 new semantic Java queries**: `spring_bean`, `spring_transactional`, `spring_request_mapping`, `junit5_test`, `volatile_field`, `record_declaration` and more — query by intent, not by AST node.
+- **Large files without limits**: 6,500-line netty files analyzed without crash. `get_code_outline` delivers 89–92% token savings over full file reads.
+- **tree-sitter 0.25+ compatible**: `#match?` predicates restored — all Spring/JPA query filtering works on latest tree-sitter installations.
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
----
 ---
 
 ## 🎬 See It In Action
@@ -352,7 +350,7 @@ Tree-sitter Analyzer is designed with **security-by-default** principles for AI-
 
 ### Security Testing
 
-- **8,470+ automated tests** including security-focused edge cases
+- **8,890+ automated tests** including security-focused edge cases
 - **100% mypy type safety** prevents entire classes of bugs
 - **CI/CD security scans**: Bandit (Python security), safety (dependency vulnerabilities)
 - **Manual security review** of all MCP tool implementations

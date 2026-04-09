@@ -4,26 +4,25 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8470%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-8890%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
 
+*Claude 不需要读完整个代码库。你也不用了。*
+
 ---
 
-## ✨ v1.10.5 最新更新
+## ✨ v1.10.8 最新更新
 
-- **`get_code_outline` MCP工具 + TOON格式**: 大纲优先导航，相比JSON格式节省**54-56% token**。先获取层次结构，再按需提取代码体
-- **`trace_impact` MCP工具**: 轻量级调用点查找器，使用ripgrep实现——无需图数据库开销的影响分析
-- **意图别名系统**: AI友好的工具命名（`locate_usage`、`map_structure`）使工具发现更自然
-- **分析会话追踪**: 通过会话ID和操作历史审计多步SMART工作流
-- **23个关键bug修复**: TOON格式返回结构、默认输出格式、测试断言——**项目完全可用**
-- **实测token节省**: 真实文件测试显示TOON格式在小型/中型/大型文件上减少54-56%输出大小
-- **增强测试覆盖**: 8,470个测试（100%通过），88.68%覆盖率（较v1.10.4提升8.35%）
-- **跨平台验证**: 所有测试在Ubuntu、Windows、macOS × Python 3.10-3.13上通过
+- **Spring/JPA 代码库现在完全可导航**: Claude 正确识别 `@Controller`、`@Transactional`、`@ManyToMany`、`@Bean`——无需阅读原始代码即可理解 Spring 架构。已用 spring-petclinic、caffeine、spring-framework、netty 验证
+- **可信赖的影响分析**: `modification_guard` 返回准确的 SAFE/UNSAFE 判定。`trace_impact` 返回真实调用方数量——HIGH IMPACT 符号不再被错误降级为 LOW
+- **17 种新语义查询**: `spring_bean`、`spring_transactional`、`spring_request_mapping`、`junit5_test`、`volatile_field`、`record_declaration` 等——按意图查询，而非 AST 节点
+- **大文件无障碍**: 6,500 行 netty 文件不崩溃分析。`get_code_outline` 相比全文读取节省 89〜92% token
+- **tree-sitter 0.25+ 完全兼容**: `#match?` 谓词已恢复——Spring/JPA 查询过滤在最新版本正常工作
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 ---
@@ -297,7 +296,7 @@ Tree-sitter Analyzer采用**默认安全**原则设计，专为AI辅助开发工
 
 ### 安全测试
 
-- **8,470+自动化测试**包括以安全为重点的边缘案例
+- **8,890+自动化测试**包括以安全为重点的边缘案例
 - **100% mypy类型安全**防止整类bug
 - **CI/CD安全扫描**：Bandit（Python安全）、safety（依赖漏洞）
 - **手动安全审查**所有MCP工具实现
