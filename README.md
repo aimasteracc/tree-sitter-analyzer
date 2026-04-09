@@ -18,24 +18,21 @@ Its job is not just to parse code. Its job is to help humans and AI agents fetch
 find the right files → find the right matches → extract the right structure → send only the right context
 ```
 
+*Claude doesn't need to read your entire codebase. Neither do you.*
+
 **17 languages · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
 
 ---
 
 ## ✨ What's New in v1.10.8
 
-- **Java annotation extraction fully restored**: `analyze_code_structure` was returning `annotations=[]` for all Java methods, classes, and fields. Four independent root causes fixed. Validated against spring-petclinic, caffeine, spring-framework, and netty.
-- **Java `implements` generics preserved**: `LocalCache<K, V>` was being split into `['LocalCache', 'K', 'V']`. Replaced with angle-bracket-aware `_split_type_list()`.
-- **Java class annotation bleeding fixed**: `@Override` from preceding methods was being misattributed to the next class. Now reads directly from AST `modifiers` node.
-- **`trace_impact` `call_count` reflects true total**: Was showing HIGH IMPACT symbols as LOW when `max_results` was set. Now captures true total before truncation.
-- **`query_code` `#match?` predicate restored for tree-sitter 0.25+**: `spring_controller`, `jpa_entity` and all Spring/JPA semantic queries now work correctly.
-- **Java `marker_annotation` node type handled**: `@Controller`, `@Entity`, `@Bean` (no-argument annotations) were not matched. Fixed with alternation pattern.
-- **17 new Java query types**: Spring ecosystem (`spring_bean`, `spring_transactional`, `spring_request_mapping`, …), JUnit5, Java 16+ records, concurrency, exceptions.
-- **Enhanced test coverage**: 8,890 tests (100% pass)
-- **Large-file stability**: 6,500-line netty files analyzed without crash; `get_code_outline` achieves 89–92% token savings vs full file read.
+- **Spring/JPA codebases are now fully navigable**: Claude correctly sees `@Controller`, `@Transactional`, `@ManyToMany`, `@Bean` — understand Spring architecture without reading raw source. Validated against spring-petclinic, caffeine, spring-framework, netty.
+- **Impact analysis you can trust**: `modification_guard` now gives accurate SAFE/UNSAFE verdicts. `trace_impact` returns the real caller count — not a capped display number — so HIGH IMPACT symbols are never silently downgraded to LOW.
+- **17 new semantic Java queries**: `spring_bean`, `spring_transactional`, `spring_request_mapping`, `junit5_test`, `volatile_field`, `record_declaration` and more — query by intent, not by AST node.
+- **Large files without limits**: 6,500-line netty files analyzed without crash. `get_code_outline` delivers 89–92% token savings over full file reads.
+- **tree-sitter 0.25+ compatible**: `#match?` predicates restored — all Spring/JPA query filtering works on latest tree-sitter installations.
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
----
 ---
 
 ## 🎬 See It In Action
