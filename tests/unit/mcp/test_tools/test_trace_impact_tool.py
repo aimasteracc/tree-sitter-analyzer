@@ -179,10 +179,11 @@ class TestTraceImpactToolExecution:
             })
 
             assert result["success"] is True
-            assert result["call_count"] == 50
+            # call_count must reflect the TRUE total (150), not the display cap.
+            # max_results=50 only limits the usages list, not the count.
+            assert result["call_count"] == 150
             assert len(result["usages"]) == 50
             assert result["truncated"] is True
-            assert "truncated to 50" in result["message"]
 
     @pytest.mark.asyncio
     async def test_execute_ripgrep_not_installed(self):
