@@ -12,19 +12,17 @@
 
 > 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
 
+*Claude 不需要读完整个代码库。你也不用了。*
+
 ---
 
 ## ✨ v1.10.8 最新更新
 
-- **Java注解提取完全修复**: `analyze_code_structure` 对所有Java方法、类、字段返回 `annotations=[]` 的问题通过4个独立根本原因修复。已用spring-petclinic验证
-- **Java `implements` 泛型参数保留**: `LocalCache<K, V>` 被拆分为 `['LocalCache', 'K', 'V']` 的问题修复，使用角括号深度计数器的 `_split_type_list()` 替代
-- **Java类注解出血修复**: `@Override` 从前一个方法误归属到下一个类声明的问题修复
-- **`trace_impact` 的 `call_count` 反映真实总数**: 设置 `max_results` 时HIGH IMPACT符号显示为LOW的问题修复
-- **`query_code` 在 tree-sitter 0.25+ 中恢复 `#match?` 谓词**: `spring_controller`、`jpa_entity` 等Spring/JPA查询正常工作
-- **Java `marker_annotation` 节点类型支持**: `@Controller`、`@Entity`、`@Bean` 等无参数注解正确匹配
-- **新增17种Java查询类型**: Spring生态系统、JUnit5、Java 16+、并发处理、异常处理
-- **增强测试覆盖**: 8,890个测试（100%通过）
-- **大文件稳定性**: netty 6,500行文件无崩溃，`get_code_outline` 节省89〜92% token
+- **Spring/JPA 代码库现在完全可导航**: Claude 正确识别 `@Controller`、`@Transactional`、`@ManyToMany`、`@Bean`——无需阅读原始代码即可理解 Spring 架构。已用 spring-petclinic、caffeine、spring-framework、netty 验证
+- **可信赖的影响分析**: `modification_guard` 返回准确的 SAFE/UNSAFE 判定。`trace_impact` 返回真实调用方数量——HIGH IMPACT 符号不再被错误降级为 LOW
+- **17 种新语义查询**: `spring_bean`、`spring_transactional`、`spring_request_mapping`、`junit5_test`、`volatile_field`、`record_declaration` 等——按意图查询，而非 AST 节点
+- **大文件无障碍**: 6,500 行 netty 文件不崩溃分析。`get_code_outline` 相比全文读取节省 89〜92% token
+- **tree-sitter 0.25+ 完全兼容**: `#match?` 谓词已恢复——Spring/JPA 查询过滤在最新版本正常工作
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 ---

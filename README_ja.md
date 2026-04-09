@@ -12,19 +12,17 @@
 
 > 🔎 **大規模リポジトリ向けのAI用エビデンスベースコードナビゲーション** - MCP統合 · 最小コンテキスト取得 · 重い前処理なしの検索
 
+*Claudeはコードベース全体を読む必要がありません。あなたも、もう必要ない。*
+
 ---
 
 ## ✨ v1.10.8 最新情報
 
-- **Javaアノテーション抽出の完全修復**: `analyze_code_structure` がすべてのJavaメソッド・クラス・フィールドで `annotations=[]` を返していた問題を4つの独立した根本原因から修正。spring-petclinicで検証済み
-- **Java `implements` ジェネリック型引数の保持**: `LocalCache<K, V>` が `['LocalCache', 'K', 'V']` に分割されていた問題を修正。角括弧深度カウンターを使用した `_split_type_list()` に置換
-- **Javaクラスアノテーションの出血修正**: `@Override` が前のメソッドから次のクラス宣言に誤帰属していた問題を修正
-- **`trace_impact` の `call_count` が真の総数を反映**: `max_results` 設定時にHIGH IMPACTシンボルがLOWと表示されていた問題を修正
-- **`query_code` の `#match?` 述語を tree-sitter 0.25+ で復元**: `spring_controller`・`jpa_entity` などのクエリが正しく動作
-- **Java `marker_annotation` ノードタイプの対応**: `@Controller`・`@Entity`・`@Bean` などの引数なしアノテーションが正しく検出
-- **17種類の新しいJavaクエリタイプ追加**: Spring生態系・JUnit5・Java 16+・並行処理・例外ハンドリング
-- **テストカバレッジ強化**: 8,890テスト（100%パス）
-- **大規模ファイル安定性**: nettyの6,500行ファイルでクラッシュなし、`get_code_outline` で89〜92%のトークン削減
+- **Spring/JPAコードベースが完全にナビゲート可能に**: Claudeが `@Controller`・`@Transactional`・`@ManyToMany`・`@Bean` を正確に認識。ソース全体を読まずにSpringアーキテクチャを理解できる。spring-petclinic・caffeine・spring-framework・nettyで検証済み
+- **信頼できる影響分析**: `modification_guard` が正確なSAFE/UNSAFEを返す。`trace_impact` は表示上限に関わらず真の呼び出し元数を返す——HIGH IMPACTのシンボルがLOWに誤分類されない
+- **17種類の新しいセマンティッククエリ**: `spring_bean`・`spring_transactional`・`spring_request_mapping`・`junit5_test`・`volatile_field`・`record_declaration` など——ASTノードではなく意図で検索
+- **大規模ファイルも安心**: 6,500行のnettyファイルをクラッシュなしで分析。`get_code_outline` でフルファイル読み込み比89〜92%のトークン削減
+- **tree-sitter 0.25+ 完全対応**: `#match?` 述語が復元——Spring/JPAクエリフィルタリングが最新版で動作
 
 📖 完全なバージョン履歴は **[変更履歴](CHANGELOG.md)** をご覧ください。
 ---
