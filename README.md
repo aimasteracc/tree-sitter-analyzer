@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-multi--thousand-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > **Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development** — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
@@ -22,16 +22,17 @@ find the right files → find the right matches → extract the right structure 
 
 ---
 
-## ✨ What's New in v1.10.5
+## ✨ What's New in v1.10.8
 
-- **`get_code_outline` MCP tool with TOON format**: Outline-first navigation delivering **54-56% token reduction** vs JSON. Retrieve hierarchical structure first, then fetch only the bodies you need.
-- **`trace_impact` MCP tool**: Lightweight call site finder using ripgrep — impact analysis without graph database overhead
-- **Intent-based tool aliases**: AI-friendly tool naming (`locate_usage`, `map_structure`) makes tool discovery natural for agents
-- **Analysis session tracking**: Audit multi-step SMART workflows with session IDs and operation history
-- **23 critical bug fixes**: TOON format return structure, default output format, test assertions - **project fully operational**
-- **Measured token savings**: Real-world testing shows TOON format reduces output size by 54-56% across small/medium/large files
+- **Java annotation extraction fully restored**: `analyze_code_structure` was returning `annotations=[]` for all Java methods, classes, and fields. Four independent root causes fixed. Validated against spring-petclinic, caffeine, spring-framework, and netty.
+- **Java `implements` generics preserved**: `LocalCache<K, V>` was being split into `['LocalCache', 'K', 'V']`. Replaced with angle-bracket-aware `_split_type_list()`.
+- **Java class annotation bleeding fixed**: `@Override` from preceding methods was being misattributed to the next class. Now reads directly from AST `modifiers` node.
+- **`trace_impact` `call_count` reflects true total**: Was showing HIGH IMPACT symbols as LOW when `max_results` was set. Now captures true total before truncation.
+- **`query_code` `#match?` predicate restored for tree-sitter 0.25+**: `spring_controller`, `jpa_entity` and all Spring/JPA semantic queries now work correctly.
+- **Java `marker_annotation` node type handled**: `@Controller`, `@Entity`, `@Bean` (no-argument annotations) were not matched. Fixed with alternation pattern.
+- **17 new Java query types**: Spring ecosystem (`spring_bean`, `spring_transactional`, `spring_request_mapping`, …), JUnit5, Java 16+ records, concurrency, exceptions.
 - **Enhanced test coverage**: 8,890 tests (100% pass)
-- **Cross-platform verified**: All tests pass on Ubuntu, Windows, macOS × Python 3.10-3.13
+- **Large-file stability**: 6,500-line netty files analyzed without crash; `get_code_outline` achieves 89–92% token savings vs full file read.
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
 ---
