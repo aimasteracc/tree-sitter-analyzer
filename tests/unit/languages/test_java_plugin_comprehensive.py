@@ -697,8 +697,13 @@ class UserConfig {
 
                     with patch.object(
                         extractor, "_find_annotations_for_line_cached"
-                    ) as mock_annotations:
+                    ) as mock_annotations, patch.object(
+                        extractor, "_extract_annotations_from_modifiers"
+                    ) as mock_ast_annotations:
                         mock_annotations.return_value = [{"name": "Service"}]
+                        # Class annotations now come from AST-direct extraction;
+                        # mock it to return the same value for this unit test.
+                        mock_ast_annotations.return_value = [{"name": "Service"}]
 
                         with patch.object(
                             extractor, "_is_nested_class"

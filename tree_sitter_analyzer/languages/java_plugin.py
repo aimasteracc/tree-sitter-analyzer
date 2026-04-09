@@ -585,10 +585,15 @@ class JavaElementExtractor(ElementExtractor):
                         extends_class = match.group(0)
                 elif child.type == "super_interfaces":
                     implements_text = self._get_node_text_optimized(child)
-                    implements_interfaces = re.findall(r"\b[A-Z]\w*", implements_text)
+                    # Use angle-bracket-aware splitting to preserve generic type args:
+                    # LocalCache<K, V>  →  ["LocalCache<K, V>"]  (not ["LocalCache","K","V"])
+                    implements_interfaces = self._split_type_list(implements_text)
 
-            # Extract annotations for this class
-            class_annotations = self._find_annotations_for_line_cached(start_line)
+            # Extract annotations directly from the AST node's modifiers child.
+            # AST-direct extraction is precise: it reads only annotations that are
+            # syntactically part of THIS class declaration, preventing @Override from
+            # a preceding method from bleeding into the next class's annotation list.
+            class_annotations = self._extract_annotations_from_modifiers(node)
 
             # Check if this is a nested class
             is_nested = self._is_nested_class(node)
@@ -1015,6 +1020,69 @@ class JavaElementExtractor(ElementExtractor):
             return "protected"
         else:
             return "package"
+
+    def _split_type_list(self, text: str) -> list[str]:
+        """Split a comma-separated type list while respecting angle-bracket nesting.
+
+        'implements LocalCache<K, V>, Serializable'
+        → ['LocalCache<K, V>', 'Serializable']
+
+        Naive re.findall(r'\\b[A-Z]\\w*') would produce
+        ['LocalCache', 'K', 'V', 'Serializable'] — WRONG.
+        """
+        # Strip leading keywords: "implements ", "extends ", angle bracket prefix etc.
+        cleaned = re.sub(r"^\s*(implements|extends|permits)\s*", "", text).strip()
+        # Also strip outer type noise that tree-sitter wraps (e.g. "type_list {")
+        cleaned = re.sub(r"[{}]", "", cleaned).strip()
+
+        depth = 0
+        current: list[str] = []
+        parts: list[str] = []
+        for ch in cleaned:
+            if ch == "<":
+                depth += 1
+            elif ch == ">":
+                depth -= 1
+            if ch == "," and depth == 0:
+                part = "".join(current).strip()
+                if part:
+                    parts.append(part)
+                current = []
+            else:
+                current.append(ch)
+        if current:
+            part = "".join(current).strip()
+            if part:
+                parts.append(part)
+
+        # Filter to items that look like type names (start with uppercase or are generic)
+        result: list[str] = []
+        for p in parts:
+            # Strip annotation prefixes like "@NonNull " from type names
+            p = re.sub(r"@\w+\s*", "", p).strip()
+            if p and (p[0].isupper() or p[0] == "_"):
+                result.append(p)
+        return result
+
+    def _extract_annotations_from_modifiers(
+        self, node: "tree_sitter.Node"
+    ) -> list[dict[str, Any]]:
+        """Extract annotations directly from a class/method/field AST node's modifiers.
+
+        This avoids the line-proximity heuristic in _find_annotations_for_line_cached(),
+        which incorrectly attributes @Override from a preceding method to the following
+        class declaration when they appear within 2 lines of each other.
+        """
+        annotations: list[dict[str, Any]] = []
+        for child in node.children:
+            if child.type == "modifiers":
+                for mod in child.children:
+                    if mod.type in ("annotation", "marker_annotation"):
+                        ann = self._extract_annotation_optimized(mod)
+                        if ann:
+                            annotations.append(ann)
+                break  # only one modifiers block per node
+        return annotations
 
     def _find_annotations_for_line_cached(self, line: int) -> list[dict[str, Any]]:
         """Find annotations for a specific line with caching"""
