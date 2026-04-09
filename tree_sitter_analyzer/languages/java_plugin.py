@@ -356,6 +356,7 @@ class JavaElementExtractor(ElementExtractor):
             "compact_constructor_declaration",
             "block",
             "modifiers",  # Annotation nodes can appear inside modifiers
+            "field_declaration",  # Field annotations live in field_declaration > modifiers
             # Additional containers for literals and expressions
             "return_statement",
             "argument_list",
