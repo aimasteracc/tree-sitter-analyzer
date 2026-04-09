@@ -7,9 +7,40 @@ Supports tree-sitter 0.20+ with query.matches() method only.
 """
 
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_match_predicates(query_string: str) -> list[tuple[str, str]]:
+    """Extract (#match? @capture "pattern") predicates from a query string.
+
+    tree-sitter-python 0.25+ QueryCursor.matches() does NOT apply custom predicates
+    like #match? automatically. We must parse them from the query source and filter
+    manually after the raw match pass.
+
+    Returns list of (capture_name, regex_pattern) tuples.
+    """
+    # Matches: (#match? @capture_name "pattern")
+    return re.findall(r'\(#match\?\s+@(\w+)\s+"([^"]+)"\)', query_string)
+
+
+def _apply_match_predicates(
+    predicates: list[tuple[str, str]],
+    captures_dict: dict[str, list[Any]],
+) -> bool:
+    """Return True if all #match? predicates pass for the given capture dict."""
+    for capture_name, pattern in predicates:
+        nodes = captures_dict.get(capture_name, [])
+        if not nodes:
+            return False
+        for node in nodes:
+            raw = node.text
+            text = raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+            if not re.search(pattern, text):
+                return False
+    return True
 
 
 class TreeSitterQueryCompat:
@@ -45,7 +76,12 @@ class TreeSitterQueryCompat:
             # Try newest API first (tree-sitter 0.25+) with QueryCursor
             if hasattr(tree_sitter, "QueryCursor"):
                 logger.debug("Using newest tree-sitter API (QueryCursor)")
-                return TreeSitterQueryCompat._execute_newest_api(query, root_node)
+                # Pass query_string so we can manually apply #match? predicates.
+                # QueryCursor.matches() does NOT apply custom predicates automatically.
+                predicates = _parse_match_predicates(query_string)
+                return TreeSitterQueryCompat._execute_newest_api(
+                    query, root_node, predicates
+                )
             # Try modern API (tree-sitter 0.20+)
             elif hasattr(query, "matches"):
                 logger.debug("Using modern tree-sitter API (matches)")
@@ -66,18 +102,33 @@ class TreeSitterQueryCompat:
             return []
 
     @staticmethod
-    def _execute_newest_api(query: Any, root_node: Any) -> list[tuple[Any, str]]:
-        """Execute query using newest API (tree-sitter 0.25+) with QueryCursor"""
-        captures = []
+    def _execute_newest_api(
+        query: Any,
+        root_node: Any,
+        match_predicates: list[tuple[str, str]] | None = None,
+    ) -> list[tuple[Any, str]]:
+        """Execute query using newest API (tree-sitter 0.25+) with QueryCursor.
+
+        Args:
+            match_predicates: List of (#match? capture pattern) tuples parsed from
+                the query string. QueryCursor does not apply these automatically;
+                we filter matches manually here.
+        """
+        captures: list[tuple[Any, str]] = []
+        predicates = match_predicates or []
         try:
             import tree_sitter
 
             cursor = tree_sitter.QueryCursor(query)
 
-            # Execute query and get matches
+            # Execute query and get raw matches (predicates NOT applied)
             matches = cursor.matches(root_node)
             # matches is a list of tuples: (pattern_index, captures_dict)
             for _pattern_index, captures_dict in matches:
+                # Manually apply #match? predicates that QueryCursor skips
+                if predicates and not _apply_match_predicates(predicates, captures_dict):
+                    continue  # This match doesn't satisfy the predicate — skip it
+
                 # captures_dict is {capture_name: [node1, node2, ...]}
                 for capture_name, nodes in captures_dict.items():
                     for node in nodes:
