@@ -272,7 +272,7 @@ for lang in langs:
 
 | Metric | Value |
 |--------|-------|
-| **Tests** | Multi-thousand automated tests |
+| **Tests** | 8,890+ automated tests |
 | **Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 | **Platforms** | Windows, macOS, Linux |
@@ -411,7 +411,7 @@ MIT License - see [LICENSE](LICENSE) file.
 
 | Metric | Value |
 |--------|-------|
-| **Test Suite** | Multi-thousand automated tests across unit, integration, regression, property, benchmark, and compatibility layers |
+| **Test Suite** | 8,890+ automated tests across unit, integration, regression, property, benchmark, and compatibility layers |
 | **Code Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 

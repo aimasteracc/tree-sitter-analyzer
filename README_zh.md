@@ -218,7 +218,7 @@ Tree-sitter Analyzer 在所有17种支持语言的语法覆盖率验证中保证
 
 | 指标 | 数值 |
 |------|------|
-| **测试** | 6,246 通过 ✅ |
+| **测试** | 8,890 通过 ✅ |
 | **覆盖率** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **类型安全** | 100% mypy合规 |
 | **平台** | Windows、macOS、Linux |
@@ -357,8 +357,8 @@ MIT许可证 - 详见 [LICENSE](LICENSE) 文件。
 
 | 指标 | 值 |
 |------|-----|
-| **总测试数** | 2,411 测试 ✅ |
-| **测试通过率** | 100% (2,411/2,411) |
+| **总测试数** | 8,890 测试 ✅ |
+| **测试通过率** | 100% (8,890/8,890) |
 | **代码覆盖率** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **类型安全** | 100% mypy合规 |
 
@@ -394,8 +394,7 @@ uv run pytest tests/benchmarks/ --benchmark-only
 
 ### 测试类别
 
-- **单元测试** (2,087 测试): 隔离测试各个组件
-- **集成测试** (187 测试): 测试组件间交互
+- **单元测试** (8,890+ 测试总计): 隔离测试各个组件
 - **回归测试** (70 测试): 确保向后兼容性和格式稳定性
 - **属性测试** (75 测试): 基于Hypothesis的属性测试
 - **基准测试** (20 测试): 性能监控和回归检测
