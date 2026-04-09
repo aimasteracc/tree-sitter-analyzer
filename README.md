@@ -30,7 +30,7 @@ find the right files → find the right matches → extract the right structure 
 - **Analysis session tracking**: Audit multi-step SMART workflows with session IDs and operation history
 - **23 critical bug fixes**: TOON format return structure, default output format, test assertions - **project fully operational**
 - **Measured token savings**: Real-world testing shows TOON format reduces output size by 54-56% across small/medium/large files
-- **Enhanced test coverage**: 8,470 tests (100% pass), 88.68% coverage (↑8.35% from v1.10.4)
+- **Enhanced test coverage**: 8,890 tests (100% pass)
 - **Cross-platform verified**: All tests pass on Ubuntu, Windows, macOS × Python 3.10-3.13
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
@@ -352,7 +352,7 @@ Tree-sitter Analyzer is designed with **security-by-default** principles for AI-
 
 ### Security Testing
 
-- **8,470+ automated tests** including security-focused edge cases
+- **8,890+ automated tests** including security-focused edge cases
 - **100% mypy type safety** prevents entire classes of bugs
 - **CI/CD security scans**: Bandit (Python security), safety (dependency vulnerabilities)
 - **Manual security review** of all MCP tool implementations
