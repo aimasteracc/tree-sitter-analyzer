@@ -1,0 +1,21 @@
+{
+  "language": "rust",
+  "node_types": {
+    "attribute_item": 14,
+    "closure_expression": 7,
+    "const_item": 3,
+    "enum_item": 3,
+    "function_item": 33,
+    "impl_item": 6,
+    "let_declaration": 35,
+    "macro_definition": 3,
+    "macro_invocation": 33,
+    "match_expression": 4,
+    "mod_item": 2,
+    "static_item": 2,
+    "struct_item": 5,
+    "trait_item": 4,
+    "type_item": 3,
+    "use_declaration": 6
+  }
+}

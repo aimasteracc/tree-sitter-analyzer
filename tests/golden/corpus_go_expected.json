@@ -1,0 +1,28 @@
+{
+  "language": "go",
+  "node_types": {
+    "function_declaration": 22,
+    "method_declaration": 12,
+    "type_declaration": 29,
+    "struct_type": 9,
+    "interface_type": 9,
+    "var_declaration": 8,
+    "const_declaration": 4,
+    "short_var_declaration": 39,
+    "import_declaration": 2,
+    "package_clause": 1,
+    "defer_statement": 8,
+    "go_statement": 8,
+    "select_statement": 3,
+    "channel_type": 10,
+    "map_type": 3,
+    "slice_type": 9,
+    "pointer_type": 8,
+    "type_alias": 2,
+    "func_literal": 8,
+    "generic_type": 3,
+    "type_parameter_list": 2,
+    "type_constraint": 2,
+    "variadic_parameter_declaration": 2
+  }
+}

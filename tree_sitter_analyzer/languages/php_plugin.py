@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
     from ..models import AnalysisResult
 
 try:
@@ -21,7 +21,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..models import Class, Function, Import, Variable
+from ..models import Class, Expression, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_error
 
@@ -592,7 +592,13 @@ class PHPElementExtractor(ElementExtractor):
             # Extract constant names
             for child in node.children:
                 if child.type == "const_element":
+                    # Find name: try field_name first, then node type "name"
                     name_node = child.child_by_field_name("name")
+                    if name_node is None:
+                        for gc in child.children:
+                            if gc.is_named and gc.type == "name":
+                                name_node = gc
+                                break
                     if name_node:
                         name = self._get_node_text_optimized(name_node)
                         full_name = f"{parent_class}::{name}" if parent_class else name
@@ -602,6 +608,8 @@ class PHPElementExtractor(ElementExtractor):
                                 name=full_name,
                                 start_line=node.start_point[0] + 1,
                                 end_line=node.end_point[0] + 1,
+                                raw_text=self._get_node_text_optimized(node),
+                                language="php",
                                 visibility=visibility,
                                 is_static=True,
                                 is_constant=True,
@@ -642,12 +650,68 @@ class PHPElementExtractor(ElementExtractor):
             if node.type == "namespace_use_declaration":
                 import_elems = self._extract_use_statement(node)
                 imports.extend(import_elems)
+            elif node.type == "namespace_definition":
+                # namespace Foo\Bar; or namespace Foo\Bar { ... }
+                imp = self._extract_namespace_as_import(node)
+                if imp:
+                    imports.append(imp)
+            elif node.type == "use_declaration":
+                # use TraitName; inside a class body
+                imp = self._extract_trait_use_as_import(node)
+                if imp:
+                    imports.append(imp)
 
             # Add children to stack
             for child in reversed(node.children):
                 stack.append(child)
 
         return imports
+
+    def _extract_namespace_as_import(
+        self, node: "tree_sitter.Node"
+    ) -> Import | None:
+        """Extract namespace_definition as an Import-like entity."""
+        try:
+            name_node = node.child_by_field_name("name")
+            name = self._get_node_text_optimized(name_node) if name_node else ""
+            if not name:
+                for child in node.children:
+                    if child.is_named and child.type != "declaration_list":
+                        name = self._get_node_text_optimized(child)
+                        break
+            return Import(
+                name=name or "namespace",
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text_optimized(node),
+                language="php",
+                module_name=name or "namespace",
+            )
+        except Exception as e:
+            log_error(f"Error extracting PHP namespace_definition: {e}")
+            return None
+
+    def _extract_trait_use_as_import(
+        self, node: "tree_sitter.Node"
+    ) -> Import | None:
+        """Extract use_declaration (trait use) as an Import."""
+        try:
+            names: list[str] = []
+            for child in node.children:
+                if child.type == "name":
+                    names.append(self._get_node_text_optimized(child))
+            module = ", ".join(names) if names else "trait"
+            return Import(
+                name=module,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=self._get_node_text_optimized(node),
+                language="php",
+                module_name=module,
+            )
+        except Exception as e:
+            log_error(f"Error extracting PHP use_declaration: {e}")
+            return None
 
     def _extract_use_statement(self, node: "tree_sitter.Node") -> list[Import]:
         """
@@ -675,11 +739,22 @@ class PHPElementExtractor(ElementExtractor):
             # Extract use clauses
             for child in node.children:
                 if child.type == "namespace_use_clause":
-                    name_node = child.child_by_field_name("name")
-                    alias_node = child.child_by_field_name("alias")
+                    # The namespace_use_clause has: qualified_name, optional "as", optional name (alias)
+                    qualified_name_node = None
+                    alias_node = None
+                    seen_as = False
 
-                    if name_node:
-                        import_name = self._get_node_text_optimized(name_node)
+                    for grandchild in child.children:
+                        if grandchild.type == "qualified_name":
+                            qualified_name_node = grandchild
+                        elif grandchild.type == "as":
+                            seen_as = True
+                        elif grandchild.type == "name" and seen_as:
+                            # This is the alias after "as"
+                            alias_node = grandchild
+
+                    if qualified_name_node:
+                        import_name = self._get_node_text_optimized(qualified_name_node)
                         alias = None
                         if alias_node:
                             alias = self._get_node_text_optimized(alias_node)
@@ -697,6 +772,56 @@ class PHPElementExtractor(ElementExtractor):
             log_error(f"Error extracting use statement: {e}")
 
         return imports
+
+    def extract_php_tags(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[Expression]:
+        """
+        Extract PHP opening tags (<?php).
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of Expression elements representing PHP tags
+        """
+        self.source_code = source_code
+        self.content_lines = source_code.splitlines()
+
+        php_tags: list[Expression] = []
+
+        # Iterative traversal
+        stack: list[tree_sitter.Node] = [tree.root_node]
+
+        while stack:
+            node = stack.pop()
+
+            if node.type == "php_tag":
+                try:
+                    raw_text = self._get_node_text_optimized(node)
+                    start_line = node.start_point[0] + 1
+                    end_line = node.end_point[0] + 1
+
+                    php_tags.append(
+                        Expression(
+                            name="php_tag",
+                            start_line=start_line,
+                            end_line=end_line,
+                            raw_text=raw_text,
+                            language="php",
+                            expression_kind="php_tag",
+                            preview=raw_text,
+                        )
+                    )
+                except Exception as e:
+                    log_error(f"Error extracting PHP tag: {e}")
+
+            # Add children to stack
+            for child in reversed(node.children):
+                stack.append(child)
+
+        return php_tags
 
 
 class PHPPlugin(LanguagePlugin):
@@ -795,9 +920,10 @@ class PHPPlugin(LanguagePlugin):
             functions = extractor.extract_functions(tree, content)
             variables = extractor.extract_variables(tree, content)
             imports = extractor.extract_imports(tree, content)
+            php_tags = extractor.extract_php_tags(tree, content)  # type: ignore[attr-defined]
 
             # Combine all elements
-            all_elements = classes + functions + variables + imports
+            all_elements = classes + functions + variables + imports + php_tags
 
             return AnalysisResult(
                 language=self.get_language_name(),

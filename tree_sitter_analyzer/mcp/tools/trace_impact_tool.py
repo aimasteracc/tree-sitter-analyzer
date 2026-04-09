@@ -28,6 +28,49 @@ from .fd_rg_utils import (
 logger = setup_logger(__name__)
 
 
+def _get_impact_level(count: int) -> dict[str, str]:
+    """
+    Return a severity dict for a given caller count.
+
+    Args:
+        count: Number of callers found for a symbol
+
+    Returns:
+        Dictionary with level, badge, and guidance keys
+    """
+    if count == 0:
+        return {
+            "level": "none",
+            "badge": "✅ NO CALLERS",
+            "guidance": "Safe to modify or delete.",
+        }
+    elif count <= 5:
+        return {
+            "level": "low",
+            "badge": "⚠️ LOW IMPACT",
+            "guidance": f"{count} caller(s) found. Review before modifying.",
+        }
+    elif count <= 20:
+        return {
+            "level": "medium",
+            "badge": "🔶 MEDIUM IMPACT",
+            "guidance": (
+                f"{count} callers found. "
+                "Check all call sites before changing the signature."
+            ),
+        }
+    else:
+        return {
+            "level": "high",
+            "badge": f"🚨 HIGH IMPACT — {count} CALLERS",
+            "guidance": (
+                f"{count} callers across the codebase. "
+                "Do NOT modify signature without updating all callers. "
+                "Consider deprecation strategy."
+            ),
+        }
+
+
 class TraceImpactTool(BaseMCPTool):
     """
     MCP tool for tracing the impact of code changes by finding all usage sites of a symbol.
@@ -56,10 +99,28 @@ class TraceImpactTool(BaseMCPTool):
         return {
             "name": "trace_impact",
             "description": (
-                "Trace impact — find all usage sites of a symbol to assess change impact. "
-                "Searches for occurrences of a method, class, or function name across the project. "
-                "Optionally filters by language (same as source file) to reduce noise. "
-                "Useful for understanding blast radius before refactoring or deprecating code."
+                "Find every caller and usage site of a symbol across the entire project. "
+                "\n\n"
+                "REQUIRED before modifying any public function, class, or variable. "
+                "Without this, you are editing blindly — you do not know what breaks. "
+                "This tool answers: 'if I change X, what else changes?' "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- ALWAYS call this before renaming, removing, or changing the signature of any "
+                "public method, class, or exported variable\n"
+                "- Before refactoring code used across multiple files\n"
+                "- To understand the blast radius of a deprecation\n"
+                "- To verify that a symbol is truly unused before deletion\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- Private/internal methods (single-underscore prefix) within the same file — "
+                "the impact is local and visible in context\n"
+                "- Pure comment or docstring edits — no callers are affected\n"
+                "- Adding a brand-new symbol that has no existing usages\n"
+                "\n"
+                "IMPORTANT: Provide file_path when available — this filters results to the same "
+                "language, eliminating cross-language false positives. "
+                "Set word_match=true (the default) to avoid substring noise."
             ),
             "inputSchema": {
                 "type": "object",
@@ -296,20 +357,30 @@ class TraceImpactTool(BaseMCPTool):
         # 解析结果
         if rc == 1:
             # 没有匹配
+            impact = _get_impact_level(0)
             return {
                 "success": True,
                 "symbol": symbol,
                 "language": language,
                 "usages": [],
                 "call_count": 0,
+                "impact_level": impact["level"],
+                "impact_badge": impact["badge"],
+                "impact_guidance": impact["guidance"],
                 "message": f"No usages of '{symbol}' found in the project.",
             }
 
         # 解析 JSON 输出
         matches = parse_rg_json_lines_to_matches(stdout)
 
-        # 限制结果数量
-        if len(matches) > max_results:
+        # Capture true total BEFORE truncating for display.
+        # impact_level and call_count must reflect the actual number of callers,
+        # not the display-capped count. If max_results=5 and there are 695 matches,
+        # call_count must be 695 and impact_level must be "high", not "low".
+        true_total = len(matches)
+
+        # 限制结果数量（只影响显示，不影响 call_count）
+        if true_total > max_results:
             matches = matches[:max_results]
             truncated = True
         else:
@@ -325,13 +396,28 @@ class TraceImpactTool(BaseMCPTool):
             }
             usages.append(usage)
 
+        # 计算影响等级（使用真实总数，而非截断后的显示数）
+        total_count = true_total
+        impact = _get_impact_level(total_count)
+
         # 构建响应
-        result = {
+        result: dict[str, Any] = {
             "success": True,
             "symbol": symbol,
-            "call_count": len(usages),
+            "call_count": total_count,
+            "impact_level": impact["level"],
+            "impact_badge": impact["badge"],
+            "impact_guidance": impact["guidance"],
             "usages": usages,
         }
+
+        # 高影响时加入醒目 warning
+        if impact["level"] == "high":
+            result["warning"] = (
+                f"🚨 HIGH IMPACT: This symbol has {total_count} callers. "
+                f"Modifying its signature requires updating all call sites. "
+                f"Use batch_search to locate all callers before proceeding."
+            )
 
         # 添加可选字段
         if language:

@@ -1,0 +1,83 @@
+name: Grammar Coverage Guard
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      # 依赖变更触发（语言包升级可能带来新语法节点）
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/grammar-coverage-guard.yml"
+  pull_request:
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+  # 每周定期检查（捕获依赖自动升级引入的新节点）
+  schedule:
+    - cron: "0 2 * * 1"  # 每周一 UTC 02:00
+  # 允许手动触发
+  workflow_dispatch:
+    inputs:
+      update_snapshot:
+        description: "Update grammar snapshot baseline"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  grammar-coverage-check:
+    name: Grammar Coverage Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --extra all-languages
+
+      - name: Run grammar coverage analysis
+        run: |
+          echo "=== Grammar Coverage Analysis ==="
+          uv run python scripts/auto_discover.py --all 2>&1
+
+      - name: Check grammar snapshot (detect new syntax nodes)
+        id: snapshot_check
+        run: |
+          echo "=== Checking Grammar Snapshot ==="
+          uv run python -m tree_sitter_analyzer.grammar_coverage.grammar_snapshot --check
+        continue-on-error: true
+
+      - name: Report new nodes (if any)
+        if: steps.snapshot_check.outcome == 'failure'
+        run: |
+          echo "::warning::New grammar node types detected!"
+          echo "Run the following to update the snapshot after adding corpus + plugin support:"
+          echo "  python -m tree_sitter_analyzer.grammar_coverage.grammar_snapshot --update"
+          echo "  git add grammar_snapshot.json && git commit -m 'chore: update grammar snapshot'"
+
+      - name: Update snapshot (manual trigger only)
+        if: github.event.inputs.update_snapshot == 'true'
+        run: |
+          uv run python -m tree_sitter_analyzer.grammar_coverage.grammar_snapshot --update
+          echo "Snapshot updated. Check grammar_snapshot.json for changes."
+
+      - name: Upload snapshot as artifact
+        if: github.event.inputs.update_snapshot == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: grammar-snapshot
+          path: grammar_snapshot.json
+
+      - name: Fail if new nodes found
+        if: steps.snapshot_check.outcome == 'failure'
+        run: exit 1

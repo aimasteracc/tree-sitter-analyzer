@@ -17,7 +17,8 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
-from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+from ...core.analysis_engine import get_analysis_engine
+from ...core.request import AnalysisRequest
 from ...formatters.formatter_registry import FormatterRegistry
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
@@ -116,9 +117,16 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         Raises:
             ValueError: If arguments are invalid
         """
+        # Normalize file alias
+        if "file" in arguments and "file_path" not in arguments:
+            arguments["file_path"] = arguments.pop("file")
+
         # Check required fields
         if "file_path" not in arguments:
-            raise ValueError("Required field 'file_path' is missing")
+            raise ValueError(
+                "Required field 'file_path' is missing. "
+                "Tip: use 'file_path' (not 'file' or 'path') for this tool"
+            )
 
         # Validate file_path
         file_path = arguments["file_path"]
@@ -260,6 +268,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             "file_path": result.file_path,
             "language": result.language,
             "package": package_info,
+            # Pass raw elements so language-specific formatters (e.g. HtmlFormatter)
+            # can access MarkupElement / StyleElement objects directly.
+            "elements": result.elements,
             "classes": [
                 {
                     "name": getattr(cls, "name", "unknown"),
@@ -271,7 +282,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "visibility": "public",  # Force all classes to public
                     "extends": getattr(cls, "extends_class", None),
                     "implements": getattr(cls, "implements_interfaces", []),
-                    "annotations": [],
+                    "annotations": getattr(cls, "annotations", []),
                 }
                 for cls in classes
             ],
@@ -289,7 +300,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "is_constructor": getattr(method, "is_constructor", False),
                     "complexity_score": getattr(method, "complexity_score", 0),
                     "modifiers": self._get_method_modifiers(method),
-                    "annotations": [],
+                    "annotations": getattr(method, "annotations", []),
                 }
                 for method in methods
             ],
@@ -303,7 +314,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     },
                     "visibility": getattr(field, "visibility", "private"),
                     "modifiers": self._get_field_modifiers(field),
-                    "annotations": [],
+                    "annotations": getattr(field, "annotations", []),
                 }
                 for field in fields
             ],
@@ -407,6 +418,10 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 table_output = table_output.replace("\r\n", "\n").replace("\r", "\n")
                 table_output = table_output.rstrip()
 
+                # Remove raw element objects before JSON serialization —
+                # they were only needed for language-specific formatters (e.g. HtmlFormatter).
+                structure_dict.pop("elements", None)
+
                 # Extract metadata from structure dict
                 metadata = {}
                 if "statistics" in structure_dict:
@@ -425,6 +440,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "file_path": file_path,
                     "language": language,
                     "metadata": metadata,
+                    "elements": structure_dict,
                     "table_output": table_output,
                 }
 
@@ -473,9 +489,32 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return {
             "name": "analyze_code_structure",
             "description": (
-                "Analyze code structure and generate detailed overview tables "
-                "(classes, methods, fields) with line positions for large files, "
-                "optionally save to file"
+                "Generate a complete structural analysis of a file — every class, method, "
+                "and field with line numbers, visibility, return types, parameter counts, "
+                "complexity scores, and annotations. "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- Deep-dive analysis of a single file before refactoring or code review\n"
+                "- Identifying complexity hotspots (methods with high cyclomatic complexity)\n"
+                "- Understanding a class hierarchy before adding new behavior\n"
+                "- Getting exact line ranges for every method before using trace_impact\n"
+                "- Generating a structured report of a file's composition\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- You just need to navigate a large file quickly — use get_code_outline "
+                "(outline = navigation map without bodies; analyze_code_structure = full "
+                "metadata table — more detailed, more tokens)\n"
+                "- Searching for text patterns — use search_content or query_code\n"
+                "- Files you haven't triaged yet — call check_code_scale first\n"
+                "\n"
+                "DIFFERENCE from get_code_outline:\n"
+                "- get_code_outline: compact hierarchy tree, optimized for navigation "
+                "(54-56% fewer tokens)\n"
+                "- analyze_code_structure: full metadata per element including visibility, "
+                "complexity, annotations, return types — use for detailed analysis, "
+                "not just navigation\n"
+                "\n"
+                "Saves output to file by default for reuse across tool calls."
             ),
             "inputSchema": self.get_tool_schema(),
         }

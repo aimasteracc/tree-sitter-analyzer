@@ -26,6 +26,7 @@ from .logging import (
     setup_safe_logging_shutdown,
     suppress_output,
 )
+from .text_utils import safe_preview
 from .tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe, log_api_info
 
 __all__ = [
@@ -33,6 +34,8 @@ __all__ = [
     "TreeSitterQueryCompat",
     "get_node_text_safe",
     "log_api_info",
+    # Text utilities
+    "safe_preview",
     # Logging functionality
     "setup_logger",
     "log_debug",

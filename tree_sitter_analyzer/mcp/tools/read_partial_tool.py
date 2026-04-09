@@ -809,7 +809,35 @@ class ReadPartialTool(BaseMCPTool):
         """
         return {
             "name": "extract_code_section",
-            "description": "Extract specific code sections by line/column range with multiple output formats (text/json/raw), optionally save to file with token optimization",
+            "description": (
+                "Extract specific code sections from a file by line range — surgical reading "
+                "that fetches only the code you need, not the whole file. "
+                "\n\n"
+                "ALWAYS use this after get_code_outline or analyze_code_structure has given you "
+                "the line ranges you need. NEVER jump directly to extracting sections without "
+                "first triaging the file with check_code_scale. "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- After get_code_outline identifies a method's line range — extract just that method\n"
+                "- Reading a specific class body without the rest of the file\n"
+                "- Batch extraction of multiple sections from multiple files in one call\n"
+                "- When check_code_scale shows a file is too large to Read whole\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- Files < 100 lines — just Read them directly (extract_code_section has overhead)\n"
+                "- When you don't know what line range you need — call get_code_outline or "
+                "analyze_code_structure first to find the line numbers\n"
+                "- When you need structural analysis (classes, methods, complexity) — use "
+                "analyze_code_structure, which gives metadata, not raw text\n"
+                "\n"
+                "STANDARD WORKFLOW:\n"
+                "1. check_code_scale → is the file large?\n"
+                "2. get_code_outline → which lines contain the code you need?\n"
+                "3. extract_code_section → fetch exactly those lines\n"
+                "\n"
+                "Supports batch mode (requests array) for extracting multiple sections from "
+                "multiple files in a single call — preferred for complex reads."
+            ),
             "inputSchema": self.get_tool_schema(),
         }
 

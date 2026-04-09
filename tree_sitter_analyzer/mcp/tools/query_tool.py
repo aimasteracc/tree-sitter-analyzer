@@ -49,7 +49,34 @@ class QueryTool(BaseMCPTool):
         """
         return {
             "name": "query_code",
-            "description": "Execute tree-sitter queries on code files to extract specific code elements with filtering, multiple output formats, and optional file saving with token optimization",
+            "description": (
+                "Extract specific code elements by syntax — not by string pattern, "
+                "but by syntactic role (all function definitions, all imports, all class names). "
+                "\n\n"
+                "This tool is powered by tree-sitter and understands code structure. "
+                "grep finds strings that look like function names; query_code guarantees "
+                "syntactic correctness — no false positives from comments, strings, or "
+                "variable names that happen to match. "
+                "\n\n"
+                "WHEN TO USE:\n"
+                "- Extracting all function/method definitions from a file (guaranteed, no noise)\n"
+                "- Finding all class declarations across a file with exact line ranges\n"
+                "- Pulling all import statements for dependency analysis\n"
+                "- When search_content gives too many false positives because the pattern "
+                "appears in comments or string literals\n"
+                "- Custom tree-sitter queries for language-specific syntax patterns\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- Simple text/regex search — use search_content (query_code requires tree-sitter "
+                "parsing, which is slower for plain text matching)\n"
+                "- Getting a full structural overview of a file — use get_code_outline or "
+                "analyze_code_structure (they give hierarchy and metadata, not just raw matches)\n"
+                "- Unsupported languages — tree-sitter grammars must be available for the language\n"
+                "\n"
+                "USE PREDEFINED KEYS for common patterns: 'functions', 'methods', 'classes', "
+                "'imports'. For advanced use, provide a custom query_string with tree-sitter "
+                "S-expression syntax (e.g., '(function_definition name: (identifier) @name)')."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {

@@ -2,14 +2,19 @@ file_path: examples/sample.rs
 language: rust
 package: null
 classes:
-  [5]{name,visibility,line_range(a,b)}:
+  [9]{name,visibility,line_range(a,b)}:
+    sample_module,pub,(2,88)
     User,pub,(7,12)
     UserRole,pub,(16,21)
     Displayable,pub,(24,30)
+    User impl,private,(32,52)
+    User impl Displayable,private,(54,58)
     Container,pub,(67,69)
+    Container<T> impl,private,(71,80)
     BorrowedItem,pub,(77,79)
 methods:
-  [8]{name,visibility,line_range(a,b)}:
+  [9]{name,visibility,line_range(a,b)}:
+    display,private,(25,25)
     summary,private,(27,29)
     new,pub,(34,41)
     deactivate,pub,(44,46)
@@ -30,8 +35,8 @@ imports:
   [1]{name,is_static,is_wildcard,statement,line_range(a,b)}:
     "use std::collections::HashMap;",false,false,"use std::collections::HashMap;",(3,3)
 statistics:
-  class_count: 5
-  method_count: 8
+  class_count: 9
+  method_count: 9
   field_count: 6
   import_count: 1
   total_lines: 94

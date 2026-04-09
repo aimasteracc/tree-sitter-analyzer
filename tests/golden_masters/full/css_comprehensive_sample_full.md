@@ -285,8 +285,7 @@ input[type="checkbo` | box_model | 2 props | 459-463 |
 .btn` | other | 1 props | 1450-1453 |
 | `img` | box_model | 3 props | 1463-1467 |
 | `html` | other | 1 props | 1470-1472 |
-| `@supports (scroll-behavior: smooth) {
-  ` | other | 0 props | 1474-1478 |
+| `@supports (scroll-behavior: smooth) {   ` | other | 0 props | 1474-1478 |
 | `html` | other | 1 props | 1475-1477 |
 
 ## At-Rules

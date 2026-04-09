@@ -116,3 +116,11 @@ It can span multiple lines.
 | footnote_reference | 1 | 129 |
 | footnote_definition | This is the footnote content. | 131 |
 | footnote_reference | 1 | 131 |
+
+## Reference Definitions
+
+| Content | Line |
+|---------|------|
+| [ref1]: https://reference.example.com "Reference L... | 28 |
+| [img1]: reference-image.png "Reference Image"
+ | 36 |

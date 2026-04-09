@@ -1,0 +1,16 @@
+{
+  "language": "kotlin",
+  "node_types": {
+    "annotation": 5,
+    "anonymous_function": 4,
+    "class_declaration": 27,
+    "companion_object": 3,
+    "function_declaration": 50,
+    "lambda_literal": 12,
+    "object_declaration": 2,
+    "property_declaration": 61,
+    "type_alias": 3,
+    "variable_declaration": 71,
+    "when_expression": 7
+  }
+}

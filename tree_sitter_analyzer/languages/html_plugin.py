@@ -17,7 +17,7 @@ from ..utils import log_debug, log_error, log_info
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
+    from ..core.request import AnalysisRequest
 
 logger = logging.getLogger(__name__)
 

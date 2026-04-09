@@ -19,7 +19,7 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ..core.analysis_engine import AnalysisRequest
+from ..core.request import AnalysisRequest
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import AnalysisResult, CodeElement
 from ..models import Class as ModelClass
@@ -27,7 +27,7 @@ from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error
+from ..utils import log_debug, log_error, safe_preview
 from ..utils.tree_sitter_compat import TreeSitterQueryCompat
 
 
@@ -68,7 +68,9 @@ class MarkdownElement(CodeElement):
 
         # Additional attributes used by formatters
         self.text: str | None = None  # Text content
-        self.type: str | None = None  # Element type for formatters
+        # Mirror element_type so formatters can use either e.get("type") or
+        # e.get("element_type") interchangeably.
+        self.type: str | None = element_type
         self.line_count: int | None = None  # For code blocks
         self.alt: str | None = None  # Alternative text for images
         self.list_type: str | None = None  # For lists (ordered/unordered/task)
@@ -1153,11 +1155,7 @@ class MarkdownElementExtractor(ElementExtractor):
                     content = "\n".join(content_lines).strip()
 
                     blockquote = MarkdownElement(
-                        name=(
-                            f"Blockquote: {content[:50]}..."
-                            if len(content) > 50
-                            else f"Blockquote: {content}"
-                        ),
+                        name=f"Blockquote: {safe_preview(content)}",
                         start_line=start_line,
                         end_line=end_line,
                         raw_text=raw_text,
@@ -1662,7 +1660,7 @@ class MarkdownPlugin(LanguagePlugin):
             for ext in self.get_file_extensions()
         )
 
-    def get_plugin_info(self) -> dict:
+    def get_plugin_info(self) -> dict[str, Any]:
         """Get information about this plugin"""
         return {
             "name": "Markdown Plugin",
@@ -1798,7 +1796,7 @@ class MarkdownPlugin(LanguagePlugin):
                 error_message=str(e),
             )
 
-    def execute_query(self, tree: "tree_sitter.Tree", query_name: str) -> dict:
+    def execute_query(self, tree: "tree_sitter.Tree", query_name: str) -> dict[str, Any]:
         """Execute a specific query on the tree"""
         try:
             language = self.get_tree_sitter_language()
@@ -1827,7 +1825,7 @@ class MarkdownPlugin(LanguagePlugin):
             log_error(f"Query execution failed: {e}")
             return {"error": str(e)}
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """Extract elements from source code using tree-sitter AST"""
         # CRITICAL: Always create a NEW extractor to avoid state pollution between calls
         extractor = self.create_extractor()

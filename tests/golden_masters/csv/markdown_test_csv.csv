@@ -35,8 +35,8 @@ link,Link with title -> https://example.com,-,23,23
 image,Alt text -> image.png,-,32,34
 image,Image with title -> image.png,-,32,34
 image_reference_definition,Image Reference Definition: img1,-,36,37
-,"[ref1]: https://reference.example.com ""Reference L",-,28,29
-,"[img1]: reference-image.png ""Reference Image""
+reference_definition,"[ref1]: https://reference.example.com ""Reference L",-,28,29
+reference_definition,"[img1]: reference-image.png ""Reference Image""
 ",-,36,37
 unordered,Unordered List (5 items),-,22,28
 unordered,Unordered List (3 items),-,41,47
@@ -45,8 +45,7 @@ ordered,Ordered List (3 items),-,48,54
 ordered,Ordered List (2 items),-,50,52
 task,Task List (3 items),-,55,59
 table,3x4,-,94,99
-blockquote,"Blockquote: This is a blockquote.
-It can span mult",-,87,91
+blockquote,Blockquote: This is a blockquote. It can span mult,-,87,91
 blockquote,Blockquote: This is a nested blockquote.,-,90,91
 horizontal_rule,Horizontal Rule,-,102,103
 horizontal_rule,Horizontal Rule,-,104,105

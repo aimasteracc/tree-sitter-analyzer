@@ -1,0 +1,19 @@
+{
+  "language": "yaml",
+  "node_types": {
+    "block_mapping": 70,
+    "block_sequence": 22,
+    "flow_mapping": 7,
+    "flow_sequence": 4,
+    "block_mapping_pair": 220,
+    "block_sequence_item": 47,
+    "plain_scalar": 391,
+    "double_quote_scalar": 13,
+    "single_quote_scalar": 2,
+    "block_scalar": 4,
+    "anchor": 3,
+    "alias": 4,
+    "tag": 9,
+    "document": 3
+  }
+}

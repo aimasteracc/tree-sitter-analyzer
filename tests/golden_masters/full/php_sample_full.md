@@ -1,9 +1,17 @@
 # Sample.php
 
+## Imports
+```php
+namespace App\Models;
+import App\Contracts\UserInterface
+import App\Traits\Timestampable
+use Timestampable;
+```
+
 ## Classes Overview
 | Class | Type | Visibility | Lines | Methods | Fields |
 |-------|------|------------|-------|---------|--------|
-| App\Models\User | class | public | 13-120 | 10 | 7 |
+| App\Models\User | class | public | 13-120 | 10 | 10 |
 | App\Models\AdminUser | class | public | 125-146 | 3 | 1 |
 | App\Models\UserRepositoryInterface | interface | public | 151-156 | 3 | 0 |
 | App\Models\Loggable | trait | public | 161-177 | 2 | 1 |
@@ -13,6 +21,9 @@
 ### Fields
 | Name | Type | Vis | Modifiers | Line | Doc |
 |------|------|-----|-----------|------|-----|
+| User::STATUS_ACTIVE | const | + | public,static | 20 | - |
+| User::STATUS_INACTIVE | const | + | public,static | 21 | - |
+| User::MAX_LOGIN_ATTEMPTS | const | - | private,static | 22 | - |
 | User::id | int | - | private | 25 | - |
 | User::username | string | + | public | 26 | - |
 | User::email | string | + | public | 27 | - |

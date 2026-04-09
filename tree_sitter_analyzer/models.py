@@ -47,6 +47,12 @@ class CodeElement(ABC):
     language: str = "unknown"
     docstring: str | None = None  # JavaDoc/docstring for this element
     element_type: str = "unknown"
+    node_type: str | None = None  # Tree-sitter node type for grammar coverage tracking
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Dict-style attribute access so formatters can use e.get('element_type')
+        interchangeably on both CodeElement objects and plain dicts."""
+        return getattr(self, key, default)
 
     def to_summary_item(self) -> dict[str, Any]:
         return {
@@ -61,6 +67,7 @@ class Function(CodeElement):
     """Generic function/method representation"""
 
     parameters: list[str] = field(default_factory=list)
+    parameter_defaults: dict[str, str] = field(default_factory=dict)  # param name -> default value
     return_type: str | None = None
     modifiers: list[str] = field(default_factory=list)
     is_async: bool = False
@@ -89,6 +96,9 @@ class Function(CodeElement):
     is_property: bool = False
     is_classmethod: bool = False
     is_staticmethod: bool = False
+    # When decorated, the line of the first decorator (outer node start).
+    # start_line remains the `def` line for go-to-definition compatibility.
+    decorator_start_line: int | None = None
 
 
 @dataclass(frozen=False)
@@ -120,6 +130,9 @@ class Class(CodeElement):
     is_dataclass: bool = False
     is_abstract: bool = False
     is_exception: bool = False
+    # When decorated, the line of the first decorator (outer node start).
+    # start_line remains the `class` line for go-to-definition compatibility.
+    decorator_start_line: int | None = None
 
 
 @dataclass(frozen=False)
@@ -164,6 +177,61 @@ class Package(CodeElement):
     """Generic package declaration representation"""
 
     element_type: str = "package"
+
+
+@dataclass(frozen=False)
+class Lambda(CodeElement):
+    """Lambda expression representation
+
+    Represents anonymous functions (lambda expressions) in Python.
+
+    Example:
+        lambda x: x + 1
+        lambda x, y=10: x + y
+    """
+
+    parameters: list[str] = field(default_factory=list)
+    body_preview: str = ""  # First 50 chars of lambda body
+    element_type: str = "lambda"
+
+
+@dataclass(frozen=False)
+class Comprehension(CodeElement):
+    """List/set/dict comprehension or generator expression
+
+    Represents all forms of comprehensions in Python.
+
+    Examples:
+        [x**2 for x in range(10)]  # list
+        {x**2 for x in range(10)}  # set
+        {x: x**2 for x in range(10)}  # dict
+        (x**2 for x in range(10))  # generator
+        [x for x in range(100) if x % 2 == 0]  # with condition
+    """
+
+    comprehension_type: str = ""  # "list", "set", "dict", or "generator"
+    target_variable: str = ""  # "x" in "x for x in ..."
+    iterable_preview: str = ""  # Preview of iterable expression
+    has_condition: bool = False
+    element_type: str = "comprehension"
+
+
+@dataclass(frozen=False)
+class Expression(CodeElement):
+    """Generic expression (conditional, subscript, list literals)
+
+    Represents various expression-level constructs in Python.
+
+    Examples:
+        value if condition else fallback  # conditional
+        my_list[0]  # subscript
+        my_dict['key']  # subscript
+        [1, 2, 3]  # list literal
+    """
+
+    expression_kind: str = ""  # "conditional", "subscript", or "list"
+    preview: str = ""  # First 50 chars of expression
+    element_type: str = "expression"
 
 
 # ========================================

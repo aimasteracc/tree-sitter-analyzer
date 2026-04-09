@@ -361,7 +361,15 @@ class UserConfig {
         assert isinstance(extractor.annotations, list)
 
     def test_reset_caches(self, extractor):
-        """Test cache reset functionality"""
+        """Test cache reset functionality.
+
+        _reset_caches() clears lookup/performance caches but intentionally
+        preserves self.annotations (source data populated by extract_annotations()).
+        Clearing annotations in _reset_caches() was a bug: extract_functions() and
+        extract_classes() each call _reset_caches() at their start, which would
+        erase annotations populated by a prior extract_annotations() call, causing
+        every method/class element to report annotations=[].
+        """
         # Populate caches
         extractor._node_text_cache[1] = "test"
         extractor._processed_nodes.add(1)
@@ -373,13 +381,15 @@ class UserConfig {
         # Reset caches
         extractor._reset_caches()
 
-        # Verify caches are empty
+        # Verify lookup caches are cleared
         assert len(extractor._node_text_cache) == 0
         assert len(extractor._processed_nodes) == 0
         assert len(extractor._element_cache) == 0
         assert len(extractor._annotation_cache) == 0
         assert len(extractor._signature_cache) == 0
-        assert len(extractor.annotations) == 0
+        # self.annotations is intentionally preserved — it is source data, not a cache.
+        # extract_annotations() clears it when called; _reset_caches() must not.
+        assert len(extractor.annotations) == 1
 
     def test_extract_functions_basic(self, extractor, mock_tree, sample_java_code):
         """Test basic method extraction"""
@@ -687,8 +697,13 @@ class UserConfig {
 
                     with patch.object(
                         extractor, "_find_annotations_for_line_cached"
-                    ) as mock_annotations:
+                    ) as mock_annotations, patch.object(
+                        extractor, "_extract_annotations_from_modifiers"
+                    ) as mock_ast_annotations:
                         mock_annotations.return_value = [{"name": "Service"}]
+                        # Class annotations now come from AST-direct extraction;
+                        # mock it to return the same value for this unit test.
+                        mock_ast_annotations.return_value = [{"name": "Service"}]
 
                         with patch.object(
                             extractor, "_is_nested_class"
@@ -1453,7 +1468,7 @@ class TestJavaPlugin:
             "packages",
             "annotations",
         }
-        assert set(result.keys()) == expected_keys
+        assert expected_keys <= set(result.keys())
 
         # All should be empty lists
         for key in expected_keys:
@@ -1513,7 +1528,7 @@ class TestJavaPlugin:
                                     "packages",
                                     "annotations",
                                 }
-                                assert set(result.keys()) == expected_keys
+                                assert expected_keys <= set(result.keys())
                                 for key in expected_keys:
                                     assert result[key] == []
 

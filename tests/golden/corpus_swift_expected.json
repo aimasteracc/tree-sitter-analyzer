@@ -1,0 +1,16 @@
+{
+  "language": "swift",
+  "node_types": {
+    "import_declaration": 3,
+    "function_declaration": 39,
+    "property_declaration": 37,
+    "class_declaration": 27,
+    "computed_property": 11,
+    "init_declaration": 4,
+    "deinit_declaration": 1,
+    "protocol_declaration": 4,
+    "subscript_declaration": 2,
+    "typealias_declaration": 4,
+    "do_statement": 1
+  }
+}
