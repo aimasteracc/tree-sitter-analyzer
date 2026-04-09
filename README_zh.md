@@ -4,26 +4,27 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8470%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-8890%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.5-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
 
 ---
 
-## ✨ v1.10.5 最新更新
+## ✨ v1.10.8 最新更新
 
-- **`get_code_outline` MCP工具 + TOON格式**: 大纲优先导航，相比JSON格式节省**54-56% token**。先获取层次结构，再按需提取代码体
-- **`trace_impact` MCP工具**: 轻量级调用点查找器，使用ripgrep实现——无需图数据库开销的影响分析
-- **意图别名系统**: AI友好的工具命名（`locate_usage`、`map_structure`）使工具发现更自然
-- **分析会话追踪**: 通过会话ID和操作历史审计多步SMART工作流
-- **23个关键bug修复**: TOON格式返回结构、默认输出格式、测试断言——**项目完全可用**
-- **实测token节省**: 真实文件测试显示TOON格式在小型/中型/大型文件上减少54-56%输出大小
-- **增强测试覆盖**: 8,470个测试（100%通过），88.68%覆盖率（较v1.10.4提升8.35%）
-- **跨平台验证**: 所有测试在Ubuntu、Windows、macOS × Python 3.10-3.13上通过
+- **Java注解提取完全修复**: `analyze_code_structure` 对所有Java方法、类、字段返回 `annotations=[]` 的问题通过4个独立根本原因修复。已用spring-petclinic验证
+- **Java `implements` 泛型参数保留**: `LocalCache<K, V>` 被拆分为 `['LocalCache', 'K', 'V']` 的问题修复，使用角括号深度计数器的 `_split_type_list()` 替代
+- **Java类注解出血修复**: `@Override` 从前一个方法误归属到下一个类声明的问题修复
+- **`trace_impact` 的 `call_count` 反映真实总数**: 设置 `max_results` 时HIGH IMPACT符号显示为LOW的问题修复
+- **`query_code` 在 tree-sitter 0.25+ 中恢复 `#match?` 谓词**: `spring_controller`、`jpa_entity` 等Spring/JPA查询正常工作
+- **Java `marker_annotation` 节点类型支持**: `@Controller`、`@Entity`、`@Bean` 等无参数注解正确匹配
+- **新增17种Java查询类型**: Spring生态系统、JUnit5、Java 16+、并发处理、异常处理
+- **增强测试覆盖**: 8,890个测试（100%通过）
+- **大文件稳定性**: netty 6,500行文件无崩溃，`get_code_outline` 节省89〜92% token
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 ---
@@ -297,7 +298,7 @@ Tree-sitter Analyzer采用**默认安全**原则设计，专为AI辅助开发工
 
 ### 安全测试
 
-- **8,470+自动化测试**包括以安全为重点的边缘案例
+- **8,890+自动化测试**包括以安全为重点的边缘案例
 - **100% mypy类型安全**防止整类bug
 - **CI/CD安全扫描**：Bandit（Python安全）、safety（依赖漏洞）
 - **手动安全审查**所有MCP工具实现
