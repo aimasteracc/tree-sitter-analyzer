@@ -303,13 +303,20 @@ class JavaElementExtractor(ElementExtractor):
         return packages
 
     def _reset_caches(self) -> None:
-        """Reset performance caches"""
+        """Reset performance caches.
+
+        NOTE: self.annotations (raw annotation list) is intentionally NOT cleared here.
+        It is source data populated by extract_annotations() and consumed by
+        _find_annotations_for_line_cached(). Only the line-keyed lookup cache
+        (self._annotation_cache) is cleared so it gets rebuilt on the next lookup.
+        Clearing self.annotations here would lose annotations when extract_functions()
+        or extract_classes() call _reset_caches() after extract_annotations() has run.
+        """
         self._node_text_cache.clear()
         self._processed_nodes.clear()
         self._element_cache.clear()
         self._annotation_cache.clear()
         self._signature_cache.clear()
-        self.annotations.clear()
         self.current_package = (
             ""  # Reset package state to avoid cross-test contamination
         )
@@ -1399,13 +1406,18 @@ class JavaPlugin(LanguagePlugin):
             extractor = self.create_extractor()
             # Cast to JavaElementExtractor for type checking
             java_extractor = extractor if isinstance(extractor, JavaElementExtractor) else JavaElementExtractor()
+            # MUST extract annotations first — _find_annotations_for_line_cached() reads
+            # self.annotations, which is only populated after extract_annotations() runs.
+            # Calling extract_functions/extract_classes before this leaves annotations=[]
+            # on every method and class element.
+            annotations = java_extractor.extract_annotations(tree, source_code)
             return {
                 "functions": java_extractor.extract_functions(tree, source_code),
                 "classes": java_extractor.extract_classes(tree, source_code),
                 "variables": java_extractor.extract_variables(tree, source_code),
                 "imports": java_extractor.extract_imports(tree, source_code),
                 "packages": java_extractor.extract_packages(tree, source_code),
-                "annotations": java_extractor.extract_annotations(tree, source_code),
+                "annotations": annotations,
                 "boolean_literals": java_extractor.extract_boolean_literals(tree, source_code),
                 "block_comments": java_extractor.extract_block_comments(tree, source_code),
             }

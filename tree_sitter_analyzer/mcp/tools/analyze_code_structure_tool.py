@@ -282,7 +282,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "visibility": "public",  # Force all classes to public
                     "extends": getattr(cls, "extends_class", None),
                     "implements": getattr(cls, "implements_interfaces", []),
-                    "annotations": [],
+                    "annotations": getattr(cls, "annotations", []),
                 }
                 for cls in classes
             ],
@@ -300,7 +300,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "is_constructor": getattr(method, "is_constructor", False),
                     "complexity_score": getattr(method, "complexity_score", 0),
                     "modifiers": self._get_method_modifiers(method),
-                    "annotations": [],
+                    "annotations": getattr(method, "annotations", []),
                 }
                 for method in methods
             ],
@@ -314,7 +314,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     },
                     "visibility": getattr(field, "visibility", "private"),
                     "modifiers": self._get_field_modifiers(field),
-                    "annotations": [],
+                    "annotations": getattr(field, "annotations", []),
                 }
                 for field in fields
             ],
