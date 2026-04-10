@@ -79,6 +79,8 @@ dependencies = [
     "tree-sitter-kotlin>=0.3.0",
     "detect-secrets>=1.5.0",
     "tree-sitter-json>=0.23.0",
+    "networkx>=3.4.2",
+    "numpy>=2.2.6",
 ]
 
 # Add C# to optional dependencies
