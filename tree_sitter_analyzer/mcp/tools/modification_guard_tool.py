@@ -346,4 +346,18 @@ class ModificationGuardTool(BaseMCPTool):
                     )
                 break
 
+        # Unified summary line: one line to see everything
+        final_verdict = result["safety_verdict"]
+        rank_str = f"rank=#{result['architecture_rank']}" if "architecture_rank" in result else "rank=-"
+        pr_str = f"pr={result['architecture_score']:.4f}" if "architecture_score" in result else ""
+        parts = [
+            symbol,
+            rank_str,
+            f"callers={total_callers}",
+            f"verdict={final_verdict}",
+        ]
+        if pr_str:
+            parts.insert(2, pr_str)
+        result["summary_line"] = "  ".join(parts)
+
         return result
