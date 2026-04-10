@@ -603,33 +603,40 @@ def gradle_project(tmp_path: Path) -> Path:
 
 
 class TestDetectJavaRootPackages:
-    """_detect_java_root_packages reads groupId from build files."""
+    """Java root package detection via edge_extractors.java module."""
 
     def test_reads_pom_groupid(
         self, java_project_with_noise: Path
     ) -> None:
-        manager = ProjectIndexManager(
-            project_root=str(java_project_with_noise)
+        from tree_sitter_analyzer.mcp.utils.edge_extractors.java import (
+            _detect_java_root_packages,
         )
-        roots = manager._detect_java_root_packages(
-            java_project_with_noise
-        )
+
+        roots = _detect_java_root_packages(str(java_project_with_noise))
         assert "com.example" in roots
 
     def test_reads_gradle_group(self, gradle_project: Path) -> None:
-        manager = ProjectIndexManager(
-            project_root=str(gradle_project)
+        from tree_sitter_analyzer.mcp.utils.edge_extractors.java import (
+            _detect_java_root_packages,
         )
-        roots = manager._detect_java_root_packages(gradle_project)
+
+        roots = _detect_java_root_packages(str(gradle_project))
         assert "org.myorg" in roots
 
     def test_no_build_file_returns_empty(self, tmp_path: Path) -> None:
-        manager = ProjectIndexManager(project_root=str(tmp_path))
-        roots = manager._detect_java_root_packages(tmp_path)
+        from tree_sitter_analyzer.mcp.utils.edge_extractors.java import (
+            _detect_java_root_packages,
+        )
+
+        roots = _detect_java_root_packages(str(tmp_path))
         assert roots == frozenset()
 
     def test_multi_module_collects_all(self, tmp_path: Path) -> None:
         """Multi-module Maven project: collects groupIds from sub-poms."""
+        from tree_sitter_analyzer.mcp.utils.edge_extractors.java import (
+            _detect_java_root_packages,
+        )
+
         (tmp_path / "pom.xml").write_text(
             "<project><groupId>com.parent</groupId></project>"
         )
@@ -638,8 +645,7 @@ class TestDetectJavaRootPackages:
         (sub / "pom.xml").write_text(
             "<project><groupId>com.parent.a</groupId></project>"
         )
-        manager = ProjectIndexManager(project_root=str(tmp_path))
-        roots = manager._detect_java_root_packages(tmp_path)
+        roots = _detect_java_root_packages(str(tmp_path))
         assert "com.parent" in roots
         assert "com.parent.a" in roots
 
