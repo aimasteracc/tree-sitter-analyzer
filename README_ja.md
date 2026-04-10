@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-8942%20passed-brightgreen.svg)](#-品質とテスト)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **大規模リポジトリ向けのAI用エビデンスベースコードナビゲーション** - MCP統合 · 最小コンテキスト取得 · 重い前処理なしの検索
@@ -16,7 +16,7 @@
 
 ---
 
-## ✨ v1.11.0 最新情報
+## ✨ v1.11.1 最新情報
 
 - **Claudeがファイルを1つも読まずにプロジェクトの骨格を把握**: `get_project_summary` がPageRankランク付きアーキテクチャノードを返す。elasticsearch(4万ファイル)・spring-framework(1.1万)・mybatis・spring-petclinicで検証済み
 - **重要クラスを変更？Claudeが先に止める**: `modification_guard` がアーキテクチャランキングを読み取り。elasticsearchの`Writeable`をリネーム → verdict UNSAFE、rank #1、4745 callers

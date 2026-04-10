@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-8942%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > **Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development** — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
@@ -24,7 +24,7 @@ find the right files → find the right matches → extract the right structure 
 
 ---
 
-## ✨ What's New in v1.11.0
+## ✨ What's New in v1.11.1
 
 - **Claude knows your project's skeleton before reading a single file**: `get_project_summary` returns PageRank-ranked architecture nodes — the classes everything else extends. Validated on elasticsearch (40k files), spring-framework (11k), mybatis, spring-petclinic.
 - **Touch a critical class? Claude stops you first**: `modification_guard` reads the architecture ranking. Rename `Writeable` in elasticsearch → verdict UNSAFE, rank #1, 4745 callers. No surprises.
