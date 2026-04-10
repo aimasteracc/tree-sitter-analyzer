@@ -258,7 +258,10 @@ Claude cannot do natively:
 ## Standard Workflows
 
 ### At the start of any session (do this FIRST)
-1. `get_project_summary` — retrieve cached architecture (instant if index exists)
+1. `get_project_summary` — retrieve cached architecture overview (instant, < 50ms)
+   - The `critical:` section shows PageRank-ranked architecture nodes — these are the
+     most important classes/interfaces in the project. Start reading from the #1 node.
+   - `modification_guard` will warn extra loudly if you touch a top-ranked node.
    - If index_age_hours > 24 or is_fresh=false: call build_project_index to refresh
    - This replaces the need to call list_files + get_code_outline for orientation
 

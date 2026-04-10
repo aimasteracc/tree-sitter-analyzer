@@ -221,7 +221,6 @@ class ProjectIndexManager:
     def __init__(self, project_root: str) -> None:
         self.project_root = project_root
         self._cache_path = Path(project_root) / self.CACHE_FILE
-        self._java_root_packages: frozenset[str] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -711,61 +710,20 @@ class ProjectIndexManager:
     # Edge extraction & PageRank
     # ------------------------------------------------------------------
 
-    def _detect_java_root_packages(
-        self, project_path: Path
-    ) -> frozenset[str]:
-        """Read project root packages from pom.xml/build.gradle.
-
-        Returns frozenset of groupId strings (e.g. {"org.springframework"}).
-        Empty frozenset means no build file found → caller should skip filtering.
-        """
-        roots: set[str] = set()
-
-        # Maven: pom.xml → <groupId>
-        for pom in project_path.rglob("pom.xml"):
-            try:
-                text = pom.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            m = re.search(r"<groupId>([^<]+)</groupId>", text)
-            if m:
-                roots.add(m.group(1).strip())
-
-        # Gradle: build.gradle / build.gradle.kts → group = '...'
-        for gf_name in ("build.gradle", "build.gradle.kts"):
-            for gradle in project_path.rglob(gf_name):
-                try:
-                    text = gradle.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-                m = re.search(
-                    r"""group\s*=\s*['"]([^'"]+)['"]""", text
-                )
-                if m:
-                    roots.add(m.group(1).strip())
-
-        return frozenset(roots)
-
-    def _is_first_party_java(
-        self,
-        import_package: str,
-        root_packages: frozenset[str],
-    ) -> bool:
-        """Check if a Java import belongs to the project itself."""
-        return any(import_package.startswith(rp) for rp in root_packages)
-
     def _extract_edges_from_file(
         self, path: Path
     ) -> list[tuple[str, str]]:
-        """Extract (source_class, target_class) edges from a source file.
+        """Extract edges via language-specific extractor (plugin registry).
 
-        Uses regex — fast, no tree-sitter overhead for bulk graph building.
-        For Java: only first-party imports (matching project groupId) create
-        edges. stdlib/third-party imports are excluded.
-        Returns [] for unsupported file types.
+        Each language's logic lives in edge_extractors/<lang>.py.
+        New languages are added by creating a new file + registering it.
+        No modification to this file needed.
         """
+        from .edge_extractors import get_extractor
+
         suffix = path.suffix.lower()
-        if suffix not in {".java", ".py", ".ts", ".tsx", ".js", ".jsx"}:
+        extractor = get_extractor(suffix)
+        if extractor is None:
             return []
 
         try:
@@ -773,68 +731,7 @@ class ProjectIndexManager:
         except OSError:
             return []
 
-        src_name = path.stem
-        edges: list[tuple[str, str]] = []
-
-        if suffix == ".java":
-            # Detect project root packages (cached after first call)
-            if self._java_root_packages is None:
-                self._java_root_packages = self._detect_java_root_packages(
-                    Path(self.project_root)
-                )
-            root_packages = self._java_root_packages
-
-            # import [static] com.example.ClassName;
-            for m in re.finditer(
-                r"import\s+(?:static\s+)?([\w.]+\.(\w+))\s*;", source
-            ):
-                full_path = m.group(1)
-                class_name = m.group(2)
-                if root_packages:
-                    # Filter: only keep first-party imports
-                    pkg = full_path.rsplit(".", 1)[0]
-                    if self._is_first_party_java(pkg, root_packages):
-                        edges.append((src_name, class_name))
-                else:
-                    # No build file → no filtering (v1 behavior)
-                    edges.append((src_name, class_name))
-
-            # extends ClassName — always kept (no package info available)
-            for m in re.finditer(r"\bextends\s+(\w+)", source):
-                edges.append((src_name, m.group(1)))
-            # implements ClassName, OtherClass — always kept
-            for m in re.finditer(
-                r"\bimplements\s+([\w\s,<>]+?)(?:\{|$)", source
-            ):
-                for cls in re.split(r"[,\s]+", m.group(1)):
-                    cls = cls.strip()
-                    if cls and re.match(r"^[A-Z]\w*$", cls):
-                        edges.append((src_name, cls))
-
-        elif suffix == ".py":
-            # from module import ClassName
-            for m in re.finditer(
-                r"from\s+[\w.]+\s+import\s+([\w,\s]+)", source
-            ):
-                for cls in re.split(r"[,\s]+", m.group(1)):
-                    cls = cls.strip()
-                    if cls and re.match(r"^[A-Z]\w*$", cls):
-                        edges.append((src_name, cls))
-            # import module.ClassName
-            for m in re.finditer(r"^import\s+[\w.]+\.(\w+)", source, re.M):
-                edges.append((src_name, m.group(1)))
-
-        elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
-            # import { ClassName } from '...'
-            for m in re.finditer(
-                r"import\s+(?:type\s+)?[{]([^}]+)[}]\s+from", source
-            ):
-                for cls in re.split(r"[,\s]+", m.group(1)):
-                    cls = cls.strip()
-                    if cls and re.match(r"^[A-Z]\w*$", cls):
-                        edges.append((src_name, cls))
-
-        return edges
+        return extractor.extract(source, path.stem, self.project_root)
 
     def _compute_pagerank(
         self,
