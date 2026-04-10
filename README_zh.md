@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-8942%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
@@ -16,7 +16,7 @@
 
 ---
 
-## ✨ v1.11.0 最新更新
+## ✨ v1.11.1 最新更新
 
 - **Claude 不读一行代码就知道项目骨架**: `get_project_summary` 返回 PageRank 排名的架构节点——所有其他类继承的那些类。已在 elasticsearch（4万文件）、spring-framework（1.1万）、mybatis、spring-petclinic 验证
 - **碰关键类？Claude 先拦你**: `modification_guard` 读取架构排名。重命名 elasticsearch 的 `Writeable` → verdict UNSAFE、rank #1、4745 callers。零意外
