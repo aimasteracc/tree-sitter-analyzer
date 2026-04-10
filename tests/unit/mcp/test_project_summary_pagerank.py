@@ -516,3 +516,287 @@ class TestGetProjectSummaryReadsToon:
         assert result is not None
         toon_path = cache / "summary.toon"
         assert toon_path.exists()
+
+
+# ===========================================================================
+# v2 TDD: First-Party Filtering
+# ===========================================================================
+
+
+@pytest.fixture
+def java_project_with_noise(tmp_path: Path) -> Path:
+    """Java project with pom.xml groupId + stdlib/third-party imports."""
+    # pom.xml declares groupId
+    (tmp_path / "pom.xml").write_text(
+        "<project>\n"
+        "  <groupId>com.example</groupId>\n"
+        "  <artifactId>myapp</artifactId>\n"
+        "</project>"
+    )
+    (tmp_path / "README.md").write_text("# MyApp\n\nA Java app.\n")
+
+    src = tmp_path / "src" / "main" / "java" / "com" / "example"
+    src.mkdir(parents=True)
+
+    # BeanFactory — core interface (first-party, no imports)
+    (src / "BeanFactory.java").write_text(
+        "package com.example;\n"
+        "public interface BeanFactory {\n"
+        "    Object getBean(String name);\n"
+        "}\n"
+    )
+
+    # Service — imports first-party + stdlib + third-party
+    (src / "UserService.java").write_text(
+        "package com.example;\n"
+        "import com.example.BeanFactory;\n"      # first-party → edge
+        "import java.util.List;\n"                # stdlib → SKIP
+        "import java.util.Map;\n"                 # stdlib → SKIP
+        "import javax.annotation.Nullable;\n"     # annotation → SKIP
+        "import org.junit.jupiter.api.Test;\n"    # test fw → SKIP
+        "import lombok.Data;\n"                   # annotation proc → SKIP
+        "public class UserService implements BeanFactory {\n"
+        "    public Object getBean(String name) { return null; }\n"
+        "}\n"
+    )
+
+    # Controller — imports first-party only
+    (src / "UserController.java").write_text(
+        "package com.example;\n"
+        "import com.example.UserService;\n"       # first-party → edge
+        "import com.example.BeanFactory;\n"       # first-party → edge
+        "import java.util.Optional;\n"            # stdlib → SKIP
+        "public class UserController {\n"
+        "    private UserService service;\n"
+        "}\n"
+    )
+
+    return tmp_path
+
+
+@pytest.fixture
+def gradle_project(tmp_path: Path) -> Path:
+    """Java project with build.gradle instead of pom.xml."""
+    (tmp_path / "build.gradle").write_text(
+        "plugins { id 'java' }\n"
+        "group = 'org.myorg'\n"
+        "version = '1.0'\n"
+    )
+    src = tmp_path / "src" / "main" / "java" / "org" / "myorg"
+    src.mkdir(parents=True)
+    (src / "App.java").write_text(
+        "package org.myorg;\n"
+        "import org.myorg.Config;\n"
+        "import java.util.List;\n"
+        "public class App {}\n"
+    )
+    (src / "Config.java").write_text(
+        "package org.myorg;\n"
+        "public class Config {}\n"
+    )
+    return tmp_path
+
+
+# ---------------------------------------------------------------------------
+# 9. Root package detection
+# ---------------------------------------------------------------------------
+
+
+class TestDetectJavaRootPackages:
+    """_detect_java_root_packages reads groupId from build files."""
+
+    def test_reads_pom_groupid(
+        self, java_project_with_noise: Path
+    ) -> None:
+        manager = ProjectIndexManager(
+            project_root=str(java_project_with_noise)
+        )
+        roots = manager._detect_java_root_packages(
+            java_project_with_noise
+        )
+        assert "com.example" in roots
+
+    def test_reads_gradle_group(self, gradle_project: Path) -> None:
+        manager = ProjectIndexManager(
+            project_root=str(gradle_project)
+        )
+        roots = manager._detect_java_root_packages(gradle_project)
+        assert "org.myorg" in roots
+
+    def test_no_build_file_returns_empty(self, tmp_path: Path) -> None:
+        manager = ProjectIndexManager(project_root=str(tmp_path))
+        roots = manager._detect_java_root_packages(tmp_path)
+        assert roots == frozenset()
+
+    def test_multi_module_collects_all(self, tmp_path: Path) -> None:
+        """Multi-module Maven project: collects groupIds from sub-poms."""
+        (tmp_path / "pom.xml").write_text(
+            "<project><groupId>com.parent</groupId></project>"
+        )
+        sub = tmp_path / "module-a"
+        sub.mkdir()
+        (sub / "pom.xml").write_text(
+            "<project><groupId>com.parent.a</groupId></project>"
+        )
+        manager = ProjectIndexManager(project_root=str(tmp_path))
+        roots = manager._detect_java_root_packages(tmp_path)
+        assert "com.parent" in roots
+        assert "com.parent.a" in roots
+
+
+# ---------------------------------------------------------------------------
+# 10. First-party filtering in edge extraction
+# ---------------------------------------------------------------------------
+
+
+class TestFirstPartyFiltering:
+    """Edges from stdlib/third-party imports are excluded; first-party kept."""
+
+    def test_stdlib_import_excluded(
+        self, java_project_with_noise: Path
+    ) -> None:
+        """java.util.List should NOT create an edge."""
+        manager = ProjectIndexManager(
+            project_root=str(java_project_with_noise)
+        )
+        src = java_project_with_noise / "src/main/java/com/example"
+        f = src / "UserService.java"
+        edges = manager._extract_edges_from_file(f)
+        targets = [dst for _, dst in edges]
+        assert "List" not in targets
+        assert "Map" not in targets
+        assert "Optional" not in targets
+
+    def test_annotation_import_excluded(
+        self, java_project_with_noise: Path
+    ) -> None:
+        """javax.annotation.Nullable should NOT create an edge."""
+        manager = ProjectIndexManager(
+            project_root=str(java_project_with_noise)
+        )
+        src = java_project_with_noise / "src/main/java/com/example"
+        f = src / "UserService.java"
+        edges = manager._extract_edges_from_file(f)
+        targets = [dst for _, dst in edges]
+        assert "Nullable" not in targets
+        assert "Test" not in targets
+        assert "Data" not in targets
+
+    def test_first_party_import_kept(
+        self, java_project_with_noise: Path
+    ) -> None:
+        """com.example.BeanFactory should create an edge."""
+        manager = ProjectIndexManager(
+            project_root=str(java_project_with_noise)
+        )
+        src = java_project_with_noise / "src/main/java/com/example"
+        f = src / "UserService.java"
+        edges = manager._extract_edges_from_file(f)
+        targets = [dst for _, dst in edges]
+        assert "BeanFactory" in targets
+
+    def test_extends_implements_not_filtered(
+        self, java_project_with_noise: Path
+    ) -> None:
+        """extends/implements edges are always kept (no package info)."""
+        manager = ProjectIndexManager(
+            project_root=str(java_project_with_noise)
+        )
+        src = java_project_with_noise / "src/main/java/com/example"
+        f = src / "UserService.java"
+        edges = manager._extract_edges_from_file(f)
+        targets = [dst for _, dst in edges]
+        assert "BeanFactory" in targets  # implements BeanFactory
+
+    def test_pagerank_after_filtering_has_no_noise(
+        self, java_project_with_noise: Path
+    ) -> None:
+        """Full pipeline: build → PageRank top nodes should be project classes only."""
+        manager = ProjectIndexManager(
+            project_root=str(java_project_with_noise)
+        )
+        src = java_project_with_noise / "src/main/java/com/example"
+        edges: list[tuple[str, str]] = []
+        for f in src.glob("*.java"):
+            edges.extend(manager._extract_edges_from_file(f))
+
+        nodes = manager._compute_pagerank(edges, top_n=5)
+        node_names = [n["name"] for n in nodes]
+
+        # first-party classes should appear
+        assert "BeanFactory" in node_names
+
+        # noise should NOT appear
+        for noise in ["List", "Map", "Optional", "Nullable", "Test", "Data"]:
+            assert noise not in node_names, f"{noise} should be filtered"
+
+    def test_no_pom_falls_back_to_unfiltered(self, tmp_path: Path) -> None:
+        """Without pom.xml, all imports create edges (v1 behavior)."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "Foo.java").write_text(
+            "package myapp;\n"
+            "import java.util.List;\n"
+            "public class Foo {}\n"
+        )
+        manager = ProjectIndexManager(project_root=str(tmp_path))
+        edges = manager._extract_edges_from_file(src / "Foo.java")
+        targets = [dst for _, dst in edges]
+        # No pom.xml → fallback → no filtering → List is included
+        assert "List" in targets
+
+    def test_gradle_project_filters_correctly(
+        self, gradle_project: Path
+    ) -> None:
+        manager = ProjectIndexManager(
+            project_root=str(gradle_project)
+        )
+        src = gradle_project / "src/main/java/org/myorg"
+        edges = manager._extract_edges_from_file(src / "App.java")
+        targets = [dst for _, dst in edges]
+        assert "Config" in targets  # first-party
+        assert "List" not in targets  # stdlib filtered
+
+
+# ---------------------------------------------------------------------------
+# 11. Bugfix: HTML cleanup + buildSrc classification
+# ---------------------------------------------------------------------------
+
+
+class TestBugfixes:
+    """HTML tag cleanup and buildSrc classification."""
+
+    def test_html_stripped_from_readme_excerpt(self, tmp_path: Path) -> None:
+        (tmp_path / "README.md").write_text(
+            '# Title\n\n<a href="https://x.com">link</a> A real description.\n'
+        )
+        manager = ProjectIndexManager(project_root=str(tmp_path))
+        excerpt = manager._extract_readme_excerpt(tmp_path)
+        assert "<a " not in excerpt
+        assert "</" not in excerpt
+
+    def test_html_stripped_from_describe_dir(self, tmp_path: Path) -> None:
+        d = tmp_path / "mymod"
+        d.mkdir()
+        (d / "README.md").write_text(
+            '# <img src="badge.png"> MyModule\n'
+        )
+        manager = ProjectIndexManager(project_root=str(tmp_path))
+        desc = manager._describe_dir(d, "mymod")
+        assert "<img" not in desc
+        assert "MyModule" in desc
+
+    def test_buildsrc_classified_as_core(self, tmp_path: Path) -> None:
+        d = tmp_path / "buildSrc"
+        d.mkdir()
+        (d / "README.md").write_text("# Build Scripts\n")
+        (d / "build.gradle").write_text("plugins {}")
+        manager = ProjectIndexManager(project_root=str(tmp_path))
+        assert manager._classify_dir(d) == "core"
+
+    def test_github_dir_classified_as_core(self, tmp_path: Path) -> None:
+        d = tmp_path / ".github"
+        d.mkdir()
+        (d / "README.md").write_text("# CI\n")
+        manager = ProjectIndexManager(project_root=str(tmp_path))
+        assert manager._classify_dir(d) == "core"

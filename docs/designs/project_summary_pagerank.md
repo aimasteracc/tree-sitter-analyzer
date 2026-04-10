@@ -1,231 +1,153 @@
-# SDD: Project Summary PageRank Enhancement
+# SDD: Project Summary v2 — First-Party过滤
 
-**Status:** Draft  
-**Date:** 2026-04-09  
-**Scope:** `build_project_index` + `get_project_summary`
-
----
-
-## 1. Problem
-
-`get_project_summary` currently returns a directory tree with file counts.
-Two critical failures:
-
-1. **Silent directory drops** — top-level dirs with no `__init__.py` and no
-   name matching `_DIR_CONVENTIONS` are silently skipped.
-   `spring-framework` (11,338 files), `netty` (4,053 files), `caffeine` (824 files)
-   all disappear from the output.
-
-2. **No semantic signal** — Claude receives "there are directories" but not
-   "these are the most important things to know before touching this project."
-   Result: Claude explores with 20+ tool calls what a good summary would answer in 1.
+**状态:** Active  
+**日期:** 2026-04-10  
+**范围:** `build_project_index` 的 PageRank 噪音过滤（仅Java）
 
 ---
 
-## 2. Goal
+## 1. 核心价值
 
-`get_project_summary` output answers three questions Claude has at the start
-of every session:
+> **让Claude在新会话里不用探索就能做正确的事。**
 
-1. **What is this project?** — one sentence
-2. **What is the most dangerous thing to touch?** — PageRank top N nodes
-3. **Where do I start?** — entry point + module dependency order
+Claude没有长期记忆。`get_project_summary`是唯一的跨会话记忆机制。
 
-Non-goals:
-- LLM-based inference (deterministic only)
-- Replacing `trace_impact` or `analyze_code_structure`
-- Supporting non-code file types (docs, images)
+v1已经做了PageRank。但输出全是噪音（`Nullable`、`Test`、`Assert`）。
+等于这个功能不存在。v2只做一件事：**让PageRank结果准确。**
 
 ---
 
-## 3. Design
+## 2. 问题
 
-### 3.1 Storage Layout
+spring-framework上验证，PageRank top 7全是标准库/测试框架：
 
-```
-.tree-sitter-cache/
-  project-index.json      ← existing, extended with new fields
-  summary.toon            ← NEW: pre-rendered TOON, get_project_summary reads this
-  critical_nodes.json     ← NEW: PageRank results, consumed by modification_guard
-  file_hashes.json        ← NEW: {filepath: [mtime, size]} for incremental updates
-```
-
-`get_project_summary` reads `summary.toon` directly — no computation at read time.
-
-### 3.2 `project-index.json` New Fields
-
-```json
-{
-  "critical_nodes": [
-    {
-      "name": "BeanFactory",
-      "file": "spring-beans/src/main/java/.../BeanFactory.java",
-      "module": "spring-beans",
-      "pagerank": 0.94,
-      "inbound_refs": 847
-    }
-  ],
-  "module_dependency_order": [
-    "spring-core",
-    "spring-beans",
-    "spring-context"
-  ],
-  "entry_points": [
-    "src/cli/index.ts"
-  ],
-  "index_built_at": 1712345678.0,
-  "schema_version": 2
-}
-```
-
-### 3.3 `summary.toon` Format
-
-```
-project:  <name>
-what:     <one-sentence from README first paragraph>
-
-critical: (call graph PageRank top 7)
-  <ClassName>   <module>   <score>   (<N> refs)
-  ...
-
-modules:  <dep_order joined by →>
-entry:    <entry_points[0] basename>
-scale:    <file_count> files — <top 2 languages by %>
-notes:    <custom_notes if any>
-```
-
-Rules:
-- `critical:` section omitted if PageRank data unavailable
-- `modules:` shows max 7 entries, truncated with `...` if more
-- `notes:` omitted if empty
-- Total output: target < 30 lines
-
-### 3.4 Directory Classification
-
-Replace the current `_DIR_CONVENTIONS` fallback with active classification:
-
-```python
-def _classify_dir(path: Path) -> Literal["core", "context", "tooling"]:
-    has_readme = (path / "README.md").exists()
-    has_build  = any((path / f).exists() for f in [
-        "package.json", "pom.xml", "build.gradle",
-        "pyproject.toml", "setup.py", "Cargo.toml", "go.mod",
-    ])
-    if has_readme and has_build:
-        return "context"   # independent project checked in as reference
-    if any(kw in path.name.lower() for kw in ["tool", "analyzer", "plugin"]):
-        return "tooling"
-    return "core"
-```
-
-`context` dirs appear under a `context:` section in TOON with file count only.
-`core` dirs appear under `structure:` with subdirectory descriptions.
-
-### 3.5 `_describe_dir` Enhancement
-
-Current: reads `__init__.py` docstring → `_DIR_CONVENTIONS` lookup.
-
-New (in order):
-1. `__init__.py` docstring
-2. `README.md` first non-empty line (strip `#`)
-3. `_DIR_CONVENTIONS` lookup
-4. Empty string (shown as dir name only, not dropped)
-
-### 3.6 PageRank Computation
-
-**Edge extraction** (per `.java`, `.ts`, `.py` file via tree-sitter):
-
-| Language | Relationship | tree-sitter node |
+| 排名 | 实际结果 | 期望结果 |
 |---|---|---|
-| Java | `import X` | `import_declaration` |
-| Java | `extends X` | `superclass` |
-| Java | `implements X` | `super_interfaces` |
-| TypeScript | `import from 'X'` | `import_statement` |
-| Python | `import X` / `from X import` | `import_statement` |
+| #1 | `Nullable`（3177引用） | `BeanFactory` |
+| #2 | `Test`（2628引用） | `ApplicationContext` |
+| #3 | `Target`（318引用） | `AbstractBeanFactory` |
 
-Each relationship becomes a directed edge: `file → imported_symbol`.
+**根因：** `import java.util.List` 创建了边。每个文件都导入标准库，
+标准库类的PageRank被虚高到架构核心之上。
 
-**Graph + PageRank:**
+---
+
+## 3. 设计
+
+### 3.1 只保留first-party的import
+
+不维护噪音黑名单。反过来：**只保留项目自身的import。**
+
+isort / ruff I001 已经解了这个分类问题：
+- stdlib → 噪音
+- third-party → 噪音
+- first-party → 保留 ✓
+
+### 3.2 Java：从构建文件读取根包
 
 ```python
-import networkx as nx
+def _detect_java_root_packages(self, project_path: Path) -> frozenset[str]:
+    """从pom.xml/build.gradle读取项目groupId作为根包。"""
+    roots: set[str] = set()
 
-G = nx.DiGraph()
-for src, dst in all_edges:
-    G.add_edge(src, dst)
+    # Maven
+    for pom in project_path.rglob("pom.xml"):
+        m = re.search(r"<groupId>([^<]+)</groupId>",
+                       pom.read_text(encoding="utf-8", errors="replace"))
+        if m:
+            roots.add(m.group(1).strip())
 
-scores = nx.pagerank(G, alpha=0.85, max_iter=100)
-top_nodes = sorted(scores.items(), key=lambda x: -x[1])[:10]
+    # Gradle
+    for gf_name in ["build.gradle", "build.gradle.kts"]:
+        for gradle in project_path.rglob(gf_name):
+            m = re.search(r"""group\s*=\s*['"]([^'"]+)['"]""",
+                          gradle.read_text(encoding="utf-8", errors="replace"))
+            if m:
+                roots.add(m.group(1).strip())
+
+    return frozenset(roots)
 ```
 
-**Node identity:** class name (not full path) — matches how developers refer to them.
-Collision resolution: keep the node with highest inbound_refs.
-
-**Performance target:**
-- spring-framework (11,338 Java files): < 30 seconds full build
-- Incremental (1-5 changed files): < 3 seconds
-
-### 3.7 Incremental Update Strategy
+**过滤逻辑：**
 
 ```
-build_project_index called
-        ↓
-Is git repo? (check .git/)
-   YES → git diff --name-only HEAD  →  changed_files
-   NO  → fd newer than cache mtime  →  changed_files
-        ↓
-changed_files is empty?
-   YES → skip re-parse, skip PageRank, return cached summary
-        ↓
-Re-parse changed_files only → update edge_cache
-        ↓
-Rerun full PageRank on updated graph  (~0.1s)
-        ↓
-Re-render summary.toon + critical_nodes.json
+import org.springframework.beans.factory.BeanFactory;
+  → 包 = "org.springframework.beans.factory"
+  → startswith("org.springframework") → True → 创建边 ✓
+
+import java.util.List;
+  → 包 = "java.util"
+  → startswith("org.springframework") → False → 跳过 ✗
 ```
 
-`file_hashes.json` stores `{filepath: [mtime, size]}` — no SHA256.
-Invalidation: if `stat(file).mtime != cached_mtime OR stat(file).size != cached_size`
-→ file changed.
+`java.util`、`org.junit`、`lombok` 全都不匹配项目根包，自动排除。
+新增任何第三方依赖也不需要更新任何列表。
 
-**Full rebuild triggers:**
-- `force_refresh=True`
-- First run (no cache)
-- File count changed by > 50 (directory restructure)
-- `schema_version` mismatch
+### 3.3 回退链
+
+```
+pom.xml / build.gradle 的 groupId 有结果？
+  YES → 用它
+  NO  → 扫描 .java 的 package 声明，取高频前缀（≥10%）
+    有结果？
+      YES → 用它
+      NO  → 不过滤（v1行为，有噪音但不丢数据）
+```
+
+### 3.4 同步修复（不属于SDD scope，直接bugfix）
+
+- HTML标签清理：`re.sub(r"<[^>]+>", "", text)` — 1行
+- buildSrc分类：`_classify_dir`加构建目录名判断 — 3行
 
 ---
 
-## 4. File Changes
+## 4. 文件变更
 
-| File | Change |
+| 文件 | 变更 |
 |---|---|
-| `mcp/utils/project_index.py` | Add `_classify_dir`, fix `_describe_dir`, add edge extraction, PageRank, incremental logic |
-| `mcp/tools/get_project_summary_tool.py` | Rewrite `_format_toon` to read `summary.toon`; remove computation |
-| `mcp/tools/build_project_index_tool.py` | Add incremental update flow; write `summary.toon` + `critical_nodes.json` |
-| `.tree-sitter-cache/` | New files: `summary.toon`, `critical_nodes.json`, `file_hashes.json` |
+| `mcp/utils/project_index.py` | 新增`_detect_java_root_packages`、`_is_first_party_java`；更新`_extract_edges_from_file` Java分支按根包过滤；bugfix: HTML清理、buildSrc分类 |
 
-Dependencies to add:
-- `networkx` — PageRank (pure Python, no native deps)
+预估：约30行。
 
 ---
 
-## 5. Risks
+## 5. 成功标准
 
-| Risk | Mitigation |
-|---|---|
-| NetworkX not installed | Catch ImportError; skip PageRank, still write summary without `critical:` section |
-| tree-sitter parse failure on edge case file | Per-file try/except; skip file, log warning |
-| PageRank timeout on very large graph (>100k nodes) | Hard timeout 25s; write partial results |
-| git diff unavailable (detached HEAD, shallow clone) | Fallback to mtime comparison |
+### 技术指标
+
+1. spring-framework `critical:` 前3名包含`BeanFactory`或`ApplicationContext`
+2. `Nullable`、`Test`、`Assert`、`List`不出现在任何项目的top 7中
+3. caffeine `what:` 无HTML标签
+4. `buildSrc/` 分类为`core`
+
+### 端到端验证（核心）
+
+5. **行为测试：** 给Claude `get_project_summary`的输出，然后问
+   "spring-framework里事务是怎么实现的"。
+   - 有critical_nodes时：Claude应直接定位到`TransactionInterceptor`
+     或`PlatformTransactionManager`，工具调用 ≤ 5次
+   - 无critical_nodes时：Claude需要search + 逐文件读取，工具调用 ≥ 15次
+   - **差值 ≥ 10次工具调用 = 通过**
 
 ---
 
-## 6. Success Criteria
+## 6. 下一步（v2之后）
 
-1. `get_project_summary` on spring-framework shows all top-level dirs including
-   `spring-framework`, `netty`, `caffeine`, `spring-petclinic`
-2. `critical:` section lists ≥ 5 nodes with PageRank scores
-3. `BeanFactory` or `ApplicationContext` appears in top 3 for spring-framework
-4. Incremental rebuild after touching 1 file: < 3 seconds
-5. Full rebuild of spring-framework: < 60 seconds
+| 优先级 | 功能 | 理由 |
+|---|---|---|
+| **P0** | `modification_guard`读取`critical_nodes.json` | PageRank给Claude知识，modification_guard给Claude**行动约束**。后者比前者有用十倍 |
+| P1 | Python first-party过滤（`sys.stdlib_module_names`） | 第二大语言，5行代码 |
+| P2 | TypeScript first-party过滤（相对导入判断） | 第三大语言，2行代码 |
+| P3 | MCP sampling增强 | 等 ≥ 2个客户端支持 |
+
+### 可扩展设计（为P1/P2预留）
+
+每种语言的first-party检测是独立函数。新增语言 = 新增一个函数 + 一个`elif`块：
+
+| 语言 | 检测方式 | 代码量 |
+|---|---|---|
+| Java | `pom.xml` groupId / `build.gradle` group | 15行（本次实现） |
+| Python | `sys.stdlib_module_names` + `importlib.metadata` | 5行 |
+| TypeScript | 相对导入 `./` `../` = first-party | 2行 |
+| Go | `go.mod` module行 | 3行 |
+| Kotlin | 同Java | 复用 |

@@ -221,6 +221,7 @@ class ProjectIndexManager:
     def __init__(self, project_root: str) -> None:
         self.project_root = project_root
         self._cache_path = Path(project_root) / self.CACHE_FILE
+        self._java_root_packages: frozenset[str] | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -560,8 +561,9 @@ class ProjectIndexManager:
                     continue
 
                 def _clean(line: str) -> str:
-                    """Strip markdown formatting from a line."""
-                    s = re.sub(r"\*\*|(?<!\*)\*(?!\*)|`", "", line)
+                    """Strip markdown formatting and HTML tags from a line."""
+                    s = re.sub(r"<[^>]+>", "", line)
+                    s = re.sub(r"\*\*|(?<!\*)\*(?!\*)|`", "", s)
                     s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
                     return s.strip()
 
@@ -660,31 +662,43 @@ class ProjectIndexManager:
                     if not stripped:
                         continue
                     if stripped.startswith("#"):
-                        # Extract title from heading
-                        title = stripped.lstrip("#").strip()
+                        # Extract title from heading, strip HTML
+                        title = re.sub(r"<[^>]+>", "", stripped.lstrip("#")).strip()
                         if title:
                             return title[:80]
                         continue
                     if stripped.startswith("[![") or "shields.io" in stripped:
                         continue
-                    return stripped[:80]
+                    return re.sub(r"<[^>]+>", "", stripped).strip()[:80]
             except OSError:
                 pass
 
         # 3. Convention table
         return _DIR_CONVENTIONS.get(dir_name.lower(), "")
 
+    # Build infrastructure directory names — always classified as "core"
+    _BUILD_DIR_NAMES: frozenset[str] = frozenset(
+        {"buildsrc", "gradle", ".github", "build", "scripts",
+         ".circleci", ".gitlab", ".husky"}
+    )
+
     def _classify_dir(self, path: Path) -> Literal["core", "context", "tooling"]:
         """Classify a top-level directory as core / context / tooling.
 
-        Priority (highest first):
-        - tooling : name contains "tool"/"analyzer"/"plugin" — dev infrastructure
-        - context : independent project (has README.md AND a build file)
-        - core    : everything else (the project's own source)
+        Priority (first match wins):
+        1. build infrastructure names → core
+        2. tooling keywords in name → tooling
+        3. independent project (README + build file) → context
+        4. everything else → core
         """
         name_lower = path.name.lower()
+        # 1. Build infrastructure → always core
+        if name_lower in self._BUILD_DIR_NAMES:
+            return "core"
+        # 2. Dev tools by name
         if any(kw in name_lower for kw in ("tool", "analyzer", "plugin")):
             return "tooling"
+        # 3. Independent project
         has_readme = (path / "README.md").exists()
         has_build = any(
             (path / fname).exists() for fname in self._BUILD_FILE_NAMES
@@ -697,13 +711,57 @@ class ProjectIndexManager:
     # Edge extraction & PageRank
     # ------------------------------------------------------------------
 
+    def _detect_java_root_packages(
+        self, project_path: Path
+    ) -> frozenset[str]:
+        """Read project root packages from pom.xml/build.gradle.
+
+        Returns frozenset of groupId strings (e.g. {"org.springframework"}).
+        Empty frozenset means no build file found → caller should skip filtering.
+        """
+        roots: set[str] = set()
+
+        # Maven: pom.xml → <groupId>
+        for pom in project_path.rglob("pom.xml"):
+            try:
+                text = pom.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            m = re.search(r"<groupId>([^<]+)</groupId>", text)
+            if m:
+                roots.add(m.group(1).strip())
+
+        # Gradle: build.gradle / build.gradle.kts → group = '...'
+        for gf_name in ("build.gradle", "build.gradle.kts"):
+            for gradle in project_path.rglob(gf_name):
+                try:
+                    text = gradle.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                m = re.search(
+                    r"""group\s*=\s*['"]([^'"]+)['"]""", text
+                )
+                if m:
+                    roots.add(m.group(1).strip())
+
+        return frozenset(roots)
+
+    def _is_first_party_java(
+        self,
+        import_package: str,
+        root_packages: frozenset[str],
+    ) -> bool:
+        """Check if a Java import belongs to the project itself."""
+        return any(import_package.startswith(rp) for rp in root_packages)
+
     def _extract_edges_from_file(
         self, path: Path
     ) -> list[tuple[str, str]]:
         """Extract (source_class, target_class) edges from a source file.
 
         Uses regex — fast, no tree-sitter overhead for bulk graph building.
-        Supported: Java, Python, TypeScript/JavaScript.
+        For Java: only first-party imports (matching project groupId) create
+        edges. stdlib/third-party imports are excluded.
         Returns [] for unsupported file types.
         """
         suffix = path.suffix.lower()
@@ -719,16 +777,35 @@ class ProjectIndexManager:
         edges: list[tuple[str, str]] = []
 
         if suffix == ".java":
-            # import com.example.ClassName;
+            # Detect project root packages (cached after first call)
+            if self._java_root_packages is None:
+                self._java_root_packages = self._detect_java_root_packages(
+                    Path(self.project_root)
+                )
+            root_packages = self._java_root_packages
+
+            # import [static] com.example.ClassName;
             for m in re.finditer(
-                r"import\s+(?:static\s+)?[\w.]+\.(\w+)\s*;", source
+                r"import\s+(?:static\s+)?([\w.]+\.(\w+))\s*;", source
             ):
-                edges.append((src_name, m.group(1)))
-            # extends ClassName
+                full_path = m.group(1)
+                class_name = m.group(2)
+                if root_packages:
+                    # Filter: only keep first-party imports
+                    pkg = full_path.rsplit(".", 1)[0]
+                    if self._is_first_party_java(pkg, root_packages):
+                        edges.append((src_name, class_name))
+                else:
+                    # No build file → no filtering (v1 behavior)
+                    edges.append((src_name, class_name))
+
+            # extends ClassName — always kept (no package info available)
             for m in re.finditer(r"\bextends\s+(\w+)", source):
                 edges.append((src_name, m.group(1)))
-            # implements ClassName, OtherClass
-            for m in re.finditer(r"\bimplements\s+([\w\s,<>]+?)(?:\{|$)", source):
+            # implements ClassName, OtherClass — always kept
+            for m in re.finditer(
+                r"\bimplements\s+([\w\s,<>]+?)(?:\{|$)", source
+            ):
                 for cls in re.split(r"[,\s]+", m.group(1)):
                     cls = cls.strip()
                     if cls and re.match(r"^[A-Z]\w*$", cls):
