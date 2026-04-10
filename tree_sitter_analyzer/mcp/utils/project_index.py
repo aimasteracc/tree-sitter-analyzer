@@ -351,8 +351,12 @@ class ProjectIndexManager:
         module_descriptions = self._extract_module_descriptions(root_path, top_dirs)
 
         # PageRank over call graph (best-effort; skipped if networkx missing)
+        # Skip test files — test base classes (ESTestCase, etc.) pollute rankings
+        _test_path_markers = {"/test/", "/tests/", "/testFixtures/", "/testing/"}
         edges: list[tuple[str, str]] = []
         for fp in all_files:
+            if any(marker in fp for marker in _test_path_markers):
+                continue
             edges.extend(self._extract_edges_from_file(Path(fp)))
         critical_nodes = self._compute_pagerank(edges, top_n=10)
 
