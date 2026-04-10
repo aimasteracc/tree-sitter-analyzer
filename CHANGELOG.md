@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.11.1] - 2026-04-10
+
+### Added
+
+- **Unified `summary_line` in `modification_guard`**: One line shows everything Claude needs: `BaseEntity  rank=#1  pr=0.3768  callers=12  verdict=UNSAFE`. No more switching between critical and UNSAFE views.
+
 ## [1.11.0] - 2026-04-10
 
 ### Added

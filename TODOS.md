@@ -243,3 +243,25 @@
 
 ~~**Update tool descriptions for intent-based naming**~~
 **Completed:** v1.10.6 (2026-04-05) — 4 MCP tools updated
+
+---
+
+## Future: Change Impact Chain (v1.12.0 candidate)
+
+**What:** When modifying a symbol, show the N-layer blast radius: `Settings.get() → ClusterSettings.load() → NodeEnvironment.init() → startup failure`. Not just "10000 callers" but "which callers matter and why."
+
+**Why:** Claude knows "don't touch this" (UNSAFE) but not "how to safely touch this." This is the gap between 8/10 and 9/10 per Claude's own review.
+
+**Effort:** L (human) → M (CC+gstack). Requires recursive trace_impact with depth limit.
+
+**Depends on:** v1.11.0 shipped (done). Needs new SDD in separate session.
+
+## Future: Entry Point / Data Flow Analysis (exploratory)
+
+**What:** Identify request entry points (RestHandler, DispatcherServlet) and trace the main data flow path through the system.
+
+**Why:** Claude's review: "critical tells me what's important, not how data flows." This is a fundamentally different analysis type (runtime/dynamic vs static).
+
+**Effort:** XL. May require instrumentation or dynamic analysis. Not in scope for static analyzer.
+
+**Decision:** Evaluate after change impact chain ships. May be a separate product.
