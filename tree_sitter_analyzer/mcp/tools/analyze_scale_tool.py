@@ -121,7 +121,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "visibility": cls.visibility,
                 "extends": cls.extends_class,
                 "implements": cls.implements_interfaces,
-                "annotations": [ann.name for ann in cls.annotations],
+                "annotations": [ann["name"] if isinstance(ann, dict) else ann.name for ann in cls.annotations],
             }
             overview["classes"].append(class_info)
 
@@ -143,7 +143,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "complexity": method.complexity_score,
                 "is_constructor": method.is_constructor,
                 "is_static": method.is_static,
-                "annotations": [ann.name for ann in method.annotations],
+                "annotations": [ann["name"] if isinstance(ann, dict) else ann.name for ann in method.annotations],
             }
             overview["methods"].append(method_info)
 
@@ -175,7 +175,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "visibility": field.visibility,
                 "is_static": field.is_static,
                 "is_final": field.is_final,
-                "annotations": [ann.name for ann in field.annotations],
+                "annotations": [ann["name"] if isinstance(ann, dict) else ann.name for ann in field.annotations],
             }
             overview["fields"].append(field_info)
 

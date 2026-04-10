@@ -130,8 +130,8 @@ class TestGetProjectSummaryToolExecution:
     ) -> None:
         """Test that the toon summary includes a purpose line when README is present."""
         result = await tool.execute({"format": "toon"})
-        # The README contains "A great tool for doing things."
-        assert "purpose:" in result["summary"]
+        # The README contains "A great tool for doing things." — shown as "what:"
+        assert "what:" in result["summary"] or "A great tool" in result["summary"]
 
     @pytest.mark.asyncio
     async def test_json_format_option(

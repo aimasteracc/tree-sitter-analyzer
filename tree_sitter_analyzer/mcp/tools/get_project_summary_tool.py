@@ -227,7 +227,12 @@ class GetProjectSummaryTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Load (or build) the project index and return a summary."""
+        """Load (or build) the project index and return a summary.
+
+        TOON path: reads pre-rendered summary.toon directly — no recomputation.
+        If summary.toon is missing, builds the index on demand and saves it.
+        JSON path: reads full index object.
+        """
         force_refresh: bool = bool(arguments.get("force_refresh", False))
         include_notes: bool = bool(arguments.get("include_notes", True))
         output_format: str = str(arguments.get("format", "toon"))
@@ -235,42 +240,68 @@ class GetProjectSummaryTool(BaseMCPTool):
         project_root = self.project_root or "."
         manager = ProjectIndexManager(project_root)
 
-        index: ProjectIndex | None = None
-        is_fresh = False
-
-        if not force_refresh:
-            index = manager.load()
-            if index is not None and not manager.is_stale(index):
-                is_fresh = True
-
-        if index is None or force_refresh:
-            index = manager.build()
-            manager.save(index)
-            is_fresh = True
-
-        age_hours = round((time.time() - index.updated_at) / 3600, 2)
-
         if output_format in ("toon", "compact"):
-            text = _format_toon(index, age_hours, is_fresh)
+            toon_path = Path(project_root) / manager.TOON_FILE
+            if not force_refresh and toon_path.exists():
+                # Fast path: return pre-rendered TOON directly
+                try:
+                    text = toon_path.read_text(encoding="utf-8")
+                    if include_notes:
+                        # Append notes from index if not already in TOON
+                        idx_for_notes = manager.load()
+                        if (
+                            idx_for_notes
+                            and idx_for_notes.custom_notes
+                            and idx_for_notes.custom_notes not in text
+                        ):
+                            text += f"\nnotes:    {idx_for_notes.custom_notes}"
+                    return {"format": "toon", "summary": text}
+                except OSError:
+                    pass  # fall through to rebuild
+
+            # Build index (incremental if possible) and render TOON
+            index: ProjectIndex = manager.build(force_refresh=force_refresh)
             if include_notes and index.custom_notes:
-                text += f"\nnotes: {index.custom_notes}"
+                toon_path = Path(project_root) / manager.TOON_FILE
+                if toon_path.exists():
+                    text = toon_path.read_text(encoding="utf-8")
+                else:
+                    text = manager.render_toon(index)
+            else:
+                toon_path = Path(project_root) / manager.TOON_FILE
+                text = (
+                    toon_path.read_text(encoding="utf-8")
+                    if toon_path.exists()
+                    else manager.render_toon(index)
+                )
             return {"format": "toon", "summary": text}
 
-        # json format
-        quick_start = _make_quick_start(index)
+        # JSON format: load full index
+        index_or_none: ProjectIndex | None = None
+        if not force_refresh:
+            index_or_none = manager.load()
+
+        if index_or_none is None or force_refresh:
+            index_or_none = manager.build(force_refresh=force_refresh)
+
+        idx = index_or_none
+        age_hours = round((time.time() - idx.updated_at) / 3600, 2)
+        is_fresh = age_hours < 1.0
+        quick_start = _make_quick_start(idx)
         result: dict[str, Any] = {
-            "project_root": index.project_root,
+            "project_root": idx.project_root,
             "index_age_hours": age_hours,
             "is_fresh": is_fresh,
-            "file_count": index.file_count,
-            "language_distribution": index.language_distribution,
-            "top_level_structure": index.top_level_structure,
-            "key_files": index.key_files,
-            "entry_points": index.entry_points,
+            "file_count": idx.file_count,
+            "language_distribution": idx.language_distribution,
+            "top_level_structure": idx.top_level_structure,
+            "key_files": idx.key_files,
+            "entry_points": idx.entry_points,
+            "critical_nodes": idx.critical_nodes,
             "quick_start": quick_start,
-            "readme_excerpt": index.readme_excerpt,
-            "module_descriptions": index.module_descriptions,
+            "readme_excerpt": idx.readme_excerpt,
+            "module_descriptions": idx.module_descriptions,
         }
         if include_notes:
-            result["custom_notes"] = index.custom_notes
+            result["custom_notes"] = idx.custom_notes
         return result
