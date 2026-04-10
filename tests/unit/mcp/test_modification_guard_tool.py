@@ -8,6 +8,8 @@ project path propagation, and argument validation.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -293,3 +295,117 @@ class TestModificationGuardToolExecution:
             )
 
         assert result["modification_type"] == "behavior_change"
+
+
+# ---------------------------------------------------------------------------
+# PageRank critical_nodes integration
+# ---------------------------------------------------------------------------
+
+
+class TestCriticalNodesIntegration:
+    """modification_guard reads critical_nodes.json and boosts warnings."""
+
+    @pytest.mark.asyncio
+    async def test_critical_node_adds_architecture_warning(
+        self, tmp_path: Path
+    ) -> None:
+        """If symbol is in critical_nodes.json, result includes architecture info."""
+
+        cache = tmp_path / ".tree-sitter-cache"
+        cache.mkdir()
+        (cache / "critical_nodes.json").write_text(
+            json.dumps([
+                {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
+                {"name": "InitializingBean", "pagerank": 0.0089, "inbound_refs": 171},
+            ])
+        )
+
+        tool = ModificationGuardTool(project_root=str(tmp_path))
+        with patch.object(
+            tool._trace_impact_tool,
+            "execute",
+            new_callable=AsyncMock,
+            return_value=_trace_result(5),
+        ):
+            result = await tool.execute(
+                {"symbol": "BeanFactory", "modification_type": "rename"}
+            )
+
+        assert "architecture_rank" in result
+        assert result["architecture_rank"] == 1
+        assert "architecture_warning" in result
+        assert "BeanFactory" in result["architecture_warning"]
+
+    @pytest.mark.asyncio
+    async def test_critical_node_boosts_verdict(
+        self, tmp_path: Path
+    ) -> None:
+        """Top-10 critical node boosts safety verdict by one level."""
+
+        cache = tmp_path / ".tree-sitter-cache"
+        cache.mkdir()
+        (cache / "critical_nodes.json").write_text(
+            json.dumps([
+                {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
+            ])
+        )
+
+        tool = ModificationGuardTool(project_root=str(tmp_path))
+        # 5 callers would normally be CAUTION
+        with patch.object(
+            tool._trace_impact_tool,
+            "execute",
+            new_callable=AsyncMock,
+            return_value=_trace_result(5),
+        ):
+            result = await tool.execute(
+                {"symbol": "BeanFactory", "modification_type": "rename"}
+            )
+
+        # Boosted from CAUTION → REVIEW because it's a top architecture node
+        assert result["safety_verdict"] == "REVIEW"
+
+    @pytest.mark.asyncio
+    async def test_non_critical_node_no_architecture_info(
+        self, tmp_path: Path
+    ) -> None:
+        """Symbols not in critical_nodes.json have no architecture fields."""
+
+        cache = tmp_path / ".tree-sitter-cache"
+        cache.mkdir()
+        (cache / "critical_nodes.json").write_text(
+            json.dumps([
+                {"name": "BeanFactory", "pagerank": 0.0156, "inbound_refs": 16},
+            ])
+        )
+
+        tool = ModificationGuardTool(project_root=str(tmp_path))
+        with patch.object(
+            tool._trace_impact_tool,
+            "execute",
+            new_callable=AsyncMock,
+            return_value=_trace_result(3),
+        ):
+            result = await tool.execute(
+                {"symbol": "helperFunc", "modification_type": "rename"}
+            )
+
+        assert "architecture_rank" not in result
+
+    @pytest.mark.asyncio
+    async def test_no_critical_nodes_file_still_works(
+        self, tool: ModificationGuardTool
+    ) -> None:
+        """Without critical_nodes.json, tool works normally (no crash)."""
+        with patch.object(
+            tool._trace_impact_tool,
+            "execute",
+            new_callable=AsyncMock,
+            return_value=_trace_result(10),
+        ):
+            result = await tool.execute(
+                {"symbol": "func", "modification_type": "rename"}
+            )
+
+        assert result["success"] is True
+        assert "architecture_rank" not in result

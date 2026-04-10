@@ -8,6 +8,8 @@ Internally calls trace_impact and returns a structured "modification safety repo
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from ...utils import setup_logger
@@ -25,6 +27,31 @@ _VERDICT_MAP: dict[str, str] = {
     "medium": "REVIEW",
     "high": "UNSAFE",
 }
+
+# Verdict boost order (used when architecture rank escalates severity)
+_VERDICT_BOOST: dict[str, str] = {
+    "SAFE": "CAUTION",
+    "CAUTION": "REVIEW",
+    "REVIEW": "UNSAFE",
+    "UNSAFE": "UNSAFE",  # already max
+}
+
+CRITICAL_NODES_FILE = ".tree-sitter-cache/critical_nodes.json"
+
+
+def _load_critical_nodes(project_root: str | None) -> list[dict[str, Any]]:
+    """Load critical_nodes.json from the project cache, if it exists."""
+    if not project_root:
+        return []
+    path = Path(project_root) / CRITICAL_NODES_FILE
+    if not path.exists():
+        return []
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data: list[dict[str, Any]] = json.load(fh)
+        return data
+    except (OSError, json.JSONDecodeError, TypeError):
+        return []
 
 
 def _build_required_actions(
@@ -297,5 +324,26 @@ class ModificationGuardTool(BaseMCPTool):
             "required_actions": required_actions,
             "proceed_recommendation": proceed_recommendation,
         }
+
+        # --- PageRank architecture check ---
+        critical_nodes = _load_critical_nodes(self.project_root)
+        for rank, node in enumerate(critical_nodes, start=1):
+            if node.get("name") == symbol:
+                pr_score = node.get("pagerank", 0)
+                subtypes = node.get("inbound_refs", 0)
+                result["architecture_rank"] = rank
+                result["architecture_score"] = pr_score
+                result["architecture_warning"] = (
+                    f"{symbol} is #{rank} in the project's architectural "
+                    f"hierarchy (PageRank {pr_score:.4f}, "
+                    f"{subtypes} direct subtypes). "
+                    f"Modifying it affects the project's foundation."
+                )
+                # Boost verdict for top-10 architecture nodes
+                if rank <= 10:
+                    result["safety_verdict"] = _VERDICT_BOOST.get(
+                        safety_verdict, safety_verdict
+                    )
+                break
 
         return result
