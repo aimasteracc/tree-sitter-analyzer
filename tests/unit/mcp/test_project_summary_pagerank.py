@@ -730,32 +730,46 @@ class TestFirstPartyFiltering:
         for noise in ["List", "Map", "Optional", "Nullable", "Test", "Data"]:
             assert noise not in node_names, f"{noise} should be filtered"
 
-    def test_no_pom_falls_back_to_unfiltered(self, tmp_path: Path) -> None:
-        """Without pom.xml, all imports create edges (v1 behavior)."""
+    def test_no_pom_extends_kept(self, tmp_path: Path) -> None:
+        """Without pom.xml, extends edges still created (no filtering needed)."""
         src = tmp_path / "src"
         src.mkdir()
         (src / "Foo.java").write_text(
             "package myapp;\n"
             "import java.util.List;\n"
-            "public class Foo {}\n"
+            "import myapp.Bar;\n"
+            "public class Foo extends Bar {}\n"
+        )
+        (src / "Bar.java").write_text(
+            "package myapp;\n"
+            "public class Bar {}\n"
         )
         manager = ProjectIndexManager(project_root=str(tmp_path))
         edges = manager._extract_edges_from_file(src / "Foo.java")
         targets = [dst for _, dst in edges]
-        # No pom.xml → fallback → no filtering → List is included
-        assert "List" in targets
+        # v3: import edges NOT created; extends edges ARE created
+        assert "Bar" in targets
+        assert "List" not in targets  # imports never create edges
 
-    def test_gradle_project_filters_correctly(
+    def test_gradle_project_extends_kept(
         self, gradle_project: Path
     ) -> None:
+        """Gradle project: extends edges from first-party classes kept."""
+        # Rewrite App.java to use extends instead of import-only
+        src = gradle_project / "src/main/java/org/myorg"
+        (src / "App.java").write_text(
+            "package org.myorg;\n"
+            "import org.myorg.Config;\n"
+            "import java.util.List;\n"
+            "public class App extends Config {}\n"
+        )
         manager = ProjectIndexManager(
             project_root=str(gradle_project)
         )
-        src = gradle_project / "src/main/java/org/myorg"
         edges = manager._extract_edges_from_file(src / "App.java")
         targets = [dst for _, dst in edges]
-        assert "Config" in targets  # first-party
-        assert "List" not in targets  # stdlib filtered
+        assert "Config" in targets  # first-party extends
+        assert "List" not in targets  # import never creates edge
 
 
 # ---------------------------------------------------------------------------

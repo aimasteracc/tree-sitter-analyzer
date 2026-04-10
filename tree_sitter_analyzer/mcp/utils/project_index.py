@@ -754,14 +754,35 @@ class ProjectIndexManager:
         """Check if a Java import belongs to the project itself."""
         return any(import_package.startswith(rp) for rp in root_packages)
 
+    # java.lang auto-imported classes — filtered from extends/implements
+    _JAVA_LANG_CLASSES: frozenset[str] = frozenset(
+        {
+            "Object", "String", "Integer", "Long", "Double", "Float",
+            "Boolean", "Byte", "Short", "Character", "Number", "Void",
+            "RuntimeException", "Exception", "Error", "Throwable",
+            "IllegalArgumentException", "IllegalStateException",
+            "NullPointerException", "UnsupportedOperationException",
+            "IndexOutOfBoundsException", "ClassNotFoundException",
+            "ClassCastException", "ArithmeticException",
+            "Comparable", "Iterable", "AutoCloseable", "Cloneable",
+            "Serializable", "Runnable", "Thread", "Class", "ClassLoader",
+            "Override", "Deprecated", "SuppressWarnings",
+            "FunctionalInterface", "Annotation",
+            "StringBuilder", "StringBuffer", "Math", "System", "Enum",
+        }
+    )
+
     def _extract_edges_from_file(
         self, path: Path
     ) -> list[tuple[str, str]]:
         """Extract (source_class, target_class) edges from a source file.
 
-        Uses regex — fast, no tree-sitter overhead for bulk graph building.
-        For Java: only first-party imports (matching project groupId) create
-        edges. stdlib/third-party imports are excluded.
+        Java strategy (v3): ONLY extends/implements edges (architecture).
+        Import statements are used solely to resolve package paths for
+        first-party filtering. Plain import edges are NOT created.
+        This surfaces architectural hierarchy (BeanFactory, ApplicationContext)
+        instead of utility classes (Assert, StringUtils).
+
         Returns [] for unsupported file types.
         """
         suffix = path.suffix.lower()
@@ -784,32 +805,51 @@ class ProjectIndexManager:
                 )
             root_packages = self._java_root_packages
 
-            # import [static] com.example.ClassName;
+            # Step 1: Build import map (class_name → package) for resolving
+            # extends/implements package paths. NO edges created from imports.
+            import_map: dict[str, str] = {}
             for m in re.finditer(
                 r"import\s+(?:static\s+)?([\w.]+\.(\w+))\s*;", source
             ):
-                full_path = m.group(1)
-                class_name = m.group(2)
-                if root_packages:
-                    # Filter: only keep first-party imports
-                    pkg = full_path.rsplit(".", 1)[0]
-                    if self._is_first_party_java(pkg, root_packages):
-                        edges.append((src_name, class_name))
-                else:
-                    # No build file → no filtering (v1 behavior)
-                    edges.append((src_name, class_name))
+                import_map[m.group(2)] = m.group(1).rsplit(".", 1)[0]
 
-            # extends ClassName — always kept (no package info available)
+            # Step 2: extends — resolve via import map, filter non-first-party
             for m in re.finditer(r"\bextends\s+(\w+)", source):
-                edges.append((src_name, m.group(1)))
-            # implements ClassName, OtherClass — always kept
+                cls = m.group(1)
+                # Skip single-letter generic params (T, E, K, V)
+                if len(cls) <= 2 and cls.isupper():
+                    continue
+                # Skip java.lang auto-imports
+                if cls in self._JAVA_LANG_CLASSES:
+                    continue
+                if cls in import_map:
+                    pkg = import_map[cls]
+                    if root_packages and not self._is_first_party_java(
+                        pkg, root_packages
+                    ):
+                        continue  # third-party/stdlib extends → skip
+                # First-party or same-package → keep
+                edges.append((src_name, cls))
+
+            # Step 3: implements — same logic
             for m in re.finditer(
                 r"\bimplements\s+([\w\s,<>]+?)(?:\{|$)", source
             ):
                 for cls in re.split(r"[,\s]+", m.group(1)):
                     cls = cls.strip()
-                    if cls and re.match(r"^[A-Z]\w*$", cls):
-                        edges.append((src_name, cls))
+                    if not cls or not re.match(r"^[A-Z]\w*$", cls):
+                        continue
+                    if len(cls) <= 2 and cls.isupper():
+                        continue
+                    if cls in self._JAVA_LANG_CLASSES:
+                        continue
+                    if cls in import_map:
+                        pkg = import_map[cls]
+                        if root_packages and not self._is_first_party_java(
+                            pkg, root_packages
+                        ):
+                            continue
+                    edges.append((src_name, cls))
 
         elif suffix == ".py":
             # from module import ClassName
