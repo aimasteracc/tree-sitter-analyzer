@@ -4,10 +4,10 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8890%20passed-brightgreen.svg)](#-质量与测试)
+[![Tests](https://img.shields.io/badge/tests-8942%20passed-brightgreen.svg)](#-质量与测试)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > 🔎 **面向大型仓库的 AI 证据式代码导航** - MCP 集成 · 最小上下文提取 · 无需重型预处理的搜索
@@ -16,13 +16,13 @@
 
 ---
 
-## ✨ v1.10.8 最新更新
+## ✨ v1.11.0 最新更新
 
-- **Spring/JPA 代码库现在完全可导航**: Claude 正确识别 `@Controller`、`@Transactional`、`@ManyToMany`、`@Bean`——无需阅读原始代码即可理解 Spring 架构。已用 spring-petclinic、caffeine、spring-framework、netty 验证
-- **可信赖的影响分析**: `modification_guard` 返回准确的 SAFE/UNSAFE 判定。`trace_impact` 返回真实调用方数量——HIGH IMPACT 符号不再被错误降级为 LOW
-- **17 种新语义查询**: `spring_bean`、`spring_transactional`、`spring_request_mapping`、`junit5_test`、`volatile_field`、`record_declaration` 等——按意图查询，而非 AST 节点
-- **大文件无障碍**: 6,500 行 netty 文件不崩溃分析。`get_code_outline` 相比全文读取节省 89〜92% token
-- **tree-sitter 0.25+ 完全兼容**: `#match?` 谓词已恢复——Spring/JPA 查询过滤在最新版本正常工作
+- **Claude 不读一行代码就知道项目骨架**: `get_project_summary` 返回 PageRank 排名的架构节点——所有其他类继承的那些类。已在 elasticsearch（4万文件）、spring-framework（1.1万）、mybatis、spring-petclinic 验证
+- **碰关键类？Claude 先拦你**: `modification_guard` 读取架构排名。重命名 elasticsearch 的 `Writeable` → verdict UNSAFE、rank #1、4745 callers。零意外
+- **新语言 = 新文件，不改已有代码**: 插件 `edge_extractors/` 包——Java、Python、TypeScript 开箱即用。添加 Kotlin 只需1个文件+1行注册
+- **陌生项目探索效率翻倍**: 端到端实测——有 summary 5次工具调用 vs 没有10+次。Claude 跳过盲目搜索阶段
+- **零配置的 first-party 过滤**: Java 从 pom.xml 读 groupId。Python 用 `sys.stdlib_module_names`。不需要维护任何黑名单
 
 📖 完整版本历史请查看 **[更新日志](CHANGELOG.md)**。
 ---
@@ -218,7 +218,7 @@ Tree-sitter Analyzer 在所有17种支持语言的语法覆盖率验证中保证
 
 | 指标 | 数值 |
 |------|------|
-| **测试** | 8,890 通过 ✅ |
+| **测试** | 8,942 通过 ✅ |
 | **覆盖率** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **类型安全** | 100% mypy合规 |
 | **平台** | Windows、macOS、Linux |
@@ -296,7 +296,7 @@ Tree-sitter Analyzer采用**默认安全**原则设计，专为AI辅助开发工
 
 ### 安全测试
 
-- **8,890+自动化测试**包括以安全为重点的边缘案例
+- **8,942+自动化测试**包括以安全为重点的边缘案例
 - **100% mypy类型安全**防止整类bug
 - **CI/CD安全扫描**：Bandit（Python安全）、safety（依赖漏洞）
 - **手动安全审查**所有MCP工具实现
@@ -357,8 +357,8 @@ MIT许可证 - 详见 [LICENSE](LICENSE) 文件。
 
 | 指标 | 值 |
 |------|-----|
-| **总测试数** | 8,890 测试 ✅ |
-| **测试通过率** | 100% (8,890/8,890) |
+| **总测试数** | 8,942 测试 ✅ |
+| **测试通过率** | 100% (8,942/8,942) |
 | **代码覆盖率** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **类型安全** | 100% mypy合规 |
 
@@ -394,7 +394,7 @@ uv run pytest tests/benchmarks/ --benchmark-only
 
 ### 测试类别
 
-- **单元测试** (8,890+ 测试总计): 隔离测试各个组件
+- **单元测试** (8,942+ 测试总计): 隔离测试各个组件
 - **回归测试** (70 测试): 确保向后兼容性和格式稳定性
 - **属性测试** (75 测试): 基于Hypothesis的属性测试
 - **基准测试** (20 测试): 性能监控和回归检测

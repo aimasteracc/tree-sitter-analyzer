@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.11.0] - 2026-04-10
+
+### Added
+
+- **Architecture-aware PageRank for `get_project_summary`**: Critical nodes ranked by extends/implements hierarchy (not import frequency). Claude sees the project's architectural skeleton at session start. Validated on elasticsearch (40k files), spring-framework (11k), mybatis, spring-petclinic — all return correct #1 architecture node.
+- **Plugin edge_extractors/ package**: New language support = new file + 1 line registration. No modification to existing code. Ships with Java, Python, TypeScript extractors.
+- **Java first-party filtering**: Reads groupId from pom.xml/build.gradle. Only project-internal extends/implements create graph edges. stdlib, third-party, java.lang auto-imports all excluded.
+- **Python first-party filtering**: Uses `sys.stdlib_module_names` + `importlib.metadata` — zero configuration, zero maintenance.
+- **`modification_guard` + PageRank integration**: Reads `critical_nodes.json`. Top-10 architecture nodes get verdict boosted (CAUTION → REVIEW). Shows `architecture_rank` and `architecture_warning` in safety report.
+- **Incremental index build**: mtime+size comparison. Cache hit: 16ms. Single file change: 95ms.
+- **`summary.toon` pre-rendering**: `get_project_summary` reads pre-built file directly, < 50ms.
+- **Test file exclusion**: Files under `/test/`, `/tests/`, `/testFixtures/` paths skipped from PageRank (ESTestCase with 4031 subtypes no longer pollutes rankings).
+
+### Fixed
+
+- **Silent directory drop bug**: Top-level dirs without `__init__.py` (spring-framework 11k files, netty 4k) were invisible in `get_project_summary`. All dirs now appear, classified as core/context/tooling.
+- **HTML tag leakage**: caffeine README `<a href=...>` tags stripped from `what:` field.
+- **buildSrc misclassification**: Gradle build dirs classified as `core`, not `context`.
+- **annotations dict bug in `analyze_scale_tool`**: `ann.name` crashed on dict annotations. Fixed to `ann["name"]`.
+
+### Changed
+
+- `mcp_instructions` updated: Claude auto-uses `critical:` section from summary at session start.
+- `_extract_edges_from_file` refactored from 190-line monolith to 12-line registry delegation.
+
+### Testing
+
+- 75 new tests (48 pagerank + 27 modification_guard).
+- 8,942 total tests passing, 0 failures.
+- End-to-end validated: 5 tool calls (with summary) vs 10+ (without) = 2x efficiency on unfamiliar projects.
+
 ## [1.10.8] - 2026-04-10
 
 ### Fixed

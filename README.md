@@ -4,10 +4,10 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8890%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-8942%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
-[![Version](https://img.shields.io/badge/version-1.10.8-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
+[![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
 > **Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development** — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
@@ -24,13 +24,13 @@ find the right files → find the right matches → extract the right structure 
 
 ---
 
-## ✨ What's New in v1.10.8
+## ✨ What's New in v1.11.0
 
-- **Spring/JPA codebases are now fully navigable**: Claude correctly sees `@Controller`, `@Transactional`, `@ManyToMany`, `@Bean` — understand Spring architecture without reading raw source. Validated against spring-petclinic, caffeine, spring-framework, netty.
-- **Impact analysis you can trust**: `modification_guard` now gives accurate SAFE/UNSAFE verdicts. `trace_impact` returns the real caller count — not a capped display number — so HIGH IMPACT symbols are never silently downgraded to LOW.
-- **17 new semantic Java queries**: `spring_bean`, `spring_transactional`, `spring_request_mapping`, `junit5_test`, `volatile_field`, `record_declaration` and more — query by intent, not by AST node.
-- **Large files without limits**: 6,500-line netty files analyzed without crash. `get_code_outline` delivers 89–92% token savings over full file reads.
-- **tree-sitter 0.25+ compatible**: `#match?` predicates restored — all Spring/JPA query filtering works on latest tree-sitter installations.
+- **Claude knows your project's skeleton before reading a single file**: `get_project_summary` returns PageRank-ranked architecture nodes — the classes everything else extends. Validated on elasticsearch (40k files), spring-framework (11k), mybatis, spring-petclinic.
+- **Touch a critical class? Claude stops you first**: `modification_guard` reads the architecture ranking. Rename `Writeable` in elasticsearch → verdict UNSAFE, rank #1, 4745 callers. No surprises.
+- **New language = new file, not a rewrite**: Plugin `edge_extractors/` package — Java, Python, TypeScript ship today. Adding Kotlin is one file + one line.
+- **2x faster exploration on unfamiliar projects**: End-to-end tested — 5 tool calls with summary vs 10+ without. Claude skips the blind search phase entirely.
+- **Zero-config first-party filtering**: Java reads groupId from pom.xml. Python uses `sys.stdlib_module_names`. No blacklists to maintain. Ever.
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
 ---
@@ -272,7 +272,7 @@ for lang in langs:
 
 | Metric | Value |
 |--------|-------|
-| **Tests** | 8,890+ automated tests |
+| **Tests** | 8,942+ automated tests |
 | **Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 | **Platforms** | Windows, macOS, Linux |
@@ -350,7 +350,7 @@ Tree-sitter Analyzer is designed with **security-by-default** principles for AI-
 
 ### Security Testing
 
-- **8,890+ automated tests** including security-focused edge cases
+- **8,942+ automated tests** including security-focused edge cases
 - **100% mypy type safety** prevents entire classes of bugs
 - **CI/CD security scans**: Bandit (Python security), safety (dependency vulnerabilities)
 - **Manual security review** of all MCP tool implementations
@@ -411,7 +411,7 @@ MIT License - see [LICENSE](LICENSE) file.
 
 | Metric | Value |
 |--------|-------|
-| **Test Suite** | 8,890+ automated tests across unit, integration, regression, property, benchmark, and compatibility layers |
+| **Test Suite** | 8,942+ automated tests across unit, integration, regression, property, benchmark, and compatibility layers |
 | **Code Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 
