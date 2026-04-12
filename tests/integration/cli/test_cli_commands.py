@@ -462,6 +462,43 @@ class TestTableCommandCoverage:
         finally:
             Path(temp_path).unlink(missing_ok=True)
 
+    def test_table_json_via_main(self, monkeypatch):
+        """Test that CLI --table json succeeds and emits JSON output."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("def foo():\n    return 1\n")
+            temp_path = f.name
+
+        try:
+            monkeypatch.setattr(
+                sys,
+                "argv",
+                [
+                    "cli",
+                    temp_path,
+                    "--table",
+                    "json",
+                    "--quiet",
+                    "--project-root",
+                    str(Path(temp_path).parent),
+                ],
+            )
+            mock_stdout = StringIO()
+            mock_stderr = StringIO()
+            monkeypatch.setattr("sys.stdout", mock_stdout)
+            monkeypatch.setattr("sys.stderr", mock_stderr)
+
+            with contextlib.suppress(SystemExit):
+                main()
+
+            output = mock_stdout.getvalue()
+            error_output = mock_stderr.getvalue()
+
+            assert '"file_path"' in output
+            assert '"language"' in output
+            assert "Unsupported format type" not in error_output
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
 
 if __name__ == "__main__":
     pytest.main([__file__])

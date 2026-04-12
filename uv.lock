@@ -2366,7 +2366,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "1.10.8"
+version = "1.11.1"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },

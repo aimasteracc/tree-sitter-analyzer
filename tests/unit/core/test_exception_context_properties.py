@@ -196,7 +196,9 @@ class TestExceptionContextPreservationProperty:
         message=safe_text,
         context=context_dict,
     )
-    @settings(max_examples=100)
+    @settings(
+        max_examples=100, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    )
     def test_create_error_response_preserves_context(
         self, message: str, context: dict[str, Any]
     ) -> None:

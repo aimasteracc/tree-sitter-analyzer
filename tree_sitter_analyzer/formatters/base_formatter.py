@@ -118,11 +118,19 @@ class BaseTableFormatter(BaseFormatter):
             result = self._format_compact_table(structure_data)
         elif self.format_type == "csv":
             result = self._format_csv(structure_data)
+        elif self.format_type == "json":
+            format_json = getattr(self, "_format_json", None)
+            if callable(format_json):
+                result = format_json(structure_data)
+            else:
+                import json
+
+                result = json.dumps(structure_data, indent=2, ensure_ascii=False)
         else:
             raise ValueError(f"Unsupported format type: {self.format_type}")
 
         # Finally convert to platform-specific newline code
-        if self.format_type == "csv":
+        if self.format_type in {"csv", "json"}:
             return result
 
         return self._convert_to_platform_newlines(result)
