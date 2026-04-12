@@ -52,20 +52,27 @@ async def test_parser_cache_effectiveness(tmp_path):
     file_path = str(f)
 
     engine = get_engine()
+    engine.clear_cache()
+    engine.parser._cache.clear()
     request = AnalysisRequest(file_path=file_path, language="python")
+    stats_before = engine.get_cache_stats()
 
     # First time - should parse
     start1 = time.perf_counter()
     res1 = await engine.analyze(request)
     duration1 = time.perf_counter() - start1
+    stats_after_first = engine.get_cache_stats()
 
     # Second time - should hit cache
     start2 = time.perf_counter()
     res2 = await engine.analyze(request)
     duration2 = time.perf_counter() - start2
+    stats_after_second = engine.get_cache_stats()
 
     print(f"\nFirst call: {duration1:.4f}s, Second call (cached): {duration2:.4f}s")
-    assert duration2 < duration1
+    assert stats_after_first["hits"] == stats_before["hits"]
+    assert stats_after_second["hits"] > stats_after_first["hits"]
+    assert duration2 <= max(duration1 * 5, 0.1)
     assert res1.elements == res2.elements
 
 

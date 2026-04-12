@@ -9,6 +9,7 @@ MCP Performance Tests
 - メモリ使用量の最適化確認
 """
 
+import gc
 import os
 import time
 from pathlib import Path
@@ -523,10 +524,14 @@ class TestMemoryOptimization:
 
     @pytest.mark.asyncio
     async def test_memory_usage_optimization(
-        self, large_code_file, performance_monitor
+        self, large_code_file, performance_monitor, tmp_path
     ):
         """メモリ使用量最適化の確認"""
         tool = TableFormatTool()
+        output_file_name = f"test_output_{tmp_path.name}.json"
+
+        # Collect garbage before measuring to reduce noise from prior tests
+        gc.collect()
 
         # 初期メモリ使用量を記録
         initial_memory = psutil.Process().memory_info().rss
@@ -539,11 +544,14 @@ class TestMemoryOptimization:
                 "file_path": large_code_file,
                 "format_type": "full",
                 "suppress_output": True,
-                "output_file": "test_output.json",
+                "output_file": output_file_name,
             }
         )
 
         metrics = performance_monitor.end_measurement()
+
+        # Measure retained memory after temporary objects are collectible
+        gc.collect()
         final_memory = psutil.Process().memory_info().rss
 
         assert result["success"] is True
@@ -558,9 +566,9 @@ class TestMemoryOptimization:
         print(f"メモリ使用量増加: {memory_increase:.2f}MB")
 
         # 出力ファイルが作成されていることを確認
-        output_file = Path("test_output.json")
-        if output_file.exists():
-            output_file.unlink()  # クリーンアップ
+        saved_output = Path(result["output_file_path"])
+        assert saved_output.exists()
+        saved_output.unlink()
 
 
 if __name__ == "__main__":
