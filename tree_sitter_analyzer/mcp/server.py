@@ -71,6 +71,7 @@ from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.batch_search_tool import BatchSearchTool
 from .tools.build_project_index_tool import BuildProjectIndexTool
 from .tools.check_tools_tool import CheckToolsTool
+from .tools.dependency_query_tool import DependencyQueryTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
 from .tools.get_project_summary_tool import GetProjectSummaryTool
@@ -145,6 +146,8 @@ class TreeSitterAnalyzerMCPServer:
         # Persistent project index tools
         self.get_project_summary_tool = GetProjectSummaryTool(project_root)  # get_project_summary
         self.build_project_index_tool = BuildProjectIndexTool(project_root)  # build_project_index
+        # Dependency graph tool
+        self.dependency_query_tool = DependencyQueryTool(project_root)  # dependency_query
 
         # Intent Aliases resolver (intent-based tool names → canonical names)
         self.intent_alias_resolver = IntentAliasResolver()
@@ -512,7 +515,7 @@ Claude cannot do natively:
         server: Server = Server(self.name)
 
         # Register tools using @server decorators (standard MCP pattern)
-        @server.list_tools()  # type: ignore[untyped-decorator]
+        @server.list_tools()  # type: ignore[untyped-decorator, no-untyped-call]
         async def handle_list_tools() -> list[Tool]:
             """List all available tools."""
             logger.info("Client requesting tools list")
@@ -547,6 +550,7 @@ Claude cannot do natively:
                 Tool(**self.modification_guard_tool.get_tool_definition()),
                 Tool(**self.get_project_summary_tool.get_tool_definition()),
                 Tool(**self.build_project_index_tool.get_tool_definition()),
+                Tool(**self.dependency_query_tool.get_tool_definition()),
             ]
 
             logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
@@ -699,6 +703,9 @@ Claude cannot do natively:
                 elif name == "build_project_index":
                     result = await self.build_project_index_tool.execute(arguments)
 
+                elif name == "dependency_query":
+                    result = await self.dependency_query_tool.execute(arguments)
+
                 else:
                     raise ValueError(f"Unknown tool: {name}")
 
@@ -818,6 +825,7 @@ Claude cannot do natively:
         self.modification_guard_tool.set_project_path(project_path)
         self.get_project_summary_tool.set_project_path(project_path)
         self.build_project_index_tool.set_project_path(project_path)
+        self.dependency_query_tool.set_project_path(project_path)
 
         # Update universal tool if available
         if hasattr(self, "universal_analyze_tool") and self.universal_analyze_tool:
@@ -886,6 +894,8 @@ Claude cannot do natively:
             return await self.get_project_summary_tool.execute(arguments)
         elif name == "build_project_index":
             return await self.build_project_index_tool.execute(arguments)
+        elif name == "dependency_query":
+            return await self.dependency_query_tool.execute(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -901,7 +911,7 @@ Claude cannot do natively:
         server = self.create_server()
 
         # Initialize server options with required capabilities field
-        from mcp.server.models import ServerCapabilities
+        from mcp.server.models import ServerCapabilities  # type: ignore[attr-defined]
         from mcp.types import (
             LoggingCapability,
             PromptsCapability,
