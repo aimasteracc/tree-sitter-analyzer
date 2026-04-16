@@ -35,28 +35,51 @@ class DependencyGraph:
         return json.dumps(data, indent=2, ensure_ascii=False)
 
     def to_mermaid(self) -> str:
-        """Export as Mermaid flowchart."""
+        """Export as Mermaid flowchart with cycle highlighting."""
         lines = ["graph LR"]
         seen_edges: set[tuple[str, str]] = set()
+
+        # Detect cyclic edges for visual highlighting
+        cycle_edges = self._cycle_edge_set()
+
         for src, dst in self.edges:
             edge = (src, dst)
             if edge not in seen_edges:
                 seen_edges.add(edge)
                 safe_src = _mermaid_id(src)
                 safe_dst = _mermaid_id(dst)
-                lines.append(f"    {safe_src} --> {safe_dst}")
+                if edge in cycle_edges:
+                    lines.append(f"    {safe_src} -.->|cycle| {safe_dst}")
+                else:
+                    lines.append(f"    {safe_src} --> {safe_dst}")
         if not seen_edges:
             for node_name in sorted(self.nodes):
                 lines.append(f"    {_mermaid_id(node_name)}")
         return "\n".join(lines)
 
     def to_dot(self) -> str:
-        """Export as DOT (Graphviz)."""
+        """Export as DOT (Graphviz) with cycle highlighting."""
+        cycle_edges = self._cycle_edge_set()
         lines = ["digraph dependencies {", '    rankdir=LR;']
         for src, dst in self.edges:
-            lines.append(f'    "{src}" -> "{dst}";')
+            style = ' [style=dashed, color=red, label="cycle"]' if (src, dst) in cycle_edges else ""
+            lines.append(f'    "{src}" -> "{dst}"{style};')
         lines.append("}")
         return "\n".join(lines)
+
+    def _cycle_edge_set(self) -> set[tuple[str, str]]:
+        """Identify edges that participate in cycles."""
+        sccs = self.find_cycles()
+        if not sccs:
+            return set()
+        cycle_nodes: set[str] = set()
+        for scc in sccs:
+            cycle_nodes.update(scc)
+        edge_set: set[tuple[str, str]] = set()
+        for src, dst in self.edges:
+            if src in cycle_nodes and dst in cycle_nodes:
+                edge_set.add((src, dst))
+        return edge_set
 
     def has_cycle(self) -> bool:
         """Check if the graph contains any cycle."""

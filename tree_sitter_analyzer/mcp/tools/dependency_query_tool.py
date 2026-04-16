@@ -118,6 +118,11 @@ class DependencyQueryTool(BaseMCPTool):
 
         return {"success": False, "error": f"Unknown query_type: {query_type}"}
 
+    _FD_EXTENSIONS = [
+        "-e", "java", "-e", "py", "-e", "ts", "-e", "js",
+        "-e", "tsx", "-e", "jsx", "-e", "cs", "-e", "go", "-e", "kt",
+    ]
+
     def _build_graph(
         self, root: str, files: list[str] | None
     ) -> ProjectGraph:
@@ -125,8 +130,7 @@ class DependencyQueryTool(BaseMCPTool):
             import subprocess
 
             result = subprocess.run(
-                ["fd", "-e", "java", "-e", "py", "-e", "ts", "-e", "js", "-e", "tsx",
-                 "-e", "jsx", "-t", "f", ".", root, "--max-depth", "10"],
+                ["fd", *self._FD_EXTENSIONS, "-t", "f", ".", root, "--max-depth", "10"],
                 capture_output=True, text=True, timeout=30,
             )
             files = result.stdout.strip().split("\n") if result.stdout.strip() else []
@@ -188,6 +192,8 @@ class DependencyQueryTool(BaseMCPTool):
                 "lines": s.lines,
                 "methods": s.methods,
                 "imports": s.imports,
+                "cyclomatic_complexity": s.cyclomatic_complexity,
+                "avg_function_length": s.avg_function_length,
             })
         return {
             "success": True,
