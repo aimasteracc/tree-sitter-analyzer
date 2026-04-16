@@ -28,6 +28,7 @@
 | 11 | Phase 3.3: Blast Radius | done | 13/13 | graph_service + dependency_query_tool |
 | 12 | Phase 2 extras: SDK+Schema | done | 16/16 | sdk.py + schema examples for 5 tools |
 | 13 | Phase 5.1: TOON key aliases | done | 5/5 | 20 key abbreviations, 5-15% token savings |
+| 14 | Phase 5.2: Error Recovery | done | 6/6 | error_recovery.py — regex fallback + binary detection |
 
 ### 当前工作
 - Phase 1-5 全部完成
