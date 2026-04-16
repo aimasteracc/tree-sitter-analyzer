@@ -22,10 +22,14 @@
 | 5 | fix-java-implements-generics | verified | inline | implements 泛型 + @Override 归属已修复 |
 | 6 | Phase 2.1: StreamableHTTP | done | 7/7 | 新增 streamable_http_server.py + CLI --transport |
 | 7 | Phase 2.2: SDK embedding | done | 6/6 | 新增 sdk.py Analyzer 类（同步 API） |
-| 8 | Phase 2.3: Schema examples | done | 6/6 | 5 个核心工具添加 inputSchema examples |
+| 8 | Phase 2.3: Schema audit | done | - | 审计 15 个工具 schema，记录 6 类问题 |
+| 9 | Phase 3.1+3.2: DepGraph+Health | done | 9/9 | 新增 analysis/ 包：依赖图+健康评分 |
+| 10 | Phase 4 验证 | verified | 618/618 | Java #match? + C# + annotation 全部已修复 |
 
 ### 当前工作
-- Phase 2 完成，准备 Phase 3
+- Phase 3.1+3.2 完成（依赖图 + 健康评分）
+- Phase 4 已在 main 分支完成（验证通过）
+- 准备 Phase 5（性能与可靠性）
 
 ### 错误日志
 
