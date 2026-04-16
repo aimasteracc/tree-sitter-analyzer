@@ -959,12 +959,30 @@ Environment Variables:
 Examples:
   python -m tree_sitter_analyzer.mcp.server
   python -m tree_sitter_analyzer.mcp.server --project-root /path/to/project
+  python -m tree_sitter_analyzer.mcp.server --transport streamable-http --port 8080
         """,
     )
 
     parser.add_argument(
         "--project-root",
         help="Project root directory for security validation (auto-detected if not specified)",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "streamable-http"],
+        default="stdio",
+        help="Transport protocol: stdio (default) or streamable-http",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Host for streamable-http transport (default: 127.0.0.1)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="Port for streamable-http transport (default: 8080)",
     )
 
     return parser.parse_args(args)
@@ -1015,7 +1033,17 @@ async def main() -> None:
         logger.info(f"MCP server starting with project root: {project_root}")
 
         server = TreeSitterAnalyzerMCPServer(project_root)
-        await server.run()
+
+        if args.transport == "streamable-http":
+            from .streamable_http_server import run_streamable_http
+
+            await run_streamable_http(
+                server,
+                host=args.host,
+                port=args.port,
+            )
+        else:
+            await server.run()
 
         # Exit successfully after server run completes
         sys.exit(0)
