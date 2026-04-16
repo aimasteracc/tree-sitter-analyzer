@@ -48,6 +48,7 @@ class DependencyQueryTool(BaseMCPTool):
                             "dependencies",
                             "blast_radius",
                             "health_scores",
+                            "cycles",
                             "export",
                         ],
                         "description": "Type of graph query to perform",
@@ -78,6 +79,7 @@ class DependencyQueryTool(BaseMCPTool):
                     {"query_type": "blast_radius", "node": "src/main.py"},
                     {"query_type": "dependents", "node": "src/models/User.java"},
                     {"query_type": "health_scores"},
+                    {"query_type": "cycles"},
                     {"query_type": "export", "format": "mermaid"},
                 ],
                 "additionalProperties": False,
@@ -88,7 +90,7 @@ class DependencyQueryTool(BaseMCPTool):
         if "query_type" not in arguments:
             raise ValueError("query_type is required")
         qt = arguments["query_type"]
-        valid_types = {"dependents", "dependencies", "blast_radius", "health_scores", "export"}
+        valid_types = {"dependents", "dependencies", "blast_radius", "health_scores", "cycles", "export"}
         if qt not in valid_types:
             raise ValueError(f"Invalid query_type: {qt}. Must be one of {valid_types}")
         if qt in ("dependents", "dependencies", "blast_radius") and "node" not in arguments:
@@ -107,6 +109,8 @@ class DependencyQueryTool(BaseMCPTool):
 
         if query_type == "health_scores":
             return self._health_scores(root, files)
+        if query_type == "cycles":
+            return self._cycles(root, files)
         if query_type == "export":
             return self._export(root, files, output_format)
         if query_type == "blast_radius":
@@ -175,6 +179,23 @@ class DependencyQueryTool(BaseMCPTool):
             "affected_files": sorted(result.dependents),
             "depth_map": result.depth_map,
             "total_affected": len(result.dependents),
+        }
+
+    def _cycles(
+        self, root: str, files: list[str] | None
+    ) -> dict[str, Any]:
+        from tree_sitter_analyzer.analysis.dependency_graph import DependencyGraph
+
+        graph = self._build_graph(root, files)
+        nodes = {n: {} for n in graph.nodes()}
+        dep_graph = DependencyGraph(nodes=nodes, edges=graph.edges)
+        cycles = dep_graph.find_cycles()
+        return {
+            "success": True,
+            "query_type": "cycles",
+            "has_cycles": len(cycles) > 0,
+            "cycle_count": len(cycles),
+            "cycles": cycles,
         }
 
     def _health_scores(
