@@ -1,10 +1,12 @@
 """
 Health score engine for source code files.
 
-Grades each file A-F based on size, complexity, coupling, and annotation density.
+Grades each file A-F based on size, complexity, coupling, cohesion,
+annotation density, and duplication metrics.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +18,11 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".py", ".js", ".ts", ".tsx", ".jsx",
     ".go", ".rs", ".cs", ".kt", ".c", ".cpp", ".h",
+    ".rb", ".php", ".swift", ".scala",
 }
+
+# Number of consecutive lines to hash for duplication detection.
+_DUPLICATE_BLOCK_SIZE = 6
 
 
 @dataclass(frozen=True)
@@ -31,11 +37,16 @@ class FileHealthScore:
     imports: int
     cyclomatic_complexity: int
     avg_function_length: float
+    duplication_blocks: int
     breakdown: dict[str, int]
 
 
 class HealthScorer:
-    """Score files based on maintainability metrics."""
+    """Score files based on maintainability metrics.
+
+    Dimensions: size, complexity, coupling (fan-out), cohesion (methods per class),
+    annotation density, branch density, function length, and code duplication.
+    """
 
     GRADE_THRESHOLDS: list[tuple[int, str]] = [
         (90, "A"),
@@ -45,24 +56,35 @@ class HealthScorer:
     ]
 
     IMPORT_PATTERN = re.compile(
-        r"^\s*(?:import|from|using|require)\s", re.MULTILINE
+        r"^\s*(?:import\s|from\s+[\w.]+\s+import|using\s|require\s*\(|#include\s)",
+        re.MULTILINE,
     )
     METHOD_PATTERN = re.compile(
-        r"(?:void|int|long|double|float|boolean|String|char|byte|short|var|auto|func|def|fn|pub\s+fn|public|private|protected)"
-        r"\s+\w+\s*\("
+        r"(?:(?:public|private|protected|static|synchronized|async|override|virtual|abstract)\s+)*"
+        r"(?:void|int|long|double|float|boolean|String|char|byte|short|var|auto|def|fn|func)\s+\w+\s*\("
+        r"|^\s*def\s+\w+\s*\("
+        r"|^\s*func\s+\w+\s*\("
+        r"|^\s*(?:pub\s+)?fn\s+\w+\s*\("
+        r"|^\s*func\s+\(",
+        re.MULTILINE,
     )
-    ANNOTATION_PATTERN = re.compile(r"@\w+")
+    ANNOTATION_PATTERN = re.compile(r"@\w+|\[\w+(?:\([^)]*\))?\]")
     BRANCH_PATTERN = re.compile(
-        r"\b(?:if|elif|else\s+if|else|for|while|catch|except|case|&&|\|\||\?\s)"
-        r"|&&|\|\|"
+        r"\b(?:if|elif|else\s+if|else|for|while|catch|except|case|select|switch|match|guard)"
+        r"\b|&&|\|\||\?\s",
     )
     FUNCTION_START_PATTERN = re.compile(
-        r"^\s*(?:public|private|protected|static|synchronized|async|\s)*"
+        r"^\s*(?:public|private|protected|static|synchronized|async|override|virtual|abstract|\s)*"
         r"(?:void|int|long|double|float|boolean|String|char|byte|short|var|auto|def|fn|func)\s+\w+\s*\("
-        r"|^\s*def\s+\w+"
-        r"|^\s*func\s+\w+"
-        r"|^\s*fn\s+\w+"
-        r"|^\s*(?:pub\s+)?fn\s+\w+",
+        r"|^\s*def\s+\w+\s*\("
+        r"|^\s*func\s+\w+\s*\("
+        r"|^\s*(?:pub\s+)?fn\s+\w+\s*\("
+        r"|^\s*func\s+\(",
+        re.MULTILINE,
+    )
+    CLASS_START_PATTERN = re.compile(
+        r"^\s*(?:public|private|protected|abstract|final|open|sealed|data|\s)*"
+        r"(?:class|interface|enum|struct|record|trait|type|object)\s+\w+",
         re.MULTILINE,
     )
 
@@ -93,6 +115,7 @@ class HealthScorer:
                 imports=0,
                 cyclomatic_complexity=0,
                 avg_function_length=0.0,
+                duplication_blocks=0,
                 breakdown={},
             )
 
@@ -101,6 +124,7 @@ class HealthScorer:
         methods = len(self.METHOD_PATTERN.findall(text))
         annotations = len(self.ANNOTATION_PATTERN.findall(text))
         branches = len(self.BRANCH_PATTERN.findall(text))
+        classes = len(self.CLASS_START_PATTERN.findall(text))
         cyclomatic = branches + 1
 
         func_starts = [m.start() for m in self.FUNCTION_START_PATTERN.finditer(text)]
@@ -119,6 +143,13 @@ class HealthScorer:
         else:
             avg_func_len = float(lines) / max(methods, 1)
 
+        # Cohesion: high methods-per-class suggests god-class anti-pattern.
+        methods_per_class = methods / max(classes, 1)
+        cohesion_penalty = min(int(methods_per_class) * 2, 15)
+
+        # Duplication: detect repeated blocks of consecutive lines.
+        dup_blocks = self._detect_duplication(file_lines)
+
         breakdown = {
             "size_penalty": min(lines // 10, 30),
             "complexity_penalty": min(methods * 2, 20),
@@ -126,6 +157,8 @@ class HealthScorer:
             "annotation_penalty": min(annotations, 15),
             "branch_penalty": min(cyclomatic, 15),
             "function_length_penalty": min(int(avg_func_len) // 5, 10),
+            "cohesion_penalty": cohesion_penalty,
+            "duplication_penalty": min(dup_blocks * 2, 10),
         }
 
         score = 100 - sum(breakdown.values())
@@ -140,8 +173,33 @@ class HealthScorer:
             imports=imports,
             cyclomatic_complexity=cyclomatic,
             avg_function_length=round(avg_func_len, 1),
+            duplication_blocks=dup_blocks,
             breakdown=breakdown,
         )
+
+    @staticmethod
+    def _detect_duplication(file_lines: list[str], *, block_size: int = _DUPLICATE_BLOCK_SIZE) -> int:
+        """Count duplicated blocks of consecutive lines.
+
+        Hashes each block of `block_size` lines and counts how many
+        hashes appear more than once.
+        """
+        if len(file_lines) < block_size * 2:
+            return 0
+
+        # Normalize: strip whitespace for comparison.
+        normalized = [line.strip() for line in file_lines]
+
+        seen: dict[str, int] = {}
+        for i in range(len(normalized) - block_size + 1):
+            block = "\n".join(normalized[i : i + block_size])
+            # Skip blocks that are mostly blank.
+            if sum(1 for line in normalized[i : i + block_size] if line) < block_size // 2:
+                continue
+            block_hash = hashlib.md5(block.encode()).hexdigest()
+            seen[block_hash] = seen.get(block_hash, 0) + 1
+
+        return sum(count - 1 for count in seen.values() if count > 1)
 
     def _grade(self, score: int) -> str:
         """Convert numeric score to letter grade."""
