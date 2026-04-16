@@ -32,9 +32,39 @@
 | 15 | Phase 4.3: AST Chunking | done | 28/28 | ast_chunker.py — language-family-aware chunking |
 
 ### 当前工作
-- Phase 1-5 全部完成（含 Phase 4.3 AST chunking）
-- 总计新增测试：72+ 个通过
-- 准备创建 PR 合并到 main
+- Phase 3-4 深化迭代（第二轮）进行中
+- Sprint 1: 循环依赖检测 + 圈复杂度评分 + 依赖权重计算 ✅
+- Sprint 2: C#/Go/Kotlin 边缘提取器 ✅
+- Sprint 3: AST chunker 语义边界 + import 上下文保留 ✅
+- Sprint 4: Mermaid/DOT 循环注释 + 多语言查询 ✅
+- Sprint 5: 多语言 error recovery regex fallback ✅
+- 总计新增测试：137+ 个通过
+
+## Session 3 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 1 | Phase 1: Skill routing + dependency_query registration | done | 50/50 | 16 MCP tools, routing completeness |
+| 2 | Phase 2: SDK batch analysis + caching + extended tools | done | 21/21 | CodeAnalyzer: batch, cache, trace, guard, dep |
+| 3 | Phase 2: SSE heartbeat + rate limiting | done | 10/10 | HeartbeatMiddleware + RateLimiter |
+| 4 | Phase 1+2: Sync SDK batch + cache + extended tools | done | 16/16 | Analyzer: batch_analyze, cache, trace, guard, dep |
+
+### 新增/修改文件
+- `tree_sitter_analyzer/mcp/server.py` — 注册 dependency_query (16 工具)
+- `tree_sitter_analyzer/mcp/sdk.py` — batch_analyze, caching, trace_impact, modification_guard, dependency_query
+- `tree_sitter_analyzer/sdk.py` — 同步 SDK 同步版本 + batch + cache
+- `tree_sitter_analyzer/mcp/streamable_http_server.py` — HeartbeatMiddleware + RateLimiter
+- `tests/unit/mcp/test_skill_routing.py` — 50 tests (routing, mixed-language, fuzzy, token cost)
+- `tests/unit/mcp/test_sdk_extended.py` — 15 tests (batch, cache, extended tools)
+- `tests/unit/mcp/test_streamable_http.py` — 10 tests (rate limit, heartbeat)
+- `tests/unit/test_sync_sdk.py` — 16 tests (sync SDK full coverage)
+
+### 测试结果
+- 2089 MCP tests pass (was 2045)
+- 16 sync SDK tests pass
+- ruff check + mypy --strict all clean
 
 ### 错误日志
 
