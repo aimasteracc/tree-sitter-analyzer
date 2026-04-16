@@ -118,7 +118,7 @@ def yaml_with_comments(draw):
 class TestYAMLElementMetadataProperties:
     """Property-based tests for YAML element metadata completeness."""
 
-    @settings(max_examples=50, deadline=500)
+    @settings(deadline=500, max_examples=50)
     @given(yaml_content=yaml_simple_mapping())
     def test_property_4_element_metadata_line_numbers(self, yaml_content: str):
         """

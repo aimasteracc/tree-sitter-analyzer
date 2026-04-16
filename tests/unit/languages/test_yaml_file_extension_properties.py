@@ -47,8 +47,7 @@ filename_strategy = st.text(
 class TestYAMLFileExtensionProperties:
     """Property-based tests for YAML file extension selection."""
 
-    @settings(
-        max_examples=100, deadline=None
+    @settings(max_examples=100, deadline=None
     )  # Disable deadline due to I/O variability
     @given(
         filename=filename_strategy,
@@ -117,7 +116,7 @@ class TestYAMLFileExtensionProperties:
 
     # Windows cold-start imports can be highly variable; disable Hypothesis deadline there
     # to avoid flaky timing failures unrelated to correctness.
-    @settings(max_examples=50, deadline=None if os.name == "nt" else 500)
+    @settings(max_examples=50)
     @given(
         filename=filename_strategy,
         extension=st.sampled_from([".yaml", ".yml"]),

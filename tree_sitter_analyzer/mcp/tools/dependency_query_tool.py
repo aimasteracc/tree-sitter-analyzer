@@ -187,7 +187,7 @@ class DependencyQueryTool(BaseMCPTool):
         from tree_sitter_analyzer.analysis.dependency_graph import DependencyGraph
 
         graph = self._build_graph(root, files)
-        nodes = {n: {} for n in graph.nodes()}
+        nodes: dict[str, dict[str, str | int]] = {n: {} for n in graph.nodes()}
         dep_graph = DependencyGraph(nodes=nodes, edges=graph.edges)
         cycles = dep_graph.find_cycles()
         return {

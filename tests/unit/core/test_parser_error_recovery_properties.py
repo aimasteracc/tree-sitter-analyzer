@@ -427,8 +427,7 @@ class TestEngineErrorRecoveryProperties:
     **Validates: Requirements 5.1**
     """
 
-    @settings(
-        max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=python_code_with_syntax_error())
     @pytest.mark.asyncio
@@ -456,8 +455,7 @@ class TestEngineErrorRecoveryProperties:
         # Property: Language should be set
         assert result.language == "python", "Language should be preserved in result"
 
-    @settings(
-        max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=java_code_with_syntax_error())
     @pytest.mark.asyncio
@@ -482,8 +480,7 @@ class TestEngineErrorRecoveryProperties:
             result, AnalysisResult
         ), "Engine should return AnalysisResult even for invalid code"
 
-    @settings(
-        max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
+    @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow], deadline=None
     )
     @given(code=javascript_code_with_syntax_error())
     @pytest.mark.asyncio

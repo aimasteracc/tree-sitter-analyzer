@@ -39,8 +39,7 @@ class MockRequest:
 class TestYAMLEncodingResilienceProperties:
     """Property-based tests for YAML encoding resilience."""
 
-    @settings(
-        max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    @settings(max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow]
     )
     @given(
         key_name=st.text(
@@ -94,8 +93,7 @@ class TestYAMLEncodingResilienceProperties:
         finally:
             os.unlink(temp_path)
 
-    @settings(
-        max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    @settings(max_examples=30, deadline=None, suppress_health_check=[HealthCheck.too_slow]
     )
     @given(
         key_name=st.text(
@@ -141,8 +139,7 @@ class TestYAMLEncodingResilienceProperties:
         finally:
             os.unlink(temp_path)
 
-    @settings(
-        max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    @settings(max_examples=50, deadline=None, suppress_health_check=[HealthCheck.too_slow]
     )
     @given(
         num_keys=st.integers(min_value=1, max_value=10),

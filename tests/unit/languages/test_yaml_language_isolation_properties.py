@@ -76,7 +76,7 @@ items:
 class TestYAMLLanguageIsolationProperties:
     """Property-based tests for YAML language isolation."""
 
-    @settings(max_examples=50, deadline=1000)
+    @settings(deadline=1000, max_examples=50)
     @given(
         java_code=java_code_strategy,
         python_code=python_code_strategy,
@@ -272,7 +272,7 @@ class TestYAMLLanguageIsolationProperties:
             Path(python_path).unlink(missing_ok=True)
             Path(java_path).unlink(missing_ok=True)
 
-    @settings(max_examples=50, deadline=None)  # Disable deadline due to I/O variability
+    @settings(max_examples=50)
     @given(
         yaml_code=yaml_code_strategy,
     )

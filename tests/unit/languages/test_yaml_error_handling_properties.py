@@ -237,8 +237,7 @@ class TestYAMLErrorHandlingProperties:
     """Property-based tests for YAML error handling robustness."""
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=100,
+    @settings(max_examples=100,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -297,8 +296,7 @@ class TestYAMLErrorHandlingProperties:
                 )
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=100,
+    @settings(max_examples=100,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -347,8 +345,7 @@ class TestYAMLErrorHandlingProperties:
                 )
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=100,
+    @settings(max_examples=100,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -397,8 +394,7 @@ class TestYAMLErrorHandlingProperties:
                 )
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=100,
+    @settings(max_examples=100,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -447,8 +443,7 @@ class TestYAMLErrorHandlingProperties:
                 )
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=50,
+    @settings(max_examples=50,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -535,8 +530,7 @@ class TestYAMLErrorHandlingProperties:
                 )
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=50,
+    @settings(max_examples=50,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -661,8 +655,7 @@ class TestYAMLErrorHandlingProperties:
                 pytest.fail(f"Parser crashed on comments-only file: {e}")
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=50,
+    @settings(max_examples=50,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
             HealthCheck.too_slow,

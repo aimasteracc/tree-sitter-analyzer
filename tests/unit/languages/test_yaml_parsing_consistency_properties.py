@@ -211,8 +211,7 @@ class TestYAMLParsingConsistencyProperties:
     """Property-based tests for YAML parsing consistency."""
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=100,
+    @settings(max_examples=100,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -301,8 +300,7 @@ class TestYAMLParsingConsistencyProperties:
                 )
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=100,
+    @settings(max_examples=100,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -353,8 +351,7 @@ class TestYAMLParsingConsistencyProperties:
                 )
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=50,
+    @settings(max_examples=50,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -407,8 +404,7 @@ class TestYAMLParsingConsistencyProperties:
                 ), f"Nesting level mismatch at line {e1.start_line}"
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=50,
+    @settings(max_examples=50,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -458,8 +454,7 @@ class TestYAMLParsingConsistencyProperties:
                 ), f"Comment text mismatch at line {c1.start_line}"
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=50,
+    @settings(max_examples=50,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -512,8 +507,7 @@ class TestYAMLParsingConsistencyProperties:
             ), f"Document count mismatch: {len(documents1)} vs {len(documents2)}"
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=100,
+    @settings(max_examples=100,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,
@@ -584,8 +578,7 @@ class TestYAMLParsingConsistencyProperties:
                     ), f"Parse {i}, element {j}: nesting_level mismatch"
 
     @pytest.mark.asyncio
-    @settings(
-        max_examples=50,
+    @settings(max_examples=50,
         deadline=None,
         suppress_health_check=[
             HealthCheck.function_scoped_fixture,

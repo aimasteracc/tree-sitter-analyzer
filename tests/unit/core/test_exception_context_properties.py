@@ -78,8 +78,7 @@ class TestExceptionContextPreservationProperty:
         error_code=st.one_of(st.none(), safe_text),
         context=context_dict,
     )
-    @settings(
-        max_examples=100, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+    @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.too_slow]
     )
     def test_base_exception_preserves_context(
         self, message: str, error_code: str | None, context: dict[str, Any]

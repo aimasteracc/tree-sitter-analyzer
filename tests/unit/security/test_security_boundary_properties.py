@@ -701,8 +701,7 @@ class TestProjectBoundaryManagerInitializationProperties:
 
         assert "does not exist" in str(exc_info.value).lower()
 
-    @settings(
-        max_examples=50, suppress_health_check=COMMON_HEALTH_CHECKS, deadline=None
+    @settings(max_examples=50, suppress_health_check=COMMON_HEALTH_CHECKS, deadline=None
     )
     @given(name=safe_name)
     def test_property_4_file_as_root_raises_security_error(
