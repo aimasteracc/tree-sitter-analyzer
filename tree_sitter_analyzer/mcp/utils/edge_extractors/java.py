@@ -1,4 +1,4 @@
-"""Java edge extractor — architecture-only (extends/implements)."""
+"""Java edge extractor — extends/implements + Spring DI + Stream method refs."""
 
 from __future__ import annotations
 
@@ -22,6 +22,8 @@ _JAVA_LANG_CLASSES: frozenset[str] = frozenset(
         "Override", "Deprecated", "SuppressWarnings",
         "FunctionalInterface", "Annotation",
         "StringBuilder", "StringBuffer", "Math", "System", "Enum",
+        "List", "Map", "Set", "Collection", "ArrayList", "HashMap",
+        "HashSet", "LinkedList", "Optional", "Stream", "Collectors",
     }
 )
 
@@ -62,7 +64,16 @@ def _detect_java_root_packages(project_root: str) -> frozenset[str]:
 
 
 class JavaEdgeExtractor(EdgeExtractor):
-    """Java: only extends/implements edges. Import map used for package resolution."""
+    """Java: extends/implements + Spring DI + Stream method ref edges."""
+
+    _DI_FIELD_PATTERN = re.compile(
+        r"@(?:Autowired|Inject|Resource)(?:\([^)]*\))?\s+"
+        r"(?:private\s+|protected\s+|public\s+)?"
+        r"(\w+)(?:<[^>]+>)?\s+\w+\s*[;=]",
+        re.MULTILINE,
+    )
+
+    _METHOD_REF_PATTERN = re.compile(r"(\w+)::(\w+)")
 
     def extract(
         self,
@@ -80,19 +91,24 @@ class JavaEdgeExtractor(EdgeExtractor):
         ):
             import_map[m.group(2)] = m.group(1).rsplit(".", 1)[0]
 
-        # extends
-        for m in re.finditer(r"\bextends\s+(\w+)", source):
-            cls = m.group(1)
-            if len(cls) <= 2 and cls.isupper():
-                continue
+        def _is_third_party(cls: str) -> bool:
             if cls in _JAVA_LANG_CLASSES:
-                continue
+                return True
             if cls in import_map:
                 pkg = import_map[cls]
                 if root_packages and not any(
                     pkg.startswith(rp) for rp in root_packages
                 ):
-                    continue
+                    return True
+            return False
+
+        # extends
+        for m in re.finditer(r"\bextends\s+(\w+)", source):
+            cls = m.group(1)
+            if len(cls) <= 2 and cls.isupper():
+                continue
+            if _is_third_party(cls):
+                continue
             edges.append((src_name, cls))
 
         # implements
@@ -103,15 +119,27 @@ class JavaEdgeExtractor(EdgeExtractor):
                 cls = cls.strip()
                 if not cls or not re.match(r"^[A-Z]\w*$", cls):
                     continue
-                if cls in _JAVA_LANG_CLASSES:
+                if _is_third_party(cls):
                     continue
-                if cls in import_map:
-                    pkg = import_map[cls]
-                    if root_packages and not any(
-                        pkg.startswith(rp) for rp in root_packages
-                    ):
-                        continue
                 edges.append((src_name, cls))
+
+        # Spring DI field edges
+        for di_m in self._DI_FIELD_PATTERN.finditer(source):
+            field_type = di_m.group(1)
+            if not field_type[0].isupper():
+                continue
+            if _is_third_party(field_type):
+                continue
+            edges.append((src_name, field_type))
+
+        # Stream method reference edges (Type::method)
+        for ref_m in self._METHOD_REF_PATTERN.finditer(source):
+            ref_type = ref_m.group(1)
+            if not ref_type[0].isupper():
+                continue
+            if _is_third_party(ref_type):
+                continue
+            edges.append((src_name, ref_type))
 
         return edges
 

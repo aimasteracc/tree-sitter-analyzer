@@ -323,4 +323,103 @@ class TestDependencyGraphIntegration:
 
         assert score.cyclomatic_complexity >= 3
         assert score.avg_function_length > 0
+
+
+# ---------------------------------------------------------------------------
+# Modification suggestions
+# ---------------------------------------------------------------------------
+
+
+class TestModificationSuggestions:
+    """Test suggestion generation in HealthScorer."""
+
+    def test_large_file_suggestion(self, tmp_path: Path) -> None:
+        lines = [
+            "import java.util.*;",
+            "import java.io.*;",
+            "import java.net.*;",
+        ]
+        for _ in range(200):
+            lines.append("    if (x > 0) { doWork(); }")
+        lines.append("public class BigFile { }")
+        (tmp_path / "BigFile.java").write_text("\n".join(lines), encoding="utf-8")
+
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("BigFile.java")
+        assert any("Split" in s or "lines" in s for s in score.suggestions)
+
+    def test_high_complexity_suggestion(self, tmp_path: Path) -> None:
+        code = (
+            "public class Complex {\n"
+            "  void m() {\n"
+            + "".join(f"    if (x > {i}) {{ return; }}\n" for i in range(15))
+            + "  }\n"
+            "}\n"
+        )
+        (tmp_path / "Complex.java").write_text(code, encoding="utf-8")
+
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("Complex.java")
+        assert any("Cyclomatic" in s or "complexity" in s.lower() for s in score.suggestions)
+
+    def test_high_coupling_suggestion(self, tmp_path: Path) -> None:
+        imports = "\n".join(f"import pkg.mod{ i};" for i in range(8))
+        code = f"{imports}\npublic class Coupled {{ }}\n"
+        (tmp_path / "Coupled.java").write_text(code, encoding="utf-8")
+
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("Coupled.java")
+        assert any("import" in s.lower() or "dependenc" in s.lower() for s in score.suggestions)
+
+    def test_long_functions_suggestion(self, tmp_path: Path) -> None:
+        code = (
+            "public class LongFunc {\n"
+            "  void processData() {\n"
+            + "\n".join(f"    int x{i} = {i};" for i in range(50))
+            + "  }\n"
+            "}\n"
+        )
+        (tmp_path / "LongFunc.java").write_text(code, encoding="utf-8")
+
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("LongFunc.java")
+        assert any("function" in s.lower() or "Average" in s for s in score.suggestions)
+
+    def test_healthy_file_no_suggestions(self, tmp_path: Path) -> None:
+        code = (
+            "public class Clean {\n"
+            "  int getId() { return 1; }\n"
+            "}\n"
+        )
+        (tmp_path / "Clean.java").write_text(code, encoding="utf-8")
+
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("Clean.java")
+        assert score.grade in ("A", "B")
+        assert len(score.suggestions) == 0
+
+    def test_oserror_file_returns_empty_suggestions(self, tmp_path: Path) -> None:
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("nonexistent.java")
+        assert score.suggestions == ()
+        assert score.score == 0
+
+    def test_suggestions_in_tuple(self, tmp_path: Path) -> None:
+        code = (
+            "import a.b.C;\n"
+            "import d.e.F;\n"
+            "import g.h.I;\n"
+            "import j.k.L;\n"
+            "public class X {\n"
+            "  void m() {\n"
+            + "".join(f"    if (x > {i}) {{ y++; }}\n" for i in range(12))
+            + "  }\n"
+            "}\n"
+        )
+        (tmp_path / "X.java").write_text(code, encoding="utf-8")
+
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("X.java")
+        assert isinstance(score.suggestions, tuple)
+        assert len(score.suggestions) >= 1
         assert 0 <= score.score <= 100
