@@ -118,7 +118,7 @@ class TestSDKCaching:
 
     @pytest.mark.asyncio
     async def test_cache_hit_returns_same_result(self) -> None:
-        """Calling analyze_structure twice returns the same result from cache."""
+        """Calling analyze_structure twice returns the same core data from cache."""
         f = tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False, encoding="utf-8"
         )
@@ -128,7 +128,10 @@ class TestSDKCaching:
             analyzer = create_analyzer()
             result1 = await analyzer.analyze_structure(f.name)
             result2 = await analyzer.analyze_structure(f.name)
-            assert result1 == result2
+            # Core data should be identical (cache may add _from_cache flag)
+            assert result1.get("success") == result2.get("success")
+            assert result1.get("elements") == result2.get("elements")
+            assert result2.get("_from_cache") is True
         finally:
             Path(f.name).unlink(missing_ok=True)
 
@@ -240,5 +243,69 @@ class TestSDKExtendedTools:
                 "health_scores", file_paths=[f.name]
             )
             assert isinstance(result, dict)
+        finally:
+            Path(f.name).unlink(missing_ok=True)
+
+
+class TestIncrementalAnalysis:
+    """Test incremental_analyze that skips unchanged files."""
+
+    @pytest.mark.asyncio
+    async def test_incremental_returns_cache_hit_for_unchanged(self) -> None:
+        """Files analyzed twice should get cache_hit=True on second call."""
+        f = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        )
+        f.write(SAMPLE_PYTHON)
+        f.close()
+        try:
+            analyzer = create_analyzer()
+            first = await analyzer.incremental_analyze([f.name])
+            assert f.name in first
+            assert first[f.name].get("success") is True
+            assert first[f.name].get("cache_hit") is not True
+
+            second = await analyzer.incremental_analyze([f.name])
+            assert second[f.name].get("cache_hit") is True
+        finally:
+            Path(f.name).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_incremental_reanalyzes_changed_file(self) -> None:
+        """Modified files should be re-analyzed (no cache_hit)."""
+        f = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        )
+        f.write("class OldName:\n    pass\n")
+        f.close()
+        try:
+            analyzer = create_analyzer()
+            await analyzer.incremental_analyze([f.name])
+
+            Path(f.name).write_text("class NewName:\n    pass\n", encoding="utf-8")
+            result = await analyzer.incremental_analyze([f.name])
+            assert result[f.name].get("cache_hit") is not True
+        finally:
+            Path(f.name).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_incremental_empty_list(self) -> None:
+        analyzer = create_analyzer()
+        result = await analyzer.incremental_analyze([])
+        assert result == {}
+
+    @pytest.mark.asyncio
+    async def test_incremental_bypass_when_cache_disabled(self) -> None:
+        """With cache disabled, incremental_analyze falls back to batch."""
+        f = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        )
+        f.write(SAMPLE_PYTHON)
+        f.close()
+        try:
+            analyzer = CodeAnalyzer(cache_enabled=False)
+            result = await analyzer.incremental_analyze([f.name])
+            assert f.name in result
+            assert result[f.name].get("cache_hit") is not True
         finally:
             Path(f.name).unlink(missing_ok=True)

@@ -109,7 +109,7 @@ class CodeAnalyzer:
         if cache_key in self._cache:
             cached_hash, cached_result = self._cache[cache_key]
             if cached_hash == current_hash and current_hash:
-                return cached_result
+                return {**cached_result, "_from_cache": True}
 
         new_result: dict[str, Any] = await tool.execute(args)
         if file_path and current_hash:
@@ -276,6 +276,45 @@ class CodeAnalyzer:
                 results[fp] = {"success": False, "error": str(result)}
             else:
                 results[fp] = result
+        return results
+
+    async def incremental_analyze(
+        self,
+        file_paths: list[str],
+        *,
+        analysis_type: str = "structure",
+    ) -> dict[str, dict[str, Any]]:
+        """Analyze only files that have changed since last analysis.
+
+        Uses the file-hash cache to skip unchanged files. Cached results
+        include a ``"cache_hit": True`` field.
+
+        Args:
+            file_paths: List of file paths to analyze.
+            analysis_type: One of "structure", "scale", "outline".
+
+        Returns:
+            Dict mapping file_path -> analysis result (cached or fresh).
+        """
+        if not file_paths:
+            return {}
+
+        results: dict[str, dict[str, Any]] = {}
+        for fp in file_paths:
+            try:
+                if analysis_type == "scale":
+                    raw = await self.check_scale(fp)
+                elif analysis_type == "outline":
+                    raw = await self.get_outline(fp)
+                else:
+                    raw = await self.analyze_structure(fp)
+
+                if raw.pop("_from_cache", False):
+                    raw["cache_hit"] = True
+                results[fp] = raw
+            except Exception as exc:
+                results[fp] = {"success": False, "error": str(exc)}
+
         return results
 
 
