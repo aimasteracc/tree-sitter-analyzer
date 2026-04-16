@@ -8,6 +8,7 @@ by analyzing regex patterns for potentially dangerous constructs.
 
 import re
 import time
+from typing import Any
 
 from ..utils import log_debug, log_warning
 
@@ -196,7 +197,7 @@ class RegexSafetyChecker:
             log_warning(f"Performance check error: {e}")
             return f"Performance check failed: {str(e)}"
 
-    def analyze_complexity(self, pattern: str) -> dict:
+    def analyze_complexity(self, pattern: str) -> dict[str, Any]:
         """
         Analyze regex pattern complexity.
 
@@ -273,7 +274,7 @@ class RegexSafetyChecker:
 
     def create_safe_pattern(
         self, pattern: str, flags: int | None = None
-    ) -> re.Pattern | None:
+    ) -> re.Pattern[str] | None:
         """
         Create a safely compiled regex pattern.
 

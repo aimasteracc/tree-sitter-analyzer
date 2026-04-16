@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from tree_sitter_analyzer.models import (
     SQLElement,
@@ -29,7 +29,7 @@ class AdaptationRule(Protocol):
         """Description of what the rule does."""
         ...
 
-    def apply(self, element: SQLElement, context: dict) -> SQLElement | None:
+    def apply(self, element: SQLElement, context: dict[str, Any]) -> SQLElement | None:
         """
         Applies the rule to an element.
 
@@ -144,7 +144,7 @@ class FixFunctionNameKeywordsRule:
     def description(self) -> str:
         return "Recover correct function name when keyword is extracted"
 
-    def apply(self, element: SQLElement, context: dict) -> SQLElement | None:
+    def apply(self, element: SQLElement, context: dict[str, Any]) -> SQLElement | None:
         if not isinstance(element, SQLFunction):
             return element
 
@@ -200,7 +200,7 @@ class FixTriggerNameDescriptionRule:
     def description(self) -> str:
         return "Recover correct trigger name when 'description' is extracted"
 
-    def apply(self, element: SQLElement, context: dict) -> SQLElement | None:
+    def apply(self, element: SQLElement, context: dict[str, Any]) -> SQLElement | None:
         if not isinstance(element, SQLTrigger):
             return element
 
@@ -229,7 +229,7 @@ class RemovePhantomTriggersRule:
     def description(self) -> str:
         return "Remove phantom triggers with mismatched content"
 
-    def apply(self, element: SQLElement, context: dict) -> SQLElement | None:
+    def apply(self, element: SQLElement, context: dict[str, Any]) -> SQLElement | None:
         if isinstance(element, SQLTrigger):
             # Check if raw_text actually contains CREATE TRIGGER
             # Phantom triggers often appear in comments or unrelated code
@@ -257,7 +257,7 @@ class RemovePhantomFunctionsRule:
     def description(self) -> str:
         return "Remove phantom functions with mismatched content"
 
-    def apply(self, element: SQLElement, context: dict) -> SQLElement | None:
+    def apply(self, element: SQLElement, context: dict[str, Any]) -> SQLElement | None:
         if isinstance(element, SQLFunction):
             # Check if raw_text actually contains CREATE FUNCTION
             # Phantom functions often appear in comments or unrelated code
@@ -282,11 +282,11 @@ class RecoverViewsFromErrorsRule:
     def description(self) -> str:
         return "Recover views from ERROR nodes"
 
-    def apply(self, element: SQLElement, context: dict) -> SQLElement | None:
+    def apply(self, element: SQLElement, context: dict[str, Any]) -> SQLElement | None:
         # This rule doesn't modify existing elements, it generates new ones.
         return element
 
-    def generate_elements(self, context: dict) -> list[SQLElement]:
+    def generate_elements(self, context: dict[str, Any]) -> list[SQLElement]:
         source_code = context.get("source_code", "")
         new_elements: list[SQLElement] = []
 

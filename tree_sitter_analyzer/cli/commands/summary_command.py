@@ -108,7 +108,7 @@ class SummaryCommand(BaseCommand):
         else:
             self._output_text_format(summary_data, requested_types)
 
-    def _output_text_format(self, summary_data: dict, requested_types: list) -> None:
+    def _output_text_format(self, summary_data: dict[str, Any], requested_types: list[str]) -> None:
         """Output summary in human-readable text format."""
         output_data(f"File: {summary_data['file_path']}")
         output_data(f"Language: {summary_data['language']}")

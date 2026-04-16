@@ -30,7 +30,7 @@ class QueryCommand(BaseCommand):
 
     async def execute_query(
         self, language: str, query: str, query_name: str = "custom"
-    ) -> list[dict] | None:
+    ) -> list[dict[str, Any]] | None:
         """Execute a specific tree-sitter query using QueryService."""
         try:
             # Get filter expression if provided

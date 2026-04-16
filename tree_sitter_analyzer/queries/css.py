@@ -595,12 +595,12 @@ def get_query(name: str) -> str:
     )
 
 
-def get_all_queries() -> dict:
+def get_all_queries() -> dict[str, dict[str, str]]:
     """Get all available queries."""
     return ALL_QUERIES
 
 
-def list_queries() -> list:
+def list_queries() -> list[str]:
     """List all available query names."""
     return list(ALL_QUERIES.keys())
 

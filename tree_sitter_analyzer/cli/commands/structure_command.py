@@ -5,7 +5,7 @@ Structure Command
 Handles structure analysis functionality with appropriate Japanese output.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...constants import (
     ELEMENT_TYPE_CLASS,
@@ -57,7 +57,7 @@ class StructureCommand(BaseCommand):
         else:
             self._output_text_format(structure_dict)
 
-    def _convert_to_legacy_format(self, analysis_result: "AnalysisResult") -> dict:
+    def _convert_to_legacy_format(self, analysis_result: "AnalysisResult") -> dict[str, Any]:
         """Convert AnalysisResult to legacy structure format expected by tests."""
         import time
 
@@ -166,7 +166,7 @@ class StructureCommand(BaseCommand):
             },
         }
 
-    def _output_text_format(self, structure_dict: dict) -> None:
+    def _output_text_format(self, structure_dict: dict[str, Any]) -> None:
         """Output structure analysis in human-readable text format."""
         output_data(f"File: {structure_dict['file_path']}")
         output_data(f"Language: {structure_dict['language']}")

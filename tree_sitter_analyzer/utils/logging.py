@@ -146,7 +146,7 @@ def setup_logger(
     return logger
 
 
-class SafeStreamHandler(logging.StreamHandler):
+class SafeStreamHandler(logging.StreamHandler[Any]):
     """
     A StreamHandler that safely handles closed streams
     """

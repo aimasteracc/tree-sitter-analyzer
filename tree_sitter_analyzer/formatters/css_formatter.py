@@ -332,7 +332,7 @@ class CSSFormatter(BaseFormatter):
 
         return "\n".join(output)
 
-    def _calculate_complexity(self, rules: list, at_rules: list) -> str:
+    def _calculate_complexity(self, rules: list[Any], at_rules: list[Any]) -> str:
         """Calculate CSS complexity based on structure."""
         score: float = 0
         score += len(rules) * 1

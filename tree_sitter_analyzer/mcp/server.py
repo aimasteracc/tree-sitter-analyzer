@@ -911,7 +911,9 @@ Claude cannot do natively:
         server = self.create_server()
 
         # Initialize server options with required capabilities field
-        from mcp.server.models import ServerCapabilities  # type: ignore[attr-defined]
+        from mcp.server.models import (  # type: ignore[attr-defined]
+            ServerCapabilities,
+        )
         from mcp.types import (
             LoggingCapability,
             PromptsCapability,

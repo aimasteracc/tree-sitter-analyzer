@@ -104,19 +104,19 @@ class HtmlElementExtractor(ElementExtractor):
             ],
         }
 
-    def extract_functions(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_functions(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """HTML doesn't have functions, return empty list"""
         return []
 
-    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """HTML doesn't have classes in the traditional sense, return empty list"""
         return []
 
-    def extract_variables(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_variables(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """HTML doesn't have variables, return empty list"""
         return []
 
-    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """HTML doesn't have imports, return empty list"""
         return []
 

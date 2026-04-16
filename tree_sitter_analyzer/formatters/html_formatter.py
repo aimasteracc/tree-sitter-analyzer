@@ -274,7 +274,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return lines
 
-    def _format_other_elements(self, elements: list) -> list[str]:
+    def _format_other_elements(self, elements: list[Any]) -> list[str]:
         """Format other code elements"""
         lines = []
         lines.append("## Other Elements")
@@ -304,7 +304,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
         lines.append("")
         return lines
 
-    def _dict_to_markup_element(self, data: dict) -> Any:
+    def _dict_to_markup_element(self, data: dict[str, Any]) -> Any:
         """Convert dictionary to MarkupElement-like object"""
 
         # Create a mock MarkupElement-like object
@@ -322,7 +322,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return MockMarkupElement(data)
 
-    def _dict_to_style_element(self, data: dict) -> Any:
+    def _dict_to_style_element(self, data: dict[str, Any]) -> Any:
         """Convert dictionary to StyleElement-like object"""
 
         # Create a mock StyleElement-like object

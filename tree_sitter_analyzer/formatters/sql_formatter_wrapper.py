@@ -468,7 +468,7 @@ class SQLFormatterWrapper(BaseFormatter):
             # Default to full table format for other formats
             return self.format_table(analysis_result, "full")
 
-    def _extract_table_columns(self, raw_text: str, table_name: str) -> dict:
+    def _extract_table_columns(self, raw_text: str, table_name: str) -> dict[str, Any]:
         """Extract column information from CREATE TABLE statement"""
 
         # Enhanced column extraction for better accuracy
@@ -518,7 +518,7 @@ class SQLFormatterWrapper(BaseFormatter):
 
         return {"columns": columns, "constraints": constraints}
 
-    def _extract_view_info(self, raw_text: str, view_name: str) -> dict:
+    def _extract_view_info(self, raw_text: str, view_name: str) -> dict[str, Any]:
         """Extract view information from CREATE VIEW statement"""
         import re
 
@@ -536,7 +536,7 @@ class SQLFormatterWrapper(BaseFormatter):
 
         return {"source_tables": sorted(set(source_tables)), "columns": []}
 
-    def _extract_procedure_info(self, raw_text: str, proc_name: str) -> dict:
+    def _extract_procedure_info(self, raw_text: str, proc_name: str) -> dict[str, Any]:
         """Extract procedure information from CREATE PROCEDURE statement"""
         import re
 
@@ -580,7 +580,7 @@ class SQLFormatterWrapper(BaseFormatter):
 
         return {"parameters": parameters, "dependencies": dependencies}
 
-    def _extract_function_info(self, raw_text: str, func_name: str) -> dict:
+    def _extract_function_info(self, raw_text: str, func_name: str) -> dict[str, Any]:
         """Extract function information from CREATE FUNCTION statement"""
         import re
 
@@ -631,7 +631,7 @@ class SQLFormatterWrapper(BaseFormatter):
             "dependencies": sorted(set(dependencies)),
         }
 
-    def _extract_trigger_info(self, raw_text: str, trigger_name: str) -> dict:
+    def _extract_trigger_info(self, raw_text: str, trigger_name: str) -> dict[str, Any]:
         """Extract trigger information from CREATE TRIGGER statement"""
         import re
 
@@ -666,7 +666,7 @@ class SQLFormatterWrapper(BaseFormatter):
             "dependencies": dependencies,
         }
 
-    def _extract_index_info(self, raw_text: str, index_name: str) -> dict:
+    def _extract_index_info(self, raw_text: str, index_name: str) -> dict[str, Any]:
         """Extract index information from CREATE INDEX statement"""
         import re
 

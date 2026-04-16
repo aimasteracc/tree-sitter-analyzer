@@ -626,10 +626,10 @@ class MarkdownFormatter(BaseFormatter):
 
     def _calculate_document_complexity(
         self,
-        headers: list[dict],
-        links: list[dict],
-        code_blocks: list[dict],
-        tables: list[dict],
+        headers: list[dict[str, Any]],
+        links: list[dict[str, Any]],
+        code_blocks: list[dict[str, Any]],
+        tables: list[dict[str, Any]],
     ) -> str:
         """Calculate document complexity based on structure and content"""
         score = 0

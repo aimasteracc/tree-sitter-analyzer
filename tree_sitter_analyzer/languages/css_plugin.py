@@ -79,19 +79,19 @@ class CssElementExtractor(ElementExtractor):
             "other": [],
         }
 
-    def extract_functions(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_functions(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """CSS doesn't have functions in the traditional sense, return empty list"""
         return []
 
-    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_classes(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """CSS doesn't have classes in the traditional sense, return empty list"""
         return []
 
-    def extract_variables(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_variables(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """CSS doesn't have variables (except custom properties), return empty list"""
         return []
 
-    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_imports(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """CSS doesn't have imports in the traditional sense, return empty list"""
         return []
 

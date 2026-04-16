@@ -6,6 +6,7 @@ Optimized with enhanced caching and lazy loading for better performance.
 
 import importlib
 import threading
+from typing import Any
 
 from .utils import log_error
 
@@ -50,11 +51,11 @@ class QueryLoader:
     }
 
     def __init__(self) -> None:
-        self._loaded_queries: dict[str, dict] = {}
+        self._loaded_queries: dict[str, dict[str, Any]] = {}
         self._query_modules: dict[str, object] = {}
         self._failed_languages: set[str] = set()  # 読み込み失敗した言語をキャッシュ
 
-    def load_language_queries(self, language: str) -> dict:
+    def load_language_queries(self, language: str) -> dict[str, Any]:
         """Load queries for a specific language with optimized caching."""
         # Handle None or empty language - return empty dict without warning
         if not language or language == "None" or language.strip() == "":

@@ -4,6 +4,12 @@ StreamableHTTP transport for the MCP server.
 Provides HTTP/SSE-based access to all MCP tools using the StreamableHTTP
 protocol from the MCP SDK (v1.17.0+). Enables multi-client access, browser
 integration, and SDK embedding into existing Python web applications.
+
+Features:
+- Per-client rate limiting (token bucket)
+- SSE heartbeat keepalive for long-lived connections
+- Connection tracking with disconnect detection
+- Concurrent connection limiting
 """
 
 from __future__ import annotations
@@ -11,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import time
+import uuid
 from collections import defaultdict
 from typing import Any
 
@@ -28,6 +35,7 @@ logger = setup_logger(__name__)
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8080
 DEFAULT_RATE_LIMIT = 100  # requests per minute per client
+DEFAULT_MAX_CONNECTIONS = 50  # max concurrent connections
 RATE_LIMIT_WINDOW = 60  # seconds
 
 
@@ -49,7 +57,6 @@ class RateLimiter:
         timestamps = self._clients[client_id]
         cutoff = now - self._window
 
-        # Evict old entries
         while timestamps and timestamps[0] < cutoff:
             timestamps.pop(0)
 
@@ -68,12 +75,52 @@ class RateLimiter:
             del self._clients[k]
 
 
-class HeartbeatMiddleware:
-    """ASGI middleware that injects SSE heartbeat comments for long-lived connections."""
+class ConnectionTracker:
+    """Track active connections with disconnect detection."""
 
-    def __init__(self, app: Any, interval: float = 30.0) -> None:
+    def __init__(self, max_connections: int = DEFAULT_MAX_CONNECTIONS) -> None:
+        self._max = max_connections
+        self._active: dict[str, float] = {}
+
+    def acquire(self, conn_id: str | None = None) -> str:
+        """Register a new connection. Returns connection ID.
+
+        Raises ConnectionError if at max capacity.
+        """
+        if len(self._active) >= self._max:
+            raise ConnectionError(
+                f"Max concurrent connections reached ({self._max})"
+            )
+        cid = conn_id or str(uuid.uuid4())
+        self._active[cid] = time.monotonic()
+        return cid
+
+    def release(self, conn_id: str) -> None:
+        """Release a connection."""
+        self._active.pop(conn_id, None)
+
+    @property
+    def active_count(self) -> int:
+        """Number of currently active connections."""
+        return len(self._active)
+
+    def is_at_capacity(self) -> bool:
+        """Check if at max connection capacity."""
+        return len(self._active) >= self._max
+
+
+class HeartbeatMiddleware:
+    """ASGI middleware that injects SSE heartbeat comments and detects disconnects."""
+
+    def __init__(
+        self,
+        app: Any,
+        interval: float = 30.0,
+        tracker: ConnectionTracker | None = None,
+    ) -> None:
         self.app = app
         self._interval = interval
+        self._tracker = tracker
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope["type"] != "http":
@@ -85,7 +132,6 @@ class HeartbeatMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # For GET requests (SSE streams), inject heartbeat pings
         method = scope.get("method", "")
         if method == "GET":
             await self._handle_sse_with_heartbeat(scope, receive, send)
@@ -95,11 +141,27 @@ class HeartbeatMiddleware:
     async def _handle_sse_with_heartbeat(
         self, scope: dict[str, Any], receive: Any, send: Any
     ) -> None:
-        """Wrap SSE connection with periodic heartbeat comments."""
+        """Wrap SSE connection with heartbeat and disconnect detection."""
         done = False
+        conn_id = ""
+
+        if self._tracker:
+            try:
+                conn_id = self._tracker.acquire()
+            except ConnectionError:
+                await send({
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [[b"content-type", b"application/json"]],
+                })
+                await send({
+                    "type": "http.response.body",
+                    "body": b'{"error": "Max connections reached"}',
+                })
+                return
 
         async def heartbeat_sender() -> None:
-            """Send SSE heartbeat comments periodically."""
+            """Send SSE heartbeat comments and detect disconnects."""
             while not done:
                 await asyncio.sleep(self._interval)
                 if not done:
@@ -109,7 +171,7 @@ class HeartbeatMiddleware:
                             "body": b": heartbeat\n\n",
                             "more_body": True,
                         })
-                    except Exception:
+                    except (ConnectionError, OSError):
                         break
 
         async def wrapped_send(message: dict[str, Any]) -> None:
@@ -120,14 +182,29 @@ class HeartbeatMiddleware:
             ):
                 done = True
 
+        async def disconnect_watcher() -> None:
+            """Watch for client disconnect via receive."""
+            nonlocal done
+            while not done:
+                message = await receive()
+                if message.get("type") == "http.disconnect":
+                    done = True
+                    break
+
         heartbeat_task = asyncio.create_task(heartbeat_sender())
+        disconnect_task = asyncio.create_task(disconnect_watcher())
         try:
             await self.app(scope, receive, wrapped_send)
         finally:
             done = True
             heartbeat_task.cancel()
+            disconnect_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await heartbeat_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await disconnect_task
+            if self._tracker and conn_id:
+                self._tracker.release(conn_id)
 
 
 async def rate_limit_middleware(request: Request, call_next: Any) -> Response:
@@ -145,12 +222,25 @@ async def rate_limit_middleware(request: Request, call_next: Any) -> Response:
     return response
 
 
+async def connection_limit_middleware(request: Request, call_next: Any) -> Response:
+    """Starlette middleware for connection limiting."""
+    tracker: ConnectionTracker = request.app.state.connection_tracker
+    if tracker.is_at_capacity():
+        return JSONResponse(
+            {"error": "Max concurrent connections reached"},
+            status_code=503,
+        )
+    response: Response = await call_next(request)
+    return response
+
+
 def create_streamable_http_app(
     mcp_server_instance: TreeSitterAnalyzerMCPServer,
     *,
     stateless: bool = False,
     rate_limit: int = DEFAULT_RATE_LIMIT,
     heartbeat_interval: float = 30.0,
+    max_connections: int = DEFAULT_MAX_CONNECTIONS,
 ) -> Starlette:
     """Create a Starlette ASGI app serving the MCP server via StreamableHTTP.
 
@@ -159,6 +249,7 @@ def create_streamable_http_app(
         stateless: If True, run without session tracking.
         rate_limit: Max requests per minute per client (0 to disable).
         heartbeat_interval: Seconds between SSE heartbeat pings (0 to disable).
+        max_connections: Max concurrent SSE connections (0 for unlimited).
 
     Returns:
         Starlette application with MCP StreamableHTTP routes.
@@ -212,8 +303,8 @@ def create_streamable_http_app(
     )
 
     app.state.rate_limiter = RateLimiter(max_requests=rate_limit)
+    app.state.connection_tracker = ConnectionTracker(max_connections=max_connections)
 
-    # Heartbeat middleware is applied via ASGI wrapping when heartbeat_interval > 0
     return app
 
 
@@ -225,6 +316,7 @@ async def run_streamable_http(
     stateless: bool = False,
     rate_limit: int = DEFAULT_RATE_LIMIT,
     heartbeat_interval: float = 30.0,
+    max_connections: int = DEFAULT_MAX_CONNECTIONS,
 ) -> None:
     """Run the MCP server with StreamableHTTP transport.
 
@@ -235,6 +327,7 @@ async def run_streamable_http(
         stateless: If True, run without session tracking.
         rate_limit: Max requests per minute per client (0 to disable).
         heartbeat_interval: Seconds between SSE heartbeat pings (0 to disable).
+        max_connections: Max concurrent SSE connections (0 for unlimited).
     """
     import uvicorn
 
@@ -243,6 +336,7 @@ async def run_streamable_http(
         stateless=stateless,
         rate_limit=rate_limit,
         heartbeat_interval=heartbeat_interval,
+        max_connections=max_connections,
     )
 
     logger.info(f"Starting StreamableHTTP MCP server on {host}:{port}")

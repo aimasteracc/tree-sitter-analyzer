@@ -184,7 +184,7 @@ class ProfileCache:
     """Thread-safe cache for behavior profiles."""
 
     def __init__(self, maxsize: int = 10, ttl: int = 3600):
-        self._cache: TTLCache = TTLCache(maxsize=maxsize, ttl=ttl)
+        self._cache: TTLCache[str, BehaviorProfile] = TTLCache(maxsize=maxsize, ttl=ttl)
         self._lock = threading.RLock()
         self._hits = 0
         self._misses = 0
@@ -193,7 +193,7 @@ class ProfileCache:
         with self._lock:
             if key in self._cache:
                 self._hits += 1
-                return self._cache[key]  # type: ignore[no-any-return]
+                return self._cache[key]
             self._misses += 1
             return None
 

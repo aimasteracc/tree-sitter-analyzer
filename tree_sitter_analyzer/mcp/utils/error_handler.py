@@ -154,7 +154,7 @@ class ErrorHandler:
         self.error_counts: dict[str, int] = {}
         self.error_history: list[dict[str, Any]] = []
         self.max_history_size = 1000
-        self.recovery_strategies: dict[type[Exception], Callable] = {}
+        self.recovery_strategies: dict[type[Exception], Callable[..., dict[str, Any]]] = {}
 
         # Register default recovery strategies
         self._register_default_strategies()

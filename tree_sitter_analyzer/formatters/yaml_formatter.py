@@ -421,7 +421,7 @@ class YAMLFormatter(BaseFormatter):
         return "\n".join(output)
 
     def _calculate_complexity(
-        self, mappings: list[dict], sequences: list[dict], max_nesting: int
+        self, mappings: list[dict[str, Any]], sequences: list[dict[str, Any]], max_nesting: int
     ) -> str:
         """Calculate document complexity based on structure."""
         score = 0
