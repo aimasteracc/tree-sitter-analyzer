@@ -16,6 +16,7 @@ from ..models import AnalysisResult
 from .engine_manager import EngineManager
 from .performance import PerformanceContext, PerformanceMonitor
 from .request import AnalysisRequest
+from .timeout import AnalysisTimeoutError, TimeoutGuard
 
 # Explicit re-export so `from .analysis_engine import AnalysisRequest` passes
 # mypy --strict (attr-defined check).
@@ -169,7 +170,20 @@ class UnifiedAnalysisEngine:
             raise UnsupportedLanguageError(f"Plugin not found for language: {language}")
 
         with self._performance_monitor.measure_operation(f"analyze_{language}"):
-            result = await plugin.analyze_file(request.file_path, request)
+            try:
+                result = await TimeoutGuard(
+                    f"analyze_{language}", timeout=request.timeout_seconds
+                ).wrap_coroutine(plugin.analyze_file(request.file_path, request))
+            except AnalysisTimeoutError:
+                log_error(
+                    f"Analysis timed out for {request.file_path} "
+                    f"after {request.timeout_seconds:.1f}s"
+                )
+                return self._create_empty_result(
+                    request.file_path,
+                    language,
+                    f"Analysis timed out after {request.timeout_seconds:.1f}s",
+                )
 
         if not result.language:
             result.language = language

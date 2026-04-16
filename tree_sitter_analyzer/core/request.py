@@ -31,6 +31,7 @@ class AnalysisRequest:
     include_complexity: bool = True
     include_details: bool = False
     format_type: str = "json"
+    timeout_seconds: float = 30.0
 
     @classmethod
     def from_mcp_arguments(cls, arguments: dict[str, Any]) -> "AnalysisRequest":
