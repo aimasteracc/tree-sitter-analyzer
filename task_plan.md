@@ -22,9 +22,9 @@
   - [x] 4.2 C# 新语言支持（csharp_plugin.py 已存在）
   - [ ] 4.3 多语言 AST 分块优化
 - [ ] Phase 5: 性能与可靠性
-  - [ ] 5.1 TOON 压缩率优化
-  - [ ] 5.2 错误恢复机制
-  - [ ] 5.3 语言插件懒加载
+  - [ ] 5.1 TOON 压缩率优化（TOON 已成熟，优化 deferred）
+  - [x] 5.2 错误恢复机制（error_recovery.py — regex fallback + binary detection）
+  - [x] 5.3 语言插件懒加载（已实现：PluginManager + LanguageLoader 均为按需加载）
 
 ## Decisions Made
 | 决策 | 理由 | 日期 |
