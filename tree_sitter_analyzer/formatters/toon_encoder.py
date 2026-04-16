@@ -111,12 +111,40 @@ class ToonEncoder:
         "line_start",  # 3/10 - 位置信息（用于跳转）
     ]
 
+    # Key aliases for token-efficient TOON output.
+    # Long keys are replaced with abbreviations before encoding.
+    KEY_ALIASES: dict[str, str] = {
+        "visibility": "vis",
+        "line_range": "lines",
+        "return_type": "ret",
+        "parameters": "params",
+        "is_static": "static",
+        "is_constructor": "ctor",
+        "is_abstract": "abstract",
+        "is_private": "priv",
+        "is_public": "pub",
+        "modifiers": "mods",
+        "annotation": "ann",
+        "annotations": "anns",
+        "superclass": "super",
+        "interfaces": "ifaces",
+        "type_parameters": "tparams",
+        "default_value": "default",
+        "file_path": "path",
+        "line_start": "start",
+        "line_end": "end",
+        "column_start": "col_s",
+        "column_end": "col_e",
+        "docstring": "doc",
+    }
+
     def __init__(
         self,
         use_tabs: bool = False,
         fallback_to_json: bool = True,
         max_depth: int = 100,
         normalize_paths: bool = True,
+        key_aliases: dict[str, str] | None = None,
     ):
         """
         Initialize TOON encoder.
@@ -127,14 +155,25 @@ class ToonEncoder:
             max_depth: Maximum nesting depth (default: 100)
             normalize_paths: If True, convert Windows backslashes to forward slashes
                            in file paths to reduce token consumption (~10% savings)
+            key_aliases: Optional custom key aliases (merged with defaults).
+                        Set to empty dict to disable aliasing.
         """
         self.use_tabs = use_tabs
         self.delimiter = "\t" if use_tabs else ","
         self.fallback_to_json = fallback_to_json
         self.max_depth = max_depth
         self.normalize_paths = normalize_paths
+        self._aliases = self.KEY_ALIASES if key_aliases is None else {**self.KEY_ALIASES, **key_aliases}
         # 性能优化：缓存同构数组检测结果 (Performance: cache homogeneity checks)
         self._homogeneity_cache: dict[int, bool] = {}
+
+    def _alias_keys(self, data: Any) -> Any:
+        """Recursively replace dict keys with shorter aliases."""
+        if isinstance(data, dict):
+            return {self._aliases.get(k, k): self._alias_keys(v) for k, v in data.items()}
+        if isinstance(data, list):
+            return [self._alias_keys(item) for item in data]
+        return data
 
     def encode(self, data: Any, indent: int = 0) -> str:
         """
@@ -153,6 +192,7 @@ class ToonEncoder:
         Raises:
             ToonEncodeError: If encoding fails and fallback_to_json is False
         """
+        data = self._alias_keys(data)
         try:
             return self._encode_iterative(data, indent)
         except ToonEncodeError:
