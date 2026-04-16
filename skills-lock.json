@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "skills": {
+    "pi-planning-with-files": {
+      "source": "aimasteracc/planning-with-files",
+      "sourceType": "github",
+      "computedHash": "4699b40495d112056a36bba32bf981dcab684c43d4b950458849521b0ddccbcb"
+    },
+    "planning-with-files": {
+      "source": "aimasteracc/planning-with-files",
+      "sourceType": "github",
+      "computedHash": "9bc8a36c34fc470e27e19f6a509c3757ab8e4e58cbf77c9bc90b9948fcd35bf8"
+    },
+    "planning-with-files-ar": {
+      "source": "aimasteracc/planning-with-files",
+      "sourceType": "github",
+      "computedHash": "ddb0e79ca5bad24635966732dcea7d7d9b3383924667dfbc3102a7cc18cf777f"
+    },
+    "planning-with-files-de": {
+      "source": "aimasteracc/planning-with-files",
+      "sourceType": "github",
+      "computedHash": "c190df94f29dceb99c7beb43eb639fd1fdd05d22006e7d8aa7ed4c9918e06429"
+    },
+    "planning-with-files-es": {
+      "source": "aimasteracc/planning-with-files",
+      "sourceType": "github",
+      "computedHash": "c9956395f309b5180019fe90aec44cbad99eb82d24f67dcd6c6f1d61007612c0"
+    },
+    "planning-with-files-zh": {
+      "source": "aimasteracc/planning-with-files",
+      "sourceType": "github",
+      "computedHash": "2d7ab0585b71108f7d5d85c2ec73dda48cfc79cbca094dd5d2d9885fd2021d43"
+    },
+    "planning-with-files-zht": {
+      "source": "aimasteracc/planning-with-files",
+      "sourceType": "github",
+      "computedHash": "3c73c3a50925d61d21a8803f789b70d393ac360a3a37f7f2d75f850090e5750c"
+    }
+  }
+}
