@@ -75,6 +75,22 @@ class ProjectGraph:
             all_nodes.add(dst)
         return all_nodes
 
+    def edge_weights(self) -> dict[tuple[str, str], int]:
+        """Compute edge weights based on occurrence frequency."""
+        weights: dict[tuple[str, str], int] = {}
+        for src, dst in self.edges:
+            key = (src, dst)
+            weights[key] = weights.get(key, 0) + 1
+        return weights
+
+    def hub_score(self) -> dict[str, int]:
+        """Rank nodes by (in-degree + out-degree) as a hub centrality measure."""
+        scores: dict[str, int] = {}
+        for src, dst in self.edges:
+            scores[src] = scores.get(src, 0) + 1
+            scores[dst] = scores.get(dst, 0) + 1
+        return dict(sorted(scores.items(), key=lambda x: x[1], reverse=True))
+
 
 def build_graph_from_files(
     files: list[str],

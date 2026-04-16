@@ -29,6 +29,8 @@ class FileHealthScore:
     lines: int
     methods: int
     imports: int
+    cyclomatic_complexity: int
+    avg_function_length: float
     breakdown: dict[str, int]
 
 
@@ -50,6 +52,19 @@ class HealthScorer:
         r"\s+\w+\s*\("
     )
     ANNOTATION_PATTERN = re.compile(r"@\w+")
+    BRANCH_PATTERN = re.compile(
+        r"\b(?:if|elif|else\s+if|else|for|while|catch|except|case|&&|\|\||\?\s)"
+        r"|&&|\|\|"
+    )
+    FUNCTION_START_PATTERN = re.compile(
+        r"^\s*(?:public|private|protected|static|synchronized|async|\s)*"
+        r"(?:void|int|long|double|float|boolean|String|char|byte|short|var|auto|def|fn|func)\s+\w+\s*\("
+        r"|^\s*def\s+\w+"
+        r"|^\s*func\s+\w+"
+        r"|^\s*fn\s+\w+"
+        r"|^\s*(?:pub\s+)?fn\s+\w+",
+        re.MULTILINE,
+    )
 
     def __init__(self, project_root: str) -> None:
         self.project_root = Path(project_root)
@@ -76,6 +91,8 @@ class HealthScorer:
                 lines=0,
                 methods=0,
                 imports=0,
+                cyclomatic_complexity=0,
+                avg_function_length=0.0,
                 breakdown={},
             )
 
@@ -83,12 +100,32 @@ class HealthScorer:
         imports = len(self.IMPORT_PATTERN.findall(text))
         methods = len(self.METHOD_PATTERN.findall(text))
         annotations = len(self.ANNOTATION_PATTERN.findall(text))
+        branches = len(self.BRANCH_PATTERN.findall(text))
+        cyclomatic = branches + 1
+
+        func_starts = [m.start() for m in self.FUNCTION_START_PATTERN.finditer(text)]
+        file_lines = text.split("\n")
+        total_lines = len(file_lines)
+        if func_starts and methods > 0:
+            func_lengths: list[int] = []
+            for i, start_pos in enumerate(func_starts):
+                start_line = text[:start_pos].count("\n")
+                if i + 1 < len(func_starts):
+                    end_line = text[:func_starts[i + 1]].count("\n")
+                else:
+                    end_line = total_lines
+                func_lengths.append(end_line - start_line)
+            avg_func_len = sum(func_lengths) / len(func_lengths) if func_lengths else 0.0
+        else:
+            avg_func_len = float(lines) / max(methods, 1)
 
         breakdown = {
             "size_penalty": min(lines // 10, 30),
             "complexity_penalty": min(methods * 2, 20),
             "coupling_penalty": min(imports * 3, 20),
             "annotation_penalty": min(annotations, 15),
+            "branch_penalty": min(cyclomatic, 15),
+            "function_length_penalty": min(int(avg_func_len) // 5, 10),
         }
 
         score = 100 - sum(breakdown.values())
@@ -101,6 +138,8 @@ class HealthScorer:
             lines=lines,
             methods=methods,
             imports=imports,
+            cyclomatic_complexity=cyclomatic,
+            avg_function_length=round(avg_func_len, 1),
             breakdown=breakdown,
         )
 

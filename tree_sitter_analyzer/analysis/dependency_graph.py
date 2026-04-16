@@ -58,6 +58,107 @@ class DependencyGraph:
         lines.append("}")
         return "\n".join(lines)
 
+    def has_cycle(self) -> bool:
+        """Check if the graph contains any cycle."""
+        adjacency: dict[str, list[str]] = {}
+        for src, dst in self.edges:
+            adjacency.setdefault(src, []).append(dst)
+        visited: set[str] = set()
+        in_stack: set[str] = set()
+
+        def _dfs(node: str) -> bool:
+            visited.add(node)
+            in_stack.add(node)
+            for neighbor in adjacency.get(node, []):
+                if neighbor not in visited:
+                    if _dfs(neighbor):
+                        return True
+                elif neighbor in in_stack:
+                    return True
+            in_stack.discard(node)
+            return False
+
+        for node in self.nodes:
+            if node not in visited:
+                if _dfs(node):
+                    return True
+        return False
+
+    def find_cycles(self) -> list[list[str]]:
+        """Find all strongly connected components with size >= 2 using Tarjan's algorithm."""
+        adjacency: dict[str, list[str]] = {}
+        for src, dst in self.edges:
+            adjacency.setdefault(src, []).append(dst)
+
+        index_counter = [0]
+        stack: list[str] = []
+        on_stack: set[str] = set()
+        indices: dict[str, int] = {}
+        lowlinks: dict[str, int] = {}
+        sccs: list[list[str]] = []
+
+        def _strongconnect(node: str) -> None:
+            indices[node] = index_counter[0]
+            lowlinks[node] = index_counter[0]
+            index_counter[0] += 1
+            stack.append(node)
+            on_stack.add(node)
+
+            for neighbor in adjacency.get(node, []):
+                if neighbor not in indices:
+                    _strongconnect(neighbor)
+                    lowlinks[node] = min(lowlinks[node], lowlinks[neighbor])
+                elif neighbor in on_stack:
+                    lowlinks[node] = min(lowlinks[node], indices[neighbor])
+
+            if lowlinks[node] == indices[node]:
+                scc: list[str] = []
+                while True:
+                    w = stack.pop()
+                    on_stack.discard(w)
+                    scc.append(w)
+                    if w == node:
+                        break
+                if len(scc) >= 2:
+                    sccs.append(sorted(scc))
+
+        # Detect self-loops as single-node cycles
+        for src, dst in self.edges:
+            if src == dst and src in self.nodes:
+                if not any(src in scc for scc in sccs):
+                    sccs.append([src])
+
+        for node in sorted(self.nodes):
+            if node not in indices:
+                _strongconnect(node)
+
+        return sccs
+
+    def topological_sort(self) -> list[str] | None:
+        """Return topological ordering, or None if graph has cycles."""
+        if self.has_cycle():
+            return None
+
+        adjacency: dict[str, list[str]] = {}
+        in_degree: dict[str, int] = dict.fromkeys(self.nodes, 0)
+        for src, dst in self.edges:
+            adjacency.setdefault(src, []).append(dst)
+            in_degree[dst] = in_degree.get(dst, 0) + 1
+
+        queue: list[str] = sorted(n for n in self.nodes if in_degree.get(n, 0) == 0)
+        result: list[str] = []
+
+        while queue:
+            node = queue.pop(0)
+            result.append(node)
+            for neighbor in adjacency.get(node, []):
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+            queue.sort()
+
+        return result if len(result) == len(self.nodes) else None
+
     def compute_pagerank(self, *, damping: float = 0.85, iterations: int = 20) -> dict[str, float]:
         """Compute PageRank scores for all nodes."""
         if not self.nodes:
