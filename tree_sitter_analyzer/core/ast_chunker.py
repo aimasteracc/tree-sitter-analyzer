@@ -263,7 +263,41 @@ def _chunk_function_lang(
     total_lines: int,
     language: str,
 ) -> list[AstChunk]:
-    return _chunk_script(elements, total_lines, language)
+    """Chunk Go/Rust/C files grouping structs with their receiver methods.
+
+    In Go/Rust, methods are declared at the top level with a receiver/type
+    parameter. This chunker groups methods by their associated type.
+    """
+    classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
+    methods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
+    imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
+
+    import_chunk = _build_import_chunk(imports, total_lines)
+
+    # Group top-level functions and class-type definitions
+    class_ranges = [(c.start_line, c.end_line) for c in classes]
+    class_chunks = _build_class_chunks(classes, methods, [], language)
+    function_chunks = _build_function_chunks(methods, class_ranges, language)
+
+    all_body = class_chunks + function_chunks
+    first_element_line = total_lines
+    if all_body:
+        first_element_line = min(c.start_line for c in all_body)
+    elif import_chunk:
+        first_element_line = import_chunk.end_line + 1
+
+    header = _build_header_chunk(import_chunk, first_element_line, total_lines, language)
+    tail = _build_tail_chunk(all_body, total_lines, language)
+
+    result: list[AstChunk] = []
+    if header:
+        result.append(header)
+    if import_chunk:
+        result.append(import_chunk)
+    result.extend(all_body)
+    if tail:
+        result.append(tail)
+    return result
 
 
 def _chunk_default(
