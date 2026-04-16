@@ -31,6 +31,47 @@ ENUM_PATTERN = re.compile(
     r"\b(?:public|private|protected)\s+enum\s+(\w+)"
 )
 
+# Language-specific patterns for regex fallback
+_LANG_PATTERNS: dict[str, dict[str, re.Pattern[str]]] = {
+    "python": {
+        "class": re.compile(r"^class\s+(\w+)", re.MULTILINE),
+        "function": re.compile(r"^def\s+(\w+)", re.MULTILINE),
+        "async_function": re.compile(r"^async\s+def\s+(\w+)", re.MULTILINE),
+    },
+    "go": {
+        "function": re.compile(r"^func\s+(?:\([^)]*\)\s+)?(\w+)", re.MULTILINE),
+        "type": re.compile(r"^type\s+(\w+)\s+struct", re.MULTILINE),
+        "interface": re.compile(r"^type\s+(\w+)\s+interface", re.MULTILINE),
+    },
+    "csharp": {
+        "class": re.compile(r"(?:public|internal|private|protected)?\s*class\s+(\w+)", re.MULTILINE),
+        "interface": re.compile(r"(?:public|internal|private)?\s*interface\s+(\w+)", re.MULTILINE),
+        "struct": re.compile(r"(?:public|internal|private)?\s*struct\s+(\w+)", re.MULTILINE),
+        "record": re.compile(r"(?:public|internal|private)?\s*record\s+(\w+)", re.MULTILINE),
+        "method": re.compile(r"(?:public|private|protected|internal)\s+(?:static\s+|async\s+)?(?:[\w<>\[\]?]+)\s+(\w+)\s*\(", re.MULTILINE),
+    },
+    "kotlin": {
+        "class": re.compile(r"(?:data\s+|sealed\s+|open\s+|abstract\s+)*class\s+(\w+)", re.MULTILINE),
+        "function": re.compile(r"fun\s+(?:<[^>]*>\s+)?(\w+)", re.MULTILINE),
+        "object": re.compile(r"^object\s+(\w+)", re.MULTILINE),
+        "interface": re.compile(r"interface\s+(\w+)", re.MULTILINE),
+    },
+    "rust": {
+        "function": re.compile(r"(?:pub\s+)?fn\s+(\w+)", re.MULTILINE),
+        "struct": re.compile(r"(?:pub\s+)?struct\s+(\w+)", re.MULTILINE),
+        "trait": re.compile(r"(?:pub\s+)?trait\s+(\w+)", re.MULTILINE),
+        "enum": re.compile(r"(?:pub\s+)?enum\s+(\w+)", re.MULTILINE),
+    },
+}
+
+_EXT_TO_LANG: dict[str, str] = {
+    ".py": "python",
+    ".go": "go",
+    ".cs": "csharp",
+    ".kt": "kotlin",
+    ".rs": "rust",
+}
+
 
 def _is_binary(content: bytes) -> bool:
     """Detect if content appears to be binary."""
@@ -114,6 +155,45 @@ class ErrorRecovery:
         self, file_path: str, text: str, lines: int
     ) -> dict[str, Any]:
         """Regex-based extraction when tree-sitter fails."""
+        lang = _EXT_TO_LANG.get(Path(file_path).suffix)
+
+        if lang and lang in _LANG_PATTERNS:
+            return self._lang_specific_fallback(file_path, text, lines, lang)
+
+        return self._java_style_fallback(file_path, text, lines)
+
+    def _lang_specific_fallback(
+        self, file_path: str, text: str, lines: int, lang: str
+    ) -> dict[str, Any]:
+        """Language-aware regex extraction."""
+        patterns = _LANG_PATTERNS[lang]
+        classes: list[dict[str, Any]] = []
+        methods: list[dict[str, Any]] = []
+
+        for ptype, pattern in patterns.items():
+            for match in pattern.finditer(text):
+                line_num = text[:match.start()].count("\n") + 1
+                entry = {"name": match.group(1), "line": line_num}
+                if ptype in ("class", "interface", "struct", "record", "type", "object", "trait", "enum"):
+                    classes.append(entry)
+                else:
+                    methods.append(entry)
+
+        return {
+            "success": True,
+            "recovery_mode": True,
+            "file_path": file_path,
+            "language": lang,
+            "lines": lines,
+            "classes": classes,
+            "methods": methods,
+            "message": f"Analysis performed via {lang} regex fallback (tree-sitter parse error).",
+        }
+
+    def _java_style_fallback(
+        self, file_path: str, text: str, lines: int
+    ) -> dict[str, Any]:
+        """Default Java/C++ style regex extraction."""
         classes: list[dict[str, Any]] = []
         for match in CLASS_PATTERN.finditer(text):
             classes.append({"name": match.group(1), "line": text[:match.start()].count("\n") + 1})
