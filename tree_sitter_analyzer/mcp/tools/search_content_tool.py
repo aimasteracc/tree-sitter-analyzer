@@ -224,6 +224,11 @@ class SearchContentTool(BaseMCPTool):
                     },
                 },
                 "required": ["query"],
+                "examples": [
+                    {"roots": ["/project/src"], "query": "TODO"},
+                    {"roots": ["/project"], "query": "class MyService", "include_globs": ["*.java"]},
+                    {"roots": ["/project/tests"], "query": "assert", "case": "sensitive", "summary_only": True},
+                ],
                 "additionalProperties": False,
             },
         }

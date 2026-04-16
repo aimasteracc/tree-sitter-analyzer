@@ -62,6 +62,10 @@ class BuildProjectIndexTool(BaseMCPTool):
                         "default": "",
                     },
                 },
+                "examples": [
+                    {"project_path": "/project"},
+                    {"roots": ["src", "tests"], "add_notes": "Monorepo with 3 services"},
+                ],
                 "additionalProperties": False,
             },
         }

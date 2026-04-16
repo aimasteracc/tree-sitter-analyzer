@@ -178,6 +178,11 @@ class ListFilesTool(BaseMCPTool):
                     },
                 },
                 "required": ["roots"],
+                "examples": [
+                    {"roots": ["/project/src"], "extensions": ["java"]},
+                    {"roots": ["/project"], "pattern": "*.py", "glob": True, "depth": 3},
+                    {"roots": ["/project"], "types": ["f"], "changed_within": "1d", "count_only": True},
+                ],
                 "additionalProperties": False,
             },
         }

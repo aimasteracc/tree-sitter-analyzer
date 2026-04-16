@@ -134,6 +134,10 @@ class ReadPartialTool(BaseMCPTool):
                     "default": False,
                 },
             },
+            "examples": [
+                {"file_path": "/project/src/main.py", "start_line": 10, "end_line": 50},
+                {"file_path": "/project/src/Service.java", "start_line": 100, "end_line": 150, "format": "json"},
+            ],
             "additionalProperties": False,
         }
 

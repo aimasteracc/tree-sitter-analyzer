@@ -202,6 +202,11 @@ class ModificationGuardTool(BaseMCPTool):
                     },
                 },
                 "required": ["symbol", "modification_type"],
+                "examples": [
+                    {"symbol": "processPayment", "modification_type": "rename"},
+                    {"symbol": "UserService", "modification_type": "delete", "file_path": "src/services/UserService.java"},
+                    {"symbol": "handleRequest", "modification_type": "signature_change"},
+                ],
             },
         }
 

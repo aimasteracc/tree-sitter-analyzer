@@ -77,6 +77,16 @@ class BatchSearchTool(BaseMCPTool):
                     }
                 },
                 "required": ["queries"],
+                "examples": [
+                    {"queries": [{"pattern": "TODO", "label": "todos"}, {"pattern": "FIXME", "label": "fixmes"}]},
+                    {
+                        "queries": [
+                            {"pattern": "UserService", "roots": ["/project/src"], "label": "UserService"},
+                            {"pattern": "OrderService", "roots": ["/project/src"], "label": "OrderService"},
+                            {"pattern": "PaymentService", "roots": ["/project/src"], "label": "PaymentService"},
+                        ],
+                    },
+                ],
                 "additionalProperties": False,
             },
         }

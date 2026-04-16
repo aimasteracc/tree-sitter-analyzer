@@ -257,6 +257,11 @@ class FindAndGrepTool(BaseMCPTool):
                     },
                 },
                 "required": ["roots", "query"],
+                "examples": [
+                    {"roots": ["/project/src"], "extensions": ["java"], "query": "deprecated"},
+                    {"roots": ["/project"], "pattern": "*.py", "glob": True, "query": "import os"},
+                    {"roots": ["/project/tests"], "extensions": ["py"], "query": "assert", "summary_only": True},
+                ],
                 "additionalProperties": False,
             },
         }
