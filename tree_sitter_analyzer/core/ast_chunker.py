@@ -313,3 +313,133 @@ def chunks_summary(chunks: Sequence[AstChunk]) -> dict[str, Any]:
         "total_tokens": sum(c.token_estimate for c in chunks),
         "chunks": [c.to_dict() for c in chunks],
     }
+
+
+def detect_semantic_boundaries(
+    source: str,
+    total_lines: int,
+) -> list[int]:
+    """Detect natural code boundary lines suitable for splitting.
+
+    Returns sorted list of 1-based line numbers where the code has
+    natural semantic breaks: blank-line gaps, block comment endings,
+    and annotation group boundaries.
+
+    Args:
+        source: raw source text
+        total_lines: total number of lines in the file
+
+    Returns:
+        list of 1-based line numbers representing boundary positions
+    """
+    if total_lines <= 0:
+        return []
+
+    lines = source.split("\n")
+    boundaries: set[int] = set()
+
+    # Blank-line gaps: 2+ consecutive blank lines mark a section break
+    blank_run_start = -1
+    for i, line in enumerate(lines):
+        if line.strip() == "":
+            if blank_run_start < 0:
+                blank_run_start = i
+        else:
+            if blank_run_start >= 0 and i - blank_run_start >= 2:
+                boundaries.add(blank_run_start + 1)
+            blank_run_start = -1
+
+    # Block comment endings: */ on its own line marks a section boundary
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == "*/" or stripped.endswith("*/") and stripped.startswith("*"):
+            if i + 2 < len(lines):
+                boundaries.add(i + 2)
+
+    # Annotation groups: line after a run of @annotations
+    in_annotation_run = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        is_annotation = stripped.startswith("@")
+        if is_annotation:
+            in_annotation_run = True
+        elif in_annotation_run and stripped:
+            boundaries.add(i + 1)
+            in_annotation_run = False
+
+    return sorted(boundaries)
+
+
+def enrich_chunks_with_imports(
+    chunks: list[AstChunk],
+    import_chunk: AstChunk | None,
+    source: str,
+) -> list[AstChunk]:
+    """Return new chunk list with import context appended to each chunk.
+
+    For each chunk, computes which import lines are referenced by names
+    appearing in that chunk's code region. This preserves necessary
+    context when chunks are consumed independently.
+
+    Args:
+        chunks: existing chunks (not modified)
+        import_chunk: the import_block chunk, or None
+        source: raw source text
+
+    Returns:
+        new list of AstChunk with updated children including import_context
+    """
+    if not import_chunk:
+        return list(chunks)
+
+    lines = source.split("\n")
+    import_lines = lines[import_chunk.start_line - 1 : import_chunk.end_line]
+
+    # Build a map of imported symbol -> import line index within the import block
+    import_symbols: dict[str, int] = {}
+    for offset, line in enumerate(import_lines):
+        for word in line.replace(",", " ").split():
+            clean = word.strip("(){};*")
+            if clean and clean[0].isupper():
+                import_symbols[clean] = offset
+
+    enriched: list[AstChunk] = []
+    for chunk in chunks:
+        if chunk.chunk_type in ("import_block", "header", "tail"):
+            enriched.append(chunk)
+            continue
+
+        chunk_lines = lines[chunk.start_line - 1 : chunk.end_line]
+        chunk_text = " ".join(chunk_lines)
+
+        referenced_offsets: set[int] = set()
+        for sym in import_symbols:
+            if sym in chunk_text:
+                referenced_offsets.add(import_symbols[sym])
+
+        if referenced_offsets:
+            import_start = import_chunk.start_line + min(referenced_offsets)
+            import_end = import_chunk.start_line + max(referenced_offsets)
+            import_ctx = AstChunk(
+                name="import_context",
+                chunk_type="import_context",
+                start_line=import_start,
+                end_line=import_end,
+                token_estimate=_estimate_tokens(import_start, import_end),
+                language=chunk.language,
+            )
+            enriched.append(
+                AstChunk(
+                    name=chunk.name,
+                    chunk_type=chunk.chunk_type,
+                    start_line=chunk.start_line,
+                    end_line=chunk.end_line,
+                    token_estimate=chunk.token_estimate,
+                    language=chunk.language,
+                    children=chunk.children + (import_ctx,),
+                )
+            )
+        else:
+            enriched.append(chunk)
+
+    return enriched
