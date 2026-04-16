@@ -103,8 +103,6 @@ class JavaEdgeExtractor(EdgeExtractor):
                 cls = cls.strip()
                 if not cls or not re.match(r"^[A-Z]\w*$", cls):
                     continue
-                if len(cls) <= 2 and cls.isupper():
-                    continue
                 if cls in _JAVA_LANG_CLASSES:
                     continue
                 if cls in import_map:

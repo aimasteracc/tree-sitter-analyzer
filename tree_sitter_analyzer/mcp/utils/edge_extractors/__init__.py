@@ -9,13 +9,18 @@ To add a new language:
 from __future__ import annotations
 
 from .base import EdgeExtractor
+from .csharp import CSharpEdgeExtractor
+from .go import GoEdgeExtractor
 from .java import JavaEdgeExtractor
+from .kotlin import KotlinEdgeExtractor
 from .python import PythonEdgeExtractor
 from .typescript import TypeScriptEdgeExtractor
 
 REGISTRY: dict[str, EdgeExtractor] = {
-    # Java / Kotlin
+    # Java
     ".java": JavaEdgeExtractor(),
+    # Kotlin
+    ".kt": KotlinEdgeExtractor(),
     # Python
     ".py": PythonEdgeExtractor(),
     # TypeScript / JavaScript
@@ -23,6 +28,10 @@ REGISTRY: dict[str, EdgeExtractor] = {
     ".tsx": TypeScriptEdgeExtractor(),
     ".js": TypeScriptEdgeExtractor(),
     ".jsx": TypeScriptEdgeExtractor(),
+    # C#
+    ".cs": CSharpEdgeExtractor(),
+    # Go
+    ".go": GoEdgeExtractor(),
 }
 
 
