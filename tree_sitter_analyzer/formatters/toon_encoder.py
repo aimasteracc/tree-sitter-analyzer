@@ -50,6 +50,13 @@ class ToonEncodeError(Exception):
         return base
 
 
+class _CircularSentinel:
+    """Sentinel object marking circular references during key aliasing."""
+
+
+_CIRCULAR = _CircularSentinel()
+
+
 class _TaskType(Enum):
     """Types of encoding tasks for the iterative encoder."""
 
@@ -167,12 +174,22 @@ class ToonEncoder:
         # 性能优化：缓存同构数组检测结果 (Performance: cache homogeneity checks)
         self._homogeneity_cache: dict[int, bool] = {}
 
-    def _alias_keys(self, data: Any) -> Any:
-        """Recursively replace dict keys with shorter aliases."""
+    def _alias_keys(self, data: Any, _seen: set[int] | None = None) -> Any:
+        """Recursively replace dict keys with shorter aliases, with circular reference protection."""
+        if _seen is None:
+            _seen = set()
         if isinstance(data, dict):
-            return {self._aliases.get(k, k): self._alias_keys(v) for k, v in data.items()}
+            obj_id = id(data)
+            if obj_id in _seen:
+                return _CIRCULAR
+            _seen = _seen | {obj_id}
+            return {self._aliases.get(k, k): self._alias_keys(v, _seen) for k, v in data.items()}
         if isinstance(data, list):
-            return [self._alias_keys(item) for item in data]
+            obj_id = id(data)
+            if obj_id in _seen:
+                return _CIRCULAR
+            _seen = _seen | {obj_id}
+            return [self._alias_keys(item, _seen) for item in data]
         return data
 
     def encode(self, data: Any, indent: int = 0) -> str:
@@ -463,7 +480,8 @@ class ToonEncoder:
                     elif isinstance(value, str):
                         # 仅对"长内容"字段（docstring、description 等）进行截断
                         # 结构化字段（name、type、visibility 等）保持完整
-                        if key in ("docstring", "description", "content", "comment", "body", "text", "message"):
+                        _long_content_keys = {"docstring", "description", "content", "comment", "body", "text", "message", "doc", "desc", "msg"}
+                        if key in _long_content_keys:
                             row_values.append(self._simplify_compact_value(value))
                         else:
                             row_values.append(self.encode_value(value, seen_ids))
@@ -503,13 +521,16 @@ class ToonEncoder:
         schema = self._infer_schema(items)
 
         # 只保留关键字段（最多 COMPACT_MAX_FIELDS 个字段）
-        # 优先级：name (10/10), docstring (9/10), parameters (8/10), return_type (7/10), line_start (3/10)
+        # Check both original and aliased priority keys to handle pre- and post-alias data
         selected_keys = []
         for pk in self.COMPACT_PRIORITY_KEYS:
+            apk = self._aliases.get(pk, pk)
             if pk in schema:
                 selected_keys.append(pk)
-                if len(selected_keys) >= self.COMPACT_MAX_FIELDS:
-                    break
+            elif apk != pk and apk in schema:
+                selected_keys.append(apk)
+            if len(selected_keys) >= self.COMPACT_MAX_FIELDS:
+                break
 
         # 如果没有优先字段，使用前 COMPACT_MAX_FIELDS 个
         if not selected_keys:
@@ -683,6 +704,8 @@ class ToonEncoder:
         """
         if value is None:
             return "null"
+        elif isinstance(value, _CircularSentinel):
+            return "[...]"
         elif isinstance(value, bool):
             return "true" if value else "false"
         elif isinstance(value, int | float):
