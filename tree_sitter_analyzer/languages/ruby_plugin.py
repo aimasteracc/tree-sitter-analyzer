@@ -89,7 +89,7 @@ class RubyElementExtractor(ElementExtractor):
         self._node_text_cache[cache_key] = text
         return text
 
-    def _determine_visibility(self, node: "tree_sitter.Node") -> str:
+    def _determine_visibility(self, node: "tree_sitter.Node | None") -> str:
         """
         Determine visibility of a method.
 
@@ -102,8 +102,20 @@ class RubyElementExtractor(ElementExtractor):
         Returns:
             Visibility string ("public", "private", "protected")
         """
-        # TODO: Implement visibility detection by looking for visibility modifiers
-        # For now, default to public
+        # Check previous siblings for visibility modifiers (private/protected/public)
+        if node is None:
+            return "public"
+        prev = node.prev_named_sibling
+        if prev and prev.type == "identifier":
+            vis: str = self._get_node_text_optimized(prev)
+            if vis in ("private", "protected", "public"):
+                return vis
+        # Check parent for visibility block (private do ... end)
+        parent = node.parent
+        if parent and parent.type == "block" and parent.prev_named_sibling:
+            vis_keyword: str = self._get_node_text_optimized(parent.prev_named_sibling)
+            if vis_keyword in ("private", "protected", "public"):
+                return vis_keyword
         return "public"
 
     def extract_classes(
