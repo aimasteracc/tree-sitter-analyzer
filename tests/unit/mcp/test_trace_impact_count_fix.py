@@ -15,7 +15,7 @@ import pytest
 
 SPRING_BASE = Path("/workspaces/claude-source-run-version/spring-framework")
 
-pytestmark = pytest.mark.skipif(
+skip_if_no_spring = pytest.mark.skipif(
     not SPRING_BASE.exists(),
     reason="spring-framework not cloned at expected path",
 )
@@ -30,6 +30,7 @@ def tool():
 class TestTraceImpactCountAccuracy:
     """call_count must reflect true match total, not the display-capped count."""
 
+    @skip_if_no_spring
     def test_call_count_not_capped_by_max_results(self, tool):
         """With max_results=5 and 695 real matches, call_count must be 695."""
         import asyncio
@@ -39,10 +40,8 @@ class TestTraceImpactCountAccuracy:
         call_count = r.get("call_count", 0)
         usages = r.get("usages", [])
 
-        # Display is capped at max_results
         assert len(usages) == 5, f"usages should be capped at 5, got {len(usages)}"
 
-        # Count must be the true total
         assert call_count > 5, (
             f"call_count={call_count} but @Component appears 695+ times in spring-framework. "
             "Bug: call_count was computed from len(usages) AFTER truncation."
@@ -52,6 +51,7 @@ class TestTraceImpactCountAccuracy:
             f"Got call_count={call_count}"
         )
 
+    @skip_if_no_spring
     def test_impact_level_reflects_true_count(self, tool):
         """impact_level must use true total, not capped count."""
         import asyncio
@@ -64,6 +64,7 @@ class TestTraceImpactCountAccuracy:
             f"Got: '{impact_level}'. Bug: impact_level computed from truncated list."
         )
 
+    @skip_if_no_spring
     def test_truncated_flag_set_when_results_capped(self, tool):
         """truncated=True must be returned when results exceed max_results."""
         import asyncio
