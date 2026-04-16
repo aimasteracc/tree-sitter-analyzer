@@ -6,8 +6,7 @@ for the StreamableHTTP-based MCP server.
 """
 from __future__ import annotations
 
-import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -52,7 +51,9 @@ class TestStreamableHTTPServer:
 
     def test_create_asgi_app(self) -> None:
         """ASGI app is created with Starlette routes."""
-        from tree_sitter_analyzer.mcp.streamable_http_server import create_streamable_http_app
+        from tree_sitter_analyzer.mcp.streamable_http_server import (
+            create_streamable_http_app,
+        )
 
         mock_mcp_server = MagicMock()
         app = create_streamable_http_app(mock_mcp_server)
@@ -62,7 +63,9 @@ class TestStreamableHTTPServer:
 
     def test_create_asgi_app_with_stateless(self) -> None:
         """Stateless mode creates app without session tracking."""
-        from tree_sitter_analyzer.mcp.streamable_http_server import create_streamable_http_app
+        from tree_sitter_analyzer.mcp.streamable_http_server import (
+            create_streamable_http_app,
+        )
 
         mock_mcp_server = MagicMock()
         app = create_streamable_http_app(mock_mcp_server, stateless=True)
@@ -70,7 +73,10 @@ class TestStreamableHTTPServer:
 
     def test_default_host_and_port(self) -> None:
         """Defaults are localhost:8080."""
-        from tree_sitter_analyzer.mcp.streamable_http_server import DEFAULT_HOST, DEFAULT_PORT
+        from tree_sitter_analyzer.mcp.streamable_http_server import (
+            DEFAULT_HOST,
+            DEFAULT_PORT,
+        )
 
         assert DEFAULT_HOST == "127.0.0.1"
         assert DEFAULT_PORT == 8080
