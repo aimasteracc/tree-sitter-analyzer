@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 _SKILL_MD_PATH = Path(__file__).resolve().parent.parent.parent / (
     ".claude/skills/ts-analyzer-skills/SKILL.md"
@@ -348,3 +349,71 @@ def resolve_query_to_tier(query: str) -> SkillTier:
                 return get_extended_tier()
 
     return get_full_tier()
+
+
+# ---------------------------------------------------------------------------
+# On-demand loading manager with caching
+# ---------------------------------------------------------------------------
+
+class SkillLoadManager:
+    """On-demand skill loader with lazy loading and caching.
+
+    Usage:
+        mgr = SkillLoadManager()
+        tier = mgr.load_for_query("代码结构")
+        tier = mgr.load_for_tool("query_code")
+        stats = mgr.stats()
+    """
+
+    def __init__(self) -> None:
+        self._cache: dict[str, SkillTier] = {}
+        self._hit_counts: dict[str, int] = {"core": 0, "extended": 0, "full": 0}
+        self._miss_counts: dict[str, int] = {"core": 0, "extended": 0, "full": 0}
+
+    def _get_or_build(self, tier_name: str) -> SkillTier:
+        if tier_name in self._cache:
+            self._hit_counts[tier_name] += 1
+            return self._cache[tier_name]
+        self._miss_counts[tier_name] += 1
+        builders: dict[str, Callable[[], SkillTier]] = {
+            "core": get_core_tier,
+            "extended": get_extended_tier,
+            "full": get_full_tier,
+        }
+        tier = builders[tier_name]()
+        self._cache[tier_name] = tier
+        return tier
+
+    def load_for_query(self, query: str) -> SkillTier:
+        """Load the appropriate tier for a user query."""
+        resolved = resolve_query_to_tier(query)
+        return self._get_or_build(resolved.name)
+
+    def load_for_tool(self, tool_name: str) -> SkillTier:
+        """Load the tier that contains a specific tool."""
+        resolved = get_tier_by_tool(tool_name)
+        return self._get_or_build(resolved.name)
+
+    def preload_core(self) -> SkillTier:
+        """Eagerly load the core tier."""
+        return self._get_or_build("core")
+
+    def preload_all(self) -> None:
+        """Eagerly load all tiers into cache."""
+        for name in ("core", "extended", "full"):
+            self._get_or_build(name)
+
+    def invalidate(self) -> None:
+        """Clear the cache."""
+        self._cache.clear()
+
+    def stats(self) -> dict[str, dict[str, int]]:
+        """Return cache hit/miss statistics."""
+        result: dict[str, dict[str, int]] = {}
+        for name in ("core", "extended", "full"):
+            result[name] = {
+                "hits": self._hit_counts[name],
+                "misses": self._miss_counts[name],
+                "cached": 1 if name in self._cache else 0,
+            }
+        return result

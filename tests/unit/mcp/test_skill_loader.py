@@ -10,6 +10,7 @@ import pytest
 from tree_sitter_analyzer.mcp.skill_loader import (
     CORE_TOOLS,
     EXTENDED_TOOLS,
+    SkillLoadManager,
     TierBenchmark,
     benchmark_tiers,
     get_combined_tier,
@@ -201,3 +202,88 @@ class TestBenchmark:
         result = benchmark_tiers()
         total = result.core_tools_count + result.extended_tools_count
         assert total == result.full_tools_count
+
+
+class TestSkillLoadManager:
+    """Verify on-demand loading with caching."""
+
+    def test_load_for_query_core(self) -> None:
+        mgr = SkillLoadManager()
+        tier = mgr.load_for_query("代码结构")
+        assert tier.name == "core"
+
+    def test_load_for_query_extended(self) -> None:
+        mgr = SkillLoadManager()
+        tier = mgr.load_for_query("谁依赖 UserService")
+        assert tier.name == "extended"
+
+    def test_load_for_tool_core(self) -> None:
+        mgr = SkillLoadManager()
+        tier = mgr.load_for_tool("query_code")
+        assert tier.name == "core"
+
+    def test_load_for_tool_extended(self) -> None:
+        mgr = SkillLoadManager()
+        tier = mgr.load_for_tool("dependency_query")
+        assert tier.name == "extended"
+
+    def test_caching_hit_counts(self) -> None:
+        mgr = SkillLoadManager()
+        mgr.load_for_query("代码结构")
+        mgr.load_for_query("代码结构")
+        mgr.load_for_query("代码结构")
+        stats = mgr.stats()
+        assert stats["core"]["hits"] == 2
+        assert stats["core"]["misses"] == 1
+        assert stats["core"]["cached"] == 1
+
+    def test_caching_extended_hit_counts(self) -> None:
+        mgr = SkillLoadManager()
+        mgr.load_for_tool("dependency_query")
+        mgr.load_for_tool("list_files")
+        stats = mgr.stats()
+        assert stats["extended"]["hits"] == 1
+        assert stats["extended"]["misses"] == 1
+
+    def test_preload_core(self) -> None:
+        mgr = SkillLoadManager()
+        mgr.preload_core()
+        stats = mgr.stats()
+        assert stats["core"]["cached"] == 1
+        assert stats["extended"]["cached"] == 0
+        assert stats["full"]["cached"] == 0
+
+    def test_preload_all(self) -> None:
+        mgr = SkillLoadManager()
+        mgr.preload_all()
+        stats = mgr.stats()
+        assert stats["core"]["cached"] == 1
+        assert stats["extended"]["cached"] == 1
+        assert stats["full"]["cached"] == 1
+
+    def test_invalidate_clears_cache(self) -> None:
+        mgr = SkillLoadManager()
+        mgr.preload_all()
+        mgr.invalidate()
+        stats = mgr.stats()
+        assert stats["core"]["cached"] == 0
+        assert stats["extended"]["cached"] == 0
+        assert stats["full"]["cached"] == 0
+
+    def test_stats_structure(self) -> None:
+        mgr = SkillLoadManager()
+        stats = mgr.stats()
+        for name in ("core", "extended", "full"):
+            assert name in stats
+            assert "hits" in stats[name]
+            assert "misses" in stats[name]
+            assert "cached" in stats[name]
+
+    def test_multiple_tiers_independent(self) -> None:
+        mgr = SkillLoadManager()
+        mgr.load_for_query("代码结构")  # core
+        mgr.load_for_query("谁依赖 X")  # extended
+        stats = mgr.stats()
+        assert stats["core"]["misses"] == 1
+        assert stats["extended"]["misses"] == 1
+        assert stats["full"]["misses"] == 0
