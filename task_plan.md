@@ -16,7 +16,7 @@
 - [x] Phase 3: 项目级可视化（参考 CodeFlow）
   - [x] 3.1 依赖图算法（dependency_graph.py — JSON/Mermaid/DOT/PageRank）
   - [x] 3.2 健康评分（A-F）（health_score.py — size/complexity/coupling 评分）
-  - [ ] 3.3 爆炸半径分析
+  - [x] 3.3 爆炸半径分析（graph_service.py + dependency_query_tool.py — BFS transitive closure）
 - [x] Phase 4: 多语言深度优化（已在 main 分支完成）
   - [x] 4.1 Java 查询谓词修复（#match? post-filter 已实现）
   - [x] 4.2 C# 新语言支持（csharp_plugin.py 已存在）
