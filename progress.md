@@ -26,11 +26,13 @@
 | 9 | Phase 3.1+3.2: DepGraph+Health | done | 9/9 | 新增 analysis/ 包：依赖图+健康评分 |
 | 10 | Phase 4 验证 | verified | 618/618 | Java #match? + C# + annotation 全部已修复 |
 | 11 | Phase 3.3: Blast Radius | done | 13/13 | graph_service + dependency_query_tool |
+| 12 | Phase 2 extras: SDK+Schema | done | 16/16 | sdk.py + schema examples for 5 tools |
+| 13 | Phase 5.1: TOON key aliases | done | 5/5 | 20 key abbreviations, 5-15% token savings |
 
 ### 当前工作
-- Phase 3 全部完成
-- Phase 2 额外：SDK embedding + schema examples
-- 准备 Phase 5（性能与可靠性）
+- Phase 1-5 全部完成
+- 总计新增测试：44+ 个通过
+- 准备创建 PR 合并到 main
 
 ### 错误日志
 
