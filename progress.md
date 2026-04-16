@@ -80,7 +80,7 @@
 | Sprint | Focus | 状态 | 通过测试 | 备注 |
 |--------|-------|------|---------|------|
 | 1 | Phase 6: Bug fixes + mypy + coverage | done | 9277 | 5 bugs fixed, 69 mypy errors resolved |
-| 2 | Phase 6: query_loader + language_detector coverage | in progress | — | TDD agents running |
+| 2 | Phase 6: query_loader + language_detector + output_manager coverage | done | 103 | query_loader 99%, language_detector 85%, output_manager 95% |
 
 ### Bug Fixes (Sprint 1)
 - Java edge extractor: short interface names (A,B,C) incorrectly filtered by type-param guard
@@ -95,6 +95,7 @@
 - Added tests for `platform_compat/compare.py` (55% → ~90%)
 - Added tests for TypeScript edge extractor (50% → ~90%)
 - Total: 9277 tests pass, 0 real failures
+- **Coverage: 80.56%** (突破 80% 目标线！)
 
 ## Session 4 — 2026-04-17
 
