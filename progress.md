@@ -38,7 +38,9 @@
 - Sprint 3: AST chunker 语义边界 + import 上下文保留 ✅
 - Sprint 4: Mermaid/DOT 循环注释 + 多语言查询 ✅
 - Sprint 5: 多语言 error recovery regex fallback ✅
-- 总计新增测试：137+ 个通过
+- Sprint 6: CI integration interface + SARIF output ✅
+- Sprint 7: Go/Rust AST chunking (struct+method grouping) ✅
+- 总计新增测试：170+ 个通过
 
 ## Session 3 — 2026-04-17
 
