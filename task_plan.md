@@ -9,10 +9,10 @@
   - [x] 1.2 自然语言查询代码结构
   - [x] 1.3 Skill vs MCP token 成本验证
   - [x] 1.4 Skill 层测试（含 CJK 查询）
-- [ ] Phase 2: MCP Server 升级（参考 qmd + MCP 进阶课程）
-  - [ ] 2.1 StreamableHTTP 传输层
-  - [ ] 2.2 SDK 嵌入模式（参考 qmd createStore）
-  - [ ] 2.3 MCP 工具 schema 优化
+- [x] Phase 2: MCP Server 升级（参考 qmd + MCP 进阶课程）
+  - [x] 2.1 StreamableHTTP 传输层
+  - [x] 2.2 SDK 嵌入模式（参考 qmd createStore）
+  - [x] 2.3 MCP 工具 schema 优化
 - [ ] Phase 3: 项目级可视化（参考 CodeFlow）
   - [ ] 3.1 依赖图算法
   - [ ] 3.2 健康评分（A-F）

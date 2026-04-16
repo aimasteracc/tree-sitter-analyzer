@@ -106,6 +106,10 @@ class GetCodeOutlineTool(BaseMCPTool):
                 },
             },
             "required": ["file_path"],
+            "examples": [
+                {"file_path": "/project/src/main.py"},
+                {"file_path": "/project/src/Service.java", "output_format": "toon"},
+            ],
             "additionalProperties": False,
         }
 

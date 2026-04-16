@@ -337,6 +337,10 @@ class AnalyzeScaleTool(BaseMCPTool):
                 },
             },
             "additionalProperties": False,
+            "examples": [
+                {"file_path": "/project/src/main.py"},
+                {"file_path": "/project/src/Service.java", "output_format": "json"},
+            ],
         }
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:

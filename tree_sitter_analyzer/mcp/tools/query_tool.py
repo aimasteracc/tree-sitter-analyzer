@@ -123,6 +123,12 @@ class QueryTool(BaseMCPTool):
                     },
                 },
                 "required": ["file_path"],
+                "examples": [
+                    {"file_path": "/project/src/main.py", "query_key": "methods"},
+                    {"file_path": "/project/src/Service.java", "query_key": "classes"},
+                    {"file_path": "/project/src/Main.java", "query_string": "(method_declaration name: (identifier) @method)"},
+                ],
+                "additionalProperties": False,
             },
         }
 

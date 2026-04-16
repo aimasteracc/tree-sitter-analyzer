@@ -101,6 +101,10 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 },
             },
             "required": ["file_path"],
+            "examples": [
+                {"file_path": "/project/src/main.py", "format_type": "compact"},
+                {"file_path": "/project/src/Service.java", "format_type": "full"},
+            ],
             "additionalProperties": False,
         }
 
