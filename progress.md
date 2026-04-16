@@ -101,3 +101,25 @@
 - [x] mypy --strict 全量通过 (0 errors in 192 files)
 - [x] 审查文件大小 (76 files >400 lines, mostly language plugins)
 - [x] 添加 ARCHITECTURE.md
+
+## Session 5 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 19 | Phase 6.6: ARCHITECTURE.md + progress update | done | - | Architecture doc with diagram |
+| 20 | Phase 7: Ruby visibility + JS exports | done | 9276 passed | 0 TODO/FIXME remaining in codebase |
+
+### Phase 7 审计结果
+- TODO/FIXME/HACK: 0 remaining (was 2, both fixed)
+- Ruby plugin: visibility detection implemented (was stub)
+- JavaScript plugin: exports extraction wired up (was empty)
+- Test suite: 9276 passed (was 8969 in Session 3)
+- Coverage: ~79.5%
+- mypy --strict: 0 errors in 192 files
+- ruff check: all passed
+
+### 下一步
+- Phase 6 remaining: 集成测试 + README/CHANGELOG review
+- Phase 7 继续循环: 性能优化、测试加固、文档同步
