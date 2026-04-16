@@ -31,11 +31,11 @@
 3. 必须有 token 成本对比（Skill vs 直接 MCP）
 
 ## Tasks
-- [ ] T1: 设计 SKILL.md 结构（参考 Fireworks TG + 金谷园 Skill）
-- [ ] T2: 实现自然语言 → MCP 工具映射逻辑
-- [ ] T3: 编写 CJK 查询测试
-- [ ] T4: token 成本基准测试
-- [ ] T5: 文档更新
+- [x] T1: 设计 SKILL.md 结构（参考 Fireworks TG + 金谷园 Skill）
+- [x] T2: 实现自然语言 → MCP 工具映射逻辑
+- [x] T3: 编写 CJK 查询测试
+- [x] T4: token 成本基准测试
+- [x] T5: 文档更新
 
 ## References
 - wiki/ai-tech/fireworks-tech-graph-overview.md — Skill 模板

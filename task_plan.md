@@ -4,11 +4,11 @@
 将 ts-analyzer 从 "CLI + MCP 工具" 提升为 "完整的代码上下文平台"
 
 ## Phases
-- [ ] Phase 1: Skill 层开发（参考 Fireworks TG + 金谷园 Skill）
-  - [ ] 1.1 创建 Claude Code Skill SKILL.md
-  - [ ] 1.2 自然语言查询代码结构
-  - [ ] 1.3 Skill vs MCP token 成本验证
-  - [ ] 1.4 Skill 层测试（含 CJK 查询）
+- [x] Phase 1: Skill 层开发（参考 Fireworks TG + 金谷园 Skill）
+  - [x] 1.1 创建 Claude Code Skill SKILL.md
+  - [x] 1.2 自然语言查询代码结构
+  - [x] 1.3 Skill vs MCP token 成本验证
+  - [x] 1.4 Skill 层测试（含 CJK 查询）
 - [ ] Phase 2: MCP Server 升级（参考 qmd + MCP 进阶课程）
   - [ ] 2.1 StreamableHTTP 传输层
   - [ ] 2.2 SDK 嵌入模式（参考 qmd createStore）
