@@ -48,8 +48,10 @@ all_phases_complete() {
         return 1
     fi
     # 检查是否所有 Phase 都标记为 [x]
-    PHASES=$(grep -c '^\- \[' task_plan.md 2>/dev/null || echo "0")
-    DONE=$(grep -c '^\- \[x\]' task_plan.md 2>/dev/null || echo "0")
+    PHASES=$(grep -c '^\- \[' task_plan.md 2>/dev/null | tr -d '[:space:]')
+    DONE=$(grep -c '^\- \[x\]' task_plan.md 2>/dev/null | tr -d '[:space:]')
+    PHASES=${PHASES:-0}
+    DONE=${DONE:-0}
     if [ "$PHASES" -gt 0 ] && [ "$DONE" -eq "$PHASES" ]; then
         return 0
     fi
