@@ -1,42 +1,148 @@
-# Tree-sitter-analyzer 自主开发计划
+# Tree-sitter-analyzer 自主开发计划 v2
 
 ## Goal
-将 ts-analyzer 从 "CLI + MCP 工具" 提升为 "完整的代码上下文平台"
+将 ts-analyzer 从 "CLI + MCP 工具" 提升为 "完整的代码上下文平台"。
+不停迭代，每次迭代都要产出可工作的、有实质深度的代码。
 
-## Phases
-- [x] Phase 1: Skill 层开发（参考 Fireworks TG + 金谷园 Skill）
-  - [x] 1.1 创建 Claude Code Skill SKILL.md
-  - [x] 1.2 自然语言查询代码结构
-  - [x] 1.3 Skill vs MCP token 成本验证
-  - [x] 1.4 Skill 层测试（含 CJK 查询）
-- [x] Phase 2: MCP Server 升级（参考 qmd + MCP 进阶课程）
-  - [x] 2.1 StreamableHTTP 传输层
-  - [x] 2.2 SDK 嵌入模式（参考 qmd createStore）
-  - [x] 2.3 MCP 工具 schema 审计（已记录 6 类问题，实现 deferred）
-- [x] Phase 3: 项目级可视化（参考 CodeFlow）
-  - [x] 3.1 依赖图算法（dependency_graph.py — JSON/Mermaid/DOT/PageRank）
-  - [x] 3.2 健康评分（A-F）（health_score.py — size/complexity/coupling 评分）
-  - [x] 3.3 爆炸半径分析（graph_service.py + dependency_query_tool.py — BFS transitive closure）
-- [x] Phase 4: 多语言深度优化（已在 main 分支完成）
-  - [x] 4.1 Java 查询谓词修复（#match? post-filter 已实现）
-  - [x] 4.2 C# 新语言支持（csharp_plugin.py 已存在）
-  - [x] 4.3 多语言 AST 分块优化
-- [x] Phase 5: 性能与可靠性
-  - [x] 5.1 TOON 压缩率优化（key aliases: visibility→vis, return_type→ret 等 20 个缩写）
-  - [x] 5.2 错误恢复机制（error_recovery.py — regex fallback + binary detection）
-  - [x] 5.3 语言插件懒加载（已实现：PluginManager + LanguageLoader 均为按需加载）
+## 迭代规则（最重要）
+- 每个 Sprint 必须修改 ≥3 个文件，新增 ≥50 行实质代码（不含测试空壳）
+- 每完成一个 Sprint 必须 commit + push
+- **永远不要标记「所有任务完成」** —— 完成一批后自动生成下一批
+- 当所有列出的任务都完成时，执行审计循环（见 Phase 7+）
+
+## Phase 1: Skill 层深化（从骨架到生产级）
+- [ ] 审查现有 ts-analyzer-skills SKILL.md，评估与 15 个 MCP 工具的实际匹配度
+- [ ] 用 5 个真实 Java 文件测试每个路由规则，记录失败 case
+- [ ] 修复路由规则中的错误映射
+- [ ] 添加 Python 文件的路由测试（5 个真实文件）
+- [ ] 添加 TypeScript 文件的路由测试（5 个真实文件）
+- [ ] 分析 test_cjk_skill_queries.py 的覆盖范围，找出缺失场景
+- [ ] 添加混合语言查询测试（中文描述 + 英文代码术语）
+- [ ] 添加模糊查询测试（拼写错误、简写、缩写）
+- [ ] 测量当前 Skill 层加载的 token 成本
+- [ ] 设计分层加载：常用场景（<500 token）vs 完整路由表
+- [ ] 实现按需加载机制并基准测试
+
+## Phase 2: MCP Server 生产级升级
+- [ ] 审查 streamable_http_server.py 的错误处理覆盖率
+- [ ] 添加连接断开恢复机制
+- [ ] 添加并发请求处理（多客户端同时连接）
+- [ ] 添加请求速率限制
+- [ ] 添加 SSE 心跳保活机制
+- [ ] 性能测试：100 个并发请求的延迟和吞吐量
+- [ ] 审查 sdk.py Analyzer 类的方法完整性
+- [ ] 添加异步 API（async/await 支持）
+- [ ] 添加批量分析 API（一次分析多个文件）
+- [ ] 添加缓存层（避免重复分析同一文件）
+- [ ] 添加增量分析（只分析变更部分）
+- [ ] 审查 15 个 MCP 工具的 schema，找出冗余字段
+- [ ] 精简 schema 描述（减少急加载 token 成本）
+- [ ] 为每个工具添加 example 字段
+- [ ] 测量优化前后的 schema token 成本
+
+## Phase 3: 代码分析引擎深化
+- [ ] 审查 dependency_graph.py 的算法复杂度
+- [ ] 优化大文件（>5000 行）的分析性能
+- [ ] 添加跨文件依赖追踪（import 分析）
+- [ ] 添加循环依赖检测
+- [ ] 添加依赖权重计算（调用频率）
+- [ ] 添加 Mermaid 格式依赖图输出
+- [ ] 5 个真实项目的依赖图验证
+- [ ] 审查 health_score.py 的评分维度完整性
+- [ ] 添加代码复杂度维度（圈复杂度）
+- [ ] 添加维护性维度（文件大小、函数长度）
+- [ ] 审查 blast radius 分析的准确性
+- [ ] 添加语义级影响分析
+- [ ] 添加修改建议生成
+- [ ] 添加 CI 集成接口
+
+## Phase 4: 多语言深度优化
+- [ ] 审查 Java 插件的 grammar 覆盖率
+- [ ] 修复 annotation 链式调用解析
+- [ ] 修复泛型嵌套解析（Map<String, List<Integer>>）
+- [ ] 添加 Lambda 表达式提取
+- [ ] 添加 Stream API 调用链分析
+- [ ] 添加 Spring 注解识别
+- [ ] 编写 10 个真实 Java 文件的集成测试
+- [ ] 评估 tree-sitter-c-sharp 的 grammar 覆盖范围
+- [ ] 实现 C# 插件基础元素提取
+- [ ] 实现 LINQ 查询表达式提取
+- [ ] 实现 async/await 模式识别
+- [ ] 编写 10 个 C# 测试用例
+- [ ] 审查 ast_chunker.py 的分块质量
+- [ ] 添加语义边界检测
+- [ ] 添加上下文保留（分块时保留 import）
+- [ ] 对比 qmd 的 tree-sitter chunking 实现
+- [ ] 每种语言 3 个真实文件的分块质量验证
+
+## Phase 5: 性能与可靠性深化
+- [ ] 审查 TOON 输出的实际压缩率（在真实项目中测量）
+- [ ] 添加自适应压缩（根据查询类型选择压缩级别）
+- [ ] 目标：在保持可读性的前提下达到 60-70% 压缩率
+- [ ] 10 个真实项目的压缩率基准测试
+- [ ] 审查 error_recovery.py 的覆盖场景
+- [ ] 添加编码检测（UTF-8, GBK, Shift-JIS）
+- [ ] 添加损坏文件的部分解析
+- [ ] 添加超时保护
+- [ ] 审查当前 17 个语言插件的加载机制
+- [ ] 设计按需加载架构
+- [ ] 实现插件注册表
+- [ ] 实现插件热加载
+- [ ] 测量加载 1/5/10/17 个语言的内存和启动时间
+
+## Phase 6: 质量深化
+- [ ] 测量当前测试覆盖率（目标：80%+）
+- [ ] 为覆盖率 <50% 的模块补充测试
+- [ ] 添加集成测试（CLI → MCP → 输出完整链路）
+- [ ] 添加性能回归测试
+- [ ] 运行 ruff check 全量，修复所有 warning
+- [ ] 运行 mypy --strict 全量，修复所有 error
+- [ ] 审查所有 public API 的类型注解完整性
+- [ ] 审查所有文件的大小，超过 400 行的考虑拆分
+- [ ] 审查 README.md 是否反映最新功能
+- [ ] 审查 docs/skills/ 下 10 个工具文档的准确性
+- [ ] 审查 CHANGELOG.md 是否记录所有变更
+- [ ] 添加 ARCHITECTURE.md
+
+## Phase 7+: 持续改进循环（永不停止）
+
+当 Phase 1-6 全部完成后，自动进入以下循环，每轮循环产出新任务并执行：
+
+**循环 1：代码审计**
+- 扫描所有 .py 文件，找出 TODO/FIXME/HACK 注释 → 创建任务
+- 扫描所有函数，找出超过 50 行的函数 → 创建拆分任务
+- 扫描所有类，找出超过 400 行的文件 → 创建拆分任务
+
+**循环 2：性能优化**
+- 用真实项目做 benchmark → 找出最慢的 5 个操作 → 创建优化任务
+- 分析内存使用 → 找出内存热点 → 创建优化任务
+
+**循环 3：测试加固**
+- 运行覆盖率分析 → 找出覆盖率最低的 5 个模块 → 补充测试
+- 添加 property-based testing（假设性测试）
+- 添加 edge case 测试（空文件、超大文件、二进制文件）
+
+**循环 4：文档同步**
+- 对比代码和文档，找出不一致 → 创建修复任务
+- 添加使用示例（每种功能至少 2 个示例）
+
+**循环 5：新功能探索**
+- 参考 wiki 中的相关项目，发现可借鉴的功能
+- 写原型验证可行性
+- 通过后创建正式实现任务
+
+**此计划永不标记为「全部完成」。永远有下一批任务。**
 
 ## Decisions Made
 | 决策 | 理由 | 日期 |
 |------|------|------|
-| 用 OpenSpec 管理 Sprint | 项目已深度集成，15 个归档 change | 2026-04-17 |
-| Planning-with-Files 三文件 | 跨 context window 保持连续性 | 2026-04-17 |
-| 3-Agent GAN 循环 | 防止自评放水，确保质量 | 2026-04-17 |
-| 分支 feat/autonomous-dev | 与 main 隔离，每个 change 可独立 PR | 2026-04-17 |
-| Schema 审计 deferred | 审计完成但修复范围大，优先 Phase 3 | 2026-04-17 |
-| Phase 4 标记完成 | main 分支已有完整 Java 修复 + C# 支持 | 2026-04-17 |
+| v2 细化任务 | v1 的 5 Phase 太粗，导致 stub-ification | 2026-04-17 |
+| 每个 Sprint ≥50 行实质代码 | 防止空壳实现 | 2026-04-17 |
+| 永不停止循环 | 用户要求持续迭代 | 2026-04-17 |
+| Phase 7+ 自动生成任务 | 审计驱动持续改进 | 2026-04-17 |
 
 ## Errors Encountered
 | 错误 | 原因 | 解决方案 | 状态 |
 |------|------|---------|------|
-| mock test 被 skipif 误跳 | 模块级 pytestmark 跳过所有测试 | 改为 per-test skip 装饰器 | fixed |
+| v1 57 分钟跑完 5 Phase | 任务太粗 + stub-ification | v2 细化为 80+ 子任务 | 已修复 |
+| 提前停止 | all_phases_complete() 误判 | Phase 7+ 永续循环 | 已修复 |

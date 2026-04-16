@@ -44,17 +44,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 all_phases_complete() {
-    if [ ! -f task_plan.md ]; then
-        return 1
-    fi
-    # 检查是否所有 Phase 都标记为 [x]
-    PHASES=$(grep -c '^\- \[' task_plan.md 2>/dev/null | tr -d '[:space:]')
-    DONE=$(grep -c '^\- \[x\]' task_plan.md 2>/dev/null | tr -d '[:space:]')
-    PHASES=${PHASES:-0}
-    DONE=${DONE:-0}
-    if [ "$PHASES" -gt 0 ] && [ "$DONE" -eq "$PHASES" ]; then
-        return 0
-    fi
+    # 永远返回 false（1）—— 不停迭代
     return 1
 }
 
