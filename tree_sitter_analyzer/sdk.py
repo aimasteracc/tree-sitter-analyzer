@@ -189,20 +189,24 @@ class Analyzer:
         )
 
     def modification_guard(
-        self, file_path: str, symbol_name: str, **kwargs: Any
+        self, file_path: str, symbol_name: str,
+        modification_type: str = "delete", **kwargs: Any
     ) -> dict[str, Any]:
         """Check if modifying a symbol is safe.
 
         Args:
             file_path: Path to the source file.
             symbol_name: Symbol to check.
+            modification_type: Type of modification (rename, signature_change,
+                delete, behavior_change, refactor).
 
         Returns:
             Dict with safety_verdict (SAFE/CAUTION/REVIEW/UNSAFE).
         """
         args: dict[str, Any] = {
             "file_path": file_path,
-            "symbol_name": symbol_name,
+            "symbol": symbol_name,
+            "modification_type": modification_type,
             **kwargs,
         }
         return self._run_async(
