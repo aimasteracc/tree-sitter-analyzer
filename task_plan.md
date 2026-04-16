@@ -20,7 +20,7 @@
 - [x] Phase 4: 多语言深度优化（已在 main 分支完成）
   - [x] 4.1 Java 查询谓词修复（#match? post-filter 已实现）
   - [x] 4.2 C# 新语言支持（csharp_plugin.py 已存在）
-  - [ ] 4.3 多语言 AST 分块优化
+  - [x] 4.3 多语言 AST 分块优化
 - [ ] Phase 5: 性能与可靠性
   - [x] 5.1 TOON 压缩率优化（key aliases: visibility→vis, return_type→ret 等 20 个缩写）
   - [x] 5.2 错误恢复机制（error_recovery.py — regex fallback + binary detection）

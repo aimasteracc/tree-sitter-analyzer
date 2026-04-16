@@ -29,10 +29,11 @@
 | 12 | Phase 2 extras: SDK+Schema | done | 16/16 | sdk.py + schema examples for 5 tools |
 | 13 | Phase 5.1: TOON key aliases | done | 5/5 | 20 key abbreviations, 5-15% token savings |
 | 14 | Phase 5.2: Error Recovery | done | 6/6 | error_recovery.py — regex fallback + binary detection |
+| 15 | Phase 4.3: AST Chunking | done | 28/28 | ast_chunker.py — language-family-aware chunking |
 
 ### 当前工作
-- Phase 1-5 全部完成
-- 总计新增测试：44+ 个通过
+- Phase 1-5 全部完成（含 Phase 4.3 AST chunking）
+- 总计新增测试：72+ 个通过
 - 准备创建 PR 合并到 main
 
 ### 错误日志
