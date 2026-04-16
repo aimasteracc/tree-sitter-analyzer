@@ -74,13 +74,30 @@
 
 ### 知识检索
 
-每次需要参考资料时，使用 qmd：
+**你必须使用 Wiki 知识库。** 所有参考资料的索引在 `findings.md` 中。
+
+两种检索方式：
 
 ```bash
-qmd query "关键词" --limit 3
+# 方式 1：qmd 语义搜索（模糊查询用）
+qmd query "关键词" --limit 5
+
+# 方式 2：直接读 wiki 页面（已知页面名用，获取完整内容）
+cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
 ```
 
-结果只写入 `findings.md`，不写入 `task_plan.md`。
+**每个 Sprint 开始前**，必须：
+1. 读取 `findings.md` 中对应的参考资源
+2. 如果涉及新技术领域，先用 qmd 搜索相关 wiki 页面
+3. 将关键发现追加到 `findings.md`
+
+**Wiki 包含 59 页知识**，涵盖：
+- Claude Code 完整课程笔记（5 门课）
+- Agent 架构模式（失败模式/设计模式/委派法则）
+- MCP 协议深度知识
+- tree-sitter 完整技术栈（7 页）
+- 参考项目源码（qmd/CodeFlow/Fireworks TG/金谷园/GStack/ECC/Hermes 等）
+- 乔布斯产品决策框架（聚焦/减法/一句话定义）
 
 ### Context Reset 协议
 

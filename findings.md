@@ -1,34 +1,202 @@
 # Findings — 自主开发调研笔记
 
-## Wiki 参考资源（通过 qmd 检索）
+> 此文件是自主开发 Agent 的知识库。所有 wiki 知识都在这里索引。
+> 每个条目包含：页面名、一句话摘要、对 ts-analyzer 的价值、完整路径。
+> Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
-### Phase 1 参考：Skill 层开发
-- Fireworks Tech Graph：自然语言生成 SVG 技术图的 Claude Code Skill
-  - SKILL.md 结构完整，可直接作为模板
-  - 位置：wiki/ai-tech/fireworks-tech-graph-overview.md
-- 金谷园饺子馆 Skill：三层嵌套 + MCP 混合模式
-  - 主 Skill → 内嵌 Skill → MCP 工具
-  - 位置：wiki/ai-tech/jinguyuan-dumpling-skill-overview.md
-- MCP vs Skills token 成本：急加载 vs 懒加载，10-15 倍差异
-  - 位置：wiki/ai-tech/mcp-vs-skills-token-cost.md
+## 知识检索方式
 
-### Phase 2 参考：MCP 升级
-- qmd MCP Server：stdio + HTTP 双传输、VRAM 缓存、Context 元数据
-  - tree-sitter AST chunking 代码可直接参考
-  - SDK 嵌入模式：createStore()
-  - 位置：wiki/ai-tech/qmd-overview.md
-- MCP 进阶课程：StreamableHTTP、Sampling、有状态/无状态
-  - 位置：wiki/ai-tech/mcp-advanced-topics-course-notes.md
+```bash
+# 方式 1：qmd 语义搜索（推荐）
+qmd query "关键词" --limit 5
 
-### Phase 3 参考：可视化
-- CodeFlow：浏览器端代码架构可视化，单 HTML 文件
-  - 依赖图、爆炸半径、健康评分（A-F）
-  - 位置：wiki/ai-tech/codeflow-overview.md
+# 方式 2：直接读 wiki 页面（已知页面名）
+cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
+
+# 方式 3：读原始仓库（需要源码参考）
+ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
+```
+
+---
+
+## 直接可用（高价值参考）
+
+### Skill 层开发参考
+- **Fireworks Tech Graph** — 自然语言生成 SVG 技术图的 CC Skill，SKILL.md 模板
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/fireworks-tech-graph-overview.md`
+  - 源码：`/Users/aisheng.yu/wiki/raw/ai-tech/fireworks-tech-graph/`
+  - 价值：Skill 层开发的直接模板
+
+- **金谷园饺子馆 Skill** — 三层嵌套 Skill + MCP 混合模式，餐饮行业参考实现
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/jinguyuan-dumpling-skill-overview.md`
+  - 源码：`/Users/aisheng.yu/wiki/raw/ai-tech/jinguyuan-dumpling-skill/`
+  - 价值：三层嵌套架构（主 Skill → 内嵌 Skill → MCP 工具）
+
+- **Planning with Files** — Manus 风格 3 文件规划，Hooks 注意力操控
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/planning-with-files-overview.md`
+  - 源码：`/Users/aisheng.yu/wiki/raw/ai-tech/planning-with-files/`
+  - 价值：Hook 脚本模板、PreToolUse/PostToolUse/Stop Hook 实现
+
+### MCP 参考参考
+- **qmd** — Tobias Lütke 本地混合搜索引擎，tree-sitter AST chunking + MCP Server
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/qmd-overview.md`
+  - 源码：`/Users/aisheng.yu/wiki/raw/ai-tech/qmd/`
+  - 价值：tree-sitter 分块代码直接参考、MCP Server（stdio+HTTP）、SDK createStore() 嵌入模式、Context 元数据系统
+
+- **MCP 进阶课程** — StreamableHTTP、Sampling、有状态/无状态、Roots、Notifications
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/mcp-advanced-topics-course-notes.md`
+  - 价值：StreamableHTTP 协议细节、MCP Server 设计最佳实践
+
+- **MCP vs Skills token 成本** — 急加载 vs 懒加载、10-15 倍 token 差异、决策指南
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/mcp-vs-skills-token-cost.md`
+  - 价值：哪些分析能力该放 MCP（急加载），哪些该封装 Skill（懒加载）
+
+### 可视化参考
+- **CodeFlow** — 浏览器端代码架构可视化，依赖图/爆炸半径/健康评分
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/codeflow-overview.md`
+  - 源码：`/Users/aisheng.yu/wiki/raw/ai-tech/codeflow/`
+  - 价值：依赖图算法、A-F 健康评分、单 HTML 零安装架构
 
 ### Agent 架构参考
-- 7 大失败模式及防御方案
-  - 位置：wiki/ai-tech/agent-failure-modes.md
-- 12 个提示词设计模式（约束优先、事件驱动、分层委托）
-  - 位置：wiki/ai-tech/claude-code-prompt-design-patterns.md
-- Harness 三代演化（V1→V2→简化版）
-  - 位置：wiki/ai-tech/long-running-agent-harness.md
+- **7 大失败模式** — One-shot/提前完工/Context Anxiety/自评放水/Stub/Spec Cascade/注意力稀释
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/agent-failure-modes.md`
+  - 价值：每个失败模式的防御机制，直接指导自主开发
+
+- **12 个提示词设计模式** — 约束优先/事件驱动/分层委托/5 段压缩/模式切换等
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-code-prompt-design-patterns.md`
+  - 价值：提示词结构化设计，60% 是约束
+
+- **36 个 Agent 角色** — Fork vs Subagent、委派 7 法则、安全审查 Agent
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-code-agent-architecture.md`
+  - 价值：Agent 角色设计、子代理提示词写法
+
+- **Prompt 加载流程** — 5 阶段组装、缓存策略、源码调用链
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-code-prompt-loading-flow.md`
+  - 价值：理解 MCP 工具 schema 如何被 Claude 消费
+
+---
+
+## 架构参考（中价值）
+
+- **ECC（Everything Claude Code）** — 47 Agent / 181 Skill 大规模插件组织
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/everything-claude-code-overview.md`
+  - 源码：`/Users/aisheng.yu/wiki/raw/ai-tech/everything-claude-code/`
+  - 价值：大规模插件系统的分层组织方式
+
+- **Hermes Agent** — 40+ 工具注册 + 自学习闭环、Python 自学习 Agent
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/hermes-agent-overview.md`
+  - 价值：工具注册/发现机制、自学习循环
+
+- **Harness 设计演化** — 双 Agent → 三 Agent → 简化版，长时间运行 Agent 管理
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/long-running-agent-harness.md`
+  - 价值：Sprint Contract、feature_list.json、context reset 协议
+
+- **GAN 式多 Agent** — Generator + Evaluator 对抗式反馈循环
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/multi-agent-evaluator-pattern.md`
+  - 价值：对抗式代码审查模式
+
+- **Autoresearch** — Karpathy 自主研究框架：三文件哲学、自主循环
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/autoresearch-overview.md`
+  - 价值：自主循环的设计模式
+
+- **GStack** — YC 总裁 AI 软件工厂：23 专家角色、Sprint 7 阶段
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/gstack-overview.md`（注：在 programming 领域）
+  - 源码：`/Users/aisheng.yu/wiki/raw/programming/gstack/`
+  - 价值：Sprint 流程、专家角色定义、/review /qa /ship 等 skill 已集成
+
+---
+
+## Claude Code 课程参考
+
+- **Claude Code 101** — EPCC 工作流、上下文管理、CLAUDE.md、Hooks
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-code-101-course-notes.md`
+
+- **Claude Code in Action** — 21 课、SDK 构建 Agent、Hooks 实战、MCP 集成
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-code-in-action-course-notes.md`
+
+- **Prompt Mastery** — 5 层结构、60% 是约束、事件驱动设计
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-code-prompt-mastery-course-notes.md`
+
+- **Subagents 入门** — 设计原则、最佳实践、3 种反模式
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/introduction-to-subagents-course-notes.md`
+
+- **Claude 101** — 提示三要素、三种模式
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-101-essentials.md`
+
+- **Cowork 指南** — 6 项能力、定时任务、插件系统
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-cowork-guide.md`
+
+---
+
+## 技术灵感（特定场景）
+
+- **AirLLM** — 逐层加载推理，70B LLM 显存从 140GB 降至 4GB
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/airllm-overview.md`
+  - 价值：按需加载思想→语言插件懒加载
+
+- **BitNet** — Microsoft 1-bit LLM，三值量化（1.58-bit）
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/bitnet-overview.md`
+  - 价值：极致压缩启发更激进的代码表示
+
+- **MarkItDown** — Microsoft 文件转 Markdown，MCP 可选依赖模式
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/markitdown-overview.md`
+  - 价值：MCP Server 按需安装依赖模式
+
+- **Awesome LLM Apps** — 100+ LLM 应用合集，代码分析相关集成案例
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/awesome-llm-apps-overview.md`
+
+- **Dive into LLMs** — 上交大《动手学大模型》11 章教程
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/dive-into-llms-overview.md`
+
+- **Voicebox** — 开源语音克隆工作室，5 TTS 引擎
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/voicebox-overview.md`
+
+- **乔布斯 Skill** — 认知操作系统：6 心智模型 + 8 决策启发式
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/steve-jobs-skill-overview.md`
+  - 价值：产品决策过滤——聚焦即说不、先做减法、一句话定义
+
+---
+
+## LLM Wiki 架构参考
+
+- **LLM Wiki 架构** — 三层结构、核心理念与复利效应
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/llm-wiki-architecture.md`
+- **知识编译** — 持续积累、复利效应、蒸馏路径
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/knowledge-compilation.md`
+- **Ingest/Query/Lint 三操作** — Wiki 维护的核心操作
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/llm-wiki-three-operations.md`
+
+---
+
+## Tree-sitter 底层技术（完整 7 页）
+
+- **概览**：`/Users/aisheng.yu/wiki/wiki/ai-tech/tree-sitter-overview.md`
+- **架构**：GLR 解析、多版本栈 → `/Users/aisheng.yu/wiki/wiki/ai-tech/tree-sitter-architecture.md`
+- **语法 DSL**：seq/choice/prec → `/Users/aisheng.yu/wiki/wiki/ai-tech/tree-sitter-grammar-dsl.md`
+- **查询系统**：S-expression 模式匹配 → `/Users/aisheng.yu/wiki/wiki/ai-tech/tree-sitter-query-system.md`
+- **外部扫描器**：自定义 C 函数 → `/Users/aisheng.yu/wiki/wiki/ai-tech/tree-sitter-external-scanners.md`
+- **性能**：增量解析、紧凑表示 → `/Users/aisheng.yu/wiki/wiki/ai-tech/tree-sitter-performance.md`
+- **生态**：25+ 语言解析器 → `/Users/aisheng.yu/wiki/wiki/ai-tech/tree-sitter-ecosystem.md`
+
+---
+
+## 其他参考
+
+- **Claw Code** — Rust 版 CC，9 crate 架构
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claw-code-overview.md`
+- **Hermes Web UI** — Hermes Agent 浏览器前端
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/hermes-webui-overview.md`
+- **CLI-Anything** — 一行命令让任意 GUI 软件 Agent 化
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/cli-anything-overview.md`
+- **Eval 意识** — Opus 4.6 主动推测并破解评测
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/eval-awareness-and-benchmark-contamination.md`
+- **Anthropic Academy 导出工具** — 课程导出工具
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/anthropic-academy-exporter-overview.md`
+- **Academy 学习路径** — 18 门课程 5 阶段
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/anthropic-academy-learning-path.md`
+- **三源关系** — cc-source → system-prompts → Academy
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/cc-source-vs-system-prompts-vs-academy.md`
+- **系统提示词全览** — 110+ 条目、6 大类别
+  - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-code-system-prompts-overview.md`
+
+**总计：59 页 Wiki 知识，全部已索引在此文件中。Agent 可通过 qmd 或直接路径访问任意页面。**
