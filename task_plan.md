@@ -91,18 +91,18 @@
 - [ ] 测量加载 1/5/10/17 个语言的内存和启动时间
 
 ## Phase 6: 质量深化
-- [ ] 测量当前测试覆盖率（目标：80%+）
-- [ ] 为覆盖率 <50% 的模块补充测试
+- [x] 测量当前测试覆盖率（79.5%，目标：80%+，接近达标）
+- [x] 为覆盖率 <50% 的模块补充测试（+73 tests: SDK, compat, edge extractors, encoding）
 - [ ] 添加集成测试（CLI → MCP → 输出完整链路）
 - [ ] 添加性能回归测试
-- [ ] 运行 ruff check 全量，修复所有 warning
-- [ ] 运行 mypy --strict 全量，修复所有 error
-- [ ] 审查所有 public API 的类型注解完整性
-- [ ] 审查所有文件的大小，超过 400 行的考虑拆分
+- [x] 运行 ruff check 全量，修复所有 warning（All checks passed）
+- [x] 运行 mypy --strict 全量，修复所有 error（0 errors in 192 files）
+- [x] 审查所有 public API 的类型注解完整性（mypy strict 覆盖）
+- [x] 审查所有文件的大小，超过 400 行的考虑拆分（76 files >400 lines, mostly plugins）
 - [ ] 审查 README.md 是否反映最新功能
 - [ ] 审查 docs/skills/ 下 10 个工具文档的准确性
 - [ ] 审查 CHANGELOG.md 是否记录所有变更
-- [ ] 添加 ARCHITECTURE.md
+- [x] 添加 ARCHITECTURE.md
 
 ## Phase 7+: 持续改进循环（永不停止）
 

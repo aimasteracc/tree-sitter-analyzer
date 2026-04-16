@@ -72,3 +72,32 @@
 
 | 时间 | 错误 | 严重性 | 状态 |
 |------|------|--------|------|
+
+## Session 4 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 16 | Phase 6.1: TOON circular ref + alias bug fix | done | 57/57 | 修复 _alias_keys 递归 + COMPACT_PRIORITY_KEYS alias mismatch |
+| 17 | Phase 6.2: Coverage boost tests + SDK fix | done | 28/28 | SDK 91% coverage, compat 100%, edge extractors |
+| 18 | Phase 6.4: mypy --strict zero errors | done | 9259 passed | 24 type annotation fixes across 7 files |
+
+### 新增/修改文件
+- `tree_sitter_analyzer/formatters/toon_encoder.py` — circular ref sentinel, alias-aware priority keys
+- `tree_sitter_analyzer/sdk.py` — modification_guard param fix (symbol_name → symbol), caching layer
+- `tests/unit/test_sdk.py` — 14 SDK method tests (was 6)
+- `tests/unit/formatters/test_compat.py` — 10 backward-compat tests (new)
+- `tests/unit/formatters/test_base_formatter_coverage.py` — 6 tests (new)
+- `tests/unit/mcp/test_edge_extractors.py` — 13 Python edge extractor tests (new)
+- `tests/unit/mcp/test_java_edge_extractor.py` — 10 Java edge extractor tests (new)
+- `tests/unit/utils/test_encoding_utils_coverage.py` — 20 encoding tests (new)
+- `ARCHITECTURE.md` — architecture documentation (new)
+
+### Phase 6 进度
+- [x] 测量当前测试覆盖率 (79.5%)
+- [x] 为低覆盖率模块补充测试 (+73 tests)
+- [x] ruff check 全量通过
+- [x] mypy --strict 全量通过 (0 errors in 192 files)
+- [x] 审查文件大小 (76 files >400 lines, mostly language plugins)
+- [x] 添加 ARCHITECTURE.md
