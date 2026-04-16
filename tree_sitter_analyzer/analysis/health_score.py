@@ -32,6 +32,7 @@ class FileHealthScore:
     cyclomatic_complexity: int
     avg_function_length: float
     breakdown: dict[str, int]
+    suggestions: tuple[str, ...] = ()
 
 
 class HealthScorer:
@@ -131,6 +132,8 @@ class HealthScorer:
         score = 100 - sum(breakdown.values())
         score = max(0, min(100, score))
 
+        suggestions = self._generate_suggestions(breakdown, lines, methods, cyclomatic, avg_func_len)
+
         return FileHealthScore(
             file_path=file_path,
             score=score,
@@ -141,7 +144,63 @@ class HealthScorer:
             cyclomatic_complexity=cyclomatic,
             avg_function_length=round(avg_func_len, 1),
             breakdown=breakdown,
+            suggestions=tuple(suggestions),
         )
+
+    def _generate_suggestions(
+        self,
+        breakdown: dict[str, int],
+        lines: int,
+        methods: int,
+        cyclomatic: int,
+        avg_func_len: float,
+    ) -> list[str]:
+        """Generate actionable suggestions based on penalty breakdown."""
+        suggestions: list[str] = []
+
+        if breakdown.get("size_penalty", 0) >= 15:
+            suggestions.append(
+                f"File has {lines} lines (penalty={breakdown['size_penalty']}). "
+                "Split into smaller modules with single responsibility."
+            )
+
+        if breakdown.get("complexity_penalty", 0) >= 10:
+            suggestions.append(
+                f"File has {methods} methods (penalty={breakdown['complexity_penalty']}). "
+                "Extract related methods into separate service classes."
+            )
+
+        if breakdown.get("coupling_penalty", 0) >= 10:
+            suggestions.append(
+                f"High import count (penalty={breakdown['coupling_penalty']}). "
+                "Reduce dependencies by using dependency injection or facade patterns."
+            )
+
+        if cyclomatic >= 10:
+            suggestions.append(
+                f"Cyclomatic complexity is {cyclomatic}. "
+                "Simplify branching logic with early returns, guard clauses, or strategy pattern."
+            )
+
+        if avg_func_len >= 30:
+            suggestions.append(
+                f"Average function length is {avg_func_len:.0f} lines. "
+                "Break long functions into smaller, named helper functions."
+            )
+
+        if breakdown.get("branch_penalty", 0) >= 10:
+            suggestions.append(
+                "High branch density detected. "
+                "Consider using polymorphism or lookup tables instead of conditional chains."
+            )
+
+        if lines > 0 and methods > 0 and lines / methods > 80:
+            suggestions.append(
+                f"Methods average {lines / methods:.0f} lines each. "
+                "Target 20-30 lines per method for better readability."
+            )
+
+        return suggestions
 
     def _grade(self, score: int) -> str:
         """Convert numeric score to letter grade."""
