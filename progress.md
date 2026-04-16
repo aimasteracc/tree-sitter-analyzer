@@ -79,6 +79,29 @@
 
 | Sprint | Focus | 状态 | 通过测试 | 备注 |
 |--------|-------|------|---------|------|
+| 1 | Phase 6: Bug fixes + mypy + coverage | done | 9277 | 5 bugs fixed, 69 mypy errors resolved |
+| 2 | Phase 6: query_loader + language_detector coverage | in progress | — | TDD agents running |
+
+### Bug Fixes (Sprint 1)
+- Java edge extractor: short interface names (A,B,C) incorrectly filtered by type-param guard
+- Ruby `_determine_visibility`: crash on None node
+- `streamable_http_server`: missing `nonlocal done` in disconnect_watcher
+- Hypothesis deadline flakiness: added `deadline=None` to 27 test files
+- Renamed `test_sdk.py` → `test_analyzer_sdk.py` (xdist module conflict)
+
+### Quality Improvements (Sprint 1)
+- mypy --strict: 69 errors → 0 (across 30+ source files)
+- ruff check: all clean
+- Added tests for `platform_compat/compare.py` (55% → ~90%)
+- Added tests for TypeScript edge extractor (50% → ~90%)
+- Total: 9277 tests pass, 0 real failures
+
+## Session 4 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
 | 16 | Phase 6.1: TOON circular ref + alias bug fix | done | 57/57 | 修复 _alias_keys 递归 + COMPACT_PRIORITY_KEYS alias mismatch |
 | 17 | Phase 6.2: Coverage boost tests + SDK fix | done | 28/28 | SDK 91% coverage, compat 100%, edge extractors |
 | 18 | Phase 6.4: mypy --strict zero errors | done | 9259 passed | 24 type annotation fixes across 7 files |
