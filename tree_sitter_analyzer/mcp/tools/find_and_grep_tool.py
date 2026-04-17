@@ -49,32 +49,15 @@ class FindAndGrepTool(BaseMCPTool):
         return {
             "name": "find_and_grep",
             "description": (
-                "Two-stage search for large projects: filter files by name/type first, "
-                "then search content within the matched files. "
+                "Two-stage search: fd filters files by name/type, then ripgrep searches content within matched files. "
                 "\n\n"
-                "This is the large-project tool. For small projects (< 1000 files), "
-                "search_content alone is simpler and sufficient. Use find_and_grep when you "
-                "need both file-type precision AND content matching — it eliminates irrelevant "
-                "files before ripgrep runs, keeping results clean and fast. "
-                "\n\n"
-                "WHEN TO USE:\n"
-                "- Large codebases where search_content returns too much noise across all file types\n"
-                "- When you know BOTH the file pattern (*.java, test_*) AND the content pattern\n"
-                "- Multi-language projects where you want to scope to one language's files\n"
-                "- Searching only within test files, config files, or a specific module\n"
+                "USE for: large codebases (>1000 files) needing both file-type AND content filters. "
+                "NOT for: small projects or content-only/filename-only searches (use search_content/list_files).\n"
                 "\n"
-                "WHEN NOT TO USE (use search_content instead):\n"
-                "- Small projects (< 1000 files) — the two-stage overhead is unnecessary\n"
-                "- When you only have a content pattern and don't care about file type\n"
-                "- When you only have a filename pattern and don't need content search — use list_files\n"
+                "DIFFERENCE from search_content: find_and_grep pre-filters files via fd before ripgrep, "
+                "reducing noise. search_content runs ripgrep directly across all files.\n"
                 "\n"
-                "DIFFERENCE from search_content:\n"
-                "- search_content: single-stage ripgrep across all files (or specified roots)\n"
-                "- find_and_grep: stage 1 = fd to filter files by name/type/size, "
-                "stage 2 = ripgrep only within those files\n"
-                "\n"
-                "IMPORTANT: Both 'pattern' (file stage) and 'query' (content stage) are optional, "
-                "but providing both gives the highest signal-to-noise ratio."
+                "Both 'pattern' (file stage) and 'query' (content stage) are optional; both yields best results."
             ),
             "inputSchema": {
                 "type": "object",
@@ -83,176 +66,176 @@ class FindAndGrepTool(BaseMCPTool):
                     "roots": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Directory paths to search in. Must be within project boundaries. Example: ['.', 'src/', 'tests/']",
+                        "description": "Search directories. Must be within project boundaries.",
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "[FILE STAGE] Filename pattern to match. Use with 'glob' for shell patterns. Example: '*.py', 'test_*', 'main.js'",
+                        "description": "[FD] Filename pattern. Use with glob=true for shell patterns.",
                     },
                     "glob": {
                         "type": "boolean",
                         "default": False,
-                        "description": "[FILE STAGE] Treat filename pattern as glob instead of regex. True for '*.py', False for '.*\\.py$'",
+                        "description": "[FD] Treat pattern as glob vs regex.",
                     },
                     "types": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "[FILE STAGE] File types to include. 'f'=files, 'd'=directories, 'l'=symlinks, 'x'=executable, 'e'=empty",
+                        "description": "[FD] File types: f=files, d=dirs, l=symlinks, x=executable, e=empty",
                     },
                     "extensions": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "[FILE STAGE] File extensions to include (without dots). Example: ['py', 'js'] for Python and JavaScript files",
+                        "description": "[FD] Extensions without dots. Ex: ['py', 'js']",
                     },
                     "exclude": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "[FILE STAGE] File patterns to exclude. Example: ['*.tmp', '__pycache__'] to skip temporary files",
+                        "description": "[FD] Patterns to exclude. Ex: ['*.tmp', '__pycache__']",
                     },
                     "depth": {
                         "type": "integer",
-                        "description": "[FILE STAGE] Maximum directory depth to search. 1=current level only, 2=one level deep, etc.",
+                        "description": "[FD] Max directory depth. 1=current level only.",
                     },
                     "follow_symlinks": {
                         "type": "boolean",
                         "default": False,
-                        "description": "[FILE STAGE] Follow symbolic links. False=safer, True=may cause loops",
+                        "description": "[FD] Follow symlinks. May cause loops.",
                     },
                     "hidden": {
                         "type": "boolean",
                         "default": False,
-                        "description": "[FILE STAGE] Include hidden files/directories (starting with dot). False=skip .git, .env",
+                        "description": "[FD] Include hidden files (dot-prefixed).",
                     },
                     "no_ignore": {
                         "type": "boolean",
                         "default": False,
-                        "description": "[FILE STAGE] Ignore .gitignore files. False=respect ignore rules, True=search everything",
+                        "description": "[FD] Ignore .gitignore rules.",
                     },
                     "size": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "[FILE STAGE] File size filters. Format: '+10M'=larger than 10MB, '-1K'=smaller than 1KB. Units: B, K, M, G",
+                        "description": "[FD] Size filters: '+10M'=gt 10MB, '-1K'=lt 1KB. Units: B/K/M/G",
                     },
                     "changed_within": {
                         "type": "string",
-                        "description": "[FILE STAGE] Files modified within timeframe. Format: '1d'=1 day, '2h'=2 hours, '30m'=30 minutes",
+                        "description": "[FD] Modified within: '1d', '2h', '30m', '1w'",
                     },
                     "changed_before": {
                         "type": "string",
-                        "description": "[FILE STAGE] Files modified before timeframe. Same format as changed_within",
+                        "description": "[FD] Modified before. Same format as changed_within.",
                     },
                     "full_path_match": {
                         "type": "boolean",
                         "default": False,
-                        "description": "[FILE STAGE] Match pattern against full path instead of just filename",
+                        "description": "[FD] Match against full path vs filename.",
                     },
                     "file_limit": {
                         "type": "integer",
-                        "description": "[FILE STAGE] Maximum number of files to find before content search. Default 2000, prevents overwhelming searches",
+                        "description": "[FD] Max files before content search. Default 2000.",
                     },
                     "sort": {
                         "type": "string",
                         "enum": ["path", "mtime", "size"],
-                        "description": "[FILE STAGE] Sort found files by: 'path'=alphabetical, 'mtime'=modification time, 'size'=file size",
+                        "description": "[FD] Sort: 'path', 'mtime', or 'size'",
                     },
                     # === CONTENT SEARCH STAGE (ripgrep parameters) ===
                     "query": {
                         "type": "string",
-                        "description": "[CONTENT STAGE] Text pattern to search for in the found files. Can be literal text or regex",
+                        "description": "[RG] Text/regex pattern to search in found files.",
                     },
                     "case": {
                         "type": "string",
                         "enum": ["smart", "insensitive", "sensitive"],
                         "default": "smart",
-                        "description": "[CONTENT STAGE] Case sensitivity. 'smart'=case-insensitive unless uppercase present, 'insensitive'=ignore case, 'sensitive'=exact case",
+                        "description": "[RG] Case: 'smart' (default), 'insensitive', 'sensitive'",
                     },
                     "fixed_strings": {
                         "type": "boolean",
                         "default": False,
-                        "description": "[CONTENT STAGE] Treat query as literal string instead of regex. True for exact text, False for patterns",
+                        "description": "[RG] Treat query as literal string vs regex.",
                     },
                     "word": {
                         "type": "boolean",
                         "default": False,
-                        "description": "[CONTENT STAGE] Match whole words only. True finds 'test' but not 'testing'",
+                        "description": "[RG] Match whole words only.",
                     },
                     "multiline": {
                         "type": "boolean",
                         "default": False,
-                        "description": "[CONTENT STAGE] Allow patterns to match across multiple lines. Useful for multi-line code blocks",
+                        "description": "[RG] Allow multi-line pattern matching.",
                     },
                     "include_globs": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "[CONTENT STAGE] Additional file patterns to include in content search. Example: ['*.py', '*.js']",
+                        "description": "[RG] Additional include patterns. Ex: ['*.py', '*.js']",
                     },
                     "exclude_globs": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "[CONTENT STAGE] File patterns to exclude from content search. Example: ['*.log', '__pycache__/*']",
+                        "description": "[RG] Exclude patterns. Ex: ['*.log', '__pycache__/*']",
                     },
                     "max_filesize": {
                         "type": "string",
-                        "description": "[CONTENT STAGE] Maximum file size to search content. Format: '10M'=10MB, '500K'=500KB",
+                        "description": "[RG] Max file size. Ex: '10M', '500K'",
                     },
                     "context_before": {
                         "type": "integer",
-                        "description": "[CONTENT STAGE] Lines to show before each match for context. Example: 3 shows 3 lines before",
+                        "description": "[RG] Lines before match for context.",
                     },
                     "context_after": {
                         "type": "integer",
-                        "description": "[CONTENT STAGE] Lines to show after each match for context. Example: 3 shows 3 lines after",
+                        "description": "[RG] Lines after match for context.",
                     },
                     "encoding": {
                         "type": "string",
-                        "description": "[CONTENT STAGE] Text encoding for files. Default auto-detect. Example: 'utf-8', 'latin1'",
+                        "description": "[RG] File encoding. Default: auto-detect.",
                     },
                     "max_count": {
                         "type": "integer",
-                        "description": "[CONTENT STAGE] Maximum matches per file. Prevents overwhelming output from files with many matches",
+                        "description": "[RG] Max matches per file.",
                     },
                     "timeout_ms": {
                         "type": "integer",
-                        "description": "[CONTENT STAGE] Search timeout in milliseconds. Example: 5000 for 5 second timeout",
+                        "description": "[RG] Timeout in ms.",
                     },
                     "count_only_matches": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return only match counts per file instead of full match details. Faster for statistics",
+                        "description": "Return match counts per file only. Faster for statistics.",
                     },
                     "summary_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return condensed summary of results. Shows top files and sample matches to reduce context size",
+                        "description": "Return condensed summary with top files and sample matches.",
                     },
                     "optimize_paths": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Optimize file paths in results by removing common prefixes and shortening long paths. Saves tokens in output",
+                        "description": "Shorten paths by removing common prefixes. Saves tokens.",
                     },
                     "group_by_file": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Group results by file to eliminate file path duplication when multiple matches exist in the same file. Significantly reduces tokens",
+                        "description": "Group by file to deduplicate paths. Reduces tokens.",
                     },
                     "total_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return only the total match count as a number. Most token-efficient option for count queries. Takes priority over all other formats",
+                        "description": "Return total count only. Most token-efficient. Overrides other formats.",
                     },
                     "output_file": {
                         "type": "string",
-                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                        "description": "Save output to file. Extension auto-detected.",
                     },
                     "suppress_output": {
                         "type": "boolean",
-                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "description": "Suppress detailed output when output_file is set.",
                         "default": False,
                     },
                     "output_format": {
                         "type": "string",
                         "enum": ["json", "toon"],
-                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                        "description": "'toon' (default, 50-70% token savings) or 'json'",
                         "default": "toon",
                     },
                 },

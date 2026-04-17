@@ -55,28 +55,12 @@ class ListFilesTool(BaseMCPTool):
         return {
             "name": "list_files",
             "description": (
-                "Discover which files exist in a project — the starting point for codebase "
-                "exploration. Supports glob patterns, file type filters, size constraints, "
-                "and time-based filters (recently modified files). "
-                "\n\n"
-                "WHEN TO USE:\n"
-                "- At the start of working with an unfamiliar codebase — map the structure first\n"
-                "- Finding files modified recently (changed_within='1d') to understand active areas\n"
-                "- Locating files by extension, size range, or directory depth\n"
-                "- Filtering for executable files, symlinks, or empty files (types parameter)\n"
-                "- Getting a file count before deciding how to approach a large project\n"
+                "Discover files by name, type, size, or modification time. "
+                "USE for: mapping project structure, finding recently changed files, filtering by extension/size/depth. "
+                "NOT for: searching file contents (use search_content/find_and_grep) or reading known paths (use Read).\n"
                 "\n"
-                "WHEN NOT TO USE:\n"
-                "- When you need to search file contents — use search_content or find_and_grep\n"
-                "- When you already know the file path — use check_code_scale or Read directly\n"
-                "\n"
-                "ADVANTAGE over built-in Glob: list_files supports filters that built-in tools "
-                "lack — file size ranges (size=['<10K', '>1K']), modification time "
-                "(changed_within='7d', changed_before='2024-01-01'), file types "
-                "('x'=executable, 'e'=empty, 'l'=symlink), and directory depth limits. "
-                "\n\n"
-                "IMPORTANT: This is a discovery tool, not a search tool. Use it to find files, "
-                "then use other tools to understand their contents."
+                "ADVANTAGE over built-in Glob: supports size ranges, modification time, file types "
+                "(x=executable, e=empty, l=symlink), and depth limits."
             ),
             "inputSchema": {
                 "type": "object",
@@ -84,96 +68,96 @@ class ListFilesTool(BaseMCPTool):
                     "roots": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Directory paths to search in. Must be within project boundaries for security. Example: ['.', 'src/', '/path/to/dir']",
+                        "description": "Search directories. Must be within project boundaries.",
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "Search pattern for file/directory names. Use with 'glob' for shell patterns or regex. Example: '*.py', 'test_*', 'main.js'",
+                        "description": "Name pattern. Use with 'glob' for shell patterns.",
                     },
                     "glob": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Treat pattern as glob (shell wildcard) instead of regex. True for '*.py', False for '.*\\.py$'",
+                        "description": "Treat pattern as glob vs regex.",
                     },
                     "types": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "File types to include. Values: 'f'=files, 'd'=directories, 'l'=symlinks, 'x'=executable, 'e'=empty. Example: ['f'] for files only",
+                        "description": "File types: f=files, d=dirs, l=symlinks, x=executable, e=empty",
                     },
                     "extensions": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "File extensions to include (without dots). Example: ['py', 'js', 'md'] for Python, JavaScript, and Markdown files",
+                        "description": "Extensions without dots. Ex: ['py', 'js', 'md']",
                     },
                     "exclude": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Patterns to exclude from results. Example: ['*.tmp', '__pycache__', 'node_modules'] to skip temporary and cache files",
+                        "description": "Patterns to exclude. Ex: ['*.tmp', '__pycache__', 'node_modules']",
                     },
                     "depth": {
                         "type": "integer",
-                        "description": "Maximum directory depth to search. 1=current level only, 2=one level deep, etc. Useful to avoid deep recursion",
+                        "description": "Max directory depth. 1=current level only.",
                     },
                     "follow_symlinks": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Follow symbolic links during search. False=skip symlinks (safer), True=follow them (may cause loops)",
+                        "description": "Follow symlinks. May cause loops.",
                     },
                     "hidden": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Include hidden files/directories (starting with dot). False=skip .git, .env, True=include all",
+                        "description": "Include hidden files (dot-prefixed).",
                     },
                     "no_ignore": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Ignore .gitignore and similar files. False=respect ignore files, True=search everything",
+                        "description": "Ignore .gitignore rules.",
                     },
                     "size": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "File size filters. Format: '+10M'=larger than 10MB, '-1K'=smaller than 1KB, '100B'=exactly 100 bytes. Units: B, K, M, G",
+                        "description": "Size filters: '+10M'=gt 10MB, '-1K'=lt 1KB. Units: B/K/M/G",
                     },
                     "changed_within": {
                         "type": "string",
-                        "description": "Files modified within timeframe. Format: '1d'=1 day, '2h'=2 hours, '30m'=30 minutes, '1w'=1 week",
+                        "description": "Modified within: '1d', '2h', '30m', '1w'",
                     },
                     "changed_before": {
                         "type": "string",
-                        "description": "Files modified before timeframe. Same format as changed_within. Useful for finding old files",
+                        "description": "Modified before. Same format as changed_within.",
                     },
                     "full_path_match": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Match pattern against full path instead of just filename. True for 'src/main.py', False for 'main.py'",
+                        "description": "Match against full path vs filename.",
                     },
                     "absolute": {
                         "type": "boolean",
                         "default": True,
-                        "description": "Return absolute paths. True='/full/path/file.py', False='./file.py'. Absolute paths are more reliable",
+                        "description": "Return absolute paths.",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of results to return. Default 2000, max 10000. Use to prevent overwhelming output",
+                        "description": "Max results. Default 2000, max 10000.",
                     },
                     "count_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return only the total count of matching files instead of file details. Useful for quick statistics",
+                        "description": "Return count only, no file details.",
                     },
                     "output_file": {
                         "type": "string",
-                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                        "description": "Save output to file. Extension auto-detected.",
                     },
                     "suppress_output": {
                         "type": "boolean",
-                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "description": "Suppress detailed output when output_file is set.",
                         "default": False,
                     },
                     "output_format": {
                         "type": "string",
                         "enum": ["json", "toon"],
-                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                        "description": "'toon' (default, 50-70% token savings) or 'json'",
                         "default": "toon",
                     },
                 },

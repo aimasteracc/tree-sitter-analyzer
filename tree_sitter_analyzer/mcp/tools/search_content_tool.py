@@ -60,35 +60,17 @@ class SearchContentTool(BaseMCPTool):
         return {
             "name": "search_content",
             "description": (
-                "Search file contents for text patterns using ripgrep — find all occurrences of "
-                "function calls, variable references, string literals, or any regex pattern. "
-                "\n\n"
-                "ALWAYS use search_content for content search tasks. "
-                "NEVER invoke rg or grep as a Bash command — search_content has safety limits, "
-                "token optimization, and respects project boundaries. "
-                "\n\n"
-                "WHEN TO USE:\n"
-                "- Finding all usages of a string literal, config key, or error message\n"
-                "- Locating where a function is called before using trace_impact for symbol-level analysis\n"
-                "- Searching across specific file types (use include_globs=['*.py'])\n"
-                "- Text/regex pattern matching where you don't need syntax-level understanding\n"
+                "Search file contents via ripgrep. ALWAYS prefer this over Bash grep/rg — it has safety limits and token optimization.\n"
                 "\n"
-                "WHEN NOT TO USE (use a different tool instead):\n"
-                "- Understanding code structure (classes, methods, fields) — use analyze_code_structure\n"
-                "- Extracting all functions matching a pattern by syntax — use query_code\n"
-                "- Large projects (> 1000 files) with both file type and content filters — "
-                "use find_and_grep (two-stage: filter files first, then search content)\n"
-                "- Tracing all callers of a specific symbol — use trace_impact (handles language "
-                "filtering and word-boundary matching automatically)\n"
+                "USE for: text/regex search (string literals, function calls, config keys). "
+                "NOT for: code structure (use analyze_code_structure), syntax-aware queries (use query_code), "
+                "large projects with both file+content filters (use find_and_grep), or symbol tracing (use trace_impact).\n"
                 "\n"
-                "TOKEN EFFICIENCY — start cheap, escalate only if needed:\n"
-                "1. total_only=true: ~10 tokens — just the match count\n"
-                "2. count_only_matches=true: ~50-200 tokens — counts per file\n"
-                "3. summary_only=true: ~500-2000 tokens — condensed overview\n"
-                "4. Full results: ~2000-50000+ tokens — use only when you need line content\n"
-                "\n"
-                "IMPORTANT: Only one output format flag (total_only, count_only_matches, "
-                "summary_only, group_by_file) can be true at a time — they are mutually exclusive."
+                "TOKEN TIERS (mutually exclusive, pick one):\n"
+                "1. total_only=true: ~10 tokens (count only)\n"
+                "2. count_only_matches=true: ~50-200 tokens (counts per file)\n"
+                "3. summary_only=true: ~500-2000 tokens (condensed overview)\n"
+                "4. Full results: ~2000-50000+ tokens (only when line content needed)"
             ),
             "inputSchema": {
                 "type": "object",
@@ -96,130 +78,130 @@ class SearchContentTool(BaseMCPTool):
                     "roots": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Directory paths to search in recursively. Alternative to 'files'. Example: ['.', 'src/', 'tests/']",
+                        "description": "Search directories. Alternative to 'files'.",
                     },
                     "files": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Specific file paths to search in. Alternative to 'roots'. Example: ['main.py', 'config.json']",
+                        "description": "Specific files to search. Alternative to 'roots'.",
                     },
                     "query": {
                         "type": "string",
-                        "description": "Text pattern to search for. Can be literal text or regex depending on settings. Example: 'function', 'class\\s+\\w+', 'TODO:'",
+                        "description": "Text/regex pattern to search for.",
                     },
                     "case": {
                         "type": "string",
                         "enum": ["smart", "insensitive", "sensitive"],
                         "default": "smart",
-                        "description": "Case sensitivity mode. 'smart'=case-insensitive unless uppercase letters present, 'insensitive'=always ignore case, 'sensitive'=exact case match",
+                        "description": "Case: 'smart' (default), 'insensitive', 'sensitive'",
                     },
                     "fixed_strings": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Treat query as literal string instead of regex. True for exact text matching, False for regex patterns",
+                        "description": "Treat query as literal string vs regex.",
                     },
                     "word": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Match whole words only. True finds 'test' but not 'testing', False finds both",
+                        "description": "Match whole words only.",
                     },
                     "multiline": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Allow patterns to match across multiple lines. Useful for finding multi-line code blocks or comments",
+                        "description": "Allow multi-line pattern matching.",
                     },
                     "include_globs": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "File patterns to include in search. Example: ['*.py', '*.js'] to search only Python and JavaScript files",
+                        "description": "Include file patterns. Ex: ['*.py', '*.js']",
                     },
                     "exclude_globs": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "File patterns to exclude from search. Example: ['*.log', '__pycache__/*'] to skip log files and cache directories",
+                        "description": "Exclude file patterns. Ex: ['*.log', '__pycache__/*']",
                     },
                     "follow_symlinks": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Follow symbolic links during search. False=safer, True=may cause infinite loops",
+                        "description": "Follow symlinks. May cause infinite loops.",
                     },
                     "hidden": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Search in hidden files (starting with dot). False=skip .git, .env files, True=search all",
+                        "description": "Include hidden files (dot-prefixed).",
                     },
                     "no_ignore": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Ignore .gitignore and similar ignore files. False=respect ignore rules, True=search all files",
+                        "description": "Ignore .gitignore rules.",
                     },
                     "max_filesize": {
                         "type": "string",
-                        "description": "Maximum file size to search. Format: '10M'=10MB, '500K'=500KB, '1G'=1GB. Prevents searching huge files",
+                        "description": "Max file size. Ex: '10M', '500K', '1G'",
                     },
                     "context_before": {
                         "type": "integer",
-                        "description": "Number of lines to show before each match. Useful for understanding match context. Example: 3 shows 3 lines before",
+                        "description": "Lines before each match for context.",
                     },
                     "context_after": {
                         "type": "integer",
-                        "description": "Number of lines to show after each match. Useful for understanding match context. Example: 3 shows 3 lines after",
+                        "description": "Lines after each match for context.",
                     },
                     "encoding": {
                         "type": "string",
-                        "description": "Text encoding to assume for files. Default is auto-detect. Example: 'utf-8', 'latin1', 'ascii'",
+                        "description": "File encoding. Default: auto-detect.",
                     },
                     "max_count": {
                         "type": "integer",
-                        "description": "Maximum number of matches per file. Useful to prevent overwhelming output from files with many matches",
+                        "description": "Max matches per file.",
                     },
                     "timeout_ms": {
                         "type": "integer",
-                        "description": "Search timeout in milliseconds. Prevents long-running searches. Example: 5000 for 5 second timeout",
+                        "description": "Timeout in ms.",
                     },
                     "count_only_matches": {
                         "type": "boolean",
                         "default": False,
-                        "description": "⚡ EXCLUSIVE: Return only match counts per file (~50-200 tokens). RECOMMENDED for: File distribution analysis, understanding match spread across files. Cannot be combined with other output formats.",
+                        "description": "EXCLUSIVE: Return match counts per file (~50-200 tokens). Cannot combine with other format flags.",
                     },
                     "summary_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "⚡ EXCLUSIVE: Return condensed overview with top files and sample matches (~500-2000 tokens). RECOMMENDED for: Initial investigation, scope confirmation, pattern validation. Cannot be combined with other output formats.",
+                        "description": "EXCLUSIVE: Return condensed summary (~500-2000 tokens). Cannot combine with other format flags.",
                     },
                     "optimize_paths": {
                         "type": "boolean",
                         "default": False,
-                        "description": "⚡ EXCLUSIVE: Optimize file paths by removing common prefixes (10-30% token reduction). RECOMMENDED for: Deep directory structures, large codebases. Cannot be combined with other output formats.",
+                        "description": "EXCLUSIVE: Shorten paths by removing common prefixes (10-30% savings). Cannot combine with other format flags.",
                     },
                     "group_by_file": {
                         "type": "boolean",
                         "default": False,
-                        "description": "⚡ EXCLUSIVE: Group results by file, eliminating path duplication (~2000-10000 tokens). RECOMMENDED for: Context-aware review, analyzing matches within specific files. Cannot be combined with other output formats.",
+                        "description": "EXCLUSIVE: Group by file to deduplicate paths (~2000-10000 tokens). Cannot combine with other format flags.",
                     },
                     "total_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "⚡ EXCLUSIVE: Return only total match count as single number (~10 tokens - MOST EFFICIENT). RECOMMENDED for: Count validation, filtering decisions, existence checks. Takes priority over all other formats. Cannot be combined with other output formats.",
+                        "description": "EXCLUSIVE: Return total count only (~10 tokens). Overrides other formats. Cannot combine with other format flags.",
                     },
                     "output_file": {
                         "type": "string",
-                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                        "description": "Save output to file. Extension auto-detected.",
                     },
                     "suppress_output": {
                         "type": "boolean",
-                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
+                        "description": "Suppress detailed output when output_file is set.",
                         "default": False,
                     },
                     "enable_parallel": {
                         "type": "boolean",
-                        "description": "Enable parallel processing for multiple root directories to improve performance. Default: True",
+                        "description": "Parallel processing for multiple roots.",
                         "default": True,
                     },
                     "output_format": {
                         "type": "string",
                         "enum": ["json", "toon"],
-                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
+                        "description": "'toon' (default, 50-70% token savings) or 'json'",
                         "default": "toon",
                     },
                 },
