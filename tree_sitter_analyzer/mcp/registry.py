@@ -302,6 +302,8 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "dead_code",
             "test_coverage",
             "refactoring_suggestions",
+            "design_patterns",
+            "grammar_discovery",
         ],
     },
     "query": {

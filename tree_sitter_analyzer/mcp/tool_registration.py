@@ -41,6 +41,7 @@ from .tools.semantic_impact_tool import (
 from .tools.test_coverage_tool import TestCoverageTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
+from .tools.grammar_discovery_tool import GrammarDiscoveryTool
 
 # Optional tools
 try:
@@ -325,6 +326,18 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(patterns_tool),
         description="Design patterns: Singleton, Factory, Observer, Strategy, anti-patterns",
         emoji="🏗️",
+    )
+
+    # grammar_discovery
+    grammar_tool = GrammarDiscoveryTool()
+    registry.register(
+        name="grammar_discovery",
+        toolset="analysis",
+        category="grammar-introspection",
+        schema=grammar_tool.get_schema(),
+        handler=_make_handler(grammar_tool),
+        description="Grammar auto-discovery: runtime introspection of node types, fields, wrappers",
+        emoji="🔬",
     )
 
     # api_discovery

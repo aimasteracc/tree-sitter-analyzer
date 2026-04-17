@@ -135,7 +135,7 @@ class TestStructuralAnalyzer:
         """Test that analysis tracks occurrence counts."""
         result = analyzer.analyze_code_sample(simple_function_node)
 
-        for node_type, analysis in result.items():
+        for _node_type, analysis in result.items():
             assert analysis.total_occurrences > 0
             assert analysis.total_occurrences == analysis.total_occurrences
 
@@ -145,7 +145,7 @@ class TestStructuralAnalyzer:
         """Test that wrapper scores are calculated."""
         result = analyzer.analyze_code_sample(decorated_function_node)
 
-        for node_type, analysis in result.items():
+        for _node_type, analysis in result.items():
             assert isinstance(analysis.wrapper_score, int)
             assert analysis.wrapper_score >= 0
 
@@ -155,7 +155,7 @@ class TestStructuralAnalyzer:
         """Test that child types are tracked."""
         result = analyzer.analyze_code_sample(simple_function_node)
 
-        for node_type, analysis in result.items():
+        for _node_type, analysis in result.items():
             assert isinstance(analysis.child_types, list)
 
     def test_detect_wrappers_returns_list(
