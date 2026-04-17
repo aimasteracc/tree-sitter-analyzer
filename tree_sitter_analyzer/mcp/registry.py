@@ -297,6 +297,8 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "error_recovery",
             "semantic_impact",
             "quick_risk_assessment",
+            "understand_codebase",
+            "complexity_heatmap",
         ],
     },
     "query": {

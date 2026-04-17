@@ -200,3 +200,60 @@ ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
   - 路径：`/Users/aisheng.yu/wiki/wiki/ai-tech/claude-code-system-prompts-overview.md`
 
 **总计：59 页 Wiki 知识，全部已索引在此文件中。Agent 可通过 qmd 或直接路径访问任意页面。**
+
+---
+
+## 2026-04-17 新功能探索灵感收集
+
+### CodeFlow — 浏览器端代码架构可视化工具
+- **路径**: `/Users/aisheng.yu/wiki/wiki/ai-tech/codeflow-overview.md`
+- **核心功能**:
+  - 交互式依赖图 (D3.js)
+  - 爆炸半径分析
+  - 安全扫描
+  - 设计模式检测
+  - 健康评分 (A-F)
+  - 四种可视化模式
+- **技术栈**: React 18 + D3.js 7, 单 HTML 文件, 35+ 语言支持
+- **价值**: 零安装秒级洞察, 100% 浏览器端运行
+- **对 ts-analyzer 启发**: 可视化输出格式、A-F 评分模型、热力图概念
+
+### Claw Code — 自主多 Agent 协调系统
+- **路径**: `/Users/aisheng.yu/wiki/raw/ai-tech/claw-code/philosophy.md`
+- **核心理念**: "Humans set direction; claws perform the labor"
+- **三部分系统**:
+  1. OmX (`oh-my-codex`) - workflow 层, 短指令转结构化执行
+  2. clawhip - 事件和通知路由
+  3. OmO (`oh-my-openagent`) - 多 Agent 协调
+- **关键洞察**:
+  - 真正的瓶颈是: 架构清晰度、任务分解、判断力、品味、决策
+  - 代码是证据, 协调系统才是产品经验
+  - 重要的不是打字速度, 而是决定什么值得被构建
+- **对 ts-analyzer 启发**: 工具应该为 Agent 提供更好的上下文, 而不只是人类
+
+### 语义搜索与向量化
+- **QMD** - Tobias Lütke 本地混合搜索引擎, tree-sitter AST chunking + MCP Server
+- **Text embeddings** - 向量嵌入用于语义搜索
+- **对 ts-analyzer 启发**: 可能的语义代码搜索功能
+
+### 新功能想法 (优先级排序)
+
+1. **代码复杂度热力图** (Code Complexity Heatmap)
+   - 生成可视化报告, 标注代码复杂度高的区域
+   - 结合圈复杂度、文件大小、嵌套深度
+   - 输出格式: JSON + Markdown + ASCII 热力图
+
+2. **调用链可视化** (Call Chain Visualization)
+   - 可视化函数调用链
+   - 检测循环调用
+   - 爆炸半径分析的可视化版本
+
+3. **语义代码搜索** (Semantic Code Search)
+   - 基于含义而非文本模式搜索
+   - 使用向量化嵌入
+   - "找处理用户认证的函数" → 找到相关代码
+
+4. **重构建议** (Refactoring Suggestions)
+   - 基于代码模式自动建议重构
+   - 提取方法、拆分大类等
+   - 可执行的重构建议
