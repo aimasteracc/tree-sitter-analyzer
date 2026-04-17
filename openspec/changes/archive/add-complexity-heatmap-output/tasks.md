@@ -22,22 +22,22 @@ AI 助手和开发者在处理大文件时需要：
 - [x] 创建 `analysis/complexity.py` 模块
 - [x] 实现圈复杂度计算（基于分支节点数）
 - [x] 实现函数级复杂度聚合
+- [x] 添加单元测试 (23 tests)
+
+### Sprint 2: Heatmap Formatter ✅
+- [x] 创建 `ComplexityHeatmapFormatter` in `analysis/complexity.py`
+- [x] 实现 ASCII 热力图输出（低→高：░▒▓█）
+- [x] 实现行级复杂度映射
+- [x] 添加颜色编码选项（ANSI）
 - [x] 添加单元测试
 
-### Sprint 2: Heatmap Formatter
-- [ ] 创建 `ComplexityHeatmapFormatter` in `formatters/`
-- [ ] 实现 ASCII 热力图输出（低→高：░▒▓█）
-- [ ] 实现行级复杂度映射
-- [ ] 添加颜色编码选项（ANSI）
-- [ ] 添加单元测试
+### Sprint 3: MCP 工具集成 ✅
+- [x] 创建 `complexity_heatmap` MCP 工具
+- [x] 注册到 ToolRegistry (analysis toolset)
+- [x] 添加集成测试 (13 tests)
+- [x] 更新 tool count (25 → 26)
 
-### Sprint 3: MCP 工具集成
-- [ ] 扩展 `health_score` 工具：添加 `heatmap` 输出格式
-- [ ] 或创建独立工具 `complexity_heatmap`
-- [ ] 注册到 ToolRegistry (analysis toolset)
-- [ ] 添加集成测试
-
-### Sprint 4: 文档更新
+### Sprint 4: 文档更新 ⏳
 - [ ] 更新 CHANGELOG.md
 - [ ] 更新 README.md
 - [ ] 更新 ARCHITECTURE.md

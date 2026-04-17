@@ -1923,3 +1923,77 @@
 ### 下一步
 - 更新文档（CHANGELOG, README, ARCHITECTURE）
 - 继续 Phase 7 永续循环
+
+---
+
+## Session N+1 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 1 | 文档更新 (understand_codebase) | done | - | CHANGELOG, README, ARCHITECTURE |
+| 2 | 乔布斯产品理念：灵感收集 | done | - | qmd 检索 wiki (CodeFlow, Claw Code) |
+| 3 | 乔布斯/减法：功能优先级 | done | - | 聚焦复杂度热力图 |
+| 4 | 实现 complexity_heatmap | done | 36/36 | analysis/complexity.py + MCP tool |
+
+### 新增/修改文件
+- `CHANGELOG.md` — 添加 understand_codebase 工具条目
+- `README.md` — 更新工具数量 24 → 25
+- `ARCHITECTURE.md` — 更新工具数量 24 → 25
+- `findings.md` — 添加 2026-04-17 新功能探索灵感
+- `tree_sitter_analyzer/analysis/complexity.py` — 圈复杂度分析器 + HeatmapFormatter
+- `tree_sitter_analyzer/mcp/tools/complexity_heatmap_tool.py` — MCP 工具
+- `tests/unit/analysis/test_complexity.py` — 23 个单元测试
+- `tests/unit/mcp/test_complexity_heatmap_tool.py` — 13 个单元测试
+- `tree_sitter_analyzer/mcp/tool_registration.py` — 注册 complexity_heatmap
+- `tree_sitter_analyzer/mcp/registry.py` — 更新 TOOLSET_DEFINITIONS (analysis: 12→14)
+- `openspec/changes/add-complexity-heatmap-output/tasks.md` — OpenSpec change
+
+### 乔布斯产品理念实现
+
+**"Find complex code before it breaks"** — 代码复杂度热力图。
+
+**聚焦**:
+- 复杂度是代码质量的核心指标
+- 大文件中的复杂区域是 bug 磁场
+- 可视化帮助快速定位问题
+
+**减法**:
+- 增强现有 health_score 工具, 而非独立系统
+- 复用 ComplexityAnalyzer 数据结构
+
+**一句话定义**: "在代码出问题前找到复杂代码"
+
+### Complexity Heatmap 功能
+
+**行级圈复杂度分析**:
+- 低 (1-5): 简单代码 → ░ 绿色
+- 中 (6-10): 中等复杂度 → ▒ 黄色
+- 高 (11-20): 复杂代码 → ▓ 橙色
+- 危险 (20+): 极复杂 → █ 红色
+
+**输出格式**:
+- ASCII 热力图 (终端友好)
+- ANSI 颜色编码 (可选)
+- JSON 汇总 (CI 集成)
+
+### 测试结果
+- 36 new tests pass (23 + 13)
+- ruff check: all clean
+- mypy --strict: all clean
+
+### 总提交数: 76 commits (+2)
+- feat/autonomous-dev 分支
+
+### 系统状态
+- 工具数量: 25 → 26 MCP tools (+1 complexity_heatmap)
+- 测试数量: 10184 + 36 new = 10220
+- 覆盖率: 81%+
+- 代码质量: 良好
+- 性能: 稳定
+- 文档: 最新
+
+### 下一步
+- 继续 Phase 7 永续循环
+- 更新 tasks.md 标记 Sprint 完成
