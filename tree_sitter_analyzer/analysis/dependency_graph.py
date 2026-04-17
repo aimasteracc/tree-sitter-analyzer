@@ -89,7 +89,7 @@ class DependencyGraph:
         return edge_set
 
     def _adjacency(self) -> dict[str, list[str]]:
-        """Build adjacency list from edges (O(E), cached per instance)."""
+        """Build adjacency list from edges (O(E))."""
         adj: dict[str, list[str]] = {}
         for src, dst in self.edges:
             adj.setdefault(src, []).append(dst)
@@ -175,7 +175,7 @@ class DependencyGraph:
         """
         adjacency = self._adjacency()
         in_degree: dict[str, int] = dict.fromkeys(self.nodes, 0)
-        for src, dst in self.edges:
+        for _src, dst in self.edges:
             in_degree[dst] = in_degree.get(dst, 0) + 1
 
         # Use deque for O(1) popleft (was list.pop(0) = O(n)).
@@ -273,11 +273,12 @@ class DependencyGraphBuilder:
         for file_path in source_files:
             rel = str(file_path.relative_to(self.project_root))
             lang = self.EXTENSION_TO_LANG.get(file_path.suffix, "unknown")
-            imports = self._extract_imports(file_path, lang)
+            line_count = self._count_lines(file_path)
+            imports = self._extract_imports(file_path, lang, line_count)
 
             info = _NodeInfo(path=rel, language=lang, imports=imports)
             node_infos[rel] = info
-            nodes[rel] = {"language": lang, "lines": self._count_lines(file_path)}
+            nodes[rel] = {"language": lang, "lines": line_count}
 
         import_map = self._build_import_map(node_infos)
 
@@ -290,13 +291,22 @@ class DependencyGraphBuilder:
         return DependencyGraph(nodes=nodes, edges=edges)
 
     def _find_source_files(self) -> list[Path]:
-        """Find all source files in the project."""
-        files: list[Path] = []
-        for ext in self.EXTENSION_TO_LANG:
-            files.extend(self.project_root.rglob(f"*{ext}"))
+        """Find all source files in the project.
+
+        Single rglob pass with extension filtering instead of one rglob per
+        language — reduces filesystem traversals from 9 to 1.
+        """
+        valid_exts = set(self.EXTENSION_TO_LANG)
+        files: list[Path] = [
+            p
+            for p in self.project_root.rglob("*")
+            if p.is_file() and p.suffix in valid_exts
+        ]
         return sorted(files)
 
-    def _extract_imports(self, file_path: Path, language: str) -> list[str]:
+    def _extract_imports(
+        self, file_path: Path, language: str, line_count: int = 0
+    ) -> list[str]:
         """Extract import statements from a file.
 
         For files exceeding _LARGE_FILE_THRESHOLD lines, uses streaming to read
@@ -306,7 +316,8 @@ class DependencyGraphBuilder:
         if not pattern:
             return []
         try:
-            line_count = self._count_lines(file_path)
+            if not line_count:
+                line_count = self._count_lines(file_path)
             if line_count > _LARGE_FILE_THRESHOLD:
                 return self._extract_imports_streaming(file_path, pattern, language)
             text = file_path.read_text(encoding="utf-8", errors="replace")
