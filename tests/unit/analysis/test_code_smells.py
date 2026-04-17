@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.analysis.code_smells import (
+    DEFAULT_THRESHOLDS,
     CodeSmell,
     CodeSmellDetector,
-    DEFAULT_THRESHOLDS,
     SmellCategory,
     SmellDetectionResult,
     SmellSeverity,
@@ -24,7 +24,6 @@ from tree_sitter_analyzer.analysis.code_smells import (
 from tree_sitter_analyzer.mcp.tools.code_smell_detector_tool import (
     CodeSmellDetectorTool,
 )
-
 
 # ── Smell Data Classes ──────────────────────────────────────────
 
@@ -306,7 +305,6 @@ class TestMagicNumberDetection:
         result = detector.detect_file("test.py")
 
         # Constants should not trigger (the line starts with uppercase var assignment)
-        magic = [s for s in result.smells if s.smell_type == "magic_number"]
         # May or may not flag depending on pattern — just verify it runs
         assert result.total_smells >= 0
 

@@ -218,7 +218,6 @@ class CodeSmellDetectorTool(BaseMCPTool):
 
         total = len(all_smells)
         critical = sum(1 for s in all_smells if s["severity"] == "critical")
-        warning = sum(1 for s in all_smells if s["severity"] == "warning")
 
         response: dict[str, Any] = {
             "success": True,
