@@ -1,11 +1,18 @@
 """
 Semantic Code Search Module
 
-Provides query classification, fast path execution, LLM integration, and result formatting
-for the semantic code search feature.
+Provides query classification, fast path execution, LLM integration, caching,
+and result formatting for the semantic code search feature.
 """
 from __future__ import annotations
 
+from tree_sitter_analyzer.search.cache import (
+    CacheEntry,
+    CacheStats,
+    GitStateTracker,
+    PatternLearner,
+    QueryCache,
+)
 from tree_sitter_analyzer.search.classifier import (
     ClassificationResult,
     FastPathHandler,
@@ -43,4 +50,9 @@ __all__ = [
     "OpenAIClient",
     "AnthropicClient",
     "LLMClient",
+    "QueryCache",
+    "CacheEntry",
+    "CacheStats",
+    "GitStateTracker",
+    "PatternLearner",
 ]
