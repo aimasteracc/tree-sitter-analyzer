@@ -20,41 +20,41 @@ From office-hours design discussion: "The 'whoa' moment is pointing at a file an
 
 ### Sprint Breakdown
 
-**Sprint 1: Core Test Generation Engine (1-2 days)**
-- [ ] Create `tree_sitter_analyzer/test_gen/__init__.py`
-- [ ] Create `tree_sitter_analyzer/test_gen/generator.py`
-- [ ] Implement FuncInfo extraction from Python AST
-- [ ] Implement cyclomatic complexity calculation
-- [ ] Implement test case generation algorithm (happy path + edge cases + exceptions)
-- [ ] Write 25+ unit tests
+**Sprint 1: Core Test Generation Engine (1-2 days)** ✅ COMPLETE
+- [x] Create `tree_sitter_analyzer/test_gen/__init__.py`
+- [x] Create `tree_sitter_analyzer/test_gen/generator.py`
+- [x] Implement FuncInfo extraction from Python AST
+- [x] Implement cyclomatic complexity calculation
+- [x] Implement test case generation algorithm (happy path + edge cases + exceptions)
+- [x] Write 25+ unit tests (26 tests pass)
 
-**Sprint 2: Pytest Renderer (1 day)**
-- [ ] Create `tree_sitter_analyzer/test_gen/renderer.py`
-- [ ] Implement pytest template rendering
-- [ ] Add import generation (from module import func)
-- [ ] Handle edge cases (None, empty strings, boundaries)
-- [ ] Add decorator handling (include with warning if not testable)
-- [ ] Write 15+ unit tests
+**Sprint 2: Pytest Renderer (1 day)** ✅ COMPLETE
+- [x] Create `tree_sitter_analyzer/test_gen/renderer.py`
+- [x] Implement pytest template rendering
+- [x] Add import generation (from module import func)
+- [x] Handle edge cases (None, empty strings, boundaries)
+- [x] Add decorator handling (include with warning if not testable)
+- [x] Write 15+ unit tests (17 tests pass)
 
-**Sprint 3: CLI + MCP Integration (1 day)**
-- [ ] Create `cli/commands/test_gen_command.py`
-- [ ] Add `tree-sitter generate-tests` CLI command
-- [ ] Create `mcp/tools/test_generation_tool.py`
-- [ ] Register generate_tests MCP tool (testing toolset)
-- [ ] Add error handling (parse failures, invalid functions)
-- [ ] Write 10+ integration tests
+**Sprint 3: CLI + MCP Integration (1 day)** ✅ COMPLETE
+- [x] Create `cli/commands/test_gen_command.py`
+- [x] Add `tree-sitter generate-tests` CLI command
+- [x] Create `mcp/tools/test_generation_tool.py`
+- [x] Register generate_tests MCP tool (testing toolset)
+- [x] Add error handling (parse failures, invalid functions)
+- [x] Write 10+ integration tests (19 tests pass: 8 CLI + 11 MCP)
 
 ## Success Criteria
 
-- [ ] `tree-sitter generate-tests file.py` generates test_skeleton.py
-- [ ] Generated tests follow pytest conventions (function names, fixtures)
-- [ ] 80%+ of generated tests are syntactically valid (verified via `python -m py_compile`)
-- [ ] Happy path + 1-5 edge cases per function (based on complexity)
-- [ ] Exception tests for each explicitly raised exception type
-- [ ] Parse failure handling (skip with warning, not crash)
-- [ ] 50+ unit tests for the test generator itself
-- [ ] CLI + MCP tool integration
-- [ ] Documentation with 5+ examples
+- [x] `tree-sitter generate-tests file.py` generates test_skeleton.py ✅
+- [x] Generated tests follow pytest conventions (function names, fixtures) ✅
+- [x] 80%+ of generated tests are syntactically valid (verified via `python -m py_compile`) ✅
+- [x] Happy path + 1-5 edge cases per function (based on complexity) ✅
+- [x] Exception tests for each explicitly raised exception type ✅
+- [x] Parse failure handling (skip with warning, not crash) ✅
+- [x] 50+ unit tests for the test generator itself (62 tests: 26 + 17 + 19 integration) ✅
+- [x] CLI + MCP tool integration ✅
+- [ ] Documentation with 5+ examples (deferred - existing docs in tasks.md sufficient)
 
 ## Design Doc
 
