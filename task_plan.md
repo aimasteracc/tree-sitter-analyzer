@@ -178,10 +178,11 @@
 - ✅ 扫描所有函数，找出超过 50 行的函数 → 已记录
 - ✅ 扫描所有类，找出超过 400 行的文件 → 18 个（grammar_coverage/, core/, analysis/, queries/）
 
-**循环 15：新功能探索（第四轮）** 🔄 下一步
-- 参考 wiki 中的相关项目，发现可借鉴的功能
-- 写原型验证可行性
-- 通过测试后创建正式实现任务
+**循环 15：新功能探索（第四轮）** 🔄 进行中
+- ✅ 参考 wiki 中的相关项目 → Code Smell Detector (已有原型)
+- ✅ 写原型验证可行性 → code_smell_detector_tool.py (36 tests pass, 4 fail)
+- [ ] 修复失败测试 → 4 tests need investigation
+- [ ] 通过测试后创建正式实现任务
 
 **循环 16：性能优化（第四轮）**
 - 用真实项目做 benchmark
