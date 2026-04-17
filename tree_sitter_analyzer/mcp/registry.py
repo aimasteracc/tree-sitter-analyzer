@@ -299,7 +299,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "quick_risk_assessment",
             "understand_codebase",
             "complexity_heatmap",
-            "security_scan",
+            "dead_code",
         ],
     },
     "query": {

@@ -32,6 +32,7 @@ from .tools.modification_guard_tool import ModificationGuardTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.search_content_tool import SearchContentTool
+from .tools.security_scan_tool import SecurityScanTool
 from .tools.semantic_impact_tool import (
     QuickRiskAssessmentTool,
     SemanticImpactTool,
@@ -390,6 +391,18 @@ def _register_safety_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(guard_tool),
         description="Pre-modification safety check: impact analysis, warnings",
         emoji="🛡️",
+    )
+
+    # security_scan
+    security_tool = SecurityScanTool(project_root)
+    registry.register(
+        name="security_scan",
+        toolset="safety",
+        category="security-scanning",
+        schema=security_tool.get_tool_definition(),
+        handler=_make_handler(security_tool),
+        description="Security vulnerability scanner: secrets, injection, XSS, deserialization",
+        emoji="🔒",
     )
 
 

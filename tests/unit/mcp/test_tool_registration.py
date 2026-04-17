@@ -40,10 +40,15 @@ class TestRegisterAllTools:
                 "health_score",
                 "java_patterns",
                 "error_recovery",
+                "semantic_impact",
+                "quick_risk_assessment",
+                "understand_codebase",
+                "complexity_heatmap",
+                "dead_code",
             ],
             "query": ["query_code", "extract_code_section", "get_code_outline"],
             "navigation": ["list_files", "find_and_grep", "search_content", "batch_search"],
-            "safety": ["modification_guard"],
+            "safety": ["modification_guard", "security_scan"],
             "diagnostic": ["check_tools", "ci_report"],
             "index": ["build_project_index", "get_project_summary"],
         }
@@ -61,8 +66,8 @@ class TestRegisterAllTools:
         registry = get_registry()
         all_tools = registry.list_tools()
 
-        # 27 expected tools (18 + code_smell_detector + code_clone_detection + health_score + ci_report + java_patterns + error_recovery + semantic_impact + quick_risk_assessment + understand_codebase + complexity_heatmap + dead_code)
-        assert len(all_tools) == 27
+        # 28 expected tools (27 + security_scan)
+        assert len(all_tools) == 28
 
     def test_tool_metadata(self) -> None:
         """Test that registered tools have proper metadata."""
