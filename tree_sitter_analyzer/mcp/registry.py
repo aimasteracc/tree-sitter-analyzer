@@ -293,6 +293,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "code_smell_detector",
             "code_clone_detection",
             "health_score",
+            "java_patterns",
         ],
     },
     "query": {
