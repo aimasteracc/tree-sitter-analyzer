@@ -47,21 +47,21 @@ User Query → Query Classifier → Fast Path (grep/ast-grep) or LLM Path → Re
 - [x] Simple metrics logging
 - [x] 27 tests written (exceeds 5+ target)
 
-**Sprint 4: CLI + MCP Tool (2-3 days)**
-- CLI command: `tree-sitter search`
-- MCP tool registration
-- Documentation with 10+ example queries
-- Integration tests
-- 5+ tests
+**Sprint 4: CLI + MCP Tool (2-3 days)** ✅ COMPLETE
+- ✅ CLI command: `tree-sitter search` (--search, --search-format, --search-no-cache, --search-provider)
+- ✅ MCP tool registration (semantic_search in query toolset)
+- ✅ Documentation with 10+ example queries (CHANGELOG.md, README.md, ARCHITECTURE.md)
+- ✅ Integration tests (test_semantic_search_cli.py: 11 tests, test_semantic_search_tool.py: 11 tests)
+- ✅ 5+ tests (22 tests total, exceeds target)
 
 ## Success Criteria
 
 - [x] Simple queries return in <1 second (no LLM) ✅ Sprint 1
 - [ ] Complex queries return in <5 seconds (with LLM)
 - [x] 50%+ of queries handled by fast path (MVP) ✅ Sprint 1
-- [ ] CLI + MCP tool both functional
+- [x] CLI + MCP tool both functional ✅ Sprint 4
 - [x] 20+ tests covering all paths ✅ Sprint 1 (49 tests)
-- [ ] Documentation with 10+ example queries
+- [x] Documentation with 10+ example queries ✅ Sprint 4
 
 ## Dependencies
 

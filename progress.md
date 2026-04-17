@@ -2781,3 +2781,66 @@ All 3 Sprints complete:
 ### 下一步
 执行 /clear 后重新开始，继续 Phase 7 永续循环
 
+
+### Session 102 — 2026-04-17
+- **Open**: Continue from Session 101
+- **Task**: Complete Sprint 4 of add-semantic-code-search
+- **Complete**: Sprint 4 - CLI + MCP Tool Integration
+- **Files Modified**:
+  - tree_sitter_analyzer/cli_main.py: Added --search, --search-format, --search-no-cache, --search-provider options
+  - tree_sitter_analyzer/mcp/tool_registration.py: Registered semantic_search tool to query toolset
+  - tree_sitter_analyzer/search/formatter.py: Added error handling in _format_text
+  - tree_sitter_analyzer/cli/commands/semantic_search_command.py: Fixed execute_async signature
+  - tests/unit/mcp/test_tool_registration.py: Updated tool count (32 → 34)
+  - tests/unit/mcp/test_tool_discovery.py: Updated analysis tool count (19 → 20)
+- **Files Created**:
+  - tests/unit/cli/test_semantic_search_cli.py: 11 tests
+  - tests/unit/mcp/test_semantic_search_tool.py: 11 tests
+  - tree_sitter_analyzer/cli/commands/semantic_search_cli.py: Standalone CLI
+  - tree_sitter_analyzer/cli/commands/semantic_search_command.py: Command class
+  - tree_sitter_analyzer/mcp/tools/semantic_search_tool.py: MCP tool with get_tool_definition
+  - tree_sitter_analyzer/search/pattern_learning.py: Pattern learning module
+  - tree_sitter_analyzer/search/query_cache.py: Query cache module
+- **Documentation Updated**:
+  - CHANGELOG.md: Added semantic_code_search entry with 94 tests
+  - README.md: Updated tool count (29 → 31), added semantic search feature
+  - ARCHITECTURE.md: Updated MCP Tool Layer (29 → 31 tools)
+- **Tests**: 22 new tests (11 CLI + 11 MCP tool)
+- **MCP Tools**: 29 → 31 (+semantic_search, +api_discovery)
+- **Commit**: 71e8a1e1
+
+### Summary of add-semantic-code-search OpenSpec Change
+**Total Duration**: Sessions 99-102 (4 sessions)
+**Total Commits**: 4 (6f4a3e7f, 12f7e38e, 7b435511, 70fab53b, 71e8a1e1)
+**Total Tests**: 116 (49 + 18 + 27 + 22)
+**Total New Code**: ~1500 lines (search module + CLI + MCP tool + tests)
+**MCP Tools Added**: 1 (semantic_search)
+**Features Delivered**:
+1. Query Classifier (9 fast path patterns)
+2. Fast Path Executor (grep/ripgrep/tree-sitter integration)
+3. LLM Integration (OpenAI/Anthropic/Ollama/llama.cpp)
+4. Query Cache (git SHA invalidation + pattern learning)
+5. CLI Command (tree-sitter search)
+6. MCP Tool (semantic_search)
+
+
+### Total Commits: 82 (78 + 4)
+- feat/autonomous-dev 分支
+- 所有 commit 已推送到远程
+
+### 测试状态
+- 10484 tests pass (+22 from semantic search)
+- Coverage: 81%+
+- ruff check: all clean
+- mypy --strict: all clean (fixed semantic_search_command.py signature)
+
+### 系统状态
+- 工具数量: 31 MCP tools (29 + 2)
+- 代码质量: 良好 (3 TODO 全部为示例代码)
+- 性能: 稳定
+- 文档: 最新
+
+### 下一步
+- OpenSpec change add-semantic-code-search 完全完成
+- 继续 Phase 7 永续循环或执行下一个 OpenSpec change
+

@@ -422,7 +422,7 @@
 
 ## OpenSpec Changes In Progress
 
-### add-semantic-code-search 🔄 Sprint 3 完成，Sprint 4 待实现
+### add-semantic-code-search ✅ Sprint 4 完成
 
 **Sprint 1: Query Classifier + Fast Path** ✅ 完成
 - ✅ Pattern matching for simple queries (regex-based)
@@ -446,12 +446,13 @@
 - ✅ 27 tests (exceeds 5+ target)
 - ✅ Commit: 70fab53b
 
-**Sprint 4: CLI + MCP Tool** 📋 待实现
-- [ ] CLI command: `tree-sitter search`
-- [ ] MCP tool registration
-- [ ] Documentation with 10+ example queries
-- [ ] Integration tests
-- [ ] 5+ tests
+**Sprint 4: CLI + MCP Tool** ✅ 完成
+- ✅ CLI command: `tree-sitter search`
+- ✅ MCP tool registration (semantic_search in query toolset)
+- ✅ Documentation with 10+ example queries
+- ✅ Integration tests (test_semantic_search_cli.py: 11 tests, test_semantic_search_tool.py: 11 tests)
+- ✅ 5+ tests (22 tests total, exceeds target)
+- ✅ Commit: 71e8a1e1
 
 ## 完成的 OpenSpec Changes
 
