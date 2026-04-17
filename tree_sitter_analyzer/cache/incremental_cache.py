@@ -11,6 +11,7 @@ import fcntl
 import hashlib
 import os
 import pickle
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
@@ -55,6 +56,101 @@ class CacheEntry:
     size_bytes: int  # For size-based eviction
 
 
+@dataclass(frozen=True)
+class GitState:
+    """Git repository state for cache invalidation."""
+
+    sha: str  # Current commit SHA
+    branch: str  # Current branch name
+
+
+class GitStateTracker:
+    """
+    Tracks git repository state for cache invalidation.
+
+    Provides git SHA and branch information, with graceful fallback
+    for non-git repos or when git is unavailable.
+    """
+
+    def __init__(self, repo_path: str | Path) -> None:
+        """
+        Initialize git state tracker.
+
+        Args:
+            repo_path: Path to the repository.
+        """
+        self.repo_path = Path(repo_path).resolve()
+        self._git_exe = "git.exe" if sys.platform == "win32" else "git"
+        self._is_git_repo = self._check_git_repo()
+
+    def _check_git_repo(self) -> bool:
+        """Check if the path is a valid git repository."""
+        git_dir = self.repo_path / ".git"
+        return git_dir.exists() and git_dir.is_dir()
+
+    def _run_git(self, args: list[str]) -> str | None:
+        """
+        Run a git command and return stdout.
+
+        Returns:
+            Command output as string, or None if git is unavailable.
+        """
+        if not self._is_git_repo:
+            return None
+
+        try:
+            cmd = [self._git_exe, *args]
+            env = os.environ.copy()
+            env["GIT_PAGER"] = ""  # Disable pager
+            result = subprocess.run(
+                cmd,
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+            if result.returncode == 0:
+                return result.stdout
+        except (FileNotFoundError, OSError):
+            # Git not found
+            pass
+        return None
+
+    def get_current_state(self) -> GitState | None:
+        """
+        Get current git repository state.
+
+        Returns:
+            GitState with SHA and branch, or None if not a git repo.
+        """
+        sha = self._run_git(["rev-parse", "HEAD"])
+        if sha is None:
+            return None
+
+        sha = sha.strip()
+        if not sha:
+            return None
+
+        # Get branch name (or "HEAD" if detached)
+        branch_output = self._run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+        branch = "HEAD" if branch_output is None else branch_output.strip() or "HEAD"
+
+        return GitState(sha=sha, branch=branch)
+
+    def get_file_sha(self, file_path: str) -> str | None:
+        """
+        Get git SHA for a specific file.
+
+        Args:
+            file_path: Path to the file (relative to repo root).
+
+        Returns:
+            Git blob SHA for the file, or None if not tracked.
+        """
+        return self._run_git(["hash-object", file_path])
+
+
 class IncrementalCacheManager:
     """
     Manages incremental analysis cache with file-hash and git SHA invalidation.
@@ -95,6 +191,10 @@ class IncrementalCacheManager:
         # File lock for concurrent access
         self._lock_path = self.cache_dir / ".lock"
         self._lock_fd: int | None = None
+
+        # Git state tracking
+        self._git_tracker = GitStateTracker(self.repo_path)
+        self._current_git_state: GitState | None = None
 
     def _acquire_lock(self, exclusive: bool = False) -> None:
         """Acquire file lock for concurrent access safety."""
@@ -320,6 +420,101 @@ class IncrementalCacheManager:
             cache_path.unlink(missing_ok=True)
 
             self._current_size -= lru_entry.size_bytes
+
+    def get_git_state(self) -> GitState | None:
+        """
+        Get current git repository state.
+
+        Returns:
+            GitState with SHA and branch, or None if not a git repo.
+        """
+        return self._git_tracker.get_current_state()
+
+    def invalidate_on_git_change(self, old_state: GitState | None) -> bool:
+        """
+        Invalidate cache if git state changed (SHA or branch).
+
+        Args:
+            old_state: Previous git state to compare against.
+
+        Returns:
+            True if cache was invalidated (git changed), False otherwise.
+        """
+        new_state = self.get_git_state()
+
+        # No git repo — nothing to invalidate
+        if new_state is None:
+            return False
+
+        # No previous state — save current state
+        if old_state is None:
+            self._current_git_state = new_state
+            return False
+
+        # Check if SHA or branch changed
+        if new_state.sha != old_state.sha or new_state.branch != old_state.branch:
+            # Git state changed — invalidate all cache
+            self.invalidate_all()
+            self._current_git_state = new_state
+            return True
+
+        return False
+
+    def handle_branch_switch(
+        self, old_branch: str, new_branch: str
+    ) -> int:
+        """
+        Handle branch switching by reusing unchanged files.
+
+        When switching branches, files with identical content can reuse
+        cached entries. Files that changed or don't exist are invalidated.
+
+        Args:
+            old_branch: Previous branch name.
+            new_branch: New branch name.
+
+        Returns:
+            Number of cache entries invalidated.
+        """
+        invalidated = 0
+
+        self._acquire_lock(exclusive=True)
+        try:
+            # Check all cached files
+            for cache_file in self.cache_dir.glob("*.cache"):
+                try:
+                    with open(cache_file, "rb") as f:
+                        entry = pickle.load(f)
+
+                    if not isinstance(entry, CacheEntry):
+                        continue
+
+                    cached = entry.value
+                    file_path = self.repo_path / cached.key.file_path
+
+                    # Check if file exists on new branch
+                    if not file_path.exists():
+                        # File doesn't exist on new branch — invalidate
+                        cache_file.unlink(missing_ok=True)
+                        invalidated += 1
+                        continue
+
+                    # Check if file content changed
+                    current_hash = self._get_file_hash(str(file_path))
+                    if cached.key.content_hash != current_hash:
+                        # File changed — invalidate
+                        cache_file.unlink(missing_ok=True)
+                        invalidated += 1
+
+                except (pickle.UnpicklingError, EOFError, OSError):
+                    # Corrupted cache — delete
+                    cache_file.unlink(missing_ok=True)
+                    invalidated += 1
+
+        finally:
+            self._release_lock()
+
+        return invalidated
 
     def __enter__(self) -> IncrementalCacheManager:
         """Context manager entry."""

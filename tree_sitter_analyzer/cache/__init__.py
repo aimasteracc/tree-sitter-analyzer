@@ -9,6 +9,8 @@ from tree_sitter_analyzer.cache.incremental_cache import (
     CachedAnalysis,
     CacheEntry,
     CacheKey,
+    GitState,
+    GitStateTracker,
     IncrementalCacheManager,
 )
 
@@ -16,5 +18,7 @@ __all__ = [
     "CacheEntry",
     "CacheKey",
     "CachedAnalysis",
+    "GitState",
+    "GitStateTracker",
     "IncrementalCacheManager",
 ]
