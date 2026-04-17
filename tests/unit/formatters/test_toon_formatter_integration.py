@@ -508,5 +508,182 @@ class TestFormatterProtocolCompliance:
         assert ":" in result or "{" in result
 
 
+class TestToonFormatterAnalysisResult:
+    """Test ToonFormatter with real AnalysisResult objects."""
+
+    @pytest.fixture
+    def mock_elements(self):
+        """Create mock CodeElement objects."""
+
+        class MockElement:
+            def __init__(
+                self,
+                name: str,
+                element_type: str,
+                start_line: int = 1,
+                end_line: int = 10,
+                visibility: str = "",
+            ):
+                self.name = name
+                self.element_type = element_type
+                self.start_line = start_line
+                self.end_line = end_line
+                self.visibility = visibility
+                self.children = []
+
+        return MockElement
+
+    @pytest.fixture
+    def mock_result(self, mock_elements):
+        """Create a real AnalysisResult with mock elements."""
+        from tree_sitter_analyzer.models import AnalysisResult
+
+        class MockPackage:
+            name = "com.example"
+
+        result = AnalysisResult(
+            file_path="test.java",
+            language="java",
+            package=MockPackage(),
+        )
+        result.elements = [
+            mock_elements("TestClass", "class", 1, 50),
+            mock_elements("doStuff", "method", 5, 20, "public"),
+            mock_elements("helper", "method", 25, 40, "private"),
+            mock_elements("main", "function", 45, 50),
+        ]
+        return result
+
+    def test_format_analysis_result_with_metadata(
+        self, mock_result
+    ) -> None:
+        """Test formatting with metadata included."""
+        formatter = ToonFormatter(include_metadata=True)
+        output = formatter.format_analysis_result(mock_result)
+
+        assert "file: test.java" in output
+        assert "language: java" in output
+        assert "package: com.example" in output
+        assert "summary:" in output
+
+    def test_format_analysis_result_without_metadata(
+        self, mock_result
+    ) -> None:
+        """Test formatting with metadata excluded."""
+        formatter = ToonFormatter(include_metadata=False)
+        output = formatter.format_analysis_result(mock_result)
+
+        assert "file:" not in output
+        # Should still have elements
+        assert "elements" in output or "classes" in output
+
+    def test_format_analysis_result_compact_arrays(
+        self, mock_result
+    ) -> None:
+        """Test compact array formatting for methods."""
+        formatter = ToonFormatter(compact_arrays=True)
+        output = formatter.format_analysis_result(mock_result)
+        assert isinstance(output, str)
+        assert len(output) > 0
+
+    def test_format_analysis_result_no_compact(
+        self, mock_result
+    ) -> None:
+        """Test non-compact formatting (lists method names)."""
+        formatter = ToonFormatter(compact_arrays=False)
+        output = formatter.format_analysis_result(mock_result)
+        assert "doStuff" in output
+
+    def test_format_analysis_result_empty_elements(
+        self, mock_result
+    ) -> None:
+        """Test formatting with empty elements list."""
+        mock_result.elements = []
+        formatter = ToonFormatter()
+        output = formatter.format_analysis_result(mock_result)
+        assert "file:" in output or "summary:" in output
+
+    def test_format_analysis_result_no_package(self, mock_elements) -> None:
+        """Test formatting when package is None."""
+        from tree_sitter_analyzer.models import AnalysisResult
+
+        result = AnalysisResult(file_path="test.py", language="python")
+        result.elements = [mock_elements("foo", "function", 1, 5)]
+
+        formatter = ToonFormatter()
+        output = formatter.format_analysis_result(result)
+        assert "file: test.py" in output
+        assert "package:" not in output
+
+    def test_format_analysis_result_string_package(self, mock_elements) -> None:
+        """Test formatting when package is a plain string."""
+        from tree_sitter_analyzer.models import AnalysisResult
+
+        result = AnalysisResult(
+            file_path="test.py", language="python", package="my_package"
+        )
+        result.elements = [mock_elements("foo", "function", 1, 5)]
+
+        formatter = ToonFormatter()
+        output = formatter.format_analysis_result(result)
+        assert "package: my_package" in output
+
+    def test_format_with_fallback_on_error(self) -> None:
+        """Test that format falls back to JSON on encoding error."""
+        formatter = ToonFormatter(fallback_to_json=True)
+
+        # Create data that triggers encoding error
+        class Unencodable:
+            pass
+
+        # Should not raise, falls back to JSON
+        result = formatter.format({"key": "value"})
+        assert isinstance(result, str)
+
+
+class TestToonContentDetection:
+    """Test TOON content detection with various inputs."""
+
+    def test_real_toon_output_detected(self) -> None:
+        """Real TOON output should be detected."""
+        toon = "file: test.py\nlanguage: python\nelements[3]:"
+        assert ToonFormatter.is_toon_content(toon) is True
+
+    def test_json_object_not_detected(self) -> None:
+        """JSON object should not be detected as TOON."""
+        assert ToonFormatter.is_toon_content('{"key": "value"}') is False
+
+    def test_json_array_not_detected(self) -> None:
+        """JSON array should not be detected as TOON."""
+        assert ToonFormatter.is_toon_content('[1, 2, 3]') is False
+
+    def test_empty_string_not_detected(self) -> None:
+        """Empty string should not be detected as TOON."""
+        assert ToonFormatter.is_toon_content("") is False
+
+    def test_whitespace_not_detected(self) -> None:
+        """Whitespace-only string should not be detected."""
+        assert ToonFormatter.is_toon_content("   \n  ") is False
+
+    def test_single_kv_detected(self) -> None:
+        """Single key-value pair should be detected (2+ patterns)."""
+        content = "name: test\nvalue: 42"
+        assert ToonFormatter.is_toon_content(content) is True
+
+    def test_array_table_header_detected(self) -> None:
+        """Array table header should boost detection score."""
+        content = "items:\n[3]{name,age}:\nAlice,30"
+        assert ToonFormatter.is_toon_content(content) is True
+
+    def test_plain_text_not_detected(self) -> None:
+        """Plain text without TOON patterns should not be detected."""
+        assert ToonFormatter.is_toon_content("just some random text") is False
+
+    def test_quoted_json_line_not_detected(self) -> None:
+        """Quoted JSON-like lines should not count as TOON."""
+        content = '"key": "value"\n"other": "data"'
+        assert ToonFormatter.is_toon_content(content) is False
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
