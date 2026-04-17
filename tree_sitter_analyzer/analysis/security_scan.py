@@ -322,6 +322,57 @@ class SecurityScanner:
             language="javascript",
         )
 
+        self.PATTERNS["js-hardcoded-password"] = SecurityPattern(
+            rule_id="js-hardcoded-password",
+            name="Hardcoded Password",
+            vulnerability_type=VulnerabilityType.HARD_CODED_SECRET,
+            severity=SecuritySeverity.CRITICAL,
+            description="Password hardcoded in source code",
+            remediation="Use environment variables or secret management",
+            cwe_id="CWE-798",
+            keywords=("password", "PASSWORD", "passwd"),
+            language="javascript",
+        )
+
+        # SQL injection
+        self.PATTERNS["js-sql-injection-template"] = SecurityPattern(
+            rule_id="js-sql-injection-template",
+            name="SQL Injection via Template Literals",
+            vulnerability_type=VulnerabilityType.SQL_INJECTION,
+            severity=SecuritySeverity.HIGH,
+            description="SQL query built with template literals",
+            remediation="Use parameterized queries or query builders",
+            cwe_id="CWE-89",
+            keywords=("SELECT", "INSERT", "UPDATE", "DELETE", "query"),
+            language="javascript",
+        )
+
+        # Command injection
+        self.PATTERNS["js-command-injection"] = SecurityPattern(
+            rule_id="js-command-injection",
+            name="Command Injection via child_process",
+            vulnerability_type=VulnerabilityType.COMMAND_INJECTION,
+            severity=SecuritySeverity.HIGH,
+            description="child_process.exec() with user input",
+            remediation="Use execFile with argument array or spawn",
+            cwe_id="CWE-78",
+            keywords=("child_process.exec", "execSync", "spawn"),
+            language="javascript",
+        )
+
+        # Path traversal
+        self.PATTERNS["js-path-traversal"] = SecurityPattern(
+            rule_id="js-path-traversal",
+            name="Path Traversal via fs operations",
+            vulnerability_type=VulnerabilityType.PATH_TRAVERSAL,
+            severity=SecuritySeverity.HIGH,
+            description="File system operations with user input",
+            remediation="Validate and sanitize file paths",
+            cwe_id="CWE-22",
+            keywords=("fs.readFile", "fs.readFileSync", "fs.writeFile", "path.join"),
+            language="javascript",
+        )
+
     def _register_java_patterns(self) -> None:
         """Register Java-specific security patterns."""
 
@@ -364,6 +415,32 @@ class SecurityScanner:
             language="java",
         )
 
+        # Hardcoded secrets
+        self.PATTERNS["java-hardcoded-password"] = SecurityPattern(
+            rule_id="java-hardcoded-password",
+            name="Hardcoded Password",
+            vulnerability_type=VulnerabilityType.HARD_CODED_SECRET,
+            severity=SecuritySeverity.CRITICAL,
+            description="Password hardcoded in source code",
+            remediation="Use environment variables or secret management",
+            cwe_id="CWE-798",
+            keywords=("password", "PASSWORD", "passwd"),
+            language="java",
+        )
+
+        # Path traversal
+        self.PATTERNS["java-path-traversal"] = SecurityPattern(
+            rule_id="java-path-traversal",
+            name="Path Traversal via File operations",
+            vulnerability_type=VulnerabilityType.PATH_TRAVERSAL,
+            severity=SecuritySeverity.HIGH,
+            description="File operations with user input",
+            remediation="Validate and sanitize file paths",
+            cwe_id="CWE-22",
+            keywords=("new File(", "Files.read", "Path.of"),
+            language="java",
+        )
+
     def _register_go_patterns(self) -> None:
         """Register Go-specific security patterns."""
 
@@ -390,6 +467,32 @@ class SecurityScanner:
             remediation="Validate and sanitize input before use",
             cwe_id="CWE-78",
             keywords=("exec.Command", "os/exec"),
+            language="go",
+        )
+
+        # Hardcoded secrets
+        self.PATTERNS["go-hardcoded-password"] = SecurityPattern(
+            rule_id="go-hardcoded-password",
+            name="Hardcoded Password",
+            vulnerability_type=VulnerabilityType.HARD_CODED_SECRET,
+            severity=SecuritySeverity.CRITICAL,
+            description="Password hardcoded in source code",
+            remediation="Use environment variables or secret management",
+            cwe_id="CWE-798",
+            keywords=("password", "Password", "PASSWORD"),
+            language="go",
+        )
+
+        # Path traversal
+        self.PATTERNS["go-path-traversal"] = SecurityPattern(
+            rule_id="go-path-traversal",
+            name="Path Traversal via os operations",
+            vulnerability_type=VulnerabilityType.PATH_TRAVERSAL,
+            severity=SecuritySeverity.HIGH,
+            description="File operations with user input",
+            remediation="Validate and sanitize file paths with filepath.Clean",
+            cwe_id="CWE-22",
+            keywords=("os.Open", "ioutil.ReadFile", "os.ReadFile"),
             language="go",
         )
 

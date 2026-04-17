@@ -529,11 +529,12 @@
 **循环 91：新功能探索（第十九轮）** 🔄 进行中
 - ✅ Wiki检索: security vulnerability detection, ADR
 - ✅ 创建 add-security-scanner OpenSpec change
-- 🔄 Sprint 1: Core Detection Engine (Python focus)
-  - 🔄 创建 analysis/security_scan.py 模块
-  - 🔄 实现 5 个核心安全模式
-  - 🔄 添加单元测试 (20+ tests)
-- [ ] Sprint 2: Multi-Language Support (JavaScript, Java, Go)
+- ✅ Sprint 1: Core Detection Engine (Python focus) - 34 tests pass ✅
+- 🔄 Sprint 2: Multi-Language Support (JavaScript, Java, Go)
+  - 🔄 增强 JavaScript 安全模式
+  - [ ] 增强 Java 安全模式
+  - [ ] 增强 Go 安全模式
+  - [ ] 添加集成测试 (15+ tests)
 - [ ] Sprint 3: MCP Integration & CI Output
 - 目标: 45+ tests total
 

@@ -4,11 +4,10 @@ Unit tests for Security Scanner.
 """
 from __future__ import annotations
 
-import pytest
 from tree_sitter_analyzer.analysis.security_scan import (
+    SecurityFinding,
     SecurityPattern,
     SecurityScanner,
-    SecurityFinding,
     SecurityScanResult,
     SecuritySeverity,
     VulnerabilityType,
@@ -279,6 +278,65 @@ const API_KEY = "sk-1234567890abcdef";
         result = scanner.scan_file("test.js", content=code)
         assert result.total_findings >= 1
 
+    def test_js_hardcoded_password(self) -> None:
+        """Test detection of hardcoded passwords in JavaScript."""
+        scanner = SecurityScanner()
+        code = '''
+const password = "mypassword123";
+const PASSWORD = "admin456";
+'''
+        result = scanner.scan_file("test.js", content=code)
+        assert result.total_findings >= 1
+        pwd_findings = [f for f in result.findings if "password" in f.rule_id]
+        assert len(pwd_findings) > 0
+
+    def test_js_sql_injection_template(self) -> None:
+        """Test detection of SQL injection via template literals."""
+        scanner = SecurityScanner()
+        code = '''
+const query = `SELECT * FROM users WHERE id = ${userId}`;
+db.query(`INSERT INTO users (name) VALUES ('${name}')`);
+'''
+        result = scanner.scan_file("test.js", content=code)
+        assert result.total_findings >= 1
+        sql_findings = [
+            f for f in result.findings
+            if f.vulnerability_type == "sql_injection"
+        ]
+        assert len(sql_findings) > 0
+
+    def test_js_command_injection_child_process(self) -> None:
+        """Test detection of command injection via child_process."""
+        scanner = SecurityScanner()
+        code = '''
+const { exec } = require('child_process');
+exec('cat ' + userPath);
+execSync('rm -rf ' + directory);
+'''
+        result = scanner.scan_file("test.js", content=code)
+        assert result.total_findings >= 1
+        cmd_findings = [
+            f for f in result.findings
+            if f.vulnerability_type == "command_injection"
+        ]
+        assert len(cmd_findings) > 0
+
+    def test_js_path_traversal(self) -> None:
+        """Test detection of path traversal vulnerabilities."""
+        scanner = SecurityScanner()
+        code = '''
+const fs = require('fs');
+fs.readFile(userPath, (err, data) => {});
+fs.writeFileSync(userInput, content);
+'''
+        result = scanner.scan_file("test.js", content=code)
+        assert result.total_findings >= 1
+        path_findings = [
+            f for f in result.findings
+            if f.vulnerability_type == "path_traversal"
+        ]
+        assert len(path_findings) > 0
+
 
 class TestJavaSecurityPatterns:
     """Test Java security pattern detection."""
@@ -327,6 +385,33 @@ Object obj = ois.readObject();
         ]
         assert len(deser_findings) > 0
 
+    def test_java_hardcoded_password(self) -> None:
+        """Test detection of hardcoded passwords in Java."""
+        scanner = SecurityScanner()
+        code = '''
+String password = "mypassword123";
+private final String PASSWORD = "admin456";
+'''
+        result = scanner.scan_file("Test.java", content=code)
+        assert result.total_findings >= 1
+        pwd_findings = [f for f in result.findings if "password" in f.rule_id]
+        assert len(pwd_findings) > 0
+
+    def test_java_path_traversal(self) -> None:
+        """Test detection of path traversal in Java."""
+        scanner = SecurityScanner()
+        code = '''
+File file = new File(userPath);
+Files.readAllBytes(Paths.get(userInput));
+'''
+        result = scanner.scan_file("Test.java", content=code)
+        assert result.total_findings >= 1
+        path_findings = [
+            f for f in result.findings
+            if f.vulnerability_type == "path_traversal"
+        ]
+        assert len(path_findings) > 0
+
 
 class TestGoSecurityPatterns:
     """Test Go security pattern detection."""
@@ -353,6 +438,33 @@ cmd := exec.Command("sh", "-c", userCommand)
 '''
         result = scanner.scan_file("main.go", content=code)
         assert result.total_findings >= 1
+
+    def test_go_hardcoded_password(self) -> None:
+        """Test detection of hardcoded passwords in Go."""
+        scanner = SecurityScanner()
+        code = '''
+password := "mypassword123"
+const Password = "admin456"
+'''
+        result = scanner.scan_file("main.go", content=code)
+        assert result.total_findings >= 1
+        pwd_findings = [f for f in result.findings if "password" in f.rule_id]
+        assert len(pwd_findings) > 0
+
+    def test_go_path_traversal(self) -> None:
+        """Test detection of path traversal in Go."""
+        scanner = SecurityScanner()
+        code = '''
+f, _ := os.Open(userPath)
+data, _ := ioutil.ReadFile(userInput)
+'''
+        result = scanner.scan_file("main.go", content=code)
+        assert result.total_findings >= 1
+        path_findings = [
+            f for f in result.findings
+            if f.vulnerability_type == "path_traversal"
+        ]
+        assert len(path_findings) > 0
 
 
 class TestSecurityScanResult:
