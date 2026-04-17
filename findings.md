@@ -287,3 +287,71 @@ ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
 - 支持多语言 (Python, JavaScript, Java, Go, C#)
 - 输出 SARIF 格式 (与 CI 集成)
 - 可配置的严重性级别
+
+### Loop 92-93: Tool Registration + Code Audit (2026-04-17)
+
+**Security Scanner Tool Registration Complete**:
+- ✅ security_scan tool registered to safety toolset
+- ✅ 工具数量: 27 → 28 MCP tools
+- ✅ 所有测试通过 (85 tests)
+
+**Code Audit (Loop 93)**:
+- TODO/FIXME: 3 个（全部为示例代码）
+- 文件 > 400 行: 91 个（符合预期）
+
+### Loop 94: 新功能探索灵感收集 (2026-04-17)
+
+#### Wiki 搜索结果
+
+**Code Simplifier** (everything-claude-code):
+- Simplifies and refines code for clarity, consistency, and maintainability
+- Focus on recently modified code
+
+**Test Coverage** (everything-claude-code):
+- `/test-coverage` command for analyzing test coverage gaps
+- Generate missing tests to reach 80%+ coverage
+
+#### 当前工具集分析 (28 MCP Tools)
+
+**已覆盖的代码质量领域**:
+- code_smell_detector — 检测代码异味
+- code_clone_detection — 检测重复代码
+- health_score — 文件健康度评分 (A-F)
+- complexity_heatmap — 复杂度热力图
+- dead_code — 检测未使用代码
+- security_scan — 安全漏洞扫描
+
+**潜在新功能方向**:
+
+1. **Test Coverage Analyzer** — 测试覆盖率分析
+   - 分析哪些源文件缺少测试覆盖
+   - 识别未测试的函数/类
+   - 生成测试建议
+   - 与 pytest coverage 报告集成
+
+2. **Refactoring Suggestions** — 重构建议工具
+   - 基于 code_smell_detector 结果生成具体重构步骤
+   - 提取方法建议
+   - 拆分类建议
+   - 可执行的重构建议 (diff format)
+
+3. **Documentation Generator** — 文档生成工具
+   - 从 AST 提取函数/类签名
+   - 生成 docstring 模板
+   - 生成 API 文档 (Markdown/Sphinx)
+
+#### 优先级判断
+
+根据乔布斯产品理念:
+- **聚焦**: 哪个功能解决核心问题？
+- **减法**: 能否增强现有工具而非新建？
+- **一句话定义**: 这个功能的一句话是什么？
+
+**优先级排序**:
+1. Test Coverage Analyzer — "发现代码中未被测试的部分"
+   - 与现有 ci_report 工具形成互补
+   - 可以独立于 pytest 运行，基于 AST 分析
+
+2. Refactoring Suggestions — "告诉如何修复代码异味"
+   - 增强 code_smell_detector，不仅检测还建议修复
+   - 可以作为 code_smell_detector 的扩展功能
