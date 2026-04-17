@@ -256,6 +256,12 @@
 - ✅ property-based testing → 已有
 - ✅ edge case 测试 → 已有
 
+**循环 30：文档同步（第六轮）** ✅ 完成
+- ✅ 对比代码和文档，找出不一致 → 新工具未记录
+- ✅ 更新 CHANGELOG.md → 添加 health_score + ci_report
+- ✅ 更新 README.md → 工具数量 18 → 20
+- ✅ 更新 ARCHITECTURE.md → 工具层 18 → 20，添加新工具
+
 ## OpenSpec Changes In Progress
 
 （当前无进行中的 OpenSpec change）

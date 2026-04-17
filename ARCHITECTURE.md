@@ -10,12 +10,12 @@
          |                    |                      |
          v                    v                      v
 +===================================================================+
-|  MCP Tool Layer (18 tools + 2 discovery tools)                    |
+|  MCP Tool Layer (20 tools + 2 discovery tools)                    |
 |  analyze_code_structure | code_diff | code_smell_detector | code_clone_detection |
-|  get_code_outline | query_code | read_partial | list_files | search_content |
-|  find_and_grep | check_code_scale | get_project_summary | modification_guard |
-|  trace_impact | dependency_query | build_project_index | batch_search |
-|  check_tools | tools/list | tools/describe                            |
+|  health_score | get_code_outline | query_code | read_partial | list_files |
+|  search_content | find_and_grep | check_code_scale | get_project_summary |
+|  modification_guard | trace_impact | dependency_query | build_project_index |
+|  batch_search | check_tools | ci_report | tools/list | tools/describe      |
 |  ------- security boundary: BaseMCPTool -> SecurityValidator -----|
 +===================================================================+
          |
