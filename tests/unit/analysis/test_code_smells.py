@@ -612,7 +612,7 @@ class TestDefaultThresholds:
         expected = {
             "god_class_methods", "god_class_lines", "long_method_lines",
             "deep_nesting_levels", "magic_number_min", "magic_number_max",
-            "large_parameter_count", "many_imports",
+            "large_parameter_count", "many_imports", "large_class_lines",
         }
         assert set(DEFAULT_THRESHOLDS.keys()) == expected
 

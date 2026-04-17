@@ -99,6 +99,7 @@ DEFAULT_THRESHOLDS: dict[str, int] = {
     "magic_number_max": 1000,
     "large_parameter_count": 5,
     "many_imports": 20,
+    "large_class_lines": 500,
 }
 
 
@@ -120,7 +121,9 @@ class CodeSmellDetector:
             r"\w+\s*\("
         )
         self._class_pattern = re.compile(
-            r"^\s*(?:class|struct|interface|enum|trait|impl|type)\s+(\w+)",
+            r"^\s*(?:(?:public|private|protected|static|final|abstract|async|"
+            r"sealed|open|internal|override|virtual)\s+)*"
+            r"(?:class|struct|interface|enum|trait|impl|type)\s+(\w+)",
             re.MULTILINE,
         )
         self._import_pattern = re.compile(
@@ -317,11 +320,6 @@ class CodeSmellDetector:
             if not stripped or stripped.startswith("//") or stripped.startswith("#"):
                 continue
 
-            # Calculate indentation-based depth
-            indent = len(line) - len(line.lstrip())
-            # Assume 4-space or 1-tab indentation
-            depth = indent // 4 if "    " in line[:8] or "\t" not in line[:8] else indent
-
             # Count control flow keywords
             opens = len(re.findall(
                 r"\b(?:if|elif|else|for|while|try|catch|except|with|"
@@ -454,7 +452,7 @@ class CodeSmellDetector:
         result: SmellDetectionResult,
     ) -> None:
         """Detect Large Class — files with too many lines."""
-        threshold = self.thresholds["god_class_lines"]
+        threshold = self.thresholds.get("large_class_lines", 500)
         class_matches = list(self._class_pattern.finditer(text))
 
         for match in class_matches:

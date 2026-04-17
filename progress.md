@@ -697,32 +697,43 @@
 
 | Sprint | Focus | 状态 | 通过测试 | 备注 |
 |--------|-------|------|---------|------|
-| 1 | Phase 7 Loop 15: 新功能探索（第四轮）| in_progress | 36/40 | Code Smell Detector |
+| 1 | Phase 7 Loop 15: 新功能探索（第四轮）| done | 40/40 | Code Smell Detector 修复 |
 
-### 新功能探索发现
+### 修复的问题
 
-**Code Smell Detector**:
-- 文件: `code_smells.py`, `code_smell_detector_tool.py`
-- 测试: 36 passed, 4 failed
-- 问题: 4 个测试失败 (large_class, god_class检测)
+**Code Smell Detector Bug Fixes**:
+1. `class_pattern` 不支持 Java 修饰符（public, private, static 等）
+   - 修复: 添加修饰符匹配到正则表达式
+2. `large_class_lines` 阈值缺失
+   - 添加 `large_class_lines: 500` 到 DEFAULT_THRESHOLDS
+3. 未使用的变量 `depth` in `_detect_deep_nesting`
+   - 移除未使用的变量
 
-**失败的测试**:
-- `TestLargeClassDetection::test_detect_large_class` - 检测到 0 个 smell (期望 >=1)
-- `TestGodClassDetection::test_detect_god_class_java` - god class 检测问题
-- `TestGodClassDetection::test_custom_threshold` - 自定义阈值问题
-- `TestCodeSmellDetectorTool::test_custom_thresholds` - 自定义阈值问题
+### 新增/修改文件
+- `tree_sitter_analyzer/analysis/code_smells.py` — 修复 class_pattern + large_class_lines + 移除未使用变量
+- `tests/unit/analysis/test_code_smells.py` — 更新 threshold_keys 测试
 
-### 审计结论
-- Code Smell Detector 已有基础实现
-- 需要修复 4 个测试才能完成验证
-- 下一个优先级: 修复 code_smell_detector 测试
+### Code Smell Detector 功能
 
-### 总提交数: 34 commits
+**检测的代码异味**:
+- God Class: 方法过多（默认阈值 15）
+- Long Method: 方法过长（默认阈值 50 行）
+- Deep Nesting: 嵌套过深（默认阈值 4 层）
+- Magic Numbers: 魔法数字（3-1000 范围内，排除 0, 1, -1, 2, 10, 100, 1000）
+- Many Imports: 导入过多（默认阈值 20）
+- Large Class: 类过大（默认阈值 500 行）
+
+### 测试结果
+- 40 tests pass (was 36 passed, 4 failed)
+- ruff check: all clean
+- mypy --strict: all clean
+
+### 总提交数: 35 commits (+1)
 - feat/autonomous-dev 分支
 
 ### 下一步
-- 修复 Code Smell Detector 测试
 - Phase 7 Loop 16: 性能优化（第四轮）
+- 或继续下一轮新功能探索
 
 ---
 
