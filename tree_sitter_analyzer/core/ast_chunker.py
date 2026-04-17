@@ -158,7 +158,15 @@ def _build_header_chunk(
     total_lines: int,
     language: str,
 ) -> AstChunk | None:
-    header_end = import_chunk.end_line + 1 if import_chunk else first_element_line
+    # Header captures the file preamble (package, file-level comments, includes imports)
+    # The header includes the import block to represent the complete file header section
+    if import_chunk:
+        # Header extends to include the import block
+        header_end = import_chunk.end_line + 1
+    else:
+        # Header ends at the first code element
+        header_end = first_element_line
+
     if header_end <= 1 or header_end > total_lines:
         return None
     return AstChunk(

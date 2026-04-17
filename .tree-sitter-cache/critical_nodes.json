@@ -1,0 +1,52 @@
+[
+  {
+    "name": "BaseMCPTool",
+    "pagerank": 0.0202,
+    "inbound_refs": 9
+  },
+  {
+    "name": "ToonFormatter",
+    "pagerank": 0.0182,
+    "inbound_refs": 11
+  },
+  {
+    "name": "AnalysisRequest",
+    "pagerank": 0.0177,
+    "inbound_refs": 29
+  },
+  {
+    "name": "TemplateContext",
+    "pagerank": 0.0164,
+    "inbound_refs": 8
+  },
+  {
+    "name": "AnalysisResult",
+    "pagerank": 0.0145,
+    "inbound_refs": 22
+  },
+  {
+    "name": "LanguagePlugin",
+    "pagerank": 0.0135,
+    "inbound_refs": 17
+  },
+  {
+    "name": "FileOutputManager",
+    "pagerank": 0.0131,
+    "inbound_refs": 6
+  },
+  {
+    "name": "ElementExtractor",
+    "pagerank": 0.012,
+    "inbound_refs": 18
+  },
+  {
+    "name": "FormatterRegistry",
+    "pagerank": 0.0096,
+    "inbound_refs": 8
+  },
+  {
+    "name": "ImportError",
+    "pagerank": 0.0081,
+    "inbound_refs": 4
+  }
+]

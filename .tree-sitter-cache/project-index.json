@@ -1,43 +1,43 @@
 {
-  "project_root": ".",
-  "created_at": 1775489987.9385824,
-  "updated_at": 1775490175.2090037,
-  "file_count": 1031,
+  "project_root": "/Users/aisheng.yu/wiki/raw/ai-tech/tree-sitter-analyzer",
+  "created_at": 1776000002.475046,
+  "updated_at": 1776000002.475046,
+  "file_count": 1523,
   "language_distribution": {
-    "python": 658,
-    "other": 52,
-    "markdown": 237,
+    "markdown": 417,
+    "other": 140,
+    "python": 677,
+    "yaml": 31,
     "toml": 1,
-    "json": 34,
-    "shell": 3,
-    "powershell": 1,
-    "yaml": 2,
-    "javascript": 4,
-    "c": 2,
-    "html": 3,
-    "typescript": 5,
-    "java": 6,
-    "kotlin": 2,
-    "ruby": 3,
-    "cpp": 2,
-    "go": 2,
-    "sql": 2,
+    "json": 45,
+    "typescript": 125,
+    "html": 30,
+    "javascript": 6,
+    "ruby": 6,
+    "css": 4,
     "scala": 1,
-    "php": 2,
-    "css": 3,
-    "swift": 1,
     "rust": 2,
-    "csharp": 3
+    "cpp": 2,
+    "kotlin": 2,
+    "shell": 13,
+    "sql": 4,
+    "php": 2,
+    "c": 2,
+    "swift": 1,
+    "java": 6,
+    "go": 2,
+    "csharp": 3,
+    "powershell": 1
   },
   "top_level_structure": [
     {
       "name": "tests",
       "type": "directory",
-      "file_count": 551,
+      "file_count": 562,
       "subdirectories": [
         {
           "name": "unit",
-          "file_count": 288
+          "file_count": 299
         },
         {
           "name": "integration",
@@ -84,15 +84,15 @@
     {
       "name": "tree_sitter_analyzer",
       "type": "directory",
-      "file_count": 179,
+      "file_count": 185,
       "subdirectories": [
         {
           "name": "mcp",
-          "file_count": 37
+          "file_count": 42
         },
         {
           "name": "formatters",
-          "file_count": 24
+          "file_count": 25
         },
         {
           "name": "languages",
@@ -135,18 +135,18 @@
     {
       "name": "openspec",
       "type": "directory",
-      "file_count": 79,
+      "file_count": 85,
       "subdirectories": [
         {
           "name": "changes",
-          "file_count": 78
+          "file_count": 84
         }
       ]
     },
     {
       "name": "docs",
       "type": "directory",
-      "file_count": 78,
+      "file_count": 79,
       "subdirectories": [
         {
           "name": "ja",
@@ -165,11 +165,11 @@
           "file_count": 3
         },
         {
-          "name": "assets",
-          "file_count": 1
+          "name": "designs",
+          "file_count": 2
         },
         {
-          "name": "designs",
+          "name": "assets",
           "file_count": 1
         }
       ]
@@ -236,7 +236,7 @@
     "tree_sitter_analyzer/__main__.py"
   ],
   "custom_notes": "",
-  "schema_version": "1.1",
+  "schema_version": "2",
   "readme_excerpt": "Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.",
   "module_descriptions": {
     "tests": "Test package for tree-sitter-analyzer",
@@ -260,10 +260,65 @@
     "docs": "Documentation",
     "docs/api": "API layer",
     "docs/assets": "Static assets",
+    "docs/ja": "Tree-sitter Analyzer ドキュメント体系（日本語）",
     "examples": "Example code files",
-    "scripts": "Build and utility scripts",
+    "scripts": "Scripts 管理策略",
+    "compatibility_test": "tree-sitter-analyzer MCP互換性テスト 標準化プロセス",
     "compatibility_test/config": "Configuration",
     "compatibility_test/scripts": "Build and utility scripts",
     "compatibility_test/utils": "Compatibility Test Utilities"
-  }
+  },
+  "critical_nodes": [
+    {
+      "name": "BaseMCPTool",
+      "pagerank": 0.0202,
+      "inbound_refs": 9
+    },
+    {
+      "name": "ToonFormatter",
+      "pagerank": 0.0182,
+      "inbound_refs": 11
+    },
+    {
+      "name": "AnalysisRequest",
+      "pagerank": 0.0177,
+      "inbound_refs": 29
+    },
+    {
+      "name": "TemplateContext",
+      "pagerank": 0.0164,
+      "inbound_refs": 8
+    },
+    {
+      "name": "AnalysisResult",
+      "pagerank": 0.0145,
+      "inbound_refs": 22
+    },
+    {
+      "name": "LanguagePlugin",
+      "pagerank": 0.0135,
+      "inbound_refs": 17
+    },
+    {
+      "name": "FileOutputManager",
+      "pagerank": 0.0131,
+      "inbound_refs": 6
+    },
+    {
+      "name": "ElementExtractor",
+      "pagerank": 0.012,
+      "inbound_refs": 18
+    },
+    {
+      "name": "FormatterRegistry",
+      "pagerank": 0.0096,
+      "inbound_refs": 8
+    },
+    {
+      "name": "ImportError",
+      "pagerank": 0.0081,
+      "inbound_refs": 4
+    }
+  ],
+  "module_dependency_order": []
 }

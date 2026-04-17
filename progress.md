@@ -134,6 +134,35 @@
 |--------|-------|------|---------|------|
 | 19 | Phase 6.6: ARCHITECTURE.md + progress update | done | - | Architecture doc with diagram |
 | 20 | Phase 7: Ruby visibility + JS exports | done | 9276 passed | 0 TODO/FIXME remaining in codebase |
+| 21 | Phase 4: AST chunking quality validation | done | 53 passed | 25 integration tests + 28 unit tests |
+
+## Session 6 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 1 | Phase 4: AST chunking quality validation | done | 53/53 | Real file validation: Java BigService, Go sample, Python ast_chunker |
+
+### 新增/修改文件
+- `tests/integration/test_ast_chunking_quality.py` — 25 integration tests (new)
+- `tree_sitter_analyzer/core/ast_chunker.py` — Fixed header-import overlap handling
+
+### Phase 4 完成状态
+- [x] 审查 ast_chunker.py 的分块质量
+- [x] 添加语义边界检测
+- [x] 添加上下文保留（分块时保留 import）
+- [x] 对比 qmd 的 tree-sitter chunking 实现（已完成分析，7个改进方向已识别）
+- [x] 每种语言 3 个真实文件的分块质量验证（25个集成测试通过）
+
+### 测试结果
+- 53 tests pass (28 unit + 25 integration)
+- ruff check: all clean
+- mypy --strict: all clean
+
+### 下一步
+- Phase 6 remaining: 集成测试 + README/CHANGELOG review
+- Phase 7 继续循环: 性能优化、测试加固、文档同步
 
 ### Phase 7 审计结果
 - TODO/FIXME/HACK: 0 remaining (was 2, both fixed)

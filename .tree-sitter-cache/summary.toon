@@ -1,0 +1,35 @@
+project:  tree-sitter-analyzer
+what:     Tree-Sitter-Analyzer is a local-first code context engine for AI-assisted development — combining fast repository retrieval, AST-based structural analysis, and secure MCP integration.
+
+critical:
+  BaseMCPTool                   0.02  (9 refs)
+  ToonFormatter                 0.02  (11 refs)
+  AnalysisRequest               0.02  (29 refs)
+  TemplateContext               0.02  (8 refs)
+  AnalysisResult                0.01  (22 refs)
+  LanguagePlugin                0.01  (17 refs)
+  FileOutputManager             0.01  (6 refs)
+
+scale:    1,523 files — python 44%  typescript 8%
+entry:    __main__.py
+
+core:
+  tests/                      Test package for tree-sitter-analyzer
+    unit/                     Unit tests
+    integration/              Phase 7: Integration Tests Package
+    golden_masters/           Golden master test fixtures
+    golden/                   Golden Corpus Test Suite
+  openspec/
+  docs/                       Documentation
+    ja/                       Tree-sitter Analyzer ドキュメント体系（日本語）
+    api/                      API layer
+  examples/                   Example code files
+  scripts/                    Scripts 管理策略
+  compatibility_test/         tree-sitter-analyzer MCP互換性テスト 標準化プロセス
+    utils/                    Compatibility Test Utilities
+    scripts/                  Build and utility scripts
+    config/                   Configuration
+  corpus/
+
+tooling:
+  tree_sitter_analyzer/       Tree-sitter Multi-Language Code Analyzer
