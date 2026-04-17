@@ -5,7 +5,7 @@ Tests for java_patterns tool which provides Java-specific pattern analysis
 including Lambda expressions, Stream API chains, and Spring annotations.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -249,7 +249,8 @@ class TestJavaPatternAnalysisToolExecute:
             MagicMock(path="src/File2.java", parts=["src", "File2.java"]),
         ]
         for f in mock_files:
-            f.relative_to = MagicMock(return_value=MagicMock(__str__=lambda s: f.path))
+            path = f.path
+            f.relative_to = MagicMock(return_value=MagicMock(__str__=lambda s, p=path: p))
 
         with (
             patch.object(

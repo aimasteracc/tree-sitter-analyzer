@@ -5,10 +5,6 @@ Tests for Semantic Impact MCP Tool
 
 import pytest
 
-from tree_sitter_analyzer.analysis.semantic_impact import (
-    SemanticRiskLevel,
-    Visibility,
-)
 from tree_sitter_analyzer.mcp.tools.semantic_impact_tool import (
     QuickRiskAssessmentTool,
     SemanticImpactTool,

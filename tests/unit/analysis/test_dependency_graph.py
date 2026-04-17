@@ -7,15 +7,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 
 class TestDependencyGraph:
     """Dependency graph construction from source files."""
 
     def test_build_graph_from_java_files(self, tmp_path: Path) -> None:
         """Build graph from two Java files with import relationship."""
-        from tree_sitter_analyzer.analysis.dependency_graph import DependencyGraphBuilder
+        from tree_sitter_analyzer.analysis.dependency_graph import (
+            DependencyGraphBuilder,
+        )
 
         # Create two Java files
         service = tmp_path / "Service.java"
@@ -37,7 +37,9 @@ public class Service {
 
     def test_graph_has_edges_for_imports(self, tmp_path: Path) -> None:
         """Import relationship creates directed edge."""
-        from tree_sitter_analyzer.analysis.dependency_graph import DependencyGraphBuilder
+        from tree_sitter_analyzer.analysis.dependency_graph import (
+            DependencyGraphBuilder,
+        )
 
         a_file = tmp_path / "A.java"
         a_file.write_text("import b.B;\npublic class A { }\n")
@@ -52,7 +54,9 @@ public class Service {
 
     def test_graph_to_json(self, tmp_path: Path) -> None:
         """Export graph as JSON adjacency list."""
-        from tree_sitter_analyzer.analysis.dependency_graph import DependencyGraphBuilder
+        from tree_sitter_analyzer.analysis.dependency_graph import (
+            DependencyGraphBuilder,
+        )
 
         (tmp_path / "A.java").write_text("public class A { }\n")
         (tmp_path / "B.java").write_text("public class B { }\n")
@@ -66,7 +70,9 @@ public class Service {
 
     def test_graph_to_mermaid(self, tmp_path: Path) -> None:
         """Export graph as Mermaid diagram."""
-        from tree_sitter_analyzer.analysis.dependency_graph import DependencyGraphBuilder
+        from tree_sitter_analyzer.analysis.dependency_graph import (
+            DependencyGraphBuilder,
+        )
 
         (tmp_path / "A.java").write_text("public class A { }\n")
 
@@ -79,7 +85,9 @@ public class Service {
 
     def test_pagerank_identifies_hub(self, tmp_path: Path) -> None:
         """PageRank identifies the most-imported file."""
-        from tree_sitter_analyzer.analysis.dependency_graph import DependencyGraphBuilder
+        from tree_sitter_analyzer.analysis.dependency_graph import (
+            DependencyGraphBuilder,
+        )
 
         # Create a hub file that many others reference
         hub = tmp_path / "Utils.java"

@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import warnings
 
-import pytest
-
 from tree_sitter_analyzer.formatters.compat import (
     FormatterSelector,
     LanguageFormatterFactory,

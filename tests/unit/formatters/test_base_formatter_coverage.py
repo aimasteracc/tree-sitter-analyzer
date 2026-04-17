@@ -1,8 +1,6 @@
 """Coverage tests for base_formatter uncovered methods."""
 from __future__ import annotations
 
-import pytest
-
 from tree_sitter_analyzer.formatters.base_formatter import BaseTableFormatter
 
 

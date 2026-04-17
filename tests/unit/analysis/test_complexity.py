@@ -6,17 +6,11 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from tree_sitter_analyzer.analysis.complexity import (
     ASCII_CHARS,
     ComplexityAnalyzer,
     FileComplexityHeatmap,
     HeatmapFormatter,
-    LEVEL_CRITICAL,
-    LEVEL_HIGH,
-    LEVEL_LOW,
-    LEVEL_MEDIUM,
     create_heatmap,
     format_heatmap,
 )

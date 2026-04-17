@@ -1,8 +1,6 @@
 """Tests for Python edge extractor — first-party import detection."""
 from __future__ import annotations
 
-import pytest
-
 from tree_sitter_analyzer.mcp.utils.edge_extractors.python import (
     PythonEdgeExtractor,
     _is_first_party,

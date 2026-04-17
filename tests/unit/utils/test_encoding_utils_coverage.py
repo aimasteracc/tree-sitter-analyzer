@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-from unittest.mock import patch
 
 import pytest
 
@@ -80,7 +79,7 @@ class TestEncodingManagerSafeDecode:
         assert result == ""
 
     def test_decode_with_fallback(self) -> None:
-        data = "hello".encode("utf-8")
+        data = b"hello"
         result = EncodingManager.safe_decode(data, encoding="utf-8")
         assert result == "hello"
 

@@ -9,7 +9,6 @@ Tests correctness properties to ensure:
 - The plugin manager returns YAMLPlugin for yaml language
 """
 
-import os
 import tempfile
 from pathlib import Path
 

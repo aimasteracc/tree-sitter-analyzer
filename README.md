@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-10000%2B%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-10200%2B%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)

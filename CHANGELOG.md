@@ -18,8 +18,9 @@
 - **Understand Codebase Tool**: `understand_codebase` MCP tool for intelligent single-entry codebase understanding. "One tool to understand everything" — simplifies 25 MCP tools into 1 intelligent entry point. Three depth levels: quick (5s) for overview + basic health, standard (15s) for overview + file metrics, deep (30s) for overview + detailed metrics + deep metrics. Auto-detects 17 programming languages, provides file count, line estimate, language distribution, health score (A-F), TOON format support (50-70% token savings), file pattern filtering, and max_files limit. Registered to analysis toolset.
 - **Tool Registry System**: Centralized `mcp/registry.py` for all MCP tools with `ToolEntry` metadata class and `ToolRegistry` singleton pattern. Enables dynamic tool discovery, grouping by toolset, availability checking, and metadata management. Inspired by hermes-agent design.
 - **Tool Discovery Tools**: Two new MCP tools for exploring available tools — `tools/list` (all tools with optional toolset filtering, available-only flag) and `tools/describe` (detailed tool info including full schema).
-- **Tool Registration Module**: `mcp/tool_registration.py` registers all 24 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
-- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (12 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (2 tools), index (2 tools).
+- **Tool Registration Module**: `mcp/tool_registration.py` registers all 26 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
+- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (14 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (2 tools), index (2 tools).
+- **Complexity Heatmap Tool**: `complexity_heatmap` MCP tool for line-level complexity visualization. Highlights complex lines in source files with color coding (green/yellow/orange/red) based on complexity metrics. Supports TOON format output. Registered to analysis toolset.
 
 ### Testing
 

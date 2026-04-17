@@ -6,8 +6,6 @@ enabling easy embedding into applications without MCP protocol overhead.
 """
 from __future__ import annotations
 
-import pytest
-
 
 class TestAnalyzerInit:
     """Analyzer initialization and configuration."""
@@ -19,8 +17,9 @@ class TestAnalyzerInit:
         assert analyzer.project_root == str(tmp_path)
 
     def test_create_without_project_root_uses_cwd(self) -> None:
-        from tree_sitter_analyzer.sdk import Analyzer
         import os
+
+        from tree_sitter_analyzer.sdk import Analyzer
 
         analyzer = Analyzer()
         assert analyzer.project_root == os.getcwd()
