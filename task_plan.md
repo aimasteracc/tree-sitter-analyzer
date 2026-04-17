@@ -193,10 +193,22 @@
 - ✅ 扫描所有函数，找出超过 50 行的函数 → 已记录
 - ✅ 扫描所有类，找出超过 400 行的文件 → 81 个文件（grammar_coverage/, core/, analysis/, plugins/, queries/）
 
-**循环 18：新功能探索（第五轮）**
-- 参考 wiki 中的相关项目，发现可借鉴的功能
-- 写原型验证可行性
-- 通过测试后创建正式实现任务
+**循环 18：新功能探索（第五轮）** ✅ 完成
+- ✅ 参考 wiki 中的相关项目 → Code Clone Detection
+- ✅ 写原型验证可行性 → code_clones.py (23 tests pass)
+- ✅ 通过测试后创建正式实现任务 → 可以继续完善或集成到工具
+
+**循环 19：测试加固（第四轮）**
+- 运行覆盖率分析
+- 修复失败测试
+- 添加 property-based testing
+- 添加 edge case 测试
+
+**循环 20：文档同步（第四轮）**
+- 对比代码和文档，找出不一致
+- 更新 CHANGELOG.md
+- 更新 README.md
+- 添加使用示例（已有）
 
 ## OpenSpec Changes In Progress
 
