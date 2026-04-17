@@ -458,6 +458,16 @@
 
 **总计**: 模块已存在且完全测试覆盖
 
+### add-dead-code-detection ✅ 完成 (Session 99)
+
+**3 Sprints 完成** ✅
+- ✅ Sprint 1: Core Detection Engine (21 tests)
+- ✅ Sprint 2: Language-Specific Enhancements (39 tests)
+- ✅ Sprint 3: MCP Tool Integration (19 tests)
+- ✅ 工具注册: analysis toolset
+
+**总计**: 58 tests passing, dead_code MCP tool registered
+
 ---
 
 ## 完成的 OpenSpec Changes

@@ -2,7 +2,7 @@
 
 ## Session 99 — 2026-04-17
 
-### 完成: 3 个 OpenSpec Changes
+### 完成: 4 个 OpenSpec Changes
 
 **1. fix-java-implements-generics-and-annotation-attribution** ✅
 - 验证 Bug 1 (implements generics): `_split_type_list()` 正确实现
@@ -21,9 +21,16 @@
 - 28 tests pass for all chunking strategies
 - **Commit**: `0b587417`
 
+**4. add-dead-code-detection** ✅
+- Sprint 1: Core Detection Engine (21 tests)
+- Sprint 2: Language-Specific Enhancements (39 tests)
+- Sprint 3: MCP Tool Integration (19 tests)
+- **Commit**: `39e81c5d`
+
 ### 测试结果
 - 766 Java tests pass (27 skipped)
 - 28 ast_chunker tests pass
+- 58 dead_code tests pass
 - ruff/mypy all pass
 
 ---
