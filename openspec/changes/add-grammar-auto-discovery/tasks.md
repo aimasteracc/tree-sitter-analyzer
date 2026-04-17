@@ -65,39 +65,39 @@ tree_sitter_analyzer/mcp/tools/grammar_discovery_tool.py
 ## Implementation Plan
 
 ### Sprint 1: Core Introspection Engine
-- [ ] Create `grammar_discovery/introspector.py` module
-- [ ] Implement `GrammarIntrospector` class
+- [x] Create `grammar_discovery/introspector.py` module
+- [x] Implement `GrammarIntrospector` class
   - enumerate_node_types()
   - enumerate_fields()
   - heuristic_wrapper_detection()
-- [ ] Write unit tests (15+ tests)
+- [x] Write unit tests (16 tests passing)
 
 ### Sprint 2: Structural Analysis
-- [ ] Create `grammar_discovery/structural_analyzer.py`
-- [ ] Implement multi-feature scoring for wrappers
-- [ ] Validate on Python golden corpus
-- [ ] Write integration tests (10+ tests)
+- [x] Create `grammar_discovery/structural_analyzer.py`
+- [x] Implement multi-feature scoring for wrappers
+- [x] Validate on Python golden corpus
+- [x] Write integration tests (21 tests passing)
 
 ### Sprint 3: Path Enumeration
-- [ ] Create `grammar_discovery/path_enumerator.py`
-- [ ] Parse code samples and extract paths
-- [ ] Record (node_type, parent_path) tuples
-- [ ] Write tests (10+ tests)
+- [x] Create `grammar_discovery/path_enumerator.py`
+- [x] Parse code samples and extract paths
+- [x] Record (node_type, parent_path) tuples
+- [x] Write tests (20 tests passing)
 
 ### Sprint 4: MCP Tool Integration
-- [ ] Create `mcp/tools/grammar_discovery_tool.py`
-- [ ] Implement schema (language, output_format)
-- [ ] Register to ToolRegistry (analysis toolset)
-- [ ] Add TOON format output
-- [ ] Write tool tests (10+ tests)
+- [x] Create `mcp/tools/grammar_discovery_tool.py`
+- [x] Implement schema (language, output_format)
+- [x] Register to ToolRegistry (analysis toolset)
+- [x] Add TOON format output
+- [x] Write tool tests (18 tests passing)
 
 ## Success Criteria
 
-- [ ] 45+ tests passing (15 + 10 + 10 + 10)
-- [ ] Auto-discovery success rate >90% (17 languages)
-- [ ] Wrapper identification accuracy >85%
-- [ ] ruff check passes, mypy --strict passes
-- [ ] Integrated into MCP toolset
+- [x] 75+ tests passing (16 + 21 + 20 + 18)
+- [x] Auto-discovery success rate >90% (17 languages)
+- [x] Wrapper identification accuracy >85%
+- [x] ruff check passes, mypy --strict passes
+- [x] Integrated into MCP toolset
 
 ## References
 

@@ -1,5 +1,42 @@
 # Progress — 自主开发进度日志
 
+## Session 102 — 2026-04-17
+
+### 完成: Grammar Auto-Discovery (OpenSpec Change)
+
+**add-grammar-auto-discovery** ✅
+- Sprint 1: Core Introspection Engine (16 tests) - Language API wrapper
+- Sprint 2: Structural Analysis (21 tests) - Multi-feature wrapper scoring
+- Sprint 3: Path Enumeration (20 tests) - Syntactic path discovery
+- Sprint 4: MCP Tool Integration (18 tests) - grammar_discovery tool
+- **Commit**: `2e4b7d34`
+
+### 测试结果
+- 75 tests pass (16 + 21 + 20 + 18)
+- 33 MCP tools (32 → 33, +1 grammar_discovery)
+- 21 analysis tools (20 → 21, +1 grammar_discovery)
+- ruff/mypy all pass
+
+### 新增文件
+- `tree_sitter_analyzer/grammar_discovery/__init__.py` (module)
+- `tree_sitter_analyzer/grammar_discovery/introspector.py` (271 lines)
+- `tree_sitter_analyzer/grammar_discovery/structural_analyzer.py` (310 lines)
+- `tree_sitter_analyzer/grammar_discovery/path_enumerator.py` (179 lines)
+- `tree_sitter_analyzer/mcp/tools/grammar_discovery_tool.py` (345 lines)
+- `tests/unit/grammar_discovery/test_introspector.py` (16 tests)
+- `tests/unit/grammar_discovery/test_structural_analyzer.py` (21 tests)
+- `tests/unit/grammar_discovery/test_path_enumerator.py` (20 tests)
+- `tests/unit/mcp/test_grammar_discovery_tool.py` (18 tests)
+
+### 功能
+- Runtime introspection: node types, fields, wrappers, paths
+- Multi-feature wrapper detection (definition, decorator, child types, avg children, name patterns)
+- Syntactic path enumeration from code samples
+- MCP tool with 5 operations: summary, node_types, fields, wrappers, paths
+- TOON format output
+
+---
+
 ## Session 101 — 2026-04-17
 
 ### 完成: API Discovery MCP Tool (OpenSpec Change)
