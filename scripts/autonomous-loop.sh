@@ -44,8 +44,28 @@ cleanup() {
 trap cleanup SIGINT SIGTERM
 
 all_phases_complete() {
-    # 永远返回 false（1）—— 不停迭代
-    return 1
+    # 检查是否有未完成的 OpenSpec change
+    for dir in openspec/changes/*/; do
+        if [ -f "$dir/tasks.md" ] && [ ! -d "${dir}archive" ]; then
+            return 1  # 有未完成的 change，继续
+        fi
+    done
+
+    # 检查最近 5 个提交是否有实质性代码变更
+    # 获取最近 5 个提交中修改的 .py 文件数量
+    recent_py_files=$(git log -5 --oneline --name-only --pretty=format: | grep "\.py$" | wc -l | tr -d ' ')
+
+    # 如果最近 5 个提交中 .py 文件变更少于 10 个，认为已经稳定
+    if [ "$recent_py_files" -lt 10 ]; then
+        echo ""
+        echo "🎉 开发目标已达成！"
+        echo "   - 所有 OpenSpec changes 已完成"
+        echo "   - 最近 5 个提交中只有 $recent_py_files 个 .py 文件变更"
+        echo "   - 项目已进入稳定维护阶段"
+        return 0  # 完成
+    fi
+
+    return 1  # 还有实质性工作，继续
 }
 
 while [ $SESSION -lt $MAX_SESSIONS ]; do

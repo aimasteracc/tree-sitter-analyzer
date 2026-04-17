@@ -125,9 +125,9 @@ Reset 步骤：
 6. **质量深化** — 覆盖率 80%+、ruff/mypy 全量通过
 7. **持续改进循环** — 审计→优化→测试→文档→新功能，永不停止
 
-## 永续循环机制
+## 永续循环机制（有明确停止条件）
 
-当 task_plan.md 中所有列出的 `[ ]` 任务都完成时，**不要停止**。执行以下操作：
+当 task_plan.md 中所有列出的 `[ ]` 任务都完成时，执行审计循环：
 
 1. 运行代码审计：`grep -rn "TODO\|FIXME\|HACK\|XXX" tree_sitter_analyzer/`
 2. 运行覆盖率分析：`uv run pytest --cov=tree_sitter_analyzer --cov-report=term-missing`
@@ -136,7 +136,11 @@ Reset 步骤：
 5. 基于以上审计结果，在 task_plan.md 中追加新任务
 6. 继续执行新任务
 
-**此循环永不终止。每次审计都会发现新的改进点。**
+**停止条件**（由 `autonomous-loop.sh` 的 `all_phases_complete()` 检查）：
+- ✅ 所有 OpenSpec changes 已完成（无未归档的 tasks.md）
+- ✅ 最近 5 个提交中 .py 文件变更少于 10 个（项目稳定）
+
+**当满足停止条件时，自动退出循环。**
 
 ## CI 流程
 
