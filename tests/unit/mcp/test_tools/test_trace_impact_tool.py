@@ -262,3 +262,66 @@ class TestTraceImpactToolLanguageDetection:
         """Test getting extensions for unknown language"""
         extensions = self.tool._get_extensions_for_language("unknown")
         assert len(extensions) == 0
+
+
+class TestImpactLevelBoundaries:
+    """Test impact level classification at exact boundaries."""
+
+    def test_impact_none_at_zero(self) -> None:
+        """0 callers → level 'none'."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _get_impact_level
+
+        result = _get_impact_level(0)
+        assert result["level"] == "none"
+        assert "NO CALLERS" in result["badge"]
+
+    def test_impact_low_at_1(self) -> None:
+        """1 caller → level 'low'."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _get_impact_level
+
+        result = _get_impact_level(1)
+        assert result["level"] == "low"
+
+    def test_impact_low_at_5(self) -> None:
+        """5 callers → still 'low' (boundary)."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _get_impact_level
+
+        result = _get_impact_level(5)
+        assert result["level"] == "low"
+
+    def test_impact_medium_at_6(self) -> None:
+        """6 callers → 'medium' (just above low boundary)."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _get_impact_level
+
+        result = _get_impact_level(6)
+        assert result["level"] == "medium"
+
+    def test_impact_medium_at_20(self) -> None:
+        """20 callers → still 'medium' (boundary)."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _get_impact_level
+
+        result = _get_impact_level(20)
+        assert result["level"] == "medium"
+
+    def test_impact_high_at_21(self) -> None:
+        """21 callers → 'high' (just above medium boundary)."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _get_impact_level
+
+        result = _get_impact_level(21)
+        assert result["level"] == "high"
+        assert "21" in result["badge"]
+
+    def test_impact_high_at_1000(self) -> None:
+        """1000 callers → 'high'."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _get_impact_level
+
+        result = _get_impact_level(1000)
+        assert result["level"] == "high"
+        assert "1000" in result["badge"]
+
+    def test_guidance_includes_caller_count(self) -> None:
+        """Guidance text should mention the caller count."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import _get_impact_level
+
+        result = _get_impact_level(42)
+        assert "42" in result["guidance"]
