@@ -526,6 +526,17 @@
 - ✅ 更新 README.md → 测试数量 10200+ → 10300+
 - ✅ 更新 ARCHITECTURE.md → 工具数量 26→27
 
+**循环 91：新功能探索（第十九轮）** 🔄 进行中
+- ✅ Wiki检索: security vulnerability detection, ADR
+- ✅ 创建 add-security-scanner OpenSpec change
+- 🔄 Sprint 1: Core Detection Engine (Python focus)
+  - 🔄 创建 analysis/security_scan.py 模块
+  - 🔄 实现 5 个核心安全模式
+  - 🔄 添加单元测试 (20+ tests)
+- [ ] Sprint 2: Multi-Language Support (JavaScript, Java, Go)
+- [ ] Sprint 3: MCP Integration & CI Output
+- 目标: 45+ tests total
+
 **此计划永不标记为「全部完成」。永远有下一批任务。**
 
 ## Decisions Made

@@ -257,3 +257,33 @@ ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
    - 基于代码模式自动建议重构
    - 提取方法、拆分大类等
    - 可执行的重构建议
+
+### Loop 91: Security Scanner 灵感收集 (2026-04-17)
+
+#### Wiki 搜索结果
+
+**Security Vulnerability Detection**:
+- `security-reviewer` Agent (everything-claude-code) — 标记密钥、SSRF、注入、不安全加密、OWASP Top 10
+- C++ Security 规则 — 静态分析工具 clang-tidy
+- Hermes Web UI — 静态分析 + 集成测试
+
+**Architecture Decision Records**:
+- ADR Skill — 捕获架构决策的结构化记录
+- Council Skill — 模糊情况下的决策制定
+
+**新功能想法: Security Scanner MCP Tool**
+
+检测常见安全漏洞:
+1. **SQL 注入** — 识别拼接 SQL 查询的模式
+2. **XSS 漏洞** — 识别未转义的 HTML 输出
+3. **硬编码密钥** — 识别 API keys、passwords、tokens
+4. **不安全加密** — 识别弱加密算法 (MD5, SHA1)
+5. **不安全反序列化** — 识别 unsafe pickle/yaml/json loads
+6. **路径遍历** — 识别未验证的文件路径
+7. **命令注入** — 识别 shell 命令拼接
+
+技术方案:
+- 基于 AST 模式匹配
+- 支持多语言 (Python, JavaScript, Java, Go, C#)
+- 输出 SARIF 格式 (与 CI 集成)
+- 可配置的严重性级别
