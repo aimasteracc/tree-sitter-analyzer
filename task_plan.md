@@ -267,7 +267,20 @@
 - ✅ 扫描所有函数，找出超过 50 行的函数 → 已记录
 - ✅ 扫描所有类，找出超过 400 行的文件 → 81 个文件（grammar_coverage/, core/, analysis/, plugins/, queries/）
 
-**循环 32：新功能探索（第八轮）**
+**循环 32：新功能探索（第八轮）** ✅ 完成
+- ✅ 参考 wiki 中的相关项目 → java_patterns (已有原型)
+- ✅ 写原型验证可行性 → 创建 MCP 工具集成 (25 tests pass)
+- ✅ 通过测试后创建正式实现任务 → 已注册到 ToolRegistry
+
+**循环 33：性能优化（第七轮）** ✅ 完成
+- ✅ 用真实项目做 benchmark → 76 tests pass in 71.49s
+- ✅ 分析内存使用 → 性能表现良好，无紧急优化需求
+
+**循环 34：测试加固（第七轮）**
+- 运行覆盖率分析
+- 修复失败测试
+- 添加 property-based testing
+- 添加 edge case 测试
 
 ## OpenSpec Changes In Progress
 
