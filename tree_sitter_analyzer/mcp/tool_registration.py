@@ -31,6 +31,7 @@ from .tools.list_files_tool import ListFilesTool
 from .tools.modification_guard_tool import ModificationGuardTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
+from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
 from .tools.search_content_tool import SearchContentTool
 from .tools.security_scan_tool import SecurityScanTool
 from .tools.semantic_impact_tool import (
@@ -38,7 +39,6 @@ from .tools.semantic_impact_tool import (
     SemanticImpactTool,
 )
 from .tools.test_coverage_tool import TestCoverageTool
-from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
 
@@ -312,6 +312,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(refactoring_tool),
         description="Refactoring suggestions: actionable guidance to fix code smells",
         emoji="🔧",
+    )
+
+    # design_patterns
+    from .tools.design_patterns_tool import DesignPatternsTool
+    patterns_tool = DesignPatternsTool(project_root)
+    registry.register(
+        name="design_patterns",
+        toolset="analysis",
+        category="design-pattern-detection",
+        schema=patterns_tool.get_tool_definition(),
+        handler=_make_handler(patterns_tool),
+        description="Design patterns: Singleton, Factory, Observer, Strategy, anti-patterns",
+        emoji="🏗️",
     )
 
 

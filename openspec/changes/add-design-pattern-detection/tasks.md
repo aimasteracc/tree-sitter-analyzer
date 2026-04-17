@@ -53,32 +53,32 @@ tree_sitter_analyzer/analysis/design_patterns.py
 ## Implementation Plan
 
 ### Sprint 1: Core Pattern Detection Engine
-- [ ] Create `analysis/design_patterns.py` module
-- [ ] Implement `PatternMatch` dataclass with confidence scoring
-- [ ] Implement Singleton detection (private constructor + static instance)
-- [ ] Implement Factory Method detection (create methods returning interfaces)
-- [ ] Implement Observer detection (listener management methods)
-- [ ] Write unit tests (15+ tests)
+- [x] Create `analysis/design_patterns.py` module
+- [x] Implement `PatternMatch` dataclass with confidence scoring
+- [x] Implement Singleton detection (private constructor + static instance)
+- [x] Implement Factory Method detection (create methods returning interfaces)
+- [x] Implement Observer detection (listener management methods)
+- [x] Write unit tests (15+ tests)
 
 ### Sprint 2: Multi-Language Support
-- [ ] Python: @property, @classmethod, @staticmethod pattern recognition
-- [ ] Java: interface + implementation pattern detection
-- [ ] JavaScript/TypeScript: prototype and class patterns
-- [ ] Add integration tests (10+ tests)
+- [x] Python: @property, @classmethod, @staticmethod pattern recognition
+- [x] Java: interface + implementation pattern detection
+- [x] JavaScript/TypeScript: prototype and class patterns
+- [x] Add integration tests (10+ tests)
 
 ### Sprint 3: MCP Tool Integration
-- [ ] Create `mcp/tools/design_patterns_tool.py`
-- [ ] Implement schema (file_pattern, min_confidence, pattern_types)
-- [ ] Register to ToolRegistry (analysis toolset)
-- [ ] Add TOON format output with pattern hierarchy
-- [ ] Write tool tests (10+ tests)
+- [x] Create `mcp/tools/design_patterns_tool.py`
+- [x] Implement schema (file_pattern, min_confidence, pattern_types)
+- [x] Register to ToolRegistry (analysis toolset)
+- [x] Add TOON format output with pattern hierarchy
+- [x] Write tool tests (10+ tests)
 
 ## Success Criteria
 
-- [ ] 35+ tests passing
+- [x] 35+ tests passing (50 tests: 26 core + 14 multilang + 10 MCP tool)
 - [ ] Detects patterns in test projects with <20% false positive rate
-- [ ] ruff check passes, mypy --strict passes
-- [ ] Integrated into MCP toolset (30 tools total)
+- [x] ruff check passes, mypy --strict passes
+- [x] Integrated into MCP toolset (30 tools total)
 
 ## References
 

@@ -45,6 +45,9 @@ class TestRegisterAllTools:
                 "understand_codebase",
                 "complexity_heatmap",
                 "dead_code",
+                "test_coverage",
+                "refactoring_suggestions",
+                "design_patterns",
             ],
             "query": ["query_code", "extract_code_section", "get_code_outline"],
             "navigation": ["list_files", "find_and_grep", "search_content", "batch_search"],
@@ -52,8 +55,6 @@ class TestRegisterAllTools:
             "diagnostic": ["check_tools", "ci_report"],
             "index": ["build_project_index", "get_project_summary"],
         }
-
-        expected_tools["analysis"].append("refactoring_suggestions")
 
         for toolset, tools in expected_tools.items():
             toolset_tools = registry.list_tools(toolset=toolset)
@@ -68,8 +69,8 @@ class TestRegisterAllTools:
         registry = get_registry()
         all_tools = registry.list_tools()
 
-        # 30 expected tools (29 + refactoring_suggestions)
-        assert len(all_tools) == 30
+        # 31 expected tools (30 + design_patterns)
+        assert len(all_tools) == 31
 
     def test_tool_metadata(self) -> None:
         """Test that registered tools have proper metadata."""
