@@ -327,6 +327,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🏗️",
     )
 
+    # api_discovery
+    from .tools.api_discovery_tool import ApiDiscoveryTool
+    api_tool = ApiDiscoveryTool(project_root)
+    registry.register(
+        name="api_discovery",
+        toolset="analysis",
+        category="api-discovery",
+        schema=api_tool.get_tool_definition(),
+        handler=_make_handler(api_tool),
+        description="API endpoints: Flask, FastAPI, Django, Express, Spring routes",
+        emoji="🔌",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""

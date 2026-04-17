@@ -48,6 +48,7 @@ class TestRegisterAllTools:
                 "test_coverage",
                 "refactoring_suggestions",
                 "design_patterns",
+                "api_discovery",
             ],
             "query": ["query_code", "extract_code_section", "get_code_outline"],
             "navigation": ["list_files", "find_and_grep", "search_content", "batch_search"],
@@ -69,8 +70,8 @@ class TestRegisterAllTools:
         registry = get_registry()
         all_tools = registry.list_tools()
 
-        # 31 expected tools (30 + design_patterns)
-        assert len(all_tools) == 31
+        # 32 expected tools (30 + design_patterns + api_discovery)
+        assert len(all_tools) == 32
 
     def test_tool_metadata(self) -> None:
         """Test that registered tools have proper metadata."""
