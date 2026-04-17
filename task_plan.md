@@ -159,7 +159,41 @@
 
 **循环 11：性能优化（第三轮）** 🔄 进行中
 - 用真实项目做 benchmark
-- 分析内存使用 ✅ 完成（Sprint 1）
+- 分析内存使用
+
+**循环 12：测试加固（第三轮）**
+- 运行覆盖率分析
+- 修复失败测试
+- 添加 property-based testing
+- 添加 edge case 测试
+
+**循环 13：文档同步（第三轮）**
+- 对比代码和文档，找出不一致
+- 更新 CHANGELOG.md
+- 更新 README.md
+- 添加使用示例（已有）
+
+## OpenSpec Changes In Progress
+
+### add-code-diff-analysis
+
+**Sprint 1: Core Diff Algorithm** ✅ 完成
+- [x] 创建 `mcp/tools/code_diff_tool.py`
+- [x] 实现基础的 AST 对比算法
+- [x] 识别添加/删除/修改的元素
+- [x] 添加单元测试 (24 tests)
+
+**Sprint 2: Breaking Change Detection** 🔄 下一步
+- [ ] 实现破坏性变更检测逻辑
+- [ ] 识别公共 API 变化
+- [ ] 识别签名不兼容的变更
+- [ ] 添加集成测试
+
+**Sprint 3: MCP Integration**
+- [ ] 注册到 ToolRegistry (diff toolset)
+- [ ] 添加 schema 和参数验证
+- [ ] 实现 TOON 格式输出 (已有基础实现)
+- [ ] 添加文档和示例 ✅ 完成（Sprint 1）
 - ✅ 参考 wiki 中的相关项目，发现可借鉴的功能 → Code Diff Analysis
 - ✅ 写原型验证可行性 → code_diff_tool.py (24 tests pass)
 - ✅ 通过测试后创建正式实现任务 → add-code-diff-analysis OpenSpec change
