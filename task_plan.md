@@ -72,7 +72,7 @@
 - [x] 审查 ast_chunker.py 的分块质量
 - [x] 添加语义边界检测
 - [x] 添加上下文保留（分块时保留 import）
-- [ ] 对比 qmd 的 tree-sitter chunking 实现
+- [x] 对比 qmd 的 tree-sitter chunking 实现（已完成分析，7个改进方向已识别）
 - [ ] 每种语言 3 个真实文件的分块质量验证
 
 ## Phase 5: 性能与可靠性深化
@@ -100,8 +100,8 @@
 - [x] 审查所有 public API 的类型注解完整性（mypy strict 覆盖）
 - [x] 审查所有文件的大小，超过 400 行的考虑拆分（76 files >400 lines, mostly plugins）
 - [x] 审查 README.md 是否反映最新功能
-- [ ] 审查 docs/skills/ 下 10 个工具文档的准确性
-- [ ] 审查 CHANGELOG.md 是否记录所有变更
+- [x] 审查 docs/skills/ 下 10 个工具文档的准确性
+- [x] 审查 CHANGELOG.md 是否记录所有变更
 - [x] 添加 ARCHITECTURE.md
 
 ## Phase 7+: 持续改进循环（永不停止）
