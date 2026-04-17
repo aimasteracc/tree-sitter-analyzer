@@ -741,6 +741,28 @@
 - ✅ 所有测试通过: 10 new tests + 766 Java tests pass
 - ✅ 更新 OpenSpec tasks.md 标记为完成
 
+## OpenSpec Changes In Progress
+
+### add-project-radar 🚧 Sprint 1 开始
+
+**Sprint 1: Git Analyzer** ⏳ 进行中
+- ⏳ Implement `get_file_churn()` using `git log --name-only`
+- ⏳ Implement `get_file_ownership()` using `git blame`
+- ⏳ Add caching for git operations (expensive)
+- ⏳ 15+ tests
+
+**Sprint 2: Risk Scoring Engine** ⏳ 待开始
+- ⏳ Implement `FileRisk` dataclass
+- ⏳ Create normalization functions (min-max scaling)
+- ⏳ Implement weighted risk calculation
+- ⏳ 15+ tests
+
+**Sprint 3: CLI + MCP Integration** ⏳ 待开始
+- ⏳ Create `tree-sitter radar` CLI command
+- ⏳ Implement output formatters (TOON + Markdown)
+- ⏳ Register `project_radar` MCP tool
+- ⏳ 15+ tests
+
 **此计划永不标记为「全部完成」。永远有下一批任务。**
 
 **此计划永不标记为「全部完成」。永远有下一批任务。**
