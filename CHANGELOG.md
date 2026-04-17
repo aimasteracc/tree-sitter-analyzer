@@ -1,5 +1,35 @@
 # Changelog
 
+## [Unreleased] - 2026-04-17
+
+### Added
+
+- **Semantic-level impact analysis**: New `analysis/semantic_impact.py` module that assesses risk beyond textual occurrence counting. Considers type hierarchy (base class changes propagate to subclasses), visibility (public API vs private), call chain depth, and framework annotations. Composite risk scoring (0-100) with SAFE/LOW/MODERATE/HIGH/CRITICAL classification and actionable suggestions.
+- **Adaptive TOON compression**: `CompressionLevel` enum (MINIMAL/BALANCED/DETAILED) with preset profiles that auto-select formatter settings based on query type. Measured 69.6% byte reduction on 8 real project files, meeting the 60-70% target.
+- **C# LINQ query extraction**: `query_expression` nodes parsed for from/where/select/order_by/group/join clauses.
+- **C# async/await pattern detection**: `await_expression` extraction with awaited method name identification.
+- **Automatic encoding detection**: `detect_encoding()` in error_recovery with 3-strategy approach (BOM → UTF-8 strict → CJK-heuristic dual-metric scoring). Correctly disambiguates GBK/Shift-JIS via kana character detection.
+- **Partial/corrupted file parsing**: Tree-sitter partial parse fallback that skips ERROR nodes and extracts valid declarations from damaged files.
+- **Timeout protection**: `@with_sync_timeout` decorator using `signal.SIGALRM` for synchronous analysis methods.
+- **Plugin registry**: `PluginRegistry` with metadata, load metrics, and hot-reload support. Measured load time/memory for 1/5/10/17 languages.
+- **Java pattern analysis**: Lambda expression extraction, Stream API call chain analysis, and Spring annotation recognition.
+- **Java edge extractor**: Spring DI injection points and Stream method reference edges in dependency graph.
+- **On-demand skill loading**: `SkillLoadManager` with tiered loading (core <500 tokens vs extended vs full).
+- **Health score improvements**: Modification suggestion generation, cyclomatic complexity dimension, CI integration interface.
+- **Cross-file dependency tracking**: Import resolution across files with edge weights (call frequency) and cycle detection.
+
+### Testing
+
+- **37 new semantic impact tests**: Visibility extraction, risk scoring, type hierarchy, profile building, suggestion generation, edge cases.
+- **10 C# real-world pattern tests**: Generics, async, records, static methods, abstract classes, events, enums, structs.
+- **12 adaptive compression tests**: CompressionLevel enum, profile generation, formatter integration.
+- **Pipeline integration tests (10)**: End-to-end Java/Python/Go analysis, query, read partial, code outline, search, format, error handling.
+- **Performance regression tests (7)**: Time budgets for parse (<1s), query (<1s), recovery (<0.5s), registry (<3s).
+- **TOON compression benchmark (10)**: Real project file compression measurement with level comparison.
+- **Plugin loading benchmark (7)**: Memory and startup time for 1/5/10/17 languages.
+- **StreamableHTTP performance benchmark (7)**: 100 concurrent requests latency and throughput.
+- **Impact level boundary tests (9)**: Edge cases for blast radius severity classification.
+
 ## [1.11.1] - 2026-04-10
 
 ### Added
