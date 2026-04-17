@@ -130,8 +130,13 @@
 
 **循环 5：新功能探索** ✅ 第一轮完成
 - ✅ 参考 wiki 中的相关项目，发现可借鉴的功能（claude-code, codeflow, claw-code）
-- 🔄 写原型验证可行性（下一轮）
-- 通过后创建正式实现任务
+- ✅ 写原型验证可行性 — Tool Registry 系统（45 tests pass）
+- ✅ 通过测试后创建正式实现任务（add-tool-registry-system OpenSpec change）
+
+**循环 6：代码审计（第二轮）** 🔄 进行中
+- 扫描所有 .py 文件，找出 TODO/FIXME/HACK 注释
+- 扫描所有函数，找出超过 50 行的函数
+- 扫描所有类，找出超过 400 行的文件
 
 **此计划永不标记为「全部完成」。永远有下一批任务。**
 
