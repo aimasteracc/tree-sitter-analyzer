@@ -87,6 +87,12 @@ class JavaTableFormatter(BaseTableFormatter):
             # Generate section for the single class
             class_lines = self._format_class_section(single_class, data, classes)
             lines.extend(class_lines)
+
+            # Also generate sections for inner classes
+            inner_classes = self._get_inner_classes(single_class, classes)
+            for inner_class in inner_classes:
+                inner_lines = self._format_class_section(inner_class, data, classes)
+                lines.extend(inner_lines)
         else:
             # Multi-class format: use Classes Overview table
             if classes:
