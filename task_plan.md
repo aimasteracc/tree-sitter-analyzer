@@ -167,11 +167,25 @@
 - ✅ property-based testing → 已有
 - ✅ edge case 测试 → 已有
 
-**循环 13：文档同步（第三轮）**
-- 对比代码和文档，找出不一致
-- 更新 CHANGELOG.md
-- 更新 README.md
-- 添加使用示例（已有）
+**循环 13：文档同步（第三轮）** ✅ 完成
+- ✅ 对比代码和文档，找出不一致 → code_diff 未记录
+- ✅ 更新 CHANGELOG.md → 添加 code_diff 工具
+- ✅ 更新 README.md → 工具数量 15→16，提到 code_diff
+- ✅ 更新 ARCHITECTURE.md → 工具层 15→16
+
+**循环 14：代码审计（第四轮）** 🔄 下一步
+- 扫描所有 .py 文件，找出 TODO/FIXME/HACK 注释
+- 扫描所有函数，找出超过 50 行的函数
+- 扫描所有类，找出超过 400 行的文件
+
+**循环 15：新功能探索（第四轮）**
+- 参考 wiki 中的相关项目，发现可借鉴的功能
+- 写原型验证可行性
+- 通过测试后创建正式实现任务
+
+**循环 16：性能优化（第四轮）**
+- 用真实项目做 benchmark
+- 分析内存使用
 
 ## OpenSpec Changes In Progress
 
