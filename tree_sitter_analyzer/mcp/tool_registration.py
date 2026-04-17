@@ -25,6 +25,7 @@ from .tools.error_recovery_tool import ErrorRecoveryTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
 from .tools.get_project_summary_tool import GetProjectSummaryTool
+from .tools.grammar_discovery_tool import GrammarDiscoveryTool
 from .tools.health_score_tool import HealthScoreTool
 from .tools.java_patterns_tool import JavaPatternAnalysisTool
 from .tools.list_files_tool import ListFilesTool
@@ -38,10 +39,10 @@ from .tools.semantic_impact_tool import (
     QuickRiskAssessmentTool,
     SemanticImpactTool,
 )
+from .tools.semantic_search_tool import SemanticSearchTool
 from .tools.test_coverage_tool import TestCoverageTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
-from .tools.grammar_discovery_tool import GrammarDiscoveryTool
 
 # Optional tools
 try:
@@ -390,6 +391,18 @@ def _register_query_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(outline_tool),
         description="Get code outline: hierarchical structure with metadata",
         emoji="📋",
+    )
+
+    # semantic_search
+    search_tool = SemanticSearchTool(project_root)
+    registry.register(
+        name="semantic_search",
+        toolset="query",
+        category="semantic-search",
+        schema=search_tool.get_tool_definition(),
+        handler=_make_handler(search_tool, method_name="execute"),
+        description="Semantic code search: natural language queries with LLM understanding",
+        emoji="🔍",
     )
 
 

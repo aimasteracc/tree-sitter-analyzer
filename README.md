@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-10350%2B%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-10450%2B%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -20,12 +20,13 @@ find the right files → find the right matches → extract the right structure 
 
 *Claude doesn't need to read your entire codebase. Neither do you.*
 
-**17 languages · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
+**17 languages · 31 MCP tools · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
 
 ---
 
 ## ✨ What's New in v1.11.1
 
+- **Semantic Code Search**: Natural language queries with hybrid architecture. "functions named authenticate" → grep (<1s). "functions that call database but don't handle errors" → LLM-powered semantic understanding (<5s). Git SHA-based cache invalidation, pattern learning, TOON output.
 - **Claude knows your project's skeleton before reading a single file**: `get_project_summary` returns PageRank-ranked architecture nodes — the classes everything else extends. Validated on elasticsearch (40k files), spring-framework (11k), mybatis, spring-petclinic.
 - **Touch a critical class? Claude stops you first**: `modification_guard` reads the architecture ranking. Rename `Writeable` in elasticsearch → verdict UNSAFE, rank #1, 4745 callers. No surprises.
 - **New language = new file, not a rewrite**: Plugin `edge_extractors/` package — Java, Python, TypeScript ship today. Adding Kotlin is one file + one line.

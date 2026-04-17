@@ -50,7 +50,7 @@ class TestRegisterAllTools:
                 "design_patterns",
                 "api_discovery",
             ],
-            "query": ["query_code", "extract_code_section", "get_code_outline"],
+            "query": ["query_code", "extract_code_section", "get_code_outline", "semantic_search"],
             "navigation": ["list_files", "find_and_grep", "search_content", "batch_search"],
             "safety": ["modification_guard", "security_scan"],
             "diagnostic": ["check_tools", "ci_report"],
@@ -70,8 +70,8 @@ class TestRegisterAllTools:
         registry = get_registry()
         all_tools = registry.list_tools()
 
-        # 32 expected tools (30 + design_patterns + api_discovery)
-        assert len(all_tools) == 32
+        # 34 expected tools (32 + semantic_search + grammar_discovery)
+        assert len(all_tools) == 34
 
     def test_tool_metadata(self) -> None:
         """Test that registered tools have proper metadata."""
@@ -194,3 +194,4 @@ class TestToolRegistrationIntegration:
         assert "query_code" in tool_names
         assert "extract_code_section" in tool_names
         assert "get_code_outline" in tool_names
+        assert "semantic_search" in tool_names

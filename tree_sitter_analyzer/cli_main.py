@@ -243,6 +243,29 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Suppress INFO level logs (show errors only)",
     )
 
+    # Semantic search options
+    parser.add_argument(
+        "--search",
+        help="Semantic code search query (natural language or pattern)",
+    )
+    parser.add_argument(
+        "--search-format",
+        choices=["text", "json", "toon"],
+        default="text",
+        help="Output format for search results (default: text)",
+    )
+    parser.add_argument(
+        "--search-no-cache",
+        action="store_true",
+        help="Disable query caching for search",
+    )
+    parser.add_argument(
+        "--search-provider",
+        choices=["anthropic", "openai"],
+        default="anthropic",
+        help="LLM provider for complex search queries (default: anthropic)",
+    )
+
     # Partial reading options
     parser.add_argument(
         "--partial-read",
@@ -301,6 +324,24 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
 def handle_special_commands(args: argparse.Namespace) -> int | None:
     """Handle special commands that don't fit the normal pattern."""
+
+    # Semantic search command
+    if getattr(args, "search", None):
+        from tree_sitter_analyzer.cli.commands.semantic_search_cli import _run
+
+        search_args = type("Args", (), {
+            "query": args.search,
+            "format": getattr(args, "search_format", "text"),
+            "project_root": getattr(args, "project_root", None),
+            "cache_ttl": 60,
+            "llm_provider": getattr(args, "search_provider", "anthropic"),
+            "no_cache": getattr(args, "search_no_cache", False),
+            "show_cache_stats": False,
+            "clear_cache": False,
+            "quiet": getattr(args, "quiet", False),
+        })()
+
+        return asyncio.run(_run(search_args))
 
     def _effective_output_format() -> str:
         # --format is an alias for json/toon; --output-format supports json/text/toon

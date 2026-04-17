@@ -63,6 +63,11 @@ class SearchResultFormatter:
         lines = []
 
         if metadata:
+            error = metadata.get("error", "")
+            if error:
+                lines.append(f"Error: {error}")
+                return "\n".join(lines)
+
             query = metadata.get("query", "")
             exec_time = metadata.get("execution_time", 0)
             tool_used = metadata.get("tool_used", "")

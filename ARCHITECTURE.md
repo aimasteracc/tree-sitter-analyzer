@@ -10,11 +10,11 @@
          |                    |                      |
          v                    v                      v
 +===================================================================+
-|  MCP Tool Layer (29 tools + 2 discovery meta-tools)                    |
+|  MCP Tool Layer (31 tools + 2 discovery meta-tools)                    |
 |  understand_codebase | analyze_code_structure | java_patterns | code_diff | code_smell_detector | code_clone_detection |
 |  error_recovery | health_score | test_coverage | semantic_impact | quick_risk_assessment |
-|  get_code_outline | query_code | read_partial | list_files |
-|  search_content | find_and_grep | check_code_scale | get_project_summary |
+|  get_code_outline | query_code | semantic_search | read_partial | list_files |
+|  search_content | find_and_grep | check_code_scale | get_project_summary | api_discovery |
 |  modification_guard | trace_impact | dependency_query | build_project_index |
 |  batch_search | check_tools | ci_report | tools/list | tools/describe      |
 |  ------- security boundary: BaseMCPTool -> SecurityValidator -----|
