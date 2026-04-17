@@ -36,6 +36,7 @@ from .tools.semantic_impact_tool import (
 )
 from .tools.search_content_tool import SearchContentTool
 from .tools.trace_impact_tool import TraceImpactTool
+from .tools.understand_codebase_tool import UnderstandCodebaseTool
 
 # Optional tools
 try:
@@ -246,6 +247,18 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(risk_tool),
         description="Quick risk assessment: visibility, caller count, type hierarchy",
         emoji="⚡",
+    )
+
+    # understand_codebase (智能入口)
+    understand_tool = UnderstandCodebaseTool(project_root)
+    registry.register(
+        name="understand_codebase",
+        toolset="analysis",
+        category="codebase-understanding",
+        schema=understand_tool.get_tool_definition(),
+        handler=_make_handler(understand_tool),
+        description="理解代码库: 依赖、影响、健康评分（三深度级别）",
+        emoji="🧠",
     )
 
 
