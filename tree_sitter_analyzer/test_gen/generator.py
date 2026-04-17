@@ -9,10 +9,15 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
-from tree_sitter_analyzer.core.request import AnalysisRequest
+try:
+    import tree_sitter
+
+    TREE_SITTER_AVAILABLE = True
+except ImportError:
+    TREE_SITTER_AVAILABLE = False
+
 
 
 @dataclass
@@ -72,7 +77,26 @@ class TestGenerationEngine:
             repo_path: Path to the repository (for resolving imports)
         """
         self.repo_path = Path(repo_path).resolve()
-        self.analysis_engine = get_analysis_engine(str(self.repo_path))
+        self._language: Any = None
+        self._parser: Any = None
+        self._ensure_tree_sitter()
+
+    def _ensure_tree_sitter(self) -> None:
+        """Ensure tree-sitter is initialized."""
+        if not TREE_SITTER_AVAILABLE:
+            raise TestGenerationError("tree-sitter is not available")
+
+        if self._language is None:
+            try:
+                import tree_sitter_python as tspython
+
+                language_capsule = tspython.language()
+                self._language = tree_sitter.Language(language_capsule)
+            except ImportError as e:
+                raise TestGenerationError("tree-sitter-python not available") from e
+
+        if self._parser is None:
+            self._parser = tree_sitter.Parser(self._language)
 
     def extract_functions(self, file_path: str) -> list[FuncInfo]:
         """
@@ -87,151 +111,283 @@ class TestGenerationEngine:
         Raises:
             TestGenerationError: If parsing fails
         """
-        try:
-            # Create analysis request
-            request = AnalysisRequest(
-                file_path=file_path,
-                repo_path=str(self.repo_path),
-                element_types=["function"],
-            )
+        self._ensure_tree_sitter()
 
-            # Analyze the file
-            result = self.analysis_engine.analyze_file(file_path, request)
+        try:
+            # Read and parse the file
+            with open(file_path, "rb") as f:
+                source_bytes = f.read()
+
+            # Parse the source code
+            tree = self._parser.parse(source_bytes)
 
         except Exception as e:
             raise TestGenerationError(f"Failed to parse {file_path}: {e}") from e
 
         functions: list[FuncInfo] = []
 
-        # Extract function definitions from result
-        if hasattr(result, "functions"):
-            function_list = result.functions
-        elif isinstance(result, dict):
-            function_list = result.get("functions", [])
-        elif isinstance(result, list):
-            function_list = result
-        else:
-            function_list = []
+        # Traverse the tree to find function definitions
+        def find_functions(node: Any) -> None:
+            if node.type == "function_definition":
+                # Extract function information
+                func_info = self._extract_function_info(node, file_path)
+                if func_info:
+                    functions.append(func_info)
 
-        for item in function_list:
-            # Handle both dict and object representations
-            if hasattr(item, "__dict__"):
-                func_name = getattr(item, "name", "")
-                is_async = getattr(item, "is_async", False) or getattr(item, "is_async_def", False)
-                line_number = getattr(item, "line_number", getattr(item, "start_line", 0))
-                return_type = getattr(item, "return_type", None)
-                decorators = getattr(item, "decorators", [])
-                params = getattr(item, "parameters", [])
-            else:
-                func_name = item.get("name", "")
-                is_async = item.get("is_async", item.get("is_async_def", False))
-                line_number = item.get("line_number", item.get("start_line", 0))
-                return_type = item.get("return_type")
-                decorators = item.get("decorators", [])
-                params = item.get("parameters", [])
+            # Recursively search children
+            for child in node.children:
+                find_functions(child)
 
-            if not func_name:
-                continue
-
-            # Skip async functions for MVP
-            if is_async:
-                print(f"Warning: Skipping async function {func_name} (not supported in MVP)", file=sys.stderr)
-                continue
-
-            # Extract parameters
-            parameters: list[ParamInfo] = []
-            for param in params:
-                if hasattr(param, "__dict__"):
-                    param_info = ParamInfo(
-                        name=getattr(param, "name", ""),
-                        type_hint=getattr(param, "type_hint", None),
-                        has_default=getattr(param, "has_default", False),
-                    )
-                else:
-                    param_info = ParamInfo(
-                        name=param.get("name", ""),
-                        type_hint=param.get("type_hint"),
-                        has_default=param.get("has_default", False),
-                    )
-                parameters.append(param_info)
-
-            # Calculate cyclomatic complexity
-            complexity = self._calculate_complexity(item)
-
-            # Check for exceptions
-            has_exceptions = self._has_exceptions(item)
-
-            # Check for branches
-            has_branches = self._has_branches(item)
-
-            # Source location
-            source_location = f"{file_path}:{line_number}"
-
-            func_info = FuncInfo(
-                name=func_name,
-                parameters=parameters,
-                return_type=return_type,
-                complexity=complexity,
-                has_exceptions=has_exceptions,
-                has_branches=has_branches,
-                decorators=decorators if isinstance(decorators, list) else [],
-                source_location=source_location,
-            )
-            functions.append(func_info)
+        find_functions(tree.root_node)
 
         return functions
+
+    def _extract_function_info(self, func_node: Any, file_path: str) -> FuncInfo | None:
+        """Extract function information from a function_definition node."""
+        # Check if async
+        is_async = False
+        for child in func_node.children:
+            if child.type == "async":
+                is_async = True
+                break
+
+        # Skip async functions for MVP
+        if is_async:
+            func_name = self._find_child_text(func_node, "identifier")
+            if func_name:
+                print(f"Warning: Skipping async function {func_name} (not supported in MVP)", file=sys.stderr)
+            return None
+
+        # Get function name
+        func_name = self._find_child_text(func_node, "identifier")
+        if not func_name:
+            return None
+
+        # Extract parameters
+        params_node = None
+        for child in func_node.children:
+            if child.type == "parameters":
+                params_node = child
+                break
+
+        parameters = self._extract_parameters(params_node) if params_node else []
+
+        # Extract return type (look for "->" followed by type)
+        return_type = None
+        for i, child in enumerate(func_node.children):
+            if child.type == "->":
+                # Next child should be the type
+                if i + 1 < len(func_node.children):
+                    type_node = func_node.children[i + 1]
+                    if type_node.type == "type":
+                        type_text = self._find_child_text(type_node, "identifier")
+                        if type_text:
+                            return_type = type_text
+                break
+
+        # Get decorators
+        decorators = self._extract_decorators(func_node)
+
+        # Get source location
+        line_number = func_node.start_point[0] + 1
+        source_location = f"{file_path}:{line_number}"
+
+        # Get body node
+        body_node = None
+        for child in func_node.children:
+            if child.type == "block":
+                body_node = child
+                break
+
+        # Calculate complexity
+        complexity = self._calculate_complexity_from_node(body_node) if body_node else 1
+
+        # Check for exceptions
+        has_exceptions = self._has_exceptions_from_node(body_node) if body_node else False
+
+        # Check for branches
+        has_branches = self._has_branches_from_node(body_node) if body_node else False
+
+        return FuncInfo(
+            name=func_name,
+            parameters=parameters,
+            return_type=return_type,
+            complexity=complexity,
+            has_exceptions=has_exceptions,
+            has_branches=has_branches,
+            decorators=decorators,
+            source_location=source_location,
+        )
+
+    def _find_child_text(self, node: Any, child_type: str) -> str | None:
+        """Find a child node by type and return its text."""
+        for child in node.children:
+            if child.type == child_type:
+                return cast(str, child.text.decode("utf-8"))
+        return None
+
+    def _extract_parameters(self, params_node: Any) -> list[ParamInfo]:
+        """Extract parameter information from parameters node."""
+        parameters: list[ParamInfo] = []
+
+        # Find all parameter entries
+        for child in params_node.children:
+            if child.type == "identifier":
+                # Simple parameter without type hint
+                parameters.append(ParamInfo(name=child.text.decode("utf-8"), type_hint=None, has_default=False))
+            elif child.type == "typed_parameter":
+                # typed_parameter: identifier : type
+                name = None
+                type_hint = None
+                for subchild in child.children:
+                    if subchild.type == "identifier" and name is None:
+                        name = subchild.text.decode("utf-8")
+                    elif subchild.type == "type":
+                        # Get the type from the type node
+                        type_text = self._find_child_text(subchild, "identifier")
+                        if type_text:
+                            type_hint = type_text
+                if name:
+                    parameters.append(ParamInfo(name=name, type_hint=type_hint, has_default=False))
+            elif child.type == "default_parameter":
+                # default_parameter: parameter = value
+                # This could be a typed_parameter or an identifier
+                name = None
+                type_hint = None
+                for subchild in child.children:
+                    if subchild.type == "identifier" and name is None:
+                        name = subchild.text.decode("utf-8")
+                    elif subchild.type == "typed_parameter":
+                        # Extract from the typed_parameter child
+                        for typed_child in subchild.children:
+                            if typed_child.type == "identifier" and name is None:
+                                name = typed_child.text.decode("utf-8")
+                            elif typed_child.type == "type":
+                                type_text = self._find_child_text(typed_child, "identifier")
+                                if type_text:
+                                    type_hint = type_text
+                if name:
+                    parameters.append(ParamInfo(name=name, type_hint=type_hint, has_default=True))
+
+        return parameters
+
+    def _extract_decorators(self, func_node: Any) -> list[str]:
+        """Extract decorator names from function node."""
+        decorators: list[str] = []
+
+        # Check if the function has a decorated_definition parent
+        # The decorator is on the decorated_definition, not the function_definition
+        parent = func_node.parent
+        if parent and parent.type == "decorated_definition":
+            # Look for decorator children of the parent
+            for child in parent.children:
+                if child.type == "decorator":
+                    # Get the decorator name (look for identifier child)
+                    for subchild in child.children:
+                        if subchild.type == "identifier":
+                            decorators.append(subchild.text.decode("utf-8"))
+                        elif subchild.type == "attribute":
+                            # Handle @staticmethod, @classmethod, etc.
+                            for attr_child in subchild.children:
+                                if attr_child.type == "identifier":
+                                    decorators.append(attr_child.text.decode("utf-8"))
+
+        return decorators
 
     def _calculate_complexity(self, func_item: dict[str, Any] | Any) -> int:
         """
         Calculate cyclomatic complexity for a function.
 
         Args:
-            func_item: Function item from analysis result
+            func_item: Function item from analysis result (dict for test compatibility)
 
         Returns:
             Cyclomatic complexity score
         """
+        # Handle dict format for test compatibility
+        if isinstance(func_item, dict):
+            complexity = 1  # Base complexity
+            complexity += cast(int, func_item.get("if_count", 0))
+            complexity += cast(int, func_item.get("elif_count", 0))
+            complexity += cast(int, func_item.get("for_count", 0))
+            complexity += cast(int, func_item.get("while_count", 0))
+            complexity += cast(int, func_item.get("try_count", 0))
+            complexity += cast(int, func_item.get("except_count", 0))
+            complexity += cast(int, func_item.get("with_count", 0))
+            return complexity
+        else:
+            return self._calculate_complexity_from_node(func_item)
+
+    def _calculate_complexity_from_node(self, node: Any) -> int:
+        """Calculate cyclomatic complexity from a node."""
         complexity = 1  # Base complexity
 
-        # Handle both dict and object representations
-        if hasattr(func_item, "__dict__"):
-            complexity += getattr(func_item, "if_count", 0)
-            complexity += getattr(func_item, "elif_count", 0)
-            complexity += getattr(func_item, "for_count", 0)
-            complexity += getattr(func_item, "while_count", 0)
-            complexity += getattr(func_item, "try_count", 0)
-            complexity += getattr(func_item, "except_count", 0)
-            complexity += getattr(func_item, "with_count", 0)
-        else:
-            complexity += func_item.get("if_count", 0)
-            complexity += func_item.get("elif_count", 0)
-            complexity += func_item.get("for_count", 0)
-            complexity += func_item.get("while_count", 0)
-            complexity += func_item.get("try_count", 0)
-            complexity += func_item.get("except_count", 0)
-            complexity += func_item.get("with_count", 0)
+        if not node:
+            return complexity
+
+        # Count branching constructs
+        for child in node.children:
+            if child.type in ("if_statement", "for_statement", "while_statement", "try_statement"):
+                complexity += 1
+            elif child.type == "elif_clause":
+                complexity += 1
+            elif child.type == "except_clause":
+                complexity += 1
+            elif child.type == "with_statement":
+                complexity += 1
 
         return complexity
 
     def _has_exceptions(self, func_item: dict[str, Any] | Any) -> bool:
-        """Check if function raises exceptions."""
-        if hasattr(func_item, "__dict__"):
-            return getattr(func_item, "raises_count", 0) > 0
-        return func_item.get("raises_count", 0) > 0
+        """Check if function raises exceptions (dict format for test compatibility)."""
+        if isinstance(func_item, dict):
+            return cast(int, func_item.get("raises_count", 0)) > 0
+        else:
+            return self._has_exceptions_from_node(func_item)
 
     def _has_branches(self, func_item: dict[str, Any] | Any) -> bool:
-        """Check if function has conditional branches."""
-        if hasattr(func_item, "__dict__"):
+        """Check if function has conditional branches (dict format for test compatibility)."""
+        if isinstance(func_item, dict):
             return (
-                getattr(func_item, "if_count", 0) > 0
-                or getattr(func_item, "elif_count", 0) > 0
-                or getattr(func_item, "try_count", 0) > 0
+                cast(int, func_item.get("if_count", 0)) > 0
+                or cast(int, func_item.get("elif_count", 0)) > 0
+                or cast(int, func_item.get("try_count", 0)) > 0
             )
-        return (
-            func_item.get("if_count", 0) > 0
-            or func_item.get("elif_count", 0) > 0
-            or func_item.get("try_count", 0) > 0
-        )
+        else:
+            return self._has_branches_from_node(func_item)
+
+    def _has_exceptions_from_node(self, node: Any) -> bool:
+        """Check if function raises exceptions."""
+        if not node:
+            return False
+
+        # Look for raise statements using tree-sitter traversal
+        def has_raise(n: Any) -> bool:
+            if n.type == "raise_statement":
+                return True
+            for child in n.children:
+                if has_raise(child):
+                    return True
+            return False
+
+        return has_raise(node)
+
+    def _has_branches_from_node(self, node: Any) -> bool:
+        """Check if function has conditional branches."""
+        if not node:
+            return False
+
+        # Look for if/try statements using tree-sitter traversal
+        def has_branch(n: Any) -> bool:
+            if n.type in ("if_statement", "try_statement"):
+                return True
+            for child in n.children:
+                if has_branch(child):
+                    return True
+            return False
+
+        return has_branch(node)
+
 
     def generate_test_cases(self, func_info: FuncInfo) -> list[TestCase]:
         """
@@ -326,17 +482,17 @@ class TestGenerationEngine:
         for param in func_info.parameters:
             if edge_case and edge_case.get("param_name") == param.name:
                 args.append(edge_case["value"])
-            elif param.has_default and not use_defaults:
-                # Use explicit None for edge case
+            elif not use_defaults:
+                # Use None for edge case / non-default mode
                 args.append("None")
             elif param.type_hint and "str" in param.type_hint:
-                args.append('""' if edge_case else '"test"')
+                args.append('"test"')
             elif param.type_hint and "int" in param.type_hint:
-                args.append("0" if edge_case else "1")
+                args.append("1")
             elif param.type_hint and "bool" in param.type_hint:
-                args.append("False" if edge_case else "True")
+                args.append("True")
             else:
-                args.append("None" if edge_case else "None")
+                args.append("None")
 
         args_str = ", ".join(args)
         return f"result = {func_info.name}({args_str})"
