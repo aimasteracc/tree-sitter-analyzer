@@ -440,6 +440,24 @@
 
 **总计**: 新增 10 个单元测试，766 Java 测试通过
 
+### improve-java-annotation-extraction ✅ 完成 (Session 99)
+
+**Documentation** ✅ 已完成
+- ✅ T4.3: 创建 design.md（注释提取管道架构）
+- ✅ T4.4: 更新 CHANGELOG.md
+
+**总计**: OpenSpec change 完全完成（所有代码修复已在之前实现）
+
+### add-ast-chunking-optimization ✅ 完成 (Session 99)
+
+**已验证现有实现** ✅
+- ✅ ast_chunker.py (487 lines) 完全实现
+- ✅ 28 tests pass for all chunking strategies
+- ✅ Language-family aware: OOP, Script, Function
+- ✅ Token estimation: 4 tokens/line heuristic
+
+**总计**: 模块已存在且完全测试覆盖
+
 ---
 
 ## 完成的 OpenSpec Changes

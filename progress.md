@@ -2,20 +2,29 @@
 
 ## Session 99 — 2026-04-17
 
-### 完成: fix-java-implements-generics-and-annotation-attribution
+### 完成: 3 个 OpenSpec Changes
 
-**Bug 1: implements generics** ✅ 已修复
-- 验证 `_split_type_list()` 方法正确实现 angle-bracket depth counter
-- LocalCache<K, V> 保留为单个项目，不拆分为 [LocalCache, K, V]
-- 创建 `test_java_implements_generics.py` (5 tests pass)
+**1. fix-java-implements-generics-and-annotation-attribution** ✅
+- 验证 Bug 1 (implements generics): `_split_type_list()` 正确实现
+- 验证 Bug 2 (annotation attribution): `_extract_annotations_from_modifiers()` 直接从 AST 提取
+- 创建 `test_java_implements_generics.py` (5 tests)
+- 创建 `test_java_method_only_annotations.py` (5 tests)
+- **Commit**: `d7ba0d44`
 
-**Bug 2: annotation attribution** ✅ 已修复
-- 验证 `_extract_annotations_from_modifiers()` 直接从 AST 提取 annotations
-- @Override 不再泄漏到 class annotations
-- 创建 `test_java_method_only_annotations.py` (5 tests pass)
+**2. improve-java-annotation-extraction** ✅
+- T4.3: 创建 design.md（注释提取管道架构）
+- T4.4: 更新 CHANGELOG.md
+- **Commit**: `d1c9a5e1`
 
-**CI 结果**: 766 Java tests pass (27 skipped), ruff/mypy all pass
-**Commit**: `d7ba0d44`
+**3. add-ast-chunking-optimization** ✅
+- 验证现有实现: ast_chunker.py (487 lines)
+- 28 tests pass for all chunking strategies
+- **Commit**: `0b587417`
+
+### 测试结果
+- 766 Java tests pass (27 skipped)
+- 28 ast_chunker tests pass
+- ruff/mypy all pass
 
 ---
 
