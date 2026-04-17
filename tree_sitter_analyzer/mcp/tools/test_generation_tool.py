@@ -14,7 +14,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ...sdk import Analyzer
 from ...test_gen.generator import TestGenerationEngine
 from ...test_gen.renderer import render_test_file_to_path
 from ...utils import setup_logger
@@ -138,7 +137,7 @@ class TestGenerationTool(BaseMCPTool):
         if not file_path.endswith(".py"):
             return {
                 "success": False,
-                "error": f"Not a Python file: {file_path}",
+                "error": f"not a python file: {file_path}",
             }
 
         try:
@@ -156,9 +155,9 @@ class TestGenerationTool(BaseMCPTool):
                 }
 
             # Generate test cases
-            test_cases: dict[str, list] = {}
+            test_cases: dict[str, list[Any]] = {}
             total_tests = 0
-            function_summaries: list[dict] = []
+            function_summaries: list[dict[str, Any]] = []
 
             for func_info in func_infos:
                 cases = engine.generate_test_cases(func_info)

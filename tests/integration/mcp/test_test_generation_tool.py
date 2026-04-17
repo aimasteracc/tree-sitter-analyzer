@@ -5,6 +5,7 @@ Integration tests for test generation MCP tool.
 from __future__ import annotations
 
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -184,7 +185,7 @@ class TestTestGenerationTool:
         result = await tool.execute({"file_path": file_path})
 
         assert result["success"] is False
-        assert "not a Python file" in result["error"].lower()
+        assert "not a python file" in result["error"]
 
 
 @pytest.fixture

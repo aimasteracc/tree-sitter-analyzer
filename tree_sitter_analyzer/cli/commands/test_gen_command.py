@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from ...output_manager import output_data, output_error, output_info, set_output_mode
 from ...test_gen.generator import TestGenerationEngine
@@ -126,7 +127,7 @@ def generate_tests_for_file(
             output_info(f"Found {len(func_infos)} function(s)")
 
         # Generate test cases
-        test_cases: dict[str, list] = {}
+        test_cases: dict[str, list[Any]] = {}
         for func_info in func_infos:
             cases = engine.generate_test_cases(func_info)
             test_cases[func_info.name] = cases
@@ -173,7 +174,7 @@ def main() -> int:
     args = parser.parse_args()
 
     # Set output mode
-    set_output_mode("text")
+    set_output_mode(quiet=False, json_output=False)
 
     # Validate inputs
     for file_path in args.files:
@@ -181,7 +182,7 @@ def main() -> int:
             output_error(f"File not found: {file_path}")
             return 1
         if not file_path.endswith(".py"):
-            output_error(f"Not a Python file: {file_path}")
+            output_error(f"not a Python file: {file_path}")
             return 1
 
     # Handle multiple files
