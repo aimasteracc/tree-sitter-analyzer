@@ -899,3 +899,244 @@ namespace MyApp {
         tree = get_tree_for_code(sync_code, plugin)
         patterns = plugin.extractor.extract_async_patterns(tree, sync_code)
         assert len(patterns) == 0
+
+
+# ── 10 Real-world C# pattern tests ──
+
+REAL_WORLD_CODE = """
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace MyApp.Services
+{
+    // 1. Generic repository with constraints
+    public interface IRepository<T> where T : class, new()
+    {
+        Task<T> FindByIdAsync(int id);
+        Task<IEnumerable<T>> GetAllAsync();
+        void Add(T entity);
+    }
+
+    // 2. Generic class implementation
+    public class Repository<T> : IRepository<T> where T : class, new()
+    {
+        private readonly List<T> _items = new();
+
+        public async Task<T> FindByIdAsync(int id)
+        {
+            await Task.Delay(10);
+            return default;
+        }
+
+        public async Task<IEnumerable<T>> GetAllAsync()
+        {
+            await Task.Delay(10);
+            return _items.AsEnumerable();
+        }
+
+        public void Add(T entity)
+        {
+            _items.Add(entity);
+        }
+
+        // 3. LINQ in generic context
+        public IEnumerable<T> Filter(Func<T, bool> predicate)
+        {
+            return from item in _items where predicate(item) select item;
+        }
+    }
+
+    // 4. Record with positional parameters
+    public record Person(string FirstName, string LastName, int Age);
+
+    // 5. Record with body
+    public record Employee(string Name, decimal Salary)
+    {
+        public string Department { get; init; } = "Engineering";
+        public string GetDisplayName() => $"{Name} ({Department})";
+    }
+
+    // 6. Static class with extension methods
+    public static class StringExtensions
+    {
+        public static bool IsNullOrEmpty(this string? value)
+        {
+            return string.IsNullOrEmpty(value);
+        }
+
+        public static string Truncate(this string value, int maxLength)
+        {
+            if (value.Length <= maxLength) return value;
+            return value[..maxLength];
+        }
+    }
+
+    // 7. Abstract base class with virtual methods
+    public abstract class Shape
+    {
+        public abstract double Area();
+        public virtual string Describe() => $"Shape with area {Area():F2}";
+    }
+
+    // 8. Class with events
+    public class EventBus
+    {
+        public event EventHandler<string>? OnMessage;
+        public event Func<Task>? OnAsyncEvent;
+
+        public void Publish(string message)
+        {
+            OnMessage?.Invoke(this, message);
+        }
+
+        public async Task PublishAsync()
+        {
+            if (OnAsyncEvent != null)
+            {
+                await OnAsyncEvent.Invoke();
+            }
+        }
+    }
+
+    // 9. Enum with custom values
+    public enum HttpStatusCode
+    {
+        OK = 200,
+        NotFound = 404,
+        InternalServerError = 500,
+    }
+
+    // 10. Struct with readonly members
+    public readonly struct Money
+    {
+        public decimal Amount { get; }
+        public string Currency { get; }
+
+        public Money(decimal amount, string currency)
+        {
+            Amount = amount;
+            Currency = currency;
+        }
+
+        public static Money operator +(Money a, Money b)
+        {
+            if (a.Currency != b.Currency)
+                throw new InvalidOperationException("Currency mismatch");
+            return new Money(a.Amount + b.Amount, a.Currency);
+        }
+    }
+}
+"""
+
+
+class TestCSharpRealWorldPatterns:
+    """10 test cases covering real-world C# patterns."""
+
+    def test_01_generic_interface_extraction(self) -> None:
+        """Generic interface IRepository<T> is extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, REAL_WORLD_CODE)
+
+        names = [c.name for c in classes]
+        assert "IRepository" in names, f"IRepository not found in {names}"
+
+    def test_02_generic_class_implementation(self) -> None:
+        """Generic class Repository<T> is extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, REAL_WORLD_CODE)
+
+        names = [c.name for c in classes]
+        assert "Repository" in names, f"Repository not found in {names}"
+
+    def test_03_async_methods_in_generic_class(self) -> None:
+        """Async methods (FindByIdAsync, GetAllAsync) are extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        functions = plugin.extractor.extract_functions(tree, REAL_WORLD_CODE)
+
+        names = [f.name for f in functions]
+        assert "FindByIdAsync" in names, f"FindByIdAsync not found in {names}"
+        assert "GetAllAsync" in names, f"GetAllAsync not found in {names}"
+
+    def test_04_positional_record_extraction(self) -> None:
+        """Positional record Person is extracted as class."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, REAL_WORLD_CODE)
+
+        names = [c.name for c in classes]
+        assert "Person" in names, f"Person record not found in {names}"
+        assert "Employee" in names, f"Employee record not found in {names}"
+
+    def test_05_static_class_methods(self) -> None:
+        """Static extension methods are extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        functions = plugin.extractor.extract_functions(tree, REAL_WORLD_CODE)
+
+        names = [f.name for f in functions]
+        assert "IsNullOrEmpty" in names, f"IsNullOrEmpty not found in {names}"
+        assert "Truncate" in names, f"Truncate not found in {names}"
+
+    def test_06_abstract_class_and_virtual(self) -> None:
+        """Abstract class Shape with abstract/virtual methods."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, REAL_WORLD_CODE)
+        functions = plugin.extractor.extract_functions(tree, REAL_WORLD_CODE)
+
+        names = [c.name for c in classes]
+        assert "Shape" in names, f"Shape not found in {names}"
+
+        func_names = [f.name for f in functions]
+        assert "Area" in func_names, f"Area not found in {func_names}"
+        assert "Describe" in func_names, f"Describe not found in {func_names}"
+
+    def test_07_event_extraction(self) -> None:
+        """Events and event-triggering methods are extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        variables = plugin.extractor.extract_variables(tree, REAL_WORLD_CODE)
+
+        # Events should be extracted as variables
+        assert len(variables) > 0, "No variables/events extracted"
+
+    def test_08_enum_extraction(self) -> None:
+        """Enum HttpStatusCode with custom values is extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, REAL_WORLD_CODE)
+
+        names = [c.name for c in classes]
+        assert "HttpStatusCode" in names, f"HttpStatusCode enum not found in {names}"
+
+    def test_09_readonly_struct_extraction(self) -> None:
+        """Readonly struct Money with operator is extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+        classes = plugin.extractor.extract_classes(tree, REAL_WORLD_CODE)
+
+        names = [c.name for c in classes]
+        assert "Money" in names, f"Money struct not found in {names}"
+
+    def test_10_full_analysis_integration(self) -> None:
+        """Full analysis of real-world code extracts all element types."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(REAL_WORLD_CODE, plugin)
+
+        classes = plugin.extractor.extract_classes(tree, REAL_WORLD_CODE)
+        functions = plugin.extractor.extract_functions(tree, REAL_WORLD_CODE)
+        imports = plugin.extractor.extract_imports(tree, REAL_WORLD_CODE)
+        linq = plugin.extractor.extract_linq_queries(tree, REAL_WORLD_CODE)
+        async_patterns = plugin.extractor.extract_async_patterns(tree, REAL_WORLD_CODE)
+
+        # Verify comprehensive extraction
+        assert len(classes) >= 7, f"Expected 7+ classes, got {len(classes)}"
+        assert len(functions) >= 10, f"Expected 10+ functions, got {len(functions)}"
+        assert len(imports) >= 2, f"Expected 2+ imports, got {len(imports)}"
+        assert len(linq) >= 1, f"Expected 1+ LINQ queries, got {len(linq)}"
+        assert len(async_patterns) >= 3, f"Expected 3+ await expressions, got {len(async_patterns)}"

@@ -51,7 +51,7 @@
 - [x] 审查 health_score.py 的评分维度完整性
 - [x] 添加代码复杂度维度（圈复杂度）
 - [x] 添加维护性维度（文件大小、函数长度）
-- [ ] 审查 blast radius 分析的准确性
+- [x] 审查 blast radius 分析的准确性
 - [ ] 添加语义级影响分析
 - [x] 添加修改建议生成
 - [x] 添加 CI 集成接口
@@ -64,10 +64,10 @@
 - [x] 添加 Stream API 调用链分析
 - [x] 添加 Spring 注解识别
 - [x] 编写 10 个真实 Java 文件的集成测试
-- [ ] 评估 tree-sitter-c-sharp 的 grammar 覆盖范围
-- [ ] 实现 C# 插件基础元素提取
-- [ ] 实现 LINQ 查询表达式提取
-- [ ] 实现 async/await 模式识别
+- [x] 评估 tree-sitter-c-sharp 的 grammar 覆盖范围
+- [x] 实现 C# 插件基础元素提取
+- [x] 实现 LINQ 查询表达式提取
+- [x] 实现 async/await 模式识别
 - [ ] 编写 10 个 C# 测试用例
 - [ ] 审查 ast_chunker.py 的分块质量
 - [ ] 添加语义边界检测
@@ -99,7 +99,7 @@
 - [x] 运行 mypy --strict 全量，修复所有 error（0 errors in 192 files）
 - [x] 审查所有 public API 的类型注解完整性（mypy strict 覆盖）
 - [x] 审查所有文件的大小，超过 400 行的考虑拆分（76 files >400 lines, mostly plugins）
-- [ ] 审查 README.md 是否反映最新功能
+- [x] 审查 README.md 是否反映最新功能
 - [ ] 审查 docs/skills/ 下 10 个工具文档的准确性
 - [ ] 审查 CHANGELOG.md 是否记录所有变更
 - [x] 添加 ARCHITECTURE.md
