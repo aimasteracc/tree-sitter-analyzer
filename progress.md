@@ -271,3 +271,64 @@
 - Coverage: 81.08%
 - ruff check: all clean
 - mypy --strict: all clean
+
+---
+
+## Session 10 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 1 | Tool Registry 基础结构 | done | 20/20 | ToolEntry + ToolRegistry + TOOLSET_DEFINITIONS |
+| 2 | 工具注册 | done | 11/11 | 注册 15 个 MCP 工具，6 个 toolset |
+| 3 | MCP 集成 | done | 14/14 | ToolDiscoveryTool + ToolDescribeTool |
+
+### 新增/修改文件
+- `tree_sitter_analyzer/mcp/registry.py` — ToolEntry + ToolRegistry 单例模式
+- `tree_sitter_analyzer/mcp/tool_registration.py` — 注册所有 15 个 MCP 工具
+- `tree_sitter_analyzer/mcp/tools/tool_discovery_tools.py` — tools/list + tools/describe
+- `tests/unit/mcp/test_registry.py` — 20 tests (ToolEntry + ToolRegistry)
+- `tests/unit/mcp/test_tool_registration.py` — 11 tests (注册功能)
+- `tests/unit/mcp/test_tool_discovery.py` — 14 tests (MCP 集成)
+
+### Tool Registry 功能
+
+**ToolEntry** - 工具元数据:
+- name, toolset, category, schema, handler
+- check_fn (可用性检查)
+- is_available() 方法
+- to_dict() 序列化
+
+**ToolRegistry** - 单例注册表:
+- register() — 注册工具
+- get_tool() — 获取单个工具
+- list_tools() — 列出工具（支持 toolset 过滤）
+- get_toolsets() — 获取所有工具集
+- deregister() — 注销工具
+- clear() — 清空注册表（测试用）
+
+**Toolsets** - 工具分组:
+- analysis (🔍): dependency_query, trace_impact, analyze_scale, analyze_code_structure
+- query (🔎): query_code, extract_code_section, get_code_outline
+- navigation (🧭): list_files, find_and_grep, search_content, batch_search
+- safety (🛡️): modification_guard
+- diagnostic (🩺): check_tools
+- index (📚): build_project_index, get_project_summary
+
+**MCP 工具发现**:
+- `tools/list`: 列出所有工具，支持 toolset 过滤和 available_only
+- `tools/describe`: 获取工具详细信息，包括完整 schema
+
+### 测试结果
+- 45 new tests pass (20 + 11 + 14)
+- ruff check: all clean
+- mypy --strict: all clean
+
+### 总提交数: 24 commits (+3)
+- feat/autonomous-dev 分支
+- 所有 commit 已推送到远程
+
+### 下一步
+- 创建正式 OpenSpec change: add-tool-registry-system
+- 考虑 Phase 7 循环下一轮：性能优化或新功能探索

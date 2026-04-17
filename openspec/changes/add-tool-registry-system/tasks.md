@@ -38,31 +38,32 @@
 
 ## 实现计划
 
-### Sprint 1: ToolRegistry 基础结构
-- [ ] 创建 `mcp/registry.py`
-- [ ] 实现 `ToolEntry` 类
-- [ ] 实现 `ToolRegistry` 类
-- [ ] 添加单元测试
+### Sprint 1: ToolRegistry 基础结构 ✅
+- [x] 创建 `mcp/registry.py`
+- [x] 实现 `ToolEntry` 类
+- [x] 实现 `ToolRegistry` 类
+- [x] 添加单元测试 (20 tests)
 
-### Sprint 2: 工具注册
-- [ ] 定义工具集（toolsets）
-- [ ] 注册现有 15 个 MCP 工具
-- [ ] 添加工具元数据（emoji, category, description）
+### Sprint 2: 工具注册 ✅
+- [x] 定义工具集（toolsets）
+- [x] 注册现有 15 个 MCP 工具
+- [x] 添加工具元数据（emoji, category, description）
+- [x] 创建 `tool_registration.py` 模块 (11 tests)
 
-### Sprint 3: MCP 集成
-- [ ] 修改 `mcp/server.py` 使用 registry
-- [ ] 实现 `tools/list` 工具
-- [ ] 实现 `tools/describe` 工具
-- [ ] 集成测试
+### Sprint 3: MCP 集成 ✅
+- [x] 修改 `mcp/server.py` 使用 registry
+- [x] 实现 `tools/list` 工具
+- [x] 实现 `tools/describe` 工具
+- [x] 集成测试 (14 tests)
 
 ## 验收标准
 
-- [ ] 所有现有工具通过 registry 注册
-- [ ] `tools/list` 返回正确分组
-- [ ] `tools/describe` 返回完整元数据
-- [ ] 测试覆盖率 >80%
-- [ ] mypy --strict 通过
-- [ ] ruff check 通过
+- [x] 所有现有工具通过 registry 注册
+- [x] `tools/list` 返回正确分组
+- [x] `tools/describe` 返回完整元数据
+- [x] 测试覆盖率 >80% (45 tests, all passing)
+- [x] mypy --strict 通过
+- [x] ruff check 通过
 
 ## 参考资料
 
