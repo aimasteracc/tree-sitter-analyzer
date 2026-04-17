@@ -12,16 +12,18 @@
 - **Health Score Tool**: `health_score` MCP tool for analyzing source file health based on maintainability metrics. Grades each file A-F based on size, complexity, coupling, and annotation density with actionable improvement suggestions. Registered to analysis toolset.
 - **CI Report Tool**: `ci_report` MCP tool for generating CI/CD friendly reports with pass/fail status. Supports configurable thresholds (min grade, max cycles, max critical) and JSON/summary output formats. Registered to diagnostic toolset.
 - **Java Pattern Analysis Tool**: `java_patterns` MCP tool for detecting Java-specific patterns. Identifies lambda expressions (parameters, types, method references), Stream API chains (operation sequences, terminal operations), and Spring annotations (@Component, @Service, @Repository, @Controller). Supports single-file and project-level scanning. Registered to analysis toolset.
+- **Error Recovery Tool**: `error_recovery` MCP tool for graceful degradation when analyzing problematic files. Detects file encodings (UTF-8, GBK, Shift-JIS, EUC-JP, EUC-KR, Big5 with CJK heuristics), identifies binary files, and provides regex fallback when tree-sitter parsing fails. Supports Python, Go, C#, Kotlin, Rust patterns. Registered to analysis toolset.
 - **Tool Registry System**: Centralized `mcp/registry.py` for all MCP tools with `ToolEntry` metadata class and `ToolRegistry` singleton pattern. Enables dynamic tool discovery, grouping by toolset, availability checking, and metadata management. Inspired by hermes-agent design.
 - **Tool Discovery Tools**: Two new MCP tools for exploring available tools — `tools/list` (all tools with optional toolset filtering, available-only flag) and `tools/describe` (detailed tool info including full schema).
-- **Tool Registration Module**: `mcp/tool_registration.py` registers all 20 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
-- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (8 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (2 tools), index (2 tools).
+- **Tool Registration Module**: `mcp/tool_registration.py` registers all 22 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
+- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (10 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (2 tools), index (2 tools).
 
 ### Testing
 
 - **23 new Code Clone Detection tests**: `test_code_clones.py` covering clone type classification, code normalization, similarity calculation, and end-to-end detection.
 - **40 new Code Smell Detector tests**: `test_code_smells.py` covering god class, long method, deep nesting, magic numbers, many imports, large class, project-level detection, and MCP tool integration.
 - **45 new Tool Registry tests**: `test_registry.py` (20 tests for ToolEntry + ToolRegistry), `test_tool_registration.py` (11 tests for registration), `test_tool_discovery.py` (14 tests for MCP integration).
+- **17 new Error Recovery Tool tests**: `test_error_recovery_tool.py` covering encoding detection (UTF-8, GBK, Shift-JIS, BOM), binary file detection, empty file handling, corrupted file recovery, content parameter, and project root resolution.
 
 - **Semantic-level impact analysis**: New `analysis/semantic_impact.py` module that assesses risk beyond textual occurrence counting. Considers type hierarchy (base class changes propagate to subclasses), visibility (public API vs private), call chain depth, and framework annotations. Composite risk scoring (0-100) with SAFE/LOW/MODERATE/HIGH/CRITICAL classification and actionable suggestions.
 
