@@ -553,8 +553,11 @@
 - ✅ 乔布斯产品理念: 聚焦 test gap detection
 - ✅ 创建 add-test-coverage-analyzer OpenSpec change
 - ✅ Sprint 1: Core Analysis Engine (26/28 tests pass)
+- ✅ Sprint 2: Multi-Language Support (已验证: Python, JavaScript, Java, Go)
+- ✅ Sprint 3: MCP Tool Integration (16 tests pass)
 - ✅ 实现功能: SourceElement, TestCoverageResult, TestCoverageAnalyzer
 - ✅ 支持语言: Python, JavaScript, Java, Go
+- ✅ 工具注册: analysis toolset, 28 → 29 MCP tools
 
 **此计划永不标记为「全部完成」。永远有下一批任务。**
 
