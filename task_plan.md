@@ -422,7 +422,7 @@
 
 ## OpenSpec Changes In Progress
 
-### add-test-generation-assistant 🔄 Sprint 2 实现中
+### add-test-generation-assistant 🔄 Sprint 3 实现中
 
 **Sprint 1: Core Test Generation Engine (1-2 days)** ✅ 完成
 - ✅ Create `tree_sitter_analyzer/test_gen/__init__.py`
@@ -434,15 +434,18 @@
 - ✅ Tests pass: 26/26, coverage 78.95%
 - ✅ CI checks passed: ruff + mypy --strict
 
-**Sprint 2: Pytest Renderer (1 day)** 🔄 实现中
-- [ ] Create `tree_sitter_analyzer/test_gen/renderer.py`
-- [ ] Implement pytest template rendering
-- [ ] Add import generation (from module import func)
-- [ ] Handle edge cases (None, empty strings, boundaries)
-- [ ] Add decorator handling (include with warning if not testable)
-- [ ] Write 15+ unit tests
+**Sprint 2: Pytest Renderer (1 day)** ✅ 完成
+- ✅ Create `tree_sitter_analyzer/test_gen/renderer.py`
+- ✅ Implement pytest template rendering
+- ✅ Add import generation (from module import func)
+- ✅ Handle edge cases (None, empty strings, boundaries)
+- ✅ Add decorator handling (include with warning if not testable)
+- ✅ Write 17 unit tests (exceeds 15+ target)
+- ✅ Total: 43 tests passing (26 generator + 17 renderer)
+- ✅ Code coverage: renderer 91.60%
+- ✅ CI checks passed: ruff + mypy --strict
 
-**Sprint 3: CLI + MCP Integration (1 day)** 待开始
+**Sprint 3: CLI + MCP Integration (1 day)** 🔄 实现中
 - [ ] Create `cli/commands/test_gen_command.py`
 - [ ] Add `tree-sitter generate-tests` CLI command
 - [ ] Create `mcp/tools/test_generation_tool.py`
