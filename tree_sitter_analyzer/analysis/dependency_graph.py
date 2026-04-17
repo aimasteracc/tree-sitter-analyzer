@@ -29,6 +29,7 @@ class DependencyGraph:
 
     nodes: dict[str, dict[str, str | int]]
     edges: list[tuple[str, str]]
+    edge_weights: dict[tuple[str, str], int] = field(default_factory=dict)
 
     def to_json(self) -> str:
         """Export as JSON adjacency list."""
@@ -281,14 +282,20 @@ class DependencyGraphBuilder:
             nodes[rel] = {"language": lang, "lines": line_count}
 
         import_map = self._build_import_map(node_infos)
+        edge_weights: dict[tuple[str, str], int] = {}
 
         for rel, info in node_infos.items():
             for imp in info.imports:
                 resolved = self._resolve_import(imp, rel, import_map)
                 if resolved and resolved != rel:
-                    edges.append((rel, resolved))
+                    edge = (rel, resolved)
+                    edges.append(edge)
+                    edge_weights[edge] = edge_weights.get(edge, 0) + 1
 
-        return DependencyGraph(nodes=nodes, edges=edges)
+        # Deduplicate edges (keep unique pairs)
+        unique_edges = list(dict.fromkeys(edges))
+
+        return DependencyGraph(nodes=nodes, edges=unique_edges, edge_weights=edge_weights)
 
     def _find_source_files(self) -> list[Path]:
         """Find all source files in the project.
@@ -367,22 +374,56 @@ class DependencyGraphBuilder:
         return list(imports)
 
     def _build_import_map(self, node_infos: dict[str, _NodeInfo]) -> dict[str, str]:
-        """Map simple class names to their file paths."""
+        """Map class/module names and relative paths to file paths.
+
+        Builds two lookup strategies:
+        1. stem→path: for class-name imports (e.g., MyClass → MyClass.java)
+        2. rel_path→path: for path-based imports (e.g., src/utils → src/utils.py)
+        """
         name_to_path: dict[str, str] = {}
+        path_to_rel: dict[str, str] = {}
         for rel, _info in node_infos.items():
             stem = Path(rel).stem
             name_to_path[stem] = rel
-        return name_to_path
+            # Also map relative dot-path forms: src.utils.helper → src/utils/helper.py
+            dot_path = str(Path(rel).with_suffix("")).replace("/", ".")
+            path_to_rel[dot_path] = rel
+            # Map the full path without extension too
+            full_stem = str(Path(rel).with_suffix(""))
+            path_to_rel[full_stem] = rel
+        # Merge into one map; stem matches take priority
+        combined = {**path_to_rel, **name_to_path}
+        return combined
 
     def _resolve_import(self, import_str: str, from_file: str, import_map: dict[str, str]) -> str | None:
-        """Resolve an import string to a file path in the project."""
+        """Resolve an import string to a file path in the project.
+
+        Resolution strategies (in order):
+        1. Exact dot-path match: com.example.MyClass → path match
+        2. Suffix match: import last component as class name
+        3. Relative path match: ../utils → resolve relative to from_file
+        """
+        # Strategy 1: exact match
+        if import_str in import_map:
+            return import_map[import_str]
+
+        # Strategy 2: component-by-component suffix match
         parts = import_str.replace("/", ".").split(".")
         for part in reversed(parts):
             if part in import_map:
                 return import_map[part]
-        last = parts[-1] if parts else ""
-        if last in import_map:
-            return import_map[last]
+
+        # Strategy 3: relative path resolution
+        if import_str.startswith("."):
+            from_dir = str(Path(from_file).parent)
+            resolved = str(Path(from_dir) / import_str.replace(".", "/")).replace(
+                "/./", "/"
+            )
+            # Normalize
+            resolved = str(Path(resolved).resolve().relative_to(Path.cwd()))  # noqa: PTH110
+            if resolved in import_map:
+                return import_map[resolved]
+
         return None
 
     def _count_lines(self, file_path: Path) -> int:
