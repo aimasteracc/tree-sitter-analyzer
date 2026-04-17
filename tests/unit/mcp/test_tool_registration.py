@@ -53,6 +53,8 @@ class TestRegisterAllTools:
             "index": ["build_project_index", "get_project_summary"],
         }
 
+        expected_tools["analysis"].append("refactoring_suggestions")
+
         for toolset, tools in expected_tools.items():
             toolset_tools = registry.list_tools(toolset=toolset)
             tool_names = [t.name for t in toolset_tools]
@@ -66,8 +68,8 @@ class TestRegisterAllTools:
         registry = get_registry()
         all_tools = registry.list_tools()
 
-        # 29 expected tools (28 + test_coverage)
-        assert len(all_tools) == 29
+        # 30 expected tools (29 + refactoring_suggestions)
+        assert len(all_tools) == 30
 
     def test_tool_metadata(self) -> None:
         """Test that registered tools have proper metadata."""

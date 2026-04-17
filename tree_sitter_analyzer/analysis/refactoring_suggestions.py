@@ -8,7 +8,7 @@ problems, it generates specific fixes with before/after examples.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 
 class SeverityLevel(Enum):
@@ -51,10 +51,11 @@ class RefactoringSuggestion:
     file_path: str
     line_start: int
     line_end: int
+    language: str
     code_diff: CodeDiff | None = None
     estimated_effort: Literal["simple", "moderate", "complex"] = "moderate"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "type": self.type.value,
@@ -97,7 +98,7 @@ class RefactoringReport:
         elif suggestion.severity == SeverityLevel.MEDIUM:
             self.medium_count += 1
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "file_path": self.file_path,
@@ -132,7 +133,7 @@ class RefactoringAdvisor:
         file_path: str,
         content: str,
         language: str,
-        smell_results: dict | None = None,
+        smell_results: dict[str, Any] | None = None,
     ) -> RefactoringReport:
         """
         Generate refactoring suggestions for a file.
@@ -166,12 +167,10 @@ class RefactoringAdvisor:
         file_path: str,
         content: str,
         language: str,
-        smell_results: dict,
+        smell_results: dict[str, Any],
     ) -> RefactoringReport:
         """Generate suggestions from pre-computed smell results."""
         report = RefactoringReport(file_path=file_path)
-
-        lines = content.split("\n")
 
         for smell in smell_results.get("smells", []):
             smell_type = smell.get("type", "")
@@ -237,7 +236,7 @@ class RefactoringAdvisor:
         content: str,
         language: str,
         line: int,
-        smell: dict,
+        smell: dict[str, Any],
     ) -> RefactoringSuggestion:
         """Generate Extract Method refactoring suggestion."""
         method_length = smell.get("length", 0)
@@ -264,6 +263,7 @@ class RefactoringAdvisor:
             file_path=file_path,
             line_start=line,
             line_end=line + method_length,
+            language=language,
             code_diff=CodeDiff(
                 before=before,
                 after=after,
@@ -280,7 +280,7 @@ class RefactoringAdvisor:
         content: str,
         language: str,
         line: int,
-        smell: dict,
+        smell: dict[str, Any],
     ) -> RefactoringSuggestion:
         """Generate Guard Clause refactoring suggestion."""
         depth = smell.get("depth", 4)
@@ -306,6 +306,7 @@ class RefactoringAdvisor:
             file_path=file_path,
             line_start=line,
             line_end=line + depth * 2,
+            language=language,
             code_diff=CodeDiff(
                 before=before,
                 after=after,
@@ -322,7 +323,7 @@ class RefactoringAdvisor:
         content: str,
         language: str,
         line: int,
-        smell: dict,
+        smell: dict[str, Any],
     ) -> RefactoringSuggestion:
         """Generate Replace Magic Number with Constant suggestion."""
         value = smell.get("value", 42)
@@ -347,6 +348,7 @@ class RefactoringAdvisor:
             file_path=file_path,
             line_start=line,
             line_end=line,
+            language=language,
             code_diff=CodeDiff(
                 before=before,
                 after=after,
@@ -363,7 +365,7 @@ class RefactoringAdvisor:
         content: str,
         language: str,
         line: int,
-        smell: dict,
+        smell: dict[str, Any],
     ) -> RefactoringSuggestion:
         """Generate Extract Class refactoring suggestion."""
         class_size = smell.get("size", 0)
@@ -381,6 +383,7 @@ class RefactoringAdvisor:
             file_path=file_path,
             line_start=line,
             line_end=line + class_size,
+            language=language,
             code_diff=CodeDiff(
                 before=f"class LargeClass:\n    # {class_size} lines",
                 after="# Extract: ValidationHelper\nclass LargeClass:\n    validation: ValidationHelper",
@@ -390,3 +393,174 @@ class RefactoringAdvisor:
             ),
             estimated_effort="complex",
         )
+
+    def _generate_javascript_arrow_function(
+        self,
+        file_path: str,
+        content: str,
+        line: int,
+        smell: dict[str, Any],
+    ) -> RefactoringSuggestion:
+        """Generate arrow function conversion suggestion for JavaScript."""
+        description = (
+            "Convert anonymous function to arrow function for better readability "
+            "and lexical 'this' binding."
+        )
+
+        return RefactoringSuggestion(
+            type=RefactoringType.EXTRACT_METHOD,
+            title="Convert to Arrow Function",
+            description=description,
+            severity=SeverityLevel.LOW,
+            file_path=file_path,
+            line_start=line,
+            line_end=line + 3,
+            language="javascript",
+            code_diff=CodeDiff(
+                before="array.map(function(x) {\n  return x * 2;\n});",
+                after="array.map(x => x * 2);",
+                language="javascript",
+                line_start=line,
+                line_end=line + 3,
+            ),
+            estimated_effort="simple",
+        )
+
+    def _generate_java_extract_interface(
+        self,
+        file_path: str,
+        content: str,
+        line: int,
+        smell: dict[str, Any],
+    ) -> RefactoringSuggestion:
+        """Generate Extract Interface suggestion for Java."""
+        description = (
+            "Extract common methods from related classes into an interface "
+            "to improve design flexibility and enable polymorphism."
+        )
+
+        return RefactoringSuggestion(
+            type=RefactoringType.EXTRACT_CLASS,
+            title="Extract Interface",
+            description=description,
+            severity=SeverityLevel.MEDIUM,
+            file_path=file_path,
+            line_start=line,
+            line_end=line + 20,
+            language="java",
+            code_diff=CodeDiff(
+                before="// Two classes with duplicate methods\npublic class ServiceA {\n  public void execute() { ... }\n}\npublic class ServiceB {\n  public void execute() { ... }\n}",
+                after="// Extract interface\npublic interface Service {\n  void execute();\n}\npublic class ServiceA implements Service { ... }\npublic class ServiceB implements Service { ... }",
+                language="java",
+                line_start=line,
+                line_end=line + 20,
+            ),
+            estimated_effort="moderate",
+        )
+
+    def _generate_go_extract_interface(
+        self,
+        file_path: str,
+        content: str,
+        line: int,
+        smell: dict[str, Any],
+    ) -> RefactoringSuggestion:
+        """Generate Extract Interface suggestion for Go."""
+        description = (
+            "Extract common method signatures into an interface "
+            "to enable polymorphic behavior and improve testability."
+        )
+
+        return RefactoringSuggestion(
+            type=RefactoringType.EXTRACT_CLASS,
+            title="Extract Interface",
+            description=description,
+            severity=SeverityLevel.MEDIUM,
+            file_path=file_path,
+            line_start=line,
+            line_end=line + 15,
+            language="go",
+            code_diff=CodeDiff(
+                before="type Database struct { ... }\nfunc (d *Database) Save(data string) error { ... }",
+                after="type DataStore interface {\n  Save(data string) error\n}\ntype Database struct { ... }\nfunc (d *Database) Save(data string) error { ... }",
+                language="go",
+                line_start=line,
+                line_end=line + 15,
+            ),
+            estimated_effort="moderate",
+        )
+
+    def _generate_csharp_async_await(
+        self,
+        file_path: str,
+        content: str,
+        line: int,
+        smell: dict[str, Any],
+    ) -> RefactoringSuggestion:
+        """Generate async/await improvement suggestion for C#."""
+        description = (
+            "Modernize async code by using async/await patterns properly "
+            "and avoiding async void (except for event handlers)."
+        )
+
+        return RefactoringSuggestion(
+            type=RefactoringType.EXTRACT_METHOD,
+            title="Modernize Async Pattern",
+            description=description,
+            severity=SeverityLevel.HIGH,
+            file_path=file_path,
+            line_start=line,
+            line_end=line + 10,
+            language="csharp",
+            code_diff=CodeDiff(
+                before="public async void ProcessData() {\n  var result = await FetchData();\n}",
+                after="public async Task ProcessData() {\n  var result = await FetchData();\n}",
+                language="csharp",
+                line_start=line,
+                line_end=line + 10,
+            ),
+            estimated_effort="simple",
+        )
+
+    def generate_language_specific_suggestions(
+        self,
+        file_path: str,
+        content: str,
+        language: str,
+    ) -> list[RefactoringSuggestion]:
+        """Generate language-specific refactoring suggestions."""
+        suggestions: list[RefactoringSuggestion] = []
+
+        if language in ["javascript", "typescript"]:
+            # Detect anonymous functions that could be arrow functions
+            if "function(" in content and "=>" not in content:
+                suggestion = self._generate_javascript_arrow_function(
+                    file_path, content, 1, {}
+                )
+                suggestions.append(suggestion)
+
+        elif language == "java":
+            # Detect classes that could benefit from interface extraction
+            if "class " in content and "implements " not in content:
+                suggestion = self._generate_java_extract_interface(
+                    file_path, content, 1, {}
+                )
+                suggestions.append(suggestion)
+
+        elif language == "go":
+            # Detect structs with methods that could use interfaces
+            if "func (" in content and "interface " not in content:
+                suggestion = self._generate_go_extract_interface(
+                    file_path, content, 1, {}
+                )
+                suggestions.append(suggestion)
+
+        elif language == "csharp":
+            # Detect async void methods (should be async Task)
+            if "async void" in content:
+                suggestion = self._generate_csharp_async_await(
+                    file_path, content, 1, {}
+                )
+                suggestions.append(suggestion)
+
+        return suggestions

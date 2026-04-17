@@ -38,6 +38,7 @@ from .tools.semantic_impact_tool import (
     SemanticImpactTool,
 )
 from .tools.test_coverage_tool import TestCoverageTool
+from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
 
@@ -299,6 +300,18 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(coverage_tool),
         description="Test coverage analysis: identify untested code elements",
         emoji="📊",
+    )
+
+    # refactoring_suggestions
+    refactoring_tool = RefactoringSuggestionsTool(project_root)
+    registry.register(
+        name="refactoring_suggestions",
+        toolset="analysis",
+        category="code-quality",
+        schema=refactoring_tool.get_tool_definition(),
+        handler=_make_handler(refactoring_tool),
+        description="Refactoring suggestions: actionable guidance to fix code smells",
+        emoji="🔧",
     )
 
 

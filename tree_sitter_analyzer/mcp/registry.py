@@ -301,6 +301,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "complexity_heatmap",
             "dead_code",
             "test_coverage",
+            "refactoring_suggestions",
         ],
     },
     "query": {

@@ -2297,6 +2297,88 @@ All 3 Sprints complete:
 - Current: 91% context usage
 - Recommendation: Update tracking files and execute /clear
 
+
+---
+
+## Session 95+ — 2026-04-17 (Current)
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 1 | Code Audit (Loop 95) | done | - | TODO: 3 (示例), Files >400: 91 |
+| 2 | New Feature Exploration (Loop 96) | done | - | 乔布斯产品理念: 聚焦 Refactoring Suggestions |
+| 3 | Sprint 1: Suggestion Engine | done | 18/18 | Core module + RefactoringSuggestion dataclass |
+| 4 | Sprint 2: Multi-Language Support | done | 28/28 | Python, JS, Java, Go, C# patterns |
+| 5 | Sprint 3: MCP Tool Integration | done | 11/11 | MCP tool + registration |
+
+### 新增/修改文件
+- `tree_sitter_analyzer/analysis/refactoring_suggestions.py` — Refactoring Suggestion Engine
+- `tests/unit/analysis/test_refactoring_suggestions.py` — Core module tests (28 tests)
+- `tree_sitter_analyzer/mcp/tools/refactoring_suggestions_tool.py` — MCP 工具
+- `tests/unit/mcp/test_refactoring_suggestions_tool.py` — MCP tool tests (11 tests)
+- `tree_sitter_analyzer/mcp/tool_registration.py` — 注册 refactoring_suggestions 工具
+- `tree_sitter_analyzer/mcp/registry.py` — 更新 TOOLSET_DEFINITIONS (analysis: 15→17)
+- `tests/unit/mcp/test_tool_registration.py` — 更新工具数量测试 (29→30)
+- `tests/unit/mcp/test_tool_discovery.py` — 更新工具数量测试 (29→30, 16→17)
+- `openspec/changes/add-refactoring-suggestions/tasks.md` — OpenSpec change definition
+
+### 乔布斯产品理念实现
+
+**"Tell me how to fix my code smells"** — 提供可操作的重构建议。
+
+**聚焦**:
+- Code quality issues need actionable fixes, not just detection
+- Different refactorings for different languages
+- Before/after examples make suggestions concrete
+
+**减法**:
+- 复用现有 code_smell_detector 检测结果
+- 增强现有工具而非新建独立系统
+- 语言特定模式（JS arrow functions, C# async/await）
+
+**一句话定义**: "Tell me how to fix my code smells"
+
+### Refactoring Suggestions 功能
+
+**核心重构模式**:
+- Extract Method — 长方法拆分
+- Guard Clauses — 减少嵌套
+- Extract Constant — 魔法数字替换
+- Extract Class — 大类拆分
+- 语言特定模式（JS Arrow Functions, Java/Go Interfaces, C# async/await）
+
+**数据结构**:
+- RefactoringSuggestion: type, title, description, severity, language, code_diff, estimated_effort
+- RefactoringAdvisor: suggest_fixes(), _generate_extract_method(), _generate_guard_clause(), 等等
+- 7 种重构类型，5 个严重性级别
+
+**MCP 工具**:
+- Schema: file_path, content, language, min_severity, output_format
+- 输出格式: TOON (emoji), JSON (structured), Summary (text)
+- 已注册到 analysis toolset
+
+### 测试结果
+- 39 new tests pass (18 core + 10 language-specific + 11 MCP tool)
+- 27 registration/discovery tests pass (updated tool counts)
+- Total: 66 tests pass
+- ruff check: all clean
+- mypy --strict: all clean
+
+### 总提交数: 78 commits (+0, will commit after this session)
+- feat/autonomous-dev 分支
+
+### 系统状态
+- 工具数量: 29 → 30 MCP tools (+1 refactoring_suggestions)
+- 测试数量: 10423 + 39 new = 10462 tests
+- 覆盖率: 81%+
+- 代码质量: ruff check passed, mypy --strict passed
+
+### 下一步
+- Commit + push all changes
+- 归档 add-refactoring-suggestions OpenSpec change
+- 继续 Phase 7 永续循环
+
 ### 下一步
 - Continue Sprint 2-3 for test_coverage_analyzer
 - Or execute Context Reset
