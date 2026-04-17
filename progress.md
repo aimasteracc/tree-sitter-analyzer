@@ -1,5 +1,24 @@
 # Progress — 自主开发进度日志
 
+## Session 99 — 2026-04-17
+
+### 完成: fix-java-implements-generics-and-annotation-attribution
+
+**Bug 1: implements generics** ✅ 已修复
+- 验证 `_split_type_list()` 方法正确实现 angle-bracket depth counter
+- LocalCache<K, V> 保留为单个项目，不拆分为 [LocalCache, K, V]
+- 创建 `test_java_implements_generics.py` (5 tests pass)
+
+**Bug 2: annotation attribution** ✅ 已修复
+- 验证 `_extract_annotations_from_modifiers()` 直接从 AST 提取 annotations
+- @Override 不再泄漏到 class annotations
+- 创建 `test_java_method_only_annotations.py` (5 tests pass)
+
+**CI 结果**: 766 Java tests pass (27 skipped), ruff/mypy all pass
+**Commit**: `d7ba0d44`
+
+---
+
 ## Session 1 — 2026-04-17
 
 ### 初始化

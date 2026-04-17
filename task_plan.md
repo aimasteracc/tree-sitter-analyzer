@@ -424,6 +424,22 @@
 
 （当前无进行中的 OpenSpec change）
 
+## 完成的 OpenSpec Changes
+
+### fix-java-implements-generics-and-annotation-attribution ✅ 完成 (Session 98)
+
+**Bug 1: implements generics** ✅ 已修复
+- ✅ `_split_type_list()` 方法正确实现 angle-bracket depth counter
+- ✅ LocalCache<K, V> 保留为单个项目，不拆分为 [LocalCache, K, V]
+- ✅ 测试文件: test_java_implements_generics.py (5 tests pass)
+
+**Bug 2: annotation attribution** ✅ 已修复
+- ✅ `_extract_annotations_from_modifiers()` 直接从 AST 提取
+- ✅ @Override 不再泄漏到 class annotations
+- ✅ 测试文件: test_java_method_only_annotations.py (5 tests pass)
+
+**总计**: 新增 10 个单元测试，766 Java 测试通过
+
 ---
 
 ## 完成的 OpenSpec Changes
@@ -575,6 +591,14 @@
 - ✅ 更新三文件：task_plan.md, progress.md, AUTONOMOUS.md
 - ✅ 所有工作已 commit + push
 - ✅ 创建 .recovery-prompt.txt 供下次 session 恢复
+
+**循环 98：OpenSpec Change 完成（fix-java-implements-generics-and-annotation-attribution）** ✅ 完成
+- ✅ Bug 1 (implements generics): _split_type_list() 已正确实现
+- ✅ Bug 2 (annotation attribution): _extract_annotations_from_modifiers() 已正确实现
+- ✅ 创建测试文件: test_java_implements_generics.py (5 tests)
+- ✅ 创建测试文件: test_java_method_only_annotations.py (5 tests)
+- ✅ 所有测试通过: 10 new tests + 766 Java tests pass
+- ✅ 更新 OpenSpec tasks.md 标记为完成
 
 **此计划永不标记为「全部完成」。永远有下一批任务。**
 
