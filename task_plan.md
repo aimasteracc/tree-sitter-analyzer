@@ -153,11 +153,11 @@
 - ✅ 扫描所有函数，找出超过 50 行的函数 → 已记录
 - ✅ 扫描所有类，找出超过 400 行的文件 → 79 个（grammar_coverage, core, analysis, queries）
 
-**循环 10：新功能探索（第三轮）** ✅ 完成（Sprint 1）
-- ✅ Code Diff Analysis 原型实现
+**循环 10：新功能探索（第三轮）** ✅ 完成
+- ✅ Code Diff Analysis 完整实现（Sprint 1-3）
 - ✅ OpenSpec change: add-code-diff-analysis
 
-**循环 11：性能优化（第三轮）** 🔄 进行中
+**循环 11：性能优化（第三轮）** 🔄 下一步
 - 用真实项目做 benchmark
 - 分析内存使用
 
@@ -175,31 +175,35 @@
 
 ## OpenSpec Changes In Progress
 
-### add-code-diff-analysis
+（当前无进行中的 OpenSpec change）
 
-**Sprint 1: Core Diff Algorithm** ✅ 完成
-- [x] 创建 `mcp/tools/code_diff_tool.py`
-- [x] 实现基础的 AST 对比算法
-- [x] 识别添加/删除/修改的元素
-- [x] 添加单元测试 (24 tests)
+---
 
-**Sprint 2: Breaking Change Detection** 🔄 下一步
-- [ ] 实现破坏性变更检测逻辑
-- [ ] 识别公共 API 变化
-- [ ] 识别签名不兼容的变更
-- [ ] 添加集成测试
+## 完成的 OpenSpec Changes
 
-**Sprint 3: MCP Integration**
-- [ ] 注册到 ToolRegistry (diff toolset)
-- [ ] 添加 schema 和参数验证
-- [ ] 实现 TOON 格式输出 (已有基础实现)
-- [ ] 添加文档和示例 ✅ 完成（Sprint 1）
-- ✅ 参考 wiki 中的相关项目，发现可借鉴的功能 → Code Diff Analysis
-- ✅ 写原型验证可行性 → code_diff_tool.py (24 tests pass)
-- ✅ 通过测试后创建正式实现任务 → add-code-diff-analysis OpenSpec change
-- 参考 wiki 中的相关项目，发现可借鉴的功能
-- 写原型验证可行性
-- 通过测试后创建正式实现任务
+### add-code-diff-analysis ✅ 完成 (Session 15)
+
+**Sprint 1: Core Diff Algorithm** ✅
+- ✅ 创建 `mcp/tools/code_diff_tool.py`
+- ✅ 实现基础的 AST 对比算法
+- ✅ 识别添加/删除/修改的元素
+- ✅ 添加单元测试 (24 tests)
+
+**Sprint 2: Breaking Change Detection** ✅
+- ✅ 实现破坏性变更检测逻辑
+- ✅ 识别公共 API 变化
+- ✅ 识别签名不兼容的变更
+- ✅ 添加集成测试
+
+**Sprint 3: MCP Integration** ✅
+- ✅ 注册到 ToolRegistry (analysis toolset)
+- ✅ 添加 schema 和参数验证
+- ✅ 实现 TOON 格式输出
+- ✅ 更新文档和测试
+
+**总计**: 新增 1 个 MCP 工具，55 个测试通过
+
+---
 
 **循环 11：性能优化（第三轮）**
 - 用真实项目做 benchmark
