@@ -299,6 +299,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "quick_risk_assessment",
             "understand_codebase",
             "complexity_heatmap",
+            "security_scan",
         ],
     },
     "query": {
@@ -312,9 +313,9 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "tools": ["list_files", "find_and_grep", "search_content", "batch_search"],
     },
     "safety": {
-        "description": "Pre-modification safety checks",
+        "description": "Safety and security tools",
         "emoji": "🛡️",
-        "tools": ["modification_guard"],
+        "tools": ["modification_guard", "security_scan"],
     },
     "diagnostic": {
         "description": "Diagnostic and verification tools",

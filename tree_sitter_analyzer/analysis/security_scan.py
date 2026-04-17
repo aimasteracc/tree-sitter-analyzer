@@ -25,6 +25,15 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
+# Check if sarif_om library is available for SARIF output
+try:
+    import sarif_om  # type: ignore[import-not-found]  # noqa: F401
+
+    SARIF_OM_SUPPORTED = True
+except ImportError:
+    SARIF_OM_SUPPORTED = False
+    logger.debug("sarif_om not available, SARIF output will use JSON fallback")
+
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go", ".cs", ".rb",
