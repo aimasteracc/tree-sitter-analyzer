@@ -142,6 +142,18 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🏗️",
     )
 
+    # code_diff
+    diff_tool = CodeDiffTool(project_root)
+    registry.register(
+        name="code_diff",
+        toolset="analysis",
+        category="semantic-diff",
+        schema=diff_tool.get_tool_definition(),
+        handler=_make_handler(diff_tool),
+        description="Semantic-level code diff: element changes, breaking detection",
+        emoji="🔄",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""

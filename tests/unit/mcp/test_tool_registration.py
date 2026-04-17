@@ -29,7 +29,7 @@ class TestRegisterAllTools:
 
         # Expected tools by toolset
         expected_tools = {
-            "analysis": ["dependency_query", "trace_impact", "analyze_scale", "analyze_code_structure"],
+            "analysis": ["dependency_query", "trace_impact", "analyze_scale", "analyze_code_structure", "code_diff"],
             "query": ["query_code", "extract_code_section", "get_code_outline"],
             "navigation": ["list_files", "find_and_grep", "search_content", "batch_search"],
             "safety": ["modification_guard"],
@@ -50,8 +50,8 @@ class TestRegisterAllTools:
         registry = get_registry()
         all_tools = registry.list_tools()
 
-        # 15 expected tools
-        assert len(all_tools) == 15
+        # 16 expected tools (added code_diff)
+        assert len(all_tools) == 16
 
     def test_tool_metadata(self) -> None:
         """Test that registered tools have proper metadata."""
@@ -161,6 +161,7 @@ class TestToolRegistrationIntegration:
         assert "trace_impact" in tool_names
         assert "analyze_scale" in tool_names
         assert "analyze_code_structure" in tool_names
+        assert "code_diff" in tool_names
 
     def test_all_query_tools_registered(self) -> None:
         """Test that all query tools are registered."""

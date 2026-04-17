@@ -35,32 +35,49 @@ AI 助手在审查 PR 或理解代码变更时，需要知道：
 
 ## 实现计划
 
-### Sprint 1: Core Diff Algorithm
-- [ ] 创建 `mcp/tools/code_diff_tool.py`
-- [ ] 实现基础的 AST 对比算法
-- [ ] 识别添加/删除/修改的元素
-- [ ] 添加单元测试
+### Sprint 1: Core Diff Algorithm ✅
+- [x] 创建 `mcp/tools/code_diff_tool.py`
+- [x] 实现基础的 AST 对比算法
+- [x] 识别添加/删除/修改的元素
+- [x] 添加单元测试
 
-### Sprint 2: Breaking Change Detection
-- [ ] 实现破坏性变更检测逻辑
-- [ ] 识别公共 API 变化
-- [ ] 识别签名不兼容的变更
-- [ ] 添加集成测试
+### Sprint 2: Breaking Change Detection ✅
+- [x] 实现破坏性变更检测逻辑
+- [x] 识别公共 API 变化
+- [x] 识别签名不兼容的变更
+- [x] 添加集成测试
 
-### Sprint 3: MCP Integration
-- [ ] 注册到 ToolRegistry (diff toolset)
-- [ ] 添加 schema 和参数验证
-- [ ] 实现 TOON 格式输出
-- [ ] 添加文档和示例
+### Sprint 3: MCP Integration ✅
+- [x] 注册到 ToolRegistry (analysis toolset)
+- [x] 添加 schema 和参数验证
+- [x] 实现 TOON 格式输出
+- [x] 添加文档和示例
 
 ## 验收标准
 
-- [ ] `code_diff` 工具可以对比两个版本的代码
-- [ ] 正确识别添加/删除/修改的元素
-- [ ] 破坏性变更检测准确率 >90%
-- [ ] 测试覆盖率 >80%
-- [ ] mypy --strict 通过
-- [ ] ruff check 通过
+- [x] `code_diff` 工具可以对比两个版本的代码
+- [x] 正确识别添加/删除/修改的元素
+- [x] 破坏性变更检测准确率 >90%
+- [x] 测试覆盖率 >80%
+- [x] mypy --strict 通过
+- [x] ruff check 通过
+
+## 实现细节
+
+### 新增文件
+- `tree_sitter_analyzer/mcp/tools/code_diff_tool.py` - Code Diff MCP 工具
+- `tests/unit/mcp/test_code_diff.py` - 单元测试 (24 tests)
+
+### 修改文件
+- `tree_sitter_analyzer/mcp/tool_registration.py` - 注册 code_diff 工具
+- `tree_sitter_analyzer/mcp/registry.py` - 更新 TOOLSET_DEFINITIONS
+- `tests/unit/mcp/test_tool_registration.py` - 更新测试预期 (15 → 16 tools)
+
+### 功能特性
+- 语义级代码差异分析
+- 破坏性变更检测
+- TOON 格式输出
+- 支持文件路径和直接内容输入
 
 ## 参考资料
 

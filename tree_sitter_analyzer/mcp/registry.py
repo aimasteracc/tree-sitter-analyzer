@@ -289,6 +289,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "trace_impact",
             "analyze_scale",
             "analyze_code_structure",
+            "code_diff",
         ],
     },
     "query": {

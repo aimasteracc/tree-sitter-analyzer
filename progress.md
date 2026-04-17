@@ -490,12 +490,15 @@
 
 | Sprint | Focus | 状态 | 通过测试 | 备注 |
 |--------|-------|------|---------|------|
-| 1 | Phase 7 Loop 10: 新功能探索（第三轮）Sprint 1 | done | 24/24 | Code Diff Analysis 原型实现 |
+| 1 | Phase 7 Loop 10: 新功能探索（第三轮）Sprint 1 | done | 55/55 | Code Diff Analysis 完整实现 |
 
 ### 新增/修改文件
 - `openspec/changes/add-code-diff-analysis/tasks.md` — OpenSpec change 定义
 - `tree_sitter_analyzer/mcp/tools/code_diff_tool.py` — 语义级代码差异分析工具
 - `tests/unit/mcp/test_code_diff.py` — 24 个单元测试
+- `tree_sitter_analyzer/mcp/tool_registration.py` — 注册 code_diff 工具
+- `tree_sitter_analyzer/mcp/registry.py` — 更新 TOOLSET_DEFINITIONS
+- `tests/unit/mcp/test_tool_registration.py` — 更新测试预期 (15 → 16 tools)
 
 ### Code Diff Analysis 功能
 
@@ -505,6 +508,7 @@
 - 显示元素级别的变化（签名、可见性、类型注解）
 - 检测破坏性变更（Breaking Change）
 - TOON + JSON 输出格式
+- 已注册到 ToolRegistry (analysis toolset)
 
 **数据结构**:
 - `ElementDiff`: 单个元素的变化（类型、名称、变更类型、严重性）
@@ -513,9 +517,16 @@
 - `ChangeSeverity`: BREAKING, NON_BREAKING, UNKNOWN
 
 ### 测试结果
-- 24 unit tests pass
+- 55 tests pass (24 code_diff + 31 registration)
 - mypy --strict: all clean
 - ruff check: all clean
+
+### 总提交数: 30 commits (+1)
+- feat/autonomous-dev 分支
+
+### 下一步
+- Phase 7 Loop 10: 继续新功能探索（可能借鉴 claw-code 或 codeflow）
+- Phase 7 Loop 11: 性能优化（第三轮）
 
 ### 总提交数: 30 commits (+1)
 - feat/autonomous-dev 分支
