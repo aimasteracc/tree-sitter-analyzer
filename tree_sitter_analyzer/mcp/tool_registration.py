@@ -30,6 +30,10 @@ from .tools.list_files_tool import ListFilesTool
 from .tools.modification_guard_tool import ModificationGuardTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
+from .tools.semantic_impact_tool import (
+    QuickRiskAssessmentTool,
+    SemanticImpactTool,
+)
 from .tools.search_content_tool import SearchContentTool
 from .tools.trace_impact_tool import TraceImpactTool
 
@@ -218,6 +222,30 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(recovery_tool),
         description="Error recovery: encoding detection, binary detection, regex fallback",
         emoji="🔧",
+    )
+
+    # semantic_impact
+    semantic_tool = SemanticImpactTool(project_root)
+    registry.register(
+        name="semantic_impact",
+        toolset="analysis",
+        category="impact-analysis",
+        schema=semantic_tool.get_tool_definition(),
+        handler=_make_handler(semantic_tool),
+        description="Semantic impact analysis: risk score, factors, suggestions",
+        emoji="⚠️",
+    )
+
+    # quick_risk_assessment
+    risk_tool = QuickRiskAssessmentTool(project_root)
+    registry.register(
+        name="quick_risk_assessment",
+        toolset="analysis",
+        category="impact-analysis",
+        schema=risk_tool.get_tool_definition(),
+        handler=_make_handler(risk_tool),
+        description="Quick risk assessment: visibility, caller count, type hierarchy",
+        emoji="⚡",
     )
 
 
