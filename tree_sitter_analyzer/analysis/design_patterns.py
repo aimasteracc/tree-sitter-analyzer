@@ -145,8 +145,10 @@ def _check_singleton(
     fields = cls.get("fields", [])
 
     # Check for private constructor
+    # In Python, the constructor is always __init__
+    # In Java/C#, it's the class name
     has_private_constructor = any(
-        m.get("name", "") == name
+        (m.get("name", "") == name or m.get("name", "") == "__init__")
         and "private" in m.get("modifiers", [])
         for m in methods
     )
@@ -159,15 +161,37 @@ def _check_singleton(
         for f in fields
     )
 
-    # Check for getInstance() or instance() method
+    # Check for getInstance() or instance() method (case-insensitive)
     has_get_instance = any(
         ("get_instance" in m.get("name", "").lower()
-         or "getInstance" in m.get("name", "")
+         or "getinstance" in m.get("name", "").lower()
+         or "instance" in m.get("name", "").lower()
          or m.get("name", "") == name)
         and "static" in m.get("modifiers", [])
-        and "public" in m.get("modifiers", [])
         for m in methods
     )
+
+    # Python Singleton can also be detected by instance() method returning cached instance
+    if language == "python":
+        # More lenient for Python: static instance + get_instance is enough
+        if has_static_instance and has_get_instance:
+            confidence = 0.9
+            if has_private_constructor:
+                confidence = 0.95
+            return PatternMatch(
+                pattern_type=PatternType.SINGLETON,
+                name=name,
+                file=file_path,
+                line=cls.get("start_line", 0),
+                confidence=confidence,
+                elements={
+                    "class": name,
+                    "has_private_constructor": has_private_constructor,
+                    "has_static_instance": has_static_instance,
+                    "has_get_instance": has_get_instance,
+                },
+                language=language,
+            )
 
     if has_private_constructor and (has_static_instance or has_get_instance):
         confidence = 0.8
@@ -234,21 +258,25 @@ def _check_observer(
     """Check if a class implements the Observer pattern.
 
     Observer indicators:
-    - Methods named addListener, removeListener, notify*
-    - Or methods named attach, detach, notify
+    - Methods named addListener/removeListener/notify*
+    - Or methods named attach/detach/notify
+    - Or methods named register/unregister/notify
+    - Or methods named subscribe/unsubscribe/notify
     """
     name = cls.get("name", "")
     methods = cls.get("methods", [])
 
     has_add = any(
         any(keyword in m.get("name", "").lower()
-            for keyword in ["add_listener", "attach", "subscribe", "register", "addlistener"])
+            for keyword in ["add_listener", "attach", "subscribe", "register",
+                           "addlistener", "registerobserver"])
         for m in methods
     )
 
     has_remove = any(
         any(keyword in m.get("name", "").lower()
-            for keyword in ["remove_listener", "detach", "unsubscribe", "unregister", "removelistener"])
+            for keyword in ["remove_listener", "detach", "unsubscribe", "unregister",
+                           "removelistener", "removeobserver"])
         for m in methods
     )
 
@@ -298,13 +326,26 @@ def _check_strategy(
     # Check if this is an interface or abstract class
     is_interface = "interface" in modifiers or "abstract" in cls.get("class_type", "")
 
+    # For Python, also check if class name ends with "Strategy" or "Handler"
+    is_python_strategy = language == "python" and (
+        name.endswith("Strategy") or name.endswith("Handler")
+    )
+
     # Strategy pattern: interface with single method
-    if is_interface and len(methods) == 1:
+    if (is_interface or is_python_strategy) and len(methods) <= 3:
         # Look for implementations
         implementations = [
             c for c in all_classes
             if name in c.get("interfaces", []) or name in c.get("extends", "")
         ]
+
+        # Also check for naming patterns (e.g., XxxCompression implementing CompressionStrategy)
+        if not implementations and is_python_strategy:
+            base_name = name.replace("Strategy", "").replace("Handler", "")
+            implementations = [
+                c for c in all_classes
+                if base_name in c.get("name", "") and c.get("name", "") != name
+            ]
 
         if len(implementations) >= 2:
             return PatternMatch(
