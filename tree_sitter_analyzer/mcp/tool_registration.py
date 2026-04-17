@@ -274,6 +274,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔥",
     )
 
+    # dead_code
+    from .tools.dead_code_tool import DeadCodeTool
+    dead_code_tool = DeadCodeTool(project_root)
+    registry.register(
+        name="dead_code",
+        toolset="analysis",
+        category="dead-code-detection",
+        schema=dead_code_tool.get_tool_definition(),
+        handler=_make_handler(dead_code_tool),
+        description="Detect dead (unused) code: functions, classes, imports",
+        emoji="🗑️",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""
