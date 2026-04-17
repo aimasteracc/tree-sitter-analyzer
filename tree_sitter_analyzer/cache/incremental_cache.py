@@ -516,6 +516,115 @@ class IncrementalCacheManager:
 
         return invalidated
 
+    def warm_cache(
+        self,
+        files: list[str] | None = None,
+        top_n: int = 20,
+        language: str = "python",
+    ) -> int:
+        """
+        Warm cache by pre-caching complex files.
+
+        Args:
+            files: List of files to cache (if None, scans repo for all files)
+            top_n: Number of most complex files to cache
+            language: Default language for analysis
+
+        Returns:
+            Number of files successfully warmed.
+        """
+        # If no files provided, scan repo for source files
+        if files is None:
+            files = self._scan_repo_files(language)
+
+        # Sort by complexity (file size as proxy)
+        file_sizes: list[tuple[str, int]] = []
+        # Use file size as complexity metric for MVP
+        file_sizes = []
+        for file_path in files:
+            try:
+                size = os.path.getsize(file_path)
+                file_sizes.append((file_path, size))
+            except OSError:
+                continue
+
+        # Sort by size descending (most complex first)
+        file_sizes.sort(key=lambda x: x[1], reverse=True)
+
+        # Warm top-N files
+        warmed = 0
+        for file_path, _size in file_sizes[:top_n]:
+            try:
+                # Create dummy analysis result for warming
+                # In real usage, MCP tool would do actual analysis
+                self.put(
+                    file_path,
+                    analysis_result={"warmed": True, "file": file_path},
+                    ast_bytes=b"",  # Empty AST for warming
+                    language=language,
+                    git_sha=self._current_git_state.sha if self._current_git_state else None,
+                )
+                warmed += 1
+            except OSError:
+                # File might have been deleted
+                continue
+
+        return warmed
+
+    def _scan_repo_files(self, language: str) -> list[str]:
+        """
+        Scan repository for source files of given language.
+
+        Args:
+            language: Programming language (python, javascript, etc.)
+
+        Returns:
+            List of file paths.
+        """
+        # Map language to file extensions
+        extensions = {
+            "python": [".py"],
+            "javascript": [".js", ".jsx", ".mjs"],
+            "typescript": [".ts", ".tsx"],
+            "java": [".java"],
+            "go": [".go"],
+            "rust": [".rs"],
+            "c": [".c", ".h"],
+            "cpp": [".cpp", ".cc", ".cxx", ".hpp", ".h"],
+            "c_sharp": [".cs"],
+        }
+
+        exts = extensions.get(language, [f".{language}"])
+
+        # Find matching files
+        files: list[Path] = []
+        for ext in exts:
+            files.extend(self.repo_path.rglob(f"*{ext}"))
+
+        return [str(f) for f in files if f.is_file()]
+
+    def get_stats(self) -> dict[str, object]:
+        """
+        Get cache statistics.
+
+        Returns:
+            Dictionary with cache statistics (entry count, total size, hit rate, etc.).
+        """
+        # Count cache files and total size
+        cache_files = list(self.cache_dir.glob("*.cache"))
+        total_size = sum(f.stat().st_size for f in cache_files)
+
+        return {
+            "entry_count": len(cache_files),
+            "total_size_bytes": total_size,
+            "max_size_bytes": self.max_size,
+            "usage_percent": (total_size / self.max_size * 100) if self.max_size > 0 else 0,
+            "git_state": {
+                "sha": self._current_git_state.sha if self._current_git_state else None,
+                "branch": self._current_git_state.branch if self._current_git_state else None,
+            } if self._current_git_state else None,
+        }
+
     def __enter__(self) -> IncrementalCacheManager:
         """Context manager entry."""
         return self
