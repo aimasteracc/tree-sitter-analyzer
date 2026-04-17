@@ -7,10 +7,12 @@
 - **Code Clone Detection Engine**: `analysis/code_clones.py` for detecting duplicate code patterns. Supports Type 1 (exact copies), Type 2 (structural similarity with renamed variables), and Type 3 (functional similarity). Uses code normalization (comments, whitespace, variable names) and Jaccard similarity calculation. Python and brace-based language support.
 - **Code Smell Detector**: `analysis/code_smells.py` with MCP tool for detecting anti-patterns. Detects God Class, Long Method, Deep Nesting, Magic Numbers, Many Imports, and Large Class. Configurable thresholds with severity classification (INFO/WARNING/CRITICAL).
 - **Code Diff Analysis Tool**: `code_diff` MCP tool for semantic-level code diff analysis. Compares two versions of code (file paths or direct content), identifies added/removed/modified elements (classes, methods, functions), detects breaking changes (public API removal), and provides TOON + JSON output formats. Registered to analysis toolset.
+- **Code Smell Detector Tool**: `code_smell_detector` MCP tool for detecting anti-patterns. Detects God Class, Long Method, Deep Nesting, Magic Numbers, Many Imports, and Large Class with configurable thresholds and severity classification. Registered to analysis toolset.
+- **Code Clone Detection Tool**: `code_clone_detection` MCP tool for detecting duplicate code patterns. Identifies Type 1 (exact), Type 2 (structural), Type 3 (functional) clones with similarity analysis and severity ratings. Registered to analysis toolset.
 - **Tool Registry System**: Centralized `mcp/registry.py` for all MCP tools with `ToolEntry` metadata class and `ToolRegistry` singleton pattern. Enables dynamic tool discovery, grouping by toolset, availability checking, and metadata management. Inspired by hermes-agent design.
 - **Tool Discovery Tools**: Two new MCP tools for exploring available tools — `tools/list` (all tools with optional toolset filtering, available-only flag) and `tools/describe` (detailed tool info including full schema).
-- **Tool Registration Module**: `mcp/tool_registration.py` registers all 16 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
-- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (5 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (1 tool), index (2 tools).
+- **Tool Registration Module**: `mcp/tool_registration.py` registers all 18 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
+- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (7 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (1 tool), index (2 tools).
 
 ### Testing
 

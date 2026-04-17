@@ -230,6 +230,12 @@
 - ✅ property-based testing → 已有
 - ✅ edge case 测试 → 已有
 
+**循环 25：文档同步（第五轮）** ✅ 完成
+- ✅ 对比代码和文档，找出不一致 → 新工具未记录
+- ✅ 更新 CHANGELOG.md → 添加 code_smell_detector + code_clone_detection
+- ✅ 更新 README.md → 工具数量已正确 (18 tools)
+- ✅ 更新 ARCHITECTURE.md → 添加 code_clone_detection 到工具列表
+
 ## OpenSpec Changes In Progress
 
 （当前无进行中的 OpenSpec change）
