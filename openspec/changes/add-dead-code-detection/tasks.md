@@ -47,14 +47,14 @@ tree_sitter_analyzer/analysis/dead_code.py
 
 ## Implementation Plan
 
-### Sprint 1: Core Detection Engine
+### Sprint 1: Core Detection Engine ✅ Complete
 
-- [ ] Create `analysis/dead_code.py` module
-- [ ] Implement `DeadCodeIssue` dataclass
-- [ ] Implement symbol extraction (functions, classes, imports)
-- [ ] Implement reference counting
-- [ ] Add basic exclusion logic (entry points, tests)
-- [ ] Write unit tests (20+ tests)
+- [x] Create `analysis/dead_code.py` module
+- [x] Implement `DeadCodeIssue` dataclass
+- [x] Implement symbol extraction (functions, classes, imports)
+- [x] Implement reference counting
+- [x] Add basic exclusion logic (entry points, tests)
+- [x] Write unit tests (21 tests pass)
 
 ### Sprint 2: Language-Specific Enhancements
 
