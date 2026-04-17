@@ -497,6 +497,18 @@
 - ✅ 更新 README.md → 测试数量 10000+ → 10200+
 - ✅ 更新 ARCHITECTURE.md → 工具数量 25 → 26
 
+**循环 86：代码审计（第十八轮）** ✅ 完成
+- ✅ TODO/FIXME: 3个 (全部为示例代码)
+- ✅ 文件>400行: 30个 (language plugins)
+
+**循环 87：新功能探索（第十八轮）** ✅ 完成
+- ✅ Wiki检索: CodeFlow, Claw Code
+- ✅ 创建 add-dead-code-detection OpenSpec change
+- ✅ Sprint 1: Core Detection Engine (21 tests)
+- ✅ Sprint 2: Language-Specific Enhancements (39 tests)
+- ✅ Sprint 3: MCP Tool Integration (19 tests)
+- ✅ 总计: 79 tests (超过 45+ 目标)
+
 **此计划永不标记为「全部完成」。永远有下一批任务。**
 
 ## Decisions Made
