@@ -20,6 +20,7 @@ from .tools.code_clone_detection_tool import CodeCloneDetectionTool
 from .tools.code_diff_tool import CodeDiffTool
 from .tools.code_smell_detector_tool import CodeSmellDetectorTool
 from .tools.dependency_query_tool import DependencyQueryTool
+from .tools.error_recovery_tool import ErrorRecoveryTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
 from .tools.get_project_summary_tool import GetProjectSummaryTool
@@ -205,6 +206,18 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(java_tool),
         description="Java patterns: Lambda, Stream API, Spring annotations",
         emoji="☕",
+    )
+
+    # error_recovery
+    recovery_tool = ErrorRecoveryTool(project_root)
+    registry.register(
+        name="error_recovery",
+        toolset="analysis",
+        category="error-handling",
+        schema=recovery_tool.get_tool_definition(),
+        handler=_make_handler(recovery_tool),
+        description="Error recovery: encoding detection, binary detection, regex fallback",
+        emoji="🔧",
     )
 
 
