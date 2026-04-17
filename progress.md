@@ -1,5 +1,30 @@
 # Progress — 自主开发进度日志
 
+## Session 100 — 2026-04-17
+
+### 完成: Design Pattern Detection (OpenSpec Change)
+
+**add-design-pattern-detection** ✅
+- Sprint 1: Core Pattern Detection Engine (26 tests)
+- Sprint 2: Multi-Language Support (14 tests)
+- Sprint 3: MCP Tool Integration (24 tests)
+- 支持模式: Singleton, Factory, Observer, Strategy, God Class, Long Method
+- **Commit**: `aabd2cd5`
+
+### 测试结果
+- 64 tests pass (26 + 14 + 24)
+- 31 MCP tools (30 → 31, +1 design_patterns)
+- ruff/mypy all pass
+
+### 新增文件
+- `tree_sitter_analyzer/analysis/design_patterns.py` (485 lines)
+- `tree_sitter_analyzer/mcp/tools/design_patterns_tool.py` (272 lines)
+- `tests/unit/analysis/test_design_patterns.py` (26 tests)
+- `tests/unit/analysis/test_design_patterns_multilang.py` (14 tests)
+- `tests/unit/mcp/test_design_patterns_tool.py` (24 tests)
+
+---
+
 ## Session 99 — 2026-04-17
 
 ### 完成: 4 个 OpenSpec Changes

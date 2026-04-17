@@ -472,6 +472,31 @@
 
 ## 完成的 OpenSpec Changes
 
+### add-design-pattern-detection ✅ 完成 (Session 100)
+
+**Sprint 1: Core Pattern Detection Engine** ✅
+- ✅ 创建 analysis/design_patterns.py (485 lines)
+- ✅ PatternMatch dataclass + confidence scoring
+- ✅ Singleton, Factory, Observer, Strategy, God Class, Long Method detection
+- ✅ 26 tests pass
+
+**Sprint 2: Multi-Language Support** ✅
+- ✅ Python: __init__ constructor recognition
+- ✅ Java: private static instance + getInstance
+- ✅ JavaScript/TypeScript: interface + implementation patterns
+- ✅ 14 tests pass
+
+**Sprint 3: MCP Tool Integration** ✅
+- ✅ 创建 mcp/tools/design_patterns_tool.py (272 lines)
+- ✅ TOON + JSON output formats
+- ✅ Pattern type filtering, min_confidence threshold
+- ✅ 24 tests pass
+- ✅ 工具注册: analysis toolset
+
+**总计**: 64 tests passing, 31 MCP tools
+
+---
+
 ### add-code-diff-analysis ✅ 完成 (Session 15)
 
 **Sprint 1: Core Diff Algorithm** ✅
@@ -612,6 +637,16 @@
 - ✅ Sprint 3: MCP Tool Integration (11 tests pass)
 - ✅ 工具数量: 29 → 30 MCP tools (+1 refactoring_suggestions)
 - ✅ 总计: 66 tests pass (39 refactoring + 27 registration)
+
+**循环 98：Design Pattern Detection（第二十二轮）** ✅ 完成
+- ✅ Wiki 检索: CodeFlow - 设计模式识别
+- ✅ 创建 add-design-pattern-detection OpenSpec change
+- ✅ Sprint 1: Core Pattern Detection Engine (26 tests pass)
+- ✅ Sprint 2: Multi-Language Support (14 tests pass)
+- ✅ Sprint 3: MCP Tool Integration (24 tests pass)
+- ✅ 支持模式: Singleton, Factory, Observer, Strategy, God Class, Long Method
+- ✅ 工具数量: 30 → 31 MCP tools (+1 design_patterns)
+- ✅ 总计: 64 tests pass (40 core + 24 MCP tool)
 
 **Context Reset — 2026-04-17 (Session 98+)**
 - ✅ 检测到 context 使用率 > 70% (实际 91%)

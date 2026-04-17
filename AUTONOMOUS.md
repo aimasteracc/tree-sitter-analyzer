@@ -236,3 +236,23 @@ uv run pytest tests/ -x -q
 - 下一步
 
 每完成一个 Phase，在 `task_plan.md` 中标记 `[x]`。
+
+## Session Lineage
+
+### Session 99 — 2026-04-17
+- **Open**: Context reset after Session 98
+- **Complete**: 4 OpenSpec changes (fix-java-implements, improve-java-annotation, add-ast-chunking, add-dead-code)
+- **Commit**: `d7ba0d44`, `d1c9a5e1`, `0b587417`, `39e81c5d`
+
+### Session 100 — 2026-04-17
+- **Open**: Continue from Session 99
+- **Complete**: 1 OpenSpec change (add-design-pattern-detection)
+- **MCP Tools**: 30 → 31 (+1 design_patterns)
+- **Tests**: 64 tests pass (26 + 14 + 24)
+- **Commit**: `aabd2cd5`
+- **Status**: Sprint 1-3 complete, feature delivered
+
+### Next Session
+- **Action**: Execute sustainable loop mechanism (新功能探索)
+- **Input**: Search wiki for new feature inspiration
+- **Output**: Create new OpenSpec change or execute audit loop
