@@ -10,7 +10,7 @@
          |                    |                      |
          v                    v                      v
 +===================================================================+
-|  MCP Tool Layer (26 tools + 2 discovery meta-tools)                    |
+|  MCP Tool Layer (27 tools + 2 discovery meta-tools)                    |
 |  understand_codebase | analyze_code_structure | java_patterns | code_diff | code_smell_detector | code_clone_detection |
 |  error_recovery | health_score | semantic_impact | quick_risk_assessment |
 |  get_code_outline | query_code | read_partial | list_files |
@@ -109,7 +109,7 @@ Output (CLI stdout / MCP JSON-RPC / SDK return)
 | `languages/` | 17+ language plugins for element extraction |
 | `queries/` | Predefined tree-sitter queries per language |
 | `formatters/` | Output formatters + TOON encoder (Registry pattern) |
-| `mcp/` | MCP server, 26 tools + 2 discovery meta-tools, SDK, intent aliases, streamable HTTP, tool registry |
+| `mcp/` | MCP server, 27 tools + 2 discovery meta-tools, SDK, intent aliases, streamable HTTP, tool registry |
 | `analysis/` | Dependency graph, health score (A-F grading), error recovery |
 | `security/` | Boundary manager, input validator, ReDoS regex checker |
 | `cli/` | Argument parsing, validation, info commands |

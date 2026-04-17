@@ -2110,3 +2110,12 @@
 - 更新 CHANGELOG.md
 - 继续 Phase 7 永续循环
 
+
+### Tool Registration
+- dead_code tool registered to analysis toolset
+- 工具数量: 26 → 27 MCP tools
+- 分析工具数量: 14 → 15
+
+### Commit
+- `237bcaae`: feat: register dead_code tool to ToolRegistry (27 tools total)
+
