@@ -56,12 +56,12 @@ tree_sitter_analyzer/analysis/dead_code.py
 - [x] Add basic exclusion logic (entry points, tests)
 - [x] Write unit tests (21 tests pass)
 
-### Sprint 2: Language-Specific Enhancements
+### Sprint 2: Language-Specific Enhancements ✅ Complete
 
-- [ ] Python: `__all__` detection, `@abstractmethod` exclusion
-- [ ] Java: `@Test` annotation exclusion, interface default methods
-- [ ] JavaScript/TypeScript: `export` detection
-- [ ] Add integration tests (10+ tests)
+- [x] Python: `__all__` detection, `@abstractmethod` exclusion
+- [x] Java: `@Test` annotation exclusion, interface default methods
+- [x] JavaScript/TypeScript: `export` detection
+- [x] Add integration tests (39 tests pass - exceeds 10+ goal)
 
 ### Sprint 3: MCP Tool Integration
 
