@@ -223,14 +223,32 @@ qmd query "CodeFlow claw-code codebase analysis" --limit 5
 - ✅ 直接的结论："DO: 这个功能值得做，因为..." 或 "DON'T: 放弃这个，因为..."
 - ❌ 不要："Which one is it?" "What do you think?" "你觉得呢？"
 
+**记录讨论过程**（重要）:
+- 将乔布斯Skill的完整响应记录到 `findings.md`
+- 格式：
+```markdown
+## 产品讨论记录 - [功能名称] - [日期]
+
+**调用**: /steve-jobs-perspective
+
+**输入**: [功能描述]
+
+**乔布斯的分析**:
+[Skill的完整响应]
+
+**结论**: DO / DON'T
+
+**理由**: [Skill给出的理由]
+```
+
 **防止停滞的检查**:
 - 如果Skill的响应包含问号，且在等待回答 → 这是失败的调用
 - 记录到 findings.md，然后直接用决策规则判断（见停滞预防章节）
 
 **结果处理**:
-- Skill明确说"做" → 进入步骤3
-- Skill明确说"不做" → 回到步骤1
-- Skill问问题 → 跳过Skill响应，直接用决策规则判断
+- Skill明确说"做" → 记录到 findings.md，进入步骤3
+- Skill明确说"不做" → 记录到 findings.md，回到步骤1
+- Skill问问题 → 记录到 findings.md，然后直接用决策规则判断
 
 ### 步骤 3: 技术架构分析
 
@@ -264,7 +282,28 @@ qmd query "CodeFlow claw-code codebase analysis" --limit 5
 - ✅ 直接的推荐："推荐方案A，因为..." 或 "两者都不够好，建议..."
 - ❌ 不要："Which one do you prefer?" "What's your opinion?"
 
+**记录讨论过程**（重要）:
+- 将GStack的完整响应记录到 `findings.md`
+- 格式：
+```markdown
+## 技术架构讨论记录 - [功能名称] - [日期]
+
+**调用**: /plan-eng-review
+
+**输入**: [功能描述 + 初步方案]
+
+**GStack的分析**:
+[Skill的完整响应]
+
+**推荐方案**: [方案A/方案B/其他]
+**理由**: [Skill给出的理由]
+
+**风险**: [如有]
+**依赖**: [如有]
+```
+
 **结果处理**:
+- 将推荐方案记录到 findings.md
 - 将技术方案记录到 OpenSpec change 的 tasks.md
 - 继续步骤4
 
