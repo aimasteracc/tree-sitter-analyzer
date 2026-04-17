@@ -10,7 +10,10 @@ from tree_sitter_analyzer.analysis.dead_code import (
     DeadCodeReport,
     DeadCodeType,
     is_entry_point,
+    is_excluded_method,
+    is_exported_symbol,
     is_public_api,
+    is_test_file,
 )
 
 
@@ -246,3 +249,100 @@ class TestIsPublicApi:
         """Test that single underscore prefix is private."""
         assert is_public_api("_private") is False
         assert is_public_api("_internal_func") is False
+
+
+class TestIsExcludedMethod:
+    """Tests for is_excluded_method function."""
+
+    def test_abstract_methods_are_excluded(self) -> None:
+        """Test that abstract methods are excluded."""
+        assert is_excluded_method("abstract_method", is_abstract=True) is True
+
+    def test_abstractmethod_decorator_excluded(self) -> None:
+        """Test that @abstractmethod decorator excludes method."""
+        assert (
+            is_excluded_method("my_method", decorators=["@abstractmethod"]) is True
+        )
+
+    def test_staticmethod_decorator_excluded(self) -> None:
+        """Test that @staticmethod decorator excludes method."""
+        assert is_excluded_method("my_method", decorators=["@staticmethod"]) is True
+
+    def test_classmethod_decorator_excluded(self) -> None:
+        """Test that @classmethod decorator excludes method."""
+        assert is_excluded_method("my_method", decorators=["@classmethod"]) is True
+
+    def test_property_decorator_excluded(self) -> None:
+        """Test that @property decorator excludes method."""
+        assert is_excluded_method("my_property", decorators=["@property"]) is True
+
+    def test_pytest_fixture_excluded(self) -> None:
+        """Test that pytest fixtures are excluded."""
+        assert (
+            is_excluded_method("db", decorators=["@pytest.fixture"]) is True
+        )
+
+    def test_flask_route_excluded(self) -> None:
+        """Test that Flask routes are excluded."""
+        assert is_excluded_method("index", decorators=['@app.route("/")']) is True
+
+    def test_regular_method_not_excluded(self) -> None:
+        """Test that regular methods are not excluded."""
+        assert is_excluded_method("calculate", decorators=None) is False
+
+
+class TestIsExportedSymbol:
+    """Tests for is_exported_symbol function."""
+
+    def test_symbol_in_exports(self) -> None:
+        """Test that symbols in exports list are recognized."""
+        assert is_exported_symbol("public_func", exports=["public_func", "CONST"]) is True
+
+    def test_symbol_not_in_exports(self) -> None:
+        """Test that symbols not in exports are not exported."""
+        assert (
+            is_exported_symbol("private_func", exports=["public_func"]) is False
+        )
+
+    def test_none_exports_returns_false(self) -> None:
+        """Test that None exports returns False."""
+        assert is_exported_symbol("any_func", exports=None) is False
+
+    def test_empty_exports_list(self) -> None:
+        """Test that empty exports list returns False."""
+        assert is_exported_symbol("any_func", exports=[]) is False
+
+
+class TestIsTestFile:
+    """Tests for is_test_file function."""
+
+    def test_test_directory(self) -> None:
+        """Test that files in test directory are detected."""
+        assert is_test_file("tests/test_case.py") is True
+        assert is_test_file("test/module_test.py") is True
+
+    def test_test_file_prefix(self) -> None:
+        """Test that test file prefix is detected."""
+        assert is_test_file("test_module.py") is True
+        assert is_test_file("test_helper.py") is True
+
+    def test_test_file_suffix(self) -> None:
+        """Test that test file suffix is detected."""
+        assert is_test_file("module_test.py") is True
+        assert is_test_file("helper_test.py") is True
+
+    def test_conftest(self) -> None:
+        """Test that conftest.py is detected as test file."""
+        assert is_test_file("conftest.py") is True
+        assert is_test_file("tests/conftest.py") is True
+
+    def test_windows_paths(self) -> None:
+        """Test that Windows paths are handled correctly."""
+        assert is_test_file("C:\\project\\tests\\test_case.py") is True
+        assert is_test_file("C:\\project\\test_module.py") is True
+
+    def test_regular_source_file(self) -> None:
+        """Test that regular source files are not test files."""
+        assert is_test_file("src/module.py") is False
+        assert is_test_file("lib/helper.py") is False
+        assert is_test_file("main.py") is False

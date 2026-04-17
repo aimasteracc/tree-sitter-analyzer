@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import ClassVar
 
 
 class DeadCodeType(Enum):
@@ -116,3 +115,89 @@ def is_public_api(symbol_name: str) -> bool:
         return False
 
     return True
+
+
+def is_excluded_method(
+    symbol_name: str,
+    decorators: list[str] | None = None,
+    is_abstract: bool = False,
+) -> bool:
+    """Check if a method should be excluded from dead code analysis.
+
+    Args:
+        symbol_name: Name of the method/function
+        decorators: List of decorators applied to the method
+        is_abstract: Whether the method is abstract
+
+    Returns:
+        True if the method should be excluded (not flagged as dead)
+    """
+    if decorators is None:
+        decorators = []
+
+    # Abstract methods must be implemented by subclasses
+    if is_abstract:
+        return True
+
+    # Common decorators that indicate external use or test code
+    excluded_decorators = [
+        "@abstractmethod",
+        "@staticmethod",
+        "@classmethod",
+        "@property",
+        "@setter",
+        "@deleter",
+        "@pytest.fixture",
+        "@pytest.mark",
+        "@unittest.mock",
+        "@app.route",  # Flask routes
+        "@api.",  # FastAPI decorators
+        "@command",  # Click commands
+        "@test",
+        "@Test",
+    ]
+
+    for decorator in decorators:
+        for excluded in excluded_decorators:
+            if excluded.lower() in decorator.lower():
+                return True
+
+    return False
+
+
+def is_exported_symbol(symbol_name: str, exports: list[str] | None = None) -> bool:
+    """Check if a symbol is explicitly exported.
+
+    Args:
+        symbol_name: Name of the symbol
+        exports: List of exported symbols (e.g., from __all__ or export statements)
+
+    Returns:
+        True if the symbol is in the exports list
+    """
+    if exports is None:
+        return False
+
+    return symbol_name in exports
+
+
+def is_test_file(file_path: str) -> bool:
+    """Check if a file is a test file.
+
+    Args:
+        file_path: Path to the file
+
+    Returns:
+        True if the file appears to be a test file
+    """
+    path_lower = file_path.lower()
+    test_indicators = [
+        "/test/",
+        "/tests/",
+        "\\test\\",
+        "\\tests\\",
+        "test_",
+        "_test.",
+        "conftest.py",
+    ]
+    return any(indicator in path_lower for indicator in test_indicators)
