@@ -282,11 +282,11 @@
 - ✅ property-based testing → 已有
 - ✅ edge case 测试 → 已有
 
-**循环 35：文档同步（第七轮）**
-- 对比代码和文档，找出不一致
-- 更新 CHANGELOG.md
-- 更新 README.md
-- 添加使用示例（已有）
+**循环 35：文档同步（第七轮）** ✅ 完成
+- ✅ 对比代码和文档，找出不一致 → java_patterns 工具未记录
+- ✅ 更新 CHANGELOG.md → 添加 java_patterns 工具条目
+- ✅ 更新 README.md → 工具数量 20→21，测试数量 9900+→10000+
+- ✅ 更新 ARCHITECTURE.md → 工具层 20→21，添加 java_patterns 到工具列表
 
 ## OpenSpec Changes In Progress
 
