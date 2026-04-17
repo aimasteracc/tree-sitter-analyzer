@@ -1,5 +1,26 @@
 # Progress — 自主开发进度日志
 
+## Session 107 — 2026-04-17
+
+永续循环机制：执行创意功能探索
+- Wiki检索：test generation, code automation, documentation
+- Office-hours skill：产品方向讨论
+- 设计文档：Test Generation Assistant (9/10 质量评分)
+- 创建 OpenSpec change: add-test-generation-assistant
+
+**Sprint 1: Core Test Generation Engine** 🔄 实现中
+- Created `tree_sitter_analyzer/test_gen/` module
+- Implemented FuncInfo, ParamInfo, TestCase, TestGenerationEngine
+- Extract functions from Python AST using AnalysisEngine API
+- Calculate cyclomatic complexity for test case generation
+- Generate test cases (happy path, edge cases, exceptions)
+- Handle decorators and async functions (skip with warning)
+- Commit: 23959bbe
+
+**Next:** Sprint 2 - Pytest Renderer
+
+---
+
 ## Session 106 — 2026-04-17
 
 ### Sprint 3 Implementation - Adaptive Learning & Caching
