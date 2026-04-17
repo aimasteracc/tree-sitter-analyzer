@@ -8,9 +8,9 @@ Extended tier: full routing table, SMART workflow, token strategies, combos.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 _SKILL_MD_PATH = Path(__file__).resolve().parent.parent.parent / (
     ".claude/skills/ts-analyzer-skills/SKILL.md"
