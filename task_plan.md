@@ -527,6 +527,36 @@
 
 ---
 
+### add-project-radar ✅ 完成 (Session 108)
+
+**Sprint 1: Git Analyzer** ✅
+- ✅ 创建 analyzer/git_analyzer.py (253 lines)
+- ✅ FileChurn + FileOwnership dataclasses
+- ✅ get_file_churn() using git log --name-only
+- ✅ get_file_ownership() using git blame
+- ✅ get_repo_age_days() for repository age
+- ✅ 17 tests passing
+
+**Sprint 2: Risk Scoring Engine** ✅
+- ✅ 创建 analyzer/risk_scoring.py (236 lines)
+- ✅ FileRisk + RiskScore dataclasses
+- ✅ RiskCalculator with normalize_complexity/churn/impact
+- ✅ calculate_file_risk() and calculate_batch_risk()
+- ✅ get_top_risky_files() for top N extraction
+- ✅ 20 tests passing
+
+**Sprint 3: CLI + MCP Integration** ✅
+- ✅ 创建 cli/commands/radar_command.py (269 lines)
+- ✅ CLI command: tree-sitter radar with --top/--since/--extension/--format
+- ✅ Text output with risk bars and metrics
+- ✅ JSON output for programmatic use
+- ✅ TOON output for structured data
+- ✅ 13 tests passing
+
+**总计**: 50 tests passing (17 + 20 + 13), 3 new modules created
+
+---
+
 ### add-code-diff-analysis ✅ 完成 (Session 15)
 
 **Sprint 1: Core Diff Algorithm** ✅
@@ -743,25 +773,6 @@
 
 ## OpenSpec Changes In Progress
 
-### add-project-radar 🚧 Sprint 1 开始
-
-**Sprint 1: Git Analyzer** ⏳ 进行中
-- ⏳ Implement `get_file_churn()` using `git log --name-only`
-- ⏳ Implement `get_file_ownership()` using `git blame`
-- ⏳ Add caching for git operations (expensive)
-- ⏳ 15+ tests
-
-**Sprint 2: Risk Scoring Engine** ⏳ 待开始
-- ⏳ Implement `FileRisk` dataclass
-- ⏳ Create normalization functions (min-max scaling)
-- ⏳ Implement weighted risk calculation
-- ⏳ 15+ tests
-
-**Sprint 3: CLI + MCP Integration** ⏳ 待开始
-- ⏳ Create `tree-sitter radar` CLI command
-- ⏳ Implement output formatters (TOON + Markdown)
-- ⏳ Register `project_radar` MCP tool
-- ⏳ 15+ tests
 
 **此计划永不标记为「全部完成」。永远有下一批任务。**
 

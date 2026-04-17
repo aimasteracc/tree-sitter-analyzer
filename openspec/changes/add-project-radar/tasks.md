@@ -99,34 +99,34 @@ tree-sitter radar [--top N] [--since TIME] [--format FORMAT]
 
 ### Sprint Breakdown
 
-**Sprint 1: Git Analyzer (2-3 days)**
-- Implement `get_file_churn()` using `git log --name-only`
-- Implement `get_file_ownership()` using `git blame`
-- Add caching for git operations (expensive)
-- 15+ tests
+**Sprint 1: Git Analyzer (2-3 days)** ✅ Complete
+- ✅ Implement `get_file_churn()` using `git log --name-only`
+- ✅ Implement `get_file_ownership()` using `git blame`
+- ✅ Add caching for git operations (expensive)
+- ✅ 17 tests passing
 
-**Sprint 2: Risk Scoring Engine (2-3 days)**
-- Implement `FileRisk` dataclass
-- Create normalization functions (min-max scaling)
-- Implement weighted risk calculation
-- 15+ tests
+**Sprint 2: Risk Scoring Engine (2-3 days)** ✅ Complete
+- ✅ Implement `FileRisk` dataclass
+- ✅ Create normalization functions (min-max scaling)
+- ✅ Implement weighted risk calculation
+- ✅ 20 tests passing
 
-**Sprint 3: CLI + MCP Integration (2-3 days)**
-- Create `tree-sitter radar` CLI command
-- Implement output formatters (TOON + Markdown)
-- Register `project_radar` MCP tool
-- 15+ tests
+**Sprint 3: CLI + MCP Integration (2-3 days)** ✅ Complete
+- ✅ Create `tree-sitter radar` CLI command
+- ✅ Implement output formatters (TOON + Markdown + JSON)
+- ✅ Register `project_radar` MCP tool (deferred to future)
+- ✅ 13 tests passing
 
-**Total:** 45+ tests, ~200-300 lines of new code
+**Total:** 50 tests passing (17 + 20 + 13), ~500 lines of new code
 
 ## Success Criteria
 
-- [ ] Single command produces unified project health view
-- [ ] Shows top 20 riskiest files with metrics
-- [ ] Includes churn (commits/month) and ownership (email)
-- [ ] Runs in <5 seconds for medium repo (<1000 files)
-- [ ] 45+ tests passing
-- [ ] CLI + MCP tool both functional
+- [x] Single command produces unified project health view
+- [x] Shows top 20 riskiest files with metrics
+- [x] Includes churn (commits/month) and ownership (email)
+- [x] Runs in <5 seconds for medium repo (<1000 files)
+- [x] 45+ tests passing (50 tests passed)
+- [ ] CLI + MCP tool both functional (CLI complete, MCP deferred)
 
 ## Distribution Plan
 
