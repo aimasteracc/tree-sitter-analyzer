@@ -13,9 +13,33 @@ from typing import Any
 
 from tree_sitter_analyzer.utils import setup_logger
 
+__all__ = ["ErrorRecovery", "detect_encoding"]
+
 logger = setup_logger(__name__)
 
 BINARY_THRESHOLD = 0.3
+
+# BOM signatures for encoding detection
+_BOM_MAP: list[tuple[bytes, str]] = [
+    (b"\xef\xbb\xbf", "utf-8"),       # UTF-8 BOM
+    (b"\xff\xfe", "utf-16-le"),       # UTF-16 LE BOM
+    (b"\xfe\xff", "utf-16-be"),       # UTF-16 BE BOM
+    (b"\xff\xfe\x00\x00", "utf-32-le"),  # UTF-32 LE BOM
+    (b"\x00\x00\xfe\xff", "utf-32-be"),  # UTF-32 BE BOM
+]
+
+# Fallback encodings to try after UTF-8 (in order of likelihood)
+_FALLBACK_ENCODINGS: list[tuple[str, str]] = [
+    ("gbk", "Chinese (GBK)"),
+    ("shift_jis", "Japanese (Shift-JIS)"),
+    ("euc-jp", "Japanese (EUC-JP)"),
+    ("euc-kr", "Korean (EUC-KR)"),
+    ("big5", "Traditional Chinese (Big5)"),
+    ("iso-8859-1", "Western (Latin-1)"),
+]
+
+# Minimum ratio of common CJK characters to confirm a CJK encoding
+_CJK_CONFIRM_RATIO = 0.05
 
 CLASS_PATTERN = re.compile(
     r"\b(?:public|private|protected|abstract|final|static)\s+class\s+(\w+)"
@@ -82,6 +106,88 @@ def _is_binary(content: bytes) -> bool:
     return (non_text / min(len(content), 8192)) > BINARY_THRESHOLD
 
 
+def _has_cjk_chars(text: str, sample_size: int = 4096) -> bool:
+    """Check if text contains CJK characters above the confirmation threshold."""
+    sample = text[:sample_size]
+    if not sample:
+        return False
+    cjk_ranges = (
+        (0x4E00, 0x9FFF),    # CJK Unified Ideographs
+        (0x3040, 0x309F),    # Hiragana
+        (0x30A0, 0x30FF),    # Katakana
+        (0xAC00, 0xD7AF),    # Hangul Syllables
+    )
+    cjk_count = sum(
+        1 for ch in sample
+        if any(lo <= ord(ch) <= hi for lo, hi in cjk_ranges)
+    )
+    return (cjk_count / len(sample)) > _CJK_CONFIRM_RATIO
+
+
+def detect_encoding(content: bytes) -> tuple[str, bool]:
+    """Detect the encoding of byte content.
+
+    Returns (encoding_name, had_bom).
+    Strategy: BOM check → UTF-8 strict → CJK-heuristic fallbacks → Latin-1.
+    """
+    if not content:
+        return "utf-8", False
+
+    # Strategy 1: BOM detection (most reliable)
+    for bom, encoding in _BOM_MAP:
+        if content.startswith(bom):
+            return encoding, True
+
+    # Strategy 2: Try UTF-8 strict decode
+    try:
+        content.decode("utf-8")
+        return "utf-8", False
+    except UnicodeDecodeError:
+        pass
+
+    # Strategy 3: CJK-heuristic fallbacks — try all encodings, pick the one
+    # with the highest quality score. Quality = CJK ratio + kana bonus.
+    # Kana (Hiragana/Katakana) characters are a strong signal for Japanese
+    # encodings (shift_jis, euc-jp), helping disambiguate from GBK.
+    best_encoding: str | None = None
+    best_score: float = 0.0
+
+    for encoding, _label in _FALLBACK_ENCODINGS:
+        try:
+            decoded = content.decode(encoding)
+            sample = decoded[:4096]
+            if not sample:
+                continue
+            cjk_count = 0
+            kana_count = 0
+            hangul_count = 0
+            for ch in sample:
+                code = ord(ch)
+                if 0x4E00 <= code <= 0x9FFF:
+                    cjk_count += 1
+                elif 0x3040 <= code <= 0x309F:  # Hiragana
+                    kana_count += 1
+                elif 0x30A0 <= code <= 0x30FF:  # Katakana
+                    kana_count += 1
+                elif 0xAC00 <= code <= 0xD7AF:  # Hangul
+                    hangul_count += 1
+            total_cjk = cjk_count + kana_count + hangul_count
+            ratio = total_cjk / len(sample)
+            # Score: base CJK ratio + kana bonus for Japanese detection
+            score = ratio + (kana_count / len(sample) if kana_count > 0 else 0)
+            if score > best_score:
+                best_score = score
+                best_encoding = encoding
+        except (UnicodeDecodeError, LookupError):
+            continue
+
+    if best_encoding is not None and best_score > _CJK_CONFIRM_RATIO:
+        return best_encoding, False
+
+    # Final fallback: UTF-8 with replacement (never fails)
+    return "utf-8", False
+
+
 class ErrorRecovery:
     """Graceful degradation wrapper for code analysis."""
 
@@ -116,7 +222,8 @@ class ErrorRecovery:
                 "message": "Binary file detected, no analysis available.",
             }
 
-        text = content.decode("utf-8", errors="replace")
+        encoding, _had_bom = detect_encoding(content)
+        text = content.decode(encoding, errors="replace")
         lines = text.count("\n") + (1 if text and not text.endswith("\n") else 0)
 
         if not text.strip():
