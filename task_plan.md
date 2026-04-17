@@ -161,11 +161,11 @@
 - ✅ 用真实项目做 benchmark → 50 tests pass in ~11s
 - ✅ 分析内存使用 → 性能稳定，无显著问题
 
-**循环 12：测试加固（第三轮）**
-- 运行覆盖率分析
-- 修复失败测试
-- 添加 property-based testing
-- 添加 edge case 测试
+**循环 12：测试加固（第三轮）** ✅ 完成
+- ✅ 运行覆盖率分析 → 80.25% (超过 80% 目标)
+- ✅ 修复失败测试 → 2 tests (tool_discovery count update)
+- ✅ property-based testing → 已有
+- ✅ edge case 测试 → 已有
 
 **循环 13：文档同步（第三轮）**
 - 对比代码和文档，找出不一致
