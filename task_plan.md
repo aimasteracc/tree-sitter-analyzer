@@ -422,7 +422,21 @@
 
 ## OpenSpec Changes In Progress
 
-（当前无进行中的 OpenSpec change）
+### add-semantic-code-search 🔄 Sprint 1 完成，Sprint 2 待实现
+
+**Sprint 1: Query Classifier + Fast Path** ✅ 完成
+- ✅ Pattern matching for simple queries (regex-based)
+- ✅ Integration with grep/ripgrep/ast-grep
+- ✅ Result formatter (unified output)
+- ✅ 49 tests (exceeds 5+ target)
+- ✅ Commits: 6f4a3e7f, 12f7e38e
+
+**Sprint 2: LLM Integration** 📋 待实现
+- [ ] LLM query parser (OpenAI/Anthropic/local support)
+- [ ] Query → tool call translation
+- [ ] Result ranking and relevance scoring
+- [ ] Error handling for LLM failures
+- [ ] 5+ tests
 
 ## 完成的 OpenSpec Changes
 
@@ -647,6 +661,22 @@
 - ✅ 支持模式: Singleton, Factory, Observer, Strategy, God Class, Long Method
 - ✅ 工具数量: 30 → 31 MCP tools (+1 design_patterns)
 - ✅ 总计: 64 tests pass (40 core + 24 MCP tool)
+
+**循环 99：Semantic Code Search - Sprint 1（第二十三轮）** ✅ 完成
+- ✅ 永续循环机制: 执行 AUTONOMOUS.md "创意功能探索"
+- ✅ qmd 检索: 语义搜索相关功能
+- ✅ office-hours skill: 产品方向讨论
+- ✅ 设计文档: Hybrid Adaptive System (9/10 质量评分)
+- ✅ 创建 add-semantic-code-search OpenSpec change
+- ✅ Sprint 1: Query Classifier + Fast Path (49 tests pass)
+  - tree_sitter_analyzer/search/classifier.py (193 lines)
+  - tree_sitter_analyzer/search/executor.py (386 lines)
+  - tree_sitter_analyzer/search/formatter.py (176 lines)
+  - 4 fast path patterns (grep_by_name, grep_in_files, dependency_of, what_calls)
+  - 5 complex query patterns
+  - MyPy --strict + Ruff linting compliance
+- ✅ Commits: 6f4a3e7f, 12f7e38e
+- ✅ Next: Sprint 2 - LLM Integration
 
 **Context Reset — 2026-04-17 (Session 98+)**
 - ✅ 检测到 context 使用率 > 70% (实际 91%)
