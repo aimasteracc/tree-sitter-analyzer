@@ -125,20 +125,73 @@ Reset 步骤：
 6. **质量深化** — 覆盖率 80%+、ruff/mypy 全量通过
 7. **持续改进循环** — 审计→优化→测试→文档→新功能，永不停止
 
-## 永续循环机制（有明确停止条件）
+## 永续循环机制（创意功能探索）
 
-当 task_plan.md 中所有列出的 `[ ]` 任务都完成时，执行审计循环：
+当 task_plan.md 中所有列出的 `[ ]` 任务都完成时，执行**新功能探索循环**：
 
-1. 运行代码审计：`grep -rn "TODO\|FIXME\|HACK\|XXX" tree_sitter_analyzer/`
-2. 运行覆盖率分析：`uv run pytest --cov=tree_sitter_analyzer --cov-report=term-missing`
-3. 运行代码质量检查：`uv run ruff check tree_sitter_analyzer/ && uv run mypy tree_sitter_analyzer/ --strict`
-4. 检查文件大小：`find tree_sitter_analyzer/ -name "*.py" -size +15k`
-5. 基于以上审计结果，在 task_plan.md 中追加新任务
-6. 继续执行新任务
+### 步骤 1: 灵感收集（用 Wiki 知识库）
+
+```bash
+# 用 qmd 语义搜索相关技术/项目
+qmd query "code analysis AI agent context" --limit 10
+qmd query "MCP tools LLM code understanding" --limit 10
+qmd query "tree-sitter code navigation" --limit 10
+
+# 搜索特定参考项目
+qmd query "CodeFlow claw-code codebase analysis" --limit 5
+```
+
+将发现的灵感记录到 `findings.md`。
+
+### 步骤 2: 产品方向讨论（与乔布斯 Skill）
+
+调用 `/steve-jobs-perspective` skill，讨论：
+- **聚焦**: 这个功能是否解决核心问题？
+- **减法**: 能否用更简单的方式实现？
+- **一句话定义**: 这个功能的一句话是什么？
+
+### 步骤 3: 技术架构讨论（与 GStack Agent）
+
+调用 `/plan-eng-review` (GStack)，讨论：
+- 技术可行性
+- 架构影响
+- 实现复杂度
+
+### 步骤 4: 定义 OpenSpec Change
+
+基于以上讨论，创建新的 OpenSpec change：
+```bash
+mkdir -p openspec/changes/add-<feature-name>
+cat > openspec/changes/add-<feature-name>/tasks.md << EOF
+# <Feature Name>
+
+## Goal
+<一句话定义>
+
+## MVP Scope
+- 最小可行功能
+- 测试标准
+
+## Technical Approach
+- 技术方案
+- 依赖模块
+EOF
+```
+
+### 步骤 5: 实现功能
+
+按照常规 Sprint 循环实现。
+
+### 步骤 6: 质量检查（每 3 个功能探索后）
+
+- 运行代码审计：`grep -rn "TODO\|FIXME\|HACK\|XXX" tree_sitter_analyzer/`
+- 运行覆盖率分析：`uv run pytest --cov=tree_sitter_analyzer --cov-report=term-missing`
+- 运行代码质量检查：`uv run ruff check tree_sitter_analyzer/ && uv run mypy tree_sitter_analyzer/ --strict`
 
 **停止条件**（由 `autonomous-loop.sh` 的 `all_phases_complete()` 检查）：
 - ✅ 所有 OpenSpec changes 已完成（无未归档的 tasks.md）
 - ✅ 最近 5 个提交中 .py 文件变更少于 10 个（项目稳定）
+- ✅ Wiki 搜索未发现新的有价值的灵感
 
 **当满足停止条件时，自动退出循环。**
 

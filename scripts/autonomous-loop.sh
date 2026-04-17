@@ -95,7 +95,18 @@ while [ $SESSION -lt $MAX_SESSIONS ]; do
 
     # 启动 session
     # --print 非交互模式 + 完整权限通过 settings.local.json
-    claude --print "读取 AUTONOMOUS.md，然后继续 task_plan.md 中当前 Phase 的下一个未完成的 OpenSpec change。不需要人类确认，直接开始。每完成一个 Sprint 就 commit + push，然后继续下一个。当 context 快满时更新三文件并停止。" 2>&1 | tee -a "autonomous-loop-$(date '+%Y%m%d').log"
+    claude --print "读取 AUTONOMOUS.md，检查是否有未完成的 OpenSpec change。
+
+如果有未完成的 OpenSpec change：继续实现，每完成一个 Sprint 就 commit + push。
+
+如果没有未完成的 OpenSpec change：执行 AUTONOMOUS.md 中定义的「永续循环机制（创意功能探索）」：
+1. 用 qmd 检索 wiki 获取灵感
+2. 调用 /steve-jobs-perspective 讨论产品方向
+3. 调用 /plan-eng-review 讨论技术架构
+4. 创建新的 OpenSpec change
+5. 实现功能
+
+不需要人类确认，直接开始。当 context 快满时更新三文件并停止。" 2>&1 | tee -a "autonomous-loop-$(date '+%Y%m%d').log"
 
     # session 间短暂等待
     echo ""
