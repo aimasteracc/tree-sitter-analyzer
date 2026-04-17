@@ -30,11 +30,11 @@ from .tools.list_files_tool import ListFilesTool
 from .tools.modification_guard_tool import ModificationGuardTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
+from .tools.search_content_tool import SearchContentTool
 from .tools.semantic_impact_tool import (
     QuickRiskAssessmentTool,
     SemanticImpactTool,
 )
-from .tools.search_content_tool import SearchContentTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
 
