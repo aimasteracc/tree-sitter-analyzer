@@ -63,12 +63,15 @@ result = await mcp.call_tool("search_content", {
 
 ```json
 {
-  "roots": "必需 - 搜索根目录列表",
   "query": "必需 - 搜索模式（支持正则表达式）",
+  "roots": "可选 - 搜索根目录列表（也可用 files 指定具体文件）",
+  "files": "可选 - 具体文件路径列表（替代 roots）",
   "include_globs": "可选 - 包含的文件模式列表（例如 ['*.java', '*.py']）",
-  "exclude": "可选 - 排除的模式列表",
-  "case": "可选 - 'sensitive' 或 'insensitive'（默认: insensitive）",
-  "output_format": "可选 - 'json' 或 'toon'（默认: json）"
+  "exclude_globs": "可选 - 排除的 glob 模式列表",
+  "case": "可选 - 'sensitive', 'insensitive' 或 'smart'（默认: smart）",
+  "fixed_strings": "可选 - 是否使用固定字符串而非正则（默认: false）",
+  "word": "可选 - 是否仅匹配整词（默认: false）",
+  "output_format": "可选 - 'json' 或 'toon'（默认: toon）"
 }
 ```
 

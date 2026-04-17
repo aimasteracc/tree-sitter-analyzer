@@ -39,6 +39,7 @@ result = await mcp.call_tool("trace_impact", {
 #   "success": true,
 #   "symbol": "processPayment",
 #   "total_usages": 12,
+#   "call_count": 12,
 #   "filtered_language": "java",
 #   "usages": [
 #     {
@@ -91,7 +92,9 @@ result = await mcp.call_tool("trace_impact", {
   "file_path": "可选 - 符号定义的源文件路径（用于语言过滤）",
   "project_root": "可选 - 搜索根目录（默认使用工具配置的根目录）",
   "case_sensitive": "可选 - 是否区分大小写（默认: false，智能大小写）",
-  "word_match": "可选 - 是否仅匹配整词（默认: true）"
+  "word_match": "可选 - 是否仅匹配整词（默认: true）",
+  "max_results": "可选 - 最大返回结果数（默认: 1000）",
+  "exclude_patterns": "可选 - 排除的 glob 模式数组（默认: node_modules, .git, vendor 等）"
 }
 ```
 
@@ -220,7 +223,7 @@ impact = await mcp.call_tool("trace_impact", {
     "word_match": True
 })
 
-print(f"需要迁移 {impact['total_usages']} 处调用")
+print(f"需要迁移 {impact['call_count']} 处调用")
 
 # 现在你有一个完整的迁移清单
 for usage in impact["usages"]:
@@ -240,8 +243,8 @@ for api in v1_apis:
         "file_path": "src/api/v1/Controller.java",
         "word_match": True
     })
-    total_impact += result["total_usages"]
-    print(f"{api}: {result['total_usages']} 处调用")
+    total_impact += result["call_count"]
+    print(f"{api}: {result['call_count']} 处调用")
 
 print(f"总计需要迁移 {total_impact} 处调用")
 ```
@@ -274,7 +277,7 @@ impact = await mcp.call_tool("trace_impact", {
     "file_path": "src/logistics/ShippingCalculator.java"
 })
 
-if impact["total_usages"] > 10:
+if impact["call_count"] > 10:
     print("高频调用，优化价值高！")
 else:
     print("低频调用，优化收益有限。")

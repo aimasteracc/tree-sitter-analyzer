@@ -177,8 +177,8 @@ class TraceImpactTool(BaseMCPTool):
                 },
                 "required": ["symbol"],
                 "examples": [
-                    {"symbol_name": "getUser", "file_path": "/project/src/Service.java"},
-                    {"symbol_name": "processData"},
+                    {"symbol": "getUser", "file_path": "/project/src/Service.java"},
+                    {"symbol": "processData"},
                 ],
                 "additionalProperties": False,
             },

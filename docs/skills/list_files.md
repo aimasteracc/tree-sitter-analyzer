@@ -55,7 +55,7 @@ result = await mcp.call_tool("map_structure", {
 result = await mcp.call_tool("list_files", {
     "roots": ["/project/src"],
     "pattern": "services/*.java",  # 仅顶层
-    "max_depth": 1,
+    "depth": 1,
     "glob": True
 })
 ```
@@ -76,11 +76,15 @@ result = await mcp.call_tool("discover_files", {
 ```json
 {
   "roots": "必需 - 搜索根目录列表",
-  "pattern": "必需 - 文件模式（glob 或正则表达式）",
+  "pattern": "可选 - 文件模式（glob 或正则表达式）",
   "glob": "可选 - true 使用 glob 语法，false 使用正则（默认: true）",
-  "max_depth": "可选 - 最大目录深度（默认: 无限制）",
+  "depth": "可选 - 最大目录搜索深度（默认: 无限制）",
   "exclude": "可选 - 排除的模式列表",
-  "output_format": "可选 - 'json' 或 'toon'（默认: json）"
+  "types": "可选 - 文件类型过滤（如 ['f'] 仅文件）",
+  "extensions": "可选 - 文件扩展名过滤列表（如 ['.java', '.py']）",
+  "limit": "可选 - 最大返回结果数",
+  "count_only": "可选 - 仅返回计数不返回路径（默认: false）",
+  "output_format": "可选 - 'json' 或 'toon'（默认: toon）"
 }
 ```
 
