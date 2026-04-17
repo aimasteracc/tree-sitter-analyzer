@@ -559,6 +559,16 @@
 - ✅ 支持语言: Python, JavaScript, Java, Go
 - ✅ 工具注册: analysis toolset, 28 → 29 MCP tools
 
+**循环 95-97：代码审计 + 新功能探索（第二十一轮）** ✅ 完成
+- ✅ Loop 95: 代码审计（第二十一轮）- 3 TODO (示例代码), 91 文件 >400 行
+- ✅ Loop 96: 新功能探索（第二十一轮）- Refactoring Suggestions
+- ✅ 创建 add-refactoring-suggestions OpenSpec change
+- ✅ Sprint 1: Suggestion Engine (18 tests pass)
+- ✅ Sprint 2: Multi-Language Support (28 tests pass)
+- ✅ Sprint 3: MCP Tool Integration (11 tests pass)
+- ✅ 工具数量: 29 → 30 MCP tools (+1 refactoring_suggestions)
+- ✅ 总计: 66 tests pass (39 refactoring + 27 registration)
+
 **此计划永不标记为「全部完成」。永远有下一批任务。**
 
 **此计划永不标记为「全部完成」。永远有下一批任务。**
