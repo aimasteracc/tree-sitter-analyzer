@@ -15,6 +15,7 @@ from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.batch_search_tool import BatchSearchTool
 from .tools.build_project_index_tool import BuildProjectIndexTool
 from .tools.check_tools_tool import CheckToolsTool
+from .tools.code_diff_tool import CodeDiffTool
 from .tools.dependency_query_tool import DependencyQueryTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
