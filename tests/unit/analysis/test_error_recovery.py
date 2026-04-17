@@ -182,3 +182,120 @@ class TestEncodingDetection:
 
         assert result.get("success") is True
         assert result.get("is_binary") is not True
+
+
+class TestPartialParsing:
+    """Tests for partial/corrupted file parsing via tree-sitter."""
+
+    def test_corrupted_file_returns_success(self, tmp_path: Path) -> None:
+        """Corrupted file with mixed valid/invalid content returns success."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        code = 'def hello():\n    return "hi"\n\n@#$%^&*\n\ndef world():\n    return "bye"\n'
+        py_file = tmp_path / "broken.py"
+        py_file.write_text(code)
+
+        recovery = ErrorRecovery(project_root=str(tmp_path))
+        result = recovery.analyze_with_fallback(str(py_file))
+
+        assert result.get("success") is True
+
+    def test_partial_parse_direct_method(self) -> None:
+        """_try_partial_parse extracts functions from Python code."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        recovery = ErrorRecovery(project_root="/tmp")
+        text = 'def foo():\n    pass\n\ndef bar():\n    pass\n'
+
+        result = recovery._try_partial_parse("test.py", text)
+        assert result is not None
+        assert result["success"] is True
+        method_names = [m["name"] for m in result["methods"]]
+        assert "foo" in method_names
+        assert "bar" in method_names
+
+    def test_partial_parse_java_class(self) -> None:
+        """_try_partial_parse extracts classes from Java code."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        recovery = ErrorRecovery(project_root="/tmp")
+        text = "public class MyClass {\n  int x;\n}\n"
+
+        result = recovery._try_partial_parse("Test.java", text)
+        assert result is not None
+        assert result["success"] is True
+        class_names = [c["name"] for c in result["classes"]]
+        assert "MyClass" in class_names
+
+    def test_partial_parse_empty_returns_none(self) -> None:
+        """_try_partial_parse returns None for unknown extensions."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        recovery = ErrorRecovery(project_root="/tmp")
+        result = recovery._try_partial_parse("test.xyz", "some content")
+        assert result is None
+
+    def test_partial_parse_reports_error_count(self) -> None:
+        """_try_partial_parse counts ERROR nodes in the tree."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        recovery = ErrorRecovery(project_root="/tmp")
+        # Java with invalid syntax inside a valid class
+        text = "public class A {\n  @@@GARBAGE@@@\n  int x;\n}\n"
+
+        result = recovery._try_partial_parse("Test.java", text)
+        assert result is not None
+        # Should have extracted the class
+        class_names = [c["name"] for c in result["classes"]]
+        assert "A" in class_names
+        # Should report error nodes
+        assert result.get("error_nodes", 0) >= 0
+
+    def test_valid_file_no_partial_parse_flag(self, tmp_path: Path) -> None:
+        """Fully valid file does not set partial_parse flag."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        code = 'def clean():\n    return 42\n'
+        py_file = tmp_path / "clean.py"
+        py_file.write_text(code)
+
+        recovery = ErrorRecovery(project_root=str(tmp_path))
+        result = recovery.analyze_with_fallback(str(py_file))
+
+        assert result.get("success") is True
+        # Full tree-sitter should handle this; partial_parse should not be set
+        assert result.get("partial_parse") is not True
+
+    def test_extract_node_name_fallback(self) -> None:
+        """_extract_node_name returns fallback for nodes without identifiers."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        class MockNode:
+            type = "expression_statement"
+            children = []
+            start_point = (5, 0)
+            start_byte = 0
+            end_byte = 0
+
+        name = ErrorRecovery._extract_node_name(MockNode(), "source")
+        assert "expression_statement" in name
+        assert "L6" in name
+
+    def test_extract_node_name_with_identifier(self) -> None:
+        """_extract_node_name extracts identifier from child nodes."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        class MockChild:
+            type = "identifier"
+            start_byte = 4
+            end_byte = 8
+
+        class MockNode:
+            type = "function_definition"
+            children = [MockChild()]
+            start_point = (0, 0)
+            start_byte = 0
+            end_byte = 20
+
+        name = ErrorRecovery._extract_node_name(MockNode(), "def test_code_here")
+        assert name == "test"

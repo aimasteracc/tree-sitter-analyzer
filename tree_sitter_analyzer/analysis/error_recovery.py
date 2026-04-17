@@ -244,6 +244,11 @@ class ErrorRecovery:
         except Exception as e:
             logger.debug(f"Tree-sitter analysis failed: {e}")
 
+        # Try partial tree-sitter parsing before falling back to regex
+        partial = self._try_partial_parse(file_path, text)
+        if partial is not None:
+            return partial
+
         return self._regex_fallback(file_path, text, lines)
 
     def _try_treesitter_analysis(self, path: Path) -> dict[str, Any]:
@@ -257,6 +262,131 @@ class ErrorRecovery:
             tool.execute({"file_path": str(path), "format_type": "compact"})
         )
         return dict(result)
+
+    # Node types that represent class-like declarations across languages
+    _CLASS_NODE_TYPES = frozenset({
+        "class_declaration", "class_definition", "class",
+        "interface_declaration", "interface",
+        "enum_declaration", "enum",
+        "struct_declaration", "struct",
+        "record_declaration", "record",
+        "trait_declaration", "trait",
+        "type_declaration",
+        "object_declaration",
+    })
+
+    # Node types that represent function/method declarations
+    _FUNCTION_NODE_TYPES = frozenset({
+        "method_declaration", "method_definition",
+        "function_declaration", "function_definition",
+        "constructor_declaration", "constructor",
+        "arrow_function", "lambda_expression",
+        "function",
+    })
+
+    def _try_partial_parse(
+        self, file_path: str, text: str
+    ) -> dict[str, Any] | None:
+        """Parse file with tree-sitter and extract non-ERROR top-level nodes.
+
+        Tree-sitter always produces a tree even for files with syntax errors.
+        We walk root-level children, skip ERROR nodes, and collect class-like
+        and function declarations from the valid portions.
+
+        Returns None if no meaningful elements are extracted (caller should
+        fall back to regex).
+        """
+        ext = Path(file_path).suffix
+        lang = _EXT_TO_LANG.get(ext)
+        if lang is None:
+            # Map remaining extensions for tree-sitter
+            _extra_ext_map = {
+                ".java": "java", ".js": "javascript", ".ts": "typescript",
+                ".tsx": "typescript", ".jsx": "javascript", ".go": "go",
+                ".rs": "rust", ".c": "c", ".cpp": "cpp", ".h": "c",
+                ".hpp": "cpp", ".rb": "ruby", ".php": "php", ".swift": "swift",
+                ".scala": "scala", ".kt": "kotlin", ".cs": "csharp",
+            }
+            lang = _extra_ext_map.get(ext)
+        if lang is None:
+            return None
+
+        try:
+            from tree_sitter_analyzer.language_loader import get_loader
+
+            loader = get_loader()
+            parser_obj = loader.create_parser(lang)
+            if parser_obj is None:
+                return None
+        except Exception as e:
+            logger.debug(f"Cannot load parser for {lang}: {e}")
+            return None
+
+        try:
+            tree = parser_obj.parse(text.encode("utf-8"))
+        except Exception as e:
+            logger.debug(f"Partial parse failed: {e}")
+            return None
+
+        root = tree.root_node
+        if not root or not root.children:
+            return None
+
+        classes: list[dict[str, Any]] = []
+        methods: list[dict[str, Any]] = []
+        error_count = 0
+
+        for child in root.children:
+            if child.type == "ERROR":
+                error_count += 1
+                continue
+
+            # Extract name from the first identifier-like child
+            name = self._extract_node_name(child, text)
+            line = child.start_point[0] + 1
+
+            if child.type in self._CLASS_NODE_TYPES:
+                classes.append({"name": name, "line": line, "type": child.type})
+            elif child.type in self._FUNCTION_NODE_TYPES:
+                methods.append({"name": name, "line": line, "type": child.type})
+            else:
+                # Walk one level deeper for nested declarations
+                for sub in child.children:
+                    if sub.type == "ERROR":
+                        continue
+                    sub_name = self._extract_node_name(sub, text)
+                    sub_line = sub.start_point[0] + 1
+                    if sub.type in self._CLASS_NODE_TYPES:
+                        classes.append({"name": sub_name, "line": sub_line, "type": sub.type})
+                    elif sub.type in self._FUNCTION_NODE_TYPES:
+                        methods.append({"name": sub_name, "line": sub_line, "type": sub.type})
+
+        if not classes and not methods:
+            return None
+
+        lines = text.count("\n") + (1 if text and not text.endswith("\n") else 0)
+        return {
+            "success": True,
+            "recovery_mode": True,
+            "partial_parse": True,
+            "file_path": file_path,
+            "language": lang,
+            "lines": lines,
+            "classes": classes,
+            "methods": methods,
+            "error_nodes": error_count,
+            "message": f"Partial analysis: extracted {len(classes)} classes and {len(methods)} functions from corrupted file ({error_count} error regions).",
+        }
+
+    @staticmethod
+    def _extract_node_name(node: Any, source: str) -> str:
+        """Extract the identifier name from a tree-sitter node."""
+        # Look for direct identifier/name children
+        for child in node.children:
+            if child.type in ("identifier", "name", "type_identifier"):
+                return source[child.start_byte:child.end_byte]
+        # Fallback: use node type as name with line number
+        return f"<{node.type}@L{node.start_point[0] + 1}>"
 
     def _regex_fallback(
         self, file_path: str, text: str, lines: int
