@@ -324,7 +324,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
     "diagnostic": {
         "description": "Diagnostic and verification tools",
         "emoji": "🩺",
-        "tools": ["check_tools", "ci_report"],
+        "tools": ["check_tools", "ci_report", "pr_summary"],
     },
     "index": {
         "description": "Project index and summary tools",

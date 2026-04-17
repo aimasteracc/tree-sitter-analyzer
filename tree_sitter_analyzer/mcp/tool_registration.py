@@ -43,6 +43,7 @@ from .tools.semantic_search_tool import SemanticSearchTool
 from .tools.test_coverage_tool import TestCoverageTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
+from .tools.pr_summary_tool import PRSummaryTool
 
 # Optional tools
 try:
@@ -508,6 +509,18 @@ def _register_diagnostic_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(ci_tool),
         description="Generate CI/CD friendly reports with pass/fail status",
         emoji="🚦",
+    )
+
+    # pr_summary
+    pr_summary_tool = PRSummaryTool(project_root)
+    registry.register(
+        name="pr_summary",
+        toolset="diagnostic",
+        category="git-analysis",
+        schema=pr_summary_tool.get_tool_definition(),
+        handler=_make_handler(pr_summary_tool),
+        description="Generate PR summaries from git diff: categorization, breaking changes, semantic analysis",
+        emoji="📋",
     )
 
 
