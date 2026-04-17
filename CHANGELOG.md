@@ -4,10 +4,11 @@
 
 ### Added
 
+- **Code Diff Analysis Tool**: `code_diff` MCP tool for semantic-level code diff analysis. Compares two versions of code (file paths or direct content), identifies added/removed/modified elements (classes, methods, functions), detects breaking changes (public API removal), and provides TOON + JSON output formats. Registered to analysis toolset.
 - **Tool Registry System**: Centralized `mcp/registry.py` for all MCP tools with `ToolEntry` metadata class and `ToolRegistry` singleton pattern. Enables dynamic tool discovery, grouping by toolset, availability checking, and metadata management. Inspired by hermes-agent design.
 - **Tool Discovery Tools**: Two new MCP tools for exploring available tools — `tools/list` (all tools with optional toolset filtering, available-only flag) and `tools/describe` (detailed tool info including full schema).
-- **Tool Registration Module**: `mcp/tool_registration.py` registers all 15 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
-- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (4 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (1 tool), index (2 tools).
+- **Tool Registration Module**: `mcp/tool_registration.py` registers all 16 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
+- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (5 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (1 tool), index (2 tools).
 
 ### Testing
 

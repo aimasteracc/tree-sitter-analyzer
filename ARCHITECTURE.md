@@ -10,8 +10,8 @@
          |                    |                      |
          v                    v                      v
 +===================================================================+
-|  MCP Tool Layer (15 tools + 2 discovery tools)                    |
-|  analyze_code_structure | get_code_outline | query_code           |
+|  MCP Tool Layer (16 tools + 2 discovery tools)                    |
+|  analyze_code_structure | code_diff | get_code_outline | query_code |
 |  read_partial | list_files | search_content | find_and_grep      |
 |  check_code_scale | get_project_summary | modification_guard     |
 |  trace_impact | dependency_query | build_project_index           |

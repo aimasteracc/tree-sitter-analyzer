@@ -201,7 +201,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 | **SMART Workflow** | Set-Map-Analyze-Retrieve-Trace methodology | [Guide](docs/smart-workflow.md) |
 | **Outline-First Navigation** | `get_code_outline` — hierarchical structure map before content retrieval | [MCP Tools](docs/api/mcp_tools_specification.md) |
 | **Tool Discovery** | `tools/list` and `tools/describe` — explore available MCP tools by toolset | [MCP Tools](docs/api/mcp_tools_specification.md) |
-| **Tool Registry** | Centralized tool organization with 6 toolsets (analysis, query, navigation, safety, diagnostic, index) | [Architecture](docs/architecture.md) |
+| **Tool Registry** | Centralized tool organization with 6 toolsets (analysis, query, navigation, safety, diagnostic, index) — 16 MCP tools including code_diff for semantic diff analysis | [Architecture](docs/architecture.md) |
 | **MCP Protocol** | Native AI assistant integration | [API Docs](docs/api/mcp_tools_specification.md) |
 | **Token Optimization** | TOON format delivers 54-56% token reduction; token-aware controls for large AI workflows | [Features](docs/features.md) |
 | **File Search** | fd-based high-performance discovery | [CLI Reference](docs/cli-reference.md) |
