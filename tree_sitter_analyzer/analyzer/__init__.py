@@ -13,9 +13,17 @@ from tree_sitter_analyzer.analyzer.git_analyzer import (
     FileOwnership,
     GitAnalyzer,
 )
+from tree_sitter_analyzer.analyzer.risk_scoring import (
+    FileRisk,
+    RiskCalculator,
+    RiskScore,
+)
 
 __all__ = [
     "FileChurn",
     "FileOwnership",
     "GitAnalyzer",
+    "FileRisk",
+    "RiskCalculator",
+    "RiskScore",
 ]
