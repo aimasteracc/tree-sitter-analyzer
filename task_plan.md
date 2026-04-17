@@ -204,11 +204,21 @@
 - ✅ property-based testing → 已有
 - ✅ edge case 测试 → 已有
 
-**循环 20：文档同步（第四轮）**
-- 对比代码和文档，找出不一致
-- 更新 CHANGELOG.md
-- 更新 README.md
-- 添加使用示例（已有）
+**循环 20：文档同步（第四轮）** ✅ 完成
+- ✅ 对比代码和文档，找出不一致 → code_clones, code_smell 未记录
+- ✅ 更新 CHANGELOG.md → 添加 code_clones + code_smell + 新测试
+- ✅ 更新 README.md → 工具数量 16→18，提到 code_smell_detector
+- ✅ 更新 ARCHITECTURE.md → 工具层 16→18，添加新工具到列表
+
+**循环 21：代码审计（第六轮）**
+- 扫描所有 .py 文件，找出 TODO/FIXME/HACK 注释
+- 扫描所有函数，找出超过 50 行的函数
+- 扫描所有类，找出超过 400 行的文件
+
+**循环 22：新功能探索（第六轮）**
+- 参考 wiki 中的相关项目，发现可借鉴的功能
+- 写原型验证可行性
+- 通过测试后创建正式实现任务
 
 ## OpenSpec Changes In Progress
 

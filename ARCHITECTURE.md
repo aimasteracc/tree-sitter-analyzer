@@ -10,11 +10,11 @@
          |                    |                      |
          v                    v                      v
 +===================================================================+
-|  MCP Tool Layer (16 tools + 2 discovery tools)                    |
-|  analyze_code_structure | code_diff | get_code_outline | query_code |
-|  read_partial | list_files | search_content | find_and_grep      |
-|  check_code_scale | get_project_summary | modification_guard     |
-|  trace_impact | dependency_query | build_project_index           |
+|  MCP Tool Layer (18 tools + 2 discovery tools)                    |
+|  analyze_code_structure | code_diff | code_smell_detector | get_code_outline |
+|  query_code | read_partial | list_files | search_content | find_and_grep |
+|  check_code_scale | get_project_summary | modification_guard |
+|  trace_impact | dependency_query | build_project_index |
 |  batch_search | check_tools | tools/list | tools/describe        |
 |  ------- security boundary: BaseMCPTool -> SecurityValidator -----|
 +===================================================================+
@@ -108,7 +108,7 @@ Output (CLI stdout / MCP JSON-RPC / SDK return)
 | `languages/` | 17+ language plugins for element extraction |
 | `queries/` | Predefined tree-sitter queries per language |
 | `formatters/` | Output formatters + TOON encoder (Registry pattern) |
-| `mcp/` | MCP server, 17 tools (15 analysis + 2 discovery), SDK, intent aliases, streamable HTTP, tool registry |
+| `mcp/` | MCP server, 20 tools (18 analysis + 2 discovery), SDK, intent aliases, streamable HTTP, tool registry |
 | `analysis/` | Dependency graph, health score (A-F grading), error recovery |
 | `security/` | Boundary manager, input validator, ReDoS regex checker |
 | `cli/` | Argument parsing, validation, info commands |

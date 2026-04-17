@@ -4,6 +4,8 @@
 
 ### Added
 
+- **Code Clone Detection Engine**: `analysis/code_clones.py` for detecting duplicate code patterns. Supports Type 1 (exact copies), Type 2 (structural similarity with renamed variables), and Type 3 (functional similarity). Uses code normalization (comments, whitespace, variable names) and Jaccard similarity calculation. Python and brace-based language support.
+- **Code Smell Detector**: `analysis/code_smells.py` with MCP tool for detecting anti-patterns. Detects God Class, Long Method, Deep Nesting, Magic Numbers, Many Imports, and Large Class. Configurable thresholds with severity classification (INFO/WARNING/CRITICAL).
 - **Code Diff Analysis Tool**: `code_diff` MCP tool for semantic-level code diff analysis. Compares two versions of code (file paths or direct content), identifies added/removed/modified elements (classes, methods, functions), detects breaking changes (public API removal), and provides TOON + JSON output formats. Registered to analysis toolset.
 - **Tool Registry System**: Centralized `mcp/registry.py` for all MCP tools with `ToolEntry` metadata class and `ToolRegistry` singleton pattern. Enables dynamic tool discovery, grouping by toolset, availability checking, and metadata management. Inspired by hermes-agent design.
 - **Tool Discovery Tools**: Two new MCP tools for exploring available tools — `tools/list` (all tools with optional toolset filtering, available-only flag) and `tools/describe` (detailed tool info including full schema).
@@ -12,6 +14,8 @@
 
 ### Testing
 
+- **23 new Code Clone Detection tests**: `test_code_clones.py` covering clone type classification, code normalization, similarity calculation, and end-to-end detection.
+- **40 new Code Smell Detector tests**: `test_code_smells.py` covering god class, long method, deep nesting, magic numbers, many imports, large class, project-level detection, and MCP tool integration.
 - **45 new Tool Registry tests**: `test_registry.py` (20 tests for ToolEntry + ToolRegistry), `test_tool_registration.py` (11 tests for registration), `test_tool_discovery.py` (14 tests for MCP integration).
 
 - **Semantic-level impact analysis**: New `analysis/semantic_impact.py` module that assesses risk beyond textual occurrence counting. Considers type hierarchy (base class changes propagate to subclasses), visibility (public API vs private), call chain depth, and framework annotations. Composite risk scoring (0-100) with SAFE/LOW/MODERATE/HIGH/CRITICAL classification and actionable suggestions.
