@@ -1105,6 +1105,58 @@
 ### 下一步
 - Phase 7 Loop 27: 新功能探索（第七轮）
 
+---
+
+## Session 31 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 1 | Phase 7 Loop 27: 新功能探索（第七轮）| done | 39/39 | MCP 工具集成: health_score + ci_report |
+
+### 新增/修改文件
+- `tree_sitter_analyzer/mcp/tools/health_score_tool.py` — 文件健康度评分 MCP 工具
+- `tree_sitter_analyzer/mcp/tools/ci_report_tool.py` — CI 报告生成 MCP 工具
+- `tree_sitter_analyzer/mcp/tool_registration.py` — 注册两个新工具
+- `tree_sitter_analyzer/mcp/registry.py` — 更新 TOOLSET_DEFINITIONS
+- `tests/unit/mcp/test_health_score_tool.py` — 20 个单元测试
+- `tests/unit/mcp/test_ci_report_tool.py` — 19 个单元测试
+- `tests/unit/mcp/test_tool_discovery.py` — 更新工具数量测试
+- `tests/unit/mcp/test_tool_registration.py` — 更新工具数量测试
+
+### Phase 7 第七轮循环完成
+
+**Phase 7 Loops 26-27 全部完成**:
+- ✅ 循环 26: 代码审计（第七轮）- 0 TODO/FIXME
+- ✅ 循环 27: 新功能探索（第七轮）- MCP 工具集成完成
+
+### MCP 工具集成
+
+**Health Score Tool** (`health_score`):
+- 文件健康度评分（A-F 级）
+- 基于代码复杂度、大小、耦合度
+- 可配置最低等级阈值
+- 已注册到 analysis toolset
+
+**CI Report Tool** (`ci_report`):
+- CI/CD 友好的报告生成
+- 支持 pass/fail 状态
+- 可配置阈值（grade, cycles, critical files）
+- JSON 和 summary 输出格式
+- 已注册到 diagnostic toolset
+
+### 测试结果
+- 39 new tests pass (20 + 19)
+- ruff check: all clean
+- mypy --strict: all clean
+
+### 总提交数: 45 commits (+1)
+- feat/autonomous-dev 分支
+
+### 下一步
+- Phase 7 Loop 28: 性能优化（第六轮）
+
 ### 文档更新
 
 **CHANGELOG.md**:

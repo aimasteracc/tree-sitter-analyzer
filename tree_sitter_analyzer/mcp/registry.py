@@ -292,6 +292,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "code_diff",
             "code_smell_detector",
             "code_clone_detection",
+            "health_score",
         ],
     },
     "query": {
@@ -312,7 +313,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
     "diagnostic": {
         "description": "Diagnostic and verification tools",
         "emoji": "🩺",
-        "tools": ["check_tools"],
+        "tools": ["check_tools", "ci_report"],
     },
     "index": {
         "description": "Project index and summary tools",

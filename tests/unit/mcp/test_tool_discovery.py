@@ -31,8 +31,8 @@ class TestToolDiscoveryTool:
 
         assert "tools" in result
         assert "count" in result
-        assert result["count"] == 18  # All tools (16 + code_smell_detector + code_clone_detection)
-        assert len(result["tools"]) == 18
+        assert result["count"] == 20  # All tools (18 + health_score + ci_report)
+        assert len(result["tools"]) == 20
 
     @pytest.mark.asyncio
     async def test_list_tools_by_toolset(self) -> None:
@@ -43,10 +43,24 @@ class TestToolDiscoveryTool:
         result = await tool.execute({"toolset": "analysis"})
 
         assert "tools" in result
-        assert len(result["tools"]) == 7  # dependency_query, trace_impact, analyze_scale, analyze_code_structure, code_diff, code_smell_detector, code_clone_detection
+        assert len(result["tools"]) == 8  # + health_score
 
         for t in result["tools"]:
             assert t["toolset"] == "analysis"
+
+    @pytest.mark.asyncio
+    async def test_list_diagnostic_tools(self) -> None:
+        """Test listing diagnostic tools."""
+        tool = ToolDiscoveryTool()
+
+        # List diagnostic tools
+        result = await tool.execute({"toolset": "diagnostic"})
+
+        assert "tools" in result
+        assert len(result["tools"]) == 2  # check_tools + ci_report
+
+        for t in result["tools"]:
+            assert t["toolset"] == "diagnostic"
 
     @pytest.mark.asyncio
     async def test_list_available_only(self) -> None:

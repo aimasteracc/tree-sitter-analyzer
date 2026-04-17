@@ -241,7 +241,10 @@
 - ✅ 扫描所有函数，找出超过 50 行的函数 → 已记录
 - ✅ 扫描所有类，找出超过 400 行的文件 → 81 个文件（grammar_coverage/, core/, analysis/, plugins/, queries/）
 
-**循环 27：新功能探索（第七轮）**
+**循环 27：新功能探索（第七轮）** ✅ 完成
+- ✅ 参考 wiki 中的相关项目 → health_score + ci_report 已有模块
+- ✅ 写原型验证可行性 → 创建 MCP 工具集成 (39 tests pass)
+- ✅ 通过测试后创建正式实现任务 → 已注册到 ToolRegistry
 
 ## OpenSpec Changes In Progress
 

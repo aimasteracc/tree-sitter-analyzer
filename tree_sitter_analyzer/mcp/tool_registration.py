@@ -15,6 +15,7 @@ from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.batch_search_tool import BatchSearchTool
 from .tools.build_project_index_tool import BuildProjectIndexTool
 from .tools.check_tools_tool import CheckToolsTool
+from .tools.ci_report_tool import CIReportTool
 from .tools.code_clone_detection_tool import CodeCloneDetectionTool
 from .tools.code_diff_tool import CodeDiffTool
 from .tools.code_smell_detector_tool import CodeSmellDetectorTool
@@ -22,6 +23,7 @@ from .tools.dependency_query_tool import DependencyQueryTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
 from .tools.get_project_summary_tool import GetProjectSummaryTool
+from .tools.health_score_tool import HealthScoreTool
 from .tools.list_files_tool import ListFilesTool
 from .tools.modification_guard_tool import ModificationGuardTool
 from .tools.query_tool import QueryTool
@@ -180,6 +182,18 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="👯",
     )
 
+    # health_score
+    health_tool = HealthScoreTool(project_root)
+    registry.register(
+        name="health_score",
+        toolset="analysis",
+        category="quality-assessment",
+        schema=health_tool.get_tool_definition(),
+        handler=_make_handler(health_tool),
+        description="Analyze file health: A-F grading, complexity, maintainability",
+        emoji="🏥",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""
@@ -298,6 +312,18 @@ def _register_diagnostic_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(check_tool),
         description="Check tool availability and configuration",
         emoji="🩺",
+    )
+
+    # ci_report
+    ci_tool = CIReportTool(project_root)
+    registry.register(
+        name="ci_report",
+        toolset="diagnostic",
+        category="ci-integration",
+        schema=ci_tool.get_tool_definition(),
+        handler=_make_handler(ci_tool),
+        description="Generate CI/CD friendly reports with pass/fail status",
+        emoji="🚦",
     )
 
 
