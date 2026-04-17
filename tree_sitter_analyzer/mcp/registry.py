@@ -290,6 +290,8 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "analyze_scale",
             "analyze_code_structure",
             "code_diff",
+            "code_smell_detector",
+            "code_clone_detection",
         ],
     },
     "query": {

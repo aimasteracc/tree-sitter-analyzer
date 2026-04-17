@@ -15,7 +15,9 @@ from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.batch_search_tool import BatchSearchTool
 from .tools.build_project_index_tool import BuildProjectIndexTool
 from .tools.check_tools_tool import CheckToolsTool
+from .tools.code_clone_detection_tool import CodeCloneDetectionTool
 from .tools.code_diff_tool import CodeDiffTool
+from .tools.code_smell_detector_tool import CodeSmellDetectorTool
 from .tools.dependency_query_tool import DependencyQueryTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
@@ -152,6 +154,30 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(diff_tool),
         description="Semantic-level code diff: element changes, breaking detection",
         emoji="🔄",
+    )
+
+    # code_smell_detector
+    smell_tool = CodeSmellDetectorTool(project_root)
+    registry.register(
+        name="code_smell_detector",
+        toolset="analysis",
+        category="code-quality",
+        schema=smell_tool.get_tool_definition(),
+        handler=_make_handler(smell_tool),
+        description="Detect code smells: God Class, Long Method, Deep Nesting, Magic Numbers",
+        emoji="👃",
+    )
+
+    # code_clone_detection
+    clone_tool = CodeCloneDetectionTool(project_root)
+    registry.register(
+        name="code_clone_detection",
+        toolset="analysis",
+        category="duplication-detection",
+        schema=clone_tool.get_tool_definition(),
+        handler=_make_handler(clone_tool),
+        description="Detect code clones: Type 1/2/3 clones, similarity analysis",
+        emoji="👯",
     )
 
 
