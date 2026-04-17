@@ -28,9 +28,15 @@
 - **Test Coverage Tool**: `test_coverage` MCP tool for analyzing test coverage by identifying untested code elements. Provides A-F grading (80-100% = A, 60-79% = B, 40-59% = C, 20-39% = D, 0-19% = F). Supports single file and project-wide analysis with TOON and JSON output formats. Registered to analysis toolset.
 - **Tool Registration Update**: Total MCP tools increased from 28 to 29 (16 analysis tools).
 
+### Fixed
+
+- **Java annotation extraction**: Four independent bugs that caused complete annotation loss now fixed. (1) Extraction order: `extract_annotations()` now called before `extract_classes/functions/variables`. (2) Cache management: `self.annotations` (source data) no longer cleared by `_reset_caches()`. (3) MCP tool layer: `analyze_code_structure_tool.py` reads annotations from model objects instead of hardcoded `[]`. (4) Field annotations: `field_declaration` added to `container_node_types` for proper traversal.
+- **Java @Override attribution**: `_extract_annotations_from_modifiers()` extracts annotations directly from AST node's modifiers child, preventing method-only annotations (@Override, @Test, @Before, etc.) from bleeding into class/field annotations.
+- **Java implements generics parsing**: `_split_type_list()` uses angle-bracket depth counter to preserve generic type arguments (`LocalCache<K, V>` remains one item, not split into `["LocalCache", "K", "V"]`).
+
 ### Testing
 
-- **23 new Code Clone Detection tests**: `test_code_clones.py` covering clone type classification, code normalization, similarity calculation, and end-to-end detection.
+- **10 new annotation tests**: `test_java_implements_generics.py` (5 tests for generic type parsing) + `test_java_method_only_annotations.py` (5 tests for method-only annotation filtering). All 766 Java tests passing.
 - **40 new Code Smell Detector tests**: `test_code_smells.py` covering god class, long method, deep nesting, magic numbers, many imports, large class, project-level detection, and MCP tool integration.
 - **45 new Tool Registry tests**: `test_registry.py` (20 tests for ToolEntry + ToolRegistry), `test_tool_registration.py` (11 tests for registration), `test_tool_discovery.py` (14 tests for MCP integration).
 - **17 new Error Recovery Tool tests**: `test_error_recovery_tool.py` covering encoding detection (UTF-8, GBK, Shift-JIS, BOM), binary file detection, empty file handling, corrupted file recovery, content parameter, and project root resolution.

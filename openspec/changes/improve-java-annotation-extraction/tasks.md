@@ -65,8 +65,8 @@ Fix four independent bugs causing complete annotation loss in `analyze_code_stru
 
 - [x] **T4.1**: Write `proposal.md` (this change's problem statement + root causes)
 - [x] **T4.2**: Write `tasks.md` (this file)
-- [ ] **T4.3**: Write `design.md` (architecture of annotation extraction pipeline)
-- [ ] **T4.4**: Update CHANGELOG.md
+- [x] **T4.3**: Write `design.md` (architecture of annotation extraction pipeline)
+- [x] **T4.4**: Update CHANGELOG.md
 
 ## Next Java Quality Issues (Backlog)
 
@@ -86,5 +86,7 @@ From spring-petclinic scan — additional items to address in future specs:
 ## Completed Status
 
 All T1, T2, T3 tasks: COMPLETE (2026-04-09)
-T4.1, T4.2: COMPLETE
-T4.3, T4.4: PENDING
+T4.1, T4.2: COMPLETE (2026-04-09)
+T4.3, T4.4: COMPLETE (2026-04-17)
+
+**Overall Status**: ✅ COMPLETE
