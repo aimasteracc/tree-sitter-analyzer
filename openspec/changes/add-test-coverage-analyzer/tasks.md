@@ -70,13 +70,13 @@ tree_sitter_analyzer/analysis/test_coverage.py
 - [x] Go: function, method, interface extraction
 - [x] Add integration tests (10+ tests)
 
-### Sprint 3: MCP Tool Integration ✅ Target
+### Sprint 3: MCP Tool Integration ✅ Complete
 
 - [x] Create `mcp/tools/test_coverage_tool.py`
 - [x] Register to ToolRegistry (analysis toolset)
 - [x] Add schema: file_path, project_root, include_tested
 - [x] Implement TOON format output
-- [x] Add tool tests (10+ tests)
+- [x] Add tool tests (16 tests pass)
 
 ## Success Criteria
 

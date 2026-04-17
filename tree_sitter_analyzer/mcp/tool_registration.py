@@ -37,6 +37,7 @@ from .tools.semantic_impact_tool import (
     QuickRiskAssessmentTool,
     SemanticImpactTool,
 )
+from .tools.test_coverage_tool import TestCoverageTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
 
@@ -286,6 +287,18 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(dead_code_tool),
         description="Detect dead (unused) code: functions, classes, imports",
         emoji="🗑️",
+    )
+
+    # test_coverage
+    coverage_tool = TestCoverageTool(project_root)
+    registry.register(
+        name="test_coverage",
+        toolset="analysis",
+        category="testing-coverage",
+        schema=coverage_tool.get_tool_definition(),
+        handler=_make_handler(coverage_tool),
+        description="Test coverage analysis: identify untested code elements",
+        emoji="📊",
     )
 
 

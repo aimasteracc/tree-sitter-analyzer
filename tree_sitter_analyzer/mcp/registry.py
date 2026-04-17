@@ -300,6 +300,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "understand_codebase",
             "complexity_heatmap",
             "dead_code",
+            "test_coverage",
         ],
     },
     "query": {
