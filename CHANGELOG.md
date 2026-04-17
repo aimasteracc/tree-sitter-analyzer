@@ -4,6 +4,17 @@
 
 ### Added
 
+- **Tool Registry System**: Centralized `mcp/registry.py` for all MCP tools with `ToolEntry` metadata class and `ToolRegistry` singleton pattern. Enables dynamic tool discovery, grouping by toolset, availability checking, and metadata management. Inspired by hermes-agent design.
+- **Tool Discovery Tools**: Two new MCP tools for exploring available tools — `tools/list` (all tools with optional toolset filtering, available-only flag) and `tools/describe` (detailed tool info including full schema).
+- **Tool Registration Module**: `mcp/tool_registration.py` registers all 15 MCP tools across 6 toolsets (analysis 🔍, query 🔎, navigation 🧭, safety 🛡️, diagnostic 🩺, index 📚).
+- **Toolset Organization**: 6 toolsets group related tools by functionality — analysis (4 tools), query (3 tools), navigation (4 tools), safety (1 tool), diagnostic (1 tool), index (2 tools).
+
+### Testing
+
+- **45 new Tool Registry tests**: `test_registry.py` (20 tests for ToolEntry + ToolRegistry), `test_tool_registration.py` (11 tests for registration), `test_tool_discovery.py` (14 tests for MCP integration).
+
+- **Semantic-level impact analysis**: New `analysis/semantic_impact.py` module that assesses risk beyond textual occurrence counting. Considers type hierarchy (base class changes propagate to subclasses), visibility (public API vs private), call chain depth, and framework annotations. Composite risk scoring (0-100) with SAFE/LOW/MODERATE/HIGH/CRITICAL classification and actionable suggestions.
+
 - **Semantic-level impact analysis**: New `analysis/semantic_impact.py` module that assesses risk beyond textual occurrence counting. Considers type hierarchy (base class changes propagate to subclasses), visibility (public API vs private), call chain depth, and framework annotations. Composite risk scoring (0-100) with SAFE/LOW/MODERATE/HIGH/CRITICAL classification and actionable suggestions.
 - **Adaptive TOON compression**: `CompressionLevel` enum (MINIMAL/BALANCED/DETAILED) with preset profiles that auto-select formatter settings based on query type. Measured 69.6% byte reduction on 8 real project files, meeting the 60-70% target.
 - **C# LINQ query extraction**: `query_expression` nodes parsed for from/where/select/order_by/group/join clauses.

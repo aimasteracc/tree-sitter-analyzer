@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-9600%2B%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-9900%2B%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -200,6 +200,8 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 |---------|-------------|------------|
 | **SMART Workflow** | Set-Map-Analyze-Retrieve-Trace methodology | [Guide](docs/smart-workflow.md) |
 | **Outline-First Navigation** | `get_code_outline` — hierarchical structure map before content retrieval | [MCP Tools](docs/api/mcp_tools_specification.md) |
+| **Tool Discovery** | `tools/list` and `tools/describe` — explore available MCP tools by toolset | [MCP Tools](docs/api/mcp_tools_specification.md) |
+| **Tool Registry** | Centralized tool organization with 6 toolsets (analysis, query, navigation, safety, diagnostic, index) | [Architecture](docs/architecture.md) |
 | **MCP Protocol** | Native AI assistant integration | [API Docs](docs/api/mcp_tools_specification.md) |
 | **Token Optimization** | TOON format delivers 54-56% token reduction; token-aware controls for large AI workflows | [Features](docs/features.md) |
 | **File Search** | fd-based high-performance discovery | [CLI Reference](docs/cli-reference.md) |

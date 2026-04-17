@@ -10,13 +10,21 @@
          |                    |                      |
          v                    v                      v
 +===================================================================+
-|  MCP Tool Layer (15 tools)                                        |
+|  MCP Tool Layer (15 tools + 2 discovery tools)                    |
 |  analyze_code_structure | get_code_outline | query_code           |
 |  read_partial | list_files | search_content | find_and_grep      |
 |  check_code_scale | get_project_summary | modification_guard     |
 |  trace_impact | dependency_query | build_project_index           |
-|  batch_search | check_tools                                        |
+|  batch_search | check_tools | tools/list | tools/describe        |
 |  ------- security boundary: BaseMCPTool -> SecurityValidator -----|
++===================================================================+
+         |
+         v
++===================================================================+
+|  Tool Registry (singleton)                                        |
+|  ToolEntry (metadata) | ToolRegistry (registration/discovery)     |
+|  6 toolsets: analysis 🔍 | query 🔎 | navigation 🧭               |
+|             safety 🛡️ | diagnostic 🩺 | index 📚                  |
 +===================================================================+
          |
          v
@@ -100,7 +108,7 @@ Output (CLI stdout / MCP JSON-RPC / SDK return)
 | `languages/` | 17+ language plugins for element extraction |
 | `queries/` | Predefined tree-sitter queries per language |
 | `formatters/` | Output formatters + TOON encoder (Registry pattern) |
-| `mcp/` | MCP server, 15 tools, SDK, intent aliases, streamable HTTP |
+| `mcp/` | MCP server, 17 tools (15 analysis + 2 discovery), SDK, intent aliases, streamable HTTP, tool registry |
 | `analysis/` | Dependency graph, health score (A-F grading), error recovery |
 | `security/` | Boundary manager, input validator, ReDoS regex checker |
 | `cli/` | Argument parsing, validation, info commands |
@@ -139,7 +147,15 @@ fails. Returns partial results rather than failing completely.
 Every MCP tool inherits `BaseMCPTool` which enforces path normalization,
 boundary checks, null-byte injection detection, and ReDoS prevention.
 
-### 7. Plugin Discovery via Entry Points
+### 7. Tool Registry Pattern
+
+`ToolRegistry` is a singleton that manages all MCP tools with metadata:
+- `ToolEntry` stores tool metadata (name, toolset, category, schema, handler, availability)
+- 6 toolsets organize tools by functionality (analysis, query, navigation, safety, diagnostic, index)
+- `tools/list` and `tools/describe` enable runtime tool discovery
+- Dynamic availability checking via optional `check_fn` callbacks
+
+### 8. Plugin Discovery via Entry Points
 
 Adding a new language requires one plugin file + one query module, with no
 changes to the core engine.
