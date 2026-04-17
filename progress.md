@@ -1,5 +1,49 @@
 # Progress — 自主开发进度日志
 
+## Session 106 — 2026-04-17
+
+### Sprint 3 Implementation - Adaptive Learning & Caching
+
+**Semantic Code Search - Sprint 3 Complete**
+
+Implemented adaptive learning & caching with git SHA-based invalidation:
+
+**Files Created:**
+- `tree_sitter_analyzer/search/cache.py` - Cache and pattern learning (410 lines)
+- `tests/unit/search/test_cache.py` - 27 tests for cache module
+
+**Features Implemented:**
+- CacheEntry dataclass for storing query results with metadata
+- CacheStats dataclass for tracking cache usage statistics
+- GitStateTracker: git SHA and branch tracking for cache invalidation
+- QueryCache: TTL-based cache with git SHA invalidation
+- PatternLearner: tracks LLM queries and suggests fast path patterns
+- JSON persistence for cache across sessions
+- Expired entry cleanup
+- MyPy --strict compliance
+
+**Test Results:**
+- 94 tests passing total (49 + 18 + 27)
+- All CI checks passing (ruff + mypy + pytest)
+
+**Commits:**
+- `70fab53b` - feat: semantic code search - Sprint 3 complete
+
+**Sprint 3 Success Criteria - All Met:**
+✓ Query cache with git SHA invalidation
+✓ Pattern learning (LLM → fast path promotion)
+✓ Simple metrics logging
+✓ 27 tests passing (exceeds 5+ target)
+✓ MyPy --strict + Ruff linting compliance
+
+**Next: Sprint 4 - CLI + MCP Tool**
+- CLI command: `tree-sitter search`
+- MCP tool registration
+- Documentation with 10+ example queries
+- Integration tests
+
+---
+
 ## Session 105 — 2026-04-17
 
 ### Sprint 2 Implementation - LLM Integration

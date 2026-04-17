@@ -422,7 +422,7 @@
 
 ## OpenSpec Changes In Progress
 
-### add-semantic-code-search 🔄 Sprint 2 完成，Sprint 3 待实现
+### add-semantic-code-search 🔄 Sprint 3 完成，Sprint 4 待实现
 
 **Sprint 1: Query Classifier + Fast Path** ✅ 完成
 - ✅ Pattern matching for simple queries (regex-based)
@@ -439,10 +439,18 @@
 - ✅ 18 tests (exceeds 5+ target)
 - ✅ Commit: 7b435511
 
-**Sprint 3: Adaptive Learning & Caching** 📋 待实现
-- [ ] Query cache with git SHA invalidation
-- [ ] Pattern learning (LLM → fast path promotion)
-- [ ] Simple metrics logging
+**Sprint 3: Adaptive Learning & Caching** ✅ 完成
+- ✅ Query cache with git SHA invalidation
+- ✅ Pattern learning (LLM → fast path promotion)
+- ✅ Simple metrics logging
+- ✅ 27 tests (exceeds 5+ target)
+- ✅ Commit: 70fab53b
+
+**Sprint 4: CLI + MCP Tool** 📋 待实现
+- [ ] CLI command: `tree-sitter search`
+- [ ] MCP tool registration
+- [ ] Documentation with 10+ example queries
+- [ ] Integration tests
 - [ ] 5+ tests
 
 ## 完成的 OpenSpec Changes
@@ -700,7 +708,22 @@
 - ✅ 18 tests pass
 - ✅ MyPy --strict + Ruff linting compliance
 - ✅ Commit: 7b435511
-- ✅ Next: Sprint 3 - Adaptive Learning & Caching
+
+**循环 101：Semantic Code Search - Sprint 3（第二十五轮）** ✅ 完成
+- ✅ Query cache with git SHA invalidation
+- ✅ Pattern learning (LLM → fast path promotion)
+- ✅ Simple metrics logging
+- ✅ tree_sitter_analyzer/search/cache.py (410 lines)
+  - CacheEntry dataclass for query results with metadata
+  - CacheStats dataclass for usage statistics
+  - GitStateTracker: git SHA and branch tracking
+  - QueryCache: TTL-based cache with git invalidation
+  - PatternLearner: suggests fast path patterns from LLM queries
+  - JSON persistence for cache across sessions
+- ✅ 27 tests pass
+- ✅ MyPy --strict + Ruff linting compliance
+- ✅ Commit: 70fab53b
+- ✅ Next: Sprint 4 - CLI + MCP Tool
 
 **Context Reset — 2026-04-17 (Session 98+)**
 - ✅ 检测到 context 使用率 > 70% (实际 91%)

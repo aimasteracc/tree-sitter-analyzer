@@ -41,11 +41,11 @@ User Query → Query Classifier → Fast Path (grep/ast-grep) or LLM Path → Re
 - [x] Error handling for LLM failures
 - [x] 18 tests written (exceeds 5+ target)
 
-**Sprint 3: Adaptive Learning (2-3 days)**
-- Query cache with git SHA invalidation
-- Pattern learning (LLM → fast path promotion)
-- Simple metrics logging
-- 5+ tests
+**Sprint 3: Adaptive Learning (2-3 days)** ✅ COMPLETE
+- [x] Query cache with git SHA invalidation
+- [x] Pattern learning (LLM → fast path promotion)
+- [x] Simple metrics logging
+- [x] 27 tests written (exceeds 5+ target)
 
 **Sprint 4: CLI + MCP Tool (2-3 days)**
 - CLI command: `tree-sitter search`
