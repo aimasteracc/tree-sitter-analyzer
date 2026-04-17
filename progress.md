@@ -2119,3 +2119,75 @@
 ### Commit
 - `237bcaae`: feat: register dead_code tool to ToolRegistry (27 tools total)
 
+---
+
+## Session N+2 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 1 | Security Scanner Tool Registration | done | 85/85 | Complete OpenSpec add-security-scanner |
+
+### 新增/修改文件
+- `tree_sitter_analyzer/mcp/tool_registration.py` — Import SecurityScanTool + register to safety toolset
+- `tree_sitter_analyzer/mcp/registry.py` — Fix TOOLSET_DEFINITIONS (security_scan in safety, not analysis)
+- `tests/unit/mcp/test_tool_registration.py` — Update tool count 27 → 28, add missing analysis tools
+- `tests/unit/mcp/test_tool_discovery.py` — Update tool count 27 → 28, add safety tools test
+- `README.md` — Update tool count 25 → 28, mention security_scan
+
+### OpenSpec Change Complete: add-security-scanner
+
+**Background**:
+- Security scanner implementation was already complete (58 tests pass)
+- But tool was never registered to ToolRegistry
+- OpenSpec change was archived without registration step
+
+**Completion**:
+- ✅ Sprint 1: Core Detection Engine (Python focus) - 34 tests
+- ✅ Sprint 2: Multi-Language Support (JavaScript, Java, Go) - 42 tests
+- ✅ Sprint 3: MCP Integration & CI Output - 58 tests
+- ✅ Tool Registration - THIS SESSION
+
+**Security Scanner Features**:
+- Detects: hardcoded secrets, SQL injection, command injection, XSS, unsafe deserialization, weak crypto, path traversal
+- Languages: Python, JavaScript, TypeScript, Java, Go, C#, Ruby
+- Output formats: TOON (default with emoji), JSON (structured), SARIF 2.1.0 (CI/CD with CWE mappings)
+- Severity filtering: critical, high, medium, low, info
+
+### Tool Count Update
+
+**Before**: 27 MCP tools
+**After**: 28 MCP tools
+
+**Toolset breakdown**:
+- Analysis: 15 tools (dependency_query, trace_impact, analyze_scale, analyze_code_structure, code_diff, code_smell_detector, code_clone_detection, health_score, java_patterns, error_recovery, semantic_impact, quick_risk_assessment, understand_codebase, complexity_heatmap, dead_code)
+- Query: 3 tools (query_code, extract_code_section, get_code_outline)
+- Navigation: 4 tools (list_files, find_and_grep, search_content, batch_search)
+- Safety: 2 tools (modification_guard, **security_scan** ← NEW)
+- Diagnostic: 2 tools (check_tools, ci_report)
+- Index: 2 tools (build_project_index, get_project_summary)
+
+### 测试结果
+- 27 registration/discovery tests pass
+- 58 security_scan tests pass (42 analysis + 16 tool)
+- ruff check: all clean (1 fixed)
+- mypy --strict: all clean
+
+### 总提交数: 75 commits (+1)
+- feat/autonomous-dev 分支
+
+### 系统状态
+- 工具数量: 28 MCP tools
+- 测试数量: 10322 + 85 = 10407 tests
+- 覆盖率: 81%+
+- 代码质量: 良好
+- 性能: 稳定
+- 文档: 最新 (CHANGELOG already had security_scan entry)
+
+### 下一步
+- 继续 Phase 7 永续循环
+- Loop 92: 代码审计 (第十九轮)
+- Loop 93: 新功能探索 (第二十轮)
+
+
