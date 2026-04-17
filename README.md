@@ -4,7 +4,7 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-8942%20passed-brightgreen.svg)](#-quality--testing)
+[![Tests](https://img.shields.io/badge/tests-9600%2B%20passed-brightgreen.svg)](#-quality--testing)
 [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer)
 [![PyPI](https://img.shields.io/pypi/v/tree-sitter-analyzer.svg)](https://pypi.org/project/tree-sitter-analyzer/)
 [![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
@@ -205,6 +205,8 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 | **File Search** | fd-based high-performance discovery | [CLI Reference](docs/cli-reference.md) |
 | **Content Search** | ripgrep regex search | [CLI Reference](docs/cli-reference.md) |
 | **Security** | Project boundary protection | [Architecture](docs/architecture.md) |
+| **Error Recovery** | Auto encoding detection (UTF-8/GBK/Shift-JIS), partial parsing, timeout protection | [Architecture](docs/architecture.md) |
+| **Performance** | Plugin registry with load metrics, performance regression tests | [Architecture](docs/architecture.md) |
 
 ---
 
@@ -272,7 +274,7 @@ for lang in langs:
 
 | Metric | Value |
 |--------|-------|
-| **Tests** | 8,942+ automated tests |
+| **Tests** | 9,600+ automated tests |
 | **Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 | **Platforms** | Windows, macOS, Linux |
@@ -350,7 +352,7 @@ Tree-sitter Analyzer is designed with **security-by-default** principles for AI-
 
 ### Security Testing
 
-- **8,942+ automated tests** including security-focused edge cases
+- **9,600+ automated tests** including security-focused edge cases
 - **100% mypy type safety** prevents entire classes of bugs
 - **CI/CD security scans**: Bandit (Python security), safety (dependency vulnerabilities)
 - **Manual security review** of all MCP tool implementations
@@ -411,7 +413,7 @@ MIT License - see [LICENSE](LICENSE) file.
 
 | Metric | Value |
 |--------|-------|
-| **Test Suite** | 8,942+ automated tests across unit, integration, regression, property, benchmark, and compatibility layers |
+| **Test Suite** | 9,600+ automated tests across unit, integration, regression, property, benchmark, and compatibility layers |
 | **Code Coverage** | [![Coverage](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer/branch/main/graph/badge.svg)](https://codecov.io/gh/aimasteracc/tree-sitter-analyzer) |
 | **Type Safety** | 100% mypy compliance |
 

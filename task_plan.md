@@ -94,7 +94,7 @@
 - [x] 测量当前测试覆盖率（79.5%，目标：80%+，接近达标）
 - [x] 为覆盖率 <50% 的模块补充测试（+73 tests: SDK, compat, edge extractors, encoding）
 - [x] 添加集成测试（CLI → MCP → 输出完整链路）
-- [ ] 添加性能回归测试
+- [x] 添加性能回归测试
 - [x] 运行 ruff check 全量，修复所有 warning（All checks passed）
 - [x] 运行 mypy --strict 全量，修复所有 error（0 errors in 192 files）
 - [x] 审查所有 public API 的类型注解完整性（mypy strict 覆盖）
