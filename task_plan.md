@@ -236,6 +236,13 @@
 - ✅ 更新 README.md → 工具数量已正确 (18 tools)
 - ✅ 更新 ARCHITECTURE.md → 添加 code_clone_detection 到工具列表
 
+**循环 26：代码审计（第七轮）** ✅ 完成
+- ✅ 扫描所有 .py 文件，找出 TODO/FIXME/HACK 注释 → 5 个（全部为示例/文档代码）
+- ✅ 扫描所有函数，找出超过 50 行的函数 → 已记录
+- ✅ 扫描所有类，找出超过 400 行的文件 → 81 个文件（grammar_coverage/, core/, analysis/, plugins/, queries/）
+
+**循环 27：新功能探索（第七轮）**
+
 ## OpenSpec Changes In Progress
 
 （当前无进行中的 OpenSpec change）
