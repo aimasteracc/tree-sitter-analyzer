@@ -1,5 +1,35 @@
 # Progress — 自主开发进度日志
 
+## Session 101 — 2026-04-17
+
+### 完成: API Discovery MCP Tool (OpenSpec Change)
+
+**add-api-discovery-tool** ✅
+- Sprint 1: Core Detection Engine (21 tests) - Flask + FastAPI
+- Sprint 2: Multi-Framework Support (5 tests) - Django, Express, Spring
+- Sprint 3: MCP Tool Integration (25 tests) - Full MCP tool
+- 支持框架: Flask, FastAPI, Django, Express.js, Spring Boot
+- **Commit**: `e6cc303a`, `91b9ee3e`
+
+### 测试结果
+- 46 tests pass (21 + 5 + 25)
+- 32 MCP tools (31 → 32, +1 api_discovery)
+- 19 analysis tools (18 → 19, +1 api_discovery)
+- ruff/mypy all pass
+
+### 新增文件
+- `tree_sitter_analyzer/analysis/api_discovery.py` (664 lines)
+- `tree_sitter_analyzer/mcp/tools/api_discovery_tool.py` (201 lines)
+- `tests/unit/analysis/test_api_discovery.py` (480 lines, 21 tests)
+- `tests/unit/mcp/test_api_discovery_tool.py` (354 lines, 25 tests)
+
+### 修复问题
+- 修复 stacked decorators 中第一个 decorator 未被检测 (search range: 5→10)
+- 修复 Flask vs FastAPI 混淆 (添加 FastAPI import 检查)
+- 修复 Spring 类级别 @RequestMapping 被误判 (method= 检查)
+
+---
+
 ## Session 100 — 2026-04-17
 
 ### 完成: Design Pattern Detection (OpenSpec Change)
