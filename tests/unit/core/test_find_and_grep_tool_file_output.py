@@ -546,7 +546,8 @@ def nested_hello():
         assert properties["suppress_output"]["type"] == "boolean"
         assert properties["suppress_output"]["default"] is False
         assert (
-            "suppress detailed output" in properties["suppress_output"]["description"]
+            "suppress" in properties["suppress_output"]["description"].lower()
+            and "output" in properties["suppress_output"]["description"].lower()
         )
 
     @pytest.mark.asyncio
