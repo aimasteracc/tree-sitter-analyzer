@@ -7,6 +7,7 @@ to TOON format, optimized for LLM consumption with 50-70% token reduction.
 """
 
 import logging
+from enum import Enum
 from typing import Any
 
 from .base_formatter import BaseFormatter
@@ -14,6 +15,48 @@ from .toon_encoder import ToonEncodeError, ToonEncoder
 
 # Logger for TOON formatter
 logger = logging.getLogger(__name__)
+
+
+class CompressionLevel(Enum):
+    """Predefined compression profiles for different use cases."""
+
+    MINIMAL = "minimal"  # Quick scan — max compression, strip metadata
+    BALANCED = "balanced"  # Default — good compression with readability
+    DETAILED = "detailed"  # Deep analysis — full detail, less compression
+
+
+def get_compression_profile(
+    level: CompressionLevel,
+) -> dict[str, Any]:
+    """Return formatter kwargs for a compression level.
+
+    Args:
+        level: Desired compression level
+
+    Returns:
+        Dict of kwargs for ToonFormatter constructor
+    """
+    profiles: dict[CompressionLevel, dict[str, Any]] = {
+        CompressionLevel.MINIMAL: {
+            "use_tabs": True,
+            "compact_arrays": True,
+            "include_metadata": False,
+            "max_depth": 5,
+        },
+        CompressionLevel.BALANCED: {
+            "use_tabs": False,
+            "compact_arrays": True,
+            "include_metadata": True,
+            "max_depth": 20,
+        },
+        CompressionLevel.DETAILED: {
+            "use_tabs": False,
+            "compact_arrays": False,
+            "include_metadata": True,
+            "max_depth": 100,
+        },
+    }
+    return profiles[level]
 
 
 class ToonFormatter(BaseFormatter):
@@ -34,6 +77,8 @@ class ToonFormatter(BaseFormatter):
         include_metadata: bool = True,
         fallback_to_json: bool = True,
         normalize_paths: bool = True,
+        max_depth: int = 100,
+        compression_level: CompressionLevel | None = None,
     ):
         """
         Initialize TOON formatter.
@@ -45,16 +90,27 @@ class ToonFormatter(BaseFormatter):
             fallback_to_json: Fall back to JSON on encoding errors
             normalize_paths: Convert Windows backslashes to forward slashes
                            for ~10% token reduction in path-heavy outputs
+            max_depth: Maximum nesting depth for encoding
+            compression_level: Override individual settings with a preset profile
         """
+        if compression_level is not None:
+            profile = get_compression_profile(compression_level)
+            use_tabs = profile.get("use_tabs", use_tabs)
+            compact_arrays = profile.get("compact_arrays", compact_arrays)
+            include_metadata = profile.get("include_metadata", include_metadata)
+            max_depth = profile.get("max_depth", max_depth)
+
         self.use_tabs = use_tabs
         self.compact_arrays = compact_arrays
         self.include_metadata = include_metadata
         self.fallback_to_json = fallback_to_json
         self.normalize_paths = normalize_paths
+        self.compression_level = compression_level
         self.encoder = ToonEncoder(
             use_tabs=use_tabs,
             fallback_to_json=fallback_to_json,
             normalize_paths=normalize_paths,
+            max_depth=max_depth,
         )
 
     def format(self, data: Any) -> str:

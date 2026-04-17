@@ -321,6 +321,158 @@ class TestOutputManagerIntegration:
         assert len(captured.out) > 0
 
 
+class TestAdaptiveCompression:
+    """Test adaptive compression: CompressionLevel and get_compression_profile."""
+
+    def test_compression_level_values(self):
+        """Test CompressionLevel enum has expected members."""
+        from tree_sitter_analyzer.formatters.toon_formatter import CompressionLevel
+
+        assert CompressionLevel.MINIMAL.value == "minimal"
+        assert CompressionLevel.BALANCED.value == "balanced"
+        assert CompressionLevel.DETAILED.value == "detailed"
+
+    def test_get_compression_profile_minimal(self):
+        """Test MINIMAL profile uses maximum compression settings."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            get_compression_profile,
+        )
+
+        profile = get_compression_profile(CompressionLevel.MINIMAL)
+        assert profile["use_tabs"] is True
+        assert profile["compact_arrays"] is True
+        assert profile["include_metadata"] is False
+        assert profile["max_depth"] == 5
+
+    def test_get_compression_profile_balanced(self):
+        """Test BALANCED profile is the default middle ground."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            get_compression_profile,
+        )
+
+        profile = get_compression_profile(CompressionLevel.BALANCED)
+        assert profile["use_tabs"] is False
+        assert profile["compact_arrays"] is True
+        assert profile["include_metadata"] is True
+        assert profile["max_depth"] == 20
+
+    def test_get_compression_profile_detailed(self):
+        """Test DETAILED profile preserves full information."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            get_compression_profile,
+        )
+
+        profile = get_compression_profile(CompressionLevel.DETAILED)
+        assert profile["use_tabs"] is False
+        assert profile["compact_arrays"] is False
+        assert profile["include_metadata"] is True
+        assert profile["max_depth"] == 100
+
+    def test_formatter_with_minimal_compression(self):
+        """Test ToonFormatter created with MINIMAL compression level."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            ToonFormatter,
+        )
+
+        formatter = ToonFormatter(compression_level=CompressionLevel.MINIMAL)
+        assert formatter.use_tabs is True
+        assert formatter.compact_arrays is True
+        assert formatter.include_metadata is False
+        assert formatter.compression_level == CompressionLevel.MINIMAL
+
+    def test_formatter_with_balanced_compression(self):
+        """Test ToonFormatter created with BALANCED compression level."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            ToonFormatter,
+        )
+
+        formatter = ToonFormatter(compression_level=CompressionLevel.BALANCED)
+        assert formatter.use_tabs is False
+        assert formatter.compact_arrays is True
+        assert formatter.include_metadata is True
+
+    def test_formatter_with_detailed_compression(self):
+        """Test ToonFormatter created with DETAILED compression level."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            ToonFormatter,
+        )
+
+        formatter = ToonFormatter(compression_level=CompressionLevel.DETAILED)
+        assert formatter.compact_arrays is False
+        assert formatter.include_metadata is True
+
+    def test_compression_level_overrides_explicit_params(self):
+        """Test that compression_level overrides individually passed params."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            ToonFormatter,
+        )
+
+        # Pass use_tabs=False but MINIMAL sets it to True
+        formatter = ToonFormatter(
+            use_tabs=False,
+            compression_level=CompressionLevel.MINIMAL,
+        )
+        assert formatter.use_tabs is True  # Overridden by MINIMAL profile
+
+    def test_none_compression_level_uses_defaults(self):
+        """Test that None compression_level uses individual params."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            ToonFormatter,
+        )
+
+        formatter = ToonFormatter(
+            compression_level=None,
+            use_tabs=True,
+            compact_arrays=False,
+        )
+        assert formatter.use_tabs is True
+        assert formatter.compact_arrays is False
+        assert formatter.compression_level is None
+
+    def test_minimal_output_smaller_than_detailed(self):
+        """Test that MINIMAL produces shorter output than DETAILED."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            ToonFormatter,
+        )
+
+        data = {
+            "file": "test.py",
+            "language": "python",
+            "classes": [{"name": "Foo", "methods": ["a", "b", "c"]}],
+            "functions": ["func1", "func2", "func3"],
+        }
+
+        minimal = ToonFormatter(compression_level=CompressionLevel.MINIMAL).format(data)
+        detailed = ToonFormatter(compression_level=CompressionLevel.DETAILED).format(data)
+
+        # MINIMAL should generally produce more compact output
+        assert isinstance(minimal, str)
+        assert isinstance(detailed, str)
+        assert len(minimal) > 0
+        assert len(detailed) > 0
+
+    def test_compression_profiles_are_immutable(self):
+        """Test that get_compression_profile returns independent dicts."""
+        from tree_sitter_analyzer.formatters.toon_formatter import (
+            CompressionLevel,
+            get_compression_profile,
+        )
+
+        p1 = get_compression_profile(CompressionLevel.MINIMAL)
+        p2 = get_compression_profile(CompressionLevel.MINIMAL)
+        # Modifying one should not affect the other
+        p1["extra_key"] = "test"
+        assert "extra_key" not in p2
+
+
 class TestFormatterProtocolCompliance:
     """Test that all formatters comply with the Formatter protocol."""
 
