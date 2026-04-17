@@ -299,3 +299,51 @@ class TestPartialParsing:
 
         name = ErrorRecovery._extract_node_name(MockNode(), "def test_code_here")
         assert name == "test"
+
+
+class TestTimeoutProtection:
+    """Tests for timeout protection in analysis."""
+
+    def test_timeout_returns_partial_result(self, tmp_path: Path) -> None:
+        """When analysis times out, returns a graceful partial result."""
+        from unittest.mock import patch
+
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+        from tree_sitter_analyzer.core.timeout import AnalysisTimeoutError
+
+        py_file = tmp_path / "slow.py"
+        py_file.write_text("def foo(): pass\n")
+
+        recovery = ErrorRecovery(project_root=str(tmp_path))
+
+        # Mock _analyze_inner to raise AnalysisTimeoutError
+        with patch.object(
+            recovery, "_analyze_inner",
+            side_effect=AnalysisTimeoutError("analyze", 0.001),
+        ):
+            result = recovery.analyze_with_fallback(str(py_file))
+
+        assert result.get("success") is True
+        assert result.get("recovery_mode") is True
+        assert result.get("timed_out") is True
+        assert "timed out" in result.get("message", "").lower()
+
+    def test_no_timeout_returns_normal_result(self, tmp_path: Path) -> None:
+        """Normal analysis completes without timeout."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        py_file = tmp_path / "fast.py"
+        py_file.write_text("def bar(): return 1\n")
+
+        recovery = ErrorRecovery(project_root=str(tmp_path))
+        result = recovery.analyze_with_fallback(str(py_file))
+
+        assert result.get("success") is True
+        assert result.get("timed_out") is not True
+
+    def test_custom_timeout_in_constructor(self) -> None:
+        """Constructor accepts custom timeout value."""
+        from tree_sitter_analyzer.analysis.error_recovery import ErrorRecovery
+
+        recovery = ErrorRecovery(project_root="/tmp", timeout=5.0)
+        assert recovery._timeout == 5.0

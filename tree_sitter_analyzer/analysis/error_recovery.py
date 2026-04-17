@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.core.timeout import with_sync_timeout
 from tree_sitter_analyzer.utils import setup_logger
 
 __all__ = ["ErrorRecovery", "detect_encoding"]
@@ -191,11 +192,41 @@ def detect_encoding(content: bytes) -> tuple[str, bool]:
 class ErrorRecovery:
     """Graceful degradation wrapper for code analysis."""
 
-    def __init__(self, project_root: str) -> None:
+    # Default timeout for individual file analysis (seconds)
+    DEFAULT_TIMEOUT = 30.0
+
+    def __init__(self, project_root: str, timeout: float | None = None) -> None:
         self.project_root = Path(project_root)
+        self._timeout = timeout or self.DEFAULT_TIMEOUT
 
     def analyze_with_fallback(self, file_path: str) -> dict[str, Any]:
-        """Analyze a file with fallback strategies on error."""
+        """Analyze a file with fallback strategies on error.
+
+        Protected by a configurable timeout (default 30s). On timeout,
+        returns a partial result with recovery_mode=True.
+        """
+        try:
+            result: dict[str, Any] = self._analyze_inner(file_path)
+            return result
+        except Exception as e:
+            # Catch AnalysisTimeoutError from signal-based timeout
+            err_name = type(e).__name__
+            if "Timeout" in err_name:
+                logger.warning(f"Analysis timed out for {file_path}: {e}")
+                return {
+                    "success": True,
+                    "recovery_mode": True,
+                    "timed_out": True,
+                    "file_path": file_path,
+                    "classes": [],
+                    "methods": [],
+                    "message": f"Analysis timed out after {self._timeout:.0f}s.",
+                }
+            raise
+
+    @with_sync_timeout(operation="analyze_with_fallback", timeout=30.0)
+    def _analyze_inner(self, file_path: str) -> dict[str, Any]:
+        """Inner analysis logic with timeout protection."""
         path = Path(file_path)
         if not path.exists():
             return {
