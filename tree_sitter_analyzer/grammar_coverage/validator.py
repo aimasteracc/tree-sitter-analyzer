@@ -112,6 +112,7 @@ def _get_language_extension(language: str) -> str:
         "css": "css",
         "html": "html",
         "markdown": "md",
+        "csharp": "cs",
     }
 
     if language not in extensions:

@@ -763,3 +763,139 @@ class TestCSharpQueryAccuracy:
         assert calculate_total is not None
         # LINQ query should have reasonable complexity
         assert calculate_total.complexity_score >= 1
+
+
+# ── LINQ and async/await extraction tests ──
+
+LINQ_QUERY_CODE = """
+using System;
+using System.Linq;
+
+namespace MyApp
+{
+    public class QueryService
+    {
+        public void SimpleQuery()
+        {
+            var numbers = new[] { 1, 2, 3, 4, 5 };
+            var even = from n in numbers where n % 2 == 0 select n;
+        }
+
+        public void ComplexQuery()
+        {
+            var result = from p in GetPeople()
+                         where p.Age > 18
+                         orderby p.Name
+                         select new { p.Name, p.Age };
+        }
+    }
+}
+"""
+
+ASYNC_AWAIT_CODE = """
+using System;
+using System.Threading.Tasks;
+
+namespace MyApp
+{
+    public class AsyncService
+    {
+        public async Task<string> FetchDataAsync()
+        {
+            var data = await httpClient.GetStringAsync("/api/data");
+            var processed = await ProcessAsync(data);
+            return processed;
+        }
+
+        public async Task<int> CountAsync()
+        {
+            await Task.Delay(100);
+            return 42;
+        }
+    }
+}
+"""
+
+
+class TestLinqQueryExtraction:
+    """Test LINQ query expression extraction."""
+
+    def test_simple_linq_query_extracted(self) -> None:
+        """Simple from-where-select query is extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(LINQ_QUERY_CODE, plugin)
+        queries = plugin.extractor.extract_linq_queries(tree, LINQ_QUERY_CODE)
+
+        assert len(queries) >= 1
+        first = queries[0]
+        assert first["type"] == "linq_query"
+        assert "from:" in " ".join(first["clauses"])
+        assert "where:" in " ".join(first["clauses"])
+        assert "select:" in " ".join(first["clauses"])
+
+    def test_complex_linq_with_orderby(self) -> None:
+        """LINQ query with orderby clause is extracted."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(LINQ_QUERY_CODE, plugin)
+        queries = plugin.extractor.extract_linq_queries(tree, LINQ_QUERY_CODE)
+
+        # Should find both queries
+        assert len(queries) >= 1
+        # The complex query should have orderby
+        has_orderby = any(
+            "orderby:" in " ".join(q["clauses"])
+            for q in queries
+        )
+        assert has_orderby
+
+    def test_linq_query_line_numbers(self) -> None:
+        """LINQ queries have valid line numbers."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(LINQ_QUERY_CODE, plugin)
+        queries = plugin.extractor.extract_linq_queries(tree, LINQ_QUERY_CODE)
+
+        for q in queries:
+            assert q["line"] >= 1
+            assert q["end_line"] >= q["line"]
+
+
+class TestAsyncAwaitExtraction:
+    """Test async/await pattern detection."""
+
+    def test_await_expressions_extracted(self) -> None:
+        """await expressions are detected."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(ASYNC_AWAIT_CODE, plugin)
+        patterns = plugin.extractor.extract_async_patterns(tree, ASYNC_AWAIT_CODE)
+
+        # Should find multiple await expressions
+        assert len(patterns) >= 2
+        for p in patterns:
+            assert p["type"] == "await_expression"
+            assert p["line"] >= 1
+            assert len(p["awaited"]) > 0
+
+    def test_await_contains_method_name(self) -> None:
+        """await expression contains the awaited method name."""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(ASYNC_AWAIT_CODE, plugin)
+        patterns = plugin.extractor.extract_async_patterns(tree, ASYNC_AWAIT_CODE)
+
+        awaited_texts = [p["awaited"] for p in patterns]
+        # Should contain the actual method calls
+        assert any("GetStringAsync" in t or "ProcessAsync" in t or "Delay" in t for t in awaited_texts)
+
+    def test_no_await_in_sync_code(self) -> None:
+        """No await patterns found in synchronous code."""
+        sync_code = """
+using System;
+namespace MyApp {
+    public class Service {
+        public int Add(int a, int b) { return a + b; }
+    }
+}
+"""
+        plugin = CSharpPlugin()
+        tree = get_tree_for_code(sync_code, plugin)
+        patterns = plugin.extractor.extract_async_patterns(tree, sync_code)
+        assert len(patterns) == 0

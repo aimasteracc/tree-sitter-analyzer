@@ -857,6 +857,101 @@ class CSharpElementExtractor(ElementExtractor):
             log_error(f"Error extracting using directive: {e}")
             return None
 
+    def extract_linq_queries(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[dict[str, Any]]:
+        """Extract LINQ query expressions from the AST.
+
+        Finds `query_expression` nodes and extracts their clauses
+        (from, where, select, orderby, group, join).
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of dicts with query info (name, line, clauses)
+        """
+        self.source_code = source_code
+        self._reset_caches()
+        queries: list[dict[str, Any]] = []
+        seen_positions: set[tuple[int, int]] = set()
+
+        for node in self._traverse_iterative(tree.root_node):
+            if node.type == "query_expression":
+                pos = (node.start_byte, node.end_byte)
+                if pos in seen_positions:
+                    continue
+                seen_positions.add(pos)
+
+                clauses: list[str] = []
+                source_var = ""
+                for child in self._traverse_iterative(node):
+                    if child.type == "from_clause":
+                        source_var = self._get_node_text_optimized(child).strip()
+                        clauses.append(f"from: {source_var}")
+                    elif child.type == "where_clause":
+                        clauses.append(f"where: {self._get_node_text_optimized(child).strip()}")
+                    elif child.type == "select_clause":
+                        clauses.append(f"select: {self._get_node_text_optimized(child).strip()}")
+                    elif child.type in ("orderby_clause", "order_by_clause"):
+                        clauses.append(f"orderby: {self._get_node_text_optimized(child).strip()}")
+                    elif child.type == "group_clause":
+                        clauses.append(f"group: {self._get_node_text_optimized(child).strip()}")
+                    elif child.type == "join_clause":
+                        clauses.append(f"join: {self._get_node_text_optimized(child).strip()}")
+
+                queries.append({
+                    "type": "linq_query",
+                    "line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                    "clauses": clauses,
+                    "source_variable": source_var,
+                })
+
+        return queries
+
+    def extract_async_patterns(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> list[dict[str, Any]]:
+        """Extract async/await patterns from the AST.
+
+        Identifies methods with async modifier and awaits within them.
+
+        Args:
+            tree: Parsed tree-sitter tree
+            source_code: Source code string
+
+        Returns:
+            List of dicts with async pattern info
+        """
+        self.source_code = source_code
+        self._reset_caches()
+        patterns: list[dict[str, Any]] = []
+        seen_positions: set[tuple[int, int]] = set()
+
+        for node in self._traverse_iterative(tree.root_node):
+            if node.type == "await_expression":
+                pos = (node.start_byte, node.end_byte)
+                if pos in seen_positions:
+                    continue
+                seen_positions.add(pos)
+
+                # Get the awaited expression
+                awaited_text = ""
+                for child in node.children:
+                    if child.type not in ("await",):
+                        awaited_text = self._get_node_text_optimized(child)
+                        break
+
+                patterns.append({
+                    "type": "await_expression",
+                    "line": node.start_point[0] + 1,
+                    "awaited": awaited_text,
+                })
+
+        return patterns
+
 
 class CSharpPlugin(LanguagePlugin):
     """
@@ -1041,6 +1136,8 @@ class CSharpPlugin(LanguagePlugin):
             functions = self.extractor.extract_functions(tree, source_code)
             variables = self.extractor.extract_variables(tree, source_code)
             imports = self.extractor.extract_imports(tree, source_code)
+            linq_queries = self.extractor.extract_linq_queries(tree, source_code)
+            async_patterns = self.extractor.extract_async_patterns(tree, source_code)
 
             # Combine all elements into a single list
             elements: list[Any] = []
@@ -1048,6 +1145,8 @@ class CSharpPlugin(LanguagePlugin):
             elements.extend(functions)
             elements.extend(variables)
             elements.extend(imports)
+            elements.extend(linq_queries)
+            elements.extend(async_patterns)
 
             # Count AST nodes
             node_count = sum(
