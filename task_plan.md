@@ -153,7 +153,16 @@
 - ✅ 扫描所有函数，找出超过 50 行的函数 → 已记录
 - ✅ 扫描所有类，找出超过 400 行的文件 → 79 个（grammar_coverage, core, analysis, queries）
 
-**循环 10：新功能探索（第三轮）**
+**循环 10：新功能探索（第三轮）** ✅ 完成（Sprint 1）
+- ✅ Code Diff Analysis 原型实现
+- ✅ OpenSpec change: add-code-diff-analysis
+
+**循环 11：性能优化（第三轮）** 🔄 进行中
+- 用真实项目做 benchmark
+- 分析内存使用 ✅ 完成（Sprint 1）
+- ✅ 参考 wiki 中的相关项目，发现可借鉴的功能 → Code Diff Analysis
+- ✅ 写原型验证可行性 → code_diff_tool.py (24 tests pass)
+- ✅ 通过测试后创建正式实现任务 → add-code-diff-analysis OpenSpec change
 - 参考 wiki 中的相关项目，发现可借鉴的功能
 - 写原型验证可行性
 - 通过测试后创建正式实现任务
