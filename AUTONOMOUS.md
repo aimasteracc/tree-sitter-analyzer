@@ -99,19 +99,38 @@ cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
 - 参考项目源码（qmd/CodeFlow/Fireworks TG/金谷园/GStack/ECC/Hermes 等）
 - 乔布斯产品决策框架（聚焦/减法/一句话定义）
 
-### Context Reset 协议
+### Context Reset 协议（自动化）
 
-当发现以下信号时执行 Context Reset：
+**检测信号**（自动监控）：
 - context 使用率 > 70%
-- 感觉在重复同样的信息
 - 对话变得冗长但产出减少
+- 最近 N 个提交无实质性代码变更
 
-Reset 步骤：
-1. 更新 `task_plan.md`（标记完成的 Phase）
-2. 追加 `progress.md`（记录当前 session 完成的工作）
-3. 追加 `progress.md`（记录 5 个 Reboot 问题的答案）
-4. commit + push
-5. 告诉用户：执行 /clear 后重新开始
+**自动化处理**（`scripts/context-auto-reset.py`）：
+1. 自动检测 context 使用率
+2. 达到阈值时自动触发 reset 流程
+3. 保存状态到 `.autonomous-state.json`（session lineage）
+4. 更新 `task_plan.md`（标记完成的 Phase）
+5. 追加 `progress.md`（记录当前 session 完成的工作）
+6. 追加 `progress.md`（记录 5 个 Reboot 问题的答案）
+7. commit + push
+8. 创建 `.recovery-prompt.txt` 供下次 session 恢复
+9. 通知需要执行 `/clear`（由 autonomous-loop.sh 处理）
+
+**Session Lineage 系统**（参考 Hermes Agent）：
+- 每个 autonomous 开发周期有唯一的 `lineage_id`
+- 每次 context reset 创建子 session，保留父 lineage
+- 状态文件记录：总提交数、工具数、当前 phase、上次任务
+- 下次 session 从状态文件恢复，**不重复已完成的工作**
+
+**24x7 运行支持**：
+```bash
+# 方式 1：使用 autonomous-loop.sh（自动检测并处理）
+./scripts/autonomous-loop.sh
+
+# 方式 2：使用 context-auto-reset.py 持续监控
+python3 scripts/context-auto-reset.py monitor
+```
 
 ## 开发路线
 

@@ -93,9 +93,49 @@ while [ $SESSION -lt $MAX_SESSIONS ]; do
     # 拉取最新（如果用户在其他地方有操作）
     git pull --rebase origin feat/autonomous-dev 2>/dev/null || true
 
-    # 启动 session
-    # --print 非交互模式 + 完整权限通过 settings.local.json
-    claude --print "读取 AUTONOMOUS.md，检查是否有未完成的 OpenSpec change。
+    # 检查是否需要 context reset
+    if [ -f ".recovery-prompt.txt" ]; then
+        echo ""
+        echo "🔄 检测到 Context Reset 标记，恢复状态..."
+        RECOVERY_PROMPT=$(cat .recovery-prompt.txt)
+        rm -f .recovery-prompt.txt
+        rm -f .context-reset-marker
+
+        # 使用恢复提示启动 session
+        claude --print "$RECOVERY_PROMPT
+
+继续自主开发。" 2>&1 | tee -a "autonomous-loop-$(date '+%Y%m%d').log"
+    else
+        # 检查 context 使用率（简单估算）
+        RECENT_COMMITS=$(git log -10 --oneline --name-only --pretty=format: | wc -l | tr -d ' ')
+        ESTIMATED_USAGE=$((RECENT_COMMITS * 3))
+
+        if [ "$ESTIMATED_USAGE" -gt 70 ]; then
+            echo ""
+            echo "🔄 Context 使用率约 ${ESTIMATED_USAGE}%，触发自动 reset..."
+
+            # 运行 context auto-reset 脚本
+            python3 scripts/context-auto-reset.py
+
+            # 如果创建了 recovery prompt，使用它；否则正常启动
+            if [ -f ".recovery-prompt.txt" ]; then
+                echo "检测到 recovery prompt，使用它恢复..."
+                RECOVERY_PROMPT=$(cat .recovery-prompt.txt)
+                rm -f .recovery-prompt.txt
+                rm -f .context-reset-marker
+                claude --print "$RECOVERY_PROMPT
+
+继续自主开发。" 2>&1 | tee -a "autonomous-loop-$(date '+%Y%m%d').log"
+            else
+                # 正常启动
+                echo "Context reset 完成，启动新 session..."
+                sleep 2
+            fi
+        fi
+
+        # 正常启动 session
+        # --print 非交互模式 + 完整权限通过 settings.local.json
+        claude --print "读取 AUTONOMOUS.md，检查是否有未完成的 OpenSpec change。
 
 如果有未完成的 OpenSpec change：继续实现，每完成一个 Sprint 就 commit + push。
 
@@ -106,7 +146,8 @@ while [ $SESSION -lt $MAX_SESSIONS ]; do
 4. 创建新的 OpenSpec change
 5. 实现功能
 
-不需要人类确认，直接开始。当 context 快满时更新三文件并停止。" 2>&1 | tee -a "autonomous-loop-$(date '+%Y%m%d').log"
+不需要人类确认，直接开始。当 context 使用率 > 70% 时自动触发 reset 并继续。" 2>&1 | tee -a "autonomous-loop-$(date '+%Y%m%d').log"
+    fi
 
     # session 间短暂等待
     echo ""
