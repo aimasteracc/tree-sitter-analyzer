@@ -1708,3 +1708,66 @@
 ### 下一步
 - Phase 7 Loop 51+: 持续循环...
 
+---
+
+## Session 41 — 2026-04-17
+
+### Sprint 记录
+
+| Sprint | Focus | 状态 | 通过测试 | 备注 |
+|--------|-------|------|---------|------|
+| 1 | Phase 7 Loop 51: 代码审计（第十二轮）| done | - | TODO/FIXME: 3个 (仅示例), 文件>400行: 81 |
+| 2 | Phase 7 Loop 52: 新功能探索（第十二轮）| done | 17/17 | MCP 工具集成: error_recovery |
+| 3 | Phase 7 Loop 53: 性能优化（第十一轮）| done | 36/36 | 性能测试 9.88s |
+| 4 | Phase 7 Loop 54: 测试加固（第十一轮）| done | 10160 | 新增 17 tests |
+| 5 | Phase 7 Loop 55: 文档同步（第十一轮）| done | - | 文档更新完成 |
+
+### 新增/修改文件
+- `tree_sitter_analyzer/mcp/tools/error_recovery_tool.py` — 编码检测、二进制文件检测、正则回退 MCP 工具
+- `tests/unit/mcp/test_error_recovery_tool.py` — 17 个单元测试
+- `tree_sitter_analyzer/mcp/tool_registration.py` — 注册 error_recovery 工具
+- `tests/unit/mcp/test_tool_registration.py` — 更新工具数量测试 (21 → 22)
+- `tests/unit/mcp/test_tool_discovery.py` — 更新工具数量测试
+- `CHANGELOG.md` — 添加 error_recovery 工具条目，更新工具数量 (21 → 22)
+- `README.md` — 更新工具数量 (21 → 22)
+- `ARCHITECTURE.md` — 更新 MCP Tool Layer (21 → 22)
+
+### Phase 7 第十一轮循环完成
+
+**Phase 7 Loops 51-55 全部完成**:
+- ✅ 循环 51: 代码审计（第十二轮）- 3 TODO (全部示例代码), 81 文件 >400 行
+- ✅ 循环 52: 新功能探索（第十二轮）- Error Recovery MCP Tool
+- ✅ 循环 53: 性能优化（第十一轮）- 36 tests pass
+- ✅ 循环 54: 测试加固（第十一轮）- 10160 tests (+17)
+- ✅ 循环 55: 文档同步（第十一轮）- 文档更新完成
+
+### Error Recovery Tool 功能
+
+**编码检测**:
+- BOM 检测 (UTF-8, UTF-16 LE/BE, UTF-32 LE/BE)
+- UTF-8 严格解码
+- CJK 启发式回退 (GBK, Shift-JIS, EUC-JP, EUC-KR, Big5)
+- Kana 字符加分（日语编码识别）
+
+**二进制文件检测**:
+- 30% 阈值检测
+- 安全跳过二进制文件
+
+**正则回退解析**:
+- Python: class, function, async_function
+- Go: function, type, interface
+- C#: class, interface, struct, record, method
+- Kotlin: class, function, object, interface
+- Rust: function, struct, trait, enum
+
+### 测试结果
+- 17 new tests pass
+- ruff check: all clean
+- mypy --strict: all clean
+
+### 总提交数: 70 commits (+2)
+- feat/autonomous-dev 分支
+
+### 下一步
+- Phase 7 Loop 56: 代码审计（第十三轮）
+
