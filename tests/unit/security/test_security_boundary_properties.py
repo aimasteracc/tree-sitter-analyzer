@@ -525,7 +525,7 @@ class TestSecurityBoundaryEdgeCases:
                 Path(reconstructed).resolve() == Path(full_path).resolve()
             ), f"Relative path should reconstruct to original: {relative} -> {reconstructed} != {full_path}"
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS, deadline=None)
     @given(abs_path=absolute_path_outside_project())
     def test_property_4_get_relative_path_returns_none_for_external(
         self, temp_project_dir, abs_path

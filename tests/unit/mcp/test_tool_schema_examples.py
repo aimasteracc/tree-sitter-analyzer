@@ -44,7 +44,7 @@ class TestToolSchemaExamples:
         definition = TraceImpactTool().get_tool_definition()
         schema = definition["inputSchema"]
         assert "examples" in schema
-        assert any("symbol_name" in ex for ex in schema["examples"])
+        assert any("symbol" in ex for ex in schema["examples"])
 
     def test_examples_have_valid_paths(self) -> None:
         """All examples must have absolute-looking paths."""
