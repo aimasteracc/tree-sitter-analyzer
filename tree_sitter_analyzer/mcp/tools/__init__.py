@@ -55,6 +55,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "duplicate_condition_tool",
         "class": "DuplicateConditionTool",
     },
+    "lazy_class": {
+        "description": (
+            "Analyze classes for insufficient complexity (lazy classes). "
+            "Detects classes with too few methods."
+        ),
+        "module": "lazy_class_tool",
+        "class": "LazyClassTool",
+    },
 }
 
 __all__ = [
