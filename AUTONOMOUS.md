@@ -439,6 +439,31 @@ uv run pytest tests/ -x -q
 - **Commit**: `feat: add Cognitive Complexity Scorer (77 tests, 4 languages)`
 - **Status**: Sprint 1-3 complete, feature delivered
 
+### Session 118 — 2026-04-18
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 1 OpenSpec change (add-nesting-depth-analyzer)
+- **MCP Tools**: 48 → 49 (+1 nesting_depth)
+- **Tests**: 62 tests pass (47 analysis + 15 MCP tool)
+- **Commit**: `feat: add Nesting Depth Analyzer (62 tests, 4 languages)`
+- **Status**: Sprint 1-3 complete, feature delivered
+
+### Session 119 — 2026-04-18
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 1 OpenSpec change (add-i18n-string-detector)
+- **MCP Tools**: 49 → 50 (+1 i18n_strings)
+- **Tests**: 58 tests pass (47 analysis + 11 MCP tool)
+- **Commit**: `feat: add i18n String Detector (58 tests, 4 languages)`
+- **Status**: Sprint 1-3 complete, feature delivered
+
+### Session 120 — 2026-04-18
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: Function Size Analyzer (39 tests, committed from previous session)
+- **Complete**: 1 OpenSpec change (add-test-smell-detector)
+- **MCP Tools**: 50 → 52 (+2 function_size, test_smells)
+- **Tests**: 77 tests pass (39 function_size + 38 test_smells)
+- **Commit**: `feat: add Function Size Analyzer`, `feat: add Test Smell Detector`
+- **Status**: Sprint 1-3 complete, feature delivered
+
 ### Next Session
 - **Action**: Execute sustainable loop mechanism (新功能探索)
 - **Input**: Search wiki for new feature inspiration

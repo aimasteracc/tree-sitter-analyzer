@@ -783,6 +783,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🧪",
     )
 
+    # logging_patterns
+    from .tools.logging_patterns_tool import LoggingPatternsTool
+    lp_tool = LoggingPatternsTool(project_root)
+    registry.register(
+        name="logging_patterns",
+        toolset="analysis",
+        category="quality",
+        schema=lp_tool.get_tool_definition(),
+        handler=_make_handler(lp_tool),
+        description="Logging anti-pattern detection: silent catch, print logging, sensitive data in logs",
+        emoji="📋",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

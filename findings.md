@@ -1423,3 +1423,79 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 - 字符串可见性分类: USER_VISIBLE / LIKELY_VISIBLE / INTERNAL
 - 4语言输出函数映射: print/raise/logging, console.log/alert, System.out/Logger, fmt/log
 - 数据流: parse → extract → filter(parent call_expression) → classify → aggregate
+
+## 产品讨论记录 - Test Smell Detector - 2026-04-18
+
+**调用**: /office-hours (autonomous mode)
+
+**输入**: Test Smell Detector — 检测测试代码中的反模式（空assert、broad exception catch、sleep in tests）
+
+**产品分析 (YC Office Hours 框架)**:
+
+**需求现实**: 高。test_coverage 已有但只测"量"不测"质"。
+**当前替代方案**: 手动review或重型mutation testing。无轻量级tree-sitter方案。
+**一句话定义**: "告诉开发者他们的测试在撒谎"
+
+**结论**: DO
+
+**理由**:
+1. test_coverage 的自然后续 — 检查覆盖率的人下一步就问"但这些测试好吗"
+2. 真正的空白 — flake8/eslint 不检测语义级测试反模式
+3. 可操作 — 每个smell都有明确修复方案
+
+**MVP Scope**:
+- 空test body检测（无assert）
+- 宽泛exception catch（except Exception, catch(e)）
+- time.sleep()/setTimeout in tests
+- assert数量（<1 per test = 可能无用）
+
+**不做**:
+- 共享可变状态检测（需dataflow）
+- 测试依赖排序（需运行时信息）
+- fixture复杂度（过于主观）
+
+## 产品讨论记录 - Logging Pattern Analyzer - 2026-04-18
+
+**调用**: 乔布斯产品理念分析 (autonomous mode)
+
+**输入**: 3个候选功能 (Logging Pattern Analyzer, Concurrency Pattern Analyzer, API Deprecation Detector)
+
+**分析**:
+
+1. **聚焦即说不**: 哪个功能解决核心问题？
+   - Logging Pattern Analyzer → DO: 真正的缺口。error_handling.py 分析 try/catch 结构，但不分析日志质量。生产环境调试 #1 依赖日志。
+   - Concurrency Pattern Analyzer → DON'T: 与 async_patterns 重叠，且静态分析无法准确检测竞态条件。
+   - API Deprecation Detector → DON'T: 过于语言/框架特定，通用价值低。
+
+2. **减法思维**: 能否用更简单的方式实现？
+   - 最小版本: 检测空 catch 块（无日志）、log level 不匹配、敏感数据暴露。
+   - tree-sitter 精确识别日志函数调用和参数。
+
+3. **一句话定义**: "检测日志反模式，让生产环境调试不再痛苦。"
+
+**结论**: DO - 实现 Logging Pattern Analyzer
+
+**理由**:
+- 填补真正的功能缺口（error_handling 分析结构，不分析日志质量）
+- tree-sitter 完美适用（日志调用是 AST 函数调用节点）
+- 4种语言日志框架: Python logging.*, JS console.*, Java log4j/SLF4J, Go log.*
+- Local-first，无外部依赖
+
+## 技术架构讨论记录 - Logging Pattern Analyzer - 2026-04-18
+
+**调用**: 架构分析 (GStack eng review framework)
+
+**输入**: Logging Pattern Analyzer - 独立模块 vs 扩展 error_handling
+
+**方案 A: 独立 analysis 模块 + MCP 工具** (推荐)
+- 与 env_tracker/import_sanitizer 等 33 个已有模块模式一致
+- 3 Sprint 可完成
+
+**方案 B: 扩展 error_handling.py**
+- 不推荐 - error_handling 关注错误处理结构（try/catch），logging 是不同的关注点
+
+**推荐方案**: 方案 A
+**理由**: 职责清晰，error_handling = 错误结构，logging = 日志质量
+**风险**: Go 的 log 包较简单，检测规则可能较少
+**依赖**: tree-sitter 语言模块 (已有)
+

@@ -308,6 +308,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "doc_coverage",
             "function_size",
             "test_smells",
+            "logging_patterns",
         ],
     },
     "query": {

@@ -1001,4 +1001,81 @@
 
 **工具数量**: 39 → 40 (+1 call_graph)
 
+### Session 118 — 2026-04-18: Nesting Depth Analyzer
+
+**永续循环机制执行** ✅ 完成
+- ✅ qmd wiki 检索: code analysis pattern detection, static analysis
+- ✅ 产品分析 (office-hours): Nesting Depth → DO, Side Effect → DON'T, Data Flow → DON'T
+- ✅ 技术架构 (plan-eng-review): 方案 A（独立模块）推荐
+- ✅ 创建 OpenSpec change: add-nesting-depth-analyzer
+
+**Sprint 1-3 状态**: ✅ 全部完成
+- ✅ analysis/nesting_depth.py (~350 lines)
+- ✅ mcp/tools/nesting_depth_tool.py (~200 lines)
+- ✅ 4 种语言支持: Python, JS/TS, Java, Go
+- ✅ 功能: 函数级嵌套深度测量, 深度热点跟踪, good/warning/critical评级
+- ✅ MCP 工具注册 (nesting_depth, analysis toolset)
+- ✅ 62 tests passing (47 analysis + 15 MCP tool)
+- ✅ CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+**工具数量**: 48 → 49 (+1 nesting_depth)
+
+### Session 119 — 2026-04-18: i18n String Detector
+
+**永续循环机制执行** ✅ 完成
+- ✅ qmd wiki 检索: code analysis, MCP tools, tree-sitter patterns
+- ✅ 产品分析 (/office-hours): i18n String Detector → DO, Function Signature Change → DON'T, Code Metric Trend → DON'T
+- ✅ 技术架构 (/plan-eng-review): 方案 A（独立模块）推荐
+- ✅ 创建 OpenSpec change: add-i18n-string-detector
+
+**Sprint 1-3 状态**: ✅ 全部完成
+- ✅ analysis/i18n_strings.py (~530 lines)
+- ✅ mcp/tools/i18n_strings_tool.py (~230 lines)
+- ✅ 4 种语言支持: Python, JS/TS, Java, Go
+- ✅ 功能: 用户可见字符串检测, 可见性分类, 输出函数匹配
+- ✅ MCP 工具注册 (i18n_strings, analysis toolset)
+- ✅ 58 tests passing (47 analysis + 11 MCP tool)
+- ✅ CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+**工具数量**: 49 → 50 (+1 i18n_strings)
+
+### Session 120 — 2026-04-18: Function Size + Test Smell Detector
+
+**Commit 1: Function Size Analyzer** ✅ 完成
+- ✅ 发现并提交之前会话的未提交代码
+- ✅ 536 行分析引擎 + 271 行 MCP 工具 + 521 行测试
+- ✅ 39 tests passing, 4 languages
+- ✅ MCP 工具注册 (function_size, analysis toolset)
+
+**Commit 2: Test Smell Detector** ✅ 完成
+- ✅ 永续循环: wiki检索 + 产品分析 + 架构分析
+- ✅ analysis/test_smells.py (~530 lines)
+- ✅ mcp/tools/test_smells_tool.py (~155 lines)
+- ✅ 4 种语言支持: Python, JS/TS, Java, Go
+- ✅ 功能: 空assert检测, 宽泛exception catch, sleep检测, 低assertion检测
+- ✅ MCP 工具注册 (test_smells, analysis toolset)
+- ✅ 38 tests passing
+- ✅ CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+**工具数量**: 50 → 52 (+2 function_size, test_smells)
+
+### Session 121 — 2026-04-18: Logging Pattern Analyzer
+
+**永续循环机制执行** ✅ 完成
+- ✅ qmd wiki 检索: code analysis, error handling, logging patterns
+- ✅ 产品分析 (office-hours framework): Logging Pattern Analyzer → DO
+- ✅ 技术架构 (plan-eng-review): 方案 A（独立模块）推荐
+- ✅ 创建 OpenSpec change: add-logging-pattern-analyzer
+
+**Sprint 1-3 状态**: ✅ 全部完成
+- ✅ analysis/logging_patterns.py (~660 lines)
+- ✅ mcp/tools/logging_patterns_tool.py (~130 lines)
+- ✅ 4 种语言支持: Python, JS/TS, Java, Go
+- ✅ 功能: silent_catch, print_logging, sensitive_in_log, bare_raise
+- ✅ MCP 工具注册 (logging_patterns, analysis toolset)
+- ✅ 49 tests passing (39 analysis + 10 MCP tool)
+- ✅ CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+**工具数量**: 52 → 53 (+1 logging_patterns)
+
 **此计划永不标记为「全部完成」。永远有下一批任务。**

@@ -1,5 +1,121 @@
 # Progress — 自主开发进度日志
 
+## Session 121 — 2026-04-18
+
+Logging Pattern Analyzer - Complete
+
+**永续循环机制执行** (sustainable loop):
+- qmd wiki 检索: code analysis, error handling, logging patterns
+- 产品分析 (office-hours framework): Logging Pattern Analyzer → DO
+- 技术架构: 独立模块, 与 52+ MCP tools 架构一致
+
+**All 3 Sprints Complete**:
+- Sprint 1: Core Detection Engine (Python) — silent catch, sensitive data, bare raise detection
+- Sprint 2: Multi-Language Support (JS/TS, Java, Go) — 4 language support
+- Sprint 3: MCP Tool Integration — logging_patterns 注册到 analysis toolset
+
+**Smells Detected**:
+- silent_catch: catch/except block with no logging (HIGH severity)
+- print_logging: using print() instead of proper logger (LOW)
+- sensitive_in_log: potential secrets in log arguments (HIGH)
+- bare_raise: re-raise without logging original error (MEDIUM)
+
+**Total**:
+- 2 new modules created (analysis + MCP tool)
+- 49 tests passing (39 analysis + 10 MCP tool)
+- 52 → 53 total MCP tools registered (+1 logging_patterns)
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+## Session 120 — 2026-04-18
+
+Function Size Analyzer + Test Smell Detector - Complete
+
+**Commit 1: Function Size Analyzer** (64f42df5):
+- Found uncommitted files from previous session
+- 536-line analysis engine + 271-line MCP tool + 521-line tests
+- 39 tests passing, 4 languages (Python, JS/TS, Java, Go)
+- Registered to ToolRegistry + TOOLSET_DEFINITIONS
+
+**Commit 2: Test Smell Detector** (953c6020):
+- 永续循环机制执行 (sustainable loop)
+- qmd wiki 检索: code quality, pattern detection, refactoring
+- 产品分析 (/office-hours): Test Smell Detector → DO
+- 技术架构: 独立模块, 与 nesting_depth/i18n_strings 架构一致
+
+**Test Smell Detector Features**:
+- assert_none: test with zero assertions (HIGH severity)
+- broad_except: test catches generic Exception (MEDIUM)
+- sleep_in_test: time.sleep/setTimeout in tests (MEDIUM)
+- low_assert: fewer assertions than threshold (LOW)
+
+**Total**:
+- 2 new features committed (function_size + test_smells)
+- 39 + 38 = 77 new tests passing
+- 51 → 52 total MCP tools registered
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+## Session 119 — 2026-04-18
+
+i18n String Detector - Complete
+
+**永续循环机制执行**:
+- qmd wiki 检索: code analysis static analysis, MCP tools, tree-sitter patterns
+- 产品分析 (/office-hours): i18n String Detector → DO, Function Signature Change → DON'T, Code Metric Trend → DON'T
+- 技术架构 (/plan-eng-review): 方案 A（独立模块）推荐
+
+**All 3 Sprints Complete**:
+- Sprint 1: Core Detection Engine (Python) — visibility classification, output function detection
+- Sprint 2: Multi-Language Support (JS/TS, Java, Go) — 4 language output function sets
+- Sprint 3: MCP Tool Integration — i18n_strings 注册到 analysis toolset
+
+**Total**:
+- 2 new modules created (analysis + MCP tool)
+- 58 tests passing (47 analysis + 11 MCP tool)
+- 49 → 50 total MCP tools registered (+1 i18n_strings)
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+**产品讨论记录**:
+- i18n String Detector → DO (真正的功能缺口, tree-sitter 字符串解析优势, 市场清晰)
+- Function Signature Change Detector → DON'T (与 code_diff_tool + trace_impact 重叠)
+- Code Metric Trend Tracker → DON'T (与 git_analyzer + health_score 重叠)
+
+**技术架构决策**:
+- 方案 A（独立模块）: ✅ 采用
+- 与 nesting_depth/async_patterns 架构模式一致
+
+---
+
+## Session 118 — 2026-04-18
+
+Nesting Depth Analyzer - Complete
+
+**永续循环机制执行**:
+- qmd wiki 检索: code analysis pattern detection, static analysis
+- 产品分析 (office-hours): Nesting Depth Analyzer → DO, Side Effect Detector → DON'T, Data Flow Tracker → DON'T
+- 技术架构 (plan-eng-review): 方案 A（独立模块）推荐
+
+**All 3 Sprints Complete**:
+- Sprint 1: Core Analysis Engine (Python) — AST visitor with depth counter
+- Sprint 2: Multi-Language Support (JS/TS, Java, Go) — 4 language nesting node sets
+- Sprint 3: MCP Tool Integration — nesting_depth 注册到 analysis toolset
+
+**Total**:
+- 2 new modules created (analysis + MCP tool)
+- 62 tests passing (47 analysis + 15 MCP tool)
+- 49 total MCP tools registered (48 + nesting_depth)
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+**产品讨论记录**:
+- Nesting Depth Analyzer → DO (genuine gap: distinct from cyclomatic/cognitive complexity)
+- Side Effect Detector → DON'T (too complex, high false positive risk)
+- Data Flow Tracker → DON'T (too ambitious for single sprint)
+
+**技术架构决策**:
+- 方案 A（独立模块）: ✅ 采用
+- 与 cognitive_complexity 架构模式一致
+
+---
+
 ## Session 117 — 2026-04-18
 
 Comment Quality Analyzer - Complete
