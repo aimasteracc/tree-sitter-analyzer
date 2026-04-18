@@ -3,8 +3,6 @@
 Integration tests for PR Summary MCP Tool.
 """
 
-import asyncio
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tool_registration import register_all_tools
@@ -12,9 +10,9 @@ from tree_sitter_analyzer.mcp.tools.pr_summary_tool import PRSummaryTool
 
 
 @pytest.fixture
-def pr_summary_tool(project_root: str) -> PRSummaryTool:
+def pr_summary_tool(temp_project_dir: str) -> PRSummaryTool:
     """Create PR Summary tool instance."""
-    return PRSummaryTool(project_root)
+    return PRSummaryTool(temp_project_dir)
 
 
 @pytest.fixture
@@ -125,7 +123,6 @@ async def test_pr_summary_categorization(pr_summary_tool: PRSummaryTool, sample_
 
     # Should categorize files correctly
     categories = data["categories"]
-    category_names = [c["category"] for c in categories]
 
     # README.md should be docs
     assert any("README.md" in c["file_path"] and c["category"] in ("docs", "unknown") for c in categories)
@@ -163,9 +160,9 @@ def test_pr_summary_validate_arguments(pr_summary_tool: PRSummaryTool) -> None:
 
 
 @pytest.mark.asyncio
-async def test_tool_registration(project_root: str) -> None:
+async def test_tool_registration(temp_project_dir: str) -> None:
     """Test that PR Summary tool is properly registered."""
-    register_all_tools(project_root)
+    register_all_tools(str(temp_project_dir))
 
     from tree_sitter_analyzer.mcp.registry import get_registry
 

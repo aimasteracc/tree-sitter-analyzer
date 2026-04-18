@@ -380,9 +380,12 @@ def my_function():
         assert analyzer._detect_language("test.go") == "go"
         assert analyzer._detect_language("test.unknown") == "unknown"
 
-    def test_analyze_file_empty_file(self, analyzer: TestCoverageAnalyzer) -> None:
+    def test_analyze_file_empty_file(self, analyzer: TestCoverageAnalyzer, tmp_path: Path) -> None:
         """Test analyzing an empty file."""
-        result = analyzer.analyze_file("empty.py")
+        empty_file = tmp_path / "empty.py"
+        empty_file.write_text("")
+
+        result = analyzer.analyze_file(str(empty_file))
 
         assert result.total_elements == 0
         assert result.coverage_percent == 100.0  # No elements = fully covered
