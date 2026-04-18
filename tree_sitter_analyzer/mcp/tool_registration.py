@@ -30,6 +30,7 @@ from .tools.health_score_tool import HealthScoreTool
 from .tools.java_patterns_tool import JavaPatternAnalysisTool
 from .tools.list_files_tool import ListFilesTool
 from .tools.modification_guard_tool import ModificationGuardTool
+from .tools.pr_summary_tool import PRSummaryTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
@@ -43,7 +44,6 @@ from .tools.semantic_search_tool import SemanticSearchTool
 from .tools.test_coverage_tool import TestCoverageTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
-from .tools.pr_summary_tool import PRSummaryTool
 
 # Optional tools
 try:

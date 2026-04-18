@@ -146,8 +146,6 @@ def _detect_flask_routes(file_path: str) -> list[ApiEndpoint]:
     lines = content.split("\n")
 
     for i, line in enumerate(lines):
-        line_stripped = line.strip()
-
         # Match @app.route("/path"), @bp.route("/path")
         if "@app.route(" in line or "@bp.route(" in line:
             path = _extract_route_path(line)
@@ -352,7 +350,7 @@ def _detect_express_routes(file_path: str) -> list[ApiEndpoint]:
 
     for i, line in enumerate(lines):
         for method in ("get", "post", "put", "delete", "patch", "options", "head", "use"):
-            pattern = f"app.{method}(" if method != "use" else f"app.use("
+            pattern = f"app.{method}(" if method != "use" else "app.use("
             if pattern in line or f"router.{method}(" in line:
                 path = _extract_js_route_path(line)
                 handler = _extract_js_handler(line)

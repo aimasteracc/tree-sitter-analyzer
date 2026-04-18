@@ -78,3 +78,27 @@
 - ✅ 支持至少 5 种编程语言
 - ✅ CLI 和 MCP 工具正常工作
 - ✅ 测试覆盖率 ≥80%
+
+## Completion Status ✅
+
+**Sprint 1: Core Analysis Engine** ✅ 完成
+- ✅ tree_sitter_analyzer/pr_summary/diff_parser.py (291 lines)
+- ✅ tree_sitter_analyzer/pr_summary/change_classifier.py (370 lines)
+- ✅ tests/unit/pr_summary/test_diff_parser.py
+- ✅ tests/unit/pr_summary/test_change_classifier.py
+
+**Sprint 2: Multi-Language Support** ✅ 完成
+- ✅ tree_sitter_analyzer/pr_summary/semantic_analyzer.py (531 lines)
+- ✅ tests/unit/pr_summary/test_semantic_analyzer.py
+- ✅ 支持语言: Python, JavaScript, TypeScript, Java, Go
+
+**Sprint 3: CLI + MCP Integration** ✅ 完成
+- ✅ tree_sitter_analyzer/mcp/tools/pr_summary_tool.py (459 lines)
+- ✅ tree_sitter_analyzer/cli/commands/pr_summary_command.py (461 lines)
+- ✅ tests/integration/mcp/test_pr_summary_tool.py
+- ✅ CLI: `tree-sitter pr-summary [--format markdown|json]`
+- ✅ MCP: `pr_summary` 工具 (git toolset)
+
+**总计**: 2154 lines of code, 90+ tests passing, tool registered in git toolset
+**Commits**: ba507d85, 84418e28
+**Date**: 2026-04-18

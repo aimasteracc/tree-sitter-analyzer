@@ -10,12 +10,12 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    pass
 
 DEFAULT_CACHE_DIR = Path(".cache/tree-sitter-analyzer/queries")
 DEFAULT_MAX_SIZE = 1000

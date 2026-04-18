@@ -15,7 +15,7 @@ Supports:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -116,7 +116,6 @@ class TestCoverageAnalyzer:
             True if the file matches test patterns
         """
         path = Path(file_path)
-        filename = path.name
 
         # Check filename patterns
         for pattern in self.TEST_PATTERNS:

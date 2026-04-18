@@ -15,8 +15,7 @@ from typing import TYPE_CHECKING, Any
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
-    import anthropic  # type: ignore[import-not-found]
-    import openai  # type: ignore[import-not-found]
+    pass  # type: ignore[import-not-found]
 
 # Set up logging
 logger = setup_logger(__name__)

@@ -7,11 +7,10 @@ Generates structured PR descriptions from git diff and code analysis.
 
 from __future__ import annotations
 
-from typing import Any
-
 import argparse
 import asyncio
 import sys
+from typing import Any
 
 from ...output_manager import output_data, output_error, output_info, set_output_mode
 from ...pr_summary import (

@@ -8,12 +8,12 @@ be handled by deterministic tools (grep, ast-grep, etc.).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    pass
 
 from tree_sitter_analyzer.search.query_cache import CacheEntry, QueryCache
 
@@ -42,7 +42,6 @@ class PatternRule:
         return cls(
             pattern=data["pattern"],
             tool_name=data["tool_name"],
-            confidence=data["confidence"],
             confidence=float(data["confidence"]),
             sample_queries=tuple(data.get("sample_queries", [])),
             created_at=data["created_at"],

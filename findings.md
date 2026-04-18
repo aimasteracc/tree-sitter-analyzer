@@ -402,3 +402,40 @@ ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
    - "Find all functions that call database"
    - "Show me all API endpoints related to user auth"
 
+
+---
+
+## 2026-04-18: 新功能探索（永续循环 #N）
+
+### Wiki 检索结果
+
+**CodeFlow** (已存在于 findings，重新审视)
+- 零安装、纯浏览器运行的代码架构可视化工具
+- 粘贴 GitHub URL → 秒级生成交互式依赖图
+- 功能：爆炸半径分析、安全扫描、设计模式检测、健康评分
+- 单 HTML 文件、零构建依赖、35+ 语言支持
+
+**Fireworks Tech Graph** (已存在于 findings)
+- 文本转技术图生成器（英文/中文描述 → SVG + PNG）
+
+### 潜在新功能
+
+**方向 1: 架构图自动生成（Auto Architecture Diagrams）**
+- 基于 tree-sitter AST 自动生成系统架构图
+- 输入：代码库路径
+- 输出：Mermaid/PlantUML/DOT 格式的架构图
+- 复用现有模块：dependency_graph, design_patterns
+- CLI: `tree-sitter arch-diagram [--format mermaid|plantuml|dot]`
+
+**方向 2: 交互式 Web 可视化（Web Visualization）**
+- 类似 CodeFlow 的 Web 界面
+- 基于 existing MCP tools 提供交互式分析
+- 技术栈：纯 HTML + JS（零构建）
+- 部署：单文件 HTML
+
+**方向 3: LLM 辅助代码理解（LLM-Assisted Understanding）**
+- 结合 LLM 生成自然语言代码解释
+- 输入：文件路径或代码片段
+- 输出：结构化解释（用途、依赖、调用关系）
+- MCP tool: `explain_code`
+
