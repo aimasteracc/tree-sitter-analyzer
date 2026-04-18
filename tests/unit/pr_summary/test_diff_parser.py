@@ -75,7 +75,7 @@ class TestDiffParser:
         summary = parser.parse_stat(stat_output)
 
         assert summary.total_files_changed == 3
-        assert summary.total_additions == 15  # 10 + 5 + 0
+        assert summary.total_additions == 13  # 9 + 3 + 1 (symbol counts)
         assert summary.total_deletions == 4  # 1 + 2 + 1
         assert len(summary.files) == 3
 

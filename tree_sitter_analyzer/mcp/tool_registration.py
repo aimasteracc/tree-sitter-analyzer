@@ -493,6 +493,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🕸️",
     )
 
+    # async_patterns
+    from .tools.async_patterns_tool import AsyncPatternsTool
+    ap_tool = AsyncPatternsTool(project_root)
+    registry.register(
+        name="async_patterns",
+        toolset="analysis",
+        category="async-patterns",
+        schema=ap_tool.get_tool_definition(),
+        handler=_make_handler(ap_tool),
+        description="Async patterns: detect missing await, fire-and-forget, unhandled promises, blocking in async across Python, JS/TS, Java, Go",
+        emoji="⚡",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""
