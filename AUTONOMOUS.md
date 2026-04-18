@@ -100,19 +100,35 @@
 
 **你必须使用 Wiki 知识库。** 所有参考资料的索引在 `findings.md` 中。
 
-两种检索方式：
+⚠️ **CRITICAL: qmd 内存安全**
+
+qmd 的混合搜索会加载 1.7B 生成模型 + 0.6B reranker，占用约 2GB 内存。
+**自主开发模式下必须使用轻量级搜索**，避免内存溢出导致系统崩溃。
 
 ```bash
-# 方式 1：qmd 语义搜索（模糊查询用）
-qmd query "关键词" --limit 5
+# ✅ 方式 1：安全搜索包装器（自动选择模式）
+# - 简单关键词(≤3词)：BM25（不用 LLM）
+# - 中等查询(4-6词)：向量搜索（只用 300M 模型）
+# - 复杂查询(>6词)：混合搜索（会警告）
+./scripts/qmd-safe-search.sh "关键词" 5
 
-# 方式 2：直接读 wiki 页面（已知页面名用，获取完整内容）
+# ✅ 方式 2：手动选择轻量级模式
+# BM25 关键词搜索（最快，0 LLM）
+qmd search "关键词" -n 5
+
+# 向量搜索（只用 300M embedding）
+qmd vsearch "关键词" -n 5
+
+# ❌ 禁用：混合搜索（加载 1.7B+0.6B 模型，内存危险）
+# qmd query "关键词"  # 不要在自主开发模式使用
+
+# 方式 3：直接读 wiki 页面（已知页面名用，获取完整内容）
 cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
 ```
 
 **每个 Sprint 开始前**，必须：
 1. 读取 `findings.md` 中对应的参考资源
-2. 如果涉及新技术领域，先用 qmd 搜索相关 wiki 页面
+2. 如果涉及新技术领域，用 `./scripts/qmd-safe-search.sh` 搜索
 3. 将关键发现追加到 `findings.md`
 
 **Wiki 包含 59 页知识**，涵盖：
@@ -174,14 +190,16 @@ python3 scripts/context-auto-reset.py monitor
 
 ### 步骤 1: 灵感收集（用 Wiki 知识库）
 
+⚠️ **使用安全搜索模式避免内存溢出**
+
 ```bash
-# 用 qmd 语义搜索相关技术/项目
-qmd query "code analysis AI agent context" --limit 10
-qmd query "MCP tools LLM code understanding" --limit 10
-qmd query "tree-sitter code navigation" --limit 10
+# 使用安全搜索包装器（自动选择模式）
+./scripts/qmd-safe-search.sh "code analysis AI agent context" 10
+./scripts/qmd-safe-search.sh "MCP tools LLM code understanding" 10
+./scripts/qmd-safe-search.sh "tree-sitter code navigation" 10
 
 # 搜索特定参考项目
-qmd query "CodeFlow claw-code codebase analysis" --limit 5
+./scripts/qmd-safe-search.sh "CodeFlow claw-code codebase analysis" 5
 ```
 
 将发现的灵感记录到 `findings.md`。
