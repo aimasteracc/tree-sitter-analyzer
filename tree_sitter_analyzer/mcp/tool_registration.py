@@ -480,6 +480,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔀",
     )
 
+    # error_message_quality
+    from .tools.error_message_quality_tool import ErrorMessageQualityTool
+    emq_tool = ErrorMessageQualityTool(project_root)
+    registry.register(
+        name="error_message_quality",
+        toolset="analysis",
+        category="quality",
+        schema=emq_tool.get_tool_definition(),
+        handler=_make_handler(emq_tool),
+        description="Error message quality: detect generic, empty, or unhelpful error messages across Python, JS/TS, Java, Go",
+        emoji="💬",
+    )
+
     # parameter_coupling
     from .tools.parameter_coupling_tool import ParameterCouplingTool
     pc_tool = ParameterCouplingTool(project_root)
