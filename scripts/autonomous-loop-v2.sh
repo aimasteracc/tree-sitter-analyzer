@@ -232,12 +232,15 @@ while true; do
     START_OF_ROUND=$(date '+%Y-%m-%d %H:%M:%S')
 
     # Watchdog 轮询（主进程循环，无孤儿风险）
+    # Dead-man 策略: 1) 进程存活检查 2) CPU 活跃检查 3) 日志 mtime（补充）
     WD_ELAPSED=0
+    WD_LAST_CPU_SECS=""
+    WD_CPU_STALLED=0
     while kill -0 "$CLAUDE_PID" 2>/dev/null; do
         sleep "$POLL_INTERVAL"
         WD_ELAPSED=$((WD_ELAPSED + POLL_INTERVAL))
 
-        # 超时检查
+        # 超时检查（硬上限）
         if [ $WD_ELAPSED -ge "$SESSION_TIMEOUT" ]; then
             echo ""
             echo "⏰ Session 超时 (${SESSION_TIMEOUT}s)，终止 claude (PID $CLAUDE_PID)"
@@ -249,21 +252,28 @@ while true; do
             break
         fi
 
-        # Dead-man: 日志 mtime 检查
-        if [ -f "$LOGFILE" ]; then
-            WD_LAST_WRITE=$(stat -f %m "$LOGFILE" 2>/dev/null || echo 0)
-            WD_NOW=$(date +%s)
-            WD_SILENCE=$(( WD_NOW - WD_LAST_WRITE ))
-            if [ "$WD_SILENCE" -gt "$DEADMAN_TIMEOUT" ]; then
-                echo ""
-                echo "💀 日志 ${DEADMAN_TIMEOUT}s 无更新 (沉默 ${WD_SILENCE}s)，终止 claude (PID $CLAUDE_PID)"
-                kill "$CLAUDE_PID" 2>/dev/null || true
-                pkill -P "$CLAUDE_PID" 2>/dev/null || true
-                sleep "$KILL_GRACE_SEC"
-                kill -9 "$CLAUDE_PID" 2>/dev/null || true
-                pkill -9 -P "$CLAUDE_PID" 2>/dev/null || true
-                break
+        # Dead-man: CPU 时间检查（claude --print stdout 有缓冲，日志 mtime 不可靠）
+        # 如果进程 CPU 时间在 DEADMAN_TIMEOUT 内没增长，说明卡了
+        WD_CURRENT_CPU=$(ps -o time= -p "$CLAUDE_PID" 2>/dev/null | tr -d ' ' || echo "")
+        if [ -n "$WD_CURRENT_CPU" ]; then
+            # 转换 HH:MM:SS 为总秒数
+            WD_CPU_SECS=$(echo "$WD_CURRENT_CPU" | awk -F: '{if (NF==3) print $1*3600+$2*60+$3; else if (NF==2) print $1*60+$2; else print $1}')
+            if [ -n "$WD_LAST_CPU_SECS" ] && [ "$WD_CPU_SECS" = "$WD_LAST_CPU_SECS" ]; then
+                WD_CPU_STALLED=$((WD_CPU_STALLED + POLL_INTERVAL))
+                if [ "$WD_CPU_STALLED" -gt "$DEADMAN_TIMEOUT" ]; then
+                    echo ""
+                    echo "💀 CPU 时间 ${DEADMAN_TIMEOUT}s 无增长 (stalled=${WD_CPU_STALLED}s)，终止 claude"
+                    kill "$CLAUDE_PID" 2>/dev/null || true
+                    pkill -P "$CLAUDE_PID" 2>/dev/null || true
+                    sleep "$KILL_GRACE_SEC"
+                    kill -9 "$CLAUDE_PID" 2>/dev/null || true
+                    pkill -9 -P "$CLAUDE_PID" 2>/dev/null || true
+                    break
+                fi
+            else
+                WD_CPU_STALLED=0
             fi
+            WD_LAST_CPU_SECS="$WD_CPU_SECS"
         fi
     done
 
