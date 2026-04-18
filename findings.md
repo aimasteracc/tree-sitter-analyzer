@@ -1062,3 +1062,137 @@ def optimize_for_llm(toon_output: str, threshold: float = 0.5) -> str:
 - 修复 3 个失败测试 (或创建 issue 追踪)
 - 继续永续循环寻找新功能方向
 - 或执行性能优化循环
+
+## 产品讨论记录 - Environment Variable Tracker - 2026-04-18
+
+**调用**: 乔布斯产品理念分析 (GStack office-hours framework)
+
+**功能想法**: Code Relationship Visualization - 可视化代码元素跨文件的连接关系
+
+**乔布斯的分析** (基于 GStack 框架):
+
+1. **聚焦即说不**: 这个功能是否解决核心问题？还是 "nice to have"？
+   - 判断: DON'T - 功能重复
+   - 理由: `trace_impact` + `dependency_graph` 已经覆盖了核心价值
+   - 这只是 "更好的展示"，不是 "解决新问题"
+
+2. **减法思维**: 能否用更简单的方式实现？
+   - 判断: `dependency_graph` 已经输出 Mermaid 格式
+   - 用户可以用现有工具 + 第三方可视化工具
+   - 最小版本: 改进文档，提供可视化模板
+
+3. **一句话定义**: "可视化代码元素跨文件的连接关系"
+   - 问题: 这句话没有说清价值
+   - 改进: "让开发者在一秒内看到函数 X 被哪些文件调用"
+   - 但: `trace_impact` 已经做这件事了
+
+**结论**: DON'T
+
+**理由**:
+- 功能重复: `trace_impact` + `dependency_graph` 已覆盖核心价值
+- 价值主张错位: 这是 "更好的展示"，不是 "解决新问题"
+- 乔布斯原则: 如果只是让已有功能 "更漂亮"，应该砍掉
+
+---
+
+**替代方向探索**:
+
+经过系统分析，发现以下功能缺口:
+
+1. **Performance Hotspot Detector** → DON'T
+   - 理由: 静态分析无法准确测量运行时性能
+   - 需要真实 profiler 数据
+
+2. **Import Optimizer** → DON'T
+   - 理由: IDE 已解决此问题
+   - tree-sitter 无优势
+
+3. **Code Bookmark System** → DON'T
+   - 理由: 编辑器已解决
+
+4. **API Endpoint Extractor** → 已存在
+   - `api_discovery_tool.py` 已实现
+   - 支持 Flask, FastAPI, Django, Express, Spring
+
+5. **Environment Variable Tracker** → DO ✓
+   - **核心问题**: 开发者不知道哪些环境变量被使用，容易遗漏配置
+   - **是否核心**: 对于部署和配置管理，这是核心需求
+   - **减法思维**: grep 可以找，但 tree-sitter 能更精确提取变量名和上下文
+   - **一句话定义**: "列出项目中所有使用的环境变量及其位置和用途"
+   
+   **技术方案**:
+   - 支持 Python: os.getenv, os.environ
+   - 支持 JavaScript/TypeScript: process.env
+   - 支持 Java: System.getenv, System.getProperty
+   - 支持 Go: os.Getenv
+   
+   **MVP 范围**:
+   - 提取所有环境变量引用
+   - 显示变量名、文件位置、行号
+   - 分组显示 (按变量名)
+   - 检测未使用的环境变量声明
+
+6. **Configuration File Analyzer** → 部分已存在
+   - CI/CD secrets reference 已存在
+   - 但完整的配置文件分析 (package.json, pom.xml, requirements.txt) 可能有价值
+
+**下一步**: 调用 `/plan-eng-review` 对 Environment Variable Tracker 进行架构分析
+
+
+## 技术架构讨论记录 - Environment Variable Tracker - 2026-04-18
+
+**功能**: Environment Variable Tracker - 列出项目中所有使用的环境变量
+
+**初步技术方案**:
+
+1. **方案 A: 完整 MCP 工具实现**
+   - 创建 `tree_sitter_analyzer/analysis/env_tracker.py`
+   - 创建 `tree_sitter_analyzer/mcp/tools/env_tracker_tool.py`
+   - 支持 4 种语言 (Python, JS/TS, Java, Go)
+   - 输出 TOON + JSON 格式
+   - 约 400-500 行代码
+
+2. **方案 B: 轻量级 CLI 命令**
+   - 创建 `cli/commands/env_command.py`
+   - 复用现有分析模式
+   - 输出文本 + JSON
+   - 约 200-300 行代码
+
+3. **方案 C: 增强现有 security_scan**
+   - 在 `security_scan.py` 中添加环境变量检测
+   - 复用现有架构
+   - 约 100-150 行代码
+
+**技术分析**:
+
+1. **技术可行性**:
+   - 方案 A: 风险低，与现有模式一致
+   - 方案 B: 风险低，CLI 命令更简单
+   - 方案 C: 风险中，security_scan 关注点不同 (安全 vs 配置)
+
+2. **架构影响**:
+   - 方案 A: 与 38 个 MCP 工具协调良好
+   - 方案 B: CLI 命令，不影响 MCP 架构
+   - 方案 C: 可能混淆 security_scan 的职责
+
+3. **实现复杂度**:
+   - 方案 A: 3 个 Sprint 可完成 (Detection Engine, Multi-Language, MCP Integration)
+   - 方案 B: 2 个 Sprint 可完成 (Detection Engine, CLI)
+   - 方案 C: 1 个 Sprint 可完成，但职责不清
+
+4. **维护成本**:
+   - 方案 A: 独立模块，长期维护容易
+   - 方案 B: CLI 命令，维护成本低
+   - 方案 C: 混在 security_scan 中，维护困难
+
+**推荐方案**: 方案 A - 完整 MCP 工具实现
+
+**理由**:
+1. 与现有架构一致 (38 个 MCP 工具)
+2. 职责清晰 (环境变量追踪 ≠ 安全扫描)
+3. 可复用模式 (code_smell_detector, code_clone_detection 等都是独立模块)
+4. TOON 输出格式与其他工具一致
+
+**风险**: 无显著风险
+**依赖**: tree-sitter 语言插件 (Python, JavaScript, Java, Go 都已支持)
+

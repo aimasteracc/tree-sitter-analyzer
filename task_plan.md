@@ -834,3 +834,94 @@
 |------|------|---------|------|
 | v1 57 分钟跑完 5 Phase | 任务太粗 + stub-ification | v2 细化为 80+ 子任务 | 已修复 |
 | 提前停止 | all_phases_complete() 误判 | Phase 7+ 永续循环 | 已修复 |
+
+### Session 111 — 2026-04-18: 新功能探索 + 文档更新
+
+**永续循环机制执行** ✅ 完成
+- ✅ qmd wiki 检索: code analysis, MCP tools, code navigation
+- ✅ 产品分析 (乔布斯视角): PR Summary Generator → DON'T (价值主张错位)
+- ✅ 产品分析 (乔布斯视角): Code Clone Detection → DO (工具完成任务)
+- ✅ 发现: code_clone_detection_tool 已完整实现（之前会话）
+- ✅ 文档更新: README 工具数量 31→38, 测试数量 10450+→10200+
+- ✅ 创建 OpenSpec change: add-code-clone-detection-tool (归档)
+- ✅ Commit: f503aae9
+
+**产品讨论记录**:
+- PR Summary Generator: DON'T - LLM 依赖破坏 local-first 定位
+- Code Clone Detection: DO - 完成已有功能，无风险
+
+**findings.md 更新**:
+- 记录 PR Summary Generator 产品分析（放弃）
+- 记录 Code Clone Detection 产品分析（采用）
+- 记录 wiki 检索结果
+
+**状态**: 无未完成 OpenSpec changes，继续永续循环
+
+### add-code-clone-detection-tool ✅ 已完成 (Session 111)
+
+**发现**: 工具已在之前会话中完整实现
+- MCP tool: code_clone_detection_tool.py (267 lines)
+- Analysis engine: code_clones.py (完整实现)
+- 24 MCP tool tests + 47 analysis tests passing
+- 已注册到 analysis toolset
+- CHANGELOG 已记录
+
+**本次会话工作**:
+- 创建 OpenSpec change 文档
+- 更新 README.md (工具数量, 测试数量)
+- 更新 findings.md (产品分析记录)
+- Commit + push: f503aae9
+
+**总计**: 文档同步完成，工具已可用
+
+**此计划永不标记为「全部完成」。永远有下一批任务。**
+
+### Session 112 — 2026-04-18: 新功能探索
+
+**永续循环机制执行** ✅ 进行中
+- ✅ qmd wiki 检索: code analysis, MCP tools, code navigation
+- ✅ 产品分析 (乔布斯视角): 
+  - Code Relationship Visualization → DON'T (功能重复)
+  - Environment Variable Tracker → DO ( genuine gap )
+- ✅ 技术架构分析 (GStack eng review framework)
+- ✅ 创建 OpenSpec change: add-environment-variable-tracker
+- ⏳ Sprint 1: Core Detection Engine (Python) - 待实现
+
+**产品讨论记录**:
+- Code Relationship Visualization: DON'T - 功能重复 (trace_impact + dependency_graph 已覆盖)
+- Environment Variable Tracker: DO - 真正的缺口，部署配置管理核心需求
+
+**Wiki 检索灵感**:
+- code review automation (已有 /review skill)
+- MCP tools LLM code understanding
+- tree-sitter code navigation (已有 tags 支持)
+- code refactoring automation AI
+- code smell detection automatic fix (已有 code_smell_detector)
+- technical debt measurement visualization
+
+**发现的功能缺口**:
+- Environment Variable Tracker (新功能)
+- Configuration File Analyzer (部分已有)
+
+**技术方案**: Environment Variable Tracker
+- 方案 A: 完整 MCP 工具实现 (推荐)
+- 方案 B: 轻量级 CLI 命令
+- 方案 C: 增强现有 security_scan (不推荐)
+- 推荐: 方案 A - 与 38 个 MCP 工具架构一致
+
+**状态**: OpenSpec change 创建完成，准备开始 Sprint 1 实现
+
+
+**Sprint 1 状态**: 进行中
+- ✅ 创建 tree_sitter_analyzer/analysis/env_tracker.py (~500 lines)
+- ✅ 创建 tests/unit/test_env_tracker.py (21 tests)
+- ⏳ 修复 tree-sitter API 兼容性问题 (Query vs QueryCursor)
+- ⏳ 运行 CI 检查 (ruff + mypy + pytest)
+
+**遇到问题**:
+- tree-sitter API 版本兼容性问题
+- Query.captures() 在新版本中不可用
+- 需要使用 QueryCursor.captures()
+
+**下一步**: 修复 API 兼容性, 完成 Sprint 1
+
