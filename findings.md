@@ -4,6 +4,27 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 产品讨论记录 - Feature Envy Detector - 2026-04-19
+
+**调用**: /office-hours + /plan-eng-review
+
+**初始选择**: Data Clump Detector → PIVOT after architecture review
+
+**关键发现**: parameter_coupling.py 已实现 data clump 检测（L86-268, DataClump class + Jaccard similarity）。magic_values.py 已覆盖硬编码 URL/路径。两个候选功能已被覆盖。
+
+**最终选择**: Feature Envy Detector
+
+**产品分析**:
+- 填补真正空白：coupling_metrics 是模块级，parameter_coupling 是参数计数，architectural_boundary 是模块边界，无工具检测方法级的数据访问模式
+- AI agent 价值：重构时知道方法是否应该移到另一个类
+- 一句话定义："This method calls getOther().getX() more than it uses self — move it"
+
+**架构分析**:
+- 方案: 独立模块，纯 AST 分析
+- 检测类型: feature_envy, method_chain, inappropriate_intimacy
+- 4语言: Python, JS/TS, Java, Go
+- 无跨分析器依赖，与现有65个MCP工具架构一致
+
 ## 知识检索方式
 
 ```bash
