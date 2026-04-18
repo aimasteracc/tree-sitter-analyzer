@@ -4,6 +4,26 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 产品讨论记录 - Method Chain Analyzer - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**初始选择**: Data Clump Detector → PIVOT (already in ParameterCouplingAnalyzer)
+
+**产品分析** (inline, autonomous):
+- 聚焦: 长方法链 (a.b().c().d()) 是 Law of Demeter 违反的典型信号，直接影响调试难度和耦合度
+- 减法: MVP = 检测链长度 ≥4 的属性/方法链，纯 AST 遍历
+- 一句话: "Find the Law of Demeter violations hiding in your method chains"
+- 结论: DO — 填补真正空白（coupling_metrics 是模块级别，feature_envy 是函数级别，无工具检测调用链级别的耦合）
+
+**架构分析** (/plan-eng-review):
+- 推荐方案A: 纯 AST 遍历，独立分析器
+- 理由: 与79个现有分析器完全一致的 AST 遍历模式
+- 检测类型: long_chain (≥4 links), train_wreck (≥6 links), law_of_demeter
+- 4语言: Python, JS/TS, Java, Go
+- 1个Sprint可完成
+- 风险: Go 语言链式调用较少，但 struct field access 链存在
+
 ## 产品讨论记录 - Loop Complexity Analyzer - 2026-04-19
 
 **调用**: Steve Jobs inline analysis + /plan-eng-review

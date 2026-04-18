@@ -31,6 +31,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "trace_impact_tool",
         "class": "TraceImpactTool",
     },
+    "method_chain": {
+        "description": (
+            "Analyze method/attribute chain length (Law of Demeter violations). "
+            "Detects excessively long chains like a.b().c().d()."
+        ),
+        "module": "method_chain_tool",
+        "class": "MethodChainTool",
+    },
 }
 
 __all__ = [
