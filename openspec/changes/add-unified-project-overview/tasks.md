@@ -77,7 +77,7 @@ cli/commands/
 - ✅ 支持输出格式: json, markdown, toon
 - ✅ 68 tests passing (22 + 28 + 18, 超过 35+ 目标)
 - ✅ ruff check passes, mypy --strict passes
-- [ ] 复用现有 100% 代码（零新分析算法）
+- ✅ 复用现有 100% 代码（零新分析算法）- 所有分析器调用现有模块
 
 ## Dependencies
 
