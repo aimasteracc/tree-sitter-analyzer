@@ -744,6 +744,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚡",
     )
 
+    # i18n_strings
+    from .tools.i18n_strings_tool import I18nStringsTool
+    i18n_tool = I18nStringsTool(project_root)
+    registry.register(
+        name="i18n_strings",
+        toolset="analysis",
+        category="quality",
+        schema=i18n_tool.get_tool_definition(),
+        handler=_make_handler(i18n_tool),
+        description="i18n readiness: detect user-visible strings needing internationalization",
+        emoji="🌐",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

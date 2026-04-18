@@ -1383,3 +1383,43 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 - TOON + JSON 输出
 - severity 过滤 (error/warning/info)
 ```
+
+## 产品讨论记录 - i18n String Detector - 2026-04-18
+
+**调用**: /office-hours (乔布斯产品分析)
+
+**输入**: 3个候选功能 (Function Signature Change Detector, Code Metric Trend Tracker, i18n String Detector)
+
+**分析**:
+1. Function Signature Change Detector → DON'T (与 code_diff_tool + trace_impact 重叠)
+2. Code Metric Trend Tracker → DON'T (与 git_analyzer + health_score 重叠，不是 tree-sitter 强项)
+3. i18n String Detector → DO (真正的功能缺口)
+
+**乔布斯视角判断**:
+- 聚焦即说不: i18n 是唯一一个不与现有工具重叠的功能
+- 减法思维: MVP 只需检测用户可见字符串 (print/raise/log.error/UI 函数中的字符串)
+- 一句话定义: "找到所有需要翻译的字符串，一键国际化"
+
+**结论**: DO - 实现 i18n String Detector
+**理由**: 真正的功能缺口，tree-sitter 的字符串解析优势，市场清晰
+
+## 技术架构讨论记录 - i18n String Detector - 2026-04-18
+
+**调用**: /plan-eng-review (GStack eng review)
+
+**输入**: 3个技术方案评估 (独立模块 vs 扩展magic_values vs 扩展comment_quality)
+
+**GStack的分析**:
+1. 方案A (独立模块): ✅ 推荐 - 与30个已有模块模式一致，单一职责
+2. 方案B (扩展magic_values): ❌ 关注重叠但规则完全不同，magic_values检测常量提取，i18n检测用户可见字符串
+3. 方案C (扩展comment_quality): ❌ 完全错误的领域
+
+**推荐方案**: 方案 A（独立模块）
+**理由**: 已验证10次以上的架构模式，风险最低
+**风险**: 无实质性风险
+**依赖**: tree-sitter查询（已通过magic_values验证）
+
+**关键技术决策**:
+- 字符串可见性分类: USER_VISIBLE / LIKELY_VISIBLE / INTERNAL
+- 4语言输出函数映射: print/raise/logging, console.log/alert, System.out/Logger, fmt/log
+- 数据流: parse → extract → filter(parent call_expression) → classify → aggregate
