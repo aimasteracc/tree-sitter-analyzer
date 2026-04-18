@@ -439,3 +439,493 @@ ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
 - 输出：结构化解释（用途、依赖、调用关系）
 - MCP tool: `explain_code`
 
+---
+
+## 2026-04-18: 新功能探索灵感收集 (Session 111)
+
+### Wiki 检索结果
+
+#### 1. PR Review Automation
+- **Hermes Agent - GitHub Code Review Skill**
+  - 路径: `/Users/aisheng.yu/wiki/raw/ai-tech/hermes-agent/skills/github/github-code-review/skill.md`
+  - 功能: 分析 git diffs，在 PR 上留下内联评论，执行推送前审查
+  - 支持 gh CLI 或 GitHub REST API
+  - 输出模板: Review Output Template (Verdict, Summary, File-by-file analysis)
+
+- **ECC - /review-pr Command**
+  - 路径: `/Users/aisheng.yu/wiki/raw/ai-tech/claude-code-system-prompts/system-prompts/agent-prompt-review-pr-slash-command.md`
+  - 功能: 使用 gh pr diff 获取 diff，分析变更，提供全面的代码审查
+  - 分析维度: Overview, Code quality, Security concerns, Performance, Testing
+
+- **ECC - Code Review Context**
+  - 路径: `/Users/aisheng.yu/wiki/raw/ai-tech/everything-claude-code/contexts/review.md`
+  - 模式: PR review, code analysis
+  - 关注: Quality, security, maintainability
+
+#### 2. Incremental Analysis Cache
+- **tree-sitter-analyzer 已有缓存机制**
+  - `AnalysisSession`: 5秒缓存 `git rev-parse HEAD`
+  - `AnalysisSession`: mtime-based file hash cache
+  - 未变更文件跳过 SHA256 重新计算
+
+#### 3. Code Comment Analysis
+- **ECC - Comment Analyzer Agent**
+  - 路径: `/Users/aisheng.yu/wiki/raw/ai-tech/everything-claude-code/agents/comment-analyzer.md`
+  - 功能: 分析代码注释的准确性、完整性、可维护性
+  - 检测: 注释腐烂 (comment rot)
+
+### 潜在新功能方向 (优先级排序)
+
+#### 方向 1: PR Summary Generator (PR 摘要生成器)
+**一句话定义**: 自动从 git diff 生成结构化的 PR 变更摘要
+
+**核心价值**:
+- 开发者不需要手动写 PR 描述
+- AI Agent 可以快速理解 PR 的变更内容
+- 标准化的 PR 摘要格式便于 code review
+
+**MVP 功能**:
+1. 解析 git diff (支持 `git diff <base>...HEAD`)
+2. 识别变更类型: 新增文件/修改文件/删除文件
+3. 按语言分类变更 (Python, JavaScript, Java, Go, C#)
+4. 生成结构化摘要:
+   - Overview (一句话总结)
+   - File changes (文件列表，带行数统计)
+   - Key changes (关键变更点)
+   - Risk assessment (风险评估)
+   - Test suggestions (测试建议)
+
+**技术方案**:
+- 复用现有 `code_diff` MCP tool
+- 新增 `pr_summary` 模块:
+  - `DiffParser` - 解析 git diff 输出
+  - `ChangeClassifier` - 分类变更类型和语言
+  - `SummaryGenerator` - 生成结构化摘要
+- CLI: `tree-sitter pr-summary [--base main] [--format json|markdown|toon]`
+- MCP tool: `pr_summary` (在 query toolset)
+
+#### 方向 2: Incremental Analysis Cache (增量分析缓存)
+**一句话定义**: 只分析变更的文件，加速大型仓库分析
+
+**核心价值**:
+- 大型仓库的分析速度提升 10-100 倍
+- 减少 CPU 使用（只处理变更部分）
+- 支持 CI/CD 场景的增量分析
+
+**MVP 功能**:
+1. 检测 git 变更 (`git diff --name-only`)
+2. 筛选需要重新分析的文件
+3. 加载未变更文件的缓存分析结果
+4. 合并新旧分析结果
+
+**技术方案**:
+- 扩展 `AnalysisSession` 类
+- 新增 `IncrementalAnalyzer` 模块:
+  - `get_changed_files()` - 获取变更文件列表
+  - `load_cache()` - 加载缓存
+  - `save_cache()` - 保存缓存
+  - `merge_analysis()` - 合并分析结果
+
+#### 方向 3: Code Comment Analyzer (代码注释分析器)
+**一句话定义**: 分析代码注释质量，识别缺失、过时、无效的注释
+
+**核心价值**:
+- 提高代码可维护性
+- 识别文档债务
+- 帮助团队建立注释规范
+
+**MVP 功能**:
+1. 识别缺失注释的函数/类（复杂度 > 阈值）
+2. 识别过时注释（参数名/返回值与注释不符）
+3. 识别无效注释标记（TODO, FIXME, HACK, XXX）
+4. 生成注释质量报告
+
+**技术方案**:
+- 新增 `comment_analyzer` 模块
+- 基于 AST 提取注释和函数签名
+- 对比注释与实际代码
+- CLI: `tree-sitter comment-analyze [--severity threshold]`
+- MCP tool: `comment_analyze` (在 analysis toolset)
+
+### 优先级判断 (根据乔布斯产品理念)
+
+**聚焦即说不**: 哪个功能解决核心问题？
+- **PR Summary Generator** - 解决 PR 描述写作痛点，是开发者日常高频操作
+- **Incremental Analysis Cache** - 解决大型仓库分析慢的问题，是性能优化
+- **Code Comment Analyzer** - 解决代码文档质量问题，是代码质量工具
+
+**减法思维**: 能否增强现有工具而非新建？
+- **PR Summary Generator** - 可以作为 `code_diff` 工具的扩展功能
+- **Incremental Analysis Cache** - 可以作为现有分析引擎的内部优化
+- **Code Comment Analyzer** - 可以作为独立的新工具
+
+**一句话定义**:
+1. PR Summary Generator: "自动生成 PR 变更摘要"
+2. Incremental Analysis Cache: "只分析变更的文件"
+3. Code Comment Analyzer: "分析代码注释质量"
+
+**推荐优先级**:
+1. **PR Summary Generator** - 解决明确痛点，需求清晰，可以快速验证价值
+2. **Code Comment Analyzer** - 代码质量管理的重要补充，与现有工具形成完整生态
+3. **Incremental Analysis Cache** - 性能优化，可以作为后续改进项目
+
+---
+
+## 产品讨论记录 - PR Summary Generator - 2026-04-18
+
+**调用尝试**: /office-hours
+
+**输入**: PR Summary Generator - 自动从 git diff 生成结构化的 PR 变更摘要
+
+**乔布斯产品理念分析（自主分析）**:
+
+1. **聚焦即说不**: 这个功能是否解决核心问题？
+   - ✅ **DO** - 开发者写 PR 描述是真实痛点。大多数 PR 描述要么空，要么不完整。
+   - 这不是 "nice to have"，而是 PR workflow 的核心问题之一。
+   - 好的 PR 描述能提高 code review 效率，减少来回沟通。
+
+2. **减法思维**: 能否用更简单的方式实现？
+   - 现有工具：`code_diff` 已有代码差异分析能力
+   - 最小可行版本：
+     - 基于 `git diff` 输出解析
+     - 生成简单的文件列表和变更统计
+     - 模板化的摘要格式（不需要 LLM）
+   - 复用现有模块，增量开发
+
+3. **一句话定义**: "自动生成 PR 变更摘要"
+   - ✅ 清晰、聚焦，一句话说清价值
+
+**结论**: DO - 值得做
+
+**理由**:
+- 解决明确痛点（PR 描述写作）
+- 需求清晰，MVP 范围明确
+- 可以复用现有 `code_diff` 工具
+- 与现有 31 个 MCP 工具形成互补
+
+---
+
+## 技术架构讨论记录 - PR Summary Generator - 2026-04-18
+
+**调用尝试**: /plan-eng-review
+
+**输入**: PR Summary Generator - 自动从 git diff 生成结构化的 PR 变更摘要
+
+**技术方案对比**:
+
+**方案 A: 作为 code_diff 工具的扩展**
+- 技术可行性: 风险低，现有 `code_diff_tool.py` 已有 diff 解析能力
+- 架构影响: 与现有工具协调，但会让 code_diff 变复杂（职责不单一）
+- 实现复杂度: 低，复用现有逻辑
+- 维护成本: 中等，功能耦合
+
+**方案 B: 创建独立的 pr_summary 模块** ✅ 推荐
+- 技术可行性: 风险低，新模块边界清晰
+- 架构影响: 与现有 31 个 MCP 工具协调，独立注册
+- 实现复杂度: 中等，但可以独立开发和测试
+- 维护成本: 低，模块独立职责清晰
+
+**推荐方案**: 方案 B（独立模块）
+
+**理由**:
+1. **职责分离**: code_diff 负责代码差异分析，pr_summary 负责 PR 摘要生成
+2. **可测试性**: 独立模块更容易测试和维护
+3. **可扩展性**: 未来可添加更多 PR 相关功能
+4. **3 Sprint 可行**: 每个目标清晰可实现
+
+**下一步**: 定义 OpenSpec Change
+
+
+---
+
+## 产品讨论记录 - Unified Project Overview - 2026-04-18
+
+**灵感来源**: CodeFlow — 浏览器端代码架构可视化工具
+
+**核心洞察**: tree-sitter-analyzer 已有所有独立分析工具：
+- ✅ dependency_graph.py - 依赖图
+- ✅ blast_radius.py - 爆炸半径  
+- ✅ health_score.py - 健康评分
+- ✅ design_patterns.py - 设计模式
+- ✅ security_scan.py - 安全扫描
+- ✅ dead_code.py - 死代码检测
+- ✅ git_analyzer.py - 代码所有权
+
+**缺失功能**: 统一的项目概览报告（一条命令给出完整洞察）
+
+**产品想法**: `tree-sitter overview` — 综合所有分析维度，生成单一报告
+
+## 新功能探索 - 2026-04-18 (永续循环)
+
+### Context Optimization 相关
+- **Headroom Context Optimization** — 统计分析驱动的上下文压缩层
+  - 路径：`/Users/aisheng.yu/wiki/raw/ai-tech/awesome-llm-apps/advanced-llm-apps/llm-optimization-tools/headroom-context-optimization/readme.md`
+  - 核心思想：使用统计分析保留重要内容，压缩非关键内容
+  - 价值：可集成到 tree-sitter-analyzer 的代码摘要生成，减少 LLM token 消耗
+
+- **Manus Context Engineering** — Meta 收购的 Agent 公司的上下文工程原则
+  - 路径：`/Users/aisheng.yu/wiki/raw/ai-tech/planning-with-files/skills/planning-with-files/reference.md`
+  - 核心原则：6 Manus Principles（精确性、压缩、分层等）
+  - 价值：指导如何优化代码上下文的呈现方式
+
+### Tree-sitter Code Navigation
+- **tree-sitter tags** — 代码导航标签系统
+  - 路径：`/Users/aisheng.yu/wiki/raw/ai-tech/tree-sitter/docs/src/cli/tags.md`
+  - 功能：`tree-sitter tags` 输出符号标签列表
+  - 价值：GitHub 的 search-based code navigation 基于此功能
+
+### MCP 深度知识
+- **MCP Server Primitives** — Tools, Resources, Prompts 三大原语
+  - 路径：`/Users/aisheng.yu/wiki/raw/ai-tech/anthropic-academy-exporter/courses/introduction-to-model-context-protocol/14-mcp-review.md`
+  - 核心概念：Tools 是 model-controlled（模型控制）
+  - 价值：理解 MCP 工具的设计哲学
+
+
+---
+
+## 技术架构讨论记录 - Unified Project Overview - 2026-04-18
+
+**调用**: /plan-eng-review
+
+**输入**: Unified Project Overview — 统一项目概览报告
+
+**推荐方案**: 方案 A（独立 overview 模块）
+
+**理由**:
+1. **技术可行性 (9/10)**: 所有分析引擎已存在，零新算法，纯聚合层
+2. **架构影响 (9/10)**: 新模块独立，不影响现有 29+ MCP 工具，符合单一职责原则
+3. **实现复杂度 (8/10)**: 2-3 Sprint 可完成，~500-700 行新代码
+4. **维护成本 (9/10)**: 底层工具更新时，overview 自动受益
+
+**技术方案**:
+```
+tree_sitter_analyzer/overview/
+- aggregator.py - 调用现有分析工具，聚合结果
+- reporter.py - 生成统一报告（Markdown/JSON/TOON）
+- __init__.py - 模块导出
+
+tree_sitter_analyzer/mcp/tools/
+- overview_tool.py - MCP 工具包装器
+
+cli/commands/
+- overview_command.py - CLI 命令
+```
+
+**Sprint 分解**:
+- Sprint 1: Core Aggregator (200-300 行, 15+ tests)
+- Sprint 2: Reporter + Output Formats (150-200 行, 10+ tests)
+- Sprint 3: CLI + MCP Tool (150-200 行, 10+ tests)
+
+**总计**: ~500-700 行新代码，35+ tests
+
+**风险缓解**:
+1. 性能：支持并行执行（concurrent.futures）
+2. 输出格式：Reporter 层统一格式化
+3. 依赖冲突：隔离失败，部分结果仍可返回
+
+**结论**: DO - 创建独立 overview 模块，复用现有 100% 代码
+
+## 产品讨论记录 - Context Optimization Layer - 2026-04-18
+
+**调用**: /office-hours (乔布斯产品视角)
+
+**输入**: 
+- 功能想法：基于 Headroom 和 Manus Context Engineering 的上下文优化层
+- 背景：tree-sitter-analyzer 已有 29 个 MCP 工具，输出大量代码上下文给 LLM
+- 痛点：大文件分析时，LLM context 消耗过高
+
+**乔布斯的分析 (Builder Mode)**:
+
+### 1. 聚焦即说不 (Focus = Saying No)
+
+**DO** 这个功能值得做，因为：
+- **核心问题真实存在**：当 LLM 处理 dependency_graph 或 semantic_impact 的输出时，大项目会消耗 50k+ tokens
+- **现有方案不完美**：TOON 压缩已有（69.6% 压缩率），但它是"去除格式"，不是"保留重要信息"
+- **技术可行性已验证**：Headroom 用统计分析保留关键内容，Manus 有 6 大原则可应用
+
+**应该砍掉**：
+- ❌ 不要做通用压缩（已有 TOON）
+- ❌ 不要做 LLM cache（已有 semantic_code_search 的 cache）
+- ✅ 只做"针对 LLM 理解优化的上下文表示"
+
+### 2. 减法思维 (Subtraction)
+
+**最简版本 (MVP)**：
+```
+输入：任意 MCP 工具的 TOON 输出
+处理：应用 1 个 Manus 原则（精确性 - Precision）
+输出：移除冗余但保留语义的上下文
+```
+
+**现有工具是否已经足够？**
+- 部分足够：TOON 已去除格式
+- 不够之处：TOON 保留所有内容，需要"智能裁剪"
+
+**最简实现**：
+1. 创建 `tree_sitter_analyzer/analysis/context_optimizer.py`
+2. 实现 1 个优化策略（基于重要性的裁剪）
+3. 添加到现有 MCP 工具的输出后处理
+
+### 3. 一句话定义 (One-Sentence Definition)
+
+**版本 1**（太模糊）：
+"一个优化代码上下文的层，让 LLM 更高效地理解代码。"
+
+**版本 2**（更好）：
+"为 LLM 优化的代码摘要 — 保留关键信息，去除冗余，减少 token 消耗。"
+
+**版本 3**（聚焦）：
+**"智能代码上下文摘要器 — 让大文件适应 LLM 上下文窗口。"**
+
+这个定义清晰表达了：
+- 输入：代码上下文（大文件）
+- 处理：智能摘要
+- 输出：适应 LLM 上下文窗口的表示
+
+### 结论
+
+**DO: 继续实现 Context Optimization Layer**
+
+**理由**：
+1. **核心价值明确**：让大项目分析在 LLM 上下文窗口内完成
+2. **技术路径清晰**：Headroom 风格的统计分析 + Manus 原则
+3. **与现有工具互补**：不重复 TOON，而是增强其输出
+4. **MVP 可小步验证**：从 1 个优化策略开始
+
+**下一步**：
+- 技术架构分析（/plan-eng-review）
+- 定义 OpenSpec Change
+
+
+## 技术架构讨论记录 - Context Optimization Layer - 2026-04-18
+
+**调用**: /plan-eng-review
+
+**输入**: Context Optimization Layer 设计文档 + Approach A（重要性评分过滤）
+
+**GStack 的技术分析**:
+
+### 1. 技术可行性
+
+**推荐方案 A：Importance-Based Filtering** — 风险最低
+
+**理由**：
+- ✅ 复用现有模块：`complexity.py` 已有 cyclomatic complexity，`dependency_graph.py` 已有依赖计数
+- ✅ 简单算法：加权评分（complexity * 0.4 + dependency * 0.3 + call_freq * 0.3）
+- ✅ 确定性输出：相同输入 → 相同输出（便于测试）
+
+**潜在坑点**：
+1. **call_frequency 如何获取？** — 需要静态分析或动态追踪
+   - 解决：使用 dependency_graph 的 edge_weights 作为近似
+2. **跨文件依赖可能丢失** — Approach A 只考虑单文件评分
+   - 解决：Sprint 2 可增强为 Approach B（PageRank 风格）
+
+### 2. 架构影响
+
+**与现有 29 个 MCP 工具协调**：
+
+```
+现有架构：
+MCP Tool → AST Analysis → TOON Output → LLM
+
+新架构（后处理模式）：
+MCP Tool → AST Analysis → TOON Output → Context Optimizer → LLM
+                                       ↑
+                                    可插拔
+```
+
+**推荐模式：Post-Processing Filter**
+
+```python
+# tree_sitter_analyzer/analysis/context_optimizer.py
+def optimize_for_llm(toon_output: str, threshold: float = 0.5) -> str:
+    """
+    Post-process TOON output to optimize for LLM context windows.
+    
+    1. Parse TOON → extract code elements
+    2. Score each element (complexity + dependencies)
+    3. Filter by threshold (keep top N%)
+    4. Reconstruct TOON format
+    """
+```
+
+**集成点**：
+- `semantic_impact` MCP tool：添加 `--optimize-context` flag
+- `dependency_graph` MCP tool：添加节点数限制逻辑
+- `complexity_heatmap` MCP tool：只显示高复杂度区域
+
+### 3. 实现复杂度
+
+**3 个 Sprint 可行**：
+
+**Sprint 1**（2-3天）：
+- 创建 `analysis/context_optimizer.py`
+- 实现 `score_importance()` → 复用 `complexity.py` 的 `LineComplexity`
+- 实现 `filter_by_importance()` → 简单的百分位过滤
+- 20+ 单元测试
+
+**Sprint 2**（2-3天）：
+- 集成到 3 个工具：`semantic_impact`, `dependency_graph`, `complexity_heatmap`
+- 添加 CLI flag: `--optimize-context`
+- 15+ 集成测试
+
+**Sprint 3**（2-3天）：
+- LLM 基准测试（对比优化前后的问答准确率）
+- 迭代评分算法
+- 文档更新
+
+**总计**：~8-9 天，符合 3 Sprint 目标
+
+### 4. 维护成本
+
+**长期可维护**：
+
+**优点**：
+- ✅ 无外部依赖（不需要 ML 库）
+- ✅ 确定性输出（便于调试和测试）
+- ✅ 代码简单（单一职责：评分 + 过滤）
+
+**与 Approach B/C 对比**：
+- Approach B（PageRank）：需要图算法，维护成本中等
+- Approach C（ML clustering）：需要模型训练/更新，维护成本高
+
+### 推荐方案
+
+**方案 A：Importance-Based Filtering**
+
+**理由**：
+1. **风险最低**：复用现有模块，算法简单
+2. **架构协调**：后处理模式，不破坏现有工具
+3. **3 Sprint 可完成**：MVP 快速验证
+4. **长期可维护**：无 ML 依赖，确定性输出
+
+**数据流图**：
+
+```
+┌─────────────────────────────────────────────────────┐
+│  MCP Tool (semantic_impact / dependency_graph)      │
+│  ↓                                                   │
+│  AST Analysis (existing)                            │
+│  ↓                                                   │
+│  TOON Output (existing)                             │
+│  ↓                                                   │
+│  ┌───────────────────────────────────────────────┐  │
+│  │  Context Optimizer (NEW)                      │  │
+│  │  1. Parse TOON → code elements                │  │
+│  │  2. Score: complexity * 0.4 + deps * 0.3      │  │
+│  │  3. Filter: keep top 50% by score            │  │
+│  │  4. Reconstruct TOON format                   │  │
+│  └───────────────────────────────────────────────┘  │
+│  ↓                                                   │
+│  Optimized TOON → LLM (50-70% less tokens)          │
+└─────────────────────────────────────────────────────┘
+```
+
+**依赖模块**：
+- `complexity.py` → 复用 `LineComplexity` dataclass
+- `dependency_graph.py` → 复用 `edge_weights` 作为 call_freq 近似
+
+**风险**：
+- call_frequency 可能不准确 → Sprint 3 基准测试验证
+- 跨文件依赖丢失 → 可迭代到 Approach B
+

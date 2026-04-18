@@ -82,7 +82,7 @@ class ContextAutoReset:
         except Exception:
             return 0
 
-    def should_reset(self, threshold: float = 70.0) -> bool:
+    def should_reset(self, threshold: float = 150.0) -> bool:
         """
         Check if context reset is needed.
 

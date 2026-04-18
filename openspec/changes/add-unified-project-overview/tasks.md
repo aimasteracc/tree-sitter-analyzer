@@ -34,21 +34,21 @@ cli/commands/
 
 ### Sprint Breakdown
 
-**Sprint 1: Core Aggregator (2-3 天)**
-- [ ] 创建 `overview/aggregator.py` 模块
-- [ ] 实现 `OverviewAggregator` 类
-  - `generate_overview()` - 主入口
-  - `_run_dependency_analysis()` - 依赖图分析
-  - `_run_health_analysis()` - 健康评分分析
-  - `_run_pattern_analysis()` - 设计模式分析
-  - `_run_security_analysis()` - 安全扫描
-  - `_run_dead_code_analysis()` - 死代码检测
-  - `_run_ownership_analysis()` - 代码所有权分析
-  - `_run_blast_analysis()` - 爆炸半径分析
-- [ ] 实现 `OverviewReport` dataclass
-- [ ] 支持并行执行（concurrent.futures）
-- [ ] 支持部分失败隔离
-- [ ] 编写单元测试 (15+ tests)
+**Sprint 1: Core Aggregator (2-3 天)** ✅ 完成
+- ✅ 创建 `overview/aggregator.py` 模块
+- ✅ 实现 `OverviewAggregator` 类
+  - ✅ `generate_overview()` - 主入口
+  - ✅ `_run_dependency_analysis()` - 依赖图分析
+  - ✅ `_run_health_analysis()` - 健康评分分析
+  - ✅ `_run_pattern_analysis()` - 设计模式分析
+  - ✅ `_run_security_analysis()` - 安全扫描
+  - ✅ `_run_dead_code_analysis()` - 死代码检测
+  - ✅ `_run_ownership_analysis()` - 代码所有权分析
+  - ✅ `_run_blast_analysis()` - 爆炸半径分析
+- ✅ 实现 `OverviewReport` dataclass
+- ✅ 支持并行执行（concurrent.futures）
+- ✅ 支持部分失败隔离
+- ✅ 编写单元测试 (22 tests, 超过 15+ 目标)
 
 **Sprint 2: Reporter + Output Formats (2-3 天)**
 - [ ] 创建 `overview/reporter.py` 模块
