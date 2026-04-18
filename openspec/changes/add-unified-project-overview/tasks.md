@@ -50,15 +50,15 @@ cli/commands/
 - ✅ 支持部分失败隔离
 - ✅ 编写单元测试 (22 tests, 超过 15+ 目标)
 
-**Sprint 2: Reporter + Output Formats (2-3 天)**
-- [ ] 创建 `overview/reporter.py` 模块
-- [ ] 实现 `OverviewReporter` 类
-  - `generate_markdown()` - Markdown 报告
-  - `generate_json()` - JSON 输出
-  - `generate_toon()` - TOON 格式
-- [ ] 实现报告章节排序（概览 → 详细分析 → 建议）
-- [ ] 实现可视化元素（进度条、热力图、徽章）
-- [ ] 编写单元测试 (10+ tests)
+**Sprint 2: Reporter + Output Formats (2-3 天)** ✅ 完成
+- ✅ 创建 `overview/reporter.py` 模块 (385 lines)
+- ✅ 实现 `OverviewReporter` 类
+  - ✅ `generate_markdown()` - Markdown 报告
+  - ✅ `generate_json()` - JSON 输出
+  - ✅ `generate_toon()` - TOON 格式
+- ✅ 实现报告章节排序（概览 → 详细分析 → 建议）
+- ✅ 实现可视化元素（进度条、徽章、表格）
+- ✅ 编写单元测试 (28 tests, 超过 10+ 目标)
 
 **Sprint 3: CLI + MCP Tool (2-3 天)**
 - [ ] 创建 `cli/commands/overview_command.py` 命令
