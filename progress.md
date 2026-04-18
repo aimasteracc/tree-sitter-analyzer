@@ -1,5 +1,16 @@
 # Progress — 自主开发进度日志
 
+## Session 125 — 2026-04-19
+
+**Sprint 1: Return Path Analyzer** (sustainable loop):
+- Product analysis (office-hours framework): Return Path Analyzer → DO, Error Propagation → DON'T, Concurrency Safety → DON'T
+- Architecture review (plan-eng-review): Approach A — independent module recommended
+- Detection types: inconsistent_return, implicit_none, empty_return, complex_return_path
+- 55 tests passing (42 analysis + 13 MCP tool)
+- 59 → 60 MCP tools (+1 return_path)
+- Self-hosting score: 100% (105/105 tools ran)
+- Commit: `c9ab9054`
+
 ## Session 124 — 2026-04-19
 
 **Sprint 1: Architectural Boundary Analyzer** (sustainable loop):
