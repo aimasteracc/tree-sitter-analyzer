@@ -770,6 +770,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="📏",
     )
 
+    # test_smells
+    from .tools.test_smells_tool import TestSmellsTool
+    ts_tool = TestSmellsTool(project_root)
+    registry.register(
+        name="test_smells",
+        toolset="analysis",
+        category="quality",
+        schema=ts_tool.get_tool_definition(),
+        handler=_make_handler(ts_tool),
+        description="Test smell detection: empty tests, broad exception catches, sleep calls",
+        emoji="🧪",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

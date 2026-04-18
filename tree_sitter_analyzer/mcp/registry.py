@@ -307,6 +307,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "env_tracker",
             "doc_coverage",
             "function_size",
+            "test_smells",
         ],
     },
     "query": {
