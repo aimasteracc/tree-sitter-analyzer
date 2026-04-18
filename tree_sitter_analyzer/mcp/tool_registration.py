@@ -441,6 +441,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔗",
     )
 
+    # type_annotation_coverage
+    from .tools.type_annotation_coverage_tool import TypeAnnotationCoverageTool
+    type_ann_tool = TypeAnnotationCoverageTool(project_root)
+    registry.register(
+        name="type_annotation_coverage",
+        toolset="analysis",
+        category="type-annotation",
+        schema=type_ann_tool.get_tool_definition(),
+        handler=_make_handler(type_ann_tool),
+        description="Type annotation coverage: detect missing parameter/return type annotations in Python",
+        emoji="🏷️",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""
