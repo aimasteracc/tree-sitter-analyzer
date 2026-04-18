@@ -1499,3 +1499,65 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 **风险**: Go 的 log 包较简单，检测规则可能较少
 **依赖**: tree-sitter 语言模块 (已有)
 
+## 产品讨论记录 - Naming Convention Analyzer - 2026-04-18
+
+**调用**: /office-hours (GStack)
+
+**输入**: Naming Convention Analyzer — 检测命名不规范的标识符
+
+**乔布斯/GStack的分析**:
+1. 聚焦即说不: 这是一个"nice to have"功能，但维度独特（现有35个分析模块均不覆盖命名质量）
+2. 减法思维: MVP只做3种检测 — 单字母变量、不一致风格、违反语言惯例
+3. 一句话定义: "Detect identifiers that violate language naming conventions and provide actionable rename suggestions"
+
+**结论**: DO — 维度独特，实现简单，用户价值明确
+**理由**: 命名是代码可读性的核心因素，现有工具链（linter/ruff）只做格式检查不做命名质量分析
+
+## 技术架构讨论记录 - Naming Convention Analyzer - 2026-04-18
+
+**调用**: /plan-eng-review (GStack)
+
+**输入**: Naming Convention Analyzer + 两种技术方案
+
+**GStack的分析**:
+1. 技术可行性: 方案 A (纯 tree-sitter + regex) 风险更低，与 35 个现有模块架构一致
+2. 架构影响: 手动 AST walking 是所有模块的统一模式，不需要 tree-sitter query language
+3. 实现复杂度: ~400 行引擎 + ~200 行 MCP 工具 + ~400 行测试 = 1 Sprint
+4. 关键坑: Go 语言命名惯例特殊（exported = PascalCase, unexported = lowercase）
+
+**推荐方案**: 方案 A (纯 tree-sitter + regex)
+**理由**: 确定性检测，无主观判断，测试友好
+**风险**: Go 的命名惯例需要特殊处理
+**依赖**: tree-sitter 语言模块 (已有)
+
+**MVP 违规类型**:
+- single_letter_var: 单字母变量（除 i/j/k 循环计数器）
+- inconsistent_style: 同一作用域混合命名风格
+- language_violation: 违反语言惯例
+- upper_snake_not_const: 非常量使用 UPPER_SNAKE
+
+## 产品讨论记录 - Coupling Metrics Analyzer - 2026-04-18
+
+**调用**: /office-hours (autonomous mode)
+
+**输入**: 3 个候选功能 (Fan-Out/Fan-In Coupling, Class Responsibility SRP, Method Chain Depth)
+
+**产品分析结论**:
+- Fan-Out/Fan-In Coupling Analyzer → DO: 填补真正的分析缺口，复用 dependency_graph，每份架构审查都需要
+- Class Responsibility Analyzer → DON'T: 与 code_smell_detector 重叠
+- Method Chain Depth → DON'T: 高误报率，与 dependency analysis 重叠
+
+**一句话定义**: "Find the modules that are too coupled and the modules that are too critical."
+
+**结论**: DO
+
+## 技术架构讨论记录 - Coupling Metrics Analyzer - 2026-04-18
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**输入**: 2 个方案 (独立模块 vs 扩展 dependency_graph)
+
+**推荐方案**: 方案 A（独立模块）
+**理由**: 匹配 54 个已有工具的架构模式，dependency_graph.py 已有 434 行不宜再扩展
+**风险**: 无实质风险（纯聚合计算，零新 AST 解析）
+**依赖**: DependencyGraph + DependencyGraphBuilder（已有）
