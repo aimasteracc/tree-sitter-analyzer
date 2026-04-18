@@ -93,8 +93,42 @@
 这是 dogfooding 的核心——工具必须能检测自身代码库的问题，否则说明工具不够好。
 
 ```bash
-# 动态发现所有分析器并运行 — 工具增长，检查自动增长
+# 1. 动态发现所有分析器并运行 — 工具增长，检查自动增长
 uv run python scripts/self-hosting-gate.py --last-commit
+
+# 2. 用 test_smells 检测自己测试代码的质量
+uv run python -c "
+from tree_sitter_analyzer.analysis.test_smells import TestSmellDetector
+det = TestSmellDetector()
+import glob
+for f in glob.glob('tests/unit/**/*.py', recursive=True)[:20]:
+    r = det.analyze_file(f)
+    if r.smells:
+        print(f'{f}: {len(r.smells)} smells')
+        for s in r.smells[:3]:
+            print(f'  L{s.line}: {s.smell_type}')
+"
+```
+
+**代码库自我优化**（每 5 个新功能后执行一次）：
+
+工具不仅要检测问题，还要驱动自身代码库的持续优化。每完成 5 个新功能后，
+暂停新功能开发，用一个 sprint 审计并优化已有代码：
+
+```bash
+# 1. 用所有工具扫描整个 tree_sitter_analyzer/ 目录
+uv run python scripts/self-hosting-gate.py tree_sitter_analyzer/analysis/*.py
+
+# 2. 测试瘦身 — 找出重复/冗余测试
+#    - 合并重复的 test_init / test_to_dict 模板测试为参数化测试
+#    - 拆分 >1000 行的测试文件
+#    - 删除与源码行为完全重复的断言（测试应该验证行为，不是镜像实现）
+
+# 3. 源码瘦身 — 找出可简化的模块
+#    - 合并功能重叠的分析器
+#    - 提取公共基类减少重复
+#    - 删除未使用的代码路径
+```
 ```
 
 **原理**：`self-hosting-gate.py` 会自动扫描 `tree_sitter_analyzer/analysis/` 目录下的所有分析器，
