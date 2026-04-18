@@ -247,8 +247,16 @@ def test_main_json_format(temp_repo_with_data: Path, capsys) -> None:
 
     assert result == 0
     captured = capsys.readouterr()
-    # Should be valid JSON
-    data = json.loads(captured.out)
+    # Find the JSON array in output (skip any info messages)
+    lines = captured.out.strip().split("\n")
+    json_start = None
+    for i, line in enumerate(lines):
+        if line.strip().startswith("["):
+            json_start = i
+            break
+    assert json_start is not None, f"No JSON array found in output: {captured.out!r}"
+    json_text = "\n".join(lines[json_start:])
+    data = json.loads(json_text)
     assert isinstance(data, list)
 
 

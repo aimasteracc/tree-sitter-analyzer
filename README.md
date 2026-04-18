@@ -20,7 +20,7 @@ find the right files → find the right matches → extract the right structure 
 
 *Claude doesn't need to read your entire codebase. Neither do you.*
 
-**17 languages · 38 MCP tools · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
+**17 languages · 39 MCP tools · Project-boundary security · Claude Desktop / Cursor / Roo Code · CLI + Python API**
 
 ---
 
@@ -34,7 +34,6 @@ find the right files → find the right matches → extract the right structure 
 - **Zero-config first-party filtering**: Java reads groupId from pom.xml. Python uses `sys.stdlib_module_names`. No blacklists to maintain. Ever.
 
 📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
----
 
 ## 🎬 See It In Action
 
@@ -495,6 +494,6 @@ When contributing new features:
 
 ---
 
-**🎯 Built for developers working with large codebases and AI assistants**
+**Built for developers working with large codebases and AI assistants**
 
 *Making every line of code understandable to AI, enabling every project to break through token limitations*

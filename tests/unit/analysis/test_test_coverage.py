@@ -3,6 +3,8 @@
 Unit tests for Test Coverage Analyzer.
 """
 
+from pathlib import Path
+
 import pytest
 
 from tree_sitter_analyzer.analysis.test_coverage import (
@@ -327,20 +329,20 @@ def test_example():
         assert "for" not in refs
         assert "True" not in refs
 
-    def test_analyze_file_full_coverage(self, analyzer: TestCoverageAnalyzer) -> None:
+    def test_analyze_file_full_coverage(self, analyzer: TestCoverageAnalyzer, tmp_path: Path) -> None:
         """Test analyzing a file with full coverage."""
         source_content = '''
 def my_function():
     return 42
 '''
+        source_file = tmp_path / "example.py"
+        source_file.write_text(source_content)
 
-        # Create mock test references
         result = analyzer.analyze_file(
-            file_path="example.py",
-            test_files=None,  # No test files = no references
+            file_path=str(source_file),
+            test_files=None,
         )
 
-        # Without test files, all elements appear untested
         assert result.total_elements == 1
         assert result.tested_elements == 0
         assert result.coverage_percent == 0.0
