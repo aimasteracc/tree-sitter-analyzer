@@ -912,16 +912,14 @@
 **状态**: OpenSpec change 创建完成，准备开始 Sprint 1 实现
 
 
-**Sprint 1 状态**: 进行中
-- ✅ 创建 tree_sitter_analyzer/analysis/env_tracker.py (~500 lines)
-- ✅ 创建 tests/unit/test_env_tracker.py (21 tests)
-- ⏳ 修复 tree-sitter API 兼容性问题 (Query vs QueryCursor)
-- ⏳ 运行 CI 检查 (ruff + mypy + pytest)
-
-**遇到问题**:
-- tree-sitter API 版本兼容性问题
-- Query.captures() 在新版本中不可用
-- 需要使用 QueryCursor.captures()
-
-**下一步**: 修复 API 兼容性, 完成 Sprint 1
+**Sprint 1-3 状态**: ✅ 全部完成
+- ✅ 重写 env_tracker.py 使用 TreeSitterQueryCompat 兼容层
+- ✅ 修复 Python subscript 查询（`value` 字段而非 `object`）
+- ✅ 修复 Java `string_fragment`（非 `string_content`）
+- ✅ 修复 JS `subscript_expression`（非 `subscript`）
+- ✅ 使用 `.` anchor 确保只匹配第一个参数
+- ✅ 支持 4 种语言: Python, JS/TS, Java, Go
+- ✅ MCP 工具注册 (env_tracker, analysis toolset)
+- ✅ 27 tests passing (17 analysis + 10 MCP tool)
+- ✅ CI: ruff ✅, mypy --strict ✅, pytest ✅
 

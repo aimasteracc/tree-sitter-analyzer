@@ -304,6 +304,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "refactoring_suggestions",
             "design_patterns",
             "grammar_discovery",
+            "env_tracker",
         ],
     },
     "query": {

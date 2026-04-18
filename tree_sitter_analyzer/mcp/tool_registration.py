@@ -20,6 +20,7 @@ from .tools.code_clone_detection_tool import CodeCloneDetectionTool
 from .tools.code_diff_tool import CodeDiffTool
 from .tools.code_smell_detector_tool import CodeSmellDetectorTool
 from .tools.complexity_heatmap_tool import ComplexityHeatmapTool
+from .tools.context_optimizer_tool import ContextOptimizerTool
 from .tools.dependency_query_tool import DependencyQueryTool
 from .tools.error_recovery_tool import ErrorRecoveryTool
 from .tools.find_and_grep_tool import FindAndGrepTool
@@ -45,7 +46,6 @@ from .tools.semantic_search_tool import SemanticSearchTool
 from .tools.test_coverage_tool import TestCoverageTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
-from .tools.context_optimizer_tool import ContextOptimizerTool
 
 # Optional tools
 try:
@@ -361,6 +361,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(api_tool),
         description="API endpoints: Flask, FastAPI, Django, Express, Spring routes",
         emoji="🔌",
+    )
+
+    # env_tracker
+    from .tools.env_tracker_tool import EnvTrackerTool
+    env_tool = EnvTrackerTool(project_root)
+    registry.register(
+        name="env_tracker",
+        toolset="analysis",
+        category="environment-variables",
+        schema=env_tool.get_tool_definition(),
+        handler=_make_handler(env_tool),
+        description="Environment variables: track os.getenv, process.env, System.getenv, os.Getenv usage",
+        emoji="🌿",
     )
 
 

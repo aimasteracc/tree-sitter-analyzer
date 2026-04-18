@@ -17,14 +17,15 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import tree_sitter
 
 from tree_sitter_analyzer.utils import setup_logger
+from tree_sitter_analyzer.utils.tree_sitter_compat import TreeSitterQueryCompat
 
 if TYPE_CHECKING:
-    from tree_sitter import Parser, Tree
+    from tree_sitter import Tree
 
 logger = setup_logger(__name__)
 
@@ -33,17 +34,88 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
+# Python tree-sitter query patterns
+# Uses '.' anchor to match only the FIRST string argument
+_PYTHON_GETENV_QUERY = """
+(call
+    function: (attribute
+        object: (identifier) @obj
+        attribute: (identifier) @attr)
+    arguments: (argument_list
+        .
+        (string (string_content) @var_name))) @ref
+"""
+
+_PYTHON_ENVIRON_INDEX_QUERY = """
+(subscript
+    value: (attribute
+        object: (identifier) @obj
+        attribute: (identifier) @attr)
+    subscript: (string (string_content) @var_name)) @ref
+"""
+
+_PYTHON_ENVIRON_GET_QUERY = """
+(call
+    function: (attribute
+        object: (attribute
+            object: (identifier) @obj
+            attribute: (identifier) @attr1)
+        attribute: (identifier) @attr2)
+    arguments: (argument_list
+        .
+        (string (string_content) @var_name))) @ref
+"""
+
+# JavaScript/TypeScript query patterns (no named fields)
+_JS_PROPERTY_QUERY = """
+(member_expression
+    (member_expression
+        (identifier) @obj
+        (property_identifier) @prop)
+    (property_identifier) @var_name) @ref
+"""
+
+_JS_SUBSCRIPT_QUERY = """
+(subscript_expression
+    (member_expression
+        (identifier) @obj
+        (property_identifier) @prop)
+    (string
+        (string_fragment) @var_name)) @ref
+"""
+
+# Java query pattern
+_JAVA_GETENV_QUERY = """
+(method_invocation
+    object: (identifier) @obj
+    name: (identifier) @method
+    arguments: (argument_list
+        (string_literal
+            (string_fragment) @var_name))) @ref
+"""
+
+# Go query pattern
+_GO_GETENV_QUERY = """
+(call_expression
+    function: (selector_expression
+        operand: (identifier) @obj
+        field: (field_identifier) @method)
+    arguments: (argument_list
+        (interpreted_string_literal
+            (interpreted_string_literal_content) @var_name))) @ref
+"""
+
 
 class AccessType(Enum):
     """Type of environment variable access."""
 
-    GETENV_CALL = "getenv_call"  # os.getenv("VAR")
-    ENVIRON_INDEX = "environ_index"  # os.environ["VAR"]
-    ENVIRON_GET = "environ_get"  # os.environ.get("VAR")
-    PROPERTY_ACCESS = "property_access"  # process.env.VAR
-    SYSTEM_GETENV = "system_getenv"  # System.getenv()
-    SYSTEM_GETPROPERTY = "system_getproperty"  # System.getProperty()
-    GO_GETENV = "go_getenv"  # os.Getenv()
+    GETENV_CALL = "getenv_call"
+    ENVIRON_INDEX = "environ_index"
+    ENVIRON_GET = "environ_get"
+    PROPERTY_ACCESS = "property_access"
+    SYSTEM_GETENV = "system_getenv"
+    SYSTEM_GETPROPERTY = "system_getproperty"
+    GO_GETENV = "go_getenv"
 
 
 @dataclass(frozen=True)
@@ -55,7 +127,7 @@ class EnvVarReference:
     line: int
     column: int
     access_type: str
-    context: str  # Surrounding code snippet
+    context: str
     has_default: bool = False
 
 
@@ -67,7 +139,7 @@ class EnvVarUsage:
     references: list[EnvVarReference] = field(default_factory=list)
     file_count: int = 0
     total_references: int = 0
-    has_default_count: int = 0  # How many refs have default values
+    has_default_count: int = 0
     access_types: dict[str, int] = field(default_factory=dict)
 
     def add_reference(self, ref: EnvVarReference) -> None:
@@ -77,11 +149,9 @@ class EnvVarUsage:
         if ref.has_default:
             self.has_default_count += 1
 
-        # Update file count
         files = {r.file_path for r in self.references}
         self.file_count = len(files)
 
-        # Update access type counts
         self.access_types[ref.access_type] = (
             self.access_types.get(ref.access_type, 0) + 1
         )
@@ -100,12 +170,10 @@ class EnvTrackingResult:
         """Add a reference and update aggregations."""
         self.total_references += 1
 
-        # Update file count
         self.by_file[ref.file_path] = (
             self.by_file.get(ref.file_path, 0) + 1
         )
 
-        # Update variable usage
         if ref.var_name not in self.by_var:
             self.by_var[ref.var_name] = EnvVarUsage(var_name=ref.var_name)
             self.unique_vars += 1
@@ -115,7 +183,6 @@ class EnvTrackingResult:
 class EnvVarTracker:
     """Track environment variable usage in code."""
 
-    # Mapping of file extensions to tree-sitter language modules
     _LANGUAGE_MODULES: dict[str, str] = {
         ".py": "tree_sitter_python",
         ".js": "tree_sitter_javascript",
@@ -126,45 +193,36 @@ class EnvVarTracker:
         ".go": "tree_sitter_go",
     }
 
+    # Language module function name overrides (for modules without .language)
+    _LANGUAGE_FUNCS: dict[str, str] = {
+        ".ts": "language_typescript",
+        ".tsx": "language_tsx",
+    }
+
     def __init__(
         self,
         project_root: str | Path,
         include_defaults: bool = True,
     ) -> None:
-        """Initialize the tracker.
-
-        Args:
-            project_root: Root directory of the project.
-            include_defaults: Whether to include calls with default values.
-        """
         self.project_root = Path(project_root).resolve()
         self.include_defaults = include_defaults
         self._languages: dict[str, tree_sitter.Language] = {}
         self._parsers: dict[str, tree_sitter.Parser] = {}
 
-    def _get_parser(self, extension: str) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        """Get tree-sitter Language and Parser for a file extension.
-
-        Args:
-            extension: File extension (e.g., ".py").
-
-        Returns:
-            Tuple of (Language, Parser) or (None, None) if not found.
-        """
+    def _get_parser(
+        self, extension: str
+    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
         if extension not in self._LANGUAGE_MODULES:
             return None, None
 
         if extension not in self._parsers:
             module_name = self._LANGUAGE_MODULES[extension]
             try:
-                # Import the language module
                 lang_module = __import__(module_name)
-                # Get the language() function
-                language_func = getattr(lang_module, "language")
-                # Create the language object
+                func_name = self._LANGUAGE_FUNCS.get(extension, "language")
+                language_func = getattr(lang_module, func_name)
                 language = tree_sitter.Language(language_func())
                 self._languages[extension] = language
-                # Create the parser with the language
                 parser = tree_sitter.Parser(language)
                 self._parsers[extension] = parser
             except Exception as e:
@@ -173,15 +231,31 @@ class EnvVarTracker:
 
         return self._languages.get(extension), self._parsers.get(extension)
 
+    def _run_query(
+        self,
+        language: Any,
+        query_string: str,
+        root_node: Any,
+    ) -> list[tuple[Any, str]]:
+        """Execute a tree-sitter query using the compat layer."""
+        return TreeSitterQueryCompat.execute_query(
+            language, query_string, root_node
+        )
+
+    @staticmethod
+    def _has_default_value(ref_node: Any) -> bool:
+        """Check if a call node has more than one argument (has default)."""
+        for child in ref_node.children:
+            if child.type in ("arguments", "argument_list"):
+                args = [
+                    c for c in child.children
+                    if c.type not in ("(", ")", ",", "[", "]")
+                ]
+                return len(args) > 1
+        return False
+
     def track_file(self, file_path: str | Path) -> EnvTrackingResult:
-        """Track environment variables in a single file.
-
-        Args:
-            file_path: Path to the file to analyze.
-
-        Returns:
-            EnvTrackingResult with all found references.
-        """
+        """Track environment variables in a single file."""
         file_path = Path(file_path).resolve()
         result = EnvTrackingResult()
 
@@ -193,7 +267,6 @@ class EnvVarTracker:
             logger.debug(f"Unsupported file type: {file_path.suffix}")
             return result
 
-        # Get language-specific parser
         language, parser = self._get_parser(file_path.suffix)
         if language is None or parser is None:
             logger.debug(f"No language found for extension: {file_path.suffix}")
@@ -203,7 +276,6 @@ class EnvVarTracker:
             content = file_path.read_text(encoding="utf-8")
             tree = parser.parse(content.encode("utf-8"))
 
-            # Language-specific detection
             if file_path.suffix == ".py":
                 refs = self._track_python(file_path, tree, content, language)
             elif file_path.suffix in (".js", ".ts", ".tsx", ".jsx"):
@@ -215,13 +287,32 @@ class EnvVarTracker:
             else:
                 refs = []
 
-            # Add all references to result
             for ref in refs:
                 if not ref.has_default or self.include_defaults:
                     result.add_reference(ref)
 
         except Exception as e:
             logger.error(f"Error tracking file {file_path}: {e}")
+
+        return result
+
+    def track_directory(
+        self, dir_path: str | Path
+    ) -> EnvTrackingResult:
+        """Track environment variables across all files in a directory."""
+        dir_path = Path(dir_path).resolve()
+        result = EnvTrackingResult()
+
+        if not dir_path.is_dir():
+            logger.warning(f"Directory not found: {dir_path}")
+            return result
+
+        for ext in SUPPORTED_EXTENSIONS:
+            for file_path in dir_path.rglob(f"*{ext}"):
+                file_result = self.track_file(file_path)
+                for _var_name, usage in file_result.by_var.items():
+                    for ref in usage.references:
+                        result.add_reference(ref)
 
         return result
 
@@ -233,103 +324,93 @@ class EnvVarTracker:
         language: tree_sitter.Language,
     ) -> list[EnvVarReference]:
         """Track env vars in Python code."""
-        refs = []
+        refs: list[EnvVarReference] = []
+        root = tree.root_node
 
         # Pattern 1: os.getenv("VAR") or os.getenv("VAR", "default")
-        query = language.query(
+        captures = self._run_query(language, _PYTHON_GETENV_QUERY, root)
         for node, tag in captures:
-            if tag == "var_name":
-                var_name = node.text.decode("utf-8").strip('"\'')
-                line = node.start_point[0] + 1
-                col = node.start_point[1] + 1
-                context = self._get_context(content, line, col)
+            if tag != "var_name":
+                continue
+            var_name = node.text.decode("utf-8").strip('"\'')
+            line = node.start_point[0] + 1
+            col = node.start_point[1] + 1
+            context = self._get_context(content, line, col)
 
-                # Check for default value
-                has_default = any(
-                    t == "default" for n, t in captures if n.start_point == node.start_point
-                )
+            # Find the @ref parent to check for default value
+            ref_node = self._find_parent_capture(captures, node, "ref")
+            has_default = (
+                ref_node is not None and self._has_default_value(ref_node)
+            )
 
-                refs.append(EnvVarReference(
-                    var_name=var_name,
-                    file_path=str(file_path),
-                    line=line,
-                    column=col,
-                    access_type=AccessType.GETENV_CALL.value,
-                    context=context,
-                    has_default=has_default,
-                ))
+            # Verify this is os.getenv via obj/attr captures
+            if not self._verify_obj_attr(captures, node, "os", "getenv"):
+                continue
 
-        # Pattern 2: os.environ["VAR"] or os.environ.get("VAR")
-        query2 = language.query(
-            """
-            (subscript
-                object: (attribute
-                    object: (identifier) @obj
-                    attribute: (identifier) @attr
-                    (#eq? @obj "os")
-                    (#eq? @attr "environ"))
-                subscript: (string (string_content) @var_name)) @ref
-            """
+            refs.append(EnvVarReference(
+                var_name=var_name,
+                file_path=str(file_path),
+                line=line,
+                column=col,
+                access_type=AccessType.GETENV_CALL.value,
+                context=context,
+                has_default=has_default,
+            ))
+
+        # Pattern 2: os.environ["VAR"]
+        captures2 = self._run_query(
+            language, _PYTHON_ENVIRON_INDEX_QUERY, root
         )
-
-        captures2 = query2.captures(tree.root_node)
         for node, tag in captures2:
-            if tag == "var_name":
-                var_name = node.text.decode("utf-8").strip('"\'')
-                line = node.start_point[0] + 1
-                col = node.start_point[1] + 1
-                context = self._get_context(content, line, col)
+            if tag != "var_name":
+                continue
+            var_name = node.text.decode("utf-8").strip('"\'')
+            line = node.start_point[0] + 1
+            col = node.start_point[1] + 1
+            context = self._get_context(content, line, col)
 
-                refs.append(EnvVarReference(
-                    var_name=var_name,
-                    file_path=str(file_path),
-                    line=line,
-                    column=col,
-                    access_type=AccessType.ENVIRON_INDEX.value,
-                    context=context,
-                    has_default=False,
-                ))
+            if not self._verify_obj_attr(captures2, node, "os", "environ"):
+                continue
+
+            refs.append(EnvVarReference(
+                var_name=var_name,
+                file_path=str(file_path),
+                line=line,
+                column=col,
+                access_type=AccessType.ENVIRON_INDEX.value,
+                context=context,
+                has_default=False,
+            ))
 
         # Pattern 3: os.environ.get("VAR") or os.environ.get("VAR", "default")
-        query3 = language.query(
-            """
-            (call
-                function: (attribute
-                    object: (attribute
-                        object: (identifier) @obj
-                        attribute: (identifier) @attr1
-                        (#eq? @obj "os")
-                        (#eq? @attr1 "environ"))
-                    attribute: (identifier) @attr2
-                    (#eq? @attr2 "get"))
-                arguments: (argument_list
-                    (string (string_content) @var_name)
-                    (_)? @default) @ref
-            """
+        captures3 = self._run_query(
+            language, _PYTHON_ENVIRON_GET_QUERY, root
         )
-
-        captures3 = query3.captures(tree.root_node)
         for node, tag in captures3:
-            if tag == "var_name":
-                var_name = node.text.decode("utf-8").strip('"\'')
-                line = node.start_point[0] + 1
-                col = node.start_point[1] + 1
-                context = self._get_context(content, line, col)
+            if tag != "var_name":
+                continue
+            var_name = node.text.decode("utf-8").strip('"\'')
+            line = node.start_point[0] + 1
+            col = node.start_point[1] + 1
+            context = self._get_context(content, line, col)
 
-                has_default = any(
-                    t == "default" for n, t in captures3
-                    if abs(n.start_point[0] - node.start_point[0]) <= 2
-                )
+            ref_node = self._find_parent_capture(captures3, node, "ref")
+            has_default = (
+                ref_node is not None and self._has_default_value(ref_node)
+            )
 
-                refs.append(EnvVarReference(
-                    var_name=var_name,
-                    file_path=str(file_path),
-                    line=line,
-                    column=col,
-                    access_type=AccessType.ENVIRON_GET.value,
-                    context=context,
-                    has_default=has_default,
-                ))
+            if not self._verify_obj_attr(captures3, node, "os", "environ"):
+                continue
+
+            refs.append(EnvVarReference(
+                var_name=var_name,
+                file_path=str(file_path),
+                line=line,
+                column=col,
+                access_type=AccessType.ENVIRON_GET.value,
+                context=context,
+                has_default=has_default,
+            ))
 
         return refs
 
@@ -341,70 +422,54 @@ class EnvVarTracker:
         language: tree_sitter.Language,
     ) -> list[EnvVarReference]:
         """Track env vars in JavaScript/TypeScript code."""
-        refs = []
+        refs: list[EnvVarReference] = []
+        root = tree.root_node
 
         # Pattern 1: process.env.VAR_NAME
-        query = language.query(
-            """
-            (member_expression
-                object: (member_expression
-                    object: (identifier) @obj
-                    property: (property_identifier) @prop
-                    (#eq? @obj "process")
-                    (#eq? @prop "env"))
-                property: (property_identifier) @var_name) @ref
-            """
-        )
-
-        query_cursor = tree_sitter.QueryCursor(query, tree.root_node)
-        captures = query_cursor.captures()
+        captures = self._run_query(language, _JS_PROPERTY_QUERY, root)
         for node, tag in captures:
-            if tag == "var_name":
-                var_name = node.text.decode("utf-8")
-                line = node.start_point[0] + 1
-                col = node.start_point[1] + 1
-                context = self._get_context(content, line, col)
+            if tag != "var_name":
+                continue
+            var_name = node.text.decode("utf-8")
+            line = node.start_point[0] + 1
+            col = node.start_point[1] + 1
+            context = self._get_context(content, line, col)
 
-                refs.append(EnvVarReference(
-                    var_name=var_name,
-                    file_path=str(file_path),
-                    line=line,
-                    column=col,
-                    access_type=AccessType.PROPERTY_ACCESS.value,
-                    context=context,
-                    has_default=False,
-                ))
+            if not self._verify_obj_prop(captures, node, "process", "env"):
+                continue
+
+            refs.append(EnvVarReference(
+                var_name=var_name,
+                file_path=str(file_path),
+                line=line,
+                column=col,
+                access_type=AccessType.PROPERTY_ACCESS.value,
+                context=context,
+                has_default=False,
+            ))
 
         # Pattern 2: process.env["VAR_NAME"]
-        query2 = language.query(
-            """
-            (subscript
-                object: (member_expression
-                    object: (identifier) @obj
-                    property: (property_identifier) @prop
-                    (#eq? @obj "process")
-                    (#eq? @prop "env"))
-                subscript: (string (string_content) @var_name)) @ref
-            """
-        )
-
-        captures2 = query2.captures(tree.root_node)
+        captures2 = self._run_query(language, _JS_SUBSCRIPT_QUERY, root)
         for node, tag in captures2:
-            if tag == "var_name":
-                var_name = node.text.decode("utf-8").strip('"\'')
-                line = node.start_point[0] + 1
-                col = node.start_point[1] + 1
-                context = self._get_context(content, line, col)
+            if tag != "var_name":
+                continue
+            var_name = node.text.decode("utf-8").strip('"\'')
+            line = node.start_point[0] + 1
+            col = node.start_point[1] + 1
+            context = self._get_context(content, line, col)
 
-                refs.append(EnvVarReference(
-                    var_name=var_name,
-                    file_path=str(file_path),
-                    line=line,
-                    column=col,
-                    access_type=AccessType.ENVIRON_INDEX.value,
-                    context=context,
-                    has_default=False,
-                ))
+            if not self._verify_obj_prop(captures2, node, "process", "env"):
+                continue
+
+            refs.append(EnvVarReference(
+                var_name=var_name,
+                file_path=str(file_path),
+                line=line,
+                column=col,
+                access_type=AccessType.ENVIRON_INDEX.value,
+                context=context,
+                has_default=False,
+            ))
 
         return refs
 
@@ -416,46 +481,43 @@ class EnvVarTracker:
         language: tree_sitter.Language,
     ) -> list[EnvVarReference]:
         """Track env vars in Java code."""
-        refs = []
+        refs: list[EnvVarReference] = []
+        root = tree.root_node
 
-        # Pattern 1: System.getenv("VAR")
-        query = language.query(
-            """
-            (method_invocation
-                object: (identifier) @obj
-                name: (identifier) @method
-                (#eq? @obj "System")
-                (#match? @method "getenv|getProperty")
-                arguments: (argument_list
-                    (string_literal
-                        (string_content) @var_name))) @ref
-            """
-        )
-
-        query_cursor = tree_sitter.QueryCursor(query, tree.root_node)
-        captures = query_cursor.captures()
+        captures = self._run_query(language, _JAVA_GETENV_QUERY, root)
         for node, tag in captures:
-            if tag == "var_name":
-                var_name = node.text.decode("utf-8").strip('"\'')
-                line = node.start_point[0] + 1
-                col = node.start_point[1] + 1
-                context = self._get_context(content, line, col)
+            if tag != "var_name":
+                continue
+            var_name = node.text.decode("utf-8").strip('"\'')
+            line = node.start_point[0] + 1
+            col = node.start_point[1] + 1
+            context = self._get_context(content, line, col)
 
-                access_type = (
-                    AccessType.SYSTEM_GETENV.value
-                    if "getenv" in content[node.start_point[0]:node.end_point[0]]
-                    else AccessType.SYSTEM_GETPROPERTY.value
-                )
+            # Determine access type from method node
+            method_node = self._find_tagged_node(captures, "method", node)
+            if method_node is not None:
+                method_text = method_node.text.decode("utf-8")
+                if "getenv" in method_text:
+                    access_type = AccessType.SYSTEM_GETENV.value
+                else:
+                    access_type = AccessType.SYSTEM_GETPROPERTY.value
+            else:
+                access_type = AccessType.SYSTEM_GETENV.value
 
-                refs.append(EnvVarReference(
-                    var_name=var_name,
-                    file_path=str(file_path),
-                    line=line,
-                    column=col,
-                    access_type=access_type,
-                    context=context,
-                    has_default=False,
-                ))
+            # Verify System class
+            obj_node = self._find_tagged_node(captures, "obj", node)
+            if obj_node is not None and obj_node.text.decode("utf-8") != "System":
+                continue
+
+            refs.append(EnvVarReference(
+                var_name=var_name,
+                file_path=str(file_path),
+                line=line,
+                column=col,
+                access_type=access_type,
+                context=context,
+                has_default=False,
+            ))
 
         return refs
 
@@ -467,43 +529,99 @@ class EnvVarTracker:
         language: tree_sitter.Language,
     ) -> list[EnvVarReference]:
         """Track env vars in Go code."""
-        refs = []
+        refs: list[EnvVarReference] = []
+        root = tree.root_node
 
-        # Pattern: os.Getenv("VAR")
-        query = language.query(
-            """
-            (call_expression
-                function: (selector_expression
-                    operand: (identifier) @obj
-                    field: (identifier) @method
-                    (#eq? @obj "os")
-                    (#eq? @method "Getenv"))
-                arguments: (argument_list
-                    (interpreted_string_literal
-                        (interpreted_string_content) @var_name))) @ref
-            """
-        )
-
-        query_cursor = tree_sitter.QueryCursor(query, tree.root_node)
-        captures = query_cursor.captures()
+        captures = self._run_query(language, _GO_GETENV_QUERY, root)
         for node, tag in captures:
-            if tag == "var_name":
-                var_name = node.text.decode("utf-8").strip('"\'')
-                line = node.start_point[0] + 1
-                col = node.start_point[1] + 1
-                context = self._get_context(content, line, col)
+            if tag != "var_name":
+                continue
+            var_name = node.text.decode("utf-8").strip('"\'')
+            line = node.start_point[0] + 1
+            col = node.start_point[1] + 1
+            context = self._get_context(content, line, col)
 
-                refs.append(EnvVarReference(
-                    var_name=var_name,
-                    file_path=str(file_path),
-                    line=line,
-                    column=col,
-                    access_type=AccessType.GO_GETENV.value,
-                    context=context,
-                    has_default=False,
-                ))
+            # Verify os.Getenv
+            obj_node = self._find_tagged_node(captures, "obj", node)
+            if obj_node is not None and obj_node.text.decode("utf-8") != "os":
+                continue
+
+            refs.append(EnvVarReference(
+                var_name=var_name,
+                file_path=str(file_path),
+                line=line,
+                column=col,
+                access_type=AccessType.GO_GETENV.value,
+                context=context,
+                has_default=False,
+            ))
 
         return refs
+
+    @staticmethod
+    def _find_parent_capture(
+        captures: list[tuple[Any, str]],
+        child_node: Any,
+        parent_tag: str,
+    ) -> Any | None:
+        """Find the parent capture node that contains child_node."""
+        for node, tag in captures:
+            if tag == parent_tag and node.start_point <= child_node.start_point and node.end_point >= child_node.end_point:
+                return node
+        return None
+
+    @staticmethod
+    def _find_tagged_node(
+        captures: list[tuple[Any, str]],
+        target_tag: str,
+        nearby_node: Any,
+    ) -> Any | None:
+        """Find a tagged node near the given node (same parent context)."""
+        for node, tag in captures:
+            if tag == target_tag and abs(node.start_point[0] - nearby_node.start_point[0]) <= 5:
+                return node
+        return None
+
+    @staticmethod
+    def _verify_obj_attr(
+        captures: list[tuple[Any, str]],
+        nearby_node: Any,
+        expected_obj: str,
+        expected_attr: str,
+    ) -> bool:
+        """Verify that obj and attr captures match expected values."""
+        obj_match = False
+        attr_match = False
+        for node, tag in captures:
+            if tag == "obj" and node.text.decode("utf-8") == expected_obj:
+                if abs(node.start_point[0] - nearby_node.start_point[0]) <= 5:
+                    obj_match = True
+            if tag == "attr" and node.text.decode("utf-8") == expected_attr:
+                if abs(node.start_point[0] - nearby_node.start_point[0]) <= 5:
+                    attr_match = True
+            if tag in ("attr1", "attr2") and node.text.decode("utf-8") in (expected_attr, "get"):
+                if abs(node.start_point[0] - nearby_node.start_point[0]) <= 5:
+                    attr_match = True
+        return obj_match and attr_match
+
+    @staticmethod
+    def _verify_obj_prop(
+        captures: list[tuple[Any, str]],
+        nearby_node: Any,
+        expected_obj: str,
+        expected_prop: str,
+    ) -> bool:
+        """Verify that obj and prop captures match expected values."""
+        obj_match = False
+        prop_match = False
+        for node, tag in captures:
+            if tag == "obj" and node.text.decode("utf-8") == expected_obj:
+                if abs(node.start_point[0] - nearby_node.start_point[0]) <= 5:
+                    obj_match = True
+            if tag == "prop" and node.text.decode("utf-8") == expected_prop:
+                if abs(node.start_point[0] - nearby_node.start_point[0]) <= 5:
+                    prop_match = True
+        return obj_match and prop_match
 
     def _get_context(
         self,
@@ -517,7 +635,10 @@ class EnvVarTracker:
         start = max(0, line - context_lines - 1)
         end = min(len(lines), line + context_lines)
         context_lines_list = lines[start:end]
-        return "\n".join(f"{i + start + 1}: {line_content}" for i, line_content in enumerate(context_lines_list))
+        return "\n".join(
+            f"{i + start + 1}: {line_content}"
+            for i, line_content in enumerate(context_lines_list)
+        )
 
 
 def track_env_vars(
@@ -525,16 +646,7 @@ def track_env_vars(
     project_root: str | Path | None = None,
     include_defaults: bool = True,
 ) -> EnvTrackingResult:
-    """Convenience function to track environment variables in a file.
-
-    Args:
-        file_path: Path to the file to analyze.
-        project_root: Root directory of the project.
-        include_defaults: Whether to include calls with default values.
-
-    Returns:
-        EnvTrackingResult with all found references.
-    """
+    """Track environment variables in a file."""
     if project_root is None:
         project_root = Path(file_path).parent
     tracker = EnvVarTracker(project_root, include_defaults)
@@ -544,17 +656,19 @@ def track_env_vars(
 def group_by_var_name(
     references: list[EnvVarReference],
 ) -> dict[str, EnvVarUsage]:
-    """Group references by variable name.
-
-    Args:
-        references: List of environment variable references.
-
-    Returns:
-        Dictionary mapping variable names to EnvVarUsage objects.
-    """
+    """Group references by variable name."""
     by_var: dict[str, EnvVarUsage] = {}
     for ref in references:
         if ref.var_name not in by_var:
             by_var[ref.var_name] = EnvVarUsage(var_name=ref.var_name)
         by_var[ref.var_name].add_reference(ref)
     return by_var
+
+
+def find_unused_declarations(
+    declarations: set[str],
+    usages: dict[str, EnvVarUsage],
+) -> set[str]:
+    """Find declared but unused environment variables."""
+    used_vars = set(usages.keys())
+    return declarations - used_vars

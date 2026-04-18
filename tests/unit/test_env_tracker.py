@@ -8,6 +8,7 @@ import pytest
 from tree_sitter_analyzer.analysis.env_tracker import (
     AccessType,
     EnvTrackingResult,
+    EnvVarReference,
     EnvVarTracker,
     EnvVarUsage,
     group_by_var_name,
@@ -210,8 +211,6 @@ without_default = os.getenv("NO_DEFAULT")
 
 def test_group_by_var_name() -> None:
     """Test grouping references by variable name."""
-    from tree_sitter_analyzer.analysis.env_tracker import EnvVarReference
-
     refs = [
         EnvVarReference(
             var_name="API_KEY",
