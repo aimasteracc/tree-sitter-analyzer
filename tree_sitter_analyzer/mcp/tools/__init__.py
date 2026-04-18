@@ -47,6 +47,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "string_concat_loop_tool",
         "class": "StringConcatLoopTool",
     },
+    "duplicate_condition": {
+        "description": (
+            "Analyze duplicate if conditions (DRY violations). "
+            "Detects identical conditions that appear multiple times."
+        ),
+        "module": "duplicate_condition_tool",
+        "class": "DuplicateConditionTool",
+    },
 }
 
 __all__ = [
