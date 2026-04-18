@@ -2,17 +2,23 @@
 
 ## Session 123 — 2026-04-19
 
-Assertion Quality Analyzer - Complete
+Assertion Quality Analyzer + Exception Handling Quality Analyzer - Complete
 
-**OpenSpec change**: add-assertion-quality-analyzer (from previous session)
-- Core analysis engine: 1160 lines, 4 detection modes (weak_assertion, vague_comparison, clustered_assertions, missing_branch_assertion)
-- MCP tool: text/json/toon output formats
+**Sprint 1: Assertion Quality Analyzer** (from previous session):
 - 37 tests passing (26 analysis + 11 MCP tool)
-- 55 → 56 total MCP tools registered (+1 assertion_quality)
-- Also added 6 missing tools to TOOLSET_DEFINITIONS (naming_conventions, coupling_metrics, cognitive_complexity, nesting_depth, i18n_strings, assertion_quality)
-- Self-hosting score: 88% (28/32 tools ran)
-- CI: ruff ✅, mypy --strict ✅, pytest ✅
+- 55 → 56 total MCP tools (+1 assertion_quality)
 - Commit: `ff171006`
+
+**Sprint 2: Exception Handling Quality Analyzer** (sustainable loop):
+- Product analysis (/office-hours): DO — real gap between logging_patterns and error_handling
+- Architecture review (/plan-eng-review): independent module recommended
+- Core analysis engine: 660 lines, 4 detection modes (broad_catch, swallowed_exception, missing_context, generic_error_message)
+- MCP tool: text/json/toon output formats
+- 35 tests passing (25 analysis + 10 MCP tool)
+- 56 → 57 total MCP tools (+1 exception_quality)
+- Self-hosting score: 88% (30/34 tools ran), ExceptionQualityAnalyzer: clean
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+- Commit: `3439b24c`
 
 ## Session 121 — 2026-04-18
 

@@ -542,11 +542,11 @@ uv run pytest tests/ -x -q
 
 ### Session 123 — 2026-04-19
 - **Open**: Continue from Session 122, complete unfinished OpenSpec change
-- **Complete**: 1 OpenSpec change (add-assertion-quality-analyzer)
-- **MCP Tools**: 55 → 56 (+1 assertion_quality)
-- **Tests**: 37 tests pass (26 analysis + 11 MCP tool)
-- **Commit**: `ff171006`
-- **Status**: Sprint complete, feature delivered
+- **Complete**: 2 OpenSpec changes (add-assertion-quality-analyzer, add-exception-quality-analyzer)
+- **MCP Tools**: 55 → 57 (+2 assertion_quality, exception_quality)
+- **Tests**: 37 + 35 = 72 tests pass
+- **Commits**: `ff171006`, `3439b24c`
+- **Status**: Sprint complete, both features delivered via sustainable loop
 
 ### Next Session
 - **Action**: Execute sustainable loop mechanism (新功能探索)
