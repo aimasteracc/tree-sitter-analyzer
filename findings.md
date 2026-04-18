@@ -1196,3 +1196,32 @@ def optimize_for_llm(toon_output: str, threshold: float = 0.5) -> str:
 **风险**: 无显著风险
 **依赖**: tree-sitter 语言插件 (Python, JavaScript, Java, Go 都已支持)
 
+
+## 产品讨论记录 - Import Dependency Sanitizer - 2026-04-18
+
+**调用**: /office-hours (产品分析)
+
+**输入**: 3 个功能方向 (Code Ownership, API Contract, Import Sanitizer)
+
+**产品分析结论**:
+- Code Ownership & Bus Factor Analyzer → DON'T (git blame 噪音大，架构不匹配)
+- API Contract Analyzer → DON'T (已被 code_diff_tool 覆盖)
+- Import Dependency Sanitizer → DO (真正的缺口，tree-sitter 完美适用)
+
+**理由**: Import sanitizer 是真正的功能缺口，解决所有开发者的通用痛点，完美契合 tree-sitter 静态分析定位。
+
+## 技术架构讨论记录 - Import Dependency Sanitizer - 2026-04-18
+
+**调用**: /plan-eng-review (架构分析)
+
+**输入**: 3 个技术方案 (独立模块 vs 增强dependency_graph vs 单文件分析)
+
+**推荐方案**: 方案 A - 独立 analysis 模块 + MCP 工具
+
+**理由**:
+- 方案 B 违反 SRP，dependency_graph 已有430+行
+- 方案 C 不完整，循环检测需要跨文件分析
+- 方案 A 架构匹配度最高，3个Sprint可完成
+
+**风险**: star imports (*) 无法静态验证，需标记
+**依赖**: tree-sitter 查询（现有模式），Tarjan SCC（已有实现）

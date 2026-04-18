@@ -376,6 +376,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🌿",
     )
 
+    # import_sanitizer
+    from .tools.import_sanitizer_tool import ImportSanitizerTool
+    import_tool = ImportSanitizerTool(project_root)
+    registry.register(
+        name="import_sanitizer",
+        toolset="analysis",
+        category="import-quality",
+        schema=import_tool.get_tool_definition(),
+        handler=_make_handler(import_tool),
+        description="Import analysis: detect unused imports, circular dependencies, sort order violations",
+        emoji="📦",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""
