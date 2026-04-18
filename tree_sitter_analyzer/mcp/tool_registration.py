@@ -757,6 +757,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🌐",
     )
 
+    # function_size
+    from .tools.function_size_tool import FunctionSizeTool
+    fs_tool = FunctionSizeTool(project_root)
+    registry.register(
+        name="function_size",
+        toolset="analysis",
+        category="complexity",
+        schema=fs_tool.get_tool_definition(),
+        handler=_make_handler(fs_tool),
+        description="Function size: detect oversized functions by LOC and parameter count",
+        emoji="📏",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
