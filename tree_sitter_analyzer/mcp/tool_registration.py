@@ -822,6 +822,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🎯",
     )
 
+    # exception_quality
+    from .tools.exception_quality_tool import ExceptionQualityTool
+    eq_tool = ExceptionQualityTool(project_root)
+    registry.register(
+        name="exception_quality",
+        toolset="analysis",
+        category="error-quality",
+        schema=eq_tool.get_tool_definition(),
+        handler=_make_handler(eq_tool),
+        description="Exception handling quality: detect broad catches, swallowed exceptions, missing error context",
+        emoji="🛡️",
+    )
+
     # coupling_metrics
     from .tools.coupling_metrics_tool import CouplingMetricsTool
     cm_tool = CouplingMetricsTool(project_root)

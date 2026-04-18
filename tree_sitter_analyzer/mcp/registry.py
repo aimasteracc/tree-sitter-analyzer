@@ -315,6 +315,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "nesting_depth",
             "i18n_strings",
             "assertion_quality",
+            "exception_quality",
         ],
     },
     "query": {

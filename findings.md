@@ -1551,6 +1551,35 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 
 **结论**: DO
 
+## 产品讨论记录 - Assertion Quality Analyzer - 2026-04-18
+
+**调用**: /office-hours (autonomous mode)
+
+**输入**: 3 个候选功能 (Code Consistency, Assertion Quality, Code Freshness)
+
+**乔布斯的分析**:
+- Code Consistency → DON'T: naming_convention + import_sanitizer 已覆盖，跨文件一致性是 YAGNI
+- Code Freshness → DON'T: git_analyzer + health_score 已覆盖，薄封装
+- Assertion Quality → DO: 真正的缺口。test_coverage 告诉你 IF tested，test_smells 告诉你 BAD patterns。但无人告诉你 assertions 是否 TESTING BEHAVIOR vs TESTING EXISTENCE。
+
+**结论**: DO
+
+**理由**: expect(component).toBeDefined() vs expect(component.text).toBe("Save") - 两者 test_coverage=100%, test_smells=pass, 但只有后者在测行为。这个工具填补 test_coverage 和 test_smells 之间的真实空白。
+
+**一句话定义**: "Tells you if tests catch bugs or just pass CI."
+
+## 技术架构讨论记录 - Assertion Quality Analyzer - 2026-04-18
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**输入**: 3 个方案 (独立模块, 扩展 test_smells, 独立+联动)
+
+**推荐方案**: 方案 A（独立模块）
+**理由**: test_smells 已 847 行, 关注"有无断言"vs"断言质量", 职责不同, 不应混入
+**风险**: JS/TS 方法链断言需要仔细的 tree-sitter query（expect(x).toBe vs toBeDefined）
+**依赖**: tree-sitter (已有), 无新外部依赖
+**实现**: 3 Sprints - 核心引擎(Python) → 多语言(JS/TS, Java, Go) → MCP Tool
+
 ## 技术架构讨论记录 - Coupling Metrics Analyzer - 2026-04-18
 
 **调用**: /plan-eng-review (autonomous mode)
@@ -1561,3 +1590,32 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 **理由**: 匹配 54 个已有工具的架构模式，dependency_graph.py 已有 434 行不宜再扩展
 **风险**: 无实质风险（纯聚合计算，零新 AST 解析）
 **依赖**: DependencyGraph + DependencyGraphBuilder（已有）
+
+## 产品讨论记录 - Exception Handling Quality Analyzer - 2026-04-19
+
+**调用**: /office-hours (autonomous mode)
+
+**输入**: Exception Handling Quality Analyzer — 分析生产代码中异常处理质量
+
+**乔布斯的分析**:
+- Exception Handling Quality → DO: 真正的空白。logging_patterns 检测 silent catch 但侧重日志层面, error_handling 检测恢复模式(retry/fallback)但非反模式, test_smells 的 broad_except 只覆盖测试代码。生产代码中异常处理质量无人覆盖。
+- 4 种检测模式: broad_catch(捕获过宽异常类型), swallowed_exception(catch 块为空), missing_context(raise 新异常未传递原始异常), generic_error_message(硬编码错误消息)
+- 与现有工具差异化清晰: logging_patterns=日志层面, error_handling=恢复模式, 本工具=异常处理质量反模式
+
+**结论**: DO
+
+**理由**: "没人告诉你 catch 块是否真的处理了异常，还是只是吞掉了它。" 每个生产代码库都有这个问题，tree-sitter AST 解析优势明显（精确识别 try/catch/except 结构和内容）。
+
+**一句话定义**: "Detects exception handling anti-patterns in production code — where errors get silently swallowed."
+
+## 技术架构讨论记录 - Exception Handling Quality Analyzer - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**输入**: 3 个方案 (独立模块, 扩展 logging_patterns, 扩展 error_handling)
+
+**推荐方案**: 方案 A（独立模块）
+**理由**: 36 个分析器全部使用独立模块模式。logging_patterns 已 500+ 行不宜再扩展，error_handling 侧重恢复模式职责不同。单职责原则 + 独立测试 + 可独立修改。
+**风险**: Go 的 defer/recover 模式需要额外 tree-sitter query，但属于常规工作
+**依赖**: tree-sitter (已有), 无新外部依赖
+**实现**: 3 Sprints - 核心引擎(Python) → 多语言(JS/TS, Java, Go) → MCP Tool
