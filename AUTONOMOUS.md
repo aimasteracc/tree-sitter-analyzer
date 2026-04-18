@@ -564,12 +564,20 @@ uv run pytest tests/ -x -q
 - **Commits**: `41d0abdb`, `31f88da0`
 - **Status**: Sprint complete, sustainable loop running
 
+### Session 131 — 2026-04-19
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 1 OpenSpec change (add-loop-complexity-analyzer)
+- **MCP Tools**: 66 → 67 (+1 loop_complexity)
+- **Tests**: 48 tests pass (34 analysis + 14 MCP tool)
+- **Commits**: `04d60497`
+- **Status**: Sprint complete, sustainable loop running
+
 ### Session 130 — 2026-04-19
 - **Open**: Continue sustainable loop (新功能探索)
 - **Complete**: 1 OpenSpec change (add-feature-envy-detector)
 - **MCP Tools**: 65 → 66 (+1 feature_envy)
 - **Tests**: 35 tests pass (35 analysis)
-- **Commits**: (pending)
+- **Commits**: `1961a055` (archive cleanup)
 - **Status**: Sprint complete, sustainable loop running
 
 ### Next Session

@@ -1,5 +1,17 @@
 # Progress — 自主开发进度日志
 
+## Session 131 — 2026-04-19
+
+**Sprint 1: Loop Complexity Analyzer** (sustainable loop):
+- Product analysis (Steve Jobs inline): DO — nested loops are #1 source of O(n²) performance issues, core value
+- Architecture review (/plan-eng-review): Method A (pure AST traversal) recommended over Method B (data flow), consistent with 66 existing MCP tools
+- Detection types: nested_loop, loop_in_loop, exponential_pattern
+- 48 tests (34 analysis + 14 MCP tool), 4 languages (Python, JS/TS, Java, Go)
+- 66 → 67 MCP tools (+1 loop_complexity)
+- Self-hosting score: 100% (28/28 tools ran)
+- CI: ruff check, mypy --strict, pytest all pass
+- Commit: `04d60497`
+
 ## Session 130 — 2026-04-19
 
 **Sprint 1: Feature Envy Detector** (sustainable loop):
