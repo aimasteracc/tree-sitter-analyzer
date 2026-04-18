@@ -45,6 +45,7 @@ from .tools.semantic_search_tool import SemanticSearchTool
 from .tools.test_coverage_tool import TestCoverageTool
 from .tools.trace_impact_tool import TraceImpactTool
 from .tools.understand_codebase_tool import UnderstandCodebaseTool
+from .tools.context_optimizer_tool import ContextOptimizerTool
 
 # Optional tools
 try:
@@ -112,6 +113,9 @@ def register_all_tools(project_root: str | None = None) -> None:
 
     # Overview tools
     _register_overview_tools(registry, project_root)
+
+    # Optimization tools
+    _register_optimization_tools(registry, project_root)
 
 
 def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
@@ -567,6 +571,21 @@ def _register_overview_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(overview_tool),
         description="Unified project overview with all analysis tools",
         emoji="📊",
+    )
+
+
+def _register_optimization_tools(registry: Any, project_root: str | None) -> None:
+    """Register optimization tools."""
+    # context_optimizer
+    optimizer_tool = ContextOptimizerTool(project_root)
+    registry.register(
+        name="context_optimizer",
+        toolset="optimization",
+        category="context-optimization",
+        schema=optimizer_tool.get_tool_definition(),
+        handler=_make_handler(optimizer_tool),
+        description="Optimize code context for LLM windows: intelligent filtering",
+        emoji="⚡",
     )
 
 

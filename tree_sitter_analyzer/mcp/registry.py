@@ -331,6 +331,11 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "emoji": "📊",
         "tools": ["overview"],
     },
+    "optimization": {
+        "description": "Code optimization and transformation tools",
+        "emoji": "⚡",
+        "tools": ["context_optimizer"],
+    },
     "index": {
         "description": "Project index and summary tools",
         "emoji": "📚",

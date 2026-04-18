@@ -2940,3 +2940,25 @@ OpenSpec Changes Completed
 - No incomplete OpenSpec changes remain
 - Ready to execute sustainable loop mechanism (新功能探索)
 
+
+### Session 111 — 2026-04-18
+- **Open**: Continue from Session 110
+- **Task**: Complete add-unified-project-overview OpenSpec change
+- **Complete**: All 3 Sprints
+  - Sprint 1: Core Aggregator (22 tests)
+  - Sprint 2: Reporter + Output Formats (28 tests)
+  - Sprint 3: CLI + MCP Tool (18 tests)
+- **Files Created**:
+  - tree_sitter_analyzer/overview/aggregator.py (349 lines)
+  - tree_sitter_analyzer/overview/reporter.py (385 lines)
+  - tree_sitter_analyzer/overview/__init__.py
+  - tree_sitter_analyzer/cli/commands/overview_command.py (121 lines)
+  - tree_sitter_analyzer/mcp/tools/overview_tool.py (167 lines)
+  - tests/unit/overview/test_aggregator.py (344 lines, 22 tests)
+  - tests/unit/overview/test_reporter.py (310 lines, 28 tests)
+  - tests/integration/mcp/test_overview_tool.py (267 lines, 18 tests)
+- **Tests**: 68 tests pass (超过 35+ 目标)
+- **Commits**: 69096f65, fe738a31, fdc36991
+- **MCP Tools**: 31 → 32 (+1 overview)
+- **Toolset**: 新增 overview toolset
+
