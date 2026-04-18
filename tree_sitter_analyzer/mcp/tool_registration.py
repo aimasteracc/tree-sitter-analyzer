@@ -467,6 +467,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="💬",
     )
 
+    # error_handling
+    from .tools.error_handling_tool import ErrorHandlingTool
+    eh_tool = ErrorHandlingTool(project_root)
+    registry.register(
+        name="error_handling",
+        toolset="analysis",
+        category="error-handling",
+        schema=eh_tool.get_tool_definition(),
+        handler=_make_handler(eh_tool),
+        description="Error handling: detect bare except, swallowed errors, broad exceptions, unchecked Go errors across Python, JS/TS, Java, Go",
+        emoji="🛡️",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""

@@ -1284,3 +1284,102 @@ def optimize_for_llm(toon_output: str, threshold: float = 0.5) -> str:
 
 **风险**: SonarSource 规范有多个特殊情况（else/elif 不增加，递归不增加嵌套，lambda 特殊处理）
 **依赖**: tree-sitter 语言模块 (已有)
+
+## 产品讨论记录 - Parameter Coupling Analyzer - 2026-04-18
+
+**调用**: /office-hours
+
+**输入**: 三候选功能分析 — Parameter Coupling Analyzer, Code Change Churn Predictor, Function Call Depth Analyzer
+
+**分析**:
+- Parameter Coupling Analyzer → DO: 真正的缺口，Data Clump 检测是独特功能，tree-sitter 精确解析参数列表
+- Code Change Churn Predictor → DON'T: 与 git_analyzer + risk_scoring 重叠
+- Function Call Depth Analyzer → DON'T: 与 trace_impact 重叠，只需 10 行代码而非新工具
+
+**结论**: DO
+
+**理由**: 填补 McCabe complexity 和 cognitive complexity 之间的真正空白
+
+## 技术架构讨论记录 - Parameter Coupling Analyzer - 2026-04-18
+
+**调用**: /plan-eng-review
+
+**输入**: Parameter Coupling Analyzer 三方案分析
+
+**GStack的分析**:
+- 方案 A（独立模块）: 推荐 — 与 env_tracker/import_sanitizer/doc_coverage 模式一致
+- 方案 B（增强 complexity.py）: 不推荐 — 违反 SRP
+- 方案 C（增强 refactoring_suggestions）: 不推荐 — 功能耦合
+
+**推荐方案**: 方案 A
+**理由**: 最低风险，与现有 38+ MCP 工具架构一致，3 Sprint 可完成
+**风险**: Jaccard similarity 阈值需要调优
+**依赖**: tree-sitter 语言模块 (已有)
+
+## 产品讨论记录 - Error Handling Pattern Analyzer - 2026-04-18
+
+**调用**: 乔布斯产品理念分析 (聚焦/减法/一句话定义)
+
+**输入**: 三候选功能分析 — Error Handling Pattern Analyzer, Code Statistics Aggregator, Naming Convention Checker
+
+**分析**:
+
+1. **聚焦即说不**: 哪个功能解决核心问题？
+   - Error Handling Pattern Analyzer → DO: 真正的缺口，无工具检查错误处理质量。生产环境故障 #1 原因是错误处理不当。
+   - Code Statistics Aggregator → DON'T: cloc/tokei 已覆盖，overview_tool 已存在
+   - Naming Convention Checker → DON'T: IDE linters 已覆盖 (ESLint, Pylint, Checkstyle)
+
+2. **减法思维**: 能否用更简单的方式实现？
+   - Error Handling: 不能更简单，这是全新的分析维度。security_scan 关注安全漏洞，code_smells 关注代码异味，但没有人专门分析错误处理模式。
+   - 最小版本: 检测 bare except + swallowed errors + inconsistent patterns
+
+3. **一句话定义**: "检测项目中的错误处理反模式，按严重程度分类并提供改进建议。"
+   - ✅ 清晰、聚焦，一句话说清价值
+
+**结论**: DO
+
+**理由**:
+- 填补真正的功能缺口（无现有工具覆盖错误处理质量）
+- tree-sitter 完美适用（try/catch/except 是 AST 节点）
+- 多语言支持（Python try/except, Java try/catch, JS try/catch, Go if err != nil）
+- Local-first（纯 AST 分析，无 LLM 依赖）
+
+## 技术架构讨论记录 - Error Handling Pattern Analyzer - 2026-04-18
+
+**调用**: 架构分析 (GStack eng review framework)
+
+**输入**: Error Handling Pattern Analyzer 三方案分析
+
+**方案 A: 独立 analysis 模块 + MCP 工具** (推荐)
+- 与 env_tracker/import_sanitizer/doc_coverage 架构模式一致
+- 3 Sprint 可完成
+- 支持 4 种语言
+
+**方案 B: 扩展 security_scan**
+- 不推荐 - 职责不同（安全漏洞 vs 错误处理质量）
+
+**方案 C: 扩展 code_smells**
+- 不推荐 - code_smells 关注代码异味，不是错误处理
+
+**推荐方案**: 方案 A
+**理由**: 最低风险，与现有 39+ MCP 工具架构一致，3 Sprint 可完成
+**风险**: Go 的 error handling 模式与其他语言差异大，需要特殊处理
+**依赖**: tree-sitter 语言模块 (已有)
+
+**技术方案**:
+```
+tree_sitter_analyzer/analysis/error_handling.py
+- ErrorHandlingPattern dataclass
+- ErrorHandlingAnalyzer class
+- detect_bare_except() — Python bare except
+- detect_swallowed_errors() — empty except/catch blocks
+- detect_broad_exceptions() — except Exception, catch (Exception)
+- detect_go_error_unchecked() — unchecked error returns
+- detect_finally_without_try() — dangling finally
+- 支持语言: Python, JavaScript/TypeScript, Java, Go
+
+tree_sitter_analyzer/mcp/tools/error_handling_tool.py
+- MCP tool 包装器
+- TOON + JSON 输出
+- severity 过滤 (error/warning/info)
+```
