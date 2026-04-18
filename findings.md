@@ -4,6 +4,25 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 产品讨论记录 - Loop Complexity Analyzer - 2026-04-19
+
+**调用**: Steve Jobs inline analysis + /plan-eng-review
+
+**初始选择**: Loop Complexity Analyzer
+
+**产品分析** (Steve Jobs):
+- 聚焦: 嵌套循环是 O(n²) 性能问题的 #1 来源，核心价值
+- 减法: MVP = 检测循环嵌套，估算 O()，纯 AST 遍历
+- 一句话: "Find the O(n²) hiding in your code"
+- 结论: DO — 填补真正空白（cognitive_complexity 是可读性，nesting_depth 是控制流，无工具估算算法复杂度）
+
+**架构分析** (/plan-eng-review):
+- 推荐方案A: 纯 AST 遍历
+- 理由: 48个现有分析器已验证 AST 遍历模式；数据流分析(B方案)引入首个跨分析器依赖
+- 检测类型: nested_loop, loop_in_loop, exponential_pattern
+- 4语言: Python, JS/TS, Java, Go
+- 1个Sprint可完成
+
 ## 产品讨论记录 - Feature Envy Detector - 2026-04-19
 
 **调用**: /office-hours + /plan-eng-review

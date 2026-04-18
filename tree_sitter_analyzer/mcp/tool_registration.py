@@ -441,6 +441,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="📐",
     )
 
+    # loop_complexity
+    from .tools.loop_complexity_tool import LoopComplexityTool
+    lc_tool = LoopComplexityTool(project_root)
+    registry.register(
+        name="loop_complexity",
+        toolset="analysis",
+        category="complexity",
+        schema=lc_tool.get_tool_definition(),
+        handler=_make_handler(lc_tool),
+        description="Loop complexity: detect nested loops and estimate Big-O complexity across Python, JS/TS, Java, Go",
+        emoji="🔄",
+    )
+
     # parameter_coupling
     from .tools.parameter_coupling_tool import ParameterCouplingTool
     pc_tool = ParameterCouplingTool(project_root)
