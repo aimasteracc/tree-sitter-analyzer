@@ -389,6 +389,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="📦",
     )
 
+    # doc_coverage
+    from .tools.doc_coverage_tool import DocCoverageTool
+    doc_tool = DocCoverageTool(project_root)
+    registry.register(
+        name="doc_coverage",
+        toolset="analysis",
+        category="documentation",
+        schema=doc_tool.get_tool_definition(),
+        handler=_make_handler(doc_tool),
+        description="Documentation coverage: find undocumented functions, classes, methods across Python, JS/TS, Java, Go",
+        emoji="📝",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""

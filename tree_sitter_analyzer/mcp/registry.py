@@ -305,6 +305,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "design_patterns",
             "grammar_discovery",
             "env_tracker",
+            "doc_coverage",
         ],
     },
     "query": {

@@ -1225,3 +1225,32 @@ def optimize_for_llm(toon_output: str, threshold: float = 0.5) -> str:
 
 **风险**: star imports (*) 无法静态验证，需标记
 **依赖**: tree-sitter 查询（现有模式），Tarjan SCC（已有实现）
+
+## 产品讨论记录 - Documentation Coverage Analyzer - 2026-04-18
+
+**调用**: /office-hours (产品分析)
+
+**输入**: 3 个功能方向 (Documentation Coverage, Architecture Constraint, Code Statistics)
+
+**产品分析结论**:
+- Documentation Coverage Analyzer → DO (真正缺口，无工具检查文档完整性)
+- Architecture Constraint Validator → DON'T (复杂度过高，需要 DSL)
+- Code Statistics Dashboard → DON'T (cloc/tokei 已覆盖)
+
+**理由**: Documentation Coverage 是唯一的功能缺口，tree-sitter 完美适用（解析注释和文档字符串），local-first 无需 LLM。
+
+## 技术架构讨论记录 - Documentation Coverage Analyzer - 2026-04-18
+
+**调用**: /plan-eng-review (架构分析)
+
+**输入**: 独立 analysis 模块 + MCP 工具
+
+**推荐方案**: 方案 A - 独立 analysis 模块 + MCP 工具
+
+**理由**:
+- 与 env_tracker/import_sanitizer 架构模式一致
+- 3 个 Sprint 即可完成
+- 支持 4 种语言 (Python, JS/TS, Java, Go)
+
+**风险**: decorated_definition 需要特殊处理 (已解决)
+**依赖**: tree-sitter 语言模块 (已有)
