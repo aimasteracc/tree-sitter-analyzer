@@ -60,23 +60,23 @@ cli/commands/
 - ✅ 实现可视化元素（进度条、徽章、表格）
 - ✅ 编写单元测试 (28 tests, 超过 10+ 目标)
 
-**Sprint 3: CLI + MCP Tool (2-3 天)**
-- [ ] 创建 `cli/commands/overview_command.py` 命令
-- [ ] 实现 `tree-sitter overview` CLI
-  - 支持 `--format` 参数 (markdown/json/toon)
-  - 支持 `--include` 参数（选择分析器）
-  - 支持 `--parallel` 参数（并行执行）
-- [ ] 创建 `mcp/tools/overview_tool.py`
-- [ ] 注册到 ToolRegistry (overview toolset)
-- [ ] 编写集成测试 (10+ tests)
+**Sprint 3: CLI + MCP Tool (2-3 天)** ✅ 完成
+- ✅ 创建 `cli/commands/overview_command.py` 命令 (121 lines)
+- ✅ 实现 `tree-sitter overview` CLI
+  - ✅ 支持 `--format` 参数 (markdown/json/toon)
+  - ✅ 支持 `--include` 参数（选择分析器）
+  - ✅ 支持 `--parallel` 参数（并行执行）
+- ✅ 创建 `mcp/tools/overview_tool.py` (167 lines)
+- ✅ 注册到 ToolRegistry (overview toolset)
+- ✅ 编写集成测试 (18 tests, 超过 10+ 目标)
 
 ## Success Criteria
 
-- [ ] CLI 命令 `tree-sitter overview` 可用
-- [ ] MCP tool `overview` 可用
-- [ ] 支持输出格式: json, markdown, toon
-- [ ] 35+ tests passing
-- [ ] ruff check passes, mypy --strict passes
+- ✅ CLI 命令 `tree-sitter overview` 可用
+- ✅ MCP tool `overview` 可用
+- ✅ 支持输出格式: json, markdown, toon
+- ✅ 68 tests passing (22 + 28 + 18, 超过 35+ 目标)
+- ✅ ruff check passes, mypy --strict passes
 - [ ] 复用现有 100% 代码（零新分析算法）
 
 ## Dependencies

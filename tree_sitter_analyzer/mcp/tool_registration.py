@@ -30,6 +30,7 @@ from .tools.health_score_tool import HealthScoreTool
 from .tools.java_patterns_tool import JavaPatternAnalysisTool
 from .tools.list_files_tool import ListFilesTool
 from .tools.modification_guard_tool import ModificationGuardTool
+from .tools.overview_tool import OverviewTool
 from .tools.pr_summary_tool import PRSummaryTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
@@ -108,6 +109,9 @@ def register_all_tools(project_root: str | None = None) -> None:
 
     # Index tools
     _register_index_tools(registry, project_root)
+
+    # Overview tools
+    _register_overview_tools(registry, project_root)
 
 
 def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
@@ -548,6 +552,21 @@ def _register_index_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(summary_tool),
         description="Get project summary: stats, structure, key files",
         emoji="📚",
+    )
+
+
+def _register_overview_tools(registry: Any, project_root: str | None) -> None:
+    """Register overview tools."""
+    # overview
+    overview_tool = OverviewTool(project_root)
+    registry.register(
+        name="overview",
+        toolset="overview",
+        category="project-overview",
+        schema=overview_tool.get_tool_definition(),
+        handler=_make_handler(overview_tool),
+        description="Unified project overview with all analysis tools",
+        emoji="📊",
     )
 
 

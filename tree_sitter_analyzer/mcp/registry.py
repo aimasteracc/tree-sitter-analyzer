@@ -326,6 +326,11 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
         "emoji": "🩺",
         "tools": ["check_tools", "ci_report", "pr_summary"],
     },
+    "overview": {
+        "description": "Unified project overview and reporting",
+        "emoji": "📊",
+        "tools": ["overview"],
+    },
     "index": {
         "description": "Project index and summary tools",
         "emoji": "📚",
