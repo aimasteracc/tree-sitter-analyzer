@@ -1793,3 +1793,14 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 - 支持 Python, Java, TypeScript, C#
 
 **风险**: 非标准目录结构的项目→优雅处理"no layers detected"
+
+## 产品讨论记录 - Resource Lifecycle Analyzer - 2026-04-19
+
+**结论**: DO — 资源泄漏是真实bug来源，无现有工具覆盖
+
+**检测模式**:
+1. Python: open() without `with` → HIGH
+2. Python: open() in try without finally → MEDIUM
+3. Java: new FileInputStream without try-with-resources → HIGH
+4. TypeScript: fs.open() without cleanup → MEDIUM
+5. C#: IDisposable without `using` → HIGH
