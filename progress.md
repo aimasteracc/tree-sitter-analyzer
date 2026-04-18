@@ -2,6 +2,15 @@
 
 ## Session 131 — 2026-04-19
 
+**Sprint 3: Switch Smell Analyzer** (sustainable loop):
+- Product analysis (Steve Jobs inline): DO — type-based switching is a missed polymorphism opportunity
+- Architecture: Pure AST traversal, per-language switch statement types
+- Detection: too_many_cases (5+), missing_default (4+ without default)
+- 37 tests (27 analysis + 10 MCP tool), 4 languages (Python, JS/TS, Java, Go)
+- 68 → 69 MCP tools (+1 switch_smells)
+- CI: ruff check, mypy --strict, pytest all pass
+- Commit: `e26aecd4`
+
 **Sprint 2: Boolean Complexity Analyzer** (sustainable loop):
 - Product analysis (Steve Jobs inline): DO — complex boolean expressions are a real source of bugs, actionable
 - Architecture: Pure AST traversal, same pattern as existing tools
