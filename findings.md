@@ -1804,3 +1804,30 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 3. Java: new FileInputStream without try-with-resources → HIGH
 4. TypeScript: fs.open() without cleanup → MEDIUM
 5. C#: IDisposable without `using` → HIGH
+
+## 产品讨论记录 - Concurrency Safety Analyzer - 2026-04-19
+
+**调用**: /office-hours (Steve Jobs perspective)
+
+**候选功能**:
+1. Boundary Value Analyzer — off-by-one, empty collection, range validation → DON'T (scope too narrow, overlaps null_safety)
+2. Concurrency Safety Analyzer — shared mutable state, race conditions, missing sync → DO
+3. Data Flow Integrity Analyzer — unvalidated input propagation, data transformation loss → DON'T (overlaps error_handling, exception_quality, security_scan)
+
+**乔布斯的分析**:
+- 聚焦即说不: Concurrency 是唯一真正未覆盖的 CRITICAL 领域。GStack review checklist 明确标记 "Race Conditions" 为 CRITICAL。
+- 减法思维: 不需要跨函数分析。单函数范围模式检测就够了。
+- 一句话定义: "Catch race conditions that take down production at 3am."
+
+**结论**: DO — Concurrency Safety Analyzer
+**理由**: 唯一无覆盖的 CRITICAL 领域，解决真实痛点（并发 bug 最难调试），无现有工具重叠
+
+**检测模式**:
+1. Python: mutable class attributes modified in methods without locking → HIGH
+2. Python: threading.Lock/multiprocessing without proper acquire/release → HIGH
+3. JS/TS: shared mutable state in closures with async operations → MEDIUM
+4. JS/TS: Promise.all without error handling → MEDIUM
+5. Java: non-volatile field accessed from multiple methods → HIGH
+6. Java: Collections.synchronizedMap used incorrectly → MEDIUM
+7. Go: shared variable accessed from multiple goroutines → HIGH
+8. Go: map concurrent read/write without mutex → HIGH
