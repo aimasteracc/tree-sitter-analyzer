@@ -1,5 +1,23 @@
 # Progress — 自主开发进度日志
 
+## Session 129 — 2026-04-19
+
+**Sprint 1: Inheritance Quality Analyzer** (completed from previous session):
+- 56 tests (43 unit + 13 MCP integration), 4 languages
+- Detection: deep_inheritance, missing_super_call, diamond_inheritance, empty_override
+- 63 → 64 MCP tools (+1 inheritance_quality)
+- Commit: `41d0abdb`
+
+**Sprint 2: Side Effect Analyzer** (sustainable loop):
+- Product analysis (/office-hours): DO — no existing analyzer tracks side effects, fills real gap
+- Architecture review (/plan-eng-review): Approach A (pure AST) over Approach B (call_graph dependency)
+- Detection types: global_state_mutation, parameter_mutation
+- 49 tests (38 unit + 11 MCP integration), 4 languages (Python, JS/TS, Java, Go)
+- 64 → 65 MCP tools (+1 side_effects)
+- Self-hosting score: 100% (52/52 tools ran)
+- CI: ruff check, mypy --strict, pytest all pass
+- Commit: `31f88da0`
+
 ## Session 128 — 2026-04-19
 
 **Sprint 1: Contract Compliance Analyzer** (sustainable loop):

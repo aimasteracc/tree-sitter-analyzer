@@ -17,6 +17,18 @@ cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
 ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
 ```
 
+## 产品讨论记录 - Side Effect Analyzer - 2026-04-19
+
+**调用**: /office-hours + /plan-eng-review
+
+**输入**: Side Effect Tracker — 检测函数中的副作用模式
+
+**产品分析**: DO — 值得做。现有46个分析器无一个专门追踪副作用。砍掉 network_call（AST误报率高），保留 global_state_mutation + parameter_mutation。
+
+**架构分析**: 推荐方案A（纯AST分析）。方案B（结合call_graph）引入跨分析器依赖，复杂度翻倍。
+
+**结论**: 做。MVP 2个检测模式，4语言，纯AST。
+
 ## 产品讨论记录 - Contract Compliance Analyzer - 2026-04-19
 
 **调用**: /office-hours (Steve Jobs / Garry Tan perspective) + /plan-eng-review
