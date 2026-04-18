@@ -376,6 +376,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🌿",
     )
 
+    # magic_values
+    from .tools.magic_values_tool import MagicValuesTool
+    magic_tool = MagicValuesTool(project_root)
+    registry.register(
+        name="magic_values",
+        toolset="analysis",
+        category="code-quality",
+        schema=magic_tool.get_tool_definition(),
+        handler=_make_handler(magic_tool),
+        description="Magic values: detect hardcoded numbers, strings, URLs, paths, colors that should be constants",
+        emoji="🔮",
+    )
+
     # import_sanitizer
     from .tools.import_sanitizer_tool import ImportSanitizerTool
     import_tool = ImportSanitizerTool(project_root)
