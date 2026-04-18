@@ -454,6 +454,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔄",
     )
 
+    # boolean_complexity
+    from .tools.boolean_complexity_tool import BooleanComplexityTool
+    bc_tool = BooleanComplexityTool(project_root)
+    registry.register(
+        name="boolean_complexity",
+        toolset="analysis",
+        category="complexity",
+        schema=bc_tool.get_tool_definition(),
+        handler=_make_handler(bc_tool),
+        description="Boolean complexity: detect complex boolean expressions with too many conditions across Python, JS/TS, Java, Go",
+        emoji="🔀",
+    )
+
     # parameter_coupling
     from .tools.parameter_coupling_tool import ParameterCouplingTool
     pc_tool = ParameterCouplingTool(project_root)
