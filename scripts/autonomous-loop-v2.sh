@@ -41,12 +41,14 @@ mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
 LOCKFILE="$RUNTIME_DIR/loop.lock"
 PIDFILE="$RUNTIME_DIR/loop.pid"
 
-exec 200>"$LOCKFILE"
-if ! flock -n 200; then
-    EXISTING_PID=$(cat "$PIDFILE" 2>/dev/null || echo "unknown")
-    echo "另一个实例在运行 (PID $EXISTING_PID)"
-    echo "如需强制停止: kill $EXISTING_PID"
-    exit 1
+if [ -f "$PIDFILE" ]; then
+    OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
+    if [ -n "$OLD_PID" ] && kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "另一个实例在运行 (PID $OLD_PID)"
+        echo "如需强制停止: kill $OLD_PID"
+        exit 1
+    fi
+    rm -f "$PIDFILE"
 fi
 echo $$ > "$PIDFILE"
 
@@ -222,14 +224,16 @@ while true; do
 
     echo "  Claude PID: $CLAUDE_PID, PGID: $CLAUDE_PGID"
 
+    START_OF_ROUND=$(date '+%Y-%m-%d %H:%M:%S')
+
     # Watchdog 轮询（主进程循环，无孤儿风险）
-    local elapsed=0
+    WD_ELAPSED=0
     while kill -0 "$CLAUDE_PID" 2>/dev/null; do
         sleep "$POLL_INTERVAL"
-        elapsed=$((elapsed + POLL_INTERVAL))
+        WD_ELAPSED=$((WD_ELAPSED + POLL_INTERVAL))
 
         # 超时检查
-        if [ $elapsed -ge "$SESSION_TIMEOUT" ]; then
+        if [ $WD_ELAPSED -ge "$SESSION_TIMEOUT" ]; then
             echo ""
             echo "⏰ Session 超时 (${SESSION_TIMEOUT}s)，终止进程组 $CLAUDE_PGID"
             kill -- -"$CLAUDE_PGID" 2>/dev/null || true
@@ -240,14 +244,12 @@ while true; do
 
         # Dead-man: 日志 mtime 检查
         if [ -f "$LOGFILE" ]; then
-            local last_write
-            last_write=$(stat -f %m "$LOGFILE" 2>/dev/null || echo 0)
-            local now
-            now=$(date +%s)
-            local silence=$(( now - last_write ))
-            if [ "$silence" -gt "$DEADMAN_TIMEOUT" ]; then
+            WD_LAST_WRITE=$(stat -f %m "$LOGFILE" 2>/dev/null || echo 0)
+            WD_NOW=$(date +%s)
+            WD_SILENCE=$(( WD_NOW - WD_LAST_WRITE ))
+            if [ "$WD_SILENCE" -gt "$DEADMAN_TIMEOUT" ]; then
                 echo ""
-                echo "💀 日志 ${DEADMAN_TIMEOUT}s 无更新 (沉默 ${silence}s)，终止进程组 $CLAUDE_PGID"
+                echo "💀 日志 ${DEADMAN_TIMEOUT}s 无更新 (沉默 ${WD_SILENCE}s)，终止进程组 $CLAUDE_PGID"
                 kill -- -"$CLAUDE_PGID" 2>/dev/null || true
                 sleep "$KILL_GRACE_SEC"
                 kill -9 -- -"$CLAUDE_PGID" 2>/dev/null || true
@@ -258,7 +260,7 @@ while true; do
 
     # 收尸（防 zombie）
     wait "$CLAUDE_PID" 2>/dev/null || true
-    local exit_code=$?
+    EXIT_CODE=$?
 
     # 清理 recovery prompt（已使用）
     rm -f "$RUNTIME_DIR/recovery-prompt.txt" 2>/dev/null || true
@@ -267,17 +269,17 @@ while true; do
     rm -f .context-reset-marker 2>/dev/null || true
 
     # 退出码处理 + 退避
-    case $exit_code in
+    case $EXIT_CODE in
         0)
             echo "  Session $SESSION 正常完成"
             BACKOFF=1
             ;;
         130|143)
-            echo "  Session $SESSION 被信号终止 (exit=$exit_code)"
+            echo "  Session $SESSION 被信号终止 (exit=$EXIT_CODE)"
             BACKOFF=1
             ;;
         *)
-            echo "  Session $SESSION 异常退出 (exit=$exit_code)"
+            echo "  Session $SESSION 异常退出 (exit=$EXIT_CODE)"
             BACKOFF=$((BACKOFF * 2))
             if [ $BACKOFF -gt "$BACKOFF_MAX" ]; then
                 BACKOFF=$BACKOFF_MAX
@@ -286,9 +288,8 @@ while true; do
     esac
 
     # 打印本轮产出
-    local commits
-    commits=$(git log --oneline --since="$(date -v-${COOLDOWN_SEC}S '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S')" 2>/dev/null | wc -l | tr -d ' ')
-    echo "  本轮 commit: ${commits:-0}"
+    RECENT_COMMITS=$(git log --oneline --since="$START_OF_ROUND" 2>/dev/null | wc -l | tr -d ' ')
+    echo "  本轮 commit: ${RECENT_COMMITS:-0}"
 
     # Session 间日志分割
     echo "" >> "$LOGFILE"
