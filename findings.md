@@ -929,3 +929,82 @@ def optimize_for_llm(toon_output: str, threshold: float = 0.5) -> str:
 - call_frequency 可能不准确 → Sprint 3 基准测试验证
 - 跨文件依赖丢失 → 可迭代到 Approach B
 
+
+## 新功能探索记录 - Session 111
+
+### 2026-04-18: PR Summary Generator 灵感
+
+**Wiki 检索结果:**
+- CodeFlow: PR Impact Analysis (粘贴 PR URL 查看影响范围)
+- claw-code: 开源 Claude Code 实现
+- tree-sitter code navigation: Pattern matching, query language
+
+**已有功能对比:**
+- CodeFlow: 依赖图, 爆炸半径, 安全扫描, 设计模式, 健康评分
+- tree-sitter-analyzer: 上述功能全部实现 ✅
+- 新机会: **PR Summary Generator** (LLM 驱动的代码变更摘要)
+
+**功能想法:**
+自动生成 Pull Request 的自然语言摘要，包括:
+1. 变更概述 (What changed?)
+2. 影响范围 (Which files/modules?)
+3. 潜在风险 (Breaking changes?)
+4. 测试覆盖 (Tests added/updated?)
+
+**技术基础:**
+- 已有 code_diff.py (diff 分析)
+- 已有 search/llm_integration.py (LLM 支持)
+- 可集成 git_analyzer.py (文件 churn, ownership)
+
+**价值:**
+- 节省 PR review 时间
+- 自动化变更日志生成
+- CI/CD pipeline 集成
+
+## 产品讨论记录 - PR Summary Generator - 2026-04-18
+
+**调用**: office-hours skill (乔布斯视角)
+
+**功能想法**: PR Summary Generator - 使用 LLM 生成 Pull Request 的自然语言摘要
+
+**乔布斯的分析**:
+- **判断**: DON'T - 不值得做
+- **理由 1**: 价值主张错位。tree-sitter-analyzer = 精确 AST 分析，LLM summary = 模糊文本生成
+- **理由 2**: 弱痛点。PR review 时间不是开发者最痛的问题
+- **理由 3**: 质量风险。LLM hallucination 会破坏用户对精确性的信任
+- **理由 4**: 增加复杂度。引入外部 API 依赖、成本、延迟
+
+**减法思维建议**:
+- 优化现有 code_diff 工具的输出格式
+- 添加 TOON/JSON 模板供 CI/CD 使用
+- 不需要 LLM
+
+**替代方向**:
+- Release Notes Generator (从 commit history，不需要 LLM)
+- PR Impact Visualization (code_diff + dependency_graph)
+- Code Context Explorer (基于现有 AST 数据)
+
+**结论**: DON'T - 放弃 PR Summary Generator，探索其他方向
+
+## 产品讨论记录 - Code Clone Detection - 2026-04-18
+
+**调用**: office-hours skill (乔布斯视角)
+
+**功能想法**: Code Clone Detection MCP Tool Integration
+
+**背景**: code_clones.py 已完成（47 tests passing），需注册为 MCP 工具
+
+**乔布斯的分析**:
+- **判断**: DO - 值得做
+- **理由 1**: 工具完成任务，不是新产品方向。原型已有，只需包装。
+- **理由 2**: 真实痛点。代码重复是维护噩梦。
+- **理由 3**: 无风险。纯 AST 分析，无外部依赖。
+- **理由 4**: 极简实现。1-2 Sprint 即可。
+
+**一句话定义**: "检测项目中的重复代码，按类型和严重程度分类，提供重构建议。"
+
+**实施计划**:
+- Sprint 1: MCP Tool Creation (code_clones_tool.py + 15+ tests)
+- Sprint 2: Registration + Documentation
+
+**结论**: DO - 继续实施
