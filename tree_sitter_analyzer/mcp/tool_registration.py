@@ -796,6 +796,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="📋",
     )
 
+    # naming_conventions
+    from .tools.naming_convention_tool import NamingConventionTool
+    nc_tool = NamingConventionTool(project_root)
+    registry.register(
+        name="naming_conventions",
+        toolset="analysis",
+        category="naming-quality",
+        schema=nc_tool.get_tool_definition(),
+        handler=_make_handler(nc_tool),
+        description="Naming conventions: detect identifiers that violate language conventions across Python, JS/TS, Java, Go",
+        emoji="🏷️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
