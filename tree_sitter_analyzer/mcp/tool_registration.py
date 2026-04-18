@@ -480,6 +480,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🛡️",
     )
 
+    # call_graph
+    from .tools.call_graph_tool import CallGraphTool
+    cg_tool = CallGraphTool(project_root)
+    registry.register(
+        name="call_graph",
+        toolset="analysis",
+        category="call-graph",
+        schema=cg_tool.get_tool_definition(),
+        handler=_make_handler(cg_tool),
+        description="Call graph: map function call relationships, detect island functions (never called) and god functions (too many calls)",
+        emoji="🕸️",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""

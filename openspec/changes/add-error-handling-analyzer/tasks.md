@@ -16,6 +16,13 @@
 - TOON + JSON 输出格式
 
 ## Status
-- [ ] Sprint 1: Core Detection Engine
-- [ ] Sprint 2: Multi-Language Support
-- [ ] Sprint 3: MCP Tool Integration
+- [x] Sprint 1: Core Detection Engine ✅ COMPLETE
+- [x] Sprint 2: Multi-Language Support (JS/TS, Java, Go) ✅ COMPLETE
+- [x] Sprint 3: MCP Tool Integration ✅ COMPLETE
+
+## Completion Summary
+- analysis/error_handling.py (~600 lines, 4 languages)
+- mcp/tools/error_handling_tool.py (~220 lines)
+- 36 tests passing
+- MCP tool registered in analysis toolset
+- Commit: 5a80cedb

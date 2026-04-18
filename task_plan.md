@@ -962,5 +962,43 @@
 
 **工具数量**: 36 → 37 (+1 doc_coverage)
 
+### Session 116 — 2026-04-18: Parameter Coupling Analyzer
 
+**永续循环机制执行** ✅ 完成
+- ✅ qmd wiki 检索: code analysis, coupling metrics, refactoring
+- ✅ 产品分析 (/office-hours): Churn Predictor → DON'T, Call Depth → DON'T, Parameter Coupling → DO
+- ✅ 技术架构 (/plan-eng-review): 方案 A（独立模块）推荐
+- ✅ 创建 OpenSpec change: add-parameter-coupling-analyzer
 
+**Sprint 1-3 状态**: ✅ 全部完成
+- ✅ analysis/parameter_coupling.py (~700 lines)
+- ✅ mcp/tools/parameter_coupling_tool.py (~210 lines)
+- ✅ 4 种语言支持: Python, JS/TS, Java, Go
+- ✅ 功能: 参数过多检测, Data Clump检测(Jaccard similarity), 可配置阈值
+- ✅ MCP 工具注册 (parameter_coupling, analysis toolset)
+- ✅ 65 tests passing (51 analysis + 14 MCP tool)
+- ✅ CI: ruff ✅, mypy --strict ✅, pytest ✅
+- ✅ Commit + push: a45bcd1e
+
+**工具数量**: 38 → 39 (+1 parameter_coupling)
+
+### Session 117 — 2026-04-18: Call Graph Analyzer
+
+**永续循环机制执行** ✅ 完成
+- ✅ qmd wiki 检索: code analysis, static analysis, call graph
+- ✅ 产品分析 (office-hours): Function Naming Quality → DON'T, Call Graph Analyzer → DO
+- ✅ 技术架构 (plan-eng-review): 方案 A（独立模块）推荐
+- ✅ 创建 OpenSpec change: add-call-graph-analyzer
+
+**Sprint 1-3 状态**: ✅ 全部完成
+- ✅ analysis/call_graph.py (~320 lines)
+- ✅ mcp/tools/call_graph_tool.py (~180 lines)
+- ✅ 4 种语言支持: Python, JS/TS, Java, Go
+- ✅ 功能: 函数提取, 调用图构建, 岛屿函数检测, 上帝函数检测
+- ✅ MCP 工具注册 (call_graph, analysis toolset)
+- ✅ 55 tests passing (29 Python + 17 multilang + 9 MCP tool)
+- ✅ CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+**工具数量**: 39 → 40 (+1 call_graph)
+
+**此计划永不标记为「全部完成」。永远有下一批任务。**
