@@ -1688,3 +1688,108 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 **缓解**: 设置合理的默认阈值，提供可配置选项
 
 **依赖**: tree-sitter (已有), 无新外部依赖
+
+## 产品讨论记录 - Variable Mutability Analyzer - 2026-04-19
+
+**调用**: /office-hours (autonomous mode, non-interactive)
+
+**输入**: Variable Mutability Analyzer — 检测 shadow_variable, reassigned_constant, unused_assignment, mutation_in_iteration
+
+**Office Hours 分析**:
+- 需求真实：AI Agent 做代码审查时，变量可变性是盲区
+- 现有 39 个分析器中，没有专门的可变性分析
+- naming_convention 只管命名，不管行为
+- coupling_metrics 只管模块间，不管函数内
+- solid_principles 管架构级，不管变量级
+
+**结论**: DO
+**理由**: 填补了变量级行为分析的空白，MVP 可以 shadow_variable + unused_assignment 两个模式起步
+**切入点**: shadow_variable（最常见、最好检测）+ unused_assignment（高价值、易实现）
+
+## 技术架构讨论记录 - Variable Mutability Analyzer - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode, non-interactive)
+
+**输入**: Variable Mutability Analyzer — 3 technical approaches
+
+**GStack 的分析**:
+- 方案 A（独立模块）与 39/39 现有分析器一致，风险最低
+- 方案 B（扩展 naming）违反 SRP，56 个测试的模块不宜混入行为分析
+- 方案 C（扩展 code_smells）粒度不匹配，code_smells 是类/方法级，可变性是变量级
+
+**推荐方案**: 方案 A（独立模块）
+**理由**: 遵循既定约定，独立测试，独立 MCP tool，维护成本最低
+
+**风险**: scope stack tracking 是实现中最复杂的部分，但已有先例（nesting_depth, cognitive_complexity）
+
+**依赖**: tree_sitter_python, tree_sitter_javascript, tree_sitter_typescript, tree_sitter_java, tree_sitter_go
+
+**4 种检测模式**:
+1. shadow_variable: 内层作用域重新声明外层变量
+2. unused_assignment: 赋值后未被引用
+3. reassigned_constant: UPPER_SNAKE_CASE 变量被重新赋值
+4. mutation_in_iteration: 循环中修改外部变量
+
+## 产品讨论记录 - Return Consistency Analyzer - 2026-04-19
+
+**调用**: /office-hours (autonomous mode, no questions)
+
+**输入**: 隐式类型强制分析器 vs Return Consistency Analyzer
+
+**产品分析**:
+- 隐式类型强制分析器: DON'T — 范围太窄(JS-only)，ESLint已有完美方案，ROI低
+- Return Consistency Analyzer: DO — 跨语言实用，检测真实bug来源(不一致return)，无现有工具覆盖
+
+**结论**: DO — Return Consistency Analyzer
+
+**理由**:
+1. 跨语言通用 — Python/JS/TS/Java/Go 都有不一致return的真实bug
+2. 无竞争 — 现有40个分析器均未覆盖此领域
+3. 一句话定义：检测函数返回路径的不一致性 — 有些分支返回值而有些不返回
+
+**4 种检测模式**:
+1. inconsistent_return: 函数内部分路径有return value，部分没有
+2. mixed_return_types: 同一函数返回不同类型的值
+3. missing_default_return: switch/match语句缺少default返回
+4. empty_return_value: return不带value，但其他路径返回了value
+
+---
+
+## 产品讨论记录 - Architectural Boundary Analyzer - 2026-04-19
+
+**调用**: /office-hours (autonomous mode)
+
+**输入**: Architectural Boundary Analyzer — 检测分层架构违规
+
+**产品分析**:
+- DO — with narrower scope
+- 解决核心问题：当代码库超过~50文件时，开发者不知道哪层引用了哪层，违规悄悄积累
+- 现有41个分析器都看单文件/单模块，没人执行"这层不应该调用那层"的规则
+- 减法思维：MVP只需定义标准层(UI/Controller → Service → Repository)，扫描import，标记违规
+- 一句话定义："检测代码是否违反了分层架构，跨层import不应该直接引用"
+
+**结论**: DO
+
+**理由**: 填补了跨文件架构分析的空白，AI Agent通过MCP可以获得"你的代码有架构违规"信号
+
+## 技术架构讨论记录 - Architectural Boundary Analyzer - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**输入**: 方案A(import分析+预定义层) vs 方案B(目录推断+循环依赖)
+
+**推荐方案**: 方案A — 基于import的层级分析，复用DependencyGraphBuilder
+
+**理由**:
+1. 技术可行性：方案A更简单，方案B自动推断对非标准架构会产生误报
+2. 架构影响：coupling_metrics.py已复用DependencyGraphBuilder，完全对齐现有模式
+3. 实现复杂度：1个Sprint，~200行分析器 + MCP工具封装 + 测试
+4. 维护成本：方案A的规则集比方案B的推断逻辑更易理解
+
+**实现方案**:
+- 目录/包名映射到层级: controllers/ → L0, services/ → L1, repositories/ → L2
+- 对每个文件的import，检查是否跨层超过1级
+- 报告违规、合规分数、循环依赖
+- 支持 Python, Java, TypeScript, C#
+
+**风险**: 非标准目录结构的项目→优雅处理"no layers detected"

@@ -1,5 +1,26 @@
 # Progress — 自主开发进度日志
 
+## Session 124 — 2026-04-19
+
+Architectural Boundary Analyzer - Complete
+
+**永续循环机制执行** (sustainable loop):
+- qmd wiki 检索: code analysis, tree-sitter patterns, CodeFlow reference
+- 产品分析 (/office-hours): DO — fills gap in cross-file architecture analysis
+- 技术架构 (/plan-eng-review): Approach A — reuse DependencyGraphBuilder
+- Core analysis engine: detects skip-layer, wrong-direction, circular violations
+- Layer mapping: UI/Controller → Service/Business → Repository/DAO
+- 55 tests passing (40 unit + 15 MCP tool integration)
+- 57 → 58 MCP tools (+1 architectural_boundary)
+- Self-hosting score: 100% (76/76 tools ran)
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+
+**Files created:**
+- `tree_sitter_analyzer/analysis/architectural_boundary.py`
+- `tree_sitter_analyzer/mcp/tools/architectural_boundary_tool.py`
+- `tests/unit/analysis/test_architectural_boundary.py`
+- `tests/integration/mcp/test_architectural_boundary_tool.py`
+
 ## Session 123 — 2026-04-19
 
 Assertion Quality Analyzer + Exception Handling Quality Analyzer - Complete
