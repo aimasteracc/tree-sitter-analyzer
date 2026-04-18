@@ -467,6 +467,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔀",
     )
 
+    # switch_smells
+    from .tools.switch_smells_tool import SwitchSmellsTool
+    ss_tool = SwitchSmellsTool(project_root)
+    registry.register(
+        name="switch_smells",
+        toolset="analysis",
+        category="design",
+        schema=ss_tool.get_tool_definition(),
+        handler=_make_handler(ss_tool),
+        description="Switch smells: detect complex switch/match statements that should use polymorphism across Python, JS/TS, Java, Go",
+        emoji="🔀",
+    )
+
     # parameter_coupling
     from .tools.parameter_coupling_tool import ParameterCouplingTool
     pc_tool = ParameterCouplingTool(project_root)
