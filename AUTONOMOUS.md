@@ -78,12 +78,72 @@
 4. 选择一个 OpenSpec change → 读取 tasks.md
 5. [Generator] 实现功能（写代码 + 写测试）
 6. 运行 CI：ruff check + mypy + pytest
-7. [Evaluator] 用 /review skill 做代码审查
-8. 审查通过 → commit + push + archive change
-9. 审查失败 → 修复（不重复相同方案，最多 3 次）
-10. 更新 task_plan.md + progress.md
-11. 检查下一个 change → 回到步骤 1
+7. [Self-Hosting] 用已有 MCP 工具对新代码做质量检查（见下方）
+8. [Evaluator] 用 /review skill 做代码审查
+9. 审查通过 → commit + push + archive change
+10. 审查失败 → 修复（不重复相同方案，最多 3 次）
+11. 更新 task_plan.md + progress.md
+12. 检查下一个 change → 回到步骤 1
 ```
+
+### Self-Hosting 质量门禁（步骤 7）
+
+**每个 Sprint 完成后，必须用项目自身的工具扫描新增/修改的文件。**
+
+这是 dogfooding 的核心——工具必须能检测自身代码库的问题，否则说明工具不够好。
+
+```bash
+# 对新增的分析引擎文件运行已有工具
+# $NEW_FILES = 本次 Sprint 新增的 .py 文件
+
+# 1. 类型标注覆盖率
+uv run python -c "
+from tree_sitter_analyzer.analysis.type_annotation_coverage import TypeAnnotationAnalyzer
+a = TypeAnnotationAnalyzer()
+for f in $NEW_FILES:
+    r = a.analyze(f)
+    if r.coverage_pct < 80:
+        print(f'WARN: {f} type annotation coverage {r.coverage_pct:.0f}%')
+    unannotated = [s for s in r.stats if not s.has_annotation]
+    for s in unannotated:
+        print(f'  L{s.line} {s.kind}: {s.name}')
+"
+
+# 2. 魔法值检测
+uv run python -c "
+from tree_sitter_analyzer.analysis.magic_values import MagicValueDetector
+for f in $NEW_FILES:
+    d = MagicValueDetector('python')
+    r = d.detect(f)
+    if r.total_count > 0:
+        print(f'INFO: {f} has {r.total_count} magic values')
+        for ref in r.references[:5]:
+            print(f'  L{ref.line}: {ref.context[:60]}')
+"
+
+# 3. 代码异味（通过导入调用）
+uv run python -c "
+from tree_sitter_analyzer.analysis.code_smell_detector import CodeSmellDetector
+for f in $NEW_FILES:
+    d = CodeSmellDetector('python')
+    smells = d.detect(f)
+    if smells:
+        print(f'INFO: {f} code smells:')
+        for s in smells[:5]:
+            print(f'  {s}')
+"
+```
+
+**反馈规则**：
+
+| 检查结果 | 行动 |
+|---------|------|
+| 类型标注覆盖率 < 80% | 补充标注后再 commit |
+| 发现魔法值 | 评估是否需要提取常量，记录到 findings.md |
+| 发现代码异味 | 评估是否需要重构，记录到 findings.md |
+| 所有检查通过 | 继续步骤 8 |
+
+**重要**：Self-Hosting 检查的目的是验证工具自身的实用性。如果工具在自己的代码库上报告了问题，这是**好事**——说明工具在工作。修复与否取决于严重程度，不需要全部修复。
 
 ### Agent 审查（替代人类审核）
 
@@ -462,6 +522,14 @@ uv run pytest tests/ -x -q
 - **MCP Tools**: 50 → 52 (+2 function_size, test_smells)
 - **Tests**: 77 tests pass (39 function_size + 38 test_smells)
 - **Commit**: `feat: add Function Size Analyzer`, `feat: add Test Smell Detector`
+- **Status**: Sprint 1-3 complete, feature delivered
+
+### Session 121 — 2026-04-18
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 1 OpenSpec change (add-logging-pattern-analyzer)
+- **MCP Tools**: 52 → 53 (+1 logging_patterns)
+- **Tests**: 49 tests pass (39 analysis + 10 MCP tool)
+- **Commit**: `3e837843` feat: add Logging Pattern Analyzer (49 tests, 4 languages)
 - **Status**: Sprint 1-3 complete, feature delivered
 
 ### Next Session
