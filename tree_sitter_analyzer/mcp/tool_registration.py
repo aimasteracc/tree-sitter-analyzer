@@ -809,6 +809,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🏷️",
     )
 
+    # coupling_metrics
+    from .tools.coupling_metrics_tool import CouplingMetricsTool
+    cm_tool = CouplingMetricsTool(project_root)
+    registry.register(
+        name="coupling_metrics",
+        toolset="analysis",
+        category="coupling-metrics",
+        schema=cm_tool.get_tool_definition(),
+        handler=_make_handler(cm_tool),
+        description="Coupling metrics: fan-out, fan-in, instability per file to identify coupling hotspots and critical modules",
+        emoji="🔗",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
