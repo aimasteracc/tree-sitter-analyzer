@@ -809,6 +809,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🏷️",
     )
 
+    # assertion_quality
+    from .tools.assertion_quality_tool import AssertionQualityTool
+    aq_tool = AssertionQualityTool(project_root)
+    registry.register(
+        name="assertion_quality",
+        toolset="analysis",
+        category="test-quality",
+        schema=aq_tool.get_tool_definition(),
+        handler=_make_handler(aq_tool),
+        description="Assertion quality: detect weak, vague, clustered assertions and missing branch coverage in tests",
+        emoji="🎯",
+    )
+
     # coupling_metrics
     from .tools.coupling_metrics_tool import CouplingMetricsTool
     cm_tool = CouplingMetricsTool(project_root)

@@ -309,6 +309,12 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "function_size",
             "test_smells",
             "logging_patterns",
+            "naming_conventions",
+            "coupling_metrics",
+            "cognitive_complexity",
+            "nesting_depth",
+            "i18n_strings",
+            "assertion_quality",
         ],
     },
     "query": {
