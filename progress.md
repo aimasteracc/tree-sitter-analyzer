@@ -1,5 +1,19 @@
 # Progress — 自主开发进度日志
 
+## Session 123 — 2026-04-19
+
+Assertion Quality Analyzer - Complete
+
+**OpenSpec change**: add-assertion-quality-analyzer (from previous session)
+- Core analysis engine: 1160 lines, 4 detection modes (weak_assertion, vague_comparison, clustered_assertions, missing_branch_assertion)
+- MCP tool: text/json/toon output formats
+- 37 tests passing (26 analysis + 11 MCP tool)
+- 55 → 56 total MCP tools registered (+1 assertion_quality)
+- Also added 6 missing tools to TOOLSET_DEFINITIONS (naming_conventions, coupling_metrics, cognitive_complexity, nesting_depth, i18n_strings, assertion_quality)
+- Self-hosting score: 88% (28/32 tools ran)
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+- Commit: `ff171006`
+
 ## Session 121 — 2026-04-18
 
 Logging Pattern Analyzer - Complete
