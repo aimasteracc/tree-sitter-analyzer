@@ -39,6 +39,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "method_chain_tool",
         "class": "MethodChainTool",
     },
+    "string_concat_loop": {
+        "description": (
+            "Analyze string concatenation inside loops (O(n^2) risk). "
+            "Detects += on strings inside for/while loops."
+        ),
+        "module": "string_concat_loop_tool",
+        "class": "StringConcatLoopTool",
+    },
 }
 
 __all__ = [
