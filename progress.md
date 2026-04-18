@@ -1,5 +1,17 @@
 # Progress — 自主开发进度日志
 
+## Session 126 — 2026-04-19
+
+**Sprint 1: Null Safety Analyzer** (sustainable loop):
+- Product analysis (/office-hours): DO — #1 runtime error, fills gap in error prevention chain
+- Architecture review (/plan-eng-review): Approach A — independent module, consistent with 43 existing analyzers
+- Detection types: unchecked_access, missing_null_check, chained_access, dict_unsafe_access
+- 50 tests passing (38 analysis + 12 MCP tool)
+- 60 → 61 MCP tools (+1 null_safety)
+- Self-hosting score: 100% (110/110 tools ran)
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+- Commit: `5e64ee9b`
+
 ## Session 125 — 2026-04-19
 
 **Sprint 1: Return Path Analyzer** (sustainable loop):

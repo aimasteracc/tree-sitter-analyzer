@@ -553,6 +553,14 @@ uv run pytest tests/ -x -q
 - **Input**: Search wiki for new feature inspiration
 - **Output**: Create new OpenSpec change or execute audit loop
 
+### Session 126 — 2026-04-19
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 1 OpenSpec change (add-null-safety-analyzer)
+- **MCP Tools**: 60 → 61 (+1 null_safety)
+- **Tests**: 50 tests pass (38 analysis + 12 MCP tool)
+- **Commit**: `5e64ee9b`
+- **Status**: Sprint complete, sustainable loop running
+
 ### Session 125 — 2026-04-19
 - **Open**: Continue sustainable loop (新功能探索)
 - **Complete**: 1 OpenSpec change (add-return-path-analyzer)
