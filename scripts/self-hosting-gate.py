@@ -95,7 +95,7 @@ def _extract_findings(result: Any) -> tuple[int, dict[str, Any]]:
     for attr in ("smells", "issues", "hotspots", "violations"):
         val = getattr(result, attr, None)
         if val is not None:
-            count = len(val) if isinstance(val, list) else int(val)
+            count = len(val) if isinstance(val, list | tuple) else int(val)
             return count, {}
 
     # Functions (function_size, etc.)
