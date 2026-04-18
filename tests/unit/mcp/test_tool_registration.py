@@ -70,8 +70,8 @@ class TestRegisterAllTools:
         registry = get_registry()
         all_tools = registry.list_tools()
 
-        # 34 expected tools (32 + semantic_search + grammar_discovery)
-        assert len(all_tools) == 34
+        # 49 expected tools (+nesting_depth)
+        assert len(all_tools) == 49
 
     def test_tool_metadata(self) -> None:
         """Test that registered tools have proper metadata."""

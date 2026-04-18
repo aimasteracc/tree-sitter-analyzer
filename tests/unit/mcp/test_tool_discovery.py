@@ -31,8 +31,8 @@ class TestToolDiscoveryTool:
 
         assert "tools" in result
         assert "count" in result
-        assert result["count"] == 39  # All tools including import_sanitizer
-        assert len(result["tools"]) == 39
+        assert result["count"] == 49  # All tools including nesting_depth
+        assert len(result["tools"]) == 49
 
     @pytest.mark.asyncio
     async def test_list_tools_by_toolset(self) -> None:
@@ -43,7 +43,7 @@ class TestToolDiscoveryTool:
         result = await tool.execute({"toolset": "analysis"})
 
         assert "tools" in result
-        assert len(result["tools"]) == 22  # All analysis tools
+        assert len(result["tools"]) == 32  # All analysis tools
 
         for t in result["tools"]:
             assert t["toolset"] == "analysis"

@@ -428,6 +428,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🧠",
     )
 
+    # nesting_depth
+    from .tools.nesting_depth_tool import NestingDepthTool
+    nd_tool = NestingDepthTool(project_root)
+    registry.register(
+        name="nesting_depth",
+        toolset="analysis",
+        category="complexity",
+        schema=nd_tool.get_tool_definition(),
+        handler=_make_handler(nd_tool),
+        description="Nesting depth: detect deeply nested code pyramids across Python, JS/TS, Java, Go",
+        emoji="📐",
+    )
+
     # parameter_coupling
     from .tools.parameter_coupling_tool import ParameterCouplingTool
     pc_tool = ParameterCouplingTool(project_root)
