@@ -1619,3 +1619,72 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 **风险**: Go 的 defer/recover 模式需要额外 tree-sitter query，但属于常规工作
 **依赖**: tree-sitter (已有), 无新外部依赖
 **实现**: 3 Sprints - 核心引擎(Python) → 多语言(JS/TS, Java, Go) → MCP Tool
+
+## 产品讨论记录 - SOLID Principles Analyzer - 2026-04-19
+
+**调用**: 产品方向分析（自主模式，替代 /steve-jobs-perspective）
+
+**候选功能**:
+1. SOLID 原则分析器 — 检测 SRP/OCP/LSP/ISP/DIP 违规
+2. 数据流分析器 — 追踪变量传播路径
+3. 变更爆炸半径分析器 — 量化修改影响范围
+
+**产品分析**:
+
+**聚焦即说不**: SOLID 原则分析器最核心。数据流分析需要跨函数/跨文件追踪，tree-sitter 做不到完整的数据流分析（需要类型推断+控制流图），属于"nice to have"但实现成本远超价值。变更爆炸半径已部分被 dependency_graph + call_graph 覆盖。
+
+**减法思维**: SOLID 分析器可以用简单的模式匹配实现：
+- SRP: 类方法数/行数阈值 + 职责关键词聚类
+- OCP: isinstance/type 检查 + switch-on-type 模式
+- LSP: 子类方法签名与父类不兼容
+- ISP: 协议/接口方法数过多
+- DIP: 直接导入具体类而非抽象
+这些都已有 tree-sitter query 成功先例。
+
+**一句话定义**: "检测你的代码是否违反了 SOLID 原则，告诉你哪里违反以及如何修复"
+
+**结论**: DO — SOLID Principles Analyzer
+**理由**:
+1. 高频需求 — SOLID 是面试/代码审查的必检项
+2. 技术可行 — 每个原则都可以用 tree-sitter pattern 检测
+3. 无重叠 — 现有 38 个分析器没有专门做 SOLID 的
+4. 用户可操作 — 每个违规都有明确的修复建议
+5. 数据流太复杂不适合单 Sprint，爆炸半径已有部分覆盖
+
+## 技术架构讨论记录 - SOLID Principles Analyzer - 2026-04-19
+
+**调用**: 架构分析（自主模式，替代 /plan-eng-review）
+
+**功能**: SOLID 原则分析器 — 检测 SRP/OCP/LSP/ISP/DIP 违规
+
+**技术方案**: 独立模块，遵循现有 40 个分析器的模式
+
+**架构分析**:
+
+1. **技术可行性**: 高。每个 SOLID 原则都可以用 tree-sitter pattern 匹配：
+   - SRP: 统计类方法数、属性数、行数，超过阈值 → 违规
+   - OCP: 检测 isinstance/type 检查、if-elif 类型分派
+   - LSP: 比较子类方法签名与父类（参数数量、返回类型）
+   - ISP: 统计协议/接口/抽象基类的方法数
+   - DIP: 检测 import 语句是否导入具体类 vs 抽象类
+
+2. **架构影响**: 与现有 59 个 MCP 工具完全一致的模式
+   - tree_sitter_analyzer/analysis/solid_principles.py (核心分析)
+   - tree_sitter_analyzer/mcp/tools/solid_principles_tool.py (MCP 工具)
+   - tests/unit/analysis/test_solid_principles.py (单元测试)
+   - tests/integration/mcp/test_solid_principles_tool.py (集成测试)
+
+3. **实现复杂度**: 中等，可在 1 个 Sprint 内完成
+   - Python 检测最完整（有丰富的 class/protocol 语法）
+   - Java 有 interface/abstract class 支持
+   - JS/TS 有 class extends
+   - Go 有 interface 满足检测
+
+4. **维护成本**: 低。每个原则的检测逻辑独立，新增语言只需添加 query
+
+**推荐方案**: 独立模块，与 naming_convention.py 模式一致
+
+**风险**: LSP 违规的检测可能产生较多 false positive（鸭子类型语言）
+**缓解**: 设置合理的默认阈值，提供可配置选项
+
+**依赖**: tree-sitter (已有), 无新外部依赖

@@ -316,6 +316,7 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "i18n_strings",
             "assertion_quality",
             "exception_quality",
+            "solid_principles",
         ],
     },
     "query": {

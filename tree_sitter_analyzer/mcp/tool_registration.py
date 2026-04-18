@@ -835,6 +835,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🛡️",
     )
 
+    # solid_principles
+    from .tools.solid_principles_tool import SOLIDPrinciplesTool
+    sp_tool = SOLIDPrinciplesTool(project_root)
+    registry.register(
+        name="solid_principles",
+        toolset="analysis",
+        category="solid-principles",
+        schema=sp_tool.get_tool_definition(),
+        handler=_make_handler(sp_tool),
+        description="SOLID principles: detect SRP, OCP, LSP, ISP, DIP violations with per-principle scores",
+        emoji="🏗️",
+    )
+
     # coupling_metrics
     from .tools.coupling_metrics_tool import CouplingMetricsTool
     cm_tool = CouplingMetricsTool(project_root)
