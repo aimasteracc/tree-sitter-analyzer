@@ -333,3 +333,10 @@ docs/designs/tree-sitter-analyzer-*.md
 
 # Claude local settings
 .claude/settings.local.json
+
+# Autonomous loop v2 runtime (keep .gitkeep)
+.autonomous-runtime/*
+!.autonomous-runtime/.gitkeep
+
+# Autonomous loop logs
+autonomous-logs/

@@ -1,0 +1,303 @@
+#!/bin/bash
+# autonomous-loop-v2.sh — 稳定单 worker 永续自主开发循环
+#
+# v1 的问题：AskUserQuestion 阻塞 + tee 信号穿透 + 无超时 + 内存崩溃
+# v2 的方案：setsid 隔离 + 日志 mtime dead-man + flock 防并发 + 指数退避
+#
+# 用法: ./scripts/autonomous-loop-v2.sh
+# 配置: 环境变量覆盖 > .autonomous-runtime/config.env > 默认值
+#
+# 按 Ctrl+C 优雅停止（会杀掉整个 claude 进程组）
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_DIR"
+
+# ─── 配置（环境变量覆盖 > config.env > 默认值）───
+
+RUNTIME_DIR="$PROJECT_DIR/.autonomous-runtime"
+LOG_DIR="$PROJECT_DIR/autonomous-logs"
+
+if [ -f "$RUNTIME_DIR/config.env" ]; then
+    set -a
+    source "$RUNTIME_DIR/config.env"
+    set +a
+fi
+
+SESSION_TIMEOUT=${SESSION_TIMEOUT:-${AUTONOMOUS_SESSION_TIMEOUT:-1800}}
+DEADMAN_TIMEOUT=${DEADMAN_TIMEOUT:-${AUTONOMOUS_DEADMAN_TIMEOUT:-600}}
+POLL_INTERVAL=${POLL_INTERVAL:-${AUTONOMOUS_POLL_INTERVAL:-30}}
+COOLDOWN_SEC=${COOLDOWN_SEC:-${AUTONOMOUS_COOLDOWN:-30}}
+MIN_DISK_GB=${MIN_DISK_GB:-5}
+BACKOFF_MAX=${BACKOFF_MAX:-300}
+KILL_GRACE_SEC=${KILL_GRACE_SEC:-10}
+
+# ─── 初始化 ───
+
+mkdir -p "$RUNTIME_DIR" "$LOG_DIR"
+
+LOCKFILE="$RUNTIME_DIR/loop.lock"
+PIDFILE="$RUNTIME_DIR/loop.pid"
+
+exec 200>"$LOCKFILE"
+if ! flock -n 200; then
+    EXISTING_PID=$(cat "$PIDFILE" 2>/dev/null || echo "unknown")
+    echo "另一个实例在运行 (PID $EXISTING_PID)"
+    echo "如需强制停止: kill $EXISTING_PID"
+    exit 1
+fi
+echo $$ > "$PIDFILE"
+
+SESSION=0
+START_TIME=$(date +%s)
+CLAUDE_PGID=""
+BACKOFF=1
+
+echo "======================================================="
+echo "  Tree-sitter-analyzer 自主开发 v2（稳定版）"
+echo "  Session timeout: ${SESSION_TIMEOUT}s"
+echo "  Dead-man timeout: ${DEADMAN_TIMEOUT}s"
+echo "  Poll interval: ${POLL_INTERVAL}s"
+echo "  开始时间: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "  按 Ctrl+C 停止"
+echo "======================================================="
+echo ""
+
+# ─── 信号处理（防重入）───
+
+CLEANING=0
+cleanup() {
+    [ "$CLEANING" = 1 ] && return
+    CLEANING=1
+
+    echo ""
+    echo "收到停止信号，清理进程..."
+
+    if [ -n "$CLAUDE_PGID" ]; then
+        echo "  发送 SIGTERM 到进程组 $CLAUDE_PGID..."
+        kill -- -"$CLAUDE_PGID" 2>/dev/null || true
+
+        local w=0
+        while kill -0 -- -"$CLAUDE_PGID" 2>/dev/null && [ $w -lt "$KILL_GRACE_SEC" ]; do
+            sleep 1
+            w=$((w + 1))
+        done
+
+        if kill -0 -- -"$CLAUDE_PGID" 2>/dev/null; then
+            echo "  强制 SIGKILL..."
+            kill -9 -- -"$CLAUDE_PGID" 2>/dev/null || true
+        fi
+    fi
+
+    rm -f "$PIDFILE"
+
+    local elapsed=$(( $(date +%s) - START_TIME ))
+    local hours=$(( elapsed / 3600 ))
+    local mins=$(( (elapsed % 3600) / 60 ))
+    echo "======================================================="
+    echo "  已停止"
+    echo "  运行时间: ${hours}h ${mins}m"
+    echo "  完成 session: $SESSION"
+    echo "======================================================="
+
+    exit 0
+}
+trap cleanup EXIT INT TERM HUP
+
+# ─── 辅助函数 ───
+
+ensure_gstack_configured() {
+    mkdir -p ~/.gstack
+    touch ~/.gstack/.completeness-intro-seen 2>/dev/null || true
+    touch ~/.gstack/.telemetry-prompted 2>/dev/null || true
+    touch ~/.gstack/.proactive-prompted 2>/dev/null || true
+    touch ~/.gstack/.routing-declined 2>/dev/null || true
+}
+
+check_disk() {
+    local available_gb
+    available_gb=$(df -g . 2>/dev/null | awk 'NR==2{print $4}')
+    if [ -z "$available_gb" ] || [ "$available_gb" -lt "$MIN_DISK_GB" ] 2>/dev/null; then
+        echo "磁盘空间不足: ${available_gb:-unknown}GB < ${MIN_DISK_GB}GB"
+        return 1
+    fi
+    return 0
+}
+
+get_logfile() {
+    echo "$LOG_DIR/$(date '+%Y%m%d').log"
+}
+
+get_session_prompt() {
+    local recovery="$RUNTIME_DIR/recovery-prompt.txt"
+
+    if [ -f "$recovery" ]; then
+        echo "读取 AUTONOMOUS.md 恢复上次 session。
+
+上次 session 留下了恢复指令，内容如下：
+$(cat "$recovery")
+
+恢复后继续自主开发。严格遵循 AUTONOMOUS.md 的所有规则。
+完成后删除 $recovery 文件。
+
+⚠️  禁止使用 AskUserQuestion！
+⚠️  遇到需要确认的情况，直接做决定并继续！
+
+现在开始恢复。"
+        return
+    fi
+
+    echo "读取 AUTONOMOUS.md 的全部内容，严格遵循其中的所有规则进行自主开发。
+
+核心要求：
+1. 检查是否有未完成的 OpenSpec change，有就继续实现
+2. 如果没有，执行 AUTONOMOUS.md 中定义的「永续循环机制」
+3. 在「永续循环」中：
+   - 调用 /steve-jobs-perspective 做产品分析
+   - 调用 /plan-eng-review 做架构分析
+   - 重要：要求 Skill「分析并给出建议」，不要让 Skill 问问题
+4. 每完成一个 Sprint 就 commit + push
+5. Context 使用率 > 70% 时更新三文件并停止
+
+关键：深度分析必须有，但 Skill 调用方式要正确——要求分析而非问答。
+
+⚠️  禁止使用 AskUserQuestion！
+⚠️  遇到需要确认的情况，直接做决定并继续！
+⚠️  不要等待用户输入！
+
+现在开始。"
+}
+
+# ─── 预配置 ───
+
+ensure_gstack_configured
+
+# ─── 主循环 ───
+
+while true; do
+    SESSION=$((SESSION + 1))
+    LOGFILE=$(get_logfile)
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Session $SESSION"
+    echo "  时间: $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "  日志: $LOGFILE"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # 磁盘检查
+    if ! check_disk; then
+        echo "等待 60s 后重试..."
+        sleep 60
+        continue
+    fi
+
+    # 确认在正确分支
+    BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
+    if [ "$BRANCH" != "feat/autonomous-dev" ]; then
+        echo "分支不对 ($BRANCH)，切换到 feat/autonomous-dev"
+        git checkout feat/autonomous-dev 2>/dev/null || true
+    fi
+
+    # 拉取最新（允许失败）
+    git pull --rebase origin feat/autonomous-dev 2>/dev/null || true
+
+    # 构造 prompt
+    PROMPT=$(get_session_prompt)
+
+    # 启动 claude（setsid 隔离 + 重定向到文件，不用 tee）
+    setsid claude --print "$PROMPT" >> "$LOGFILE" 2>&1 &
+    CLAUDE_PID=$!
+
+    # 等 setsid 生效后获取 PGID
+    sleep 1
+    CLAUDE_PGID=$(ps -o pgid= -p "$CLAUDE_PID" 2>/dev/null | tr -d ' ' || echo "")
+
+    if [ -z "$CLAUDE_PGID" ]; then
+        echo "⚠️  无法获取进程组 ID，使用 PID: $CLAUDE_PID"
+        CLAUDE_PGID="$CLAUDE_PID"
+    fi
+
+    echo "  Claude PID: $CLAUDE_PID, PGID: $CLAUDE_PGID"
+
+    # Watchdog 轮询（主进程循环，无孤儿风险）
+    local elapsed=0
+    while kill -0 "$CLAUDE_PID" 2>/dev/null; do
+        sleep "$POLL_INTERVAL"
+        elapsed=$((elapsed + POLL_INTERVAL))
+
+        # 超时检查
+        if [ $elapsed -ge "$SESSION_TIMEOUT" ]; then
+            echo ""
+            echo "⏰ Session 超时 (${SESSION_TIMEOUT}s)，终止进程组 $CLAUDE_PGID"
+            kill -- -"$CLAUDE_PGID" 2>/dev/null || true
+            sleep "$KILL_GRACE_SEC"
+            kill -9 -- -"$CLAUDE_PGID" 2>/dev/null || true
+            break
+        fi
+
+        # Dead-man: 日志 mtime 检查
+        if [ -f "$LOGFILE" ]; then
+            local last_write
+            last_write=$(stat -f %m "$LOGFILE" 2>/dev/null || echo 0)
+            local now
+            now=$(date +%s)
+            local silence=$(( now - last_write ))
+            if [ "$silence" -gt "$DEADMAN_TIMEOUT" ]; then
+                echo ""
+                echo "💀 日志 ${DEADMAN_TIMEOUT}s 无更新 (沉默 ${silence}s)，终止进程组 $CLAUDE_PGID"
+                kill -- -"$CLAUDE_PGID" 2>/dev/null || true
+                sleep "$KILL_GRACE_SEC"
+                kill -9 -- -"$CLAUDE_PGID" 2>/dev/null || true
+                break
+            fi
+        fi
+    done
+
+    # 收尸（防 zombie）
+    wait "$CLAUDE_PID" 2>/dev/null || true
+    local exit_code=$?
+
+    # 清理 recovery prompt（已使用）
+    rm -f "$RUNTIME_DIR/recovery-prompt.txt" 2>/dev/null || true
+
+    # 清理 context reset marker
+    rm -f .context-reset-marker 2>/dev/null || true
+
+    # 退出码处理 + 退避
+    case $exit_code in
+        0)
+            echo "  Session $SESSION 正常完成"
+            BACKOFF=1
+            ;;
+        130|143)
+            echo "  Session $SESSION 被信号终止 (exit=$exit_code)"
+            BACKOFF=1
+            ;;
+        *)
+            echo "  Session $SESSION 异常退出 (exit=$exit_code)"
+            BACKOFF=$((BACKOFF * 2))
+            if [ $BACKOFF -gt "$BACKOFF_MAX" ]; then
+                BACKOFF=$BACKOFF_MAX
+            fi
+            ;;
+    esac
+
+    # 打印本轮产出
+    local commits
+    commits=$(git log --oneline --since="$(date -v-${COOLDOWN_SEC}S '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date '+%Y-%m-%d %H:%M:%S')" 2>/dev/null | wc -l | tr -d ' ')
+    echo "  本轮 commit: ${commits:-0}"
+
+    # Session 间日志分割
+    echo "" >> "$LOGFILE"
+    echo "===== Session $SESSION 结束 at $(date '+%Y-%m-%d %H:%M:%S') (exit=$exit_code) =====" >> "$LOGFILE"
+
+    # Cooldown
+    echo "  ${BACKOFF}s 后启动下一个 session..."
+    sleep "$BACKOFF"
+
+    # 重置 PGID（已无用）
+    CLAUDE_PGID=""
+done

@@ -154,7 +154,7 @@ cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
 5. 追加 `progress.md`（记录当前 session 完成的工作）
 6. 追加 `progress.md`（记录 5 个 Reboot 问题的答案）
 7. commit + push
-8. 创建 `.recovery-prompt.txt` 供下次 session 恢复
+8. 创建 `.autonomous-runtime/recovery-prompt.txt` 供下次 session 恢复（仓库外，防 prompt 注入）
 9. 通知需要执行 `/clear`（由 autonomous-loop.sh 处理）
 
 **Session Lineage 系统**（参考 Hermes Agent）：
@@ -165,10 +165,18 @@ cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
 
 **24x7 运行支持**：
 ```bash
-# 方式 1：使用 autonomous-loop.sh（自动检测并处理）
-./scripts/autonomous-loop.sh
+# 推荐：使用 autonomous-loop-v2.sh（稳定版）
+#   - flock 防并发
+#   - setsid 进程隔离
+#   - 日志 mtime dead-man switch
+#   - 指数退避
+#   - 配置: .autonomous-runtime/config.env 或环境变量
+./scripts/autonomous-loop-v2.sh
 
-# 方式 2：使用 context-auto-reset.py 持续监控
+# 旧版：使用 autonomous-loop.sh（已废弃）
+# ./scripts/autonomous-loop.sh
+
+# 辅助：使用 context-auto-reset.py 持续监控
 python3 scripts/context-auto-reset.py monitor
 ```
 
