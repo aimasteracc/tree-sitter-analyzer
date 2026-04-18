@@ -78,18 +78,21 @@ cleanup() {
     echo "收到停止信号，清理进程..."
 
     if [ -n "$CLAUDE_PGID" ]; then
-        echo "  发送 SIGTERM 到进程组 $CLAUDE_PGID..."
-        kill -- -"$CLAUDE_PGID" 2>/dev/null || true
+        echo "  发送 SIGTERM 到 claude (PID $CLAUDE_PGID)..."
+        kill "$CLAUDE_PGID" 2>/dev/null || true
+        # 杀死 claude 的子进程（subagents 等）
+        pkill -P "$CLAUDE_PGID" 2>/dev/null || true
 
         local w=0
-        while kill -0 -- -"$CLAUDE_PGID" 2>/dev/null && [ $w -lt "$KILL_GRACE_SEC" ]; do
+        while kill -0 "$CLAUDE_PGID" 2>/dev/null && [ $w -lt "$KILL_GRACE_SEC" ]; do
             sleep 1
             w=$((w + 1))
         done
 
-        if kill -0 -- -"$CLAUDE_PGID" 2>/dev/null; then
+        if kill -0 "$CLAUDE_PGID" 2>/dev/null; then
             echo "  强制 SIGKILL..."
-            kill -9 -- -"$CLAUDE_PGID" 2>/dev/null || true
+            kill -9 "$CLAUDE_PGID" 2>/dev/null || true
+            pkill -9 -P "$CLAUDE_PGID" 2>/dev/null || true
         fi
     fi
 
@@ -209,16 +212,18 @@ while true; do
     # 构造 prompt
     PROMPT=$(get_session_prompt)
 
-    # 启动 claude（setsid 隔离 + 重定向到文件，不用 tee）
-    setsid claude --print "$PROMPT" >> "$LOGFILE" 2>&1 &
+    # 启动 claude（重定向到文件，不用 tee）
+    # macOS 没有 setsid，claude 与脚本同进程组
+    # kill 时用 PID + pkill 子进程
+    claude --print "$PROMPT" >> "$LOGFILE" 2>&1 &
     CLAUDE_PID=$!
 
-    # 等 setsid 生效后获取 PGID
+    # 等 claude 进程启动后获取 PGID
     sleep 1
     CLAUDE_PGID=$(ps -o pgid= -p "$CLAUDE_PID" 2>/dev/null | tr -d ' ' || echo "")
 
     if [ -z "$CLAUDE_PGID" ]; then
-        echo "⚠️  无法获取进程组 ID，使用 PID: $CLAUDE_PID"
+        echo "  ⚠️  无法获取 PGID，使用 PID 作为 fallback"
         CLAUDE_PGID="$CLAUDE_PID"
     fi
 
@@ -235,10 +240,12 @@ while true; do
         # 超时检查
         if [ $WD_ELAPSED -ge "$SESSION_TIMEOUT" ]; then
             echo ""
-            echo "⏰ Session 超时 (${SESSION_TIMEOUT}s)，终止进程组 $CLAUDE_PGID"
-            kill -- -"$CLAUDE_PGID" 2>/dev/null || true
+            echo "⏰ Session 超时 (${SESSION_TIMEOUT}s)，终止 claude (PID $CLAUDE_PID)"
+            kill "$CLAUDE_PID" 2>/dev/null || true
+            pkill -P "$CLAUDE_PID" 2>/dev/null || true
             sleep "$KILL_GRACE_SEC"
-            kill -9 -- -"$CLAUDE_PGID" 2>/dev/null || true
+            kill -9 "$CLAUDE_PID" 2>/dev/null || true
+            pkill -9 -P "$CLAUDE_PID" 2>/dev/null || true
             break
         fi
 
@@ -249,10 +256,12 @@ while true; do
             WD_SILENCE=$(( WD_NOW - WD_LAST_WRITE ))
             if [ "$WD_SILENCE" -gt "$DEADMAN_TIMEOUT" ]; then
                 echo ""
-                echo "💀 日志 ${DEADMAN_TIMEOUT}s 无更新 (沉默 ${WD_SILENCE}s)，终止进程组 $CLAUDE_PGID"
-                kill -- -"$CLAUDE_PGID" 2>/dev/null || true
+                echo "💀 日志 ${DEADMAN_TIMEOUT}s 无更新 (沉默 ${WD_SILENCE}s)，终止 claude (PID $CLAUDE_PID)"
+                kill "$CLAUDE_PID" 2>/dev/null || true
+                pkill -P "$CLAUDE_PID" 2>/dev/null || true
                 sleep "$KILL_GRACE_SEC"
-                kill -9 -- -"$CLAUDE_PGID" 2>/dev/null || true
+                kill -9 "$CLAUDE_PID" 2>/dev/null || true
+                pkill -9 -P "$CLAUDE_PID" 2>/dev/null || true
                 break
             fi
         fi
@@ -293,7 +302,7 @@ while true; do
 
     # Session 间日志分割
     echo "" >> "$LOGFILE"
-    echo "===== Session $SESSION 结束 at $(date '+%Y-%m-%d %H:%M:%S') (exit=$exit_code) =====" >> "$LOGFILE"
+    echo "===== Session $SESSION 结束 at $(date '+%Y-%m-%d %H:%M:%S') (exit=$EXIT_CODE) =====" >> "$LOGFILE"
 
     # Cooldown
     echo "  ${BACKOFF}s 后启动下一个 session..."
