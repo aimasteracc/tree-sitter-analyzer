@@ -17,6 +17,27 @@ cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
 ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
 ```
 
+## 产品讨论记录 - Contract Compliance Analyzer - 2026-04-19
+
+**调用**: /office-hours (Steve Jobs / Garry Tan perspective) + /plan-eng-review
+
+**初始选择**: Doc-Code Sync → PIVOT after architecture review
+
+**关键发现**: comment_quality.py 已完全覆盖 doc-code sync (param_mismatch, extra_doc_param, missing_param_doc, missing_return_doc, 4 languages, 735 lines). 新建会 80% 重复。
+
+**最终选择**: Contract Compliance Analyzer
+
+**产品分析**:
+- 填补真正空白：type_annotation_coverage 检查注解是否存在，return_path 检查是否所有分支都 return，但没有任何工具检查返回值是否匹配声明的类型
+- AI agent 价值：重构前知道函数是否真正履行了契约
+- 一句话定义："你的函数签名说返回 str，但有个分支返回了 None"
+
+**架构分析**:
+- 方案 A: 独立模块 (推荐) — 与现有 45 个分析器架构一致
+- 检测类型: return_type_violation, signature_divergence, boolean_trap, enum_incomplete, type_contradiction
+- 纯 tree-sitter AST 分析，无 git 依赖
+- 4 语言支持
+
 ---
 
 ## 直接可用（高价值参考）
