@@ -93,54 +93,20 @@
 这是 dogfooding 的核心——工具必须能检测自身代码库的问题，否则说明工具不够好。
 
 ```bash
-# 对新增的分析引擎文件运行已有工具
-# $NEW_FILES = 本次 Sprint 新增的 .py 文件
-
-# 1. 类型标注覆盖率
-uv run python -c "
-from tree_sitter_analyzer.analysis.type_annotation_coverage import TypeAnnotationAnalyzer
-a = TypeAnnotationAnalyzer()
-for f in $NEW_FILES:
-    r = a.analyze(f)
-    if r.coverage_pct < 80:
-        print(f'WARN: {f} type annotation coverage {r.coverage_pct:.0f}%')
-    unannotated = [s for s in r.stats if not s.has_annotation]
-    for s in unannotated:
-        print(f'  L{s.line} {s.kind}: {s.name}')
-"
-
-# 2. 魔法值检测
-uv run python -c "
-from tree_sitter_analyzer.analysis.magic_values import MagicValueDetector
-for f in $NEW_FILES:
-    d = MagicValueDetector('python')
-    r = d.detect(f)
-    if r.total_count > 0:
-        print(f'INFO: {f} has {r.total_count} magic values')
-        for ref in r.references[:5]:
-            print(f'  L{ref.line}: {ref.context[:60]}')
-"
-
-# 3. 代码异味（通过导入调用）
-uv run python -c "
-from tree_sitter_analyzer.analysis.code_smell_detector import CodeSmellDetector
-for f in $NEW_FILES:
-    d = CodeSmellDetector('python')
-    smells = d.detect(f)
-    if smells:
-        print(f'INFO: {f} code smells:')
-        for s in smells[:5]:
-            print(f'  {s}')
-"
+# 动态发现所有分析器并运行 — 工具增长，检查自动增长
+uv run python scripts/self-hosting-gate.py --last-commit
 ```
+
+**原理**：`self-hosting-gate.py` 会自动扫描 `tree_sitter_analyzer/analysis/` 目录下的所有分析器，
+通过反射发现它们的类和方法，逐一运行在新增文件上。每增加一个新工具，自检能力自动扩展。
 
 **反馈规则**：
 
 | 检查结果 | 行动 |
 |---------|------|
+| Self-hosting score < 80% | 新工具的接口有兼容性问题，修复后再 commit |
 | 类型标注覆盖率 < 80% | 补充标注后再 commit |
-| 发现魔法值 | 评估是否需要提取常量，记录到 findings.md |
-| 发现代码异味 | 评估是否需要重构，记录到 findings.md |
+| 发现魔法值/异味 | 评估严重程度，记录到 findings.md |
 | 所有检查通过 | 继续步骤 8 |
 
 **重要**：Self-Hosting 检查的目的是验证工具自身的实用性。如果工具在自己的代码库上报告了问题，这是**好事**——说明工具在工作。修复与否取决于严重程度，不需要全部修复。
