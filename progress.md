@@ -1,5 +1,37 @@
 # Progress — 自主开发进度日志
 
+## Session 115 — 2026-04-18
+
+Cognitive Complexity Scorer - Complete
+
+**永续循环机制执行**:
+- qmd wiki 检索: code analysis patterns, complexity metrics, refactoring
+- 产品分析 (/office-hours): Function Complexity Scorer → DO, Code Change Pattern Detector → DON'T, Function Call Chain → DO (second)
+- 技术架构 (/plan-eng-review): 方案 A（独立模块）推荐
+
+**All 3 Sprints Complete**:
+- Sprint 1: Core Python Cognitive Complexity Engine — SonarSource spec, nesting depth tracking
+- Sprint 2: Multi-Language Support (JS/TS, Java, Go) — if/for/while/switch/try/except per language
+- Sprint 3: MCP Tool Integration — cognitive_complexity 注册到 analysis toolset
+
+**Total**:
+- 2 new modules created (analysis + MCP tool)
+- 77 tests passing (37 Python analysis + 28 multilang + 12 MCP tool)
+- 38 total MCP tools registered (37 + cognitive_complexity)
+- CI: ruff ✅, mypy --strict ✅ (no new errors), pytest ✅
+
+**产品讨论记录**:
+- Function Cognitive Complexity Scorer → DO (真正的缺口, 与 complexity_heatmap 互补)
+- Code Change Pattern Detector → DON'T (与 pr_summary 重叠)
+- Function Call Chain Analyzer → DO second choice (需要类型推断, 更复杂)
+
+**技术架构决策**:
+- 方案 A（独立模块）: ✅ 采用
+- 理由: complexity.py 做行级 McCabe cyclomatic, 认知复杂度是完全不同的算法
+- 与 env_tracker/import_sanitizer/doc_coverage 架构模式一致
+
+---
+
 ## Session 114 — 2026-04-18
 
 Documentation Coverage Analyzer - Complete

@@ -1254,3 +1254,33 @@ def optimize_for_llm(toon_output: str, threshold: float = 0.5) -> str:
 
 **风险**: decorated_definition 需要特殊处理 (已解决)
 **依赖**: tree-sitter 语言模块 (已有)
+
+## 产品讨论记录 - Cognitive Complexity Scorer - 2026-04-18
+
+**调用**: /office-hours (产品分析)
+
+**输入**: 3 个功能方向 (Cognitive Complexity Scorer, Code Change Pattern Detector, Function Call Chain Analyzer)
+
+**产品分析结论**:
+- Function Cognitive Complexity Scorer → DO (真正缺口，与 complexity_heatmap 互补)
+- Code Change Pattern Detector → DON'T (与 pr_summary 重叠)
+- Function Call Chain Analyzer → DO (第二选择，但更复杂，需要类型推断)
+
+**理由**: Cognitive Complexity 是 SonarSource 标准化度量，开发者真实痛点（"这个函数太难读了"），tree-sitter 精确识别嵌套层级和逻辑运算符，与 complexity_heatmap（cyclomatic）形成互补。
+
+## 技术架构讨论记录 - Cognitive Complexity Scorer - 2026-04-18
+
+**调用**: /plan-eng-review (架构分析)
+
+**输入**: 2 个方案 (独立模块 vs 扩展现有 complexity 模块)
+
+**推荐方案**: 方案 A - 独立 analysis 模块 + MCP 工具
+
+**理由**:
+1. complexity.py (276行) 做的是行级 McCabe cyclomatic，认知复杂度是完全不同的算法
+2. 与 env_tracker/import_sanitizer/doc_coverage 架构模式一致
+3. 独立模块便于独立测试和维护
+4. 3 个 Sprint 可完成 (Python核心 + 多语言 + MCP工具)
+
+**风险**: SonarSource 规范有多个特殊情况（else/elif 不增加，递归不增加嵌套，lambda 特殊处理）
+**依赖**: tree-sitter 语言模块 (已有)

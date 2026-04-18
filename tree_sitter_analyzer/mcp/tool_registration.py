@@ -402,6 +402,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="📝",
     )
 
+    # cognitive_complexity
+    from .tools.cognitive_complexity_tool import CognitiveComplexityTool
+    cc_tool = CognitiveComplexityTool(project_root)
+    registry.register(
+        name="cognitive_complexity",
+        toolset="analysis",
+        category="complexity",
+        schema=cc_tool.get_tool_definition(),
+        handler=_make_handler(cc_tool),
+        description="Cognitive complexity: measure function readability using SonarSource spec across Python, JS/TS, Java, Go",
+        emoji="🧠",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""
