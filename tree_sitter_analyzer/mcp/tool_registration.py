@@ -415,6 +415,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🧠",
     )
 
+    # parameter_coupling
+    from .tools.parameter_coupling_tool import ParameterCouplingTool
+    pc_tool = ParameterCouplingTool(project_root)
+    registry.register(
+        name="parameter_coupling",
+        toolset="analysis",
+        category="coupling",
+        schema=pc_tool.get_tool_definition(),
+        handler=_make_handler(pc_tool),
+        description="Parameter coupling: detect functions with too many parameters and Data Clumps across Python, JS/TS, Java, Go",
+        emoji="🔗",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""
