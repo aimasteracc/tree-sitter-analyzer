@@ -454,6 +454,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🏷️",
     )
 
+    # comment_quality
+    from .tools.comment_quality_tool import CommentQualityTool
+    cq_tool = CommentQualityTool(project_root)
+    registry.register(
+        name="comment_quality",
+        toolset="analysis",
+        category="documentation",
+        schema=cq_tool.get_tool_definition(),
+        handler=_make_handler(cq_tool),
+        description="Comment quality: detect stale docs, param mismatches, missing returns, TODO tracking across Python, JS/TS, Java, Go",
+        emoji="💬",
+    )
+
 
 def _register_query_tools(registry: Any, project_root: str | None) -> None:
     """Register query tools."""

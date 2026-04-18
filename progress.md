@@ -1,5 +1,67 @@
 # Progress — 自主开发进度日志
 
+## Session 117 — 2026-04-18
+
+Comment Quality Analyzer - Complete
+
+**永续循环机制执行**:
+- qmd wiki 检索: code analysis AI agent, MCP tools code understanding
+- 产品分析 (office-hours): Comment Quality Analyzer → DO, API Contract Validator → DON'T, Code Ownership → DON'T
+- 技术架构 (plan-eng-review): 方案 A（独立模块）推荐
+
+**All 3 Sprints Complete**:
+- Sprint 1: Core Detection Engine (Python + multi-language) — param matching, return matching, TODO tracking
+- Sprint 2: Multi-Language Support (JS/TS, Java, Go) — JSDoc, JavaDoc, Go doc conventions
+- Sprint 3: MCP Tool Integration — comment_quality 注册到 analysis toolset
+
+**Total**:
+- 2 new modules created (analysis + MCP tool)
+- 46 tests passing (34 analysis + 12 MCP tool)
+- 40 total MCP tools registered (39 + comment_quality)
+- CI: ruff ✅, mypy --strict ✅ (0 errors in new files), pytest ✅
+
+**产品讨论记录**:
+- Comment Quality Analyzer → DO (genuine gap between doc_coverage and code_smells, tree-sitter strength)
+- API Contract Validator → DON'T (covered by code_diff_tool + trace_impact)
+- Code Ownership Analyzer → DON'T (not a tree-sitter problem, git blame exists)
+
+**技术架构决策**:
+- 方案 A（独立模块）: ✅ 采用
+- 与 doc_coverage/code_smells 架构模式一致
+
+---
+
+## Session 116 — 2026-04-18
+
+Parameter Coupling Analyzer - Complete
+
+**永续循环机制执行**:
+- qmd wiki 检索: code analysis patterns, coupling metrics, refactoring
+- 产品分析 (office-hours): Parameter Coupling Analyzer → DO, Churn Predictor → DON'T, Call Depth → DON'T
+- 技术架构 (plan-eng-review): 方案 A（独立模块）推荐
+
+**All 3 Sprints Complete**:
+- Sprint 1: Core Detection Engine (Python) — Jaccard similarity, Data Clump detection
+- Sprint 2: Multi-Language Support (JS/TS, Java, Go) — variadic params, rest patterns
+- Sprint 3: MCP Tool Integration — parameter_coupling 注册到 analysis toolset
+
+**Total**:
+- 2 new modules created (analysis + MCP tool)
+- 65 tests passing (51 analysis + 14 MCP tool)
+- 39 total MCP tools registered (38 + parameter_coupling)
+- CI: ruff ✅, mypy --strict ✅ (0 errors), pytest ✅
+
+**产品讨论记录**:
+- Function Parameter Coupling Analyzer → DO (真正的缺口, Data Clump检测是独特功能)
+- Code Change Churn Predictor → DON'T (与 git_analyzer + risk_scoring 重叠)
+- Function Call Depth Analyzer → DON'T (与 trace_impact 重叠)
+
+**技术架构决策**:
+- 方案 A（独立模块）: ✅ 采用
+- 与 env_tracker/import_sanitizer/doc_coverage 架构模式一致
+
+---
+
 ## Session 115 — 2026-04-18
 
 Cognitive Complexity Scorer - Complete
