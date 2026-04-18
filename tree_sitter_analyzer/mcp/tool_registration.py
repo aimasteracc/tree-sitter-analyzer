@@ -861,6 +861,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔗",
     )
 
+    # return_path
+    from .tools.return_path_tool import ReturnPathTool
+    rp_tool = ReturnPathTool(project_root)
+    registry.register(
+        name="return_path",
+        toolset="analysis",
+        category="return-path",
+        schema=rp_tool.get_tool_definition(),
+        handler=_make_handler(rp_tool),
+        description="Return path: detect inconsistent return paths, implicit None returns, and complex return logic across Python, JS/TS, Java, Go",
+        emoji="↩️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
