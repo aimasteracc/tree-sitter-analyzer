@@ -1109,6 +1109,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔀",
     )
 
+    # assignment_in_conditional
+    from .tools.assignment_in_conditional_tool import AssignmentInConditionalTool
+    aic_tool = AssignmentInConditionalTool(project_root)
+    registry.register(
+        name="assignment_in_conditional",
+        toolset="analysis",
+        category="bug-detection",
+        schema=aic_tool.get_tool_definition(),
+        handler=_make_handler(aic_tool),
+        description="Assignment in conditional: detect = vs == typos in if/while conditions across JS/TS, Java, C/C++",
+        emoji="🐛",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

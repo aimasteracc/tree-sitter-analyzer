@@ -119,6 +119,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "nested_ternary_tool",
         "class": "NestedTernaryTool",
     },
+    "assignment_in_conditional": {
+        "description": (
+            "Detect assignments used as if/while conditions "
+            "(likely = vs == typo)."
+        ),
+        "module": "assignment_in_conditional_tool",
+        "class": "AssignmentInConditionalTool",
+    },
 }
 
 __all__ = [
