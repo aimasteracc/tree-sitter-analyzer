@@ -164,13 +164,21 @@ $(cat "$recovery")
      - 有且结论是 DON'T：放弃该 change，归档，进入下一步
    - 没有：执行 AUTONOMOUS.md 中定义的「永续循环机制」
 2. 在「永续循环」中：
+   - 先读 wiki（agent-failure-modes.md）+ 读 findings.md 被拒绝功能注册表
+   - 竞品否决检查（ESLint/Ruff/SonarQBE）— 必须搜索，不能跳过
+   - 功能评分 >= 10/12（竞品差距+用户信号+架构适配+实现成本）
+   - 竞品差距=0 或 用户信号=0 → 直接 DON'T
    - 调用 /steve-jobs-perspective 做产品分析
    - 调用 /plan-eng-review 做架构分析
    - 重要：要求 Skill「分析并给出建议」，不要让 Skill 问问题
 3. 每完成一个 Sprint 就 commit + push
 4. Context 使用率 > 70% 时更新三文件并停止
 
-关键：深度分析必须有，但 Skill 调用方式要正确——要求分析而非问答。
+**1 进 1 出规则（强制）**：
+- Analyzer 数量不再增长（当前 ~164 即为上限）
+- 新增 1 个 analyzer = 必须合并或删除 1 个现有的
+- 重心从"造新工具"转向"让现有工具有用"（合并、删低价值、改善质量）
+- 每 2 个功能后执行 1 次重构 Sprint
 
 **Self-Hosting 质量门禁（必须执行）**：
 每个 Sprint 完成后、commit 之前：
@@ -183,8 +191,8 @@ $(cat "$recovery")
 **架构规则（强制）**：
 - 新 analyzer 必须继承 BaseAnalyzer（禁止 _LANGUAGE_MODULES）
 - 新 tool 必须在 tool_registration.py 注册
-- 功能评分 >= 8/12 才能开始实现
-- 每 5 个新功能后执行 1 次重构 Sprint
+- 功能评分 >= 10/12 才能开始实现（竞品否决门 + 四维评分）
+- 每 2 个新功能后执行 1 次重构 Sprint
 
 ⚠️  禁止使用 AskUserQuestion！
 ⚠️  遇到需要确认的情况，直接做决定并继续！

@@ -260,21 +260,40 @@ python3 scripts/context-auto-reset.py monitor
 
 当 task_plan.md 中所有列出的 `[ ]` 任务都完成时，执行**新功能探索循环**：
 
-### 步骤 1: 灵感收集（用 Wiki 知识库）
+### 步骤 1: 知识编译（读 Wiki + 写回 Wiki）
 
-⚠️ **使用安全搜索模式避免内存溢出**
+> **设计来源**: wiki/ai-tech/knowledge-compilation.md（复利效应）
+> + wiki/ai-tech/rag-vs-llm-wiki.md（Wiki 是图书馆不是仓库）
+> + wiki/ai-tech/agent-failure-modes.md（避免重复犯错）
+
+**每个 Sprint 开始前，必须执行知识读取（不是搜索，是读取完整页面）**：
 
 ```bash
-# 使用安全搜索包装器（自动选择模式）
-./scripts/qmd-safe-search.sh "code analysis AI agent context" 10
-./scripts/qmd-safe-search.sh "MCP tools LLM code understanding" 10
-./scripts/qmd-safe-search.sh "tree-sitter code navigation" 10
+# 1. 读取失败模式检查表（防止已知错误）
+cat /Users/aisheng.yu/wiki/wiki/ai-tech/agent-failure-modes.md
 
-# 搜索特定参考项目
-./scripts/qmd-safe-search.sh "CodeFlow claw-code codebase analysis" 5
+# 2. 读取被拒绝功能注册表（防止重复提议）
+grep -A1 "被拒绝功能注册表" findings.md | head -50
+
+# 3. 读取上次 session 的决策记录（防止上下文丢失）
+tail -100 findings.md
 ```
 
-将发现的灵感记录到 `findings.md`。
+**关键原则**：
+- 先读后想 — 不要在没读 wiki 的情况下凭空想新功能
+- 先查历史 — findings.md 里可能已经有类似功能的 DO/DON'T 记录
+- 先查竞品 — 步骤 3.5 的竞品否决门必须先执行
+
+**灵感来源**（不限于搜索）：
+```bash
+# 安全搜索模式（避免内存溢出）
+./scripts/qmd-safe-search.sh "code analysis" 5
+```
+
+**每个 Sprint 结束后，必须写回知识**：
+- 功能被拒绝 → 写入 `findings.md` 被拒绝功能注册表
+- 功能通过竞品检查 → 写入竞品分析记录（积累领域知识，避免下次重复搜索）
+- 发现新的失败模式 → 写入 `findings.md` 并标记为 wiki 更新候选
 
 ### 步骤 2: 产品方向分析（乔布斯视角）
 
@@ -419,41 +438,94 @@ python3 scripts/context-auto-reset.py monitor
 
 **记录决策**: 将技术方案记录到 OpenSpec change 的 tasks.md 中
 
-### 步骤 3.5: 功能评分（强制门槛）
+### 步骤 3.5: 功能评分（强制门槛 + 竞品对比）
 
-在实现任何新功能之前，必须通过以下评分：
+> **设计来源**: wiki/ai-tech/agent-failure-modes.md（Generous Bias 防御）
+> + wiki/ai-tech/evomap-gep-protocol.md（Laplace 统计追踪）
+> + wiki/ai-tech/evomap-overview.md（GDI 多因子评分）
 
-**评分维度**（每项 0-3 分）：
-1. **独特性** — 是否与现有工具重叠？(0=完全重复, 3=全新领域)
-2. **需求度** — 是否解决真实问题？(0=理论需求, 3=有明确用户场景)
-3. **架构适配** — 是否符合 BaseAnalyzer 模式？(0=需要新架构, 3=直接适配)
-4. **实现成本** — 能否在 1 个 Sprint 内完成？(0=需要多 Sprint, 3=单 Sprint)
+在实现任何新功能之前，必须通过以下评分。
 
-**最低门槛**: 总分 >= 8/12 才能进入步骤 4
+#### 第一关：竞品否决（Veto Gate）
 
-**重复检查**（必须执行）：
+**任何一项竞品已完美覆盖 → 直接 DON'T，不看其他分数。**
+
 ```bash
-# 检查是否已有类似工具
-grep -r "关键词" tree_sitter_analyzer/analysis/*.py
-grep -r "关键词" tree_sitter_analyzer/mcp/tools/*.py
+# 必须执行的竞品搜索（替换 <关键词> 为功能核心词）
+# 1. ESLint（JS/TS 生态最全面的 linter）
+WebSearch: "eslint rule <关键词>" site:eslint.org
+# 2. Ruff/Pylint（Python 生态）
+WebSearch: "ruff rule <关键词>" OR "pylint <关键词>"
+# 3. SonarQBE（跨语言企业级）
+WebSearch: "sonarqube rule <关键词>" site:docs.sonarsource.com
+# 4. 内部重复检查
+grep -r "关键词" tree_sitter_analyzer/analysis/*.py tree_sitter_analyzer/mcp/tools/*.py
 uv run python scripts/self-hosting-gate.py --architecture
 ```
 
-**架构检查**（必须通过）：
+**竞品否决规则**：
+| 竞品覆盖度 | 判定 | 行动 |
+|-----------|------|------|
+| 竞品完美覆盖（有规则、启用率高、文档完整） | VETO | **直接 DON'T**，记录到被拒绝功能注册表 |
+| 竞品部分覆盖（有规则但不全/默认关闭） | 2 分 | 需要证明为什么 ts-analyzer 的版本更好 |
+| 无竞品覆盖 | 3 分 | 继续评分 |
+
+#### 第二关：四维评分
+
+**评分维度**（每项 0-3 分）：
+1. **竞品差距** — 外部工具是否已覆盖？(0=竞品完美覆盖[veto], 1=竞品已覆盖, 2=竞品部分覆盖, 3=无竞品覆盖)
+2. **用户信号** — 有没有真实需求证据？(0=纯想象, 1=推理得出, 2=GitHub issue/社区讨论, 3=self-hosting 发现的真实问题)
+3. **架构适配** — 是否符合 BaseAnalyzer 模式？(0=需要新架构, 1=需要适配, 2=基本适配, 3=直接适配)
+4. **实现成本** — 能否在 1 个 Sprint 内完成？(0=需要多 Sprint, 1=1.5 Sprint, 2=1 Sprint, 3=半个 Sprint)
+
+**最低门槛**: 总分 >= 10/12 才能进入步骤 4（从 8 提高到 10）
+
+**一票否决条件**（任一为真 → 直接 DON'T）：
+- 竞品差距 = 0（外部工具已完美覆盖）
+- 用户信号 = 0（没有真实需求，纯想象）
+- 功能属于"语言踩坑集"类别（单语言、单模式、已有 linter 覆盖的 trivial 检测）
+
+#### 被拒绝功能注册表（防止重复提议）
+
+在 `findings.md` 中维护被拒绝功能的记录。每个新功能提议前，必须先检查此注册表：
+
+```
+## 被拒绝功能注册表
+- [日期] 功能名 — 原因（竞品覆盖/无用户信号/语言踩坑）
+```
+
+**重复提议同一功能 → 直接 DON'T，不需要重新评分。**
+
+#### 架构检查（必须通过）：
 - 新 analyzer 必须继承 `BaseAnalyzer`（禁止 `_LANGUAGE_MODULES`）
 - 新 tool 必须在 `tool_registration.py` 注册
 - 注册工具总数不能超过 MAX_TOOLS (80)
 
-### 步骤 3.6: 重构配额
+### 步骤 3.6: 功能封顶与 1 进 1 出规则
 
-**每 5 个新功能后，必须执行 1 次重构 Sprint**（不允许新功能）：
+> **设计来源**: Steve Jobs "Focus = Saying No" + wiki/ai-tech/evomap-overview.md（GDI 中 30% 权重给实际使用）
+
+**当前状态**：164 个 analyzer，已远超用户能消化的数量。
+
+**硬规则**：
+1. **Analyzer 数量不再增长。** 当前数量即为上限。
+2. **1 进 1 出**：每新增 1 个 analyzer，必须合并或删除 1 个现有 analyzer。
+3. **重心从"造新工具"转向"让现有工具有用"**：
+   - 提升已有 analyzer 的检测质量（减少误报、增加跨语言覆盖）
+   - 合并功能重叠的 analyzer（如 len_comparison + range_len → 合并为一个）
+   - 删除使用率低、竞品已完美覆盖的 analyzer
+   - 改善输出格式，让用户更容易理解和处理结果
+
+**重构 Sprint 配额（每 2 个新功能后执行 1 次）**（从 5 改为 2）：
 
 重构 Sprint 清单：
 1. 运行 `uv run python scripts/self-hosting-gate.py --architecture` 修复所有违规
 2. 删除孤儿文件（tool 文件未注册的）
-3. 合并重叠工具
-4. 运行 `uv run ruff check tree_sitter_analyzer/ --fix && uv run mypy tree_sitter_analyzer/ --strict`
-5. 确认 BaseAnalyzer 采用率 100%
+3. **合并重叠工具**（用 `grep` 找出功能相似的 analyzer，合并为一个）
+4. **删除低价值工具**（单语言、trivial 检测、竞品已覆盖的）
+5. 运行 `uv run ruff check tree_sitter_analyzer/ --fix && uv run mypy tree_sitter_analyzer/ --strict`
+6. 确认 BaseAnalyzer 采用率 100%
+7. **更新 findings.md 被拒绝功能注册表**（记录被合并/删除的功能及原因）
 
 ### 步骤 4: 定义 OpenSpec Change
 
