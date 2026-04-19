@@ -1609,6 +1609,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔒",
     )
 
+    # await_in_loop
+    from .tools.await_in_loop_tool import AwaitInLoopTool
+    ail_tool = AwaitInLoopTool(project_root)
+    registry.register(
+        name="await_in_loop",
+        toolset="analysis",
+        category="performance",
+        schema=ail_tool.get_tool_definition(),
+        handler=_make_handler(ail_tool),
+        description="Await-in-loop: detect serial async in for/while loops (use asyncio.gather / Promise.all)",
+        emoji="⚡",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

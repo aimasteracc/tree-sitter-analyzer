@@ -1,5 +1,37 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Await-in-Loop Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Await-in-Loop Detector — 检测循环体内的 await 表达式
+
+**产品分析**:
+- 聚焦: `for x in items: await f(x)` 串行执行异步操作，应该用 `asyncio.gather` / `Promise.all` 并行化
+- 减法: MVP = 检测 for/while 循环体内是否有 await_expression
+- 一句话: "Find the serial async operations that should run in parallel"
+
+**独特性评估**: 11/12 >= 8 (DO)
+- Uniqueness: 3/3 — async_patterns 不检测此模式
+- Need: 3/3 — 常见性能问题，实际用户痛点
+- Architecture fit: 3/3 — 标准 BaseAnalyzer，Python + JS/TS
+- Implementation cost: 2/3 — 两种语言，略有复杂度
+
+**结论**: DO — 检测真正的性能问题
+
+## 技术架构讨论 - Await-in-Loop Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**技术方案**: AST 遍历
+- Python: 在 for_statement/while_statement 内检测 await_expression
+- JS/TS: 在 for_statement/for_in_statement/while_statement 内检测 await_expression
+- 排除: 嵌套函数中的 await（它属于内部函数，而非循环）
+
+**推荐方案**: 方案 A（独立模块），理由：与 115+ MCP 工具架构一致
+**风险**: 嵌套函数误报 — 需要在进入子函数时重置 "in loop" 状态
+**依赖**: 无
+
 ## 产品讨论记录 - Identity Comparison with Literals Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
