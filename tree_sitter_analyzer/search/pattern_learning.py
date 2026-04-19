@@ -158,6 +158,8 @@ class PatternLearner:
                 # Reconstruct query from cache key (we'd need to store this)
                 # For now, use a simplified approach
                 pattern = self.extract_pattern(str(entry.key.query_hash))
+                if pattern is None:
+                    continue
                 if pattern not in queries_by_pattern:
                     queries_by_pattern[pattern] = []
                 queries_by_pattern[pattern].append(entry)

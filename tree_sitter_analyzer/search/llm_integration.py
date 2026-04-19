@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
-    pass  # type: ignore[import-not-found]
+    pass
 
 # Set up logging
 logger = setup_logger(__name__)
@@ -121,7 +121,7 @@ class OpenAIClient(LLMClient):
     def _check_available(self) -> bool:
         """Check if OpenAI API is available."""
         try:
-            import openai
+            import openai  # type: ignore[import-not-found]
             return hasattr(openai, "OpenAI")
         except ImportError:
             return False
@@ -245,7 +245,7 @@ class AnthropicClient(LLMClient):
     def _check_available(self) -> bool:
         """Check if Anthropic API is available."""
         try:
-            import anthropic
+            import anthropic  # type: ignore[import-not-found]
             return hasattr(anthropic, "Anthropic")
         except ImportError:
             return False

@@ -4,6 +4,25 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 产品讨论记录 - Plugin Bridge Architecture - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Plugin Bridge Architecture — 整合52个分析器中542个硬编码语言节点定义到LanguageKnowledge协议
+
+**产品分析** (GStack office-hours):
+- 聚焦: 这是工程便利，不是用户价值。用户不会因此获得更好的分析结果
+- 减法: 4-phase migration 是 ocean 不是 lake。22个feature后需要重构，但应该是focused refactoring而非full rearchitecture
+- 一句话: "Let analyzers query language plugins instead of hardcoding AST knowledge" — 但这是内部重构，不是产品功能
+- 5 analyzer MVP 是半途而废：其余47个仍然hardcode，无法实现"1 file to add language"
+
+**架构现状**:
+- 85 analyzer files, 23 language files
+- Architecture invariants: ALL PASS
+- 重构逾期：22 features since last refactoring (quota = every 5)
+
+**结论**: DON'T — Archive. 执行标准重构Sprint（self-hosting-gate --architecture + ruff + mypy + BaseAnalyzer采用率），而非full plugin bridge
+
 ## 产品讨论记录 - Dead Code Path Analyzer - 2026-04-19
 
 **调用**: /office-hours (autonomous mode)
