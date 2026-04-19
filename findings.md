@@ -2152,3 +2152,40 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 - **架构适配**: 3/3 — 完美匹配 BaseAnalyzer + variable_shadowing 模式
 - **实现成本**: 2/3 — scope tracking 增加一些复杂度
 - **总分**: 11/12 ✓ (通过 ≥8 门槛)
+
+## 产品讨论记录 - Unused Parameter Detector - 2026-04-19
+
+**调用**: /office-hours (Steve Jobs perspective)
+
+**输入**: Unused Parameter Detector — 检测函数/方法中从未在函数体中被引用的参数
+
+**乔布斯的分析**:
+- DO: 这解决核心问题。未使用的参数是僵尸代码，占用空间，混淆意图，掩盖真正的 bug
+- 减法思维：MVP 简单到不能再简单——收集参数名，搜索引用
+- 一句话定义："告诉开发者哪些函数参数是死代码——被声明了但从未被触及"
+
+**结论**: DO
+
+**理由**: 纯 AST 遍历，一个 Sprint 可完成，无重叠
+
+## 技术架构讨论记录 - Unused Parameter Detector - 2026-04-19
+
+**调用**: /plan-eng-review
+
+**输入**: 方案A(纯AST遍历) vs 方案B(基于scope分析)
+
+**GStack的分析**:
+- 推荐方案A，纯 AST 遍历
+- 风险最低，无需 scope 分析
+- 与 variable_shadowing.py 和 dead_store.py 完全相同的模式
+- 边缘情况可预测：self/cls、_占位符、err 回调约定
+
+**推荐方案**: 方案A (纯 AST 遍历)
+**理由**: 最低风险，完美契合 BaseAnalyzer 模式，一个 Sprint 完成
+
+**检测类型**:
+- unused_parameter: 参数在函数体中从未被引用
+- unused_callback_parameter: 回调中 _ 或 err 未使用（低严重性）
+- unused_self: Python self/cls 或 Java this 未使用（静态方法候选）
+
+**功能评分**: 12/12 (独特性3 + 需求度3 + 架构适配3 + 实现成本3)
