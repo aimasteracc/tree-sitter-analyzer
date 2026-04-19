@@ -1096,6 +1096,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🚩",
     )
 
+    # nested_ternary
+    from .tools.nested_ternary_tool import NestedTernaryTool
+    nt_tool = NestedTernaryTool(project_root)
+    registry.register(
+        name="nested_ternary",
+        toolset="analysis",
+        category="readability",
+        schema=nt_tool.get_tool_definition(),
+        handler=_make_handler(nt_tool),
+        description="Nested ternary: detect deeply nested ternary/conditional expressions across Python, JS/TS, Java",
+        emoji="🔀",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

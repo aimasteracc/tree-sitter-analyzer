@@ -111,6 +111,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "flag_argument_tool",
         "class": "FlagArgumentTool",
     },
+    "nested_ternary": {
+        "description": (
+            "Detect deeply nested ternary/conditional expressions "
+            "that hurt readability (depth >= 2)."
+        ),
+        "module": "nested_ternary_tool",
+        "class": "NestedTernaryTool",
+    },
 }
 
 __all__ = [
