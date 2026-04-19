@@ -71,6 +71,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "god_class_tool",
         "class": "GodClassTool",
     },
+    "dead_code_path": {
+        "description": (
+            "Analyze functions for unreachable code paths. "
+            "Detects code after terminal statements and dead branches."
+        ),
+        "module": "dead_code_path_tool",
+        "class": "DeadCodePathTool",
+    },
 }
 
 __all__ = [

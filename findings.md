@@ -4,6 +4,42 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 产品讨论记录 - Dead Code Path Analyzer - 2026-04-19
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Data Clump Detector, Shotgun Surgery Detector, Dead Code Path Analyzer
+
+**产品分析** (GStack office-hours):
+- Data Clump: DON'T — 需要跨文件类型推断，tree-sitter 不擅长
+- Shotgun Surgery: DON'T — 需要 git 变更历史分析，不是 AST 分析
+- Dead Code Path: DO — 纯语法模式匹配，dead_code 工具检测未使用定义但不检测不可达路径
+
+**一句话定义**: "Find the lines of code that can never execute, so you can delete them."
+
+**检测目标**: return/raise/break/continue 后的代码, if False: 块, if True: else 分支, 纯 AST 模式
+
+**结论**: DO — 填补真正空白（dead_code 是未使用定义，非不可达路径）
+
+## 技术架构讨论记录 - Dead Code Path Analyzer - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**功能**: Dead Code Path Analyzer
+
+**架构分析** (GStack plan-eng-review):
+- 推荐方案A: 纯 AST 模式匹配（~300行核心代码）
+- 方案B (CFG) 被否决：CFG 构建需要处理异常流、生成器、async、defer，变成编译器前端
+- 方案A 风险低，与现有58个分析器架构一致，1个Sprint可完成
+- 检测模式：return/raise/break/continue 后的兄弟节点, if False 块, if True else 分支
+- 4语言：Python, JS/TS, Java, Go
+- 30+ tests
+
+**推荐方案**: 方案A (纯 AST 模式匹配)
+**理由**: 风险低、架构一致、维护简单、1 Sprint 完成
+**风险**: 无重大风险
+**依赖**: 无新依赖
+
 ## 产品讨论记录 - Method Chain Analyzer - 2026-04-19
 
 **调用**: /plan-eng-review (autonomous mode)
