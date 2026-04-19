@@ -1135,6 +1135,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔐",
     )
 
+    # mutable_default_args
+    from .tools.mutable_default_args_tool import MutableDefaultArgsTool
+    mda_tool = MutableDefaultArgsTool(project_root)
+    registry.register(
+        name="mutable_default_args",
+        toolset="analysis",
+        category="bug-detection",
+        schema=mda_tool.get_tool_definition(),
+        handler=_make_handler(mda_tool),
+        description="Mutable default args: detect Python functions with mutable default values (list, dict, set) causing shared state bugs",
+        emoji="🐛",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
