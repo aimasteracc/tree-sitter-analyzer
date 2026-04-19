@@ -1596,6 +1596,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔄",
     )
 
+    # identity_comparison_literal
+    from .tools.identity_comparison_literal_tool import IdentityComparisonLiteralTool
+    icl_tool = IdentityComparisonLiteralTool(project_root)
+    registry.register(
+        name="identity_comparison_literal",
+        toolset="analysis",
+        category="correctness",
+        schema=icl_tool.get_tool_definition(),
+        handler=_make_handler(icl_tool),
+        description="Identity comparison with literals: detect `x is 5` (Python 3.12+ DeprecationWarning)",
+        emoji="🔒",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

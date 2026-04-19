@@ -1,5 +1,42 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Identity Comparison with Literals Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Identity Comparison with Literals Detector — 检测 `is`/`is not` 与非 singleton 字面量的比较
+
+**产品分析**:
+- 聚焦: `x is 5`, `x is "hello"`, `x is []` 是 identity 比较而非 value 比较。Python 3.8+ SyntaxWarning, 3.12+ DeprecationWarning, 未来版本 SyntaxError
+- 减法: MVP = 检测 `is`/`is not` 比较操作符的右操作数是否为非 singleton 字面量（数字、字符串、列表、字典、集合、元组）
+- 一句话: "Find the comparisons that will break in future Python, because `x is 5` checks identity not value"
+
+**独特性评估**: 12/12 >= 8 (DO)
+- Uniqueness: 3/3 — 无类似工具（loose_equality 检查 JS 的 ==/===，不检查 Python is）
+- Need: 3/3 — Python 3.12+ 正式弃用，未来版本 SyntaxError，真正的兼容性问题
+- Architecture fit: 3/3 — 纯 AST，BaseAnalyzer，Python-only
+- Implementation cost: 3/3 — 单 Sprint
+
+**结论**: DO — 检测真正的向前兼容性问题和正确性 bug
+
+## 技术架构讨论 - Identity Comparison with Literals Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**技术方案**: 纯 AST 遍历
+- 遍历所有 `comparison_operator` 节点
+- 检查操作符是否为 `is` 或 `is not`
+- 检查左右操作数是否为非 singleton 字面量（integer, float, string, list, dictionary, set, tuple）
+- 排除 singleton 值：None, True, False, Ellipsis/...
+- 报告 identity_comparison_literal 问题
+
+**Singleton 白名单**: None, True, False, ...（Ellipsis）
+**字面量黑名单**: integer, float, string, list, dictionary, set, tuple, concatenate_string
+
+**推荐方案**: 方案 A（独立模块），理由：与 114+ MCP 工具架构一致，Python-only
+**风险**: 无，纯 AST 静态分析
+**依赖**: 无
+
 ## 产品讨论记录 - Assert-on-Tuple Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
