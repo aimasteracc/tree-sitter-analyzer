@@ -1265,6 +1265,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🪞",
     )
 
+    # debug_statement
+    from .tools.debug_statement_tool import DebugStatementTool
+    ds_tool = DebugStatementTool(project_root)
+    registry.register(
+        name="debug_statement",
+        toolset="analysis",
+        category="code-quality",
+        schema=ds_tool.get_tool_definition(),
+        handler=_make_handler(ds_tool),
+        description="Debug statements: detect leftover print/console.log/System.out.println/fmt.Println calls that should be removed before production",
+        emoji="🐛",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
