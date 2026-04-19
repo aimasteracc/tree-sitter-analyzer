@@ -63,6 +63,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "lazy_class_tool",
         "class": "LazyClassTool",
     },
+    "god_class": {
+        "description": (
+            "Analyze classes for excessive size and responsibility (god classes). "
+            "Detects classes with too many methods and fields."
+        ),
+        "module": "god_class_tool",
+        "class": "GodClassTool",
+    },
 }
 
 __all__ = [
