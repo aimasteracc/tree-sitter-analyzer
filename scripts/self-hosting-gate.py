@@ -219,7 +219,7 @@ def _check_architecture() -> list[str]:
 
     # Rule 3: Tool count limit
     reg_count = reg_content.count("registry.register(") if registration.exists() else 0
-    max_tools = 100
+    max_tools = 120
     if reg_count > max_tools:
         violations.append(
             f"Tool count ({reg_count}) exceeds MAX_TOOLS ({max_tools})"

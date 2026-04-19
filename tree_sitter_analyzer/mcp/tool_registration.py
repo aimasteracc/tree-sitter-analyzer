@@ -1476,6 +1476,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔍",
     )
 
+    from .tools.late_binding_closure_tool import LateBindingClosureTool
+    lbc_tool = LateBindingClosureTool(project_root)
+    registry.register(
+        name="late_binding_closure",
+        toolset="analysis",
+        category="correctness",
+        schema=lbc_tool.get_tool_definition(),
+        handler=_make_handler(lbc_tool),
+        description="Late-binding closure: detect closures in loops capturing loop variables by reference",
+        emoji="🔗",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

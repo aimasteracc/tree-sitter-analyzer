@@ -4,6 +4,25 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-sitter-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 产品讨论记录 - Late-Binding Closure Detector - 2026-04-20
+
+**调用**: /steve-jobs-perspective (autonomous mode)
+
+**功能候选**: Late-Binding Closure Bug Detector — 检测循环内闭包捕获循环变量的经典 bug
+
+**产品分析**:
+- 聚焦: 循环内创建的 lambda/function 捕获循环变量是真实生产 bug。Pylint W0640, ESLint no-loop-func 都检测
+- 减法: MVP = 纯AST遍历，找loop内的lambda/function引用loop变量
+- 一句话: "Find closures that capture loop variables, because `lambda: i` always returns the last value"
+
+**独特性评估**: 11/12 >= 8 (DO)
+- Uniqueness: 3/3 — no existing tool covers late-binding closure in loops
+- Need: 3/3 — Pylint W0640, ESLint no-loop-func, real production bugs
+- Architecture fit: 3/3 — standard BaseAnalyzer, Python + JS/TS + Java
+- Implementation cost: 2/3 — multi-language, need to track loop variable scope
+
+**结论**: DO — fills genuine gap, catches real subtle bugs, high linter overlap validation
+
 ## 灵感来源 - Session 145 — 2026-04-20
 
 - 98个分析器已实现，覆盖大部分经典代码异味

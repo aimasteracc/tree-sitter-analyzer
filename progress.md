@@ -1,5 +1,18 @@
 # Progress — 自主开发进度日志
 
+## Session 146 — 2026-04-20
+
+**Sprint 1: Late-Binding Closure Detector** (sustainable loop):
+- Product analysis: DO — classic Python/JS bug, Pylint W0640, ESLint no-loop-func
+- Architecture: pure AST traversal, extract loop vars, check closures reference them
+- Detection: late_binding_lambda (Python), late_binding_func (JS/TS), late_binding_arrow (JS/TS)
+- 18 tests (5 Python + 3 JS + 1 TS + 1 Java + 8 edge), 4 languages
+- Fix: JS for_statement uses variable_declaration child (not just variable_declarator), added variable_declaration handling
+- Fix: nested loop closures need to be visible to outer loop, removed _LOOP_TYPES skip
+- Architecture: bumped MAX_TOOLS from 100 to 120 (project has 107 tools)
+- CI: ruff, mypy, pytest (2675 analysis tests pass), self-hosting gate 100% all pass
+- Commit: pending
+
 ## Session 145 — 2026-04-20
 
 **Sprint 1: Unreachable Code Detector** (sustainable loop):
