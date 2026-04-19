@@ -1057,6 +1057,32 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔤",
     )
 
+    # middle_man
+    from .tools.middle_man_tool import MiddleManTool
+    mm_tool = MiddleManTool(project_root)
+    registry.register(
+        name="middle_man",
+        toolset="analysis",
+        category="design",
+        schema=mm_tool.get_tool_definition(),
+        handler=_make_handler(mm_tool),
+        description="Middle man: detect classes that primarily delegate without adding value across Python, JS/TS, Java, Go",
+        emoji="🎭",
+    )
+
+    # tautological_condition
+    from .tools.tautological_condition_tool import TautologicalConditionTool
+    tc_tool = TautologicalConditionTool(project_root)
+    registry.register(
+        name="tautological_condition",
+        toolset="analysis",
+        category="quality",
+        schema=tc_tool.get_tool_definition(),
+        handler=_make_handler(tc_tool),
+        description="Tautological condition: detect contradictory, subsumed, and self-comparison conditions that always evaluate the same way",
+        emoji="⚖️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

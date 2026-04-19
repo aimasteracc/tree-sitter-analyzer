@@ -243,7 +243,7 @@ class TautologicalConditionAnalyzer(BaseAnalyzer):
     ) -> list[TautologicalIssue]:
         """Detect x == x, x != x, x > x, etc."""
         if node.type != "comparison_operator":
-            if ext in {".js", ".jsx", ".ts", ".tsx"}:
+            if ext in {".js", ".jsx", ".ts", ".tsx", ".go"}:
                 if node.type != "binary_expression":
                     return []
             elif ext == ".java":
@@ -252,7 +252,7 @@ class TautologicalConditionAnalyzer(BaseAnalyzer):
             else:
                 return []
 
-        if ext in {".js", ".jsx", ".ts", ".tsx"} and node.type == "binary_expression":
+        if ext in {".js", ".jsx", ".ts", ".tsx", ".go"} and node.type == "binary_expression":
             op = node.child_by_field_name("operator")
             if not op:
                 return []
@@ -498,10 +498,12 @@ class TautologicalConditionAnalyzer(BaseAnalyzer):
             return n1 != n2
         if {op1, op2} == {"==", "!="} or {op1, op2} == {"===", "!=="}:
             return n1 == n2
-        if {op1, op2} == {"<", ">"} or {op1, op2} == {"<=", ">="}:
-            return n1 <= n2
-        if {op1, op2} == {">", "<"} or {op1, op2} == {">=", "<="}:
-            return n2 <= n1
+        gt_ops = {">", ">="}
+        lt_ops = {"<", "<="}
+        if op1 in gt_ops and op2 in lt_ops:
+            return n1 >= n2
+        if op1 in lt_ops and op2 in gt_ops:
+            return n2 >= n1
         return False
 
     def _check_subsumed(

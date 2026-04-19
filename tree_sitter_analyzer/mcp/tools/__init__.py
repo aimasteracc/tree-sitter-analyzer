@@ -95,6 +95,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "magic_string_tool",
         "class": "MagicStringTool",
     },
+    "tautological_condition": {
+        "description": (
+            "Detect conditions that always evaluate to the same value. "
+            "Finds contradictory, subsumed, and tautological comparisons."
+        ),
+        "module": "tautological_condition_tool",
+        "class": "TautologicalConditionTool",
+    },
 }
 
 __all__ = [

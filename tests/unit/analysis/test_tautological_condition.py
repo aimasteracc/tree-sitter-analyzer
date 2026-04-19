@@ -173,7 +173,7 @@ def check(x):
     def test_no_issue_non_subsumed(self) -> None:
         code = """\
 def check(x):
-    if x > 3 and x > 2:
+    if x > 3 and y > 5:
         pass
 """
         path = _write_tmp(code, ".py")
