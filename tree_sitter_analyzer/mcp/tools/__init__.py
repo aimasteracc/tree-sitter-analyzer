@@ -103,6 +103,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "tautological_condition_tool",
         "class": "TautologicalConditionTool",
     },
+    "flag_argument": {
+        "description": (
+            "Detect boolean parameters (flag arguments) that indicate "
+            "SRP violations in function signatures."
+        ),
+        "module": "flag_argument_tool",
+        "class": "FlagArgumentTool",
+    },
 }
 
 __all__ = [

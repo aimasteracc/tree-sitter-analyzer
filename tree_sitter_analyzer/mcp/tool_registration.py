@@ -1083,6 +1083,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚖️",
     )
 
+    # flag_argument
+    from .tools.flag_argument_tool import FlagArgumentTool
+    fa_tool = FlagArgumentTool(project_root)
+    registry.register(
+        name="flag_argument",
+        toolset="analysis",
+        category="design",
+        schema=fa_tool.get_tool_definition(),
+        handler=_make_handler(fa_tool),
+        description="Flag argument: detect boolean parameters that indicate SRP violations across Python, JS/TS, Java, Go",
+        emoji="🚩",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
