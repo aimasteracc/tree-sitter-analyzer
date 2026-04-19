@@ -157,14 +157,18 @@ $(cat "$recovery")
     echo "读取 AUTONOMOUS.md 的全部内容，严格遵循其中的所有规则进行自主开发。
 
 核心要求：
-1. 检查是否有未完成的 OpenSpec change，有就继续实现
-2. 如果没有，执行 AUTONOMOUS.md 中定义的「永续循环机制」
-3. 在「永续循环」中：
+1. 检查是否有未完成的 OpenSpec change
+   - 有：检查 findings.md 是否有该功能的产品讨论记录
+     - 没有：必须先调用 /steve-jobs-perspective 做产品分析，记录到 findings.md
+     - 有且结论是 DO：继续实现
+     - 有且结论是 DON'T：放弃该 change，归档，进入下一步
+   - 没有：执行 AUTONOMOUS.md 中定义的「永续循环机制」
+2. 在「永续循环」中：
    - 调用 /steve-jobs-perspective 做产品分析
    - 调用 /plan-eng-review 做架构分析
    - 重要：要求 Skill「分析并给出建议」，不要让 Skill 问问题
-4. 每完成一个 Sprint 就 commit + push
-5. Context 使用率 > 70% 时更新三文件并停止
+3. 每完成一个 Sprint 就 commit + push
+4. Context 使用率 > 70% 时更新三文件并停止
 
 关键：深度分析必须有，但 Skill 调用方式要正确——要求分析而非问答。
 

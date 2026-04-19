@@ -1306,6 +1306,7 @@ class JavaPlugin(LanguagePlugin):
             self.get_file_extensions()
         )  # Add for test compatibility
         self._cached_language: Any | None = None  # Cache for tree-sitter language
+        self._knowledge: JavaKnowledge | None = None
 
     def get_language_name(self) -> str:
         """Get the language name."""
@@ -1318,6 +1319,12 @@ class JavaPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return JavaElementExtractor()
+
+    @property
+    def knowledge(self) -> "JavaKnowledge":
+        if self._knowledge is None:
+            self._knowledge = JavaKnowledge()
+        return self._knowledge
 
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
@@ -1508,3 +1515,63 @@ class JavaPlugin(LanguagePlugin):
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+
+
+class JavaKnowledge:
+    """AST knowledge for Java."""
+
+    @property
+    def function_nodes(self) -> frozenset[str]:
+        return frozenset({"method_declaration", "constructor_declaration"})
+
+    @property
+    def class_nodes(self) -> frozenset[str]:
+        return frozenset({"class_declaration", "interface_declaration", "enum_declaration", "record_declaration"})
+
+    @property
+    def scope_boundary_nodes(self) -> frozenset[str]:
+        return frozenset({"method_declaration", "constructor_declaration", "lambda_expression", "class_declaration"})
+
+    @property
+    def import_nodes(self) -> frozenset[str]:
+        return frozenset({"import_declaration"})
+
+    @property
+    def loop_nodes(self) -> frozenset[str]:
+        return frozenset({"for_statement", "enhanced_for_statement", "while_statement", "do_statement"})
+
+    @property
+    def exception_nodes(self) -> frozenset[str]:
+        return frozenset({"try_statement", "catch_clause", "finally_clause", "throw_statement"})
+
+    @property
+    def assignment_nodes(self) -> frozenset[str]:
+        return frozenset({"variable_declarator", "local_variable_declaration", "field_declaration"})
+
+    @property
+    def nesting_nodes(self) -> frozenset[str]:
+        return frozenset({"if_statement", "for_statement", "while_statement", "do_statement", "switch_expression", "try_statement", "try_with_resources_statement", "synchronized_statement"})
+
+    @property
+    def block_nodes(self) -> frozenset[str]:
+        return frozenset({"block"})
+
+    @property
+    def parameter_nodes(self) -> frozenset[str]:
+        return frozenset({"formal_parameter", "spread_parameter"})
+
+    @property
+    def raise_nodes(self) -> frozenset[str]:
+        return frozenset({"throw_statement"})
+
+    @property
+    def boolean_operator_nodes(self) -> frozenset[str]:
+        return frozenset({"binary_expression"})
+
+    @property
+    def naming_conventions(self) -> dict[str, str]:
+        return {
+            "function": "camelCase", "method": "camelCase",
+            "variable": "camelCase", "parameter": "camelCase",
+            "class": "PascalCase", "constant": "UPPER_SNAKE",
+        }

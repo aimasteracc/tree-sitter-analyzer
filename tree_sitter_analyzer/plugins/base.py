@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
+    Protocol,
+    runtime_checkable,
 )
 
 from ..platform_compat.detector import PlatformInfo
@@ -681,3 +683,139 @@ class DefaultLanguagePlugin(LanguagePlugin):
                 error_message=str(e),
                 success=False,
             )
+
+
+# =============================================================================
+# Language Knowledge — per-language AST node type catalogs for analyzers
+# =============================================================================
+
+
+@runtime_checkable
+class LanguageKnowledge(Protocol):
+    """Per-language AST knowledge that analyzers query instead of hardcoding.
+
+    Language plugins implement this protocol. Analyzers call
+    ``self._get_knowledge(extension)`` on BaseAnalyzer to get the right
+    knowledge object for the file being analyzed.
+    """
+
+    @property
+    def function_nodes(self) -> frozenset[str]:
+        """Node types that declare functions/methods."""
+        ...
+
+    @property
+    def class_nodes(self) -> frozenset[str]:
+        """Node types that declare classes/interfaces/enums."""
+        ...
+
+    @property
+    def scope_boundary_nodes(self) -> frozenset[str]:
+        """Node types that create a new lexical scope."""
+        ...
+
+    @property
+    def import_nodes(self) -> frozenset[str]:
+        """Node types for import statements."""
+        ...
+
+    @property
+    def loop_nodes(self) -> frozenset[str]:
+        """Node types for loop constructs (for, while, do, etc.)."""
+        ...
+
+    @property
+    def exception_nodes(self) -> frozenset[str]:
+        """Node types for exception handling (try, catch, except, finally)."""
+        ...
+
+    @property
+    def assignment_nodes(self) -> frozenset[str]:
+        """Node types for variable assignment/declaration."""
+        ...
+
+    @property
+    def nesting_nodes(self) -> frozenset[str]:
+        """Node types that increase nesting depth (if, for, while, switch, etc.)."""
+        ...
+
+    @property
+    def block_nodes(self) -> frozenset[str]:
+        """Node types for block bodies (block, statement_block, function_body)."""
+        ...
+
+    @property
+    def parameter_nodes(self) -> frozenset[str]:
+        """Node types for function/method parameters."""
+        ...
+
+    @property
+    def raise_nodes(self) -> frozenset[str]:
+        """Node types for raising/throwing exceptions."""
+        ...
+
+    @property
+    def boolean_operator_nodes(self) -> frozenset[str]:
+        """Node types for boolean expressions (and, or, &&, ||)."""
+        ...
+
+    @property
+    def naming_conventions(self) -> dict[str, str]:
+        """Naming convention rules: category -> pattern name (snake_case, camelCase, etc.)."""
+        ...
+
+
+class DefaultKnowledge:
+    """Fallback knowledge returning empty sets. Used for languages without a plugin."""
+
+    @property
+    def function_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def class_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def scope_boundary_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def import_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def loop_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def exception_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def assignment_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def nesting_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def block_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def parameter_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def raise_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def boolean_operator_nodes(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def naming_conventions(self) -> dict[str, str]:
+        return {}

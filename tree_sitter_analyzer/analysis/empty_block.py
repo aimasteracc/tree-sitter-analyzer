@@ -50,17 +50,14 @@ _SUGGESTIONS: dict[str, str] = {
     ISSUE_EMPTY_BLOCK: "Remove the empty block or add the intended logic.",
 }
 
-_FUNCTION_TYPES: dict[str, frozenset[str]] = {
-    ".py": frozenset({"function_definition"}),
-    ".js": frozenset({"function_declaration", "method_definition", "arrow_function"}),
-    ".jsx": frozenset({"function_declaration", "method_definition", "arrow_function"}),
+# Supplements for extensions where knowledge is not yet available (e.g. .ts, .tsx)
+_FUNCTION_SUPPLEMENT: dict[str, frozenset[str]] = {
     ".ts": frozenset({"function_declaration", "method_definition", "arrow_function"}),
     ".tsx": frozenset({"function_declaration", "method_definition", "arrow_function"}),
-    ".java": frozenset({"method_declaration", "constructor_declaration"}),
-    ".go": frozenset({"function_declaration", "method_declaration"}),
 }
 
-_CATCH_TYPES: dict[str, frozenset[str]] = {
+# Catch/except node types — subset of knowledge.exception_nodes for each language
+_CATCH_NODES: dict[str, frozenset[str]] = {
     ".py": frozenset({"except_clause"}),
     ".js": frozenset({"catch_clause"}),
     ".jsx": frozenset({"catch_clause"}),
@@ -145,10 +142,10 @@ def _is_empty_block(node: tree_sitter.Node, ext: str) -> bool:
 def _classify_context(
     parent_type: str,
     ext: str,
+    func_types: frozenset[str],
 ) -> str | None:
     """Classify what kind of empty block this is."""
-    func_types = _FUNCTION_TYPES.get(ext, frozenset())
-    catch_types = _CATCH_TYPES.get(ext, frozenset())
+    catch_types = _CATCH_NODES.get(ext, frozenset())
 
     if parent_type in func_types:
         return ISSUE_EMPTY_FUNCTION
@@ -189,6 +186,11 @@ class EmptyBlockAnalyzer(BaseAnalyzer):
                 file_path=str(path),
             )
 
+        knowledge = self._get_knowledge(ext)
+        func_types = knowledge.function_nodes
+        if not func_types:
+            func_types = _FUNCTION_SUPPLEMENT.get(ext, frozenset())
+
         content = path.read_bytes()
         tree = parser.parse(content)
 
@@ -205,7 +207,7 @@ class EmptyBlockAnalyzer(BaseAnalyzer):
                 if _is_empty_block(node, ext):
                     parent = node.parent
                     parent_type = parent.type if parent is not None else ""
-                    issue_type = _classify_context(parent_type, ext)
+                    issue_type = _classify_context(parent_type, ext, func_types)
                     if issue_type is not None:
                         issues.append(EmptyBlockIssue(
                             line_number=node.start_point[0] + 1,

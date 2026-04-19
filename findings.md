@@ -146,6 +146,66 @@ ls /Users/aisheng.yu/wiki/raw/ai-tech/<仓库名>/
 - 纯 tree-sitter AST 分析，无 git 依赖
 - 4 语言支持
 
+## 产品讨论记录 - Debug Statement Detector - 2026-04-19
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Debug Statement Detector — 检测生产代码中遗留的调试语句
+
+**产品分析** (GStack office-hours):
+- 聚焦: `print()`, `console.log()` 是开发者在发布前 grep 的头号内容。AST 感知版本比 grep 更好。
+- 减法: MVP = 纯 AST 模式匹配，检测特定函数调用，跳过测试文件，约 300 行代码。
+- 一句话: "找出你在发布前忘记删除的调试语句。"
+- 结论: DO — 填补真正空白（logging_patterns 是日志质量，无工具检测调试遗留）
+
+**评分**: 12/12 (Uniqueness 3/3, Need 3/3, Architecture 3/3, Cost 3/3)
+
+**检测目标**:
+- Python: print(), breakpoint(), pdb.set_trace()
+- JS/TS: console.log/debug/info/warn, debugger statement
+- Java: System.out.println(), System.err.println(), printStackTrace()
+- Go: fmt.Println/Printf(), log.Printf/Println()
+
+## 技术架构讨论记录 - Debug Statement Detector - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**功能**: Debug Statement Detector
+
+**架构分析**: PIVOT — 发现 logging_patterns.py 已覆盖所有4种语言的调试语句检测：
+- Python print() → logging_patterns.py:241-248
+- JS console.log() → logging_patterns.py:433-440
+- Java System.out.println() → logging_patterns.py:605-612
+- Go fmt.Println/Printf() → logging_patterns.py:774-781
+
+**结论**: 70% 重叠，不值得做独立分析器。转向 Reflection Usage Detector。
+
+## 产品讨论记录 - Reflection Usage Detector - 2026-04-19
+
+**调用**: /office-hours inline + /plan-eng-review inline (autonomous mode)
+
+**功能候选**: Reflection/Dynamic Code Usage Detector
+
+**产品分析**:
+- 聚焦: eval/exec/getattr/Class.forName 是代码库中最危险的模式，直接影响安全性和可维护性
+- 减法: MVP = 检测动态代码执行模式，纯 AST 遍历
+- 一句话: "Find the eval() and reflection calls that make your code impossible to audit"
+- 结论: DO — 填补真正空白（security_scan 是通用扫描，无工具专门追踪反射/动态代码使用）
+
+**评分**: 11/12 (Uniqueness 3/3, Need 3/3, Architecture 3/3, Cost 2/3)
+
+**检测目标**:
+- Python: eval(), exec(), getattr(), setattr(), __import__(), compile()
+- JS/TS: eval(), Function(), new Function()
+- Java: Class.forName(), .newInstance(), Method.invoke()
+- Go: reflect.DeepEqual, reflect.ValueOf, reflect.TypeOf
+
+**架构分析**:
+- 推荐方案A: 纯 AST 遍历，独立分析器
+- 理由: 与85个现有分析器完全一致的 AST 遍历模式
+- 4语言: Python, JS/TS, Java, Go
+- 1个Sprint可完成
+
 ---
 
 ## 直接可用（高价值参考）
@@ -2189,3 +2249,46 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 - unused_self: Python self/cls 或 Java this 未使用（静态方法候选）
 
 **功能评分**: 12/12 (独特性3 + 需求度3 + 架构适配3 + 实现成本3)
+
+## EvoMap 自演化知识 — 工具监控自己的开发
+
+**来源**: Wiki `ai-tech/evomap-*` 系列页面（8页）
+
+### 核心概念映射到 ts-analyzer
+
+| EvoMap 概念 | ts-analyzer 对应 | 实现状态 |
+|------------|-----------------|---------|
+| **Gene**（可复用策略模板） | BaseAnalyzer + LanguageKnowledge | ✅ 已实现 |
+| **Capsule**（成功变异记录） | findings.md 产品讨论记录 + git commit | ⚠️ 非结构化 |
+| **7 阶段演化循环** | AUTONOMOUS.md Sprint 循环 | ✅ 部分映射 |
+| **GDI 评分** | self-hosting-gate.py + 功能评分 rubric | ✅ 已有 |
+| **Swarm Intelligence** | 多 Agent 并行开发 | ❌ 未实现 |
+| **ValidationReport** | ruff + mypy + pytest + self-hosting gate | ✅ 已实现 |
+
+### 7 阶段演化循环 vs 我们的工作流
+
+| EvoMap 阶段 | 我们的对应 | 差距 |
+|------------|-----------|------|
+| 1. Detect（检测问题） | 乔布斯 Skill 分析 | ✅ |
+| 2. Select（选择策略） | 功能评分 >= 8/12 | ✅ |
+| 3. Mutate（变异/实现） | Sprint 实现 | ✅ |
+| 4. Hypothesize（假设验证） | TDD 先写测试 | ✅ |
+| 5. Execute（执行） | 实现 + CI | ✅ |
+| 6. Evaluate（评估） | self-hosting gate + /review | ✅ |
+| 7. Solidify（固化） | commit + push + archive | ✅ |
+
+### 关键启发：工具监控自己的开发
+
+EvoMap 的 **Test-Time Training（TTT）** 理念：AI 在推理时通过演化策略自我改进。
+
+应用到 ts-analyzer：
+1. **自检循环**：每个新 analyzer 用已有 analyzer 扫描自己代码（已实现 via self-hosting gate）
+2. **演化记录**：每个 Sprint 的成功/失败模式结构化记录为 Capsule（需改进）
+3. **质量遗传**：BaseAnalyzer 继承模式 = Gene 传播（已实现）
+4. **反馈驱动改进**：self-hosting 发现的问题驱动下一个重构 Sprint（已实现，每5个功能后重构）
+
+### 下一步行动
+
+- **结构化 Capsule**：将 findings.md 的产品讨论格式化为 EvoMap Capsule 标准（触发条件+策略+结果+置信度）
+- **演化指标仪表盘**：用 ts-analyzer 自身的 health_score + complexity + coupling 工具持续监控自身代码库
+- **自动触发重构**：当 self-hosting 分数下降或耦合度上升时，自动启动重构 Sprint

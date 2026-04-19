@@ -52,19 +52,8 @@ _SUGGESTIONS: dict[str, str] = {
     ISSUE_PACKAGE_VAR: "Use const or move into a struct with controlled access.",
 }
 
-# Node types that define a scope boundary (inside these = NOT module-level)
-_SCOPE_BOUNDARIES: dict[str, frozenset[str]] = {
-    ".py": frozenset({
-        "function_definition", "class_definition", "lambda",
-    }),
-    ".js": frozenset({
-        "function_declaration", "function_expression", "arrow_function",
-        "method_definition", "class_declaration",
-    }),
-    ".jsx": frozenset({
-        "function_declaration", "function_expression", "arrow_function",
-        "method_definition", "class_declaration",
-    }),
+# Supplements for extensions where knowledge is not yet available
+_SCOPE_SUPPLEMENT: dict[str, frozenset[str]] = {
     ".ts": frozenset({
         "function_declaration", "function_expression", "arrow_function",
         "method_definition", "class_declaration",
@@ -72,14 +61,6 @@ _SCOPE_BOUNDARIES: dict[str, frozenset[str]] = {
     ".tsx": frozenset({
         "function_declaration", "function_expression", "arrow_function",
         "method_definition", "class_declaration",
-    }),
-    ".java": frozenset({
-        "method_declaration", "constructor_declaration",
-        "lambda_expression", "class_declaration",
-    }),
-    ".go": frozenset({
-        "function_declaration", "method_declaration",
-        "func_literal", "type_declaration",
     }),
 }
 
@@ -164,24 +145,31 @@ class GlobalStateAnalyzer(BaseAnalyzer):
         result = GlobalStateResult(file_path=file_path)
 
         if extension == ".py":
-            self._analyze_python(tree, source, result)
+            self._analyze_python(tree, source, result, extension)
         elif extension in (".js", ".jsx", ".ts", ".tsx"):
             self._analyze_js_ts(tree, source, result, extension)
         elif extension == ".java":
             self._analyze_java(tree, source, result)
         elif extension == ".go":
-            self._analyze_go(tree, source, result)
+            self._analyze_go(tree, source, result, extension)
 
         return result
 
     def _is_module_level(self, node: tree_sitter.Node, extension: str) -> bool:
-        boundaries = _SCOPE_BOUNDARIES.get(extension, frozenset())
+        boundaries = self._get_scope_boundaries(extension)
         parent = node.parent
         while parent is not None:
             if parent.type in boundaries:
                 return False
             parent = parent.parent
         return True
+
+    def _get_scope_boundaries(self, extension: str) -> frozenset[str]:
+        knowledge = self._get_knowledge(extension)
+        boundaries = knowledge.scope_boundary_nodes
+        if not boundaries:
+            boundaries = _SCOPE_SUPPLEMENT.get(extension, frozenset())
+        return boundaries
 
     def _get_text(self, node: tree_sitter.Node, source: bytes) -> str:
         return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
@@ -205,18 +193,20 @@ class GlobalStateAnalyzer(BaseAnalyzer):
         )
 
     def _analyze_python(
-        self, tree: tree_sitter.Tree, source: bytes, result: GlobalStateResult
+        self, tree: tree_sitter.Tree, source: bytes, result: GlobalStateResult,
+        extension: str,
     ) -> None:
-        self._walk_python(tree.root_node, source, result)
+        boundaries = self._get_scope_boundaries(extension)
+        self._walk_python(tree.root_node, source, result, boundaries)
 
     def _walk_python(
         self,
         node: tree_sitter.Node,
         source: bytes,
         result: GlobalStateResult,
+        boundaries: frozenset[str],
         in_scope: bool = False,
     ) -> None:
-        boundaries = _SCOPE_BOUNDARIES[".py"]
 
         if node.type == "global_statement":
             for child in node.children:
@@ -250,7 +240,7 @@ class GlobalStateAnalyzer(BaseAnalyzer):
                     )
 
         for child in node.children:
-            self._walk_python(child, source, result, is_in_scope)
+            self._walk_python(child, source, result, boundaries, is_in_scope)
 
     def _is_upper_snake(self, name: str) -> bool:
         return name.isupper() or (
@@ -264,7 +254,7 @@ class GlobalStateAnalyzer(BaseAnalyzer):
         result: GlobalStateResult,
         extension: str,
     ) -> None:
-        boundaries = _SCOPE_BOUNDARIES.get(extension, frozenset())
+        boundaries = self._get_scope_boundaries(extension)
 
         def walk(node: tree_sitter.Node, in_scope: bool = False) -> None:
             is_in_scope = in_scope or node.type in boundaries
@@ -338,9 +328,10 @@ class GlobalStateAnalyzer(BaseAnalyzer):
                 )
 
     def _analyze_go(
-        self, tree: tree_sitter.Tree, source: bytes, result: GlobalStateResult
+        self, tree: tree_sitter.Tree, source: bytes, result: GlobalStateResult,
+        extension: str,
     ) -> None:
-        boundaries = _SCOPE_BOUNDARIES[".go"]
+        boundaries = self._get_scope_boundaries(extension)
 
         def walk(node: tree_sitter.Node, in_func: bool = False) -> None:
             is_in_func = in_func or node.type in boundaries

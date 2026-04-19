@@ -68,8 +68,31 @@ class NestingDepthResult:
     def get_deep_functions(self, threshold: int = 4) -> list[FunctionNesting]:
         return [f for f in self.functions if f.max_depth >= threshold]
 
+# Supplements for extensions where knowledge is not yet available
+_NESTING_SUPPLEMENT: dict[str, frozenset[str]] = {
+    ".ts": frozenset({
+        "if_statement", "for_statement", "for_in_statement",
+        "while_statement", "do_statement", "switch_statement",
+        "try_statement", "with_statement",
+    }),
+    ".tsx": frozenset({
+        "if_statement", "for_statement", "for_in_statement",
+        "while_statement", "do_statement", "switch_statement",
+        "try_statement", "with_statement",
+    }),
+}
+
+
 class NestingDepthAnalyzer(BaseAnalyzer):
     """Analyzes nesting depth of functions in source code."""
+
+    def _get_nesting_nodes(self, ext: str) -> frozenset[str]:
+        """Get nesting node types for the given extension via knowledge."""
+        knowledge = self._get_knowledge(ext)
+        nodes = knowledge.nesting_nodes
+        if not nodes:
+            nodes = _NESTING_SUPPLEMENT.get(ext, frozenset())
+        return nodes
 
     def analyze_file(self, file_path: Path | str) -> NestingDepthResult:
         path = Path(file_path)
@@ -116,15 +139,16 @@ class NestingDepthAnalyzer(BaseAnalyzer):
 
         content = path.read_bytes()
         tree = parser.parse(content)
+        nesting = self._get_nesting_nodes(ext)
 
         if ext == ".py":
-            return self._extract_python(tree.root_node, content)
+            return self._extract_python(tree.root_node, content, nesting)
         if ext in {".js", ".ts", ".tsx", ".jsx"}:
-            return self._extract_js(tree.root_node, content)
+            return self._extract_js(tree.root_node, content, nesting)
         if ext == ".java":
-            return self._extract_java(tree.root_node, content)
+            return self._extract_java(tree.root_node, content, nesting)
         if ext == ".go":
-            return self._extract_go(tree.root_node, content)
+            return self._extract_go(tree.root_node, content, nesting)
         return []
 
     # ── Depth measurement helper ──────────────────────────────────────────
@@ -162,16 +186,11 @@ class NestingDepthAnalyzer(BaseAnalyzer):
 
     # ── Python ────────────────────────────────────────────────────────────
 
-    _PY_NESTING: frozenset[str] = frozenset({
-        "if_statement", "for_statement", "while_statement",
-        "with_statement", "try_statement", "match_statement",
-    })
-
     def _extract_python(
-        self, root: tree_sitter.Node, content: bytes
+        self, root: tree_sitter.Node, content: bytes, nesting: frozenset[str]
     ) -> list[FunctionNesting]:
         results: list[FunctionNesting] = []
-        self._walk_python(root, content, results, in_class=False)
+        self._walk_python(root, content, results, in_class=False, nesting=nesting)
         return results
 
     def _walk_python(
@@ -180,28 +199,29 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         content: bytes,
         results: list[FunctionNesting],
         in_class: bool,
+        nesting: frozenset[str],
     ) -> None:
         if node.type == "decorated_definition":
             for child in node.children:
                 if child.type in {"function_definition", "class_definition"}:
-                    self._walk_python(child, content, results, in_class)
+                    self._walk_python(child, content, results, in_class, nesting)
             return
 
         if node.type == "class_definition":
             for child in node.children:
-                self._walk_python(child, content, results, in_class=True)
+                self._walk_python(child, content, results, in_class=True, nesting=nesting)
             return
 
         if node.type == "function_definition":
-            fn = self._analyze_python_function(node, content, in_class)
+            fn = self._analyze_python_function(node, content, in_class, nesting)
             if fn is not None:
                 results.append(fn)
 
         for child in node.children:
-            self._walk_python(child, content, results, in_class)
+            self._walk_python(child, content, results, in_class, nesting)
 
     def _analyze_python_function(
-        self, node: tree_sitter.Node, content: bytes, in_class: bool
+        self, node: tree_sitter.Node, content: bytes, in_class: bool, nesting: frozenset[str]
     ) -> FunctionNesting | None:
         name_node = node.child_by_field_name("name")
         if not name_node:
@@ -224,7 +244,7 @@ class NestingDepthAnalyzer(BaseAnalyzer):
                 element_type="method" if in_class else "function",
             )
 
-        max_d, hotspots = self._measure_depth(body, self._PY_NESTING)
+        max_d, hotspots = self._measure_depth(body, nesting)
         avg_d = (sum(h.depth for h in hotspots) / len(hotspots)) if hotspots else 0.0
 
         return FunctionNesting(
@@ -240,17 +260,11 @@ class NestingDepthAnalyzer(BaseAnalyzer):
 
     # ── JavaScript / TypeScript ───────────────────────────────────────────
 
-    _JS_NESTING: frozenset[str] = frozenset({
-        "if_statement", "for_statement", "for_in_statement",
-        "while_statement", "do_statement", "switch_statement",
-        "try_statement", "with_statement",
-    })
-
     def _extract_js(
-        self, root: tree_sitter.Node, content: bytes
+        self, root: tree_sitter.Node, content: bytes, nesting: frozenset[str]
     ) -> list[FunctionNesting]:
         results: list[FunctionNesting] = []
-        self._walk_js(root, content, results, in_class=False)
+        self._walk_js(root, content, results, in_class=False, nesting=nesting)
         return results
 
     def _walk_js(
@@ -259,32 +273,33 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         content: bytes,
         results: list[FunctionNesting],
         in_class: bool,
+        nesting: frozenset[str],
     ) -> None:
         if node.type in {"class_declaration", "class_expression"}:
             for child in node.children:
-                self._walk_js(child, content, results, in_class=True)
+                self._walk_js(child, content, results, in_class=True, nesting=nesting)
             return
 
         if node.type in {"function_declaration", "generator_function_declaration"}:
-            fn = self._analyze_js_function(node, content, in_class, "function")
+            fn = self._analyze_js_function(node, content, in_class, "function", nesting)
             if fn is not None:
                 results.append(fn)
             return
 
         if node.type == "method_definition":
-            fn = self._analyze_js_function(node, content, True, "method")
+            fn = self._analyze_js_function(node, content, True, "method", nesting)
             if fn is not None:
                 results.append(fn)
             return
 
         if node.type == "arrow_function":
-            fn = self._analyze_js_function(node, content, in_class, "arrow_function")
+            fn = self._analyze_js_function(node, content, in_class, "arrow_function", nesting)
             if fn is not None:
                 results.append(fn)
             return
 
         for child in node.children:
-            self._walk_js(child, content, results, in_class)
+            self._walk_js(child, content, results, in_class, nesting)
 
     def _analyze_js_function(
         self,
@@ -292,6 +307,7 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         content: bytes,
         in_class: bool,
         element_type: str,
+        nesting: frozenset[str],
     ) -> FunctionNesting | None:
         name_node = node.child_by_field_name("name")
         name = ""
@@ -305,7 +321,7 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         if not body:
             body = node
 
-        max_d, hotspots = self._measure_depth(body, self._JS_NESTING)
+        max_d, hotspots = self._measure_depth(body, nesting)
         avg_d = (sum(h.depth for h in hotspots) / len(hotspots)) if hotspots else 0.0
 
         return FunctionNesting(
@@ -321,17 +337,11 @@ class NestingDepthAnalyzer(BaseAnalyzer):
 
     # ── Java ──────────────────────────────────────────────────────────────
 
-    _JAVA_NESTING: frozenset[str] = frozenset({
-        "if_statement", "for_statement", "while_statement",
-        "do_statement", "switch_expression", "try_statement",
-        "try_with_resources_statement", "synchronized_statement",
-    })
-
     def _extract_java(
-        self, root: tree_sitter.Node, content: bytes
+        self, root: tree_sitter.Node, content: bytes, nesting: frozenset[str]
     ) -> list[FunctionNesting]:
         results: list[FunctionNesting] = []
-        self._walk_java(root, content, results, in_class=False)
+        self._walk_java(root, content, results, in_class=False, nesting=nesting)
         return results
 
     def _walk_java(
@@ -340,27 +350,28 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         content: bytes,
         results: list[FunctionNesting],
         in_class: bool,
+        nesting: frozenset[str],
     ) -> None:
         if node.type in {"class_declaration", "interface_declaration",
                           "enum_declaration", "record_declaration"}:
             for child in node.children:
-                self._walk_java(child, content, results, in_class=True)
+                self._walk_java(child, content, results, in_class=True, nesting=nesting)
             return
 
         if node.type == "method_declaration":
-            fn = self._analyze_java_method(node, content, in_class)
+            fn = self._analyze_java_method(node, content, in_class, nesting=nesting)
             if fn is not None:
                 results.append(fn)
             return
 
         if node.type == "constructor_declaration":
-            fn = self._analyze_java_method(node, content, True, "<init>")
+            fn = self._analyze_java_method(node, content, True, "<init>", nesting=nesting)
             if fn is not None:
                 results.append(fn)
             return
 
         for child in node.children:
-            self._walk_java(child, content, results, in_class)
+            self._walk_java(child, content, results, in_class, nesting)
 
     def _analyze_java_method(
         self,
@@ -368,6 +379,7 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         content: bytes,
         in_class: bool,
         override_name: str | None = None,
+        nesting: frozenset[str] = frozenset(),
     ) -> FunctionNesting | None:
         if override_name:
             name = override_name
@@ -385,7 +397,7 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         if not body:
             body = node
 
-        max_d, hotspots = self._measure_depth(body, self._JAVA_NESTING)
+        max_d, hotspots = self._measure_depth(body, nesting)
         avg_d = (sum(h.depth for h in hotspots) / len(hotspots)) if hotspots else 0.0
 
         return FunctionNesting(
@@ -401,17 +413,11 @@ class NestingDepthAnalyzer(BaseAnalyzer):
 
     # ── Go ────────────────────────────────────────────────────────────────
 
-    _GO_NESTING: frozenset[str] = frozenset({
-        "if_statement", "for_statement",
-        "expression_switch_statement", "type_switch_statement",
-        "select_statement",
-    })
-
     def _extract_go(
-        self, root: tree_sitter.Node, content: bytes
+        self, root: tree_sitter.Node, content: bytes, nesting: frozenset[str]
     ) -> list[FunctionNesting]:
         results: list[FunctionNesting] = []
-        self._walk_go(root, content, results)
+        self._walk_go(root, content, results, nesting)
         return results
 
     def _walk_go(
@@ -419,27 +425,29 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         node: tree_sitter.Node,
         content: bytes,
         results: list[FunctionNesting],
+        nesting: frozenset[str],
     ) -> None:
         if node.type == "function_declaration":
-            fn = self._analyze_go_func(node, content, "function")
+            fn = self._analyze_go_func(node, content, "function", nesting)
             if fn is not None:
                 results.append(fn)
             return
 
         if node.type == "method_declaration":
-            fn = self._analyze_go_func(node, content, "method")
+            fn = self._analyze_go_func(node, content, "method", nesting)
             if fn is not None:
                 results.append(fn)
             return
 
         for child in node.children:
-            self._walk_go(child, content, results)
+            self._walk_go(child, content, results, nesting)
 
     def _analyze_go_func(
         self,
         node: tree_sitter.Node,
         content: bytes,
         element_type: str,
+        nesting: frozenset[str],
     ) -> FunctionNesting | None:
         name_node = node.child_by_field_name("name")
         name = ""
@@ -450,7 +458,7 @@ class NestingDepthAnalyzer(BaseAnalyzer):
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
 
-        max_d, hotspots = self._measure_depth(node, self._GO_NESTING)
+        max_d, hotspots = self._measure_depth(node, nesting)
         avg_d = (sum(h.depth for h in hotspots) / len(hotspots)) if hotspots else 0.0
 
         return FunctionNesting(

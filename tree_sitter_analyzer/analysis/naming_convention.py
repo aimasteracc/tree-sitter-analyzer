@@ -58,103 +58,74 @@ STYLE_UPPER_SNAKE = "UPPER_SNAKE"
 STYLE_LOWER = "lowercase"
 STYLE_UNKNOWN = "unknown"
 
-# Per-language convention tables
-# Maps element type to expected style
-_PY_CONVENTIONS: dict[str, str] = {
-    "function": STYLE_SNAKE,
-    "method": STYLE_SNAKE,
-    "variable": STYLE_SNAKE,
-    "parameter": STYLE_SNAKE,
-    "class": STYLE_PASCAL,
-    "constant": STYLE_UPPER_SNAKE,
+# Per-language convention tables — supplements for languages without knowledge
+_CONVENTION_SUPPLEMENT: dict[str, dict[str, str]] = {
+    "typescript": {
+        "function": STYLE_CAMEL,
+        "method": STYLE_CAMEL,
+        "variable": STYLE_CAMEL,
+        "parameter": STYLE_CAMEL,
+        "class": STYLE_PASCAL,
+        "constant": STYLE_UPPER_SNAKE,
+    },
 }
 
-_JS_CONVENTIONS: dict[str, str] = {
-    "function": STYLE_CAMEL,
-    "method": STYLE_CAMEL,
-    "variable": STYLE_CAMEL,
-    "parameter": STYLE_CAMEL,
-    "class": STYLE_PASCAL,
-    "constant": STYLE_UPPER_SNAKE,
+# Node type supplements for extensions where knowledge is not yet available
+_NODE_SUPPLEMENTS: dict[str, dict[str, frozenset[str]]] = {
+    ".ts": {
+        "func": frozenset({
+            "function_declaration", "function", "arrow_function",
+            "method_definition", "generator_function_declaration",
+        }),
+        "class": frozenset({"class_declaration", "class"}),
+        "var": frozenset({
+            "variable_declarator", "assignment_expression", "for_statement",
+        }),
+        "param": frozenset({
+            "required_parameter", "optional_parameter", "rest_parameter",
+            "assignment_pattern",
+        }),
+    },
+    ".tsx": {
+        "func": frozenset({
+            "function_declaration", "function", "arrow_function",
+            "method_definition", "generator_function_declaration",
+        }),
+        "class": frozenset({"class_declaration", "class"}),
+        "var": frozenset({
+            "variable_declarator", "assignment_expression", "for_statement",
+        }),
+        "param": frozenset({
+            "required_parameter", "optional_parameter", "rest_parameter",
+            "assignment_pattern",
+        }),
+    },
 }
 
-_JAVA_CONVENTIONS: dict[str, str] = {
-    "function": STYLE_CAMEL,
-    "method": STYLE_CAMEL,
-    "variable": STYLE_CAMEL,
-    "parameter": STYLE_CAMEL,
-    "class": STYLE_PASCAL,
-    "constant": STYLE_UPPER_SNAKE,
-}
-
-_GO_CONVENTIONS: dict[str, str] = {
-    "function": STYLE_CAMEL,
-    "method": STYLE_CAMEL,
-    "variable": STYLE_CAMEL,
-    "parameter": STYLE_CAMEL,
-    "class": STYLE_PASCAL,
-    "constant": STYLE_CAMEL,
-}
-
-_LANGUAGE_CONVENTIONS: dict[str, dict[str, str]] = {
-    "python": _PY_CONVENTIONS,
-    "javascript": _JS_CONVENTIONS,
-    "typescript": _JS_CONVENTIONS,
-    "java": _JAVA_CONVENTIONS,
-    "go": _GO_CONVENTIONS,
-}
-
-# Node types per language that contain identifiers
-_PY_FUNC_NODES: frozenset[str] = frozenset({
-    "function_definition", "async_function_definition",
-})
-_PY_CLASS_NODES: frozenset[str] = frozenset({"class_definition"})
+# Variable node types per language — not in knowledge protocol, kept local
 _PY_VAR_NODES: frozenset[str] = frozenset({
     "assignment", "variable_declarator", "for_statement",
 })
-_PY_PARAM_NODES: frozenset[str] = frozenset({
-    "parameters", "default_parameter", "typed_parameter",
-    "typed_default_parameter",
-})
-
-_JS_FUNC_NODES: frozenset[str] = frozenset({
-    "function_declaration", "function", "arrow_function",
-    "method_definition", "generator_function_declaration",
-})
-_JS_CLASS_NODES: frozenset[str] = frozenset({
-    "class_declaration", "class",
-})
 _JS_VAR_NODES: frozenset[str] = frozenset({
     "variable_declarator", "assignment_expression", "for_statement",
-})
-_JS_PARAM_NODES: frozenset[str] = frozenset({
-    "required_parameter", "optional_parameter", "rest_parameter",
-    "assignment_pattern",
-})
-
-_JAVA_FUNC_NODES: frozenset[str] = frozenset({
-    "method_declaration", "constructor_declaration",
-})
-_JAVA_CLASS_NODES: frozenset[str] = frozenset({
-    "class_declaration", "interface_declaration", "enum_declaration",
 })
 _JAVA_VAR_NODES: frozenset[str] = frozenset({
     "variable_declarator", "local_variable_declaration",
     "field_declaration",
 })
-_JAVA_PARAM_NODES: frozenset[str] = frozenset({
-    "formal_parameter", "spread_parameter",
-})
-
-_GO_FUNC_NODES: frozenset[str] = frozenset({
-    "function_declaration", "method_declaration",
-})
 _GO_VAR_NODES: frozenset[str] = frozenset({
     "var_spec", "short_var_declaration", "var_declaration",
 })
-_GO_PARAM_NODES: frozenset[str] = frozenset({
-    "parameter_list", "parameter_declaration",
-})
+
+_VAR_NODES: dict[str, frozenset[str]] = {
+    ".py": _PY_VAR_NODES,
+    ".js": _JS_VAR_NODES,
+    ".jsx": _JS_VAR_NODES,
+    ".ts": _JS_VAR_NODES,
+    ".tsx": _JS_VAR_NODES,
+    ".java": _JAVA_VAR_NODES,
+    ".go": _GO_VAR_NODES,
+}
 
 def _detect_style(name: str) -> str:
     if _RE_UPPER_SNAKE.match(name) or _RE_SCREAMING.match(name):
@@ -324,8 +295,9 @@ class NamingConventionAnalyzer(BaseAnalyzer):
             )
 
         tree = parser.parse(content)
-        identifiers = self._extract_identifiers(tree.root_node, content, language)
-        violations = self._check_conventions(identifiers, language)
+        identifiers = self._extract_identifiers(tree.root_node, content, language, ext)
+        violations = self._check_conventions(identifiers, ext, language)
+        style_dist = self._compute_style_distribution(identifiers)
         style_dist = self._compute_style_distribution(identifiers)
         score = self._compute_score(len(identifiers), len(violations))
 
@@ -343,18 +315,19 @@ class NamingConventionAnalyzer(BaseAnalyzer):
         node: tree_sitter.Node,
         content: bytes,
         language: str,
+        ext: str,
     ) -> list[dict[str, Any]]:
         """Extract named identifiers from AST."""
         identifiers: list[dict[str, Any]] = []
 
         if language == "python":
-            self._walk_python(node, content, identifiers)
+            self._walk_python(node, content, identifiers, ext)
         elif language in ("javascript", "typescript"):
-            self._walk_js(node, content, identifiers)
+            self._walk_js(node, content, identifiers, ext)
         elif language == "java":
-            self._walk_java(node, content, identifiers)
+            self._walk_java(node, content, identifiers, ext)
         elif language == "go":
-            self._walk_go(node, content, identifiers)
+            self._walk_go(node, content, identifiers, ext)
 
         return identifiers
 
@@ -373,9 +346,13 @@ class NamingConventionAnalyzer(BaseAnalyzer):
         node: tree_sitter.Node,
         content: bytes,
         result: list[dict[str, Any]],
+        ext: str,
     ) -> None:
+        knowledge = self._get_knowledge(ext)
+        func_nodes = knowledge.function_nodes
+        class_nodes = knowledge.class_nodes
         for child in node.children:
-            if child.type in _PY_FUNC_NODES:
+            if child.type in func_nodes:
                 name = self._get_name(child, content)
                 if name:
                     result.append({
@@ -383,7 +360,7 @@ class NamingConventionAnalyzer(BaseAnalyzer):
                         "line": child.start_point[0] + 1,
                         "element_type": "function",
                     })
-            elif child.type in _PY_CLASS_NODES:
+            elif child.type in class_nodes:
                 name = self._get_name(child, content)
                 if name:
                     result.append({
@@ -416,16 +393,26 @@ class NamingConventionAnalyzer(BaseAnalyzer):
                         break
 
             if child.children:
-                self._walk_python(child, content, result)
+                self._walk_python(child, content, result, ext)
 
     def _walk_js(
         self,
         node: tree_sitter.Node,
         content: bytes,
         result: list[dict[str, Any]],
+        ext: str,
     ) -> None:
+        knowledge = self._get_knowledge(ext)
+        func_nodes = knowledge.function_nodes
+        if not func_nodes:
+            supplement = _NODE_SUPPLEMENTS.get(ext, {})
+            func_nodes = supplement.get("func", frozenset())
+        class_nodes = knowledge.class_nodes
+        if not class_nodes:
+            supplement = _NODE_SUPPLEMENTS.get(ext, {})
+            class_nodes = supplement.get("class", frozenset())
         for child in node.children:
-            if child.type in _JS_FUNC_NODES:
+            if child.type in func_nodes:
                 name = self._get_name(child, content)
                 if name:
                     result.append({
@@ -433,7 +420,7 @@ class NamingConventionAnalyzer(BaseAnalyzer):
                         "line": child.start_point[0] + 1,
                         "element_type": "function",
                     })
-            elif child.type in _JS_CLASS_NODES:
+            elif child.type in class_nodes:
                 name = self._get_name(child, content)
                 if name:
                     result.append({
@@ -454,16 +441,20 @@ class NamingConventionAnalyzer(BaseAnalyzer):
                     })
 
             if child.children:
-                self._walk_js(child, content, result)
+                self._walk_js(child, content, result, ext)
 
     def _walk_java(
         self,
         node: tree_sitter.Node,
         content: bytes,
         result: list[dict[str, Any]],
+        ext: str,
     ) -> None:
+        knowledge = self._get_knowledge(ext)
+        func_nodes = knowledge.function_nodes
+        class_nodes = knowledge.class_nodes
         for child in node.children:
-            if child.type in _JAVA_FUNC_NODES:
+            if child.type in func_nodes:
                 name = self._get_name(child, content)
                 if name:
                     result.append({
@@ -471,7 +462,7 @@ class NamingConventionAnalyzer(BaseAnalyzer):
                         "line": child.start_point[0] + 1,
                         "element_type": "method",
                     })
-            elif child.type in _JAVA_CLASS_NODES:
+            elif child.type in class_nodes:
                 name = self._get_name(child, content)
                 if name:
                     result.append({
@@ -492,16 +483,19 @@ class NamingConventionAnalyzer(BaseAnalyzer):
                     })
 
             if child.children:
-                self._walk_java(child, content, result)
+                self._walk_java(child, content, result, ext)
 
     def _walk_go(
         self,
         node: tree_sitter.Node,
         content: bytes,
         result: list[dict[str, Any]],
+        ext: str,
     ) -> None:
+        knowledge = self._get_knowledge(ext)
+        func_nodes = knowledge.function_nodes
         for child in node.children:
-            if child.type in _GO_FUNC_NODES:
+            if child.type in func_nodes:
                 name = self._get_name(child, content)
                 if name:
                     # In Go, first letter case determines visibility
@@ -529,15 +523,24 @@ class NamingConventionAnalyzer(BaseAnalyzer):
                                 break
 
             if child.children:
-                self._walk_go(child, content, result)
+                self._walk_go(child, content, result, ext)
+
+    def _get_conventions(self, ext: str, language: str) -> dict[str, str]:
+        """Get naming conventions from knowledge, falling back to supplement."""
+        knowledge = self._get_knowledge(ext)
+        conventions = knowledge.naming_conventions
+        if conventions:
+            return conventions
+        return _CONVENTION_SUPPLEMENT.get(language, {})
 
     def _check_conventions(
         self,
         identifiers: list[dict[str, Any]],
+        ext: str,
         language: str,
     ) -> list[NamingViolation]:
         violations: list[NamingViolation] = []
-        conventions = _LANGUAGE_CONVENTIONS.get(language, {})
+        conventions = self._get_conventions(ext, language)
 
         for ident in identifiers:
             name = ident["name"]

@@ -27,30 +27,23 @@ def _rating(condition_count: int) -> str:
         return RATING_WARNING
     return RATING_CRITICAL
 
-# Boolean operator node types per language
-_PYTHON_BOOL_OPS: frozenset[str] = frozenset({
-    "boolean_operator",
-})
-
-_CSTYLE_BOOL_EXPR: frozenset[str] = frozenset({
-    "binary_expression",
-})
-
+# C-style boolean operators (used inside binary_expression nodes)
 _CSTYLE_BOOL_OPS: frozenset[str] = frozenset({
     "&&",
     "||",
 })
+
+# Supplements for extensions where knowledge is not yet available
+_BOOL_SUPPLEMENT: dict[str, frozenset[str]] = {
+    ".ts": frozenset({"binary_expression"}),
+    ".tsx": frozenset({"binary_expression"}),
+}
 
 def _is_cstyle_bool(node: tree_sitter.Node) -> bool:
     """Check if a binary_expression uses a boolean operator."""
     if node.type != "binary_expression":
         return False
     return any(c.type in _CSTYLE_BOOL_OPS for c in node.children)
-
-def _get_bool_ops(ext: str) -> frozenset[str]:
-    if ext == ".py":
-        return _PYTHON_BOOL_OPS
-    return _CSTYLE_BOOL_EXPR
 
 @dataclass(frozen=True)
 class BooleanHotspot:
@@ -103,6 +96,11 @@ class BooleanComplexityAnalyzer(BaseAnalyzer):
                 file_path=str(path),
             )
 
+        knowledge = self._get_knowledge(ext)
+        bool_ops = knowledge.boolean_operator_nodes
+        if not bool_ops:
+            bool_ops = _BOOL_SUPPLEMENT.get(ext, frozenset())
+
         content = path.read_bytes()
         tree = parser.parse(content)
 
@@ -111,9 +109,11 @@ class BooleanComplexityAnalyzer(BaseAnalyzer):
         hotspots: list[BooleanHotspot] = []
 
         def _is_bool_node(node: tree_sitter.Node) -> bool:
-            if ext == ".py":
-                return node.type == "boolean_operator"
-            return _is_cstyle_bool(node)
+            if node.type == "boolean_operator":
+                return True
+            if node.type in bool_ops and node.type == "binary_expression":
+                return _is_cstyle_bool(node)
+            return False
 
         def visit(node: tree_sitter.Node) -> None:
             nonlocal total, max_cond

@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     pass
 
 from tree_sitter_analyzer.language_loader import get_loader
+from tree_sitter_analyzer.plugins.base import DefaultKnowledge, LanguageKnowledge
+from tree_sitter_analyzer.plugins.manager import PluginManager
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -64,6 +66,9 @@ class BaseAnalyzer:
 
     def __init__(self) -> None:
         self._loader = get_loader()
+        self._plugin_manager = PluginManager()
+        self._plugin_manager.load_plugins()
+        self._knowledge_cache: dict[str, LanguageKnowledge] = {}
 
     def _get_parser(
         self, extension: str
@@ -106,3 +111,16 @@ class BaseAnalyzer:
         if ext not in self.SUPPORTED_EXTENSIONS:
             return None
         return path, ext
+
+    def _get_knowledge(self, extension: str) -> LanguageKnowledge:
+        """Get per-language AST knowledge from the plugin system."""
+        if extension in self._knowledge_cache:
+            return self._knowledge_cache[extension]
+
+        language = _EXTENSION_TO_LANGUAGE.get(extension, "")
+        plugin = self._plugin_manager.get_plugin(language)
+        knowledge: LanguageKnowledge = DefaultKnowledge()
+        if plugin is not None and hasattr(plugin, "knowledge"):
+            knowledge = plugin.knowledge
+        self._knowledge_cache[extension] = knowledge
+        return knowledge

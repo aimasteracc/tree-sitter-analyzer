@@ -797,6 +797,7 @@ class GoPlugin(LanguagePlugin):
         self.language = "go"
         self.supported_extensions = self.get_file_extensions()
         self._cached_language: Any | None = None
+        self._knowledge: GoKnowledge | None = None
 
     def get_language_name(self) -> str:
         """Get the language name."""
@@ -809,6 +810,12 @@ class GoPlugin(LanguagePlugin):
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return GoElementExtractor()
+
+    @property
+    def knowledge(self) -> "GoKnowledge":
+        if self._knowledge is None:
+            self._knowledge = GoKnowledge()
+        return self._knowledge
 
     def get_supported_element_types(self) -> list[str]:
         """Get supported element types for Go."""
@@ -996,3 +1003,63 @@ class GoPlugin(LanguagePlugin):
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+
+
+class GoKnowledge:
+    """AST knowledge for Go."""
+
+    @property
+    def function_nodes(self) -> frozenset[str]:
+        return frozenset({"function_declaration", "method_declaration"})
+
+    @property
+    def class_nodes(self) -> frozenset[str]:
+        return frozenset()  # Go has no classes
+
+    @property
+    def scope_boundary_nodes(self) -> frozenset[str]:
+        return frozenset({"function_declaration", "method_declaration", "func_literal", "type_declaration"})
+
+    @property
+    def import_nodes(self) -> frozenset[str]:
+        return frozenset({"import_declaration"})
+
+    @property
+    def loop_nodes(self) -> frozenset[str]:
+        return frozenset({"for_statement"})
+
+    @property
+    def exception_nodes(self) -> frozenset[str]:
+        return frozenset({"defer_statement"})  # Go uses defer/recover
+
+    @property
+    def assignment_nodes(self) -> frozenset[str]:
+        return frozenset({"var_spec", "short_var_declaration", "var_declaration"})
+
+    @property
+    def nesting_nodes(self) -> frozenset[str]:
+        return frozenset({"if_statement", "for_statement", "expression_switch_statement", "type_switch_statement", "select_statement"})
+
+    @property
+    def block_nodes(self) -> frozenset[str]:
+        return frozenset({"block"})
+
+    @property
+    def parameter_nodes(self) -> frozenset[str]:
+        return frozenset({"parameter_list", "parameter_declaration"})
+
+    @property
+    def raise_nodes(self) -> frozenset[str]:
+        return frozenset()  # Go doesn't have raise/throw
+
+    @property
+    def boolean_operator_nodes(self) -> frozenset[str]:
+        return frozenset({"binary_expression"})
+
+    @property
+    def naming_conventions(self) -> dict[str, str]:
+        return {
+            "function": "camelCase", "method": "camelCase",
+            "variable": "camelCase", "parameter": "camelCase",
+            "class": "PascalCase", "constant": "camelCase",
+        }
