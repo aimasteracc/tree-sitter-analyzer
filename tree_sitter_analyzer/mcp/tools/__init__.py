@@ -79,6 +79,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "dead_code_path_tool",
         "class": "DeadCodePathTool",
     },
+    "empty_block": {
+        "description": (
+            "Analyze code for empty blocks that may hide bugs. "
+            "Detects empty function bodies, empty catch blocks, empty loops."
+        ),
+        "module": "empty_block_tool",
+        "class": "EmptyBlockTool",
+    },
 }
 
 __all__ = [
