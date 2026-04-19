@@ -1622,6 +1622,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚡",
     )
 
+    # mutable_multiplication
+    from .tools.mutable_multiplication_tool import MutableMultiplicationTool
+    mm_tool = MutableMultiplicationTool(project_root)
+    registry.register(
+        name="mutable_multiplication",
+        toolset="analysis",
+        category="correctness",
+        schema=mm_tool.get_tool_definition(),
+        handler=_make_handler(mm_tool),
+        description="Mutable multiplication: detect `[[]] * n` shared reference bug",
+        emoji="📋",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

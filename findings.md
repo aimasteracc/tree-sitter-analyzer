@@ -1,5 +1,24 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Mutable Multiplication Alias Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Mutable Multiplication Alias Detector — 检测 `[[]] * n`, `{{}} * n` 等共享引用 bug
+
+**产品分析**:
+- 聚焦: `[[]] * n` 创建 n 个指向同一内部列表的引用。修改一个会影响所有
+- 减法: MVP = 检测 list_literal/dict_literal/set_literal 后跟 `*` 运算符
+- 一句话: "Find the list multiplication that creates shared references, not independent copies"
+
+**独特性评估**: 11/12 >= 8 (DO)
+- Uniqueness: 3/3 — 无类似工具
+- Need: 3/3 — 经典 Python 静默 bug，难以调试
+- Architecture fit: 3/3 — 纯 AST，BaseAnalyzer，Python-only
+- Implementation cost: 2/3 — 需要检查二元操作符的左操作数是否为可变字面量
+
+**结论**: DO — 检测真正的静默 bug
+
 ## 产品讨论记录 - Await-in-Loop Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
