@@ -679,6 +679,14 @@ uv run pytest tests/ -x -q
 ### Next Session
 - **Action**: Execute sustainable loop mechanism (新功能探索)
 
+### Session 141 — 2026-04-20
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 3 OpenSpec changes (add-discarded-return-detector, add-literal-boolean-comparison-detector, add-double-negation-detector)
+- **MCP Tools**: 95 → 98 (+3 discarded_return, literal_boolean_comparison, double_negation)
+- **Tests**: 40 + 35 + 27 = 102 tests pass
+- **Commits**: `235f09ea`, `62474fed`, `4c5c0fe6`
+- **Status**: 3 sprints complete, sustainable loop running
+
 ### Session 139 — 2026-04-19
 - **Open**: Continue sustainable loop (新功能探索)
 - **Complete**: 3 OpenSpec changes (add-error-propagation-analyzer, add-test-flakiness-detector, add-circular-dependency-detector)

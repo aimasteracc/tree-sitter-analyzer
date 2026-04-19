@@ -1,5 +1,32 @@
 # Progress — 自主开发进度日志
 
+## Session 141 — 2026-04-20
+
+**Sprint 3: Double Negation Detector** (sustainable loop):
+- Product analysis: DO — double negation hurts readability, easy wins
+- Architecture: pure AST traversal, detect not not x, !!x, not (not x)
+- Detection: double_not (Python), double_bang (JS/TS/Java), not_not_parens (Python)
+- 27 tests (17 analysis + 10 MCP tool), 4 languages (Python, JS/TS, Java, Go)
+- CI: ruff, mypy, pytest, self-hosting gate all pass
+- Commit: `4c5c0fe6`
+
+**Sprint 2: Literal Boolean Comparison Detector** (sustainable loop):
+- Product analysis: DO — x == True, x == None, x == null are real anti-patterns
+- Architecture: pure AST traversal, 6 issue types across languages
+- Detection: eq_true, eq_false, eq_none, ne_none (Python), eq_null_loose, ne_null_loose (JS/TS)
+- 35 tests (25 analysis + 10 MCP tool), 4 languages (Python, JS/TS, Java, Go)
+- CI: ruff, mypy, pytest, self-hosting gate all pass
+- Commit: `62474fed`
+
+**Sprint 1: Discarded Return Value Detector** (sustainable loop):
+- Product analysis (office-hours): DO — fills genuine gap (call-site return value discarding)
+- Architecture: pure AST traversal, detect bare expression-statement function calls
+- Detection: discarded_result, discarded_await (JS/TS), discarded_error (Go)
+- 40 tests (30 analysis + 10 MCP tool), 4 languages (Python, JS/TS, Java, Go)
+- Fixed: async pattern matching false positive ("put" matching "compute")
+- CI: ruff, mypy, pytest, self-hosting gate all pass
+- Commit: `235f09ea`
+
 ## Session 138 — 2026-04-19
 
 **Sprint 3: Missing Break Detector** (sustainable loop):
