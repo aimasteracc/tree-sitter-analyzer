@@ -1,5 +1,34 @@
 # Progress — 自主开发进度日志
 
+## Session 148 — 2026-04-20
+
+**Refactoring Sprint**: Fixed mypy strict variable name collision in tool_registration.py (lbc_tool reused for two different tool types). All 446 source files pass mypy --strict.
+
+**Sprint 1: Len-Comparison Anti-pattern Detector** (sustainable loop):
+- Product analysis: DO — genuine gap, not covered by any existing analyzer
+- Architecture: standard BaseAnalyzer, multi-language
+- Detection: len_eq_zero, len_ne_zero, len_gt_zero, len_ge_one, len_lt_one
+- 32 tests (25 analysis + 7 MCP tool), 4 languages (Python, JS/TS, Go)
+- CI: ruff, mypy, pytest (32 pass), self-hosting gate 100%
+- Commit: `f205ab9a`
+
+**Sprint 2: Range-Len Anti-pattern Detector** (sustainable loop):
+- Product analysis: DO — Pylint C0200 equivalent, common Python beginner mistake
+- Architecture: standard BaseAnalyzer, Python-specific
+- Detection: range_len_for (for i in range(len(x)) → enumerate or direct iteration)
+- 21 tests (15 analysis + 6 MCP tool), Python only
+- CI: ruff, mypy, pytest (21 pass), self-hosting gate 100%
+- Commit: `521ab63a`
+
+**Sprint 3: Useless Loop Else Detector** (sustainable loop):
+- Product analysis: DO — common Python confusion, for...else without break
+- Architecture: standard BaseAnalyzer, correctly handles nested loops
+- Detection: useless_for_else, useless_while_else (loop...else without break)
+- Fix: _has_break must not descend into nested loops (inner break doesn't affect outer)
+- 19 tests (14 analysis + 5 MCP tool), Python only
+- CI: ruff, mypy, pytest (19 pass), self-hosting gate 100%
+- Commit: `9382546f`
+
 ## Session 147 — 2026-04-20
 
 **Sprint 0: Production Assert Detector** (unfinished from prev session):
