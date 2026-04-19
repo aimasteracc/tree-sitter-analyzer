@@ -87,6 +87,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "empty_block_tool",
         "class": "EmptyBlockTool",
     },
+    "magic_string": {
+        "description": (
+            "Analyze code for hardcoded string literals that should be constants. "
+            "Detects magic strings and repeated strings."
+        ),
+        "module": "magic_string_tool",
+        "class": "MagicStringTool",
+    },
 }
 
 __all__ = [
