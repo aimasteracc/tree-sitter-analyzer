@@ -1584,6 +1584,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔢",
     )
 
+    from .tools.useless_loop_else_tool import UselessLoopElseTool
+    loopelse_tool = UselessLoopElseTool(project_root)
+    registry.register(
+        name="useless_loop_else",
+        toolset="analysis",
+        category="correctness",
+        schema=loopelse_tool.get_tool_definition(),
+        handler=_make_handler(loopelse_tool),
+        description="Useless loop else: detect for/while...else without break (else always runs)",
+        emoji="🔄",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
