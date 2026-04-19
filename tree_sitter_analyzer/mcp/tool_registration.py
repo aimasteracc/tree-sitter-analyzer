@@ -13,6 +13,7 @@ from .registry import TOOLSET_DEFINITIONS, get_registry
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.batch_search_tool import BatchSearchTool
+from .tools.change_impact_tool import ChangeImpactTool
 from .tools.build_project_index_tool import BuildProjectIndexTool
 from .tools.check_tools_tool import CheckToolsTool
 from .tools.ci_report_tool import CIReportTool
@@ -703,6 +704,18 @@ def _register_diagnostic_tools(registry: Any, project_root: str | None) -> None:
         emoji="📋",
     )
 
+    # change_impact
+    change_impact_tool = ChangeImpactTool(project_root)
+    registry.register(
+        name="change_impact",
+        toolset="diagnostic",
+        category="impact-analysis",
+        schema=change_impact_tool.get_tool_definition(),
+        handler=_make_handler(change_impact_tool),
+        description="Analyze blast radius of file changes: impacted files, tools, and tests",
+        emoji="💥",
+    )
+
 
 def _register_index_tools(registry: Any, project_root: str | None) -> None:
     """Register index tools."""
@@ -1097,6 +1110,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(re_tool),
         description="Redundant else: detect unnecessary else blocks where the if branch already terminates across Python, JS/TS, Java, Go",
         emoji="↩️",
+    )
+
+    # unused_parameter
+    from .tools.unused_parameter_tool import UnusedParameterTool
+    up_tool = UnusedParameterTool(project_root)
+    registry.register(
+        name="unused_parameter",
+        toolset="analysis",
+        category="bug-detection",
+        schema=up_tool.get_tool_definition(),
+        handler=_make_handler(up_tool),
+        description="Unused parameter: detect function/method parameters that are never referenced in the function body across Python, JS/TS, Java, Go",
+        emoji="👻",
     )
 
 
