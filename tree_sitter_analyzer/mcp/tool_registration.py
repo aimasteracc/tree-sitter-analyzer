@@ -1536,6 +1536,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚠️",
     )
 
+    from .tools.return_in_finally_tool import ReturnInFinallyTool
+    rif_tool = ReturnInFinallyTool(project_root)
+    registry.register(
+        name="return_in_finally",
+        toolset="analysis",
+        category="correctness",
+        schema=rif_tool.get_tool_definition(),
+        handler=_make_handler(rif_tool),
+        description="Return in finally: detect return/raise in finally blocks that swallow exceptions",
+        emoji="🔇",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
