@@ -1214,6 +1214,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚖️",
     )
 
+    # double_negation
+    from .tools.double_negation_tool import DoubleNegationTool
+    dn_tool = DoubleNegationTool(project_root)
+    registry.register(
+        name="double_negation",
+        toolset="analysis",
+        category="readability",
+        schema=dn_tool.get_tool_definition(),
+        handler=_make_handler(dn_tool),
+        description="Double negation: detect not not x, !!x patterns and suggest clearer alternatives",
+        emoji="⁉️",
+    )
+
     # global_state
     from .tools.global_state_tool import GlobalStateTool
     gs_tool = GlobalStateTool(project_root)
