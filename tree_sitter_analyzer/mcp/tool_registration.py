@@ -1380,6 +1380,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🏷️",
     )
 
+    from .tools.redundant_type_cast_tool import RedundantTypeCastTool
+    rtc_tool = RedundantTypeCastTool(project_root)
+    registry.register(
+        name="redundant_type_cast",
+        toolset="analysis",
+        category="correctness",
+        schema=rtc_tool.get_tool_definition(),
+        handler=_make_handler(rtc_tool),
+        description="Redundant type cast: detect wrapping same type twice (str(str(x)), int(int(x)))",
+        emoji="🔄",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

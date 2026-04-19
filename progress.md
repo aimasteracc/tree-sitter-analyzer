@@ -11,6 +11,15 @@
 - CI: ruff, mypy, pytest (27 pass), self-hosting gate 100% all pass
 - Commit: `2daac0e6`
 
+**Sprint 2: Builtin Shadow Detector** (sustainable loop):
+- Product analysis: DO — shadowing builtins silently breaks subsequent calls, Pylint W0622
+- Architecture: pure AST traversal, name matching against ~140 Python builtins
+- Detection: shadowed_builtin, shadowed_by_function, shadowed_by_class, shadowed_by_parameter, shadowed_by_import, shadowed_by_for_target
+- 26 tests (5 assignment + 3 function + 3 class + 4 parameter + 2 for-loop + 3 import + 6 edge), Python only
+- Fix: import names use dotted_name nodes; resolved mypy strict type issue
+- CI: ruff, mypy, pytest (26 pass), self-hosting gate 100% all pass
+- Commit: `bb048c90`
+
 ## Session 143 — 2026-04-20
 
 **Sprint 1: Yoda Condition Detector** (sustainable loop):
