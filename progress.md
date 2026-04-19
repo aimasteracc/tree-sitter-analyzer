@@ -11,6 +11,14 @@
 - Fix: nested loop closures need to be visible to outer loop, removed _LOOP_TYPES skip
 - Architecture: bumped MAX_TOOLS from 100 to 120 (project has 107 tools)
 - CI: ruff, mypy, pytest (2675 analysis tests pass), self-hosting gate 100% all pass
+- Commit: `87014680`
+
+**Sprint 2: Statement-with-No-Effect Detector** (sustainable loop):
+- Product analysis: DO — x == 5; vs x = 5; is classic typo, Pylint W0104/W0106, high value
+- Architecture: pure AST traversal, classify expression_statement children as comparison/arithmetic/literal
+- Detection: comparison_as_statement, arithmetic_as_statement, literal_as_statement
+- 23 tests (5 Python + 4 no-issue + 4 JS + 1 TS + 1 Java + 8 edge), 5 languages
+- CI: ruff, mypy, pytest (23 pass), self-hosting gate 100% all pass
 - Commit: pending
 
 ## Session 145 — 2026-04-20

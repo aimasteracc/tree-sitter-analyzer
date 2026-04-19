@@ -23,6 +23,25 @@
 
 **结论**: DO — fills genuine gap, catches real subtle bugs, high linter overlap validation
 
+## 产品讨论记录 - Statement-with-No-Effect Detector - 2026-04-20
+
+**调用**: /steve-jobs-perspective (autonomous mode)
+
+**功能候选**: Statement-with-No-Effect Detector — 检测无效果的表达式语句
+
+**产品分析**:
+- 聚焦: x == 5; vs x = 5; 是经典打字错误。Pylint W0104/W0106高频触发规则
+- 减法: MVP = 检查expression_statement的子节点是否为比较/算术/字面量
+- 一句话: "Find the statements that do nothing, because x == 5; should be x = 5;"
+
+**独特性评估**: 12/12 >= 8 (DO)
+- Uniqueness: 3/3 — discarded_return only covers function calls, not expression statements
+- Need: 3/3 — Pylint W0104/W0106, classic typo source
+- Architecture fit: 3/3 — standard BaseAnalyzer, all languages
+- Implementation cost: 3/3 — single Sprint, simple AST check
+
+**结论**: DO — fills genuine gap, catches dangerous == vs = typos
+
 ## 灵感来源 - Session 145 — 2026-04-20
 
 - 98个分析器已实现，覆盖大部分经典代码异味

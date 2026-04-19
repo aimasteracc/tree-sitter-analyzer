@@ -1488,6 +1488,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔗",
     )
 
+    from .tools.statement_no_effect_tool import StatementNoEffectTool
+    sne_tool = StatementNoEffectTool(project_root)
+    registry.register(
+        name="statement_no_effect",
+        toolset="analysis",
+        category="correctness",
+        schema=sne_tool.get_tool_definition(),
+        handler=_make_handler(sne_tool),
+        description="Statement no-effect: detect x == 5; (meant x = 5;), discarded arithmetic, standalone literals",
+        emoji="⚠️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
