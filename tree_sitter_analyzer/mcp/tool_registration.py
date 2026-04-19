@@ -1201,6 +1201,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🌐",
     )
 
+    # reflection_usage
+    from .tools.reflection_usage_tool import ReflectionUsageTool
+    ru_tool = ReflectionUsageTool(project_root)
+    registry.register(
+        name="reflection_usage",
+        toolset="analysis",
+        category="security",
+        schema=ru_tool.get_tool_definition(),
+        handler=_make_handler(ru_tool),
+        description="Reflection usage: detect eval/exec/getattr, Class.forName, reflect.* patterns that make code hard to audit",
+        emoji="🪞",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
