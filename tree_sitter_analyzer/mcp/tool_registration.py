@@ -927,6 +927,137 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
     )
 
 
+    # empty_block
+    from .tools.empty_block_tool import EmptyBlockTool
+    eb_tool = EmptyBlockTool(project_root)
+    registry.register(
+        name="empty_block",
+        toolset="analysis",
+        category="design",
+        schema=eb_tool.get_tool_definition(),
+        handler=_make_handler(eb_tool),
+        description="Empty block: detect empty function/catch/loop blocks that may hide bugs across Python, JS/TS, Java, Go",
+        emoji="📭",
+    )
+
+    # god_class
+    from .tools.god_class_tool import GodClassTool
+    gc_tool = GodClassTool(project_root)
+    registry.register(
+        name="god_class",
+        toolset="analysis",
+        category="design",
+        schema=gc_tool.get_tool_definition(),
+        handler=_make_handler(gc_tool),
+        description="God class: detect classes with too many methods and fields across Python, JS/TS, Java, Go",
+        emoji="👑",
+    )
+
+    # lazy_class
+    from .tools.lazy_class_tool import LazyClassTool
+    lc_tool = LazyClassTool(project_root)
+    registry.register(
+        name="lazy_class",
+        toolset="analysis",
+        category="design",
+        schema=lc_tool.get_tool_definition(),
+        handler=_make_handler(lc_tool),
+        description="Lazy class: detect classes with too few methods that may not justify their existence across Python, JS/TS, Java, Go",
+        emoji="🦥",
+    )
+
+    # magic_string
+    from .tools.magic_string_tool import MagicStringTool
+    ms_tool = MagicStringTool(project_root)
+    registry.register(
+        name="magic_string",
+        toolset="analysis",
+        category="quality",
+        schema=ms_tool.get_tool_definition(),
+        handler=_make_handler(ms_tool),
+        description="Magic string: detect hardcoded string literals that should be extracted to constants across Python, JS/TS, Java, Go",
+        emoji="🔤",
+    )
+
+    # dead_code_path
+    from .tools.dead_code_path_tool import DeadCodePathTool
+    dcp_tool = DeadCodePathTool(project_root)
+    registry.register(
+        name="dead_code_path",
+        toolset="analysis",
+        category="dead-code",
+        schema=dcp_tool.get_tool_definition(),
+        handler=_make_handler(dcp_tool),
+        description="Dead code path: detect unreachable code after terminal statements across Python, JS/TS, Java, Go",
+        emoji="🚫",
+    )
+
+    # duplicate_condition
+    from .tools.duplicate_condition_tool import DuplicateConditionTool
+    dc_tool = DuplicateConditionTool(project_root)
+    registry.register(
+        name="duplicate_condition",
+        toolset="analysis",
+        category="quality",
+        schema=dc_tool.get_tool_definition(),
+        handler=_make_handler(dc_tool),
+        description="Duplicate condition: detect identical if conditions that violate DRY across Python, JS/TS, Java, Go",
+        emoji="🔁",
+    )
+
+    # method_chain
+    from .tools.method_chain_tool import MethodChainTool
+    mc_tool = MethodChainTool(project_root)
+    registry.register(
+        name="method_chain",
+        toolset="analysis",
+        category="design",
+        schema=mc_tool.get_tool_definition(),
+        handler=_make_handler(mc_tool),
+        description="Method chain: detect Law of Demeter violations via long attribute chains across Python, JS/TS, Java, Go",
+        emoji="🔗",
+    )
+
+    # string_concat_loop
+    from .tools.string_concat_loop_tool import StringConcatLoopTool
+    scl_tool = StringConcatLoopTool(project_root)
+    registry.register(
+        name="string_concat_loop",
+        toolset="analysis",
+        category="performance",
+        schema=scl_tool.get_tool_definition(),
+        handler=_make_handler(scl_tool),
+        description="String concat in loops: detect O(n^2) string concatenation patterns across Python, JS/TS, Java, Go",
+        emoji="🐌",
+    )
+
+    # data_clump
+    from .tools.data_clump_tool import DataClumpTool
+    dcl_tool = DataClumpTool(project_root)
+    registry.register(
+        name="data_clump",
+        toolset="analysis",
+        category="design",
+        schema=dcl_tool.get_tool_definition(),
+        handler=_make_handler(dcl_tool),
+        description="Data clump: detect parameter groups appearing together across multiple functions",
+        emoji="📦",
+    )
+
+    # primitive_obsession
+    from .tools.primitive_obsession_tool import PrimitiveObsessionTool
+    po_tool = PrimitiveObsessionTool(project_root)
+    registry.register(
+        name="primitive_obsession",
+        toolset="analysis",
+        category="design",
+        schema=po_tool.get_tool_definition(),
+        handler=_make_handler(po_tool),
+        description="Primitive obsession: detect overuse of primitive types where value objects would be better",
+        emoji="🔤",
+    )
+
+
 def get_tool_info() -> dict[str, Any]:
     """
     Get information about all registered tools.

@@ -1992,3 +1992,68 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 
 **风险**: 同名不同义的参数可能产生误报（可接受）
 **依赖**: 无新依赖，复用tree_sitter已支持的4种语言
+
+## 产品讨论记录 - Primitive Obsession Detector - 2026-04-19
+
+**调用**: /office-hours (autonomous mode, Steve Jobs perspective)
+
+**输入**: Primitive Obsession Detector — 检测过度使用原始类型而非值对象的代码模式
+
+**候选功能分析**:
+1. Primitive Obsession Detector → DO: Fowler 经典异味，64个分析器中无覆盖
+2. Refused Bequest Detector → DON'T: 检测复杂（需跨文件继承关系分析），误报率高
+3. Temporary Field Detector → DON'T: 需要数据流分析判断字段使用频率
+
+**乔布斯的分析**:
+
+1. **聚焦即说不**: Primitive Obsession 是 Fowler 目录中剩余的**最有价值的未覆盖异味**。64 个分析器检测了结果（长参数列表、数据块），但没有工具检测**原因**（用原始类型替代值对象）。
+
+2. **减法思维**: MVP 只需检测"函数参数全是原始类型且数量 ≥4"。这是 AST 可直接检测的模式。不需要跨文件分析，不需要数据流追踪。
+
+3. **一句话定义**: "Find the functions that take 5 primitives when they should take 2 objects."
+
+**结论**: DO
+
+**理由**:
+- 填补 Fowler 目录中的经典空白
+- tree-sitter 精确解析参数类型注解
+- 4种语言均支持（Python type hints, JS/TS JSDoc, Java 类型, Go 类型）
+- 与 parameter_coupling 互补（那个看参数聚类，这个看类型原始性）
+- 纯 AST 分析，1 Sprint 可完成
+
+**检测模式**:
+1. `primitive_heavy_params`: 函数参数 ≥4 且全部是原始类型
+2. `primitive_soup`: 函数体中 ≥8 个原始类型局部变量
+3. `anemic_value_object`: 数据类（只有字段，无行为）使用原始类型字段
+4. `type_hint_code_smell`: 用字符串编码类型信息（如 `type: str = "user"` 而非枚举）
+
+## 技术架构讨论记录 - Primitive Obsession Detector - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**推荐方案**: 方案 A（独立模块）
+**理由**: 与 64 个现有分析器完全一致的模式，最低风险，1 Sprint 可完成
+**风险**: 无类型注解的代码检测能力有限，可通过变量名启发式补充
+**依赖**: tree-sitter 语言模块 (已有)
+
+**关键技术决策**:
+- 原始类型: str, int, float, bool, list, dict, tuple, set, None, bytes, string, number, boolean, Object, any
+- 无类型注解参数: 使用变量名启发式 (name, title, count, flag 暗示原始类型)
+- 阈值: primitive_heavy_params ≥ 4, primitive_soup ≥ 8
+
+## Self-Hosting Quality Gate - Primitive Obsession Detector - 2026-04-19
+
+**工具**: primitive_obsession (自扫描)
+
+**结果**: 72 issues (全部 type_hint_code_smell)
+- 分析了自身代码: 33 functions, 3 classes
+- 72 个 `type_hint_code_smell` 全部是 `node.type` 比较操作
+- 这些是 AST 分析器的标准模式（检查节点类型是核心操作），属于预期的 false positive
+- 无 primitive_heavy_params, primitive_soup, anemic_value_object 问题
+
+**CI 检查**:
+- ruff check: All checks passed
+- mypy --strict: Success: no issues found in 2 source files
+- pytest: 32 passed in 12.48s
+
+**结论**: 新代码质量通过。72 个 false positive 是 AST 分析器的固有特征。
