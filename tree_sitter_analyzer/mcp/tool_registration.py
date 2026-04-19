@@ -1548,6 +1548,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔇",
     )
 
+    from .tools.duplicate_dict_key_tool import DuplicateDictKeyTool
+    ddk_tool = DuplicateDictKeyTool(project_root)
+    registry.register(
+        name="duplicate_dict_key",
+        toolset="analysis",
+        category="correctness",
+        schema=ddk_tool.get_tool_definition(),
+        handler=_make_handler(ddk_tool),
+        description="Duplicate dict key: detect duplicate keys in dictionary/object literals",
+        emoji="🔑",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
