@@ -1,5 +1,31 @@
 # Progress — 自主开发进度日志
 
+## Session 151 — 2026-04-20
+
+**Sprint 1: Dict Merge in Loop Detector** (sustainable loop):
+- Product analysis: 3 candidates evaluated, only Dict Merge in Loop approved (other 2: Unnecessary Pass, Redundant F-String were code style nits)
+- Architecture: standard BaseAnalyzer, Python-only, pure AST
+- Detection: dict key assignment (d[key] = value) inside for/while loops
+- 16 tests (5 detect + 4 exclusion + 3 non-python/edge + 4 structure)
+- CI: ruff, mypy, pytest (16 pass), self-hosting gate 100%
+- Commit: `0c830719`
+
+**Sprint 2: Iterable Modification in Loop Detector** (sustainable loop):
+- Product analysis: DO — collection modification during iteration causes RuntimeError or silent bugs
+- Architecture: standard BaseAnalyzer, Python-only, pure AST
+- Detection: modifying methods (append, remove, pop, insert, extend, add, discard, update, del) on iterated collection
+- 20 tests (10 detect + 5 exclusion + 3 non-python/edge + 4 structure)
+- CI: ruff, mypy, pytest (20 pass), self-hosting gate 100%
+- Commit: `9746c9ce`
+
+**Sprint 3: Unclosed File Detector** (sustainable loop):
+- Product analysis: DO — open() without with causes file handle leaks in long-running processes
+- Architecture: standard BaseAnalyzer, Python-only, pure AST
+- Detection: `f = open(...)` without enclosing with_statement
+- 14 tests (4 detect + 4 exclusion + 3 non-python/edge + 3 structure)
+- CI: ruff, mypy, pytest (14 pass), self-hosting gate 100%
+- Commit: `29f0a35f`
+
 ## Session 150 — 2026-04-20
 
 **Sprint 1: Float Equality Comparison Detector** (sustainable loop):

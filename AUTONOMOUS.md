@@ -686,6 +686,14 @@ uv run pytest tests/ -x -q
 
 ### Next Session
 
+### Session 151 — 2026-04-20
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 3 new analyzers (dict_merge_loop, iterable_modification, unclosed_file)
+- **MCP Tools**: 122 → 125 (+3 dict_merge_loop, iterable_modification, unclosed_file)
+- **Tests**: 16 + 20 + 14 = 50 tests pass
+- **Commits**: `0c830719`, `9746c9ce`, `29f0a35f`
+- **Status**: 3 sprints complete, sustainable loop running
+
 ### Session 149 — 2026-04-20
 - **Open**: Continue sustainable loop (新功能探索)
 - **Complete**: 3 new analyzers (identity_comparison_literal, await_in_loop, mutable_multiplication)
