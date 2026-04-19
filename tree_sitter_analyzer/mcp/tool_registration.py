@@ -1404,6 +1404,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🚫",
     )
 
+    from .tools.implicit_string_concat_tool import ImplicitStringConcatTool
+    isc_tool = ImplicitStringConcatTool(project_root)
+    registry.register(
+        name="implicit_string_concat",
+        toolset="analysis",
+        category="correctness",
+        schema=isc_tool.get_tool_definition(),
+        handler=_make_handler(isc_tool),
+        description="Implicit string concat: detect Python adjacent string literals (missing comma bug)",
+        emoji="🔤",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
