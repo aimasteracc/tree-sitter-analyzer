@@ -1267,13 +1267,13 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
 
     # debug_statement
     from .tools.debug_statement_tool import DebugStatementTool
-    ds_tool = DebugStatementTool(project_root)
+    debug_stmt_tool = DebugStatementTool(project_root)
     registry.register(
         name="debug_statement",
         toolset="analysis",
         category="code-quality",
-        schema=ds_tool.get_tool_definition(),
-        handler=_make_handler(ds_tool),
+        schema=debug_stmt_tool.get_tool_definition(),
+        handler=_make_handler(debug_stmt_tool),
         description="Debug statements: detect leftover print/console.log/System.out.println/fmt.Println calls that should be removed before production",
         emoji="🐛",
     )
@@ -1289,6 +1289,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(cc_tool),
         description="Commented-out code: detect code blocks in comments (assignments, calls, imports, declarations) that should be removed",
         emoji="🗑️",
+    )
+
+    # loose_equality
+    from .tools.loose_equality_tool import LooseEqualityTool
+    le_tool = LooseEqualityTool(project_root)
+    registry.register(
+        name="loose_equality",
+        toolset="analysis",
+        category="code-quality",
+        schema=le_tool.get_tool_definition(),
+        handler=_make_handler(le_tool),
+        description="Loose equality: detect == and != in JavaScript/TypeScript that should use === and !== to avoid type coercion bugs",
+        emoji="⚖️",
     )
 
 

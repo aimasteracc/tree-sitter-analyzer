@@ -4,6 +4,56 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-sitter-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 灵感来源 - Session 142 — 2026-04-20
+
+- Wiki搜索 "code smell anti-pattern detection" → silent-failure-hunter agent, code-explorer agent
+- 71个分析器已实现，覆盖大部分经典代码异味
+- 识别的空白：Loose Equality Comparison (JS/TS == vs ===), Refused Bequest, Implicit Type Coercion
+- 选择：Loose Equality Comparison Detector — 高价值、经典JS bug源、纯AST遍历
+
+## 产品讨论记录 - Loose Equality Comparison Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Loose Equality Comparison Detector — 检测 JS/TS 中 == 和 != 而非 === 和 !== 的比较
+
+**产品分析**:
+- 聚焦: == vs === 是 JavaScript 生态中最经典的 bug 源之一。ESLint 的 eqeqeq 规则是最常见的启用规则。71个分析器中无工具覆盖生产代码中的松散比较（assertion_quality 只检查测试）
+- 减法: MVP = 纯AST遍历，找 == 和 != 操作符。6类检测: loose_eq, loose_neq, loose_eq_null, loose_neq_null, loose_eq_undefined, loose_neq_undefined
+- 一句话: "Find every == that should be === — because loose equality in JavaScript has caused more bugs than any other language quirk."
+
+**独特性评估**:
+1. 独特性: 3/3 — no existing tool covers loose equality in production code
+2. 需求度: 3/3 — every JS/TS codebase has this issue, ESLint eqeqeq is the #1 rule
+3. 架构适配: 3/3 — standard BaseAnalyzer, JS/TS-specific (like missing_break)
+4. 实现成本: 3/3 — single Sprint, pure AST traversal, only JS/TS
+Total: 12/12 >= 8
+
+**结论**: DO — fills genuine gap, highest possible score, trivial implementation
+
+## 技术架构讨论记录 - Loose Equality Comparison Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**功能**: Loose Equality Comparison Detector
+**技术方案**: 纯AST遍历，检测JS/TS中的 == 和 != 操作符（不含与null/undefined的比较，避免与literal_boolean_comparison重叠）
+
+**架构分析**:
+- 技术可行性: 低风险。tree-sitter JS/TS grammar中 binary_expression 节点包含操作符字段，直接检查即可
+- 架构影响: 与现有71工具完全协调，标准BaseAnalyzer模式。JS/TS专用（类似missing_break）
+- 实现复杂度: 单Sprint。2语言(JS/TS) × 简单操作符匹配
+- 维护成本: 低。操作符不会变
+
+**推荐方案**: BaseAnalyzer子类 + binary_expression节点遍历 + 操作符文本匹配
+**检测类型**:
+- loose_eq: x == y (use ===)
+- loose_neq: x != y (use !==)
+排除与 null/undefined 的比较（已被 literal_boolean_comparison 覆盖）
+
+**重叠处理**: literal_boolean_comparison 覆盖 x == null/undefined。本工具覆盖 x == y（非字面量比较）。互补而非重复。
+
+**风险**: 无重大风险
+
 ## 产品讨论记录 - Commented-Out Code Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
