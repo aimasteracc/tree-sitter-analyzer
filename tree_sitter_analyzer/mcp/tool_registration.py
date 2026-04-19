@@ -1317,6 +1317,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="✂️",
     )
 
+    # yoda_condition
+    from .tools.yoda_condition_tool import YodaConditionTool
+    yoda_tool = YodaConditionTool(project_root)
+    registry.register(
+        name="yoda_condition",
+        toolset="analysis",
+        category="readability",
+        schema=yoda_tool.get_tool_definition(),
+        handler=_make_handler(yoda_tool),
+        description="Yoda condition: detect comparisons where literal is on the left (\"expected\" == actual → actual == \"expected\")",
+        emoji="🔄",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
