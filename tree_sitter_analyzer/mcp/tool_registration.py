@@ -1464,6 +1464,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="✂️",
     )
 
+    from .tools.suspicious_type_check_tool import SuspiciousTypeCheckTool
+    stc_tool = SuspiciousTypeCheckTool(project_root)
+    registry.register(
+        name="suspicious_type_check",
+        toolset="analysis",
+        category="correctness",
+        schema=stc_tool.get_tool_definition(),
+        handler=_make_handler(stc_tool),
+        description="Suspicious type check: detect type(x) == Y (should use isinstance)",
+        emoji="🔍",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

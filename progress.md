@@ -45,6 +45,15 @@
 - CI: ruff, mypy, pytest (15 pass), self-hosting gate 100% all pass
 - Commit: `cb2e0687`
 
+**Sprint 6: Unnecessary Lambda Detector** (sustainable loop):
+- Product analysis: DO — trivial lambdas add noise, reduce readability
+- Architecture: detect lambda body as single call with matching args, or identity return
+- Detection: trivial_lambda (lambda x: f(x)), identity_lambda (lambda x: x), Python only
+- 17 tests (6 trivial + 3 identity + 3 normal + 5 edge), Python only
+- Fix: tree-sitter-python has `lambda` keyword as child of lambda expression (same type), filter by body field
+- CI: ruff, mypy, pytest (17 pass), self-hosting gate 100% all pass
+- Commit: `b5f1a430`
+
 ## Session 144 — 2026-04-20
 
 **Sprint 1: Protocol Completeness Analyzer** (sustainable loop):
