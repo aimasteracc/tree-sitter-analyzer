@@ -1661,6 +1661,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔁",
     )
 
+    # list_membership
+    from .tools.list_membership_tool import ListMembershipTool
+    lm_tool = ListMembershipTool(project_root)
+    registry.register(
+        name="list_membership",
+        toolset="analysis",
+        category="performance",
+        schema=lm_tool.get_tool_definition(),
+        handler=_make_handler(lm_tool),
+        description="List membership: detect `x in [...]` should use set `{...}` for O(1)",
+        emoji="🔍",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

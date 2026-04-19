@@ -1,5 +1,37 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - List-in-Membership Performance Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: List-in-Membership Performance Detector — 检测 `x in [1,2,3]` 应该用 set `{1,2,3}`
+
+**产品分析**:
+- 聚焦: `x in [1,2,3]` 是 O(n) 查找，`x in {1,2,3}` 是 O(1)。当列表较大或频繁调用时是显著性能问题
+- 减法: MVP = 检测 `in` 操作符后面跟着 list literal
+- 一句话: "Find the membership tests using lists that should use sets for O(1) lookup"
+
+**独特性评估**: 10/12 >= 8 (DO)
+- Uniqueness: 3/3 — 无类似工具
+- Need: 3/3 — 常见性能问题，容易修复
+- Architecture fit: 3/3 — 纯 AST，BaseAnalyzer，Python + JS/TS + Go
+- Implementation cost: 1/3 — 需要识别 in 操作符后的 list literal
+
+**结论**: DO — 检测真实性能问题，修复简单
+
+## 技术架构讨论 - List-in-Membership Performance Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**技术方案**: AST 遍历
+- Python: 检测 `comparison_operator` 中 `in` 操作符后面跟着 `list`
+- JS/TS: 检测 `binary_expression` 中 `includes` 方法调用在 array literal 上
+- Go: 不适用（Go 没有 in 操作符）
+
+**推荐方案**: 标准 BaseAnalyzer，Python + JS/TS
+**风险**: 误报 — 小列表的性能差异可忽略，但代码风格一致性好
+**依赖**: 无
+
 ## 产品讨论记录 - Unused Loop Variable Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
