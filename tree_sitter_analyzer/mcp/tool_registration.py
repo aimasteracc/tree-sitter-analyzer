@@ -1356,6 +1356,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="↩️",
     )
 
+    from .tools.protocol_completeness_tool import ProtocolCompletenessTool
+    pc_tool = ProtocolCompletenessTool(project_root)
+    registry.register(
+        name="protocol_completeness",
+        toolset="analysis",
+        category="correctness",
+        schema=pc_tool.get_tool_definition(),
+        handler=_make_handler(pc_tool),
+        description="Protocol completeness: detect incomplete protocol implementations (__eq__ without __hash__, equals without hashCode)",
+        emoji="🔧",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

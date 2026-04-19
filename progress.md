@@ -1,5 +1,33 @@
 # Progress — 自主开发进度日志
 
+## Session 143 — 2026-04-20
+
+**Sprint 1: Yoda Condition Detector** (sustainable loop):
+- Product analysis: DO — Yoda conditions hurt readability, C-era relic
+- Architecture: pure AST traversal, detect literal on left of comparison operators
+- Detection: yoda_eq ("hello" == x), yoda_neq (0 != count)
+- 34 tests (11 Python + 6 JS + 3 TS + 5 Java + 4 Go + 5 edge), 4 languages
+- Overlap handling: literal_boolean_comparison covers x == True; this covers "literal" == x
+- CI: ruff, mypy, pytest (34 pass), self-hosting gate 100% all pass
+- Commit: `d79e27c6`
+
+**Sprint 2: Long Parameter List Detector** (sustainable loop):
+- Product analysis: DO — classic Fowler code smell, no existing tool counts parameters
+- Architecture: count named children of parameter_list nodes per function
+- Detection: many_params (5-7), excessive_params (8+), configurable threshold
+- 27 tests (8 Python + 4 JS + 3 TS + 3 Java + 3 Go + 6 edge), 4 languages
+- Go fix: method_declaration has two parameter_list nodes (receiver + params), take last
+- CI: ruff, mypy, pytest (27 pass), self-hosting gate 100% all pass
+- Commit: `733df01d`
+
+**Sprint 3: Inconsistent Return Detector** (sustainable loop):
+- Product analysis: DO — catches implicit None returns in Python, mixed return paths
+- Architecture: walk function body finding all return_statement nodes, classify as value/bare
+- Detection: inconsistent_return (mixed value returns + bare/implicit returns)
+- 22 tests (8 Python + 3 JS + 2 TS + 2 Java + 2 Go + 5 edge), 4 languages
+- CI: ruff, mypy, pytest (22 pass), self-hosting gate 100% all pass
+- Commit: `4c67e78f`
+
 ## Session 142 — 2026-04-20
 
 **Sprint 1: Loose Equality Comparison Detector** (sustainable loop):

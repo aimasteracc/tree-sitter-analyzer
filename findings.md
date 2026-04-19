@@ -4,6 +4,105 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-sitter-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 灵感来源 - Session 144 — 2026-04-20
+
+- 95个分析器已实现，覆盖大部分经典代码异味
+- 识别的空白：Incomplete Protocol Implementation (12/12 score)
+- 选择：Incomplete Protocol Implementation Detector
+
+## 产品讨论记录 - Incomplete Protocol Implementation Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Incomplete Protocol Implementation Detector
+
+**产品分析**:
+- 聚焦: 不完整协议实现是静默运行时bug。__eq__无__hash__破坏dict/set，equals无hashCode导致HashMap不一致
+- 减法: MVP = 纯AST遍历，检查类定义的方法是否覆盖已知协议对。无需类型推断、跨文件分析
+- 一句话: "Find the half-finished contracts, because __eq__ without __hash__ means your objects silently break in dictionaries."
+
+**独特性评估**: 12/12 >= 8 (DO)
+- Uniqueness: 3/3 - 无类似工具
+- Need: 3/3 - Pylint W0223/W0224 检测的经典bug模式
+- Architecture fit: 3/3 - 纯AST, BaseAnalyzer模式
+- Implementation cost: 3/3 - 已知协议对列表，单Sprint
+
+**结论**: DO — fills genuine gap, catches silent runtime bugs, clean AST traversal
+
+## 技术架构讨论记录 - Incomplete Protocol Implementation Detector - 2026-04-20
+
+**调用**: Architecture analysis (direct)
+
+**输入**: Incomplete Protocol Implementation Detector, pure AST traversal approach
+
+**架构分析**:
+- 技术可行性: Low risk. Pure AST per-file. Walk class definitions, collect method names, check protocol pairs.
+- 架构影响: Perfect fit with BaseAnalyzer pattern. New MCP tool in tool_registration.py.
+- 实现复杂度: Single Sprint. ~150-200 lines core, ~200 lines tests.
+- 维护成本: Very low. Protocol pairs rarely change.
+
+**推荐方案**: Single-pass class walker
+- For each class_definition/function_declaration in AST, collect defined method names
+- Check against known protocol pairs (static lookup table)
+- Report missing counterpart as issue
+
+**协议对定义**:
+- Python: __eq__/__hash__, __enter__/__exit__, __iter__/__next__, __get__/__set__+__delete__
+- Java: equals/hashCode, compareTo/equals
+- Go: String()/IsZero() (less applicable, skip)
+- JS/TS: toJSON/toISOString (optional, low value)
+
+**风险**: None identified
+**依赖**: None beyond base.py
+
+## 灵感来源 - Session 143 — 2026-04-20
+
+- 95个分析器已实现，覆盖大部分经典代码异味
+- 识别的空白：Yoda Condition, Long Parameter List, Inconsistent Return
+- 选择并实现：全部3个
+
+## 产品讨论记录 - Yoda Condition Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Yoda Condition Detector — 检测 if ("literal" == variable) 反模式
+
+**产品分析**:
+- 聚焦: Yoda conditions 是 C-era 遗留习惯，现代语言不需要。降低可读性
+- 减法: MVP = 纯AST遍历，检测比较运算中左操作数为字面量
+- 一句话: "Find the comparisons written backwards — because `if (\"expected\" == actual)` is just harder to read."
+
+**独特性评估**: 11/12 >= 8 (DO)
+**结论**: DO — fills genuine gap, high readability value, simple implementation
+
+## 产品讨论记录 - Long Parameter List Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Long Parameter List Detector — 检测参数过多的函数(5+/8+)
+
+**产品分析**:
+- 聚焦: 经典 Fowler 代码异味。长参数列表表明函数职责过多或应使用参数对象
+- 减法: MVP = 统计函数参数列表的命名子节点数量
+- 一句话: "Find functions that ask for too much — because 7 parameters means 7 things can go wrong."
+
+**独特性评估**: 12/12 >= 8 (DO)
+**结论**: DO — classic code smell, no existing tool covers it, trivial implementation
+
+## 产品讨论记录 - Inconsistent Return Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Inconsistent Return Detector — 检测函数中混合有值返回和无值返回
+
+**产品分析**:
+- 聚焦: Python中最常见的隐式None返回bug。函数有时返回值，有时隐式返回None
+- 减法: MVP = 检查函数内所有return语句，区分为有值返回、空返回和隐式返回
+- 一句话: "Find functions that can't decide whether to return something or nothing."
+
+**独特性评估**: 10/12 >= 8 (DO)
+**结论**: DO — real bug source, especially in Python, no existing tool covers it
+
 ## 灵感来源 - Session 142 — 2026-04-20
 
 - Wiki搜索 "code smell anti-pattern detection" → silent-failure-hunter agent, code-explorer agent
