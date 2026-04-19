@@ -1452,6 +1452,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="📦",
     )
 
+    from .tools.unnecessary_lambda_tool import UnnecessaryLambdaTool
+    ul_tool = UnnecessaryLambdaTool(project_root)
+    registry.register(
+        name="unnecessary_lambda",
+        toolset="analysis",
+        category="style",
+        schema=ul_tool.get_tool_definition(),
+        handler=_make_handler(ul_tool),
+        description="Unnecessary lambda: detect trivial wrappers (lambda x: f(x)) and identity (lambda x: x)",
+        emoji="✂️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
