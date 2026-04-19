@@ -1,5 +1,36 @@
 # Progress — 自主开发进度日志
 
+## Session 149 — 2026-04-20
+
+**Sprint 1: Identity Comparison with Literals Detector** (sustainable loop):
+- Product analysis: DO — Python 3.8+ SyntaxWarning, 3.12+ DeprecationWarning, future SyntaxError
+- Architecture: standard BaseAnalyzer, Python-only, pure AST
+- Detection: is_literal (`x is 5`), is_not_literal (`x is not "hello"`)
+- Handles negative integers (unary_operator), parenthesized expressions
+- Excludes singletons: None, True, False, Ellipsis
+- 37 tests (26 detect + 7 exclusion + 4 structure/edge), Python only
+- CI: ruff, mypy, pytest (37 pass), self-hosting gate 100%
+- Commit: `ebe207bc`
+
+**Sprint 2: Await-in-Loop Detector** (sustainable loop):
+- Product analysis: DO — serial async in loops is common performance anti-pattern
+- Architecture: standard BaseAnalyzer, Python + JS/TS
+- Detection: await_in_for_loop, await_in_while_loop
+- Correctly handles nested functions (stops at function boundaries)
+- Correctly handles nested loops (only innermost loop reports)
+- 20 tests (10 Python + 6 JS/TS + 4 structure/edge), 2 languages
+- CI: ruff, mypy, pytest (20 pass), self-hosting gate 100%
+- Commit: `3e2356a1`
+
+**Sprint 3: Mutable Multiplication Detector** (sustainable loop):
+- Product analysis: DO — `[[]] * n` creates shared references, classic Python silent bug
+- Architecture: standard BaseAnalyzer, Python-only, pure AST
+- Detection: mutable_list_mult (`[[]] * n`), mutable_tuple_mult (`([],) * n`)
+- Detects mutable children: list, dictionary, set literals AND constructors (set(), dict(), etc.)
+- 24 tests (6 list + 2 tuple + 7 safe + 3 non-python/edge + 6 structure/edge)
+- CI: ruff, mypy, pytest (24 pass), self-hosting gate 100%
+- Commit: `027df2f5`
+
 ## Session 148 — 2026-04-20
 
 **Refactoring Sprint**: Fixed mypy strict variable name collision in tool_registration.py (lbc_tool reused for two different tool types). All 446 source files pass mypy --strict.
