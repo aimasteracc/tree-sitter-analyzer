@@ -456,6 +456,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🛡️",
     )
 
+    # error_propagation
+    from .tools.error_propagation_tool import ErrorPropagationTool
+    ep_tool = ErrorPropagationTool(project_root)
+    registry.register(
+        name="error_propagation",
+        toolset="analysis",
+        category="error-quality",
+        schema=ep_tool.get_tool_definition(),
+        handler=_make_handler(ep_tool),
+        description="Error propagation: trace error/exception flow through code, detect unhandled raises, swallowed exceptions, and missing catch blocks",
+        emoji="🔄",
+    )
+
     # parameter_coupling
     from .tools.parameter_coupling_tool import ParameterCouplingTool
     pc_tool = ParameterCouplingTool(project_root)
