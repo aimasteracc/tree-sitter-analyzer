@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
@@ -22,21 +23,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 VIS_USER = "user_visible"
@@ -108,14 +94,12 @@ _GO_OUTPUT_CALLS: frozenset[str] = frozenset({
     "New", "Errorf",
 })
 
-
 def _nt(node: tree_sitter.Node) -> str:
     """Safely decode node text to string."""
     raw = node.text
     if raw is None:
         return ""
     return raw.decode("utf-8", errors="replace")
-
 
 @dataclass(frozen=True)
 class I18nString:
@@ -140,7 +124,6 @@ class I18nString:
             "context": self.context,
         }
 
-
 @dataclass(frozen=True)
 class I18nFileResult:
     """Detection result for a single file."""
@@ -159,7 +142,6 @@ class I18nFileResult:
             "internal_count": self.internal_count,
             "strings": [s.to_dict() for s in self.strings],
         }
-
 
 @dataclass(frozen=True)
 class I18nSummary:
@@ -181,7 +163,6 @@ class I18nSummary:
             "internal_count": self.internal_count,
             "file_results": [r.to_dict() for r in self.file_results],
         }
-
 
 def _classify_visibility(text: str) -> str:
     """Classify a string's user visibility level."""
@@ -212,7 +193,6 @@ def _classify_visibility(text: str) -> str:
 
     return VIS_INTERNAL
 
-
 def _extract_string_text(node: tree_sitter.Node) -> str:
     """Extract text content from a string node, stripping quotes."""
     raw = _nt(node)
@@ -226,7 +206,6 @@ def _extract_string_text(node: tree_sitter.Node) -> str:
     if raw.startswith(('"', "'")):
         return raw[1:-1]
     return raw
-
 
 def _is_in_output_context(
     string_node: tree_sitter.Node,
@@ -244,7 +223,6 @@ def _is_in_output_context(
         node = node.parent
     return False, ""
 
-
 def _check_node_output(node: tree_sitter.Node, lang: str) -> str | None:
     """Check a single node for output context. Returns function name or None."""
     if lang == "python":
@@ -256,7 +234,6 @@ def _check_node_output(node: tree_sitter.Node, lang: str) -> str | None:
     if lang == "go":
         return _check_go_output(node)
     return None
-
 
 def _check_python_output(node: tree_sitter.Node) -> str | None:
     """Check Python output context."""
@@ -276,7 +253,6 @@ def _check_python_output(node: tree_sitter.Node) -> str | None:
     elif node.type == "raise_statement":
         return "raise"
     return None
-
 
 def _check_js_output(node: tree_sitter.Node) -> str | None:
     """Check JS/TS output context."""
@@ -299,7 +275,6 @@ def _check_js_output(node: tree_sitter.Node) -> str | None:
         return "throw"
     return None
 
-
 def _check_java_output(node: tree_sitter.Node) -> str | None:
     """Check Java output context."""
     if node.type == "method_invocation":
@@ -318,7 +293,6 @@ def _check_java_output(node: tree_sitter.Node) -> str | None:
         return "throw"
     return None
 
-
 def _check_go_output(node: tree_sitter.Node) -> str | None:
     """Check Go output context."""
     if node.type == "call_expression":
@@ -336,34 +310,8 @@ def _check_go_output(node: tree_sitter.Node) -> str | None:
                         return field_name
     return None
 
-
-class I18nStringDetector:
+class I18nStringDetector(BaseAnalyzer):
     """Detects user-visible strings that need internationalization."""
-
-    def __init__(self) -> None:
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(self, ext: str) -> tree_sitter.Parser | None:
-        if ext in self._parsers:
-            return self._parsers[ext]
-
-        lang_info = _LANGUAGE_MODULES.get(ext)
-        if not lang_info:
-            return None
-
-        try:
-            mod = __import__(lang_info)
-            func_name = _LANGUAGE_FUNCS.get(ext, "language")
-            lang_func = getattr(mod, func_name, None)
-            if lang_func is None:
-                return None
-            lang_obj = tree_sitter.Language(lang_func())
-            parser = tree_sitter.Parser(lang_obj)
-            self._parsers[ext] = parser
-            return parser
-        except Exception:
-            logger.exception("Failed to load parser for %s", ext)
-            return None
 
     def _get_lang(self, ext: str) -> str:
         mapping: dict[str, str] = {
@@ -389,7 +337,7 @@ class I18nStringDetector:
         if ext not in SUPPORTED_EXTENSIONS:
             return self._empty_result(file_path)
 
-        parser = self._get_parser(ext)
+        _, parser = self._get_parser(ext)
         if parser is None:
             return self._empty_result(file_path)
 

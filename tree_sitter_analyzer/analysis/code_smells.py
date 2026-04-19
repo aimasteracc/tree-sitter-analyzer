@@ -33,14 +33,12 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".go", ".rs", ".cs", ".kt", ".c", ".cpp", ".h", ".rb",
 }
 
-
 class SmellSeverity(Enum):
     """Severity level for detected code smells."""
 
     INFO = "info"
     WARNING = "warning"
     CRITICAL = "critical"
-
 
 class SmellCategory(Enum):
     """Category of code smell (Fowler classification)."""
@@ -50,7 +48,6 @@ class SmellCategory(Enum):
     CHANGE_PREVENTERS = "change_preventers"  # Shotgun Surgery, Divergent Change
     DISPENSABLES = "dispensables"  # Dead Code, Magic Numbers, Comments
     OO_ABUSERS = "oo_abusers"      # Refused Bequest, Switch Statements
-
 
 @dataclass(frozen=True)
 class CodeSmell:
@@ -65,7 +62,6 @@ class CodeSmell:
     suggestion: str
     metric_value: str = ""
     element_name: str = ""
-
 
 @dataclass
 class SmellDetectionResult:
@@ -88,7 +84,6 @@ class SmellDetectionResult:
             self.by_category.get(smell.category, 0) + 1
         )
 
-
 # Thresholds configurable per project
 DEFAULT_THRESHOLDS: dict[str, int] = {
     "god_class_methods": 15,
@@ -101,7 +96,6 @@ DEFAULT_THRESHOLDS: dict[str, int] = {
     "many_imports": 20,
     "large_class_lines": 500,
 }
-
 
 class CodeSmellDetector:
     """Detect code smells in source files using regex heuristics and metrics."""

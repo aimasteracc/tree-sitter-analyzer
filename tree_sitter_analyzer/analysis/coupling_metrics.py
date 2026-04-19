@@ -28,14 +28,12 @@ RISK_UNSTABLE = "UNSTABLE"
 INSTABILITY_STABLE = 0.3
 INSTABILITY_UNSTABLE = 0.7
 
-
 def _classify_risk(instability: float) -> str:
     if instability < INSTABILITY_STABLE:
         return RISK_STABLE
     if instability > INSTABILITY_UNSTABLE:
         return RISK_UNSTABLE
     return RISK_FLEXIBLE
-
 
 @dataclass(frozen=True)
 class FileCouplingMetrics:
@@ -53,7 +51,6 @@ class FileCouplingMetrics:
             "instability": round(self.instability, 3),
             "risk": self.risk,
         }
-
 
 @dataclass(frozen=True)
 class CouplingResult:
@@ -84,7 +81,6 @@ class CouplingResult:
         return tuple(
             m for m in self.file_metrics if m.risk == RISK_UNSTABLE
         )
-
 
 class CouplingMetricsAnalyzer:
     """Analyzes module coupling from dependency graph data."""

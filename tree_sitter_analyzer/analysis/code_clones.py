@@ -30,13 +30,11 @@ class CloneType(Enum):
     TYPE_2_STRUCTURE = "type_2_structure"  # Renamed variables
     TYPE_3_FUNCTION = "type_3_function"  # Functionally similar
 
-
 class CloneSeverity(Enum):
     """Severity based on clone size and impact."""
     INFO = "info"  # Small clones (< 5 lines)
     WARNING = "warning"  # Medium clones (5-15 lines)
     CRITICAL = "critical"  # Large clones (> 15 lines)
-
 
 @dataclass(frozen=True)
 class CodeClone:
@@ -53,7 +51,6 @@ class CodeClone:
     suggestion: str
     snippet: str = ""
     similarity: float = 0.0
-
 
 @dataclass
 class CloneDetectionResult:
@@ -75,11 +72,9 @@ class CloneDetectionResult:
             self.by_severity.get(clone.severity, 0) + 1
         )
 
-
 # Default configuration
 DEFAULT_MIN_LINES: int = 5  # Minimum lines to consider as a clone
 DEFAULT_MIN_SIMILARITY: float = 0.8  # 80% similarity threshold
-
 
 class CodeCloneDetector:
     """Detect code clones using fingerprinting and similarity analysis."""

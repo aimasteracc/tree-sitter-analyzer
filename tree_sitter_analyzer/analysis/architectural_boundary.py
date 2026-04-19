@@ -54,7 +54,6 @@ LAYER_PATTERNS: dict[int, list[re.Pattern[str]]] = {
     ],
 }
 
-
 def _classify_layer(file_path: str) -> int | None:
     parts = file_path.replace("\\", "/")
     for layer, patterns in LAYER_PATTERNS.items():
@@ -62,7 +61,6 @@ def _classify_layer(file_path: str) -> int | None:
             if pattern.search(parts):
                 return layer
     return None
-
 
 @dataclass(frozen=True)
 class BoundaryViolation:
@@ -82,7 +80,6 @@ class BoundaryViolation:
             "description": _describe_violation(self),
         }
 
-
 def _describe_violation(v: BoundaryViolation) -> str:
     src_name = LAYER_NAMES.get(v.source_layer, f"Layer {v.source_layer}")
     tgt_name = LAYER_NAMES.get(v.target_layer, f"Layer {v.target_layer}")
@@ -93,7 +90,6 @@ def _describe_violation(v: BoundaryViolation) -> str:
     if v.violation_type == VIOLATION_CIRCULAR:
         return f"Circular dependency between {src_name} and {tgt_name} layers"
     return f"Unknown violation: {v.violation_type}"
-
 
 @dataclass(frozen=True)
 class LayerSummary:
@@ -109,7 +105,6 @@ class LayerSummary:
             "file_count": self.file_count,
             "violation_count": self.violation_count,
         }
-
 
 @dataclass(frozen=True)
 class BoundaryResult:
@@ -133,7 +128,6 @@ class BoundaryResult:
             "circular_dependencies": [v.to_dict() for v in self.circular_dependencies],
             "layer_summary": [ls.to_dict() for ls in self.layer_summary],
         }
-
 
 class ArchitecturalBoundaryAnalyzer:
     """Analyzes layered architecture compliance from dependency data."""

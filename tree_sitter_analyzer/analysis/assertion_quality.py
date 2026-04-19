@@ -18,6 +18,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -25,21 +26,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 QUALITY_WEAK = "weak_assertion"
@@ -97,7 +83,6 @@ _WEAK_GO_METHODS = frozenset({
     "nil", "notnil", "true", "false",
 })
 
-
 @dataclass(frozen=True)
 class AssertionIssue:
     issue_type: str
@@ -108,7 +93,6 @@ class AssertionIssue:
     description: str
     suggestion: str
 
-
 @dataclass(frozen=True)
 class TestFunctionQuality:
     name: str
@@ -117,7 +101,6 @@ class TestFunctionQuality:
     assertion_count: int
     issues: tuple[AssertionIssue, ...]
     quality_score: float
-
 
 @dataclass(frozen=True)
 class AssertionQualityResult:
@@ -128,14 +111,11 @@ class AssertionQualityResult:
     quality_score: float
     issue_counts: dict[str, int] = field(default_factory=dict)
 
-
 def _decode(node: tree_sitter.Node) -> str:
     return (node.text or b"").decode("utf-8", errors="replace")
 
-
 def _severity_for(issue_type: str) -> str:
     return _QUALITY_SEVERITY.get(issue_type, SEVERITY_LOW)
-
 
 def _empty_result(file_path: str) -> AssertionQualityResult:
     return AssertionQualityResult(
@@ -146,7 +126,6 @@ def _empty_result(file_path: str) -> AssertionQualityResult:
         quality_score=100.0,
         issue_counts={},
     )
-
 
 def _compute_quality_score(
     assertion_count: int,
@@ -164,29 +143,8 @@ def _compute_quality_score(
             penalty += 5.0
     return max(0.0, 100.0 - penalty)
 
-
-class AssertionQualityAnalyzer:
+class AssertionQualityAnalyzer(BaseAnalyzer):
     """Analyzes test assertion quality across Python, JS/TS, Java, Go."""
-
-    def __init__(self) -> None:
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-        self._languages: dict[str, tree_sitter.Language] = {}
-
-    def _get_parser(
-        self, ext: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if ext not in _LANGUAGE_MODULES:
-            return None, None
-        if ext not in self._parsers:
-            module_name = _LANGUAGE_MODULES[ext]
-            lang_module = __import__(module_name)
-            func_name = _LANGUAGE_FUNCS.get(ext, "language")
-            language_func = getattr(lang_module, func_name)
-            language = tree_sitter.Language(language_func())
-            parser = tree_sitter.Parser(language)
-            self._languages[ext] = language
-            self._parsers[ext] = parser
-        return self._languages.get(ext), self._parsers.get(ext)
 
     def analyze_file(
         self,

@@ -21,7 +21,6 @@ class DeadCodeType(Enum):
     UNUSED_CLASS = "unused_class"
     UNUSED_IMPORT = "unused_import"
 
-
 @dataclass(frozen=True)
 class DeadCodeIssue:
     """A dead code issue."""
@@ -35,7 +34,6 @@ class DeadCodeIssue:
 
     def __str__(self) -> str:
         return f"{self.type.value}:{self.name}@{self.file}:{self.line}"
-
 
 @dataclass
 class DeadCodeReport:
@@ -65,7 +63,6 @@ class DeadCodeReport:
     def add_issue(self, issue: DeadCodeIssue) -> None:
         self.issues.append(issue)
 
-
 # Entry point patterns (symbols that should never be flagged as dead)
 ENTRY_POINT_PATTERNS: list[str] = [
     "main",
@@ -81,7 +78,6 @@ ENTRY_POINT_PATTERNS: list[str] = [
 PUBLIC_API_PATTERNS: list[str] = [
     "__all__",
 ]
-
 
 def is_entry_point(symbol_name: str, file_path: str | None = None) -> bool:
     """Check if a symbol is an entry point that should not be flagged as dead."""
@@ -100,7 +96,6 @@ def is_entry_point(symbol_name: str, file_path: str | None = None) -> bool:
 
     return False
 
-
 def is_public_api(symbol_name: str) -> bool:
     """Check if a symbol is part of public API."""
     # Check against known public API patterns first (handles __all__)
@@ -115,7 +110,6 @@ def is_public_api(symbol_name: str) -> bool:
         return False
 
     return True
-
 
 def is_excluded_method(
     symbol_name: str,
@@ -164,7 +158,6 @@ def is_excluded_method(
 
     return False
 
-
 def is_exported_symbol(symbol_name: str, exports: list[str] | None = None) -> bool:
     """Check if a symbol is explicitly exported.
 
@@ -179,7 +172,6 @@ def is_exported_symbol(symbol_name: str, exports: list[str] | None = None) -> bo
         return False
 
     return symbol_name in exports
-
 
 def is_test_file(file_path: str) -> bool:
     """Check if a file is a test file.

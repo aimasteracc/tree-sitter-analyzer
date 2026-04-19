@@ -18,6 +18,7 @@ from typing import Any
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -25,21 +26,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 SMELL_SILENT_CATCH = "silent_catch"
@@ -93,7 +79,6 @@ _GO_SLOG_METHODS: frozenset[str] = frozenset({
     "Info", "Warn", "Error", "Debug",
 })
 
-
 @dataclass(frozen=True)
 class LoggingSmell:
     """A single logging smell detected in a catch/handler block."""
@@ -111,7 +96,6 @@ class LoggingSmell:
             "severity": self.severity,
             "detail": self.detail,
         }
-
 
 @dataclass(frozen=True)
 class CatchBlock:
@@ -132,7 +116,6 @@ class CatchBlock:
             "has_print": self.has_print,
             "smells": tuple(s.to_dict() for s in self.smells),
         }
-
 
 @dataclass(frozen=True)
 class LoggingPatternResult:
@@ -172,7 +155,6 @@ class LoggingPatternResult:
             if p.severity == SEVERITY_HIGH
         )
 
-
 def _empty_result(file_path: str) -> LoggingPatternResult:
     return LoggingPatternResult(
         file_path=file_path,
@@ -183,14 +165,11 @@ def _empty_result(file_path: str) -> LoggingPatternResult:
         smell_counts={},
     )
 
-
 def _severity_for(smell_type: str) -> str:
     return _SMELL_SEVERITY.get(smell_type, SEVERITY_LOW)
 
-
 def _text(node: tree_sitter.Node, content: bytes) -> str:
     return content[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
 
 def _find_child(node: tree_sitter.Node, child_type: str) -> tree_sitter.Node | None:
     for child in node.children:
@@ -198,32 +177,12 @@ def _find_child(node: tree_sitter.Node, child_type: str) -> tree_sitter.Node | N
             return child
     return None
 
-
 def _is_sensitive_name(name: str) -> bool:
     lower = name.lower().replace("-", "_")
     return any(s in lower for s in _SENSITIVE_NAMES)
 
-
-class LoggingPatternAnalyzer:
+class LoggingPatternAnalyzer(BaseAnalyzer):
     """Detects logging anti-patterns across Python, JS/TS, Java, and Go."""
-
-    def __init__(self) -> None:
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-        self._languages: dict[str, tree_sitter.Language] = {}
-
-    def _get_parser(self, ext: str) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if ext not in _LANGUAGE_MODULES:
-            return None, None
-        if ext not in self._parsers:
-            module_name = _LANGUAGE_MODULES[ext]
-            lang_module = __import__(module_name)
-            func_name = _LANGUAGE_FUNCS.get(ext, "language")
-            language_func = getattr(lang_module, func_name)
-            language = tree_sitter.Language(language_func())
-            parser = tree_sitter.Parser(language)
-            self._languages[ext] = language
-            self._parsers[ext] = parser
-        return self._languages.get(ext), self._parsers.get(ext)
 
     def analyze_file(
         self,

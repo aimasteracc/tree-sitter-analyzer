@@ -27,7 +27,6 @@ class FrameworkType(Enum):
     EXPRESS = "express"
     SPRING = "spring"
 
-
 @dataclass(frozen=True)
 class ApiEndpoint:
     """A discovered API endpoint."""
@@ -48,7 +47,6 @@ class ApiEndpoint:
             "file": self.file,
             "line": self.line,
         }
-
 
 def discover_endpoints(
     project_root: str,
@@ -115,7 +113,6 @@ def discover_endpoints(
             continue
 
     return endpoints
-
 
 def _detect_flask_routes(file_path: str) -> list[ApiEndpoint]:
     """Detect Flask routes using decorator and function analysis.
@@ -204,7 +201,6 @@ def _detect_flask_routes(file_path: str) -> list[ApiEndpoint]:
 
     return endpoints
 
-
 def _detect_fastapi_endpoints(file_path: str) -> list[ApiEndpoint]:
     """Detect FastAPI endpoints using decorator analysis.
 
@@ -250,7 +246,6 @@ def _detect_fastapi_endpoints(file_path: str) -> list[ApiEndpoint]:
                     ))
 
     return endpoints
-
 
 def _detect_django_urls(file_path: str) -> list[ApiEndpoint]:
     """Detect Django URL patterns.
@@ -328,7 +323,6 @@ def _detect_django_urls(file_path: str) -> list[ApiEndpoint]:
 
     return endpoints
 
-
 def _detect_express_routes(file_path: str) -> list[ApiEndpoint]:
     """Detect Express.js routes.
 
@@ -367,7 +361,6 @@ def _detect_express_routes(file_path: str) -> list[ApiEndpoint]:
                     ))
 
     return endpoints
-
 
 def _detect_spring_endpoints(file_path: str) -> list[ApiEndpoint]:
     """Detect Spring Boot endpoints.
@@ -488,7 +481,6 @@ def _detect_spring_endpoints(file_path: str) -> list[ApiEndpoint]:
 
     return endpoints
 
-
 def _find_java_handler_after(
     lines: list[str], annotation_line: int, method_map: dict[int, str]
 ) -> str | None:
@@ -498,7 +490,6 @@ def _find_java_handler_after(
         if i in method_map:
             return method_map[i]
     return None
-
 
 # Helper functions
 
@@ -510,14 +501,12 @@ def _extract_route_path(line: str) -> str | None:
         return match.group(1)
     return None
 
-
 def _extract_django_path(line: str) -> str | None:
     """Extract path from Django path() call."""
     match = re.search(r'path\(["\']([^"\']+)["\']', line)
     if match:
         return match.group(1)
     return None
-
 
 def _extract_django_path_re(line: str) -> str | None:
     """Extract path from Django re_path() call."""
@@ -527,7 +516,6 @@ def _extract_django_path_re(line: str) -> str | None:
         return match.group(1)
     return None
 
-
 def _extract_django_handler(line: str) -> str | None:
     """Extract handler from Django path() call."""
     import re
@@ -535,7 +523,6 @@ def _extract_django_handler(line: str) -> str | None:
     if match:
         return match.group(1)
     return None
-
 
 def _extract_http_methods(line: str, default: tuple[str, ...] = ("GET",)) -> tuple[str, ...]:
     """Extract HTTP methods from decorator line."""
@@ -546,7 +533,6 @@ def _extract_http_methods(line: str, default: tuple[str, ...] = ("GET",)) -> tup
         methods = [m.strip().strip('"\'') for m in methods_str.split(',')]
         return tuple(m.upper() for m in methods if m)
     return default
-
 
 def _extract_api_view_methods(line: str) -> tuple[str, ...]:
     """Extract methods from @api_view decorator."""
@@ -560,7 +546,6 @@ def _extract_api_view_methods(line: str) -> tuple[str, ...]:
             methods = [m.strip().strip('"\'') for m in methods_str.split(',')]
             return tuple(m.upper() for m in methods if m)
     return ("GET",)
-
 
 def _find_handler_function(lines: list[str], decorator_line: int) -> str | None:
     """Find the handler function name after a decorator.
@@ -582,7 +567,6 @@ def _find_handler_function(lines: list[str], decorator_line: int) -> str | None:
                 return match.group(1)
     return None
 
-
 def _extract_js_route_path(line: str) -> str | None:
     """Extract route path from Express route call."""
     import re
@@ -594,7 +578,6 @@ def _extract_js_route_path(line: str) -> str | None:
             path = path.split("?")[0]
         return path
     return None
-
 
 def _extract_js_handler(line: str) -> str | None:
     """Extract handler name from Express route call."""
@@ -610,7 +593,6 @@ def _extract_js_handler(line: str) -> str | None:
             return f"<{match.group(1)}>"
     return "<anonymous>"
 
-
 def _extract_java_method_name(line: str) -> str | None:
     """Extract method name from Java method declaration."""
     import re
@@ -618,7 +600,6 @@ def _extract_java_method_name(line: str) -> str | None:
     if match:
         return match.group(1)
     return None
-
 
 def _extract_java_annotation_value(line: str) -> str | None:
     """Extract path value from Java annotation."""
@@ -632,7 +613,6 @@ def _extract_java_annotation_value(line: str) -> str | None:
         return match.group(1)
     return None
 
-
 def _extract_request_mapping_methods(line: str) -> tuple[str, ...]:
     """Extract methods from @RequestMapping."""
     import re
@@ -642,7 +622,6 @@ def _extract_request_mapping_methods(line: str) -> tuple[str, ...]:
         methods = [m.strip().split('.')[-1] for m in methods_str.split(',')]
         return tuple(m.upper() for m in methods if m)
     return ("GET", "POST")  # Default methods
-
 
 def calculate_metrics(endpoints: list[ApiEndpoint]) -> dict[str, Any]:
     """Calculate metrics for discovered endpoints.

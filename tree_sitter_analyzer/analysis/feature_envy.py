@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
@@ -30,21 +31,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 SEVERITY_HIGH = "high"
@@ -77,10 +63,8 @@ _SUGGESTIONS: dict[str, str] = {
     ISSUE_INTIMACY: "Reduce coupling by using proper interfaces or combining classes",
 }
 
-
 def _txt(node: tree_sitter.Node) -> str:
     return node.text.decode("utf-8", errors="replace") if node.text else ""
-
 
 @dataclass(frozen=True)
 class FeatureEnvyIssue:
@@ -96,7 +80,6 @@ class FeatureEnvyIssue:
     foreign_accesses: int
     description: str
     suggestion: str
-
 
 @dataclass(frozen=True)
 class FeatureEnvyResult:
@@ -141,7 +124,6 @@ class FeatureEnvyResult:
     def get_issues_by_type(self, issue_type: str) -> tuple[FeatureEnvyIssue, ...]:
         return tuple(i for i in self.issues if i.issue_type == issue_type)
 
-
 def _empty_result(file_path: str, language: str) -> FeatureEnvyResult:
     return FeatureEnvyResult(
         issues=(),
@@ -153,7 +135,6 @@ def _empty_result(file_path: str, language: str) -> FeatureEnvyResult:
         language=language,
     )
 
-
 def _severity_counts(
     issues: tuple[FeatureEnvyIssue, ...],
 ) -> tuple[int, int, int]:
@@ -162,33 +143,8 @@ def _severity_counts(
     low = sum(1 for i in issues if i.severity == SEVERITY_LOW)
     return high, medium, low
 
-
-class FeatureEnvyAnalyzer:
+class FeatureEnvyAnalyzer(BaseAnalyzer):
     """Analyzes source code for feature envy and related patterns."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> FeatureEnvyResult:
         path = Path(file_path)

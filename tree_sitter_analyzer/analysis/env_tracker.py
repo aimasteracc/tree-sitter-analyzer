@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 from tree_sitter_analyzer.utils.tree_sitter_compat import TreeSitterQueryCompat
 
@@ -105,7 +106,6 @@ _GO_GETENV_QUERY = """
             (interpreted_string_literal_content) @var_name))) @ref
 """
 
-
 class AccessType(Enum):
     """Type of environment variable access."""
 
@@ -116,7 +116,6 @@ class AccessType(Enum):
     SYSTEM_GETENV = "system_getenv"
     SYSTEM_GETPROPERTY = "system_getproperty"
     GO_GETENV = "go_getenv"
-
 
 @dataclass(frozen=True)
 class EnvVarReference:
@@ -129,7 +128,6 @@ class EnvVarReference:
     access_type: str
     context: str
     has_default: bool = False
-
 
 @dataclass
 class EnvVarUsage:
@@ -156,7 +154,6 @@ class EnvVarUsage:
             self.access_types.get(ref.access_type, 0) + 1
         )
 
-
 @dataclass
 class EnvTrackingResult:
     """Result of environment variable tracking on a file or project."""
@@ -179,25 +176,8 @@ class EnvTrackingResult:
             self.unique_vars += 1
         self.by_var[ref.var_name].add_reference(ref)
 
-
-class EnvVarTracker:
+class EnvVarTracker(BaseAnalyzer):
     """Track environment variable usage in code."""
-
-    _LANGUAGE_MODULES: dict[str, str] = {
-        ".py": "tree_sitter_python",
-        ".js": "tree_sitter_javascript",
-        ".ts": "tree_sitter_typescript",
-        ".tsx": "tree_sitter_typescript",
-        ".jsx": "tree_sitter_javascript",
-        ".java": "tree_sitter_java",
-        ".go": "tree_sitter_go",
-    }
-
-    # Language module function name overrides (for modules without .language)
-    _LANGUAGE_FUNCS: dict[str, str] = {
-        ".ts": "language_typescript",
-        ".tsx": "language_tsx",
-    }
 
     def __init__(
         self,
@@ -206,30 +186,7 @@ class EnvVarTracker:
     ) -> None:
         self.project_root = Path(project_root).resolve()
         self.include_defaults = include_defaults
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in self._LANGUAGE_MODULES:
-            return None, None
-
-        if extension not in self._parsers:
-            module_name = self._LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = self._LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-
-        return self._languages.get(extension), self._parsers.get(extension)
+        super().__init__()
 
     def _run_query(
         self,
@@ -640,7 +597,6 @@ class EnvVarTracker:
             for i, line_content in enumerate(context_lines_list)
         )
 
-
 def track_env_vars(
     file_path: str | Path,
     project_root: str | Path | None = None,
@@ -652,7 +608,6 @@ def track_env_vars(
     tracker = EnvVarTracker(project_root, include_defaults)
     return tracker.track_file(file_path)
 
-
 def group_by_var_name(
     references: list[EnvVarReference],
 ) -> dict[str, EnvVarUsage]:
@@ -663,7 +618,6 @@ def group_by_var_name(
             by_var[ref.var_name] = EnvVarUsage(var_name=ref.var_name)
         by_var[ref.var_name].add_reference(ref)
     return by_var
-
 
 def find_unused_declarations(
     declarations: set[str],

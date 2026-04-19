@@ -27,7 +27,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-
 class Visibility(Enum):
     """Symbol visibility level."""
 
@@ -35,7 +34,6 @@ class Visibility(Enum):
     PROTECTED = "protected"
     PRIVATE = "private"
     PACKAGE = "package"  # default (Java) / internal (C#)
-
 
 class SemanticRiskLevel(Enum):
     """Risk assessment for a proposed change."""
@@ -45,7 +43,6 @@ class SemanticRiskLevel(Enum):
     MODERATE = "moderate"  # Multiple callers or protected visibility
     HIGH = "high"  # Public API, many callers, or base class
     CRITICAL = "critical"  # Core API, deep call chains, type hierarchy root
-
 
 @dataclass(frozen=True)
 class SymbolProfile:
@@ -64,7 +61,6 @@ class SymbolProfile:
     base_classes: tuple[str, ...] = ()
     annotations: tuple[str, ...] = ()
 
-
 @dataclass(frozen=True)
 class SemanticImpactReport:
     """Complete semantic impact analysis result."""
@@ -78,7 +74,6 @@ class SemanticImpactReport:
     call_chain_depth: int
     is_type_hierarchy_root: bool
     suggestions: tuple[str, ...]
-
 
 # Visibility multipliers: higher = wider impact
 _VISIBILITY_WEIGHTS: dict[Visibility, float] = {
@@ -96,14 +91,12 @@ _RISK_THRESHOLDS: list[tuple[int, SemanticRiskLevel]] = [
     (20, SemanticRiskLevel.LOW),
 ]
 
-
 def _determine_risk_level(score: int) -> SemanticRiskLevel:
     """Map numeric risk score to a categorical risk level."""
     for threshold, level in _RISK_THRESHOLDS:
         if score >= threshold:
             return level
     return SemanticRiskLevel.SAFE
-
 
 def _compute_risk_score(
     caller_count: int,
@@ -195,7 +188,6 @@ def _compute_risk_score(
     final_score = min(int(score), 100)
     return final_score, tuple(factors)
 
-
 def _generate_suggestions(
     risk_level: SemanticRiskLevel,
     is_type_hierarchy_root: bool,
@@ -247,7 +239,6 @@ def _generate_suggestions(
         )
 
     return tuple(suggestions)
-
 
 def analyze_semantic_impact(
     symbol: str,
@@ -328,7 +319,6 @@ def analyze_semantic_impact(
         suggestions=suggestions,
     )
 
-
 def extract_visibility_from_element(element: Any) -> Visibility:
     """
     Extract visibility from an analysis element.
@@ -356,7 +346,6 @@ def extract_visibility_from_element(element: Any) -> Visibility:
         "": Visibility.PUBLIC,  # Default to public
     }
     return visibility_map.get(visibility_str.lower(), Visibility.PUBLIC)
-
 
 def build_symbol_profile(
     element: Any,
@@ -439,7 +428,6 @@ def build_symbol_profile(
         base_classes=base_classes,
         annotations=annotations,
     )
-
 
 def report_to_dict(report: SemanticImpactReport) -> dict[str, Any]:
     """Convert report to a JSON-serializable dictionary."""

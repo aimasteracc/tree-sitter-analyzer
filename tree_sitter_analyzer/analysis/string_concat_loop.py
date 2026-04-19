@@ -11,6 +11,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -20,25 +21,9 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
 SEVERITY_LOW = "low"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_HIGH = "high"
-
 
 def _severity(loop_depth: int) -> str:
     if loop_depth >= 2:
@@ -46,7 +31,6 @@ def _severity(loop_depth: int) -> str:
     if loop_depth == 1:
         return SEVERITY_MEDIUM
     return SEVERITY_LOW
-
 
 @dataclass(frozen=True)
 class ConcatHotspot:
@@ -67,7 +51,6 @@ class ConcatHotspot:
             "variable": self.variable,
         }
 
-
 @dataclass(frozen=True)
 class StringConcatLoopResult:
     """Aggregated string concat in loop analysis result."""
@@ -82,7 +65,6 @@ class StringConcatLoopResult:
             "hotspots": [h.to_dict() for h in self.hotspots],
             "file_path": self.file_path,
         }
-
 
 _LOOP_TYPES: dict[str, frozenset[str]] = {
     ".py": frozenset({"for_statement", "while_statement"}),
@@ -109,33 +91,8 @@ _LOOP_TYPES: dict[str, frozenset[str]] = {
     ".go": frozenset({"for_statement"}),
 }
 
-
-class StringConcatLoopAnalyzer:
+class StringConcatLoopAnalyzer(BaseAnalyzer):
     """Analyzes string concatenation inside loops."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> StringConcatLoopResult:
         path = Path(file_path)
@@ -231,7 +188,6 @@ class StringConcatLoopAnalyzer:
         for child in loop_node.children:
             visit(child)
 
-
 def _get_concat_finder(
     ext: str,
 ) -> type[_BaseConcatFinder]:
@@ -245,14 +201,12 @@ def _get_concat_finder(
         return _GoConcatFinder
     return _BaseConcatFinder
 
-
 class _BaseConcatFinder:
     @staticmethod
     def find(
         node: tree_sitter.Node, content: bytes
     ) -> tuple[str, str] | None:
         return None
-
 
 class _PythonConcatFinder(_BaseConcatFinder):
     @staticmethod
@@ -272,7 +226,6 @@ class _PythonConcatFinder(_BaseConcatFinder):
                     ].decode("utf-8", errors="replace")
                     return (var_name, "+=")
         return None
-
 
 class _JSConcatFinder(_BaseConcatFinder):
     @staticmethod
@@ -297,7 +250,6 @@ class _JSConcatFinder(_BaseConcatFinder):
                         return (var_name, "+=")
         return None
 
-
 class _JavaConcatFinder(_BaseConcatFinder):
     @staticmethod
     def find(
@@ -317,7 +269,6 @@ class _JavaConcatFinder(_BaseConcatFinder):
                         ].decode("utf-8", errors="replace")
                         return (var_name, "+=")
         return None
-
 
 class _GoConcatFinder(_BaseConcatFinder):
     @staticmethod

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 from tree_sitter_analyzer.utils.tree_sitter_compat import TreeSitterQueryCompat
 
@@ -32,14 +33,12 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-
 class PatternSeverity(Enum):
     """Severity of error handling anti-pattern."""
 
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
-
 
 class PatternType(Enum):
     """Type of error handling anti-pattern."""
@@ -51,12 +50,10 @@ class PatternType(Enum):
     INCONSISTENT_STYLE = "inconsistent_style"
     FINALLY_WITHOUT_HANDLE = "finally_without_handle"
 
-
 BROAD_EXCEPTION_NAMES: frozenset[str] = frozenset({
     "Exception", "BaseException", "RuntimeException",
     "Error", "Throwable",
 })
-
 
 @dataclass(frozen=True)
 class ErrorHandlingIssue:
@@ -72,7 +69,6 @@ class ErrorHandlingIssue:
     suggestion: str
     language: str
     element_name: str = ""
-
 
 @dataclass
 class ErrorHandlingResult:
@@ -94,18 +90,14 @@ class ErrorHandlingResult:
             self.by_pattern.get(issue.pattern_type, 0) + 1
         )
 
-
 def _node_text(node: tree_sitter.Node, source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
 
 def _line(node: tree_sitter.Node) -> int:
     return node.start_point[0] + 1
 
-
 def _end_line(node: tree_sitter.Node) -> int:
     return node.end_point[0] + 1
-
 
 def _count_named_children(block_node: tree_sitter.Node, exclude: frozenset[str] = frozenset()) -> int:
     """Count named children excluding certain types."""
@@ -114,7 +106,6 @@ def _count_named_children(block_node: tree_sitter.Node, exclude: frozenset[str] 
         if c.is_named and c.type not in exclude
     )
 
-
 def _is_only_pass(block_node: tree_sitter.Node) -> bool:
     """Check if block only has pass_statement and comments."""
     for child in block_node.children:
@@ -122,24 +113,8 @@ def _is_only_pass(block_node: tree_sitter.Node) -> bool:
             return False
     return True
 
-
-class ErrorHandlingAnalyzer:
+class ErrorHandlingAnalyzer(BaseAnalyzer):
     """Analyses error handling patterns in source code using AST."""
-
-    _LANGUAGE_MODULES: dict[str, str] = {
-        ".py": "tree_sitter_python",
-        ".js": "tree_sitter_javascript",
-        ".ts": "tree_sitter_typescript",
-        ".tsx": "tree_sitter_typescript",
-        ".jsx": "tree_sitter_javascript",
-        ".java": "tree_sitter_java",
-        ".go": "tree_sitter_go",
-    }
-
-    _LANGUAGE_FUNCS: dict[str, str] = {
-        ".ts": "language_typescript",
-        ".tsx": "language_tsx",
-    }
 
     def __init__(
         self,
@@ -148,33 +123,7 @@ class ErrorHandlingAnalyzer:
     ) -> None:
         self.project_root = Path(project_root).resolve() if project_root else Path.cwd()
         self.severity_threshold = severity_threshold
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in self._LANGUAGE_MODULES:
-            return None, None
-
-        if extension not in self._parsers:
-            module_name = self._LANGUAGE_MODULES[extension]
-            func_name = self._LANGUAGE_FUNCS.get(extension, "language")
-
-            try:
-                mod = __import__(module_name)
-                lang_func = getattr(mod, func_name, None)
-                if lang_func is None:
-                    return None, None
-                language = tree_sitter.Language(lang_func())
-                parser = tree_sitter.Parser(language)
-                self._languages[extension] = language
-                self._parsers[extension] = parser
-            except (ImportError, Exception) as e:
-                logger.debug(f"Cannot load {module_name}: {e}")
-                return None, None
-
-        return self._languages[extension], self._parsers[extension]
+        super().__init__()
 
     def _run_query(
         self,

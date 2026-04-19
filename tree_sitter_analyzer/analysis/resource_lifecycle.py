@@ -53,7 +53,6 @@ PATTERN_PROMISE_CSHARP = re.compile(
 )
 PATTERN_USING_CSHARP = re.compile(r"\busing\s*(?:\(|\s+\w+\s*=)", re.MULTILINE)
 
-
 @dataclass(frozen=True)
 class ResourceIssue:
     file_path: str
@@ -71,7 +70,6 @@ class ResourceIssue:
             "description": self.description,
         }
 
-
 @dataclass(frozen=True)
 class ResourceSafetyStats:
     total_acquisitions: int
@@ -87,7 +85,6 @@ class ResourceSafetyStats:
             "safety_percentage": round(self.safety_percentage, 1),
         }
 
-
 @dataclass(frozen=True)
 class ResourceLifecycleResult:
     file_path: str
@@ -102,10 +99,8 @@ class ResourceLifecycleResult:
             "stats": self.stats.to_dict(),
         }
 
-
 def _count_lines_before(text: str, pos: int) -> int:
     return text[:pos].count("\n") + 1
-
 
 def _analyze_python(content: str, file_path: str) -> list[ResourceIssue]:
     issues: list[ResourceIssue] = []
@@ -153,7 +148,6 @@ def _analyze_python(content: str, file_path: str) -> list[ResourceIssue]:
 
     return issues
 
-
 def _analyze_java(content: str, file_path: str) -> list[ResourceIssue]:
     issues: list[ResourceIssue] = []
 
@@ -187,7 +181,6 @@ def _analyze_java(content: str, file_path: str) -> list[ResourceIssue]:
 
     return issues
 
-
 def _analyze_typescript(content: str, file_path: str) -> list[ResourceIssue]:
     issues: list[ResourceIssue] = []
 
@@ -202,7 +195,6 @@ def _analyze_typescript(content: str, file_path: str) -> list[ResourceIssue]:
         ))
 
     return issues
-
 
 def _analyze_csharp(content: str, file_path: str) -> list[ResourceIssue]:
     issues: list[ResourceIssue] = []
@@ -237,9 +229,7 @@ def _analyze_csharp(content: str, file_path: str) -> list[ResourceIssue]:
 
     return issues
 
-
 _EXT_TO_ANALYZER: dict[str, type] = {}  # populated below
-
 
 class ResourceLifecycleAnalyzer:
     """Analyzes resource lifecycle management in source files."""
@@ -294,7 +284,6 @@ class ResourceLifecycleAnalyzer:
 
         return results
 
-
 _EXT_ANALYZER_MAP: dict[str, Any] = {
     ".py": _analyze_python,
     ".java": _analyze_java,
@@ -304,7 +293,6 @@ _EXT_ANALYZER_MAP: dict[str, Any] = {
     ".jsx": _analyze_typescript,
     ".cs": _analyze_csharp,
 }
-
 
 def _count_safe_acquisitions(content: str, ext: str) -> int:
     if ext == ".py":

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
@@ -24,28 +25,12 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
 _SUPERSCRIPT = {
     1: "\u00b9",
     2: "\u00b2",
     3: "\u00b3",
     4: "\u2074",
 }
-
 
 def _estimate_complexity(depth: int) -> str:
     if depth == 0:
@@ -57,7 +42,6 @@ def _estimate_complexity(depth: int) -> str:
         return f"O(n{sup})"
     return f"O(n^{depth})"
 
-
 @dataclass(frozen=True)
 class LoopHotspot:
     """A loop nesting hotspot."""
@@ -66,7 +50,6 @@ class LoopHotspot:
     depth: int
     complexity: str
     loop_type: str
-
 
 @dataclass(frozen=True)
 class LoopComplexityResult:
@@ -78,33 +61,8 @@ class LoopComplexityResult:
     total_loops: int
     file_path: str
 
-
-class LoopComplexityAnalyzer:
+class LoopComplexityAnalyzer(BaseAnalyzer):
     """Analyzes loop nesting and estimates algorithmic complexity."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> LoopComplexityResult:
         path = Path(file_path)
@@ -212,7 +170,6 @@ class LoopComplexityAnalyzer:
 
         visit(node, 0)
         return max_depth, total_loops, hotspots
-
 
 # ── Language-specific loop node types ───────────────────────────────────
 

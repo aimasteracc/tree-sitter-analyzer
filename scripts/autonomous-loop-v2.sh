@@ -169,12 +169,18 @@ $(cat "$recovery")
 关键：深度分析必须有，但 Skill 调用方式要正确——要求分析而非问答。
 
 **Self-Hosting 质量门禁（必须执行）**：
-每个 Sprint 完成后、commit 之前，用项目自己的工具扫描新增文件：
-- type_annotation_coverage → 检查新代码的类型标注率（目标 ≥80%）
-- magic_values → 检查新代码中的魔法值
-- code_smell_detector → 检查新代码的代码异味
-这是 dogfooding：如果工具不能在自己的代码库上发现问题，说明工具不够好。
-检查结果记录到 findings.md，严重问题修复后再 commit。
+每个 Sprint 完成后、commit 之前：
+1. 运行文件级扫描：
+   uv run python scripts/self-hosting-gate.py --last-commit --fail-threshold 80
+2. 运行架构检查：
+   uv run python scripts/self-hosting-gate.py --architecture
+3. 如果任一检查失败（exit code != 0），必须修复后再 commit
+
+**架构规则（强制）**：
+- 新 analyzer 必须继承 BaseAnalyzer（禁止 _LANGUAGE_MODULES）
+- 新 tool 必须在 tool_registration.py 注册
+- 功能评分 >= 8/12 才能开始实现
+- 每 5 个新功能后执行 1 次重构 Sprint
 
 ⚠️  禁止使用 AskUserQuestion！
 ⚠️  遇到需要确认的情况，直接做决定并继续！

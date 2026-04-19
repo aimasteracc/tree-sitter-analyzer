@@ -30,7 +30,6 @@ class AnnotationStat:
             "line": self.line,
         }
 
-
 @dataclass(frozen=True)
 class CoverageResult:
     """Aggregated annotation coverage for a file."""
@@ -49,7 +48,6 @@ class CoverageResult:
             "coverage_pct": round(self.coverage_pct, 1),
             "stats": [s.to_dict() for s in self.stats],
         }
-
 
 class TypeAnnotationAnalyzer:
     """Analyze type annotation coverage in Python code."""

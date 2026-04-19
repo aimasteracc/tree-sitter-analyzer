@@ -39,7 +39,6 @@ class PatternType(Enum):
     LONG_METHOD = "long_method"
     CIRCULAR_DEPENDENCY = "circular_dependency"
 
-
 @dataclass(frozen=True)
 class PatternMatch:
     """A detected design pattern match."""
@@ -69,7 +68,6 @@ class PatternMatch:
             "elements": self.elements,
             "language": self.language,
         }
-
 
 def detect_patterns(
     classes: list[dict[str, Any]],
@@ -128,7 +126,6 @@ def detect_patterns(
             matches.append(template_match)
 
     return matches
-
 
 def _check_singleton(
     cls: dict[str, Any], file_path: str, language: str
@@ -215,7 +212,6 @@ def _check_singleton(
 
     return None
 
-
 def _check_factory_method(
     cls: dict[str, Any], file_path: str, language: str
 ) -> PatternMatch | None:
@@ -250,7 +246,6 @@ def _check_factory_method(
         )
 
     return None
-
 
 def _check_observer(
     cls: dict[str, Any], file_path: str, language: str
@@ -306,7 +301,6 @@ def _check_observer(
         )
 
     return None
-
 
 def _check_strategy(
     cls: dict[str, Any], all_classes: list[dict[str, Any]],
@@ -364,7 +358,6 @@ def _check_strategy(
 
     return None
 
-
 def _check_god_class(
     cls: dict[str, Any], file_path: str, language: str
 ) -> PatternMatch | None:
@@ -408,7 +401,6 @@ def _check_god_class(
 
     return None
 
-
 def _check_long_method(
     func: dict[str, Any], file_path: str, language: str
 ) -> PatternMatch | None:
@@ -448,7 +440,6 @@ def _check_long_method(
         )
 
     return None
-
 
 def _check_template_method(
     func: dict[str, Any], file_path: str, language: str

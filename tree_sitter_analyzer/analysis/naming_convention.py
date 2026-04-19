@@ -19,6 +19,7 @@ from typing import Any
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -26,21 +27,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 VIOLATION_SINGLE_LETTER = "single_letter_var"
@@ -175,7 +161,6 @@ _GO_PARAM_NODES: frozenset[str] = frozenset({
     "parameter_list", "parameter_declaration",
 })
 
-
 def _detect_style(name: str) -> str:
     if _RE_UPPER_SNAKE.match(name) or _RE_SCREAMING.match(name):
         return STYLE_UPPER_SNAKE
@@ -188,7 +173,6 @@ def _detect_style(name: str) -> str:
     if _RE_LOWER.match(name):
         return STYLE_LOWER
     return STYLE_UNKNOWN
-
 
 def _suggest_style(name: str, target_style: str) -> str | None:
     """Suggest a rename if the name doesn't match target style."""
@@ -208,7 +192,6 @@ def _suggest_style(name: str, target_style: str) -> str | None:
         return "".join(p.capitalize() for p in parts)
     return None
 
-
 def _split_identifier(name: str) -> list[str]:
     """Split identifier into word parts."""
     if "_" in name and name == name.upper():
@@ -227,7 +210,6 @@ def _split_identifier(name: str) -> list[str]:
     if current:
         parts.append(current)
     return parts
-
 
 @dataclass(frozen=True)
 class NamingViolation:
@@ -252,7 +234,6 @@ class NamingViolation:
             "suggestion": self.suggestion,
         }
 
-
 @dataclass(frozen=True)
 class StyleDistribution:
     style: str
@@ -265,7 +246,6 @@ class StyleDistribution:
             "count": self.count,
             "percentage": round(self.percentage, 1),
         }
-
 
 @dataclass(frozen=True)
 class NamingResult:
@@ -292,38 +272,8 @@ class NamingResult:
             v for v in self.violations if v.severity == SEVERITY_HIGH
         )
 
-
-class NamingConventionAnalyzer:
+class NamingConventionAnalyzer(BaseAnalyzer):
     """Analyzes naming conventions in source code files."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension in self._parsers:
-            return self._languages[extension], self._parsers[extension]
-
-        module_name = _LANGUAGE_MODULES.get(extension)
-        if not module_name:
-            return None, None
-
-        try:
-            mod = __import__(module_name)
-            func_name = _LANGUAGE_FUNCS.get(extension, "language")
-            lang_func = getattr(mod, func_name, None) or getattr(mod, "language", None)
-            if lang_func is None:
-                return None, None
-            lang = tree_sitter.Language(lang_func())
-            parser = tree_sitter.Parser(lang)
-            self._languages[extension] = lang
-            self._parsers[extension] = parser
-            return lang, parser
-        except Exception as e:
-            logger.warning(f"Failed to load language for {extension}: {e}")
-            return None, None
 
     def _detect_language(self, file_path: str) -> str:
         ext = Path(file_path).suffix.lower()

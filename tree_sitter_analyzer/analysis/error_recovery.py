@@ -97,7 +97,6 @@ _EXT_TO_LANG: dict[str, str] = {
     ".rs": "rust",
 }
 
-
 def _is_binary(content: bytes) -> bool:
     """Detect if content appears to be binary."""
     if not content:
@@ -105,7 +104,6 @@ def _is_binary(content: bytes) -> bool:
     text_chars = set(range(32, 127)) | {9, 10, 13}
     non_text = sum(1 for b in content[:8192] if b not in text_chars)
     return (non_text / min(len(content), 8192)) > BINARY_THRESHOLD
-
 
 def _has_cjk_chars(text: str, sample_size: int = 4096) -> bool:
     """Check if text contains CJK characters above the confirmation threshold."""
@@ -123,7 +121,6 @@ def _has_cjk_chars(text: str, sample_size: int = 4096) -> bool:
         if any(lo <= ord(ch) <= hi for lo, hi in cjk_ranges)
     )
     return (cjk_count / len(sample)) > _CJK_CONFIRM_RATIO
-
 
 def detect_encoding(content: bytes) -> tuple[str, bool]:
     """Detect the encoding of byte content.
@@ -187,7 +184,6 @@ def detect_encoding(content: bytes) -> tuple[str, bool]:
 
     # Final fallback: UTF-8 with replacement (never fails)
     return "utf-8", False
-
 
 class ErrorRecovery:
     """Graceful degradation wrapper for code analysis."""

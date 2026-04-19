@@ -18,6 +18,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -25,21 +26,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 QUALITY_BROAD = "broad_catch"
@@ -88,7 +74,6 @@ _PYTHON_GENERIC_PATTERNS = frozenset({
     "'error'", "'error!'", "'failed'", "'fail'", "'oops'",
 })
 
-
 @dataclass(frozen=True)
 class ExceptionIssue:
     issue_type: str
@@ -99,14 +84,12 @@ class ExceptionIssue:
     description: str
     suggestion: str
 
-
 @dataclass(frozen=True)
 class TryBlockQuality:
     start_line: int
     end_line: int
     handler_count: int
     issues: tuple[ExceptionIssue, ...]
-
 
 @dataclass(frozen=True)
 class ExceptionQualityResult:
@@ -117,14 +100,11 @@ class ExceptionQualityResult:
     quality_score: float
     issue_counts: dict[str, int] = field(default_factory=dict)
 
-
 def _decode(node: tree_sitter.Node) -> str:
     return (node.text or b"").decode("utf-8", errors="replace")
 
-
 def _severity_for(issue_type: str) -> str:
     return _QUALITY_SEVERITY.get(issue_type, SEVERITY_LOW)
-
 
 def _empty_result(file_path: str) -> ExceptionQualityResult:
     return ExceptionQualityResult(
@@ -135,7 +115,6 @@ def _empty_result(file_path: str) -> ExceptionQualityResult:
         quality_score=100.0,
         issue_counts={},
     )
-
 
 def _compute_quality_score(
     handler_count: int,
@@ -153,29 +132,8 @@ def _compute_quality_score(
             penalty += 5.0
     return max(0.0, 100.0 - penalty)
 
-
-class ExceptionQualityAnalyzer:
+class ExceptionQualityAnalyzer(BaseAnalyzer):
     """Analyzes exception handling quality across Python, JS/TS, Java, Go."""
-
-    def __init__(self) -> None:
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-        self._languages: dict[str, tree_sitter.Language] = {}
-
-    def _get_parser(
-        self, ext: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if ext not in _LANGUAGE_MODULES:
-            return None, None
-        if ext not in self._parsers:
-            module_name = _LANGUAGE_MODULES[ext]
-            lang_module = __import__(module_name)
-            func_name = _LANGUAGE_FUNCS.get(ext, "language")
-            language_func = getattr(lang_module, func_name)
-            language = tree_sitter.Language(language_func())
-            parser = tree_sitter.Parser(language)
-            self._languages[ext] = language
-            self._parsers[ext] = parser
-        return self._languages.get(ext), self._parsers.get(ext)
 
     def analyze_file(self, file_path: Path | str) -> ExceptionQualityResult:
         path = Path(file_path)
@@ -255,7 +213,6 @@ class ExceptionQualityAnalyzer:
             if child.type == "except_clause":
                 handler_count += 1
                 issues.extend(self._check_python_except(child, content))
-
 
         return TryBlockQuality(
             start_line=node.start_point[0] + 1,
@@ -384,7 +341,6 @@ class ExceptionQualityAnalyzer:
             if child.type == "finally_clause":
                 handler_count += 1
 
-
         return TryBlockQuality(
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
@@ -476,7 +432,6 @@ class ExceptionQualityAnalyzer:
                 issues.extend(self._check_java_catch(child, content))
             if child.type == "finally_clause":
                 handler_count += 1
-
 
         return TryBlockQuality(
             start_line=node.start_point[0] + 1,
@@ -619,7 +574,6 @@ class ExceptionQualityAnalyzer:
                 )
             )
 
-
         return TryBlockQuality(
             start_line=node.start_point[0] + 1,
             end_line=node.end_point[0] + 1,
@@ -646,7 +600,6 @@ class ExceptionQualityAnalyzer:
                     suggestion="Log or handle the recovered panic",
                 )
             )
-
 
         return TryBlockQuality(
             start_line=node.start_point[0] + 1,

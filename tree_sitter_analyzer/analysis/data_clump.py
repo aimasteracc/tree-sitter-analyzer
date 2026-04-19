@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
@@ -27,21 +28,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 SEVERITY_HIGH = "high"
@@ -98,7 +84,6 @@ _PARAM_NODE_TYPES: dict[str, frozenset[str]] = {
     ".go": frozenset({"parameter_list"}),
 }
 
-
 @dataclass(frozen=True)
 class DataClumpIssue:
     """A single data clump issue."""
@@ -122,7 +107,6 @@ class DataClumpIssue:
             "locations": self.locations,
         }
 
-
 @dataclass(frozen=True)
 class FunctionParams:
     """Parameter info for a single function."""
@@ -130,7 +114,6 @@ class FunctionParams:
     name: str
     line: int
     params: tuple[str, ...]
-
 
 @dataclass(frozen=True)
 class DataClumpResult:
@@ -154,8 +137,7 @@ class DataClumpResult:
             "issues": [i.to_dict() for i in self.issues],
         }
 
-
-class DataClumpAnalyzer:
+class DataClumpAnalyzer(BaseAnalyzer):
     """Detects data clumps: parameter groups appearing together across functions."""
 
     def __init__(
@@ -165,28 +147,7 @@ class DataClumpAnalyzer:
     ) -> None:
         self._min_params = min_params
         self._min_occurrences = min_occurrences
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
+        super().__init__()
 
     def analyze_file(self, file_path: Path | str) -> DataClumpResult:
         path = Path(file_path)

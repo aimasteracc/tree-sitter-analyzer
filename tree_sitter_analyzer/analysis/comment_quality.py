@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
@@ -30,22 +31,6 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
-
 class IssueType:
     PARAM_MISMATCH = "param_mismatch"
     MISSING_RETURN_DOC = "missing_return_doc"
@@ -54,12 +39,10 @@ class IssueType:
     ROT_RISK = "rot_risk"
     MISSING_PARAM_DOC = "missing_param_doc"
 
-
 class Severity:
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
-
 
 @dataclass(frozen=True)
 class CommentIssue:
@@ -72,7 +55,6 @@ class CommentIssue:
     line_number: int
     element_name: str
     detail: str | None = None
-
 
 @dataclass(frozen=True)
 class CommentQualityResult:
@@ -89,7 +71,6 @@ class CommentQualityResult:
 
     def get_issues_by_severity(self, severity: str) -> list[CommentIssue]:
         return [i for i in self.issues if i.severity == severity]
-
 
 def _extract_python_docstring_params(doc: str) -> tuple[list[str], bool]:
     """Extract parameter names and whether return is documented from a Python docstring."""
@@ -128,7 +109,6 @@ def _extract_python_docstring_params(doc: str) -> tuple[list[str], bool]:
 
     return params, has_return
 
-
 def _extract_jsdoc_params(doc: str) -> tuple[list[str], bool]:
     """Extract parameter names and return doc from JSDoc."""
     params: list[str] = []
@@ -140,7 +120,6 @@ def _extract_jsdoc_params(doc: str) -> tuple[list[str], bool]:
     has_return = bool(re.search(r"@returns?\b", doc))
 
     return params, has_return
-
 
 def _extract_javadoc_params(doc: str) -> tuple[list[str], bool]:
     """Extract parameter names and return doc from JavaDoc."""
@@ -154,7 +133,6 @@ def _extract_javadoc_params(doc: str) -> tuple[list[str], bool]:
 
     return params, has_return
 
-
 def _extract_go_doc_params(doc: str) -> tuple[list[str], bool]:
     """Go doc comments don't have structured param tags, but we can check conventions."""
     params: list[str] = []
@@ -163,7 +141,6 @@ def _extract_go_doc_params(doc: str) -> tuple[list[str], bool]:
     # Go convention: params listed in comment
     # No standard tag format, look for common patterns
     return params, has_return
-
 
 _EXTRACTORS: dict[str, type] = {
     "python": type("PythonExtractor", (), {
@@ -179,7 +156,6 @@ _EXTRACTORS: dict[str, type] = {
         "extract_params": staticmethod(_extract_go_doc_params),
     }),
 }
-
 
 def _find_todos(source: str, file_path: str) -> list[CommentIssue]:
     """Find TODO, FIXME, HACK comments in source code."""
@@ -205,33 +181,8 @@ def _find_todos(source: str, file_path: str) -> list[CommentIssue]:
             )
     return issues
 
-
-class CommentQualityAnalyzer:
+class CommentQualityAnalyzer(BaseAnalyzer):
     """Analyzes comment quality across source files."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> CommentQualityResult:
         path = Path(file_path)

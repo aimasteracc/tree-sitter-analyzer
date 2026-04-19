@@ -18,6 +18,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -25,21 +26,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 SMELL_ASSERT_NONE = "assert_none"
@@ -79,7 +65,6 @@ _PY_SLEEP_PATTERNS: frozenset[str] = frozenset({
     "time.sleep",
 })
 
-
 @dataclass(frozen=True)
 class TestSmell:
     """A single smell detected in a test function."""
@@ -97,7 +82,6 @@ class TestSmell:
             "severity": self.severity,
             "detail": self.detail,
         }
-
 
 @dataclass(frozen=True)
 class TestFunction:
@@ -120,7 +104,6 @@ class TestFunction:
             "has_sleep": self.has_sleep,
             "smells": tuple(s.to_dict() for s in self.smells),
         }
-
 
 @dataclass(frozen=True)
 class TestSmellResult:
@@ -152,7 +135,6 @@ class TestSmellResult:
             if s.severity == SEVERITY_HIGH
         )
 
-
 def _empty_result(file_path: str) -> TestSmellResult:
     return TestSmellResult(
         file_path=file_path,
@@ -162,31 +144,11 @@ def _empty_result(file_path: str) -> TestSmellResult:
         smell_counts={},
     )
 
-
 def _severity_for(smell_type: str) -> str:
     return _SMELL_SEVERITY.get(smell_type, SEVERITY_LOW)
 
-
-class TestSmellDetector:
+class TestSmellDetector(BaseAnalyzer):
     """Detects test smells across Python, JS/TS, Java, and Go."""
-
-    def __init__(self) -> None:
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-        self._languages: dict[str, tree_sitter.Language] = {}
-
-    def _get_parser(self, ext: str) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if ext not in _LANGUAGE_MODULES:
-            return None, None
-        if ext not in self._parsers:
-            module_name = _LANGUAGE_MODULES[ext]
-            lang_module = __import__(module_name)
-            func_name = _LANGUAGE_FUNCS.get(ext, "language")
-            language_func = getattr(lang_module, func_name)
-            language = tree_sitter.Language(language_func())
-            parser = tree_sitter.Parser(language)
-            self._languages[ext] = language
-            self._parsers[ext] = parser
-        return self._languages.get(ext), self._parsers.get(ext)
 
     def analyze_file(
         self,

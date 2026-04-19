@@ -415,6 +415,42 @@ python3 scripts/context-auto-reset.py monitor
 
 **记录决策**: 将技术方案记录到 OpenSpec change 的 tasks.md 中
 
+### 步骤 3.5: 功能评分（强制门槛）
+
+在实现任何新功能之前，必须通过以下评分：
+
+**评分维度**（每项 0-3 分）：
+1. **独特性** — 是否与现有工具重叠？(0=完全重复, 3=全新领域)
+2. **需求度** — 是否解决真实问题？(0=理论需求, 3=有明确用户场景)
+3. **架构适配** — 是否符合 BaseAnalyzer 模式？(0=需要新架构, 3=直接适配)
+4. **实现成本** — 能否在 1 个 Sprint 内完成？(0=需要多 Sprint, 3=单 Sprint)
+
+**最低门槛**: 总分 >= 8/12 才能进入步骤 4
+
+**重复检查**（必须执行）：
+```bash
+# 检查是否已有类似工具
+grep -r "关键词" tree_sitter_analyzer/analysis/*.py
+grep -r "关键词" tree_sitter_analyzer/mcp/tools/*.py
+uv run python scripts/self-hosting-gate.py --architecture
+```
+
+**架构检查**（必须通过）：
+- 新 analyzer 必须继承 `BaseAnalyzer`（禁止 `_LANGUAGE_MODULES`）
+- 新 tool 必须在 `tool_registration.py` 注册
+- 注册工具总数不能超过 MAX_TOOLS (80)
+
+### 步骤 3.6: 重构配额
+
+**每 5 个新功能后，必须执行 1 次重构 Sprint**（不允许新功能）：
+
+重构 Sprint 清单：
+1. 运行 `uv run python scripts/self-hosting-gate.py --architecture` 修复所有违规
+2. 删除孤儿文件（tool 文件未注册的）
+3. 合并重叠工具
+4. 运行 `uv run ruff check tree_sitter_analyzer/ --fix && uv run mypy tree_sitter_analyzer/ --strict`
+5. 确认 BaseAnalyzer 采用率 100%
+
 ### 步骤 4: 定义 OpenSpec Change
 
 基于以上讨论，创建新的 OpenSpec change：

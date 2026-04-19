@@ -15,7 +15,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-
 @dataclass(frozen=True)
 class Question:
     """A test question for benchmarking."""
@@ -27,7 +26,6 @@ class Question:
     optional_keywords: set[str] = field(default_factory=set)
     # Category of question (complexity, dependencies, structure, etc.)
     category: str = "general"
-
 
 @dataclass
 class BenchmarkResult:
@@ -52,7 +50,6 @@ class BenchmarkResult:
             "original_size": self.original_size,
             "optimized_size": self.optimized_size,
         }
-
 
 def generate_questions_from_code(content: str) -> list[Question]:
     """Generate test questions based on code content.
@@ -130,7 +127,6 @@ def generate_questions_from_code(content: str) -> list[Question]:
 
     return questions
 
-
 def _extract_code_elements(content: str) -> list[dict[str, Any]]:
     """Extract code elements from content.
 
@@ -176,7 +172,6 @@ def _extract_code_elements(content: str) -> list[dict[str, Any]]:
 
     return elements
 
-
 @lru_cache(maxsize=64)
 def can_answer_question(question: str, content: str, required_keywords: frozenset[str], optional_keywords: frozenset[str] = frozenset()) -> bool:
     """Check if content contains enough information to answer a question.
@@ -208,7 +203,6 @@ def can_answer_question(question: str, content: str, required_keywords: frozense
         return optional_present >= len(optional_keywords) * 0.5
 
     return True
-
 
 def run_benchmark(
     original_content: str,
@@ -285,7 +279,6 @@ def run_benchmark(
         optimized_size=optimized_size,
     )
 
-
 def format_benchmark_report(result: BenchmarkResult) -> str:
     """Format benchmark result as readable report.
 
@@ -316,7 +309,6 @@ def format_benchmark_report(result: BenchmarkResult) -> str:
 - Optimized: {result.optimized_size} chars
 - Reduction: {result.original_size - result.optimized_size} chars
 """
-
 
 def analyze_fidelity_vs_compression(
     original_content: str,

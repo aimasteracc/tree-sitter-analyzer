@@ -44,7 +44,6 @@ _EXT_TO_LANG: dict[str, tuple[str, str]] = {
     ".go": ("tree_sitter_go", "language_go"),
 }
 
-
 @dataclass(frozen=True)
 class CallEdge:
     """A single call from one function to another."""
@@ -64,7 +63,6 @@ class CallEdge:
             "column": self.column,
         }
 
-
 @dataclass(frozen=True)
 class FunctionDef:
     """A function definition found in the codebase."""
@@ -83,7 +81,6 @@ class FunctionDef:
             "end_line": self.end_line,
             "language": self.language,
         }
-
 
 @dataclass
 class CallGraphResult:
@@ -118,7 +115,6 @@ class CallGraphResult:
                 for name, count in self.god_functions
             ],
         }
-
 
 _FUNC_DEF_QUERIES: dict[str, str] = {
     "python": "(function_definition name: (identifier) @func_name) @func_def",
@@ -168,7 +164,6 @@ _FUNC_NODE_TYPES: dict[str, set[str]] = {
     "go": {"function_declaration", "method_declaration"},
 }
 
-
 def _detect_language(file_path: str) -> str | None:
     """Detect language from file extension."""
     ext = Path(file_path).suffix
@@ -177,12 +172,10 @@ def _detect_language(file_path: str) -> str | None:
     _, lang_func = _EXT_TO_LANG[ext]
     return lang_func.replace("language_", "")
 
-
 def _node_text(node: Any) -> str:
     """Extract text from a tree-sitter node."""
     raw = node.text
     return raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
-
 
 class CallGraphAnalyzer:
     """Analyze function call graphs in source code."""

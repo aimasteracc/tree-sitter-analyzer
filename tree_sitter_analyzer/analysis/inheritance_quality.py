@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
@@ -24,27 +25,11 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
 SEVERITY_HIGH = "high"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_INFO = "info"
 
 DEFAULT_DEPTH_THRESHOLD = 3
-
 
 @dataclass(frozen=True)
 class InheritanceIssue:
@@ -56,7 +41,6 @@ class InheritanceIssue:
     severity: str
     class_name: str
     detail: str
-
 
 @dataclass(frozen=True)
 class ClassInfo:
@@ -71,7 +55,6 @@ class ClassInfo:
     has_super_call: bool
     methods: tuple[MethodInfo, ...]
 
-
 @dataclass(frozen=True)
 class MethodInfo:
     """Information about a method in a class."""
@@ -81,7 +64,6 @@ class MethodInfo:
     end_line: int
     body_text: str
     calls_super_only: bool
-
 
 @dataclass(frozen=True)
 class InheritanceQualityResult:
@@ -100,34 +82,12 @@ class InheritanceQualityResult:
     def get_issues_by_type(self, issue_type: str) -> list[InheritanceIssue]:
         return [i for i in self.issues if i.issue_type == issue_type]
 
-
-class InheritanceQualityAnalyzer:
+class InheritanceQualityAnalyzer(BaseAnalyzer):
     """Analyzes inheritance quality patterns in source code."""
 
     def __init__(self, depth_threshold: int = DEFAULT_DEPTH_THRESHOLD) -> None:
         self._depth_threshold = depth_threshold
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
+        super().__init__()
 
     def analyze_file(self, file_path: Path | str) -> InheritanceQualityResult:
         path = Path(file_path)

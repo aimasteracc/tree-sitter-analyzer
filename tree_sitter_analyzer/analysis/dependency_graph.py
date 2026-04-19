@@ -22,7 +22,6 @@ logger = setup_logger(__name__)
 # Lines beyond this threshold trigger streaming import extraction.
 _LARGE_FILE_THRESHOLD = 5000
 
-
 @dataclass(frozen=True)
 class DependencyGraph:
     """Immutable directed graph of file dependencies."""
@@ -220,18 +219,15 @@ class DependencyGraph:
 
         return ranks
 
-
 def _mermaid_id(name: str) -> str:
     """Convert a file name to a valid Mermaid node ID."""
     return re.sub(r"[^a-zA-Z0-9]", "_", Path(name).stem)
-
 
 @dataclass
 class _NodeInfo:
     path: str
     language: str = "unknown"
     imports: list[str] = field(default_factory=list)
-
 
 class DependencyGraphBuilder:
     """Build a dependency graph from source files in a project."""

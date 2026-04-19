@@ -12,8 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import tree_sitter
-
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 from tree_sitter_analyzer.utils.tree_sitter_compat import TreeSitterQueryCompat
 
@@ -26,7 +25,6 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
 }
-
 
 @dataclass(frozen=True)
 class ImportInfo:
@@ -44,7 +42,6 @@ class ImportInfo:
             return f"{self.import_name} as {self.alias}"
         return self.import_name
 
-
 @dataclass(frozen=True)
 class SymbolRef:
     name: str
@@ -52,14 +49,12 @@ class SymbolRef:
     column: int
     context: str = ""
 
-
 @dataclass(frozen=True)
 class SortViolation:
     import_info: ImportInfo
     expected_group: str
     actual_group: str
     message: str
-
 
 @dataclass(frozen=True)
 class CircularImport:
@@ -70,7 +65,6 @@ class CircularImport:
     def display(self) -> str:
         return " -> ".join(self.cycle)
 
-
 @dataclass
 class FileAnalysis:
     file_path: str
@@ -79,7 +73,6 @@ class FileAnalysis:
     symbols: list[SymbolRef] = field(default_factory=list)
     sort_violations: list[SortViolation] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-
 
 @dataclass
 class ImportAnalysisResult:
@@ -107,49 +100,11 @@ class ImportAnalysisResult:
             ],
         }
 
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
-
-class ImportSanitizer:
+class ImportSanitizer(BaseAnalyzer):
     def __init__(self, project_root: str | Path) -> None:
         self.project_root = Path(project_root).resolve()
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
         self._file_analyses: dict[str, FileAnalysis] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
+        super().__init__()
 
     def _run_query(
         self,
@@ -680,11 +635,9 @@ class ImportSanitizer:
     def _node_text(node: Any, source: bytes) -> str:
         return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
-
 def analyze_imports(file_path: str | Path) -> FileAnalysis:
     sanitizer = ImportSanitizer(project_root=Path(file_path).resolve().parent)
     return sanitizer.analyze_file(file_path)
-
 
 def analyze_project(project_root: str | Path) -> ImportAnalysisResult:
     sanitizer = ImportSanitizer(project_root=project_root)

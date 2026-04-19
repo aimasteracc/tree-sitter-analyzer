@@ -97,7 +97,6 @@ _DI_FIELD_MULTILINE = re.compile(
 # Data classes
 # ---------------------------------------------------------------------------
 
-
 @dataclass(frozen=True)
 class LambdaInfo:
     """Extracted Java lambda expression."""
@@ -108,7 +107,6 @@ class LambdaInfo:
     has_typed_params: bool
     body: str
     method_references: tuple[str, ...]
-
 
 @dataclass(frozen=True)
 class StreamChain:
@@ -121,7 +119,6 @@ class StreamChain:
     raw: str
     line: int
 
-
 @dataclass(frozen=True)
 class SpringComponent:
     """Detected Spring component."""
@@ -131,7 +128,6 @@ class SpringComponent:
     line: int
     is_primary: bool
 
-
 @dataclass(frozen=True)
 class SpringInjection:
     """Detected Spring DI injection point."""
@@ -139,7 +135,6 @@ class SpringInjection:
     annotation: str
     field_type: str
     line: int
-
 
 @dataclass
 class JavaPatternResult:
@@ -191,11 +186,9 @@ class JavaPatternResult:
             ],
         }
 
-
 # ---------------------------------------------------------------------------
 # Extractors
 # ---------------------------------------------------------------------------
-
 
 def extract_lambdas(source: str) -> list[LambdaInfo]:
     """Extract lambda expressions from Java source code."""
@@ -238,7 +231,6 @@ def extract_lambdas(source: str) -> list[LambdaInfo]:
 
     return results
 
-
 def extract_stream_chains(source: str) -> list[StreamChain]:
     """Extract Stream API call chains from Java source code."""
     results: list[StreamChain] = []
@@ -277,7 +269,6 @@ def extract_stream_chains(source: str) -> list[StreamChain]:
             ))
 
     return results
-
 
 def extract_spring_patterns(source: str) -> tuple[list[SpringComponent], list[SpringInjection], list[tuple[str, str]]]:
     """Extract Spring annotations, DI injections, and web endpoints.
@@ -353,7 +344,6 @@ def extract_spring_patterns(source: str) -> tuple[list[SpringComponent], list[Sp
 
     return components, injections, endpoints
 
-
 _ENDPOINT_MAP: dict[str, str] = {
     "GetMapping": "GET",
     "PostMapping": "POST",
@@ -365,7 +355,6 @@ _ENDPOINT_MAP: dict[str, str] = {
 
 _PATH_PATTERN = re.compile(r'(?:value|path)\s*=\s*"([^"]+)"')
 _PATH_SHORT = re.compile(r'"([^"]+)"')
-
 
 def _extract_endpoint(annotation: str, line: str) -> tuple[str, str] | None:
     """Extract HTTP method and path from a mapping annotation line."""
@@ -380,11 +369,9 @@ def _extract_endpoint(annotation: str, line: str) -> tuple[str, str] | None:
 
     return (method, path)
 
-
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
-
 
 def analyze_java_patterns(source: str) -> JavaPatternResult:
     """Analyze Java source code for lambda, stream, and Spring patterns.

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -26,21 +27,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 SEVERITY_HIGH = "high"
@@ -104,7 +90,6 @@ _FIELD_TYPES: dict[str, frozenset[str]] = {
     ".go": frozenset({"field_declaration"}),
 }
 
-
 @dataclass(frozen=True)
 class GodClassIssue:
     """A single god class issue."""
@@ -136,7 +121,6 @@ class GodClassIssue:
             "suggestion": self.suggestion,
         }
 
-
 @dataclass(frozen=True)
 class ClassStats:
     """Statistics for a single class."""
@@ -153,7 +137,6 @@ class ClassStats:
             "method_count": self.method_count,
             "field_count": self.field_count,
         }
-
 
 @dataclass(frozen=True)
 class GodClassResult:
@@ -173,7 +156,6 @@ class GodClassResult:
             "file_path": self.file_path,
         }
 
-
 def _classify_issue(
     method_count: int, field_count: int
 ) -> str | None:
@@ -183,33 +165,8 @@ def _classify_issue(
         return ISSUE_LARGE_CLASS
     return None
 
-
-class GodClassAnalyzer:
+class GodClassAnalyzer(BaseAnalyzer):
     """Analyzes classes for excessive size and responsibility."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> GodClassResult:
         path = Path(file_path)

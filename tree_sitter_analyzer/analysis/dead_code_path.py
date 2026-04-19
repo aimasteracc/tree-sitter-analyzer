@@ -13,6 +13,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -20,21 +21,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 SEVERITY_HIGH = "high"
@@ -99,7 +85,6 @@ _TRUE_LITERALS: frozenset[str] = frozenset({
     "True", "1", "true",
 })
 
-
 @dataclass(frozen=True)
 class DeadCodePathIssue:
     """A single unreachable code issue."""
@@ -124,7 +109,6 @@ class DeadCodePathIssue:
             "suggestion": self.suggestion,
         }
 
-
 @dataclass(frozen=True)
 class DeadCodePathResult:
     """Aggregated dead code path analysis result."""
@@ -141,7 +125,6 @@ class DeadCodePathResult:
             "file_path": self.file_path,
         }
 
-
 def _is_go_panic(node: tree_sitter.Node, content: bytes) -> bool:
     """Check if a Go call_expression is panic()."""
     func_node = node.child_by_field_name("function")
@@ -151,7 +134,6 @@ def _is_go_panic(node: tree_sitter.Node, content: bytes) -> bool:
         "utf-8", errors="replace"
     )
     return name == "panic"
-
 
 def _is_terminal_statement(
     node: tree_sitter.Node, ext: str, content: bytes
@@ -168,7 +150,6 @@ def _is_terminal_statement(
                 return True
     return False
 
-
 def _extract_condition_text(
     cond: tree_sitter.Node, content: bytes
 ) -> str:
@@ -180,7 +161,6 @@ def _extract_condition_text(
         text = text[1:-1].strip()
     return text
 
-
 def _is_always_false_condition(
     node: tree_sitter.Node, content: bytes
 ) -> bool:
@@ -190,7 +170,6 @@ def _is_always_false_condition(
         return False
     text = _extract_condition_text(cond, content)
     return text in _FALSE_LITERALS
-
 
 def _is_always_true_condition(
     node: tree_sitter.Node, content: bytes
@@ -202,33 +181,8 @@ def _is_always_true_condition(
     text = _extract_condition_text(cond, content)
     return text in _TRUE_LITERALS
 
-
-class DeadCodePathAnalyzer:
+class DeadCodePathAnalyzer(BaseAnalyzer):
     """Analyzes functions for unreachable code paths."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> DeadCodePathResult:
         path = Path(file_path)

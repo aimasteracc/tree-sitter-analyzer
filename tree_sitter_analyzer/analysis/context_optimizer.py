@@ -19,7 +19,6 @@ WEIGHT_COMPLEXITY = 0.4
 WEIGHT_DEPENDENCY = 0.3
 WEIGHT_CALL_FREQUENCY = 0.3
 
-
 @dataclass(frozen=True)
 class CodeElement:
     """A code element that can be scored and filtered."""
@@ -35,7 +34,6 @@ class CodeElement:
 
     def __hash__(self) -> int:
         return hash((self.name, self.element_type, self.line_number))
-
 
 def score_importance(element: CodeElement) -> float:
     """Calculate importance score for a code element.
@@ -60,7 +58,6 @@ def score_importance(element: CodeElement) -> float:
 
     # Normalize to 0-1 range (heuristic: max expected score ~100)
     return min(raw_score / 100.0, 1.0)
-
 
 def filter_by_importance(
     elements: list[CodeElement],
@@ -100,7 +97,6 @@ def filter_by_importance(
     )
 
     return result
-
 
 @lru_cache(maxsize=128)
 def parse_toon_elements(toon_output: str) -> list[CodeElement]:
@@ -173,7 +169,6 @@ def parse_toon_elements(toon_output: str) -> list[CodeElement]:
 
     return elements
 
-
 def optimize_for_llm(
     toon_output: str,
     threshold: float = 0.5,
@@ -232,7 +227,6 @@ def optimize_for_llm(
         result_lines.append(f"{indent}{el.name}{func_parens}{complexity_note}")
 
     return "\n".join(result_lines)
-
 
 def calculate_compression_ratio(original: str, optimized: str) -> float:
     """Calculate compression ratio.

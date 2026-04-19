@@ -143,8 +143,53 @@ def run_analyzer(
         return {"tool": classname, "status": "error", "error": str(e)[:120]}
 
 
+def _check_architecture() -> list[str]:
+    """Verify architectural invariants. Returns list of violations."""
+    violations: list[str] = []
+    analysis_dir = Path("tree_sitter_analyzer/analysis")
+    tools_dir = Path("tree_sitter_analyzer/mcp/tools")
+    registration = Path("tree_sitter_analyzer/mcp/tool_registration.py")
+
+    # Rule 1: No _LANGUAGE_MODULES outside base.py (must use BaseAnalyzer)
+    if analysis_dir.exists():
+        for f in analysis_dir.glob("*.py"):
+            if f.name in ("base.py", "__init__.py"):
+                continue
+            content = f.read_text()
+            if "_LANGUAGE_MODULES" in content and "BaseAnalyzer" not in content:
+                violations.append(
+                    f"{f.name}: uses _LANGUAGE_MODULES without BaseAnalyzer"
+                )
+
+    # Rule 2: Tool files must be registered
+    if tools_dir.exists() and registration.exists():
+        reg_content = registration.read_text()
+        for f in tools_dir.glob("*_tool.py"):
+            tool_name = f.stem.replace("_tool", "")
+            if tool_name not in reg_content:
+                violations.append(
+                    f"{f.name}: tool file not registered in tool_registration.py"
+                )
+
+    # Rule 3: Tool count limit
+    reg_count = reg_content.count("registry.register(") if registration.exists() else 0
+    max_tools = 80
+    if reg_count > max_tools:
+        violations.append(
+            f"Tool count ({reg_count}) exceeds MAX_TOOLS ({max_tools})"
+        )
+
+    return violations
+
+
 def main() -> None:
     files: list[Path] = []
+    do_arch_check = "--architecture" in sys.argv
+    fail_threshold = 80
+
+    if "--fail-threshold" in sys.argv:
+        idx = sys.argv.index("--fail-threshold")
+        fail_threshold = int(sys.argv[idx + 1])
 
     if "--last-commit" in sys.argv:
         files = get_changed_files(1)
@@ -154,6 +199,19 @@ def main() -> None:
         files = get_changed_files(n)
     else:
         files = [Path(f) for f in sys.argv[1:] if f.endswith(".py") and Path(f).exists()]
+
+    # Architecture check (runs regardless of files)
+    if do_arch_check:
+        print("=" * 50)
+        print("Architecture Quality Check")
+        arch_violations = _check_architecture()
+        if arch_violations:
+            print(f"  Found {len(arch_violations)} violations:")
+            for v in arch_violations:
+                print(f"  ❌ {v}")
+            sys.exit(1)
+        else:
+            print("  ✅ All architecture invariants pass")
 
     if not files:
         print("No Python files to check.")
@@ -204,6 +262,13 @@ def main() -> None:
     print(f"\n{'=' * 50}")
     print(f"Self-hosting score: {runs_ok}/{total} tools ran ({score:.0f}%)")
     print(f"Total findings: {total_findings}")
+
+    # Enforce quality threshold
+    if score < fail_threshold:
+        print(f"\n❌ FAIL: Score {score:.0f}% < threshold {fail_threshold}%")
+        sys.exit(1)
+    else:
+        print(f"\n✅ PASS: Score {score:.0f}% >= threshold {fail_threshold}%")
 
 
 if __name__ == "__main__":

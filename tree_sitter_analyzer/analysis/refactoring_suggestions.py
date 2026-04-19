@@ -19,7 +19,6 @@ class SeverityLevel(Enum):
     LOW = "low"
     INFO = "info"
 
-
 class RefactoringType(Enum):
     """Types of refactoring suggestions."""
     EXTRACT_METHOD = "extract_method"
@@ -30,7 +29,6 @@ class RefactoringType(Enum):
     SPLIT_LARGE_CLASS = "split_large_class"
     REDUCE_NESTING = "reduce_nesting"
 
-
 @dataclass
 class CodeDiff:
     """Before/after code for a refactoring."""
@@ -39,7 +37,6 @@ class CodeDiff:
     language: str
     line_start: int
     line_end: int
-
 
 @dataclass
 class RefactoringSuggestion:
@@ -75,7 +72,6 @@ class RefactoringSuggestion:
             "estimated_effort": self.estimated_effort,
         }
 
-
 @dataclass
 class RefactoringReport:
     """Complete refactoring suggestions report."""
@@ -108,7 +104,6 @@ class RefactoringReport:
             "medium_count": self.medium_count,
             "suggestions": [s.to_dict() for s in self.suggestions],
         }
-
 
 class RefactoringAdvisor:
     """

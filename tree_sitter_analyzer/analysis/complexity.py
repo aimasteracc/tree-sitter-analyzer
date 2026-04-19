@@ -36,7 +36,6 @@ ANSI_COLORS = {
     "reset": "\033[0m",
 }
 
-
 @dataclass(frozen=True)
 class LineComplexity:
     """Complexity score for a single line."""
@@ -45,7 +44,6 @@ class LineComplexity:
     level: str  # low, medium, high, critical
     ascii_char: str
     nodes: tuple[str, ...] = ()  # AST node types contributing to complexity
-
 
 @dataclass(frozen=True)
 class FileComplexityHeatmap:
@@ -58,7 +56,6 @@ class FileComplexityHeatmap:
     overall_level: str
     lines: tuple[LineComplexity, ...]
     source_lines: tuple[str, ...] = ()
-
 
 @dataclass
 class ComplexityAnalyzer:
@@ -185,7 +182,6 @@ class ComplexityAnalyzer:
         else:
             return "low"
 
-
 @dataclass
 class HeatmapFormatter:
     """Format complexity heatmap for display."""
@@ -256,7 +252,6 @@ class HeatmapFormatter:
             "complex_lines": level_counts["high"] + level_counts["critical"],
         }
 
-
 def create_heatmap(
     project_root: str,
     file_path: str,
@@ -265,7 +260,6 @@ def create_heatmap(
     """Create a complexity heatmap for a file."""
     analyzer = ComplexityAnalyzer(project_root)
     return analyzer.analyze_file(file_path)
-
 
 def format_heatmap(
     heatmap: FileComplexityHeatmap,

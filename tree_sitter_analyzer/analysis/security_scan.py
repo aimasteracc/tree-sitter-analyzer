@@ -39,7 +39,6 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go", ".cs", ".rb",
 }
 
-
 class SecuritySeverity(Enum):
     """Severity level for security findings."""
 
@@ -48,7 +47,6 @@ class SecuritySeverity(Enum):
     MEDIUM = "medium"
     LOW = "low"
     INFO = "info"
-
 
 class VulnerabilityType(Enum):
     """OWASP-style vulnerability categorization."""
@@ -61,7 +59,6 @@ class VulnerabilityType(Enum):
     WEAK_CRYPTO = "weak_crypto"
     PATH_TRAVERSAL = "path_traversal"
     INSECURE_CONFIG = "insecure_config"
-
 
 @dataclass(frozen=True)
 class SecurityPattern:
@@ -78,7 +75,6 @@ class SecurityPattern:
     keywords: tuple[str, ...] = ()
     language: str = ""  # Empty means applies to all languages
 
-
 @dataclass(frozen=True)
 class SecurityFinding:
     """A single detected security vulnerability."""
@@ -94,7 +90,6 @@ class SecurityFinding:
     cwe_id: str = ""
     code_snippet: str = ""
     matched_pattern: str = ""
-
 
 @dataclass
 class SecurityScanResult:
@@ -139,7 +134,6 @@ class SecurityScanResult:
                 for f in self.findings
             ],
         }
-
 
 class SecurityScanner:
     """Security vulnerability scanner using AST pattern matching."""

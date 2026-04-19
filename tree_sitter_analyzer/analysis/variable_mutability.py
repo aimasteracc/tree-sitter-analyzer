@@ -19,6 +19,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -26,21 +27,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 MUTABILITY_SHADOW = "shadow_variable"
@@ -99,7 +85,6 @@ _GO_SCOPE_NODES = frozenset({
     "for_statement", "if_statement",
 })
 
-
 @dataclass(frozen=True)
 class MutabilityIssue:
     issue_type: str
@@ -110,7 +95,6 @@ class MutabilityIssue:
     description: str
     suggestion: str
 
-
 @dataclass(frozen=True)
 class MutabilityResult:
     file_path: str
@@ -119,10 +103,8 @@ class MutabilityResult:
     quality_score: float
     issue_counts: dict[str, int] = field(default_factory=dict)
 
-
 def _decode(node: tree_sitter.Node) -> str:
     return (node.text or b"").decode("utf-8", errors="replace")
-
 
 def _empty_result(file_path: str) -> MutabilityResult:
     return MutabilityResult(
@@ -132,7 +114,6 @@ def _empty_result(file_path: str) -> MutabilityResult:
         quality_score=100.0,
         issue_counts={},
     )
-
 
 def _compute_score(issue_count: int, issues: list[MutabilityIssue]) -> float:
     if issue_count == 0:
@@ -147,29 +128,8 @@ def _compute_score(issue_count: int, issues: list[MutabilityIssue]) -> float:
             penalty += 3.0
     return max(0.0, 100.0 - penalty)
 
-
-class VariableMutabilityAnalyzer:
+class VariableMutabilityAnalyzer(BaseAnalyzer):
     """Analyzes variable mutability issues across Python, JS/TS, Java, Go."""
-
-    def __init__(self) -> None:
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-        self._languages: dict[str, tree_sitter.Language] = {}
-
-    def _get_parser(
-        self, ext: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if ext not in _LANGUAGE_MODULES:
-            return None, None
-        if ext not in self._parsers:
-            module_name = _LANGUAGE_MODULES[ext]
-            lang_module = __import__(module_name)
-            func_name = _LANGUAGE_FUNCS.get(ext, "language")
-            language_func = getattr(lang_module, func_name)
-            language = tree_sitter.Language(language_func())
-            parser = tree_sitter.Parser(language)
-            self._languages[ext] = language
-            self._parsers[ext] = parser
-        return self._languages.get(ext), self._parsers.get(ext)
 
     def analyze_file(self, file_path: Path | str) -> MutabilityResult:
         path = Path(file_path)

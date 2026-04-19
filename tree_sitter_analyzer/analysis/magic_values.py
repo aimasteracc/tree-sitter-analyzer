@@ -24,7 +24,6 @@ _EXT_TO_LANG: dict[str, tuple[str, str]] = {
     ".go": ("tree_sitter_go", "language_go"),
 }
 
-
 @dataclass(frozen=True)
 class MagicValueReference:
     """A single occurrence of a hardcoded value."""
@@ -48,7 +47,6 @@ class MagicValueReference:
             "category": self.category,
         }
 
-
 @dataclass(frozen=True)
 class MagicValueUsage:
     """Aggregated usage of a specific hardcoded value."""
@@ -68,7 +66,6 @@ class MagicValueUsage:
             "references": [r.to_dict() for r in self.references],
         }
 
-
 @dataclass(frozen=True)
 class MagicValueResult:
     """Aggregated detection result."""
@@ -84,7 +81,6 @@ class MagicValueResult:
             "references": [r.to_dict() for r in self.references],
         }
 
-
 def _get_context(node: Any, source: bytes) -> str:
     """Get the parent expression as context string."""
     parent = node.parent
@@ -94,7 +90,6 @@ def _get_context(node: Any, source: bytes) -> str:
     end = max(parent.end_byte, node.end_byte)
     text = source[start:end].decode("utf-8", errors="replace")
     return text.strip()[:120]
-
 
 def _classify_string(value: str) -> str | None:
     """Classify a string value. Returns category or None if safe."""
@@ -110,7 +105,6 @@ def _classify_string(value: str) -> str | None:
         return "magic_string"
     return None
 
-
 def _classify_number(raw: str) -> str | None:
     """Classify a numeric value. Returns category or None if safe."""
     try:
@@ -123,7 +117,6 @@ def _classify_number(raw: str) -> str | None:
     except ValueError:
         return None
     return "magic_number"
-
 
 def _is_in_safe_context(node: Any) -> bool:
     """Check if node is in a context where values should be ignored."""
@@ -145,7 +138,6 @@ def _is_in_safe_context(node: Any) -> bool:
         parent = parent.parent
     return False
 
-
 def _extract_string_content(raw: str) -> str:
     """Extract inner content from a quoted string."""
     if len(raw) < 2:
@@ -159,7 +151,6 @@ def _extract_string_content(raw: str) -> str:
         return raw[1:-1]
     return raw
 
-
 def _value_type_for_category(category: str) -> str:
     """Map category to value_type."""
     mapping: dict[str, str] = {
@@ -170,7 +161,6 @@ def _value_type_for_category(category: str) -> str:
         "hardcoded_color": "color",
     }
     return mapping.get(category, "string")
-
 
 class MagicValueDetector:
     """Detect hardcoded magic values in source code."""

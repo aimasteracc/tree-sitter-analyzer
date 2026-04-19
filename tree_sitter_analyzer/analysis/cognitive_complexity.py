@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
@@ -24,28 +25,12 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
 # Complexity rating thresholds (SonarSource)
 RATING_SIMPLE = "simple"          # 1-5
 RATING_MODERATE = "moderate"      # 6-10
 RATING_COMPLEX = "complex"        # 11-20
 RATING_VERY_COMPLEX = "very_complex"  # 21-50
 RATING_EXTREME = "extreme"        # 50+
-
 
 def _rating(score: int) -> str:
     if score <= 5:
@@ -57,7 +42,6 @@ def _rating(score: int) -> str:
     if score <= 50:
         return RATING_VERY_COMPLEX
     return RATING_EXTREME
-
 
 # Node types that increase nesting (children are nested)
 _NESTING_NODES_PY: set[str] = {
@@ -73,7 +57,6 @@ _INCREMENT_NODES_PY: set[str] = {
 # Node types for logical operators in Python
 _LOGICAL_OPS_PY: set[str] = {"and", "or"}
 
-
 @dataclass(frozen=True)
 class ComplexityIncrement:
     """A single cognitive complexity increment."""
@@ -82,7 +65,6 @@ class ComplexityIncrement:
     line_number: int
     value: int
     description: str
-
 
 @dataclass(frozen=True)
 class FunctionComplexity:
@@ -95,7 +77,6 @@ class FunctionComplexity:
     rating: str
     increments: tuple[ComplexityIncrement, ...]
     element_type: str  # function, method, lambda, arrow_function
-
 
 @dataclass(frozen=True)
 class CognitiveComplexityResult:
@@ -111,33 +92,8 @@ class CognitiveComplexityResult:
     def get_complex_functions(self, threshold: int = 15) -> list[FunctionComplexity]:
         return [f for f in self.functions if f.total_complexity > threshold]
 
-
-class CognitiveComplexityAnalyzer:
+class CognitiveComplexityAnalyzer(BaseAnalyzer):
     """Analyzes cognitive complexity using SonarSource specification."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> CognitiveComplexityResult:
         path = Path(file_path)

@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 if TYPE_CHECKING:
@@ -26,21 +27,6 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
 ISSUE_INCONSISTENT_RETURN = "inconsistent_return"
 ISSUE_IMPLICIT_NONE = "implicit_none"
 ISSUE_COMPLEX_RETURN_PATH = "complex_return_path"
@@ -49,7 +35,6 @@ ISSUE_EMPTY_RETURN = "empty_return"
 SEVERITY_HIGH = "high"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_LOW = "low"
-
 
 def _severity(issue_type: str) -> str:
     if issue_type == ISSUE_INCONSISTENT_RETURN:
@@ -60,7 +45,6 @@ def _severity(issue_type: str) -> str:
         return SEVERITY_LOW
     return SEVERITY_LOW
 
-
 @dataclass(frozen=True)
 class ReturnPoint:
     """A single return/yield/throw statement in a function."""
@@ -68,7 +52,6 @@ class ReturnPoint:
     line_number: int
     has_value: bool
     node_type: str
-
 
 @dataclass(frozen=True)
 class ReturnPathIssue:
@@ -78,7 +61,6 @@ class ReturnPathIssue:
     severity: str
     line_number: int
     message: str
-
 
 @dataclass(frozen=True)
 class FunctionReturnPath:
@@ -104,7 +86,6 @@ class FunctionReturnPath:
     def empty_returns(self) -> int:
         return sum(1 for r in self.return_points if not r.has_value)
 
-
 @dataclass(frozen=True)
 class ReturnPathResult:
     """Aggregated return path result for a file."""
@@ -118,33 +99,8 @@ class ReturnPathResult:
     def get_functions_with_issues(self) -> list[FunctionReturnPath]:
         return [f for f in self.functions if f.issues]
 
-
-class ReturnPathAnalyzer:
+class ReturnPathAnalyzer(BaseAnalyzer):
     """Analyzes return paths of functions in source code."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> ReturnPathResult:
         path = Path(file_path)

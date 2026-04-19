@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 from tree_sitter_analyzer.utils.tree_sitter_compat import TreeSitterQueryCompat
 
@@ -30,14 +31,12 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-
 class PatternSeverity(Enum):
     """Severity level of detected pattern."""
 
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
-
 
 class AsyncPatternType(Enum):
     """Type of async anti-pattern."""
@@ -50,7 +49,6 @@ class AsyncPatternType(Enum):
     GOROUTINE_LEAK = "goroutine_leak"
     UNCHECKED_CHANNEL = "unchecked_channel"
     BLOCKING_IN_ASYNC = "blocking_in_async"
-
 
 @dataclass(frozen=True)
 class AsyncPatternMatch:
@@ -65,7 +63,6 @@ class AsyncPatternMatch:
     function_name: str
     language: str
     suggestion: str
-
 
 @dataclass
 class AsyncPatternResult:
@@ -95,7 +92,6 @@ class AsyncPatternResult:
         return sum(
             1 for p in self.patterns if p.severity == PatternSeverity.INFO
         )
-
 
 # --- Tree-sitter queries ---
 
@@ -184,24 +180,8 @@ _GO_SELECT_QUERY = """
 (select_statement) @select
 """
 
-
-class AsyncPatternAnalyzer:
+class AsyncPatternAnalyzer(BaseAnalyzer):
     """Analyze async/await patterns in source code."""
-
-    _LANGUAGE_MODULES: dict[str, str] = {
-        ".py": "tree_sitter_python",
-        ".js": "tree_sitter_javascript",
-        ".ts": "tree_sitter_typescript",
-        ".tsx": "tree_sitter_typescript",
-        ".jsx": "tree_sitter_javascript",
-        ".java": "tree_sitter_java",
-        ".go": "tree_sitter_go",
-    }
-
-    _LANGUAGE_FUNCS: dict[str, str] = {
-        ".ts": "language_typescript",
-        ".tsx": "language_tsx",
-    }
 
     _LANGUAGE_NAMES: dict[str, str] = {
         ".py": "python",
@@ -227,14 +207,13 @@ class AsyncPatternAnalyzer:
         language = self._LANGUAGE_NAMES.get(ext, "unknown")
         source = file_path.read_bytes()
 
-        language_obj = self._load_language(ext)
-        if language_obj is None:
+        language_obj, parser = self._get_parser(ext)
+        if language_obj is None or parser is None:
             return AsyncPatternResult(
                 file_path=str(file_path),
                 language=language,
             )
 
-        parser = tree_sitter.Parser(language_obj)
         tree = parser.parse(source)
 
         result = AsyncPatternResult(
@@ -257,23 +236,6 @@ class AsyncPatternAnalyzer:
             analyzer(tree, source, str(file_path), language_obj, result)
 
         return result
-
-    def _load_language(self, ext: str) -> Any:
-        """Load tree-sitter language for the given extension."""
-        module_name = self._LANGUAGE_MODULES.get(ext)
-        if not module_name:
-            return None
-
-        try:
-            mod = __import__(module_name)
-            func_name = self._LANGUAGE_FUNCS.get(ext, "language")
-            func = getattr(mod, func_name, None) or getattr(mod, "language", None)
-            if func is None:
-                return None
-            return tree_sitter.Language(func())
-        except (ImportError, AttributeError):
-            logger.warning("Failed to load language module: %s", module_name)
-            return None
 
     def _get_text(self, node: tree_sitter.Node, source: bytes) -> str:
         """Extract text from a node."""

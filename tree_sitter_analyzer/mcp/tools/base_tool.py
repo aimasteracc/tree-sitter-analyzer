@@ -156,10 +156,12 @@ class BaseMCPTool(ABC):
         """
         pass
 
-    @abstractmethod
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments.
+
+        Default implementation checks file_path and format parameters.
+        Subclasses with additional parameters should override and call super().
 
         Args:
             arguments: Arguments to validate
@@ -170,7 +172,13 @@ class BaseMCPTool(ABC):
         Raises:
             ValueError: If arguments are invalid
         """
-        pass
+        file_path = arguments.get("file_path", "")
+        if not file_path:
+            raise ValueError("file_path must be provided")
+        fmt = arguments.get("format", "toon")
+        if fmt not in ("toon", "json"):
+            raise ValueError("format must be 'toon' or 'json'")
+        return True
 
 
 # Keep the protocol for backward compatibility

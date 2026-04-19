@@ -11,6 +11,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -20,21 +21,6 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
 SEVERITY_OK = "ok"
 SEVERITY_LAZY = "lazy"
 SEVERITY_CANDIDATE = "removal_candidate"
@@ -42,12 +28,10 @@ SEVERITY_CANDIDATE = "removal_candidate"
 DEFAULT_MAX_METHODS = 1
 DEFAULT_MAX_FIELDS = 2
 
-
 def _severity(method_count: int, field_count: int) -> str:
     if method_count == 0:
         return SEVERITY_CANDIDATE
     return SEVERITY_LAZY
-
 
 @dataclass(frozen=True)
 class LazyClassInfo:
@@ -68,7 +52,6 @@ class LazyClassInfo:
             "severity": self.severity,
         }
 
-
 @dataclass(frozen=True)
 class LazyClassResult:
     """Aggregated lazy class analysis result."""
@@ -84,7 +67,6 @@ class LazyClassResult:
             "lazy_classes": [c.to_dict() for c in self.lazy_classes],
             "file_path": self.file_path,
         }
-
 
 _CLASS_TYPES: dict[str, frozenset[str]] = {
     ".py": frozenset({"class_definition"}),
@@ -116,33 +98,8 @@ _FIELD_TYPES: dict[str, frozenset[str]] = {
     ".go": frozenset({"field_declaration"}),
 }
 
-
-class LazyClassAnalyzer:
+class LazyClassAnalyzer(BaseAnalyzer):
     """Analyzes classes for insufficient complexity."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> LazyClassResult:
         path = Path(file_path)

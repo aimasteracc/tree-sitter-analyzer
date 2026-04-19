@@ -16,7 +16,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-
 @dataclass(frozen=True)
 class CIReport:
     """CI-friendly analysis summary for a project."""
@@ -47,7 +46,6 @@ class CIReport:
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), indent=2, ensure_ascii=False)
-
 
 def generate_ci_report(
     project_root: str,
@@ -114,7 +112,6 @@ def generate_ci_report(
         critical_files=tuple(critical),
         failed_checks=tuple(failed),
     )
-
 
 def health_score_to_sarif(
     scores: list[FileHealthScore],

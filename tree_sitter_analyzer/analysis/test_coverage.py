@@ -23,14 +23,12 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-
 class ElementType(Enum):
     """Type of code element."""
 
     FUNCTION = "function"
     CLASS = "class"
     METHOD = "method"
-
 
 @dataclass(frozen=True)
 class SourceElement:
@@ -43,7 +41,6 @@ class SourceElement:
 
     def __str__(self) -> str:
         return f"{self.name}:{self.line} ({self.element_type.value})"
-
 
 @dataclass
 class TestCoverageResult:
@@ -71,7 +68,6 @@ class TestCoverageResult:
         elif self.coverage_percent >= 20:
             return "D"
         return "F"
-
 
 class TestCoverageAnalyzer:
     """

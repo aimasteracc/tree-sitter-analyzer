@@ -11,6 +11,7 @@ from pathlib import Path
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -20,21 +21,6 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".java", ".go",
 }
 
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
-}
-
 SEVERITY_OK = "ok"
 SEVERITY_LONG = "long_chain"
 SEVERITY_TRAIN_WRECK = "train_wreck"
@@ -42,14 +28,12 @@ SEVERITY_TRAIN_WRECK = "train_wreck"
 DEFAULT_CHAIN_THRESHOLD = 4
 TRAIN_WRECK_THRESHOLD = 6
 
-
 def _severity(chain_length: int) -> str:
     if chain_length < DEFAULT_CHAIN_THRESHOLD:
         return SEVERITY_OK
     if chain_length < TRAIN_WRECK_THRESHOLD:
         return SEVERITY_LONG
     return SEVERITY_TRAIN_WRECK
-
 
 @dataclass(frozen=True)
 class ChainHotspot:
@@ -67,7 +51,6 @@ class ChainHotspot:
             "severity": self.severity,
             "expression": self.expression,
         }
-
 
 @dataclass(frozen=True)
 class MethodChainResult:
@@ -87,7 +70,6 @@ class MethodChainResult:
             "file_path": self.file_path,
         }
 
-
 _CHAIN_NODE_TYPES: dict[str, frozenset[str]] = {
     ".py": frozenset({"attribute"}),
     ".js": frozenset({"member_expression"}),
@@ -98,33 +80,8 @@ _CHAIN_NODE_TYPES: dict[str, frozenset[str]] = {
     ".go": frozenset({"selector_expression"}),
 }
 
-
-class MethodChainAnalyzer:
+class MethodChainAnalyzer(BaseAnalyzer):
     """Analyzes method/attribute chain length in source code."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension not in _LANGUAGE_MODULES:
-            return None, None
-        if extension not in self._parsers:
-            module_name = _LANGUAGE_MODULES[extension]
-            try:
-                lang_module = __import__(module_name)
-                func_name = _LANGUAGE_FUNCS.get(extension, "language")
-                language_func = getattr(lang_module, func_name)
-                language = tree_sitter.Language(language_func())
-                self._languages[extension] = language
-                parser = tree_sitter.Parser(language)
-                self._parsers[extension] = parser
-            except Exception as e:
-                logger.error(f"Failed to load language for {extension}: {e}")
-                return None, None
-        return self._languages.get(extension), self._parsers.get(extension)
 
     def analyze_file(self, file_path: Path | str) -> MethodChainResult:
         path = Path(file_path)
@@ -227,7 +184,6 @@ class MethodChainAnalyzer:
             return _count_go_chain(node)
         return 1
 
-
 def _count_python_chain(node: tree_sitter.Node) -> int:
     if node.type == "attribute":
         obj = node.child_by_field_name("object")
@@ -244,7 +200,6 @@ def _count_python_chain(node: tree_sitter.Node) -> int:
             return _count_python_chain(callee) + 1
     return 1
 
-
 def _count_js_chain(node: tree_sitter.Node) -> int:
     if node.type == "member_expression":
         obj = node.child_by_field_name("object")
@@ -256,7 +211,6 @@ def _count_js_chain(node: tree_sitter.Node) -> int:
                 return _count_js_chain(callee) + 1
         return 2
     return 1
-
 
 def _count_java_chain(node: tree_sitter.Node) -> int:
     if node.type == "field_access":
@@ -272,7 +226,6 @@ def _count_java_chain(node: tree_sitter.Node) -> int:
                 return _count_java_chain(obj) + 1
         return 2
     return 1
-
 
 def _count_go_chain(node: tree_sitter.Node) -> int:
     if node.type == "selector_expression":

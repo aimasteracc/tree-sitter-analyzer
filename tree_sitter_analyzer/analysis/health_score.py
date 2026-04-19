@@ -18,7 +18,6 @@ SUPPORTED_EXTENSIONS: set[str] = {
     ".go", ".rs", ".cs", ".kt", ".c", ".cpp", ".h",
 }
 
-
 @dataclass(frozen=True)
 class FileHealthScore:
     """Health score for a single file."""
@@ -33,7 +32,6 @@ class FileHealthScore:
     avg_function_length: float
     breakdown: dict[str, int]
     suggestions: tuple[str, ...] = ()
-
 
 class HealthScorer:
     """Score files based on maintainability metrics."""

@@ -16,6 +16,7 @@ from typing import Any
 
 import tree_sitter
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -23,21 +24,6 @@ logger = setup_logger(__name__)
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go",
-}
-
-_LANGUAGE_MODULES: dict[str, str] = {
-    ".py": "tree_sitter_python",
-    ".js": "tree_sitter_javascript",
-    ".ts": "tree_sitter_typescript",
-    ".tsx": "tree_sitter_typescript",
-    ".jsx": "tree_sitter_javascript",
-    ".java": "tree_sitter_java",
-    ".go": "tree_sitter_go",
-}
-
-_LANGUAGE_FUNCS: dict[str, str] = {
-    ".ts": "language_typescript",
-    ".tsx": "language_tsx",
 }
 
 # Violation types
@@ -127,7 +113,6 @@ _JAVA_ABSTRACT_INDICATORS: frozenset[str] = frozenset({
     "Interface", "Abstract", "Base",
 })
 
-
 @dataclass(frozen=True)
 class SOLIDViolation:
     principle: str
@@ -149,7 +134,6 @@ class SOLIDViolation:
             "suggestion": self.suggestion,
         }
 
-
 @dataclass(frozen=True)
 class PrincipleScore:
     principle: str
@@ -162,7 +146,6 @@ class PrincipleScore:
             "score": round(self.score, 1),
             "violation_count": self.violation_count,
         }
-
 
 @dataclass(frozen=True)
 class SOLIDResult:
@@ -182,10 +165,8 @@ class SOLIDResult:
             "principle_scores": [s.to_dict() for s in self.principle_scores],
         }
 
-
 def _get_node_text(node: tree_sitter.Node, content: bytes) -> str:
     return content[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-
 
 def _get_name(
     node: tree_sitter.Node, content: bytes
@@ -195,38 +176,8 @@ def _get_name(
         return None
     return _get_node_text(name_node, content)
 
-
-class SOLIDPrinciplesAnalyzer:
+class SOLIDPrinciplesAnalyzer(BaseAnalyzer):
     """Analyzes SOLID principle violations in source code files."""
-
-    def __init__(self) -> None:
-        self._languages: dict[str, tree_sitter.Language] = {}
-        self._parsers: dict[str, tree_sitter.Parser] = {}
-
-    def _get_parser(
-        self, extension: str
-    ) -> tuple[tree_sitter.Language | None, tree_sitter.Parser | None]:
-        if extension in self._parsers:
-            return self._languages[extension], self._parsers[extension]
-
-        module_name = _LANGUAGE_MODULES.get(extension)
-        if not module_name:
-            return None, None
-
-        try:
-            mod = __import__(module_name)
-            func_name = _LANGUAGE_FUNCS.get(extension, "language")
-            lang_func = getattr(mod, func_name, None) or getattr(mod, "language", None)
-            if lang_func is None:
-                return None, None
-            lang = tree_sitter.Language(lang_func())
-            parser = tree_sitter.Parser(lang)
-            self._languages[extension] = lang
-            self._parsers[extension] = parser
-            return lang, parser
-        except Exception as e:
-            logger.warning(f"Failed to load language for {extension}: {e}")
-            return None, None
 
     def _detect_language(self, file_path: str) -> str:
         ext = Path(file_path).suffix.lower()
