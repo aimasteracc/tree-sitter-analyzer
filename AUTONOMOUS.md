@@ -687,6 +687,13 @@ uv run pytest tests/ -x -q
 - **Commits**: `16d4e6a3`, `63df0f42`, `b594f6c6`, `5cf016a5`, `cb2e0687`
 - **Status**: 5 sprints complete, sustainable loop running
 
+### Session 145 continued — 2026-04-20
+- **Complete**: 2 more analyzers (unnecessary_lambda, suspicious_type_check)
+- **MCP Tools**: 105 → 107 (+2 unnecessary_lambda, suspicious_type_check)
+- **Tests**: 17 + 13 = 30 tests pass
+- **Commits**: `b5f1a430`, `65365d86`
+- **Status**: 7 sprints complete, sustainable loop running. Total this session: 121 tests, 107 tools
+
 ### Session 141 — 2026-04-20
 - **Open**: Continue sustainable loop (新功能探索)
 - **Complete**: 3 OpenSpec changes (add-discarded-return-detector, add-literal-boolean-comparison-detector, add-double-negation-detector)
