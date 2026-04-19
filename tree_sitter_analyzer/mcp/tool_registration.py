@@ -1524,6 +1524,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🛑",
     )
 
+    from .tools.assert_on_tuple_tool import AssertOnTupleTool
+    aot_tool = AssertOnTupleTool(project_root)
+    registry.register(
+        name="assert_on_tuple",
+        toolset="analysis",
+        category="correctness",
+        schema=aot_tool.get_tool_definition(),
+        handler=_make_handler(aot_tool),
+        description="Assert-on-tuple: detect assert (cond, msg) that always passes",
+        emoji="⚠️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

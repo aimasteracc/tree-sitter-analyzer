@@ -1,5 +1,56 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Assert-on-Tuple Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Assert-on-Tuple Detector — 检测 `assert (condition, message)` 模式
+
+**产品分析**:
+- 聚焦: `assert (x > 0, "msg")` 总是 True（非空 tuple 是 truthy）。经典 Python 静默 bug
+- 减法: MVP = 检查 assert 参数是否为 tuple literal，纯 AST
+- 一句话: "Find the asserts that always pass, because `assert (cond, msg)` evaluates the tuple, not the condition"
+
+**独特性评估**: 12/12 >= 8 (DO)
+- Uniqueness: 3/3 — 无类似工具（production_assert 不检测 tuple trap）
+- Need: 3/3 — Python 经典陷阱，静默 bug
+- Architecture fit: 3/3 — 纯 AST，BaseAnalyzer，Python-only
+- Implementation cost: 3/3 — 单 Sprint
+
+**结论**: DO — 检测真正的静默 bug，极简实现
+
+## 技术架构讨论 - Assert-on-Tuple Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**技术方案**: 纯 AST 遍历
+- 检查 assert_statement 的第一个 named child
+- 如果类型是 tuple 且第一个 child 是 expression（不是 keyword argument）
+- 报告 assert_on_tuple 问题
+
+**推荐方案**: 方案 A（独立模块），理由：与 107+ MCP 工具架构一致
+**风险**: 无，纯 AST 静态分析
+**依赖**: 无
+
+## 产品讨论记录 - Return in Finally Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Return in Finally Detector — 检测 finally 块中的 return/raise 语句
+
+**产品分析**:
+- 聚焦: finally 中的 return 会静默吞掉 try 块中的异常。Python/Java/JS/TS 均有此问题
+- 减法: MVP = 检查 finally_clause 内是否有 return_statement 或 raise_statement
+- 一句话: "Find the returns that silently swallow exceptions, because `return` in `finally` masks the error"
+
+**独特性评估**: 11/12 >= 8 (DO)
+- Uniqueness: 3/3 — 无类似工具
+- Need: 3/3 — Python/Java/JS/TS 均有此问题，静默吞掉异常
+- Architecture fit: 3/3 — 标准 BaseAnalyzer，多语言
+- Implementation cost: 2/3 — 需要 4 种语言的 finally/return 节点类型
+
+**结论**: DO — 跨语言检测静默异常吞没
+
 ## 产品讨论记录 - Production Assert Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
