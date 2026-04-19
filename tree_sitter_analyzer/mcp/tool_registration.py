@@ -1477,13 +1477,13 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
     )
 
     from .tools.late_binding_closure_tool import LateBindingClosureTool
-    lbc_tool = LateBindingClosureTool(project_root)
+    lbclosure_tool = LateBindingClosureTool(project_root)
     registry.register(
         name="late_binding_closure",
         toolset="analysis",
         category="correctness",
-        schema=lbc_tool.get_tool_definition(),
-        handler=_make_handler(lbc_tool),
+        schema=lbclosure_tool.get_tool_definition(),
+        handler=_make_handler(lbclosure_tool),
         description="Late-binding closure: detect closures in loops capturing loop variables by reference",
         emoji="🔗",
     )
@@ -1558,6 +1558,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(ddk_tool),
         description="Duplicate dict key: detect duplicate keys in dictionary/object literals",
         emoji="🔑",
+    )
+
+    from .tools.len_comparison_tool import LenComparisonTool
+    lencomp_tool = LenComparisonTool(project_root)
+    registry.register(
+        name="len_comparison",
+        toolset="analysis",
+        category="style",
+        schema=lencomp_tool.get_tool_definition(),
+        handler=_make_handler(lencomp_tool),
+        description="Len-comparison anti-pattern: detect len(x) == 0 (> 0, != 0) where truthiness is preferred",
+        emoji="📏",
     )
 
 
