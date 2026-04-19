@@ -13,8 +13,8 @@ from .registry import TOOLSET_DEFINITIONS, get_registry
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.batch_search_tool import BatchSearchTool
-from .tools.change_impact_tool import ChangeImpactTool
 from .tools.build_project_index_tool import BuildProjectIndexTool
+from .tools.change_impact_tool import ChangeImpactTool
 from .tools.check_tools_tool import CheckToolsTool
 from .tools.ci_report_tool import CIReportTool
 from .tools.code_clone_detection_tool import CodeCloneDetectionTool
@@ -1123,6 +1123,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(up_tool),
         description="Unused parameter: detect function/method parameters that are never referenced in the function body across Python, JS/TS, Java, Go",
         emoji="👻",
+    )
+
+    # callback_hell
+    from .tools.callback_hell_tool import CallbackHellTool
+    ch_tool = CallbackHellTool(project_root)
+    registry.register(
+        name="callback_hell",
+        toolset="analysis",
+        category="async-quality",
+        schema=ch_tool.get_tool_definition(),
+        handler=_make_handler(ch_tool),
+        description="Callback hell: detect deeply nested callbacks and long .then() chains across Python, JS/TS, Java, Go",
+        emoji="🌀",
     )
 
 
