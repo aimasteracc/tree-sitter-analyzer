@@ -32,10 +32,9 @@ elif [ "$WORD_COUNT" -le 6 ]; then
     echo "🔍 Using vector search (300M model only)..."
     qmd vsearch "$QUERY" -n "$MAX_RESULTS"
 else
-    # 复杂查询：用混合搜索，但限制结果
-    echo "🔍 Using hybrid search (with expansion)..."
-    echo "⚠️  Warning: This loads 1.7B model, may use 1-2GB RAM"
-    qmd query "$QUERY" -n "$MAX_RESULTS"
+    # 复杂查询：拆成关键词用 BM25（绝不加载 1.7B 模型）
+    echo "🔍 Complex query — using BM25 to avoid 2GB memory spike..."
+    qmd search "$QUERY" -n "$MAX_RESULTS"
 fi
 
 echo ""

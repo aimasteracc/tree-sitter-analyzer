@@ -179,8 +179,8 @@ qmd search "关键词" -n 5
 # 向量搜索（只用 300M embedding）
 qmd vsearch "关键词" -n 5
 
-# ❌ 禁用：混合搜索（加载 1.7B+0.6B 模型，内存危险）
-# qmd query "关键词"  # 不要在自主开发模式使用
+# ❌ 绝对禁用：混合搜索（加载 1.7B+0.6B 模型，24GB 机器会爆内存死机）
+# qmd query "关键词"  # 永远不要用这个命令！
 
 # 方式 3：直接读 wiki 页面（已知页面名用，获取完整内容）
 cat /Users/aisheng.yu/wiki/wiki/ai-tech/<页面名>.md
