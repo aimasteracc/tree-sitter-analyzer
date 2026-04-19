@@ -1151,6 +1151,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🌐",
     )
 
+    # missing_break
+    from .tools.missing_break_tool import MissingBreakTool
+    mb_tool = MissingBreakTool(project_root)
+    registry.register(
+        name="missing_break",
+        toolset="analysis",
+        category="bug-detection",
+        schema=mb_tool.get_tool_definition(),
+        handler=_make_handler(mb_tool),
+        description="Missing break: detect unintentional switch/case fall-through in JS/TS and Java",
+        emoji="🔍",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
