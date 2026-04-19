@@ -1648,6 +1648,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚖️",
     )
 
+    # unused_loop_variable
+    from .tools.unused_loop_variable_tool import UnusedLoopVariableTool
+    ulv_tool = UnusedLoopVariableTool(project_root)
+    registry.register(
+        name="unused_loop_variable",
+        toolset="analysis",
+        category="correctness",
+        schema=ulv_tool.get_tool_definition(),
+        handler=_make_handler(ulv_tool),
+        description="Unused loop variable: detect `for x in items:` where x is never used",
+        emoji="🔁",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

@@ -1,5 +1,38 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Unused Loop Variable Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Unused Loop Variable Detector — 检测 `for x in items:` 中 `x` 未被使用
+
+**产品分析**:
+- 聚焦: 未使用的循环变量可能是遗漏的操作（忘了用 x），或者循环变量多余（应改为 `_`）
+- 减法: MVP = 检测 for 循环的命名变量，确认它在循环体中从未作为 identifier 出现
+- 一句话: "Find the loop variables that were named but never used — they should be `_` or you forgot something"
+
+**独特性评估**: 9/12 >= 8 (DO)
+- Uniqueness: 3/3 — 无类似工具（unused_parameter 检查函数参数，不检查循环变量）
+- Need: 2/3 — 代码异味，可能暗示遗漏的逻辑
+- Architecture fit: 2/3 — 需要变量使用追踪，中等复杂度
+- Implementation cost: 2/3 — Python + JS/TS，需要检查标识符使用
+
+**结论**: DO — 检测潜在的遗漏逻辑
+
+## 技术架构讨论 - Unused Loop Variable Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**技术方案**: AST 遍历 for_statement 节点
+- Python: 提取 for x in items 中 x，在循环体中搜索 x 作为 identifier 的出现
+- JS/TS: 提取 for...of/for...in 中的变量声明，在循环体中搜索
+- 排除: `_` 和 `_*` 前缀的变量名（约定为有意不使用）
+- 排除: unpacking 中的 `_`（如 `for _, val in items`）
+
+**推荐方案**: 标准 BaseAnalyzer 模式，Python + JS/TS
+**风险**: 误报 — 变量可能通过 globals/eval 隐式使用，但这种情况少见
+**依赖**: 无
+
 ## 产品讨论记录 - Float Equality Comparison Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
