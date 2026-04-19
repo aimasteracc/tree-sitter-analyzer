@@ -21,6 +21,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -34,13 +35,12 @@ except ImportError:
     SARIF_OM_SUPPORTED = False
     logger.debug("sarif_om not available, SARIF output will use JSON fallback")
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go", ".cs", ".rb",
-    ".rs", ".c", ".cpp", ".h", ".hpp",
-    ".php", ".swift", ".kt", ".kts",
-    ".scala", ".lua", ".sh", ".bash",
-}
+# Node types that represent comments across languages.
+_COMMENT_NODE_TYPES: frozenset[str] = frozenset({
+    "comment",           # Python, JS/TS, Go
+    "line_comment",      # Java, C, C++
+    "block_comment",     # Java, C, C++
+})
 
 class SecuritySeverity(Enum):
     """Severity level for security findings."""
@@ -138,8 +138,8 @@ class SecurityScanResult:
             ],
         }
 
-class SecurityScanner:
-    """Security vulnerability scanner using AST pattern matching."""
+class SecurityScanner(BaseAnalyzer):
+    """Security vulnerability scanner using AST-aware pattern matching."""
 
     # Predefined security patterns
     PATTERNS: dict[str, SecurityPattern] = {}
@@ -147,6 +147,7 @@ class SecurityScanner:
     def __init__(self) -> None:
         """Initialize the security scanner with default patterns."""
         self._register_default_patterns()
+        super().__init__()
 
     def _register_default_patterns(self) -> None:
         """Register default security patterns for supported languages."""
@@ -515,6 +516,38 @@ class SecurityScanner:
         """Register a custom security pattern."""
         self.PATTERNS[pattern.rule_id] = pattern
 
+    def _get_code_line_numbers(self, tree: Any, total_lines: int) -> set[int] | None:
+        """Walk the AST and return 1-based line numbers that are actual code.
+
+        Returns ``None`` when tree-sitter parsing is unavailable so the caller
+        can fall back to the legacy keyword-only scan.
+        """
+        if tree is None or not hasattr(tree, "root_node"):
+            return None
+        root = tree.root_node
+        if root is None or not hasattr(root, "children"):
+            return None
+
+        # Collect all 1-based line numbers covered by comment nodes.
+        comment_lines: set[int] = set()
+
+        def _walk(node: Any) -> None:
+            if node.type in _COMMENT_NODE_TYPES:
+                # start_point is (row, col) zero-based; end_point exclusive.
+                start_row = node.start_point[0]
+                end_row = node.end_point[0]
+                for row in range(start_row, end_row + 1):
+                    comment_lines.add(row + 1)  # convert to 1-based
+            for child in node.children:
+                _walk(child)
+
+        _walk(root)
+
+        # Build set of code lines (1-based, 1..total_lines).
+        if not comment_lines:
+            return None  # No comments found -- skip filtering overhead.
+        return {ln for ln in range(1, total_lines + 1) if ln not in comment_lines}
+
     def scan_file(
         self,
         file_path: str | Path,
@@ -522,6 +555,9 @@ class SecurityScanner:
     ) -> SecurityScanResult:
         """
         Scan a single file for security vulnerabilities.
+
+        Uses tree-sitter AST parsing to identify comment regions and skip them,
+        falling back to pure keyword matching when AST parsing is unavailable.
 
         Args:
             file_path: Path to the file to scan
@@ -546,11 +582,25 @@ class SecurityScanner:
         result = SecurityScanResult(file_path=str(file_path), language=language)
         lines = content.splitlines()
 
+        # Attempt AST-aware comment filtering via tree-sitter.
+        code_lines: set[int] | None = None
+        ext = file_path.suffix.lower()
+        _, parser = self._get_parser(ext)
+        if parser is not None:
+            try:
+                tree = parser.parse(content.encode("utf-8"))
+                code_lines = self._get_code_line_numbers(tree, len(lines))
+            except Exception:
+                logger.debug("tree-sitter parse failed for %s; using fallback", file_path)
+
         # Get patterns for this language
         patterns = self.get_patterns(language)
 
         for pattern in patterns:
             for line_num, line in enumerate(lines, start=1):
+                # Skip lines that tree-sitter identified as comments.
+                if code_lines is not None and line_num not in code_lines:
+                    continue
                 if self._matches_pattern(line, pattern):
                     finding = SecurityFinding(
                         rule_id=pattern.rule_id,
@@ -655,7 +705,7 @@ class SecurityScanner:
         """
         project_path = Path(project_path)
         if extensions is None:
-            extensions = SUPPORTED_EXTENSIONS
+            extensions = self.SUPPORTED_EXTENSIONS
 
         results = {}
         for file_path in project_path.rglob("*"):
