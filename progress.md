@@ -1,5 +1,16 @@
 # Progress — 自主开发进度日志
 
+## Session 142 — 2026-04-20
+
+**Sprint 1: Loose Equality Comparison Detector** (sustainable loop):
+- Product analysis: DO — == vs === is the #1 JS bug, ESLint eqeqeq is most common rule
+- Architecture: pure AST traversal, binary_expression operator matching, JS/TS only
+- Detection: loose_eq (x == y), loose_neq (x != y); excludes null/undefined (covered by literal_boolean_comparison)
+- 30 tests (14 JS + 5 TS + 2 TSX + 4 unsupported + 5 edge cases), 2 languages (JS/TS)
+- Overlap handling: literal_boolean_comparison covers x == null; this covers x == y (non-literal)
+- CI: ruff, mypy, pytest (2827 pass), self-hosting gate 100% (335/335) all pass
+- Commit: `1eae4fe3`
+
 ## Session 141 — 2026-04-20
 
 **Sprint 3: Double Negation Detector** (sustainable loop):

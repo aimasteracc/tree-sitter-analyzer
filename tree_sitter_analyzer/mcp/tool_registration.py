@@ -1304,6 +1304,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚖️",
     )
 
+    # simplified_conditional
+    from .tools.simplified_conditional_tool import SimplifiedConditionalTool
+    sc_tool = SimplifiedConditionalTool(project_root)
+    registry.register(
+        name="simplified_conditional",
+        toolset="analysis",
+        category="readability",
+        schema=sc_tool.get_tool_definition(),
+        handler=_make_handler(sc_tool),
+        description="Simplified conditional: detect ternary expressions that can be simplified (cond ? true : false → cond)",
+        emoji="✂️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

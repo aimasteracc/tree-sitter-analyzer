@@ -54,6 +54,32 @@ Total: 12/12 >= 8
 
 **风险**: 无重大风险
 
+## 灵感来源 - Sprint 2 - Session 142 — 2026-04-20
+
+- 72个分析器已实现
+- 识别的空白：Simplified Conditional Expression (cond ? true : false), Missing Optional Chaining, Yoda Conditions
+- 选择：Simplified Conditional Expression Detector — 高可读性价值、简单AST检测、多语言适用
+
+## 产品讨论记录 - Simplified Conditional Expression Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Simplified Conditional Expression Detector — 检测可以简化的条件表达式
+
+**产品分析**:
+- 聚焦: `cond ? true : false` 可简化为 `cond`, `cond ? false : true` 可简化为 `!cond`, `cond ? x : x` 总是返回 x。这些是真实的可读性问题
+- 减法: MVP = 纯AST遍历，检测 ternary/conditional_expression 节点的退化模式
+- 一句话: "Find ternary expressions that can be simplified — because `x ? true : false` is just `x`"
+
+**独特性评估**:
+1. 独特性: 3/3 — no existing tool covers this specific pattern
+2. 需求度: 2/3 — readability issue, not a runtime bug
+3. 架构适配: 3/3 — standard BaseAnalyzer, ternary nodes in all languages
+4. 实现成本: 3/3 — single Sprint, pure AST
+Total: 11/12 >= 8
+
+**结论**: DO — fills genuine gap, high readability value, simple implementation
+
 ## 产品讨论记录 - Commented-Out Code Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
