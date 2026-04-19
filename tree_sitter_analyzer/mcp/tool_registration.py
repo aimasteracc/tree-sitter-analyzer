@@ -482,6 +482,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🎰",
     )
 
+    # circular_dependency
+    from .tools.circular_dependency_tool import CircularDependencyTool
+    cd_tool = CircularDependencyTool(project_root)
+    registry.register(
+        name="circular_dependency",
+        toolset="analysis",
+        category="dependency",
+        schema=cd_tool.get_tool_definition(),
+        handler=_make_handler(cd_tool),
+        description="Circular dependency: detect circular import/require cycles in Python, JS/TS, Java codebases",
+        emoji="🔁",
+    )
+
     # parameter_coupling
     from .tools.parameter_coupling_tool import ParameterCouplingTool
     pc_tool = ParameterCouplingTool(project_root)
