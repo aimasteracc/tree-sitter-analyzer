@@ -1138,6 +1138,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🌀",
     )
 
+    # hardcoded_ip
+    from .tools.hardcoded_ip_tool import HardcodedIPTool
+    hi_tool = HardcodedIPTool(project_root)
+    registry.register(
+        name="hardcoded_ip",
+        toolset="analysis",
+        category="security",
+        schema=hi_tool.get_tool_definition(),
+        handler=_make_handler(hi_tool),
+        description="Hardcoded IP/port: detect IP addresses and port numbers that should be externalized across Python, JS/TS, Java, Go",
+        emoji="🌐",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
