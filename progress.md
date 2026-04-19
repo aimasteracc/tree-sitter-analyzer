@@ -1,5 +1,35 @@
 # Progress — 自主开发进度日志
 
+## Session 150 — 2026-04-20
+
+**Sprint 1: Float Equality Comparison Detector** (sustainable loop):
+- Product analysis: DO — IEEE 754 precision bugs, `0.1 + 0.2 != 0.3`
+- Architecture: standard BaseAnalyzer, 4 languages (Python, JS/TS, Java, Go)
+- Detection: float_equality (`x == 0.1`), float_inequality (`x != 3.14`)
+- Correctly handles JS strict equality (=== and !==) vs loose (== and !=)
+- 37 tests (28 analysis + 9 MCP tool), 4 languages
+- CI: ruff, mypy, pytest (37 pass), self-hosting gate 100%
+- Commit: `ecfa4220`
+
+**Sprint 2: Unused Loop Variable Detector** (sustainable loop):
+- Product analysis: DO — unused loop variable may indicate missing logic
+- Architecture: standard BaseAnalyzer, Python + JS/TS
+- Detection: unused_for_variable, unused_for_of_variable
+- Excludes `_` and `_`-prefixed variables (intentional non-use)
+- Handles tuple unpacking (e.g., `for idx, val in items`)
+- 21 tests (16 analysis + 5 structure/edge), 2 languages
+- CI: ruff, mypy, pytest (21 pass), self-hosting gate 100%
+- Commit: `e465464b`
+
+**Sprint 3: List-in-Membership Performance Detector** (sustainable loop):
+- Product analysis: DO — O(n) vs O(1) membership test, easy fix
+- Architecture: standard BaseAnalyzer, Python + JS/TS
+- Detection: list_in_membership, list_not_in_membership, array_includes_literal
+- Correctly distinguishes `not in` from `in` in Python
+- 17 tests (12 analysis + 5 structure/edge), 2 languages
+- CI: ruff, mypy, pytest (17 pass), self-hosting gate 100%
+- Commit: `d9bff4c5`
+
 ## Session 149 — 2026-04-20
 
 **Sprint 1: Identity Comparison with Literals Detector** (sustainable loop):
