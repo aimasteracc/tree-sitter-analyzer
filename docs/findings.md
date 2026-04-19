@@ -41,7 +41,26 @@
 **风险**: 低
 **依赖**: 无新依赖
 
-## 产品讨论记录 - Redundant Super Call Detector - 2026-04-20
+## 产品讨论记录 - Constant Boolean Operand Detector - 2026-04-20
+
+**调用**: /steve-jobs-perspective (direct analysis)
+
+**输入**: Boolean expression with constant non-boolean operands
+
+**分析**:
+- **聚焦即说不**: Solves real bugs. `if x == "a" or "b":` is always True because "b" is truthy. Classic Python pitfall (Pylint R0916/R1729).
+- **减法思维**: Detect `or`/`and` operands that are non-boolean constants (strings, numbers, lists, dicts). Single AST pass.
+- **一句话定义**: Detect non-boolean constant operands in boolean expressions that make conditions always true/false.
+
+**结论**: DO
+**理由**: Catches real bugs, no overlap with tautological_condition (which detects x==x), multi-language potential
+
+**功能评分** (>= 8/12 门槛):
+- 独特性: 3 (no overlap with tautological_condition which handles x==x)
+- 需求度: 3 (Pylint R0916, real bugs, classic Python pitfall)
+- 架构适配: 3 (standard BaseAnalyzer)
+- 实现成本: 3 (single Sprint, Python-only MVP)
+- **总分: 12/12** ✅
 
 **调用**: /steve-jobs-perspective (office-hours)
 

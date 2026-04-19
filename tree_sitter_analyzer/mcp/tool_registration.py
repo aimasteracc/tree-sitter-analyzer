@@ -1765,6 +1765,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="♻️",
     )
 
+    # constant_bool_operand
+    from .tools.constant_bool_operand_tool import ConstantBoolOperandTool
+    cbo_tool = ConstantBoolOperandTool(project_root)
+    registry.register(
+        name="constant_bool_operand",
+        toolset="analysis",
+        category="bug-detection",
+        schema=cbo_tool.get_tool_definition(),
+        handler=_make_handler(cbo_tool),
+        description="Constant bool operand: detect non-boolean constants in and/or expressions (Python pitfall: x == a or b is always True)",
+        emoji="⚡",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
