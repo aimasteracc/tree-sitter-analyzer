@@ -41,10 +41,7 @@ from .tools.read_partial_tool import ReadPartialTool
 from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
 from .tools.search_content_tool import SearchContentTool
 from .tools.security_scan_tool import SecurityScanTool
-from .tools.semantic_impact_tool import (
-    QuickRiskAssessmentTool,
-    SemanticImpactTool,
-)
+from .tools.semantic_impact_tool import SemanticImpactTool
 from .tools.semantic_search_tool import SemanticSearchTool
 from .tools.test_coverage_tool import TestCoverageTool
 from .tools.trace_impact_tool import TraceImpactTool
@@ -241,18 +238,6 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(semantic_tool),
         description="Semantic impact analysis: risk score, factors, suggestions",
         emoji="⚠️",
-    )
-
-    # quick_risk_assessment
-    risk_tool = QuickRiskAssessmentTool(project_root)
-    registry.register(
-        name="quick_risk_assessment",
-        toolset="analysis",
-        category="impact-analysis",
-        schema=risk_tool.get_tool_definition(),
-        handler=_make_handler(risk_tool),
-        description="Quick risk assessment: visibility, caller count, type hierarchy",
-        emoji="⚡",
     )
 
     # understand_codebase (智能入口)

@@ -47,7 +47,8 @@ class SemanticImpactTool(BaseMCPTool):
                 "Goes beyond textual occurrence counting to assess the *semantic* impact "
                 "of code changes. Considers type hierarchy, visibility, call chain depth, "
                 "and API surface area. Risk Levels: SAFE, LOW, MODERATE, HIGH, CRITICAL. "
-                "Returns a risk score (0-100) with contributing factors and actionable suggestions."
+                "Returns a risk score (0-100) with contributing factors and actionable suggestions. "
+                "Use mode='quick' for fast assessment based on visibility and caller count only."
             ),
             "inputSchema": {
                 "type": "object",
@@ -59,6 +60,12 @@ class SemanticImpactTool(BaseMCPTool):
                     "file_path": {
                         "type": "string",
                         "description": "Source file path (optional, used for language detection)",
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["full", "quick"],
+                        "description": "Analysis mode: 'full' for detailed analysis, 'quick' for fast risk assessment",
+                        "default": "full",
                     },
                     "caller_count": {
                         "type": "integer",
@@ -89,6 +96,11 @@ class SemanticImpactTool(BaseMCPTool):
                     "is_static": {
                         "type": "boolean",
                         "description": "Whether the symbol is static",
+                        "default": False,
+                    },
+                    "is_type_hierarchy_root": {
+                        "type": "boolean",
+                        "description": "Whether this is a base class/interface root (quick mode)",
                         "default": False,
                     },
                     "base_classes": {
@@ -137,7 +149,79 @@ class SemanticImpactTool(BaseMCPTool):
         """Execute the semantic impact analysis."""
         self.validate_arguments(arguments)
 
-        # Extract parameters
+        # Extract common parameters
+        symbol = arguments["symbol"]
+        mode = arguments.get("mode", "full")
+        caller_count = arguments.get("caller_count", 0)
+        visibility = arguments.get("visibility", "public")
+        is_abstract = arguments.get("is_abstract", False)
+
+        # Map visibility string to enum
+        visibility_map: dict[str, Visibility] = {
+            "public": Visibility.PUBLIC,
+            "protected": Visibility.PROTECTED,
+            "private": Visibility.PRIVATE,
+            "package": Visibility.PACKAGE,
+            "internal": Visibility.PACKAGE,
+        }
+
+        if mode == "quick":
+            return self._execute_quick(
+                symbol=symbol,
+                caller_count=caller_count,
+                visibility=visibility,
+                visibility_map=visibility_map,
+                is_abstract=is_abstract,
+                is_type_hierarchy_root=arguments.get("is_type_hierarchy_root", False),
+            )
+
+        return self._execute_full(arguments, visibility_map)
+
+    def _execute_quick(
+        self,
+        symbol: str,
+        caller_count: int,
+        visibility: str,
+        visibility_map: dict[str, Visibility],
+        is_abstract: bool,
+        is_type_hierarchy_root: bool,
+    ) -> dict[str, Any]:
+        """Quick mode: fast risk assessment based on visibility and caller count."""
+        profile = SymbolProfile(
+            name=symbol,
+            file_path="",
+            language="",
+            visibility=visibility_map.get(visibility.lower(), Visibility.PUBLIC),
+            is_abstract=is_abstract,
+        )
+
+        risk_score, factors = _compute_risk_score(
+            caller_count=caller_count,
+            visibility=profile.visibility,
+            call_chain_depth=0,
+            is_type_hierarchy_root=is_type_hierarchy_root,
+            is_abstract=profile.is_abstract,
+            is_interface_member=False,
+            is_static=False,
+            is_constructor=False,
+            annotations=(),
+        )
+
+        risk_level = _determine_risk_level(risk_score)
+
+        return {
+            "symbol": symbol,
+            "risk_level": risk_level.value,
+            "risk_score": risk_score,
+            "key_factors": list(factors),
+        }
+
+    def _execute_full(
+        self,
+        arguments: dict[str, Any],
+        visibility_map: dict[str, Visibility],
+    ) -> dict[str, Any]:
+        """Full mode: detailed semantic impact analysis."""
         symbol = arguments["symbol"]
         file_path = arguments.get("file_path")
         caller_count = arguments.get("caller_count", 0)
@@ -150,20 +234,11 @@ class SemanticImpactTool(BaseMCPTool):
         annotations = arguments.get("annotations", [])
         output_format = arguments.get("output_format", "json")
 
-        # Map visibility string to enum
-        visibility_map: dict[str, Visibility] = {
-            "public": Visibility.PUBLIC,
-            "protected": Visibility.PROTECTED,
-            "private": Visibility.PRIVATE,
-            "package": Visibility.PACKAGE,
-            "internal": Visibility.PACKAGE,
-        }
-
         # Build symbol profile
         profile = SymbolProfile(
             name=symbol,
             file_path=file_path or "",
-            language="",  # Will be detected if file_path provided
+            language="",
             visibility=visibility_map.get(visibility.lower(), Visibility.PUBLIC),
             is_abstract=is_abstract,
             is_interface_member=is_interface_member,
@@ -192,123 +267,3 @@ class SemanticImpactTool(BaseMCPTool):
             toon_output = encoder.encode(result)
             return {"output": toon_output, "format": "tson"}
         return result
-
-
-class QuickRiskAssessmentTool(BaseMCPTool):
-    """
-    Quick Risk Assessment Tool
-
-    Provides a fast semantic-level risk assessment based on visibility,
-    caller count, and type hierarchy.
-    """
-
-    def get_tool_definition(self) -> dict[str, Any]:
-        """Get the MCP tool definition."""
-        return {
-            "name": "quick_risk_assessment",
-            "description": (
-                "Quick risk assessment for a proposed code change. "
-                "Provides a fast semantic-level risk assessment based on visibility, "
-                "caller count, and type hierarchy."
-            ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "symbol": {
-                        "type": "string",
-                        "description": "Symbol name being assessed",
-                    },
-                    "visibility": {
-                        "type": "string",
-                        "enum": ["public", "protected", "private", "package", "internal"],
-                        "description": "Symbol visibility",
-                        "default": "public",
-                    },
-                    "caller_count": {
-                        "type": "integer",
-                        "description": "Number of callers",
-                        "default": 0,
-                    },
-                    "is_type_hierarchy_root": {
-                        "type": "boolean",
-                        "description": "Whether this is a base class/interface root",
-                        "default": False,
-                    },
-                    "is_abstract": {
-                        "type": "boolean",
-                        "description": "Whether the symbol is abstract",
-                        "default": False,
-                    },
-                },
-                "required": ["symbol"],
-            },
-        }
-
-    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """Validate tool arguments."""
-        symbol = arguments.get("symbol")
-        if not symbol or not isinstance(symbol, str):
-            raise ValueError("symbol is required and must be a string")
-
-        caller_count = arguments.get("caller_count", 0)
-        if not isinstance(caller_count, int) or caller_count < 0:
-            raise ValueError("caller_count must be a non-negative integer")
-
-        visibility = arguments.get("visibility", "public")
-        valid_visibilities = {"public", "protected", "private", "package", "internal"}
-        if visibility not in valid_visibilities:
-            raise ValueError(f"visibility must be one of {valid_visibilities}")
-
-        return True
-
-    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute the quick risk assessment."""
-        self.validate_arguments(arguments)
-
-        # Extract parameters
-        symbol = arguments["symbol"]
-        visibility = arguments.get("visibility", "public")
-        caller_count = arguments.get("caller_count", 0)
-        is_type_hierarchy_root = arguments.get("is_type_hierarchy_root", False)
-        is_abstract = arguments.get("is_abstract", False)
-
-        # Map visibility string to enum
-        visibility_map: dict[str, Visibility] = {
-            "public": Visibility.PUBLIC,
-            "protected": Visibility.PROTECTED,
-            "private": Visibility.PRIVATE,
-            "package": Visibility.PACKAGE,
-            "internal": Visibility.PACKAGE,
-        }
-
-        # Build symbol profile
-        profile = SymbolProfile(
-            name=symbol,
-            file_path="",
-            language="",
-            visibility=visibility_map.get(visibility.lower(), Visibility.PUBLIC),
-            is_abstract=is_abstract,
-        )
-
-        # Simplified analysis (no call chain depth for quick assessment)
-        call_chain_depth = 0
-        risk_score, factors = _compute_risk_score(
-            caller_count=caller_count,
-            visibility=profile.visibility,
-            call_chain_depth=call_chain_depth,
-            is_type_hierarchy_root=is_type_hierarchy_root,
-            is_abstract=profile.is_abstract,
-            is_interface_member=False,
-            is_static=False,
-            is_constructor=False,
-            annotations=(),
-        )
-
-        risk_level = _determine_risk_level(risk_score)
-
-        return {
-            "symbol": symbol,
-            "risk_level": risk_level.value,
-            "risk_score": risk_score,
-            "key_factors": list(factors),
-        }

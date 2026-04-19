@@ -6,7 +6,6 @@ Tests for Semantic Impact MCP Tool
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.semantic_impact_tool import (
-    QuickRiskAssessmentTool,
     SemanticImpactTool,
 )
 
@@ -197,18 +196,19 @@ class TestSemanticImpactTool:
 
 
 class TestQuickRiskAssessmentTool:
-    """Tests for QuickRiskAssessmentTool."""
+    """Tests for quick mode (formerly QuickRiskAssessmentTool)."""
 
     @pytest.fixture
-    def tool(self) -> QuickRiskAssessmentTool:
+    def tool(self) -> SemanticImpactTool:
         """Create a tool instance."""
-        return QuickRiskAssessmentTool()
+        return SemanticImpactTool()
 
     @pytest.mark.asyncio
-    async def test_quick_assessment_safe(self, tool: QuickRiskAssessmentTool) -> None:
+    async def test_quick_assessment_safe(self, tool: SemanticImpactTool) -> None:
         """Quick assessment for safe change."""
         result = await tool.execute({
             "symbol": "privateMethod",
+            "mode": "quick",
             "visibility": "private",
             "caller_count": 0,
         })
@@ -218,10 +218,11 @@ class TestQuickRiskAssessmentTool:
         assert result["risk_score"] < 20
 
     @pytest.mark.asyncio
-    async def test_quick_assessment_critical(self, tool: QuickRiskAssessmentTool) -> None:
+    async def test_quick_assessment_critical(self, tool: SemanticImpactTool) -> None:
         """Quick assessment for critical change."""
         result = await tool.execute({
             "symbol": "publicApi",
+            "mode": "quick",
             "visibility": "public",
             "caller_count": 30,
             "is_type_hierarchy_root": True,
@@ -233,10 +234,11 @@ class TestQuickRiskAssessmentTool:
         assert result["risk_score"] >= 60
 
     @pytest.mark.asyncio
-    async def test_quick_assessment_with_protected(self, tool: QuickRiskAssessmentTool) -> None:
+    async def test_quick_assessment_with_protected(self, tool: SemanticImpactTool) -> None:
         """Quick assessment with protected visibility."""
         result = await tool.execute({
             "symbol": "protectedMethod",
+            "mode": "quick",
             "visibility": "protected",
             "caller_count": 25,
         })
@@ -245,10 +247,11 @@ class TestQuickRiskAssessmentTool:
         assert result["risk_level"] in ("moderate", "high")
 
     @pytest.mark.asyncio
-    async def test_quick_assessment_package_visibility(self, tool: QuickRiskAssessmentTool) -> None:
+    async def test_quick_assessment_package_visibility(self, tool: SemanticImpactTool) -> None:
         """Quick assessment with package/internal visibility."""
         result = await tool.execute({
             "symbol": "packageMethod",
+            "mode": "quick",
             "visibility": "package",
             "caller_count": 3,
         })
@@ -257,10 +260,11 @@ class TestQuickRiskAssessmentTool:
         assert result["risk_score"] > 0
 
     @pytest.mark.asyncio
-    async def test_quick_assessment_internal_visibility(self, tool: QuickRiskAssessmentTool) -> None:
+    async def test_quick_assessment_internal_visibility(self, tool: SemanticImpactTool) -> None:
         """Quick assessment with internal visibility (alias for package)."""
         result = await tool.execute({
             "symbol": "internalMethod",
+            "mode": "quick",
             "visibility": "internal",
             "caller_count": 3,
         })
@@ -268,7 +272,7 @@ class TestQuickRiskAssessmentTool:
         assert result["symbol"] == "internalMethod"
         assert result["risk_score"] > 0
 
-    def test_validate_arguments_missing_symbol(self, tool: QuickRiskAssessmentTool) -> None:
+    def test_validate_arguments_missing_symbol(self, tool: SemanticImpactTool) -> None:
         """Should raise error when symbol is missing."""
         with pytest.raises(ValueError, match="symbol"):
             tool.validate_arguments({})
