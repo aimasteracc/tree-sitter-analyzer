@@ -1201,6 +1201,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🗑️",
     )
 
+    # literal_boolean_comparison
+    from .tools.literal_boolean_comparison_tool import LiteralBooleanComparisonTool
+    lbc_tool = LiteralBooleanComparisonTool(project_root)
+    registry.register(
+        name="literal_boolean_comparison",
+        toolset="analysis",
+        category="code-quality",
+        schema=lbc_tool.get_tool_definition(),
+        handler=_make_handler(lbc_tool),
+        description="Literal boolean comparison: detect x == True, x == None, x == null and suggest proper idioms",
+        emoji="⚖️",
+    )
+
     # global_state
     from .tools.global_state_tool import GlobalStateTool
     gs_tool = GlobalStateTool(project_root)
