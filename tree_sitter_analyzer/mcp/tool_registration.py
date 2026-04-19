@@ -1500,6 +1500,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚠️",
     )
 
+    from .tools.function_redefinition_tool import FunctionRedefinitionTool
+    fr_tool = FunctionRedefinitionTool(project_root)
+    registry.register(
+        name="function_redefinition",
+        toolset="analysis",
+        category="correctness",
+        schema=fr_tool.get_tool_definition(),
+        handler=_make_handler(fr_tool),
+        description="Function redefinition: detect functions defined twice in the same scope",
+        emoji="🔄",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

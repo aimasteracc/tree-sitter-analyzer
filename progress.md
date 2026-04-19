@@ -19,6 +19,15 @@
 - Detection: comparison_as_statement, arithmetic_as_statement, literal_as_statement
 - 23 tests (5 Python + 4 no-issue + 4 JS + 1 TS + 1 Java + 8 edge), 5 languages
 - CI: ruff, mypy, pytest (23 pass), self-hosting gate 100% all pass
+- Commit: `3337fb64`
+
+**Sprint 3: Function Redefinition Detector** (sustainable loop):
+- Product analysis: DO — silent function replacement is classic bug source, Pylint E0102
+- Architecture: pure AST traversal, track function names per scope (module/class), flag duplicates
+- Detection: function_redefinition, method_redefinition
+- 19 tests (6 Python + 2 JS + 1 TS + 1 Java + 9 edge), 5 languages
+- Fix: Python/Java class bodies use block/class_body nodes, scan into body for methods
+- CI: ruff, mypy, pytest (19 pass), self-hosting gate 100% all pass
 - Commit: pending
 
 ## Session 145 — 2026-04-20
