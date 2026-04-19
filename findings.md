@@ -1,5 +1,39 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Float Equality Comparison Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Float Equality Comparison Detector — 检测 `x == 0.1`, `a != 3.14` 等浮点数精确比较
+
+**产品分析**:
+- 聚焦: 浮点数精确比较 (`==`/`!=`) 因 IEEE 754 精度问题可能产生错误结果。`0.1 + 0.2 == 0.3` 为 False
+- 减法: MVP = 检测 comparison_operator 中 == 或 != 操作符且至少一侧为 float literal
+- 一句话: "Find the floating-point comparisons that lie, because `0.1 + 0.2 != 0.3`"
+
+**独特性评估**: 10/12 >= 8 (DO)
+- Uniqueness: 3/3 — 无类似工具（tautological_condition 检查 x==x，不检查 float==float）
+- Need: 3/3 — 经典 IEEE 754 陷阱，广泛存在于金融/科学计算
+- Architecture fit: 3/3 — 纯 AST，BaseAnalyzer，Python + JS/TS + Java + Go
+- Implementation cost: 1/3 — 多语言，需要正确识别 float literal
+
+**结论**: DO — 检测真正的静默正确性问题
+
+## 技术架构讨论 - Float Equality Comparison Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**技术方案**: AST 遍历 comparison_operator 节点
+- Python: 检测 float literal (包含 `.` 的 number) 在 == 或 != 比较中
+- JS/TS: 同上，排除 === 和 !== (strict comparison 仍然有问题)
+- Java: 检测 double/float literal (带 d/f 后缀或包含 `.`)
+- Go: 检测 float64/float32 literal
+- 排除: integer 比较，None/True/False singleton 比较
+
+**推荐方案**: 标准 BaseAnalyzer 模式，Python + JS/TS + Java + Go
+**风险**: 误报率需要控制 — 应该只在浮点数字面量直接参与比较时报
+**依赖**: 无
+
 ## 产品讨论记录 - Mutable Multiplication Alias Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)

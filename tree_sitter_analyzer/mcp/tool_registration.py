@@ -1635,6 +1635,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="📋",
     )
 
+    # float_equality
+    from .tools.float_equality_tool import FloatEqualityTool
+    fe_tool = FloatEqualityTool(project_root)
+    registry.register(
+        name="float_equality",
+        toolset="analysis",
+        category="correctness",
+        schema=fe_tool.get_tool_definition(),
+        handler=_make_handler(fe_tool),
+        description="Float equality: detect `x == 0.1` IEEE 754 precision bug",
+        emoji="⚖️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
