@@ -1330,6 +1330,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔄",
     )
 
+    # long_parameter_list
+    from .tools.long_parameter_list_tool import LongParameterListTool
+    lpl_tool = LongParameterListTool(project_root)
+    registry.register(
+        name="long_parameter_list",
+        toolset="analysis",
+        category="complexity",
+        schema=lpl_tool.get_tool_definition(),
+        handler=_make_handler(lpl_tool),
+        description="Long parameter list: detect functions with 5+ parameters that should use a parameter object",
+        emoji="📋",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
