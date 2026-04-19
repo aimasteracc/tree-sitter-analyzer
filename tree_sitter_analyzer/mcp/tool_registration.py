@@ -1416,6 +1416,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔤",
     )
 
+    from .tools.self_assignment_tool import SelfAssignmentTool
+    sa_tool = SelfAssignmentTool(project_root)
+    registry.register(
+        name="self_assignment",
+        toolset="analysis",
+        category="correctness",
+        schema=sa_tool.get_tool_definition(),
+        handler=_make_handler(sa_tool),
+        description="Self-assignment: detect x = x, self.x = self.x (no-op or typo)",
+        emoji="🪞",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
