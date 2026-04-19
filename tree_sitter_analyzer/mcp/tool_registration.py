@@ -1431,18 +1431,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔄",
     )
 
-    from .tools.unreachable_code_tool import UnreachableCodeTool
-    uc_tool = UnreachableCodeTool(project_root)
-    registry.register(
-        name="unreachable_code",
-        toolset="analysis",
-        category="correctness",
-        schema=uc_tool.get_tool_definition(),
-        handler=_make_handler(uc_tool),
-        description="Unreachable code: detect code after return/break/continue/raise/throw",
-        emoji="🚫",
-    )
-
     from .tools.implicit_string_concat_tool import ImplicitStringConcatTool
     isc_tool = ImplicitStringConcatTool(project_root)
     registry.register(
@@ -1663,13 +1651,13 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
 
     # mutable_multiplication
     from .tools.mutable_multiplication_tool import MutableMultiplicationTool
-    mm_tool = MutableMultiplicationTool(project_root)
+    mmul_tool = MutableMultiplicationTool(project_root)
     registry.register(
         name="mutable_multiplication",
         toolset="analysis",
         category="correctness",
-        schema=mm_tool.get_tool_definition(),
-        handler=_make_handler(mm_tool),
+        schema=mmul_tool.get_tool_definition(),
+        handler=_make_handler(mmul_tool),
         description="Mutable multiplication: detect `[[]] * n` shared reference bug",
         emoji="📋",
     )
@@ -1741,26 +1729,26 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
 
     # nested_class
     from .tools.nested_class_tool import NestedClassTool
-    nc_tool = NestedClassTool(project_root)
+    ncls_tool = NestedClassTool(project_root)
     registry.register(
         name="nested_class",
         toolset="analysis",
         category="design",
-        schema=nc_tool.get_tool_definition(),
-        handler=_make_handler(nc_tool),
+        schema=ncls_tool.get_tool_definition(),
+        handler=_make_handler(ncls_tool),
         description="Nested class: detect classes inside other classes indicating potential design smell",
         emoji="🏗️",
     )
 
     # redundant_super
     from .tools.redundant_super_tool import RedundantSuperTool
-    rs_tool = RedundantSuperTool(project_root)
+    rsup_tool = RedundantSuperTool(project_root)
     registry.register(
         name="redundant_super",
         toolset="analysis",
         category="correctness",
-        schema=rs_tool.get_tool_definition(),
-        handler=_make_handler(rs_tool),
+        schema=rsup_tool.get_tool_definition(),
+        handler=_make_handler(rsup_tool),
         description="Redundant super: detect unnecessary super() calls in constructors across Python, JS/TS, Java",
         emoji="♻️",
     )
