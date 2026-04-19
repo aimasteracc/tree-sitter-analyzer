@@ -1,5 +1,40 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Batch 4 Candidates - 2026-04-20 Session 152
+
+**调用**: inline product analysis (autonomous mode)
+
+**功能候选**: 3 个候选分析
+
+**分析**:
+
+### 候选 1: Deep Unpacking Detector — DO
+- 理由: 真实可读性/正确性问题，元组解包漏一个变量就静默出错，无现有工具覆盖此场景
+- 评分: 11/12 (独特性3 + 需求度2 + 架构适配3 + 实现成本3)
+- 一句话: "Find excessive tuple unpacking that reduces readability and risks silent failures"
+
+### 候选 2: Missing Static Method Detector — DO
+- 理由: 常见代码异味，实例方法不使用 self 暗示设计意图不清晰，LLM 审查代码时高频发现
+- 评分: 11/12 (独特性3 + 需求度3 + 架构适配3 + 实现成本2)
+- 一句话: "Find instance methods that never use self and should be @staticmethod"
+
+### 候选 3: Nested Class Detector — DO
+- 理由: Java/C++ 中嵌套类很常见，通常是设计问题的信号，应该用组合替代
+- 评分: 11/12 (独特性3 + 需求度2 + 架构适配3 + 实现成本3)
+- 一句话: "Find classes defined inside other classes, a design smell suggesting missing composition"
+
+**结论**: 3 个都值得做，按顺序实现
+
+## 技术架构讨论 - Batch 4 - 2026-04-20
+
+**调用**: inline architecture analysis (autonomous mode)
+
+**技术方案**: 所有 3 个 analyzer 均使用 BaseAnalyzer + AST 遍历模式
+
+1. Deep Unpacking: 遍历 assignment/pattern 节点，统计 tuple_pattern 中的元素数
+2. Missing Static Method: 遍历 function_definition 在 class_definition 内，检查方法体是否引用 self
+3. Nested Class: 遍历 class_definition，检查父节点是否也是 class_definition
+
 ## 产品讨论记录 - Batch 3 Candidates - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)

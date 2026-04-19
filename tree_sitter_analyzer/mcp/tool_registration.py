@@ -1713,6 +1713,45 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔍",
     )
 
+    # deep_unpacking
+    from .tools.deep_unpacking_tool import DeepUnpackingTool
+    du_tool = DeepUnpackingTool(project_root)
+    registry.register(
+        name="deep_unpacking",
+        toolset="analysis",
+        category="readability",
+        schema=du_tool.get_tool_definition(),
+        handler=_make_handler(du_tool),
+        description="Deep unpacking: detect excessive tuple unpacking with 4+ variables reducing readability",
+        emoji="📦",
+    )
+
+    # missing_static_method
+    from .tools.missing_static_method_tool import MissingStaticMethodTool
+    msm_tool = MissingStaticMethodTool(project_root)
+    registry.register(
+        name="missing_static_method",
+        toolset="analysis",
+        category="design",
+        schema=msm_tool.get_tool_definition(),
+        handler=_make_handler(msm_tool),
+        description="Missing static method: detect instance methods that never use self and should be @staticmethod",
+        emoji="🔧",
+    )
+
+    # nested_class
+    from .tools.nested_class_tool import NestedClassTool
+    nc_tool = NestedClassTool(project_root)
+    registry.register(
+        name="nested_class",
+        toolset="analysis",
+        category="design",
+        schema=nc_tool.get_tool_definition(),
+        handler=_make_handler(nc_tool),
+        description="Nested class: detect classes inside other classes indicating potential design smell",
+        emoji="🏗️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
