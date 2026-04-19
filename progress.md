@@ -1,5 +1,33 @@
 # Progress — 自主开发进度日志
 
+## Session 138 — 2026-04-19
+
+**Sprint 3: Missing Break Detector** (sustainable loop):
+- Product analysis: DO — missing break in switch is a classic bug every developer hits
+- Architecture: AST traversal, walk switch cases checking for terminating statements
+- Detection: missing_break (case without break/return/throw)
+- 22 tests (JS, TS, Java + Python/Go skipped by design)
+- 92 → 95 MCP tools (+3 callback_hell, hardcoded_ip, missing_break)
+- CI: ruff, mypy, pytest, self-hosting gate all pass
+- Commit: `a6913880`
+
+**Sprint 2: Hardcoded IP Detector** (sustainable loop):
+- Product analysis: DO — hardcoded IPs are invisible time bombs in config
+- Architecture: AST traversal + regex on string literals, port variable name matching
+- Detection: hardcoded_ip (IPv4 in strings), hardcoded_port (port in port-named vars)
+- 28 tests, 4 languages (Python, JS/TS, Java, Go)
+- CI: ruff, mypy, pytest, self-hosting gate all pass
+- Commit: `b7e5b8cc`
+
+**Sprint 1: Callback Hell Detector** (sustainable loop):
+- Product analysis: DO — callback hell makes code unreadable
+- Architecture: AST traversal, track nesting depth of callback-like nodes per language
+- Detection: callback_hell (4+ levels), deep_callback (3 levels), promise_chain_hell (4+ .then())
+- 28 tests, 4 languages (Python, JS/TS, Java, Go)
+- Fixed: Python tree-sitter lambda keyword child node causing false depth
+- CI: ruff, mypy, pytest, self-hosting gate all pass
+- Commit: `45f13030`
+
 ## Session 132 — 2026-04-19
 
 **Sprint 4: Lazy Class Detector** (sustainable loop):
