@@ -1018,6 +1018,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="📝",
     )
 
+    # iterable_modification
+    from .tools.iterable_modification_tool import IterableModificationTool
+    im_tool = IterableModificationTool(project_root)
+    registry.register(
+        name="iterable_modification",
+        toolset="analysis",
+        category="bugs",
+        schema=im_tool.get_tool_definition(),
+        handler=_make_handler(im_tool),
+        description="Iterable modification in loops: detect collection modification during iteration causing RuntimeError or silent bugs",
+        emoji="⚠️",
+    )
+
     # primitive_obsession
     from .tools.primitive_obsession_tool import PrimitiveObsessionTool
     po_tool = PrimitiveObsessionTool(project_root)
