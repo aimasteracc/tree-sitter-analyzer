@@ -1512,6 +1512,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔄",
     )
 
+    from .tools.production_assert_tool import ProductionAssertTool
+    pa_tool = ProductionAssertTool(project_root)
+    registry.register(
+        name="production_assert",
+        toolset="analysis",
+        category="correctness",
+        schema=pa_tool.get_tool_definition(),
+        handler=_make_handler(pa_tool),
+        description="Production assert: detect assert statements in non-test code (stripped by python -O)",
+        emoji="🛑",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

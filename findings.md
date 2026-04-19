@@ -1,5 +1,24 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Production Assert Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Production Assert Detector — 检测非测试代码中的 assert 语句（python -O 会剥离）
+
+**产品分析**:
+- 聚焦: assert 在 -O 模式下被剥离是真实 Python 反模式，Pylint PLW0129 也检测
+- 减法: 代码已存在（194+111行），只需加测试
+- 一句话: "Find assert statements that vanish in production because python -O strips them"
+
+**独特性评估**: 10/12 >= 8 (DO)
+- Uniqueness: 2/3 — Pylint 有此检查，但工具链内无
+- Need: 2/3 — 真实但小众，-O 较少使用
+- Architecture fit: 3/3 — 代码已完成，BaseAnalyzer 模式
+- Implementation cost: 3/3 — 代码已存在，只需加测试
+
+**结论**: DO — 代码已存在，架构清晰，填真正空白
+
 > 此文件是自主开发 Agent 的知识库。所有 wiki 知识都在这里索引。
 > 每个条目包含：页面名、一句话摘要、对 ts-sitter-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
