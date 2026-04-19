@@ -1086,6 +1086,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🗑️",
     )
 
+    # redundant_else
+    from .tools.redundant_else_tool import RedundantElseTool
+    re_tool = RedundantElseTool(project_root)
+    registry.register(
+        name="redundant_else",
+        toolset="analysis",
+        category="style",
+        schema=re_tool.get_tool_definition(),
+        handler=_make_handler(re_tool),
+        description="Redundant else: detect unnecessary else blocks where the if branch already terminates across Python, JS/TS, Java, Go",
+        emoji="↩️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

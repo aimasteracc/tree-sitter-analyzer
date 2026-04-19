@@ -3443,3 +3443,15 @@ OpenSpec Changes Completed
 - 创建 tests/unit/test_env_tracker.py (15+ tests)
 - 运行 CI 检查: ruff + mypy + pytest
 
+### Session 137 — 2026-04-19
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 1 OpenSpec change (add-dead-store-detector)
+- **MCP Tools**: 89 → 90 (+1 dead_store)
+- **Tests**: 35 tests pass (35 analysis)
+- **Commits**: `1ac2350f`
+- **Status**: Sprint complete, sustainable loop running
+
+- **产品分析**: Refused Bequest → DON'T, Inconsistent Return Type → DON'T (overlap), Dead Store → DO (11/12)
+- **架构分析**: 纯 AST 模式，BaseAnalyzer 继承，4 语言支持
+- **关键发现**: return_path.py 已覆盖不一致返回类型, security_scan.py 已覆盖硬编码凭证
+
