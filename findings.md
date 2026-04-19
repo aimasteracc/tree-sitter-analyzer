@@ -1960,3 +1960,35 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 6. Java: Collections.synchronizedMap used incorrectly → MEDIUM
 7. Go: shared variable accessed from multiple goroutines → HIGH
 8. Go: map concurrent read/write without mutex → HIGH
+
+## 产品讨论记录 - Data Clump Detector - 2026-04-19
+
+**调用**: /office-hours (乔布斯视角产品分析)
+
+**输入**: Data Clump Detector — 检测经常一起出现的参数组
+
+**分析**:
+1. **聚焦即说不**: 解决具体问题——data clumps 是最常见的结构性异味之一。有明确的可操作性发现。
+2. **减法思维**: MVP 很简单——解析函数参数，找子集匹配。单文件作用域，纯 AST，无新依赖。
+3. **一句话定义**: "当相同的 3+ 参数出现在多个函数中，标记出来——它们应该是一个类。"
+
+**结论**: DO
+**理由**: 正交于现有工具（coupling_metrics 看模块耦合，这个看参数聚类），63 个分析器中无重复功能，经典 Fowler 异味。
+
+## 技术架构讨论记录 - Data Clump Detector - 2026-04-19
+
+**调用**: /plan-eng-review
+
+**输入**: Data Clump Detector，方案A（纯AST子集匹配）vs 方案B（参数使用图聚类）
+
+**分析**:
+1. **技术可行性**: 方案A风险低，纯集合操作；方案B需要图算法，中高风险
+2. **架构影响**: 方案A与62个分析器完全一致；方案B引入新原语
+3. **实现复杂度**: 方案A 1个Sprint；方案B 2-3个Sprint
+4. **维护成本**: 方案A低维护（无状态、无依赖）；方案B高维护（图结构）
+
+**推荐方案**: 方案A（纯AST遍历 + 子集匹配）
+**理由**: 简单、一致、快速交付，与现有63个分析器完全统一
+
+**风险**: 同名不同义的参数可能产生误报（可接受）
+**依赖**: 无新依赖，复用tree_sitter已支持的4种语言
