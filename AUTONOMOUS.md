@@ -76,6 +76,10 @@
 2. 读取 progress.md → 确认已完成的工作
 3. 用 qmd 检索 wiki 相关知识 → 写入 findings.md
 4. 选择一个 OpenSpec change → 读取 tasks.md
+4b. [产品审批门禁] 检查 findings.md 是否有该功能的产品讨论记录
+    - 没有 → 必须先调用 /steve-jobs-perspective 做产品分析（按永续循环步骤2的模板）
+    - 有且结论是 DON'T → 放弃该 change，归档，回到步骤 4
+    - 有且结论是 DO → 继续
 5. [Generator] 实现功能（写代码 + 写测试）
 6. 运行 CI：ruff check + mypy + pytest
 7. [Self-Hosting] 用已有 MCP 工具对新代码做质量检查（见下方）
@@ -663,6 +667,14 @@ uv run pytest tests/ -x -q
 - **Tests**: 28 + 28 + 22 = 78 tests pass
 - **Commits**: `45f13030`, `b7e5b8cc`, `a6913880`
 - **Status**: 3 sprints complete, sustainable loop running
+
+### Session 140 — 2026-04-19
+- **Open**: Continue sustainable loop (complete unfinished OpenSpec change)
+- **Complete**: 1 OpenSpec change (add-global-state-analyzer)
+- **MCP Tools**: 84 → 85 (+1 global_state)
+- **Tests**: 54 tests pass (41 analysis + 13 MCP tool)
+- **Commits**: pending
+- **Status**: Sprint complete, sustainable loop running
 
 ### Next Session
 - **Action**: Execute sustainable loop mechanism (新功能探索)

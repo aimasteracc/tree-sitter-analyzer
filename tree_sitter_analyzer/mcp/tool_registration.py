@@ -1188,6 +1188,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔍",
     )
 
+    # global_state
+    from .tools.global_state_tool import GlobalStateTool
+    gs_tool = GlobalStateTool(project_root)
+    registry.register(
+        name="global_state",
+        toolset="analysis",
+        category="state-quality",
+        schema=gs_tool.get_tool_definition(),
+        handler=_make_handler(gs_tool),
+        description="Global state: detect module-level mutable variables, global/nonlocal keywords, static non-final fields, and package-level variables",
+        emoji="🌐",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
