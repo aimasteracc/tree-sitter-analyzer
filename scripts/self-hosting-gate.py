@@ -51,7 +51,9 @@ def _find_analyzers() -> list[tuple[str, str, str]]:
                 if not hasattr(obj, method):
                     continue
 
-                init = obj.__init__
+                init = getattr(obj, "__init__", None)
+                if init is None:
+                    break
                 sig = inspect.signature(init)
                 params = list(sig.parameters.keys())
 
@@ -148,24 +150,68 @@ def _check_architecture() -> list[str]:
     violations: list[str] = []
     analysis_dir = Path("tree_sitter_analyzer/analysis")
     tools_dir = Path("tree_sitter_analyzer/mcp/tools")
+    tests_dir = Path("tests")
     registration = Path("tree_sitter_analyzer/mcp/tool_registration.py")
 
-    # Rule 1: No _LANGUAGE_MODULES outside base.py (must use BaseAnalyzer)
+    # Analyzers that are exempt from BaseAnalyzer inheritance
+    base_analyzer_exempt = {
+        "base.py", "__init__.py",
+        "error_recovery.py",   # encoding detection utility, not AST analysis
+        "health_score.py",     # aggregates other analyzers, no direct parsing
+        "ci_report.py",        # report generator, not analyzer
+        "dependency_graph.py", # project-level, cross-file analysis
+        "code_clones.py",      # project-level, cross-file analysis
+        "design_patterns.py",  # project-level pattern matching
+        "semantic_impact.py",  # project-level impact analysis
+        "refactoring_suggestions.py",  # aggregates other analyzers
+        "java_patterns.py",    # specialized multi-file analysis
+        "llm_benchmark.py",    # benchmark harness, not analysis
+        "api_discovery.py",    # project-level API scanning
+        "coupling_metrics.py", # project-level coupling analysis
+        "test_coverage.py",    # project-level test analysis
+    }
+
     if analysis_dir.exists():
         for f in analysis_dir.glob("*.py"):
-            if f.name in ("base.py", "__init__.py"):
-                continue
             content = f.read_text()
-            if "_LANGUAGE_MODULES" in content and "BaseAnalyzer" not in content:
+
+            # Rule 1a: No _LANGUAGE_MODULES outside base.py
+            if f.name != "base.py" and "_LANGUAGE_MODULES" in content:
                 violations.append(
-                    f"{f.name}: uses _LANGUAGE_MODULES without BaseAnalyzer"
+                    f"{f.name}: contains _LANGUAGE_MODULES (use BaseAnalyzer)"
                 )
 
-    # Rule 2: Tool files must be registered
+            # Rule 1b: No _EXT_TO_LANG outside base.py
+            if f.name != "base.py" and "_EXT_TO_LANG" in content:
+                violations.append(
+                    f"{f.name}: contains _EXT_TO_LANG (use BaseAnalyzer._get_parser)"
+                )
+
+            # Rule 1c: AST-based analyzers must inherit BaseAnalyzer
+            if f.name not in base_analyzer_exempt:
+                has_analyze_method = any(
+                    m in content
+                    for m in ("analyze_file", "def analyze(", "def detect(")
+                )
+                if has_analyze_method and "BaseAnalyzer" not in content:
+                    violations.append(
+                        f"{f.name}: has analysis method but does not inherit BaseAnalyzer"
+                    )
+
+    # Rule 2: Tool files must be registered (deprecated tools are exempt)
+    deprecated_tools = {
+        "error_handling_tool.py", "exception_quality_tool.py",
+        "error_message_quality_tool.py", "magic_string_tool.py",
+        "code_smell_detector_tool.py", "dead_code_tool.py",
+        "dead_code_path_tool.py", "data_clump_tool.py",
+        "nesting_depth_tool.py", "loop_complexity_tool.py",
+    }
     if tools_dir.exists() and registration.exists():
         reg_content = registration.read_text()
         for f in tools_dir.glob("*_tool.py"):
-            tool_name = f.stem.replace("_tool", "")
+            if f.name == "base_tool.py" or f.name in deprecated_tools:
+                continue
+            tool_name = f.stem.removesuffix("_tool")
             if tool_name not in reg_content:
                 violations.append(
                     f"{f.name}: tool file not registered in tool_registration.py"
@@ -173,11 +219,29 @@ def _check_architecture() -> list[str]:
 
     # Rule 3: Tool count limit
     reg_count = reg_content.count("registry.register(") if registration.exists() else 0
-    max_tools = 80
+    max_tools = 60
     if reg_count > max_tools:
         violations.append(
             f"Tool count ({reg_count}) exceeds MAX_TOOLS ({max_tools})"
         )
+
+    # Rule 4: Analyzers must have test files
+    if analysis_dir.exists() and tests_dir.exists():
+        test_file_names: set[str] = set()
+        for tf in tests_dir.rglob("test_*.py"):
+            test_file_names.add(tf.name)
+
+        for f in analysis_dir.glob("*.py"):
+            if f.name in base_analyzer_exempt:
+                continue
+            expected_test = f"test_{f.stem}.py"
+            if expected_test not in test_file_names:
+                # Also check for test files that include the analyzer name
+                has_test = any(f.stem in tf.name for tf in tests_dir.rglob("test_*.py"))
+                if not has_test:
+                    violations.append(
+                        f"{f.name}: no test file found (expected {expected_test})"
+                    )
 
     return violations
 

@@ -37,6 +37,9 @@ except ImportError:
 SUPPORTED_EXTENSIONS: set[str] = {
     ".py", ".js", ".ts", ".tsx", ".jsx",
     ".java", ".go", ".cs", ".rb",
+    ".rs", ".c", ".cpp", ".h", ".hpp",
+    ".php", ".swift", ".kt", ".kts",
+    ".scala", ".lua", ".sh", ".bash",
 }
 
 class SecuritySeverity(Enum):
@@ -578,6 +581,19 @@ class SecurityScanner:
             ".go": "go",
             ".cs": "csharp",
             ".rb": "ruby",
+            ".rs": "rust",
+            ".c": "c",
+            ".cpp": "cpp",
+            ".h": "c",
+            ".hpp": "cpp",
+            ".php": "php",
+            ".swift": "swift",
+            ".kt": "kotlin",
+            ".kts": "kotlin",
+            ".scala": "scala",
+            ".lua": "lua",
+            ".sh": "shell",
+            ".bash": "shell",
         }
         return ext_map.get(file_path.suffix.lower(), "")
 

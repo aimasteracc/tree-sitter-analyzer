@@ -18,7 +18,9 @@ from .tools.check_tools_tool import CheckToolsTool
 from .tools.ci_report_tool import CIReportTool
 from .tools.code_clone_detection_tool import CodeCloneDetectionTool
 from .tools.code_diff_tool import CodeDiffTool
-from .tools.code_smell_detector_tool import CodeSmellDetectorTool
+from .tools.code_smell_detector_tool import (
+    CodeSmellDetectorTool,  # noqa: F401 — kept for CLI use
+)
 from .tools.complexity_heatmap_tool import ComplexityHeatmapTool
 from .tools.context_optimizer_tool import ContextOptimizerTool
 from .tools.dependency_query_tool import DependencyQueryTool
@@ -180,18 +182,6 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔄",
     )
 
-    # code_smell_detector
-    smell_tool = CodeSmellDetectorTool(project_root)
-    registry.register(
-        name="code_smell_detector",
-        toolset="analysis",
-        category="code-quality",
-        schema=smell_tool.get_tool_definition(),
-        handler=_make_handler(smell_tool),
-        description="Detect code smells: God Class, Long Method, Deep Nesting, Magic Numbers",
-        emoji="👃",
-    )
-
     # code_clone_detection
     clone_tool = CodeCloneDetectionTool(project_root)
     registry.register(
@@ -288,16 +278,16 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔥",
     )
 
-    # dead_code
-    from .tools.dead_code_tool import DeadCodeTool
-    dead_code_tool = DeadCodeTool(project_root)
+    # dead_code_analysis (consolidated: dead_code + dead_code_path)
+    from .tools.dead_code_analysis_tool import DeadCodeAnalysisTool
+    dca_tool = DeadCodeAnalysisTool(project_root)
     registry.register(
-        name="dead_code",
+        name="dead_code_analysis",
         toolset="analysis",
-        category="dead-code-detection",
-        schema=dead_code_tool.get_tool_definition(),
-        handler=_make_handler(dead_code_tool),
-        description="Detect dead (unused) code: functions, classes, imports",
+        category="dead-code",
+        schema=dca_tool.get_tool_definition(),
+        handler=_make_handler(dca_tool),
+        description="Dead code analysis: detect unused definitions and unreachable code paths across Python, JS/TS, Java, Go",
         emoji="🗑️",
     )
 
@@ -428,30 +418,17 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🧠",
     )
 
-    # nesting_depth
-    from .tools.nesting_depth_tool import NestingDepthTool
-    nd_tool = NestingDepthTool(project_root)
+    # nesting_complexity (consolidated: nesting_depth + loop_complexity)
+    from .tools.nesting_complexity_tool import NestingComplexityTool
+    nc_tool = NestingComplexityTool(project_root)
     registry.register(
-        name="nesting_depth",
+        name="nesting_complexity",
         toolset="analysis",
         category="complexity",
-        schema=nd_tool.get_tool_definition(),
-        handler=_make_handler(nd_tool),
-        description="Nesting depth: detect deeply nested code pyramids across Python, JS/TS, Java, Go",
+        schema=nc_tool.get_tool_definition(),
+        handler=_make_handler(nc_tool),
+        description="Nesting complexity: detect deeply nested code and loop Big-O estimation across Python, JS/TS, Java, Go",
         emoji="📐",
-    )
-
-    # loop_complexity
-    from .tools.loop_complexity_tool import LoopComplexityTool
-    lc_tool = LoopComplexityTool(project_root)
-    registry.register(
-        name="loop_complexity",
-        toolset="analysis",
-        category="complexity",
-        schema=lc_tool.get_tool_definition(),
-        handler=_make_handler(lc_tool),
-        description="Loop complexity: detect nested loops and estimate Big-O complexity across Python, JS/TS, Java, Go",
-        emoji="🔄",
     )
 
     # boolean_complexity
@@ -480,17 +457,17 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔀",
     )
 
-    # error_message_quality
-    from .tools.error_message_quality_tool import ErrorMessageQualityTool
-    emq_tool = ErrorMessageQualityTool(project_root)
+    # error_quality (consolidated: error_handling + exception_quality + error_message_quality)
+    from .tools.error_quality_tool import ErrorQualityTool
+    eq_tool = ErrorQualityTool(project_root)
     registry.register(
-        name="error_message_quality",
+        name="error_quality",
         toolset="analysis",
-        category="quality",
-        schema=emq_tool.get_tool_definition(),
-        handler=_make_handler(emq_tool),
-        description="Error message quality: detect generic, empty, or unhelpful error messages across Python, JS/TS, Java, Go",
-        emoji="💬",
+        category="error-quality",
+        schema=eq_tool.get_tool_definition(),
+        handler=_make_handler(eq_tool),
+        description="Error quality: detect anti-patterns (bare except, swallowed errors, broad exceptions), handler quality, and message quality across Python, JS/TS, Java, Go",
+        emoji="🛡️",
     )
 
     # parameter_coupling
@@ -530,19 +507,6 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(cq_tool),
         description="Comment quality: detect stale docs, param mismatches, missing returns, TODO tracking across Python, JS/TS, Java, Go",
         emoji="💬",
-    )
-
-    # error_handling
-    from .tools.error_handling_tool import ErrorHandlingTool
-    eh_tool = ErrorHandlingTool(project_root)
-    registry.register(
-        name="error_handling",
-        toolset="analysis",
-        category="error-handling",
-        schema=eh_tool.get_tool_definition(),
-        handler=_make_handler(eh_tool),
-        description="Error handling: detect bare except, swallowed errors, broad exceptions, unchecked Go errors across Python, JS/TS, Java, Go",
-        emoji="🛡️",
     )
 
     # call_graph
@@ -874,19 +838,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🎯",
     )
 
-    # exception_quality
-    from .tools.exception_quality_tool import ExceptionQualityTool
-    eq_tool = ExceptionQualityTool(project_root)
-    registry.register(
-        name="exception_quality",
-        toolset="analysis",
-        category="error-quality",
-        schema=eq_tool.get_tool_definition(),
-        handler=_make_handler(eq_tool),
-        description="Exception handling quality: detect broad catches, swallowed exceptions, missing error context",
-        emoji="🛡️",
-    )
-
     # solid_principles
     from .tools.solid_principles_tool import SOLIDPrinciplesTool
     sp_tool = SOLIDPrinciplesTool(project_root)
@@ -966,32 +917,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🦥",
     )
 
-    # magic_string
-    from .tools.magic_string_tool import MagicStringTool
-    ms_tool = MagicStringTool(project_root)
-    registry.register(
-        name="magic_string",
-        toolset="analysis",
-        category="quality",
-        schema=ms_tool.get_tool_definition(),
-        handler=_make_handler(ms_tool),
-        description="Magic string: detect hardcoded string literals that should be extracted to constants across Python, JS/TS, Java, Go",
-        emoji="🔤",
-    )
-
-    # dead_code_path
-    from .tools.dead_code_path_tool import DeadCodePathTool
-    dcp_tool = DeadCodePathTool(project_root)
-    registry.register(
-        name="dead_code_path",
-        toolset="analysis",
-        category="dead-code",
-        schema=dcp_tool.get_tool_definition(),
-        handler=_make_handler(dcp_tool),
-        description="Dead code path: detect unreachable code after terminal statements across Python, JS/TS, Java, Go",
-        emoji="🚫",
-    )
-
     # duplicate_condition
     from .tools.duplicate_condition_tool import DuplicateConditionTool
     dc_tool = DuplicateConditionTool(project_root)
@@ -1029,19 +954,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(scl_tool),
         description="String concat in loops: detect O(n^2) string concatenation patterns across Python, JS/TS, Java, Go",
         emoji="🐌",
-    )
-
-    # data_clump
-    from .tools.data_clump_tool import DataClumpTool
-    dcl_tool = DataClumpTool(project_root)
-    registry.register(
-        name="data_clump",
-        toolset="analysis",
-        category="design",
-        schema=dcl_tool.get_tool_definition(),
-        handler=_make_handler(dcl_tool),
-        description="Data clump: detect parameter groups appearing together across multiple functions",
-        emoji="📦",
     )
 
     # primitive_obsession
