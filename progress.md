@@ -1,5 +1,41 @@
 # Progress — 自主开发进度日志
 
+## Session 147 — 2026-04-20
+
+**Sprint 0: Production Assert Detector** (unfinished from prev session):
+- Found uncommitted code from previous session (194+111 lines, no tests)
+- Product analysis: DO — fills genuine gap, code already exists
+- Fixed _is_test_path to avoid false positives from pytest temp dirs
+- 19 tests (6 basic + 4 exclusion + 2 non-python + 7 edge), Python only
+- CI: ruff, mypy, pytest (19 pass), self-hosting gate 100%
+- Commit: `d24c0cea`
+
+**Sprint 1: Assert-on-Tuple Detector** (sustainable loop):
+- Product analysis: DO — classic Python trap, `assert (cond, msg)` always True
+- Architecture: pure AST, check assert first named child is tuple type
+- Detection: assert_on_tuple (tuple literal as assert condition)
+- 16 tests (3 detect + 5 no-issue + 8 edge), Python only
+- CI: ruff, mypy, pytest (16 pass), self-hosting gate 100%
+- Commit: `95c3c859`
+
+**Sprint 2: Return in Finally Detector** (sustainable loop):
+- Product analysis: DO — return/raise in finally silently swallows exceptions
+- Architecture: scan finally_clause children for return/raise statements
+- Detection: return_in_finally, raise_in_finally (4 languages)
+- 15 tests (4 Python + 3 JS + 1 TS + 7 edge), 4 languages
+- CI: ruff, mypy, pytest (15 pass), self-hosting gate 100%
+- Commit: `c4e79774`
+
+**Sprint 3: Duplicate Dict Key Detector** (sustainable loop):
+- Product analysis: DO — duplicate keys silently overwrite values
+- Architecture: collect keys per dict literal, flag duplicates
+- Detection: duplicate_dict_key (3 languages: Python, JS, TS)
+- Fix: traverse all children of dict nodes to find nested dicts
+- Fix: mypy strict — handle None text case in _get_key_text
+- 16 tests (6 Python + 2 JS + 1 TS + 7 edge), 3 languages
+- CI: ruff, mypy, pytest (16 pass), self-hosting gate 100%
+- Commit: `0a7d2769`
+
 ## Session 146 — 2026-04-20
 
 **Sprint 1: Late-Binding Closure Detector** (sustainable loop):
