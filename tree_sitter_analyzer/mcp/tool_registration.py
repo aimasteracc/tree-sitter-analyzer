@@ -1440,6 +1440,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="📝",
     )
 
+    from .tools.import_shadowing_tool import ImportShadowingTool
+    is_tool = ImportShadowingTool(project_root)
+    registry.register(
+        name="import_shadowing",
+        toolset="analysis",
+        category="correctness",
+        schema=is_tool.get_tool_definition(),
+        handler=_make_handler(is_tool),
+        description="Import shadowing: detect imported names reassigned later (import os; os = 'x')",
+        emoji="📦",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
