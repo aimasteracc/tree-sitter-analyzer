@@ -1392,6 +1392,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔄",
     )
 
+    from .tools.unreachable_code_tool import UnreachableCodeTool
+    uc_tool = UnreachableCodeTool(project_root)
+    registry.register(
+        name="unreachable_code",
+        toolset="analysis",
+        category="correctness",
+        schema=uc_tool.get_tool_definition(),
+        handler=_make_handler(uc_tool),
+        description="Unreachable code: detect code after return/break/continue/raise/throw",
+        emoji="🚫",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

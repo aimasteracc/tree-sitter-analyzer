@@ -4,6 +4,31 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-sitter-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 灵感来源 - Session 145 — 2026-04-20
+
+- 98个分析器已实现，覆盖大部分经典代码异味
+- 识别的空白：Unreachable Code (12/12 score)
+- 选择：Unreachable Code Detector
+
+## 产品讨论记录 - Unreachable Code Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Unreachable Code Detector — 检测 return/break/raise/continue/throw 语句之后的死代码
+
+**产品分析**:
+- 聚焦: return/break/raise/throw之后的代码是真正的死代码，dead_code/dead_code_path/dead_store三个工具均不覆盖
+- 减法: MVP = 纯AST遍历，在block中找到终止语句，标记同block中后续所有语句为unreachable
+- 一句话: "Find the code after the function exits — because lines after `return` are code that never runs."
+
+**独特性评估**: 12/12 >= 8 (DO)
+- Uniqueness: 3/3 — no existing tool covers post-termination dead code
+- Need: 3/3 — IDEs flag this, linters flag it, genuine code quality issue
+- Architecture fit: 3/3 — standard BaseAnalyzer, all languages
+- Implementation cost: 3/3 — single Sprint, pure AST traversal
+
+**结论**: DO — fills genuine gap, catches real dead code, all languages
+
 ## 灵感来源 - Session 144 — 2026-04-20
 
 - 95个分析器已实现，覆盖大部分经典代码异味
