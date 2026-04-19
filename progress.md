@@ -27,6 +27,24 @@
 - CI: ruff, mypy, pytest (21 pass), self-hosting gate 100% all pass
 - Commit: `b594f6c6`
 
+**Sprint 4: String Format Consistency Detector** (sustainable loop):
+- Product analysis: DO — mixed formatting styles reduce readability, recommend f-strings
+- Architecture: detect %-formatting via binary_operator with %, .format() via call expression, f-string via interpolation child
+- Detection: mixed_format_styles, legacy_percent_format, legacy_dot_format, Python only
+- 14 tests (4 mixed + 2 legacy + 3 no-issues + 5 edge), Python only
+- Fix: f-strings are `string` type in tree-sitter-python (not `fstring`), use `interpolation` child to detect
+- CI: ruff, mypy, pytest (14 pass), self-hosting gate 100% all pass
+- Commit: `5cf016a5`
+
+**Sprint 5: Import Shadowing Detector** (sustainable loop):
+- Product analysis: DO — shadowed imports silently replace module references, confusing bugs
+- Architecture: collect import names, then check assignments for name conflicts
+- Detection: shadowed_import, shadowed_from_import, Python only
+- 15 tests (4 import + 3 from-import + 2 for-loop + 6 edge), Python only
+- Fix: from-import names are `dotted_name` not `identifier`; added `_node_text` helper for mypy strict
+- CI: ruff, mypy, pytest (15 pass), self-hosting gate 100% all pass
+- Commit: `cb2e0687`
+
 ## Session 144 — 2026-04-20
 
 **Sprint 1: Protocol Completeness Analyzer** (sustainable loop):
