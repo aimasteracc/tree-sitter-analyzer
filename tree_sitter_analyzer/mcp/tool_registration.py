@@ -469,6 +469,19 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         emoji="🔄",
     )
 
+    # test_flakiness
+    from .tools.test_flakiness_tool import TestFlakinessTool
+    tf_tool = TestFlakinessTool(project_root)
+    registry.register(
+        name="test_flakiness",
+        toolset="analysis",
+        category="test-quality",
+        schema=tf_tool.get_tool_definition(),
+        handler=_make_handler(tf_tool),
+        description="Test flakiness: detect timing deps, random data, time-dependent assertions, and shared mutable state in tests",
+        emoji="🎰",
+    )
+
     # parameter_coupling
     from .tools.parameter_coupling_tool import ParameterCouplingTool
     pc_tool = ParameterCouplingTool(project_root)
