@@ -596,6 +596,14 @@ uv run pytest tests/ -x -q
 - **Commits**: `43330479`, `eb642951`, `2d46d83b`
 - **Status**: 3 sprints complete, sustainable loop running
 
+### Session 136 — 2026-04-19
+- **Open**: Continue sustainable loop (新功能探索)
+- **Complete**: 2 OpenSpec changes (add-middle-man-detector, add-data-clump-detector from prev sprint)
+- **MCP Tools**: 88 → 89 (+1 middle_man)
+- **Tests**: 34 tests pass (24 analysis + 10 MCP tool)
+- **Commits**: pending
+- **Status**: Sprint complete, sustainable loop running
+
 ### Session 135 — 2026-04-19
 - **Open**: Continue sustainable loop (新功能探索)
 - **Complete**: 1 OpenSpec change (add-data-clump-detector)
