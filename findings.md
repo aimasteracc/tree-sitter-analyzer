@@ -1,5 +1,45 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Batch 3 Candidates - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: 3 个候选分析
+
+**分析**:
+
+### 候选 1: Unnecessary Pass Statement Detector — DON'T
+- 理由: 纯代码风格问题，ruff/flake8 已覆盖，额外 pass 不影响行为，高误报率
+
+### 候选 2: Redundant F-String Detector — DON'T
+- 理由: 样式问题（ruff RUF027 已覆盖），JS 模板字符串无 ${} 合法且常见，大量误报
+
+### 候选 3: Dict Merge in Loop Detector — DO
+- 理由: 真实性能问题（dict.update 是 C 级批量操作），string_concat_loop 只覆盖字符串不覆盖 dict，低误报率
+- 一句话: "Find dict key assignments in loops that should use dict.update() for better performance"
+
+**结论**: 只有 Dict Merge in Loop 值得做
+
+## 技术架构讨论 - Dict Merge in Loop Detector - 2026-04-20
+
+**调用**: /plan-eng-review (inline, autonomous mode)
+
+**技术方案**: AST 遍历 for_statement 节点
+- Python: 检测 for 循环体中的 `d[key] = value` 赋值模式，特别是 subscript + assignment
+- 识别 dict 变量名，收集循环体中所有 subscript assignment
+- 如果循环变量被用作 key 或 value 的一部分，报告为 dict_merge_in_loop
+- 排除: 非 subscript 的赋值（如 x = 1），非循环变量的 subscript（如 config["fixed_key"] = 1）
+
+**推荐方案**: 标准 BaseAnalyzer 模式，Python-only（dict.update 是 Python 特有模式）
+**风险**: 误报 — 需要区分有条件的 dict update（if inside loop）和简单的逐个赋值
+**依赖**: 无
+
+**独特性评分**: 10/12 >= 8 (DO)
+- Uniqueness: 3/3 — 无类似工具（string_concat_loop 只覆盖字符串 +=）
+- Need: 3/3 — dict.update 比 for 逐个赋值快数倍，真实性能问题
+- Architecture fit: 3/3 — 纯 AST，BaseAnalyzer，Python
+- Implementation cost: 1/3 — 需要识别 subscript assignment 模式
+
 ## 产品讨论记录 - List-in-Membership Performance Detector - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
