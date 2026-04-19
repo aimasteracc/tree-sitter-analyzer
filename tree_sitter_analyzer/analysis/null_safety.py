@@ -26,11 +26,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 SEVERITY_HIGH = "high"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_LOW = "low"
@@ -113,7 +108,7 @@ class NullSafetyAnalyzer(BaseAnalyzer):
             return _empty_result(str(path), "unknown")
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return _empty_result(str(path), "unknown")
 
         language_map: dict[str, str] = {

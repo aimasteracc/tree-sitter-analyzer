@@ -167,7 +167,7 @@ class CodeSmellDetector:
     def detect_project(self) -> list[SmellDetectionResult]:
         """Detect code smells across the entire project."""
         results: list[SmellDetectionResult] = []
-        for ext in sorted(SUPPORTED_EXTENSIONS):
+        for ext in sorted(self.SUPPORTED_EXTENSIONS):
             for file_path in sorted(self.project_root.rglob(f"*{ext}")):
                 # Skip common non-source directories
                 parts = file_path.parts

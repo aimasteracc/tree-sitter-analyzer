@@ -18,11 +18,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 _CONDITION_NODE_TYPES: dict[str, frozenset[str]] = {
     ".py": frozenset({"if_statement", "elif_clause"}),
     ".js": frozenset({"if_statement"}),
@@ -85,7 +80,7 @@ class DuplicateConditionAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return DuplicateConditionResult(
                 total_conditions=0,
                 unique_conditions=0,

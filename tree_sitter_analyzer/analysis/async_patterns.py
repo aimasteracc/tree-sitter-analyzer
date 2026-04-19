@@ -26,11 +26,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 class PatternSeverity(Enum):
     """Severity level of detected pattern."""
 
@@ -198,7 +193,7 @@ class AsyncPatternAnalyzer(BaseAnalyzer):
         file_path = Path(file_path)
         ext = file_path.suffix.lower()
 
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return AsyncPatternResult(
                 file_path=str(file_path),
                 language="unknown",

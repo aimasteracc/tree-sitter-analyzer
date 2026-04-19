@@ -121,7 +121,7 @@ class FlagArgumentAnalyzer(BaseAnalyzer):
     def analyze_file(self, file_path: str) -> FlagArgumentResult:
         path = Path(file_path)
         ext = path.suffix
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return FlagArgumentResult(
                 issues=(), functions_analyzed=0,
                 total_issues=0, file_path=file_path,

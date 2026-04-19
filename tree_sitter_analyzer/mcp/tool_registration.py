@@ -1122,6 +1122,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🐛",
     )
 
+    # regex_safety
+    from .tools.regex_safety_tool import RegexSafetyTool
+    rs_tool = RegexSafetyTool(project_root)
+    registry.register(
+        name="regex_safety",
+        toolset="analysis",
+        category="security",
+        schema=rs_tool.get_tool_definition(),
+        handler=_make_handler(rs_tool),
+        description="Regex safety: detect ReDoS-vulnerable regex patterns (nested quantifiers, overlapping alternations) across Python, JS/TS, Java, Go",
+        emoji="🔐",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

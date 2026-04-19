@@ -16,11 +16,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 _GENERIC_MESSAGES: frozenset[str] = frozenset({
     "error", "Error", "ERROR",
     "failed", "Failed", "FAILED",
@@ -74,7 +69,7 @@ class ErrorMessageQualityAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return ErrorMessageResult(
                 total_raises=0, poor_messages=0, messages=(), file_path=str(path),
             )

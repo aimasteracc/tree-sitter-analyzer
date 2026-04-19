@@ -16,11 +16,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 SEVERITY_LOW = "low"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_HIGH = "high"
@@ -104,7 +99,7 @@ class StringConcatLoopAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return StringConcatLoopResult(
                 total_hotspots=0,
                 hotspots=(),

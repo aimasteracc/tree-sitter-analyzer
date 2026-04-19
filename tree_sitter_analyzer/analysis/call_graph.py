@@ -29,11 +29,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 _EXT_TO_LANG: dict[str, tuple[str, str]] = {
     ".py": ("tree_sitter_python", "language_python"),
     ".js": ("tree_sitter_javascript", "language_javascript"),
@@ -246,7 +241,7 @@ class CallGraphAnalyzer:
         results: list[CallGraphResult] = []
         root = Path(dir_path)
 
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for path in sorted(root.rglob(f"*{ext}")):
                 lang = _detect_language(str(path))
                 if lang is None:

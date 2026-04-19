@@ -26,11 +26,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 class IssueType:
     PARAM_MISMATCH = "param_mismatch"
     MISSING_RETURN_DOC = "missing_return_doc"
@@ -193,7 +188,7 @@ class CommentQualityAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return CommentQualityResult(
                 issues=(), total_elements=0, elements_with_docs=0,
                 issue_count=0, quality_score=100.0,
@@ -259,7 +254,7 @@ class CommentQualityAnalyzer(BaseAnalyzer):
         total_elements = 0
         elements_with_docs = 0
 
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for fp in path.rglob(f"*{ext}"):
                 if ".git" in fp.parts or "node_modules" in fp.parts:
                     continue

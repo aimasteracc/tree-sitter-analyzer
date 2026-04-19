@@ -19,17 +19,10 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-
 def _txt(node: tree_sitter.Node) -> str:
     """Safely extract text from a tree-sitter node."""
     raw = node.text
     return raw.decode("utf-8", errors="replace") if raw else ""
-
-
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
 
 SEVERITY_HIGH = "high"
 SEVERITY_MEDIUM = "medium"
@@ -90,7 +83,6 @@ _COMPARISON_OPS: frozenset[str] = frozenset({
 _LITERAL_TRUE: frozenset[str] = frozenset({"True", "true"})
 _LITERAL_FALSE: frozenset[str] = frozenset({"False", "false"})
 
-
 @dataclass(frozen=True)
 class TautologicalIssue:
     """A single tautological condition issue."""
@@ -111,7 +103,6 @@ class TautologicalIssue:
             "details": self.details,
             "suggestion": self.suggestion,
         }
-
 
 @dataclass(frozen=True)
 class TautologicalResult:
@@ -137,11 +128,8 @@ class TautologicalResult:
             "issues": [i.to_dict() for i in self.issues],
         }
 
-
 class TautologicalConditionAnalyzer(BaseAnalyzer):
     """Detects tautological, contradictory, and subsumed conditions."""
-
-    SUPPORTED_EXTENSIONS = SUPPORTED_EXTENSIONS
 
     def __init__(self) -> None:
         super().__init__()
@@ -149,7 +137,7 @@ class TautologicalConditionAnalyzer(BaseAnalyzer):
     def analyze_file(self, file_path: str) -> TautologicalResult:
         path = Path(file_path)
         ext = path.suffix
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return TautologicalResult(
                 issues=(),
                 functions_analyzed=0,

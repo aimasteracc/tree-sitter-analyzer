@@ -20,11 +20,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 VIS_USER = "user_visible"
 VIS_LIKELY = "likely_visible"
 VIS_INTERNAL = "internal"
@@ -334,7 +329,7 @@ class I18nStringDetector(BaseAnalyzer):
         """Analyze a single file for i18n strings."""
         path = Path(file_path)
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return self._empty_result(file_path)
 
         _, parser = self._get_parser(ext)
@@ -451,7 +446,7 @@ class I18nStringDetector(BaseAnalyzer):
         dir_path = Path(directory)
         results: list[I18nFileResult] = []
 
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for fp in dir_path.rglob(f"*{ext}"):
                 if ".git" in fp.parts or "node_modules" in fp.parts:
                     continue

@@ -22,11 +22,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 ISSUE_INCONSISTENT_RETURN = "inconsistent_return"
 ISSUE_IMPLICIT_NONE = "implicit_none"
 ISSUE_COMPLEX_RETURN_PATH = "complex_return_path"
@@ -114,7 +109,7 @@ class ReturnPathAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return ReturnPathResult(
                 functions=(),
                 total_functions=0,

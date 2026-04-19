@@ -33,11 +33,6 @@ def _txt(node: tree_sitter.Node) -> str:
     raw = node.text
     return raw.decode("utf-8", errors="replace") if raw else ""
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 SEVERITY_HIGH = "high"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_LOW = "low"
@@ -212,8 +207,6 @@ class PrimitiveObsessionResult:
 class PrimitiveObsessionAnalyzer(BaseAnalyzer):
     """Detects primitive obsession patterns in source code."""
 
-    SUPPORTED_EXTENSIONS = SUPPORTED_EXTENSIONS
-
     def __init__(
         self,
         min_primitive_params: int = DEFAULT_MIN_PRIMITIVE_PARAMS,
@@ -228,7 +221,7 @@ class PrimitiveObsessionAnalyzer(BaseAnalyzer):
     def analyze_file(self, file_path: str) -> PrimitiveObsessionResult:
         path = Path(file_path)
         ext = path.suffix
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return PrimitiveObsessionResult(
                 issues=(),
                 functions_analyzed=0,

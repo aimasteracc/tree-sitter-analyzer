@@ -20,11 +20,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 _SUPERSCRIPT = {
     1: "\u00b9",
     2: "\u00b2",
@@ -76,7 +71,7 @@ class LoopComplexityAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return LoopComplexityResult(
                 max_loop_depth=0,
                 estimated_complexity="O(1)",

@@ -24,11 +24,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 @dataclass(frozen=True)
 class DocElement:
     """A code element that may or may not have documentation."""
@@ -63,7 +58,7 @@ class DocCoverageAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return DocCoverageResult(
                 elements=(), total_elements=0, documented_count=0, coverage_percent=100.0
             )
@@ -84,7 +79,7 @@ class DocCoverageAnalyzer(BaseAnalyzer):
         path = Path(dir_path)
         all_elements: list[DocElement] = []
 
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for fp in path.rglob(f"*{ext}"):
                 if ".git" in fp.parts or "node_modules" in fp.parts:
                     continue

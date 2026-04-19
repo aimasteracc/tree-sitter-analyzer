@@ -16,11 +16,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 SEVERITY_OK = "ok"
 SEVERITY_LONG = "long_chain"
 SEVERITY_TRAIN_WRECK = "train_wreck"
@@ -94,7 +89,7 @@ class MethodChainAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return MethodChainResult(
                 max_chain_length=0,
                 total_chains=0,

@@ -25,11 +25,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 SEVERITY_HIGH = "high"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_LOW = "low"
@@ -124,7 +119,7 @@ class ContractComplianceAnalyzer(BaseAnalyzer):
             return _empty_result(str(path), "unknown")
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return _empty_result(str(path), "unknown")
 
         language = _detect_language(ext)
@@ -161,7 +156,7 @@ class ContractComplianceAnalyzer(BaseAnalyzer):
     def analyze_directory(self, dir_path: Path | str) -> ContractComplianceResult:
         path = Path(dir_path)
         all_issues: list[ContractIssue] = []
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for fp in path.rglob(f"*{ext}"):
                 if ".git" in fp.parts or "node_modules" in fp.parts:
                     continue

@@ -23,11 +23,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 QUALITY_BROAD = "broad_catch"
 QUALITY_SWALLOWED = "swallowed_exception"
 QUALITY_MISSING_CONTEXT = "missing_context"
@@ -140,7 +135,7 @@ class ExceptionQualityAnalyzer(BaseAnalyzer):
         if not path.exists():
             return _empty_result(str(path))
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return _empty_result(str(path))
 
         content = path.read_bytes()

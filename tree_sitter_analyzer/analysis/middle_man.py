@@ -25,11 +25,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 SEVERITY_HIGH = "high"
 SEVERITY_MEDIUM = "medium"
 SEVERITY_LOW = "low"
@@ -134,7 +129,7 @@ class MiddleManAnalyzer(BaseAnalyzer):
             return self._empty_result(str(path))
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return self._empty_result(str(path))
 
         content = path.read_bytes()

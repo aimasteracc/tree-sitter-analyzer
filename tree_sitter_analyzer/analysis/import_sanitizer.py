@@ -21,11 +21,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 @dataclass(frozen=True)
 class ImportInfo:
     import_name: str
@@ -119,7 +114,7 @@ class ImportSanitizer(BaseAnalyzer):
     def analyze_file(self, file_path: str | Path) -> FileAnalysis:
         file_path = Path(file_path).resolve()
         ext = file_path.suffix
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return FileAnalysis(file_path=str(file_path), errors=[f"Unsupported file type: {ext}"])
 
         language, parser = self._get_parser(ext)
@@ -154,7 +149,7 @@ class ImportSanitizer(BaseAnalyzer):
 
         source_files = sorted(
             f for f in dir_path.rglob("*")
-            if f.suffix in SUPPORTED_EXTENSIONS and f.is_file()
+            if f.suffix in self.SUPPORTED_EXTENSIONS and f.is_file()
         )
 
         for sf in source_files:
@@ -196,7 +191,7 @@ class ImportSanitizer(BaseAnalyzer):
         if not module or module.startswith("."):
             return None
         parts = module.split(".")
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             candidate = from_file.parent / "/".join(parts[:-1]) / (parts[-1] + ext)
             if candidate.exists():
                 return str(candidate)

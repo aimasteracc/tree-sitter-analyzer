@@ -93,7 +93,7 @@ class NestedTernaryAnalyzer(BaseAnalyzer):
     def analyze_file(self, file_path: str) -> NestedTernaryResult:
         path = Path(file_path)
         ext = path.suffix
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return NestedTernaryResult(
                 issues=(), total_ternaries=0,
                 total_issues=0, file_path=file_path,

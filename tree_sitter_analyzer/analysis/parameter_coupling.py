@@ -24,11 +24,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 DEFAULT_MAX_PARAMS = 5
 DEFAULT_MIN_CLUMP_SIZE = 3
 
@@ -143,7 +138,7 @@ class ParameterCouplingAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return CouplingResult(
                 functions=(),
                 high_param_functions=(),
@@ -160,7 +155,7 @@ class ParameterCouplingAnalyzer(BaseAnalyzer):
         path = Path(dir_path)
         all_sigs: list[FunctionSignature] = []
 
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for fp in path.rglob(f"*{ext}"):
                 if ".git" in fp.parts or "node_modules" in fp.parts:
                     continue

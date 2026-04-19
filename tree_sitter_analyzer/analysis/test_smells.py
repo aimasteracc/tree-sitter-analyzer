@@ -23,11 +23,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 SMELL_ASSERT_NONE = "assert_none"
 SMELL_BROAD_EXCEPT = "broad_except"
 SMELL_SLEEP_IN_TEST = "sleep_in_test"
@@ -159,7 +154,7 @@ class TestSmellDetector(BaseAnalyzer):
         if not path.exists():
             return _empty_result(str(path))
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return _empty_result(str(path))
         if not self._is_test_file(path, ext):
             return _empty_result(str(path))

@@ -28,11 +28,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 class PatternSeverity(Enum):
     """Severity of error handling anti-pattern."""
 
@@ -140,7 +135,7 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
         """Analyze a single file for error handling anti-patterns."""
         path = Path(file_path)
         ext = path.suffix
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return ErrorHandlingResult(file_path=str(path))
 
         language, parser = self._get_parser(ext)
@@ -183,7 +178,7 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
         for path in sorted(root.rglob("*")):
             if any(part in exclude for part in path.parts):
                 continue
-            if path.suffix in SUPPORTED_EXTENSIONS and path.is_file():
+            if path.suffix in self.SUPPORTED_EXTENSIONS and path.is_file():
                 result = self.analyze_file(path)
                 if result.total_issues > 0:
                     results.append(result)

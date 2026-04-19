@@ -24,11 +24,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 MUTABILITY_SHADOW = "shadow_variable"
 MUTABILITY_UNUSED = "unused_assignment"
 MUTABILITY_REASSIGNED_CONST = "reassigned_constant"
@@ -136,7 +131,7 @@ class VariableMutabilityAnalyzer(BaseAnalyzer):
         if not path.exists():
             return _empty_result(str(path))
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return _empty_result(str(path))
 
         content = path.read_bytes()

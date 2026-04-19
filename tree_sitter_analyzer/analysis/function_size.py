@@ -23,11 +23,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 RATING_GOOD = "good"
 RATING_WARNING = "warning"
 RATING_CRITICAL = "critical"
@@ -122,7 +117,7 @@ class FunctionSizeAnalyzer(BaseAnalyzer):
             return _empty_result(str(path))
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return _empty_result(str(path))
 
         functions = self._extract_functions(path, ext)
@@ -470,7 +465,7 @@ class FunctionSizeAnalyzer(BaseAnalyzer):
         dir_path = Path(directory)
         results: list[tuple[str, FunctionSizeResult]] = []
 
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for fp in dir_path.rglob(f"*{ext}"):
                 if ".git" in fp.parts or "node_modules" in fp.parts:
                     continue

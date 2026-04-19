@@ -30,11 +30,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 # Python tree-sitter query patterns
 # Uses '.' anchor to match only the FIRST string argument
 _PYTHON_GETENV_QUERY = """
@@ -220,7 +215,7 @@ class EnvVarTracker(BaseAnalyzer):
             logger.warning(f"File not found: {file_path}")
             return result
 
-        if file_path.suffix not in SUPPORTED_EXTENSIONS:
+        if file_path.suffix not in self.SUPPORTED_EXTENSIONS:
             logger.debug(f"Unsupported file type: {file_path.suffix}")
             return result
 
@@ -264,7 +259,7 @@ class EnvVarTracker(BaseAnalyzer):
             logger.warning(f"Directory not found: {dir_path}")
             return result
 
-        for ext in SUPPORTED_EXTENSIONS:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for file_path in dir_path.rglob(f"*{ext}"):
                 file_result = self.track_file(file_path)
                 for _var_name, usage in file_result.by_var.items():

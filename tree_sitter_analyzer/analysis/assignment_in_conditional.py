@@ -86,7 +86,7 @@ class AssignmentInConditionalAnalyzer(BaseAnalyzer):
     def analyze_file(self, file_path: str) -> AssignmentInConditionalResult:
         path = Path(file_path)
         ext = path.suffix
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return AssignmentInConditionalResult(
                 issues=(), total_issues=0, file_path=file_path,
             )

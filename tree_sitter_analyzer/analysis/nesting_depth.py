@@ -22,11 +22,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 RATING_GOOD = "good"
 RATING_WARNING = "warning"
 RATING_CRITICAL = "critical"
@@ -89,7 +84,7 @@ class NestingDepthAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return NestingDepthResult(
                 functions=(),
                 total_functions=0,

@@ -16,11 +16,6 @@ from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
 
-SUPPORTED_EXTENSIONS: set[str] = {
-    ".py", ".js", ".ts", ".tsx", ".jsx",
-    ".java", ".go",
-}
-
 RATING_GOOD = "good"
 RATING_WARNING = "warning"
 RATING_CRITICAL = "critical"
@@ -65,7 +60,7 @@ class SwitchSmellAnalyzer(BaseAnalyzer):
             )
 
         ext = path.suffix.lower()
-        if ext not in SUPPORTED_EXTENSIONS:
+        if ext not in self.SUPPORTED_EXTENSIONS:
             return SwitchSmellResult(
                 total_switches=0,
                 smelly_switches=0,
