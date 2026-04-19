@@ -296,7 +296,6 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "java_patterns",
             "error_recovery",
             "semantic_impact",
-            "quick_risk_assessment",
             "understand_codebase",
             "complexity_heatmap",
             "dead_code",

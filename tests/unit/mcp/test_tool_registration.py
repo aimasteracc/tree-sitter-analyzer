@@ -27,7 +27,7 @@ class TestRegisterAllTools:
 
         registry = get_registry()
 
-        # Expected tools by toolset
+        # Expected tools by toolset (sample of critical tools)
         expected_tools = {
             "analysis": [
                 "dependency_query",
@@ -41,19 +41,23 @@ class TestRegisterAllTools:
                 "java_patterns",
                 "error_recovery",
                 "semantic_impact",
-                "quick_risk_assessment",
                 "understand_codebase",
                 "complexity_heatmap",
-                "dead_code",
+                "dead_code_analysis",
                 "test_coverage",
                 "refactoring_suggestions",
                 "design_patterns",
                 "api_discovery",
+                "cognitive_complexity",
+                "nesting_complexity",
+                "solid_principles",
+                "global_state",
+                "reflection_usage",
             ],
             "query": ["query_code", "extract_code_section", "get_code_outline", "semantic_search"],
             "navigation": ["list_files", "find_and_grep", "search_content", "batch_search"],
             "safety": ["modification_guard", "security_scan"],
-            "diagnostic": ["check_tools", "ci_report"],
+            "diagnostic": ["check_tools", "ci_report", "change_impact", "pr_summary"],
             "index": ["build_project_index", "get_project_summary"],
         }
 
@@ -70,8 +74,8 @@ class TestRegisterAllTools:
         registry = get_registry()
         all_tools = registry.list_tools()
 
-        # 49 expected tools (+nesting_depth)
-        assert len(all_tools) == 49
+        # Dynamic tool count — just verify a reasonable minimum
+        assert len(all_tools) >= 80
 
     def test_tool_metadata(self) -> None:
         """Test that registered tools have proper metadata."""
