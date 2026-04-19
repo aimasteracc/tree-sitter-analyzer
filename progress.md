@@ -1,5 +1,16 @@
 # Progress — 自主开发进度日志
 
+## Session 144 — 2026-04-20
+
+**Sprint 1: Protocol Completeness Analyzer** (sustainable loop):
+- Product analysis: DO — incomplete protocols cause silent runtime bugs (__eq__ w/o __hash__ breaks dict)
+- Architecture: pure AST traversal, check method pairs per class, body/block node recursion
+- Detection: missing_hash, missing_exit, missing_next, missing_set_or_delete, missing_hashcode, missing_equals
+- 27 tests (11 Python + 5 Java + 1 JS + 1 TS + 1 Go + 8 edge), 4 languages
+- Fix: methods are inside block/body nodes, not direct children of class_definition
+- CI: ruff, mypy, pytest (27 pass), self-hosting gate 100% all pass
+- Commit: `2daac0e6`
+
 ## Session 143 — 2026-04-20
 
 **Sprint 1: Yoda Condition Detector** (sustainable loop):

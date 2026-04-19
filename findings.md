@@ -29,6 +29,25 @@
 
 **结论**: DO — fills genuine gap, catches silent runtime bugs, clean AST traversal
 
+## 产品讨论记录 - Builtin Shadow Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Builtin Shadow Detector — 检测变量/函数/类名覆盖 Python 内置函数 (list, dict, set, id, type, input, etc.)
+
+**产品分析**:
+- 聚焦: 覆盖内置函数是真实bug来源。`list = [...]` 导致后续 `list()` 调用失败。Pylint W0622
+- 减法: MVP = 检查赋值、函数定义、类定义、for循环目标、参数名是否匹配已知内置函数列表
+- 一句话: "Find the names that break builtins, because `list = [1,2]` silently kills every `list()` call after it."
+
+**独特性评估**: 12/12 >= 8 (DO)
+- Uniqueness: 3/3 - variable_shadowing.py 只检查内外层变量遮蔽，不检查builtins
+- Need: 3/3 - Pylint W0622，常见且危险的Python bug
+- Architecture fit: 3/3 - 纯AST遍历，名称匹配静态列表
+- Implementation cost: 3/3 - Python内置函数列表固定，简单遍历
+
+**结论**: DO — genuine gap, catches dangerous silent bugs, trivial to implement
+
 ## 技术架构讨论记录 - Incomplete Protocol Implementation Detector - 2026-04-20
 
 **调用**: Architecture analysis (direct)

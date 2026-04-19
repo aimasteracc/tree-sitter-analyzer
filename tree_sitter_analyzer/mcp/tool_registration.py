@@ -1368,6 +1368,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔧",
     )
 
+    from .tools.builtin_shadow_tool import BuiltinShadowTool
+    bs_tool = BuiltinShadowTool(project_root)
+    registry.register(
+        name="builtin_shadow",
+        toolset="analysis",
+        category="correctness",
+        schema=bs_tool.get_tool_definition(),
+        handler=_make_handler(bs_tool),
+        description="Builtin shadow: detect variable/function/class names that shadow Python builtins (list, dict, set, id, type)",
+        emoji="🏷️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
