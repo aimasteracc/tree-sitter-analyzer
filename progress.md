@@ -1,5 +1,32 @@
 # Progress — 自主开发进度日志
 
+## Session 145 — 2026-04-20
+
+**Sprint 1: Unreachable Code Detector** (sustainable loop):
+- Product analysis: DO — code after return/break/raise/throw is real dead code not covered by existing tools
+- Architecture: pure AST traversal, iterate block children, mark all after terminal statement
+- Detection: unreachable_after_return/break/continue/raise/throw, 5 languages
+- 23 tests (5 Python + 4 JS + 1 TS + 3 Java + 2 Go + 8 edge), 5 languages
+- CI: ruff, mypy, pytest (23 pass), self-hosting gate 100% all pass
+- Commit: `16d4e6a3`
+
+**Sprint 2: Implicit String Concatenation Detector** (sustainable loop):
+- Product analysis: DO — implicit concat in Python is classic silent bug (["a" "b"] is 1 element)
+- Architecture: detect concatenated_string AST nodes, classify by parent (collection vs standalone)
+- Detection: implicit_string_concat, implicit_concat_missing_comma, Python only
+- 18 tests (8 basic + 5 collection + 2 severity + 8 edge), Python only
+- Fix: removed _check_collection — concatenated_string node already covers the case
+- CI: ruff, mypy, pytest (18 pass), self-hosting gate 100% all pass
+- Commit: `63df0f42`
+
+**Sprint 3: Self-Assignment Detector** (sustainable loop):
+- Product analysis: DO — self-assignments are always no-op or typo, real bug source
+- Architecture: compare left/right text of assignment nodes
+- Detection: self_assign (x = x), self_assign_member (self.x = self.x), 4 languages
+- 21 tests (6 Python + 4 JS + 3 TS + 2 Go + 6 edge), 4 languages
+- CI: ruff, mypy, pytest (21 pass), self-hosting gate 100% all pass
+- Commit: `b594f6c6`
+
 ## Session 144 — 2026-04-20
 
 **Sprint 1: Protocol Completeness Analyzer** (sustainable loop):
