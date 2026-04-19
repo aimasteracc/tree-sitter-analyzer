@@ -1572,6 +1572,18 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="📏",
     )
 
+    from .tools.range_len_tool import RangeLenTool
+    rangelen_tool = RangeLenTool(project_root)
+    registry.register(
+        name="range_len",
+        toolset="analysis",
+        category="style",
+        schema=rangelen_tool.get_tool_definition(),
+        handler=_make_handler(rangelen_tool),
+        description="Range-len anti-pattern: detect for i in range(len(x)) where enumerate or direct iteration is preferred",
+        emoji="🔢",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
