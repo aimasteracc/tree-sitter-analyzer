@@ -1188,6 +1188,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔍",
     )
 
+    # discarded_return
+    from .tools.discarded_return_tool import DiscardedReturnTool
+    dr_tool = DiscardedReturnTool(project_root)
+    registry.register(
+        name="discarded_return",
+        toolset="analysis",
+        category="bug-detection",
+        schema=dr_tool.get_tool_definition(),
+        handler=_make_handler(dr_tool),
+        description="Discarded return: detect function calls whose return values are silently thrown away",
+        emoji="🗑️",
+    )
+
     # global_state
     from .tools.global_state_tool import GlobalStateTool
     gs_tool = GlobalStateTool(project_root)

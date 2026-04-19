@@ -4,6 +4,27 @@
 > 每个条目包含：页面名、一句话摘要、对 ts-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
 
+## 产品讨论记录 - Unused Return Value Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Unused Return Value Detector — 检测函数返回值被调用方静默丢弃
+
+**产品分析** (GStack office-hours framework):
+- 聚焦: 忽略返回值是隐蔽bug的真实来源。85个分析器中无工具覆盖调用端返回值丢弃
+- 减法: MVP = 纯AST遍历，查找作为表达式语句的函数调用。3类检测: discarded_result, discarded_await, discarded_error
+- 一句话: "Find the function calls whose return values you're silently throwing away — because one of them is a bug."
+- 现有覆盖: unused_parameter 覆盖定义端，error_handling/error_propagation 覆盖错误处理，但无工具覆盖调用端
+
+**独特性评估**:
+1. 独特性: 2/3 — call-site focus is genuinely new
+2. 需求度: 2/3 — real bug source, Go compiler/pylint/IDEs all have this check
+3. 架构适配: 3/3 — standard BaseAnalyzer pattern
+4. 实现成本: 3/3 — 1 sprint, pure AST
+Total: 10/12 ≥ 8 ✓
+
+**结论**: DO — 填补真正空白（调用端返回值丢弃检测）
+
 ## 产品讨论记录 - Plugin Bridge Architecture - 2026-04-20
 
 **调用**: /office-hours (autonomous mode)
