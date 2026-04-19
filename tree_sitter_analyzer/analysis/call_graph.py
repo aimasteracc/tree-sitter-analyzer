@@ -241,7 +241,7 @@ class CallGraphAnalyzer:
         results: list[CallGraphResult] = []
         root = Path(dir_path)
 
-        for ext in self.SUPPORTED_EXTENSIONS:
+        for ext in _EXT_TO_LANG:
             for path in sorted(root.rglob(f"*{ext}")):
                 lang = _detect_language(str(path))
                 if lang is None:

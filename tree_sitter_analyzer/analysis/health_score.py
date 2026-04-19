@@ -71,7 +71,7 @@ class HealthScorer:
     def score_all(self) -> list[FileHealthScore]:
         """Score all source files in the project."""
         scores: list[FileHealthScore] = []
-        for ext in sorted(self.SUPPORTED_EXTENSIONS):
+        for ext in sorted(SUPPORTED_EXTENSIONS):
             for file_path in sorted(self.project_root.rglob(f"*{ext}")):
                 rel = str(file_path.relative_to(self.project_root))
                 scores.append(self.score_file(rel))

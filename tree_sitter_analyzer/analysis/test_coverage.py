@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from tree_sitter_analyzer.utils import setup_logger
 
@@ -170,7 +171,7 @@ class TestCoverageAnalyzer:
 
         return elements
 
-    def _get_tree_sitter_language(self, language: str):
+    def _get_tree_sitter_language(self, language: str) -> Any:
         """Get tree-sitter Language object for the given language name."""
         import tree_sitter
 
@@ -183,7 +184,7 @@ class TestCoverageAnalyzer:
                 language_capsule = tsjs.language()
             elif language in ("typescript", "ts"):
                 import tree_sitter_typescript as tsts
-                language_capsule = tsts.language()
+                language_capsule = tsts.language()  # type: ignore[attr-defined]
             elif language in ("java",):
                 import tree_sitter_java as tsjava
                 language_capsule = tsjava.language()
@@ -202,7 +203,7 @@ class TestCoverageAnalyzer:
             return None
 
     def _extract_python_elements(
-        self, tree, file_path: str
+        self, tree: Any, file_path: str
     ) -> list[SourceElement]:
         """Extract Python functions and classes."""
         import tree_sitter
@@ -214,7 +215,7 @@ class TestCoverageAnalyzer:
                 name = ""
                 for child in node.children:
                     if child.type == "identifier":
-                        name = child.text.decode("utf-8")
+                        name = (child.text or b"").decode("utf-8")
                         break
 
                 element_type = ElementType.METHOD if parent_class else ElementType.FUNCTION
@@ -230,7 +231,7 @@ class TestCoverageAnalyzer:
                 name = ""
                 for child in node.children:
                     if child.type == "identifier":
-                        name = child.text.decode("utf-8")
+                        name = (child.text or b"").decode("utf-8")
                         break
 
                 elements.append(
@@ -256,7 +257,7 @@ class TestCoverageAnalyzer:
         return elements
 
     def _extract_javascript_elements(
-        self, tree, file_path: str
+        self, tree: Any, file_path: str
     ) -> list[SourceElement]:
         """Extract JavaScript/TypeScript functions and classes."""
         import tree_sitter
@@ -268,7 +269,7 @@ class TestCoverageAnalyzer:
                 name = ""
                 for child in node.children:
                     if child.type == "identifier":
-                        name = child.text.decode("utf-8")
+                        name = (child.text or b"").decode("utf-8")
                         break
 
                 element_type = ElementType.METHOD if parent_class else ElementType.FUNCTION
@@ -285,7 +286,7 @@ class TestCoverageAnalyzer:
                 name = ""
                 for child in node.children:
                     if child.type == "identifier":
-                        name = child.text.decode("utf-8")
+                        name = (child.text or b"").decode("utf-8")
                         break
 
                 elements.append(
@@ -310,7 +311,7 @@ class TestCoverageAnalyzer:
         traverse(tree.root_node)
         return elements
 
-    def _extract_java_elements(self, tree, file_path: str) -> list[SourceElement]:
+    def _extract_java_elements(self, tree: Any, file_path: str) -> list[SourceElement]:
         """Extract Java classes and methods."""
         import tree_sitter
 
@@ -321,7 +322,7 @@ class TestCoverageAnalyzer:
                 name = ""
                 for child in node.children:
                     if child.type == "identifier":
-                        name = child.text.decode("utf-8")
+                        name = (child.text or b"").decode("utf-8")
                         break
 
                 element_type = ElementType.METHOD if parent_class else ElementType.FUNCTION
@@ -337,7 +338,7 @@ class TestCoverageAnalyzer:
                 name = ""
                 for child in node.children:
                     if child.type == "identifier":
-                        name = child.text.decode("utf-8")
+                        name = (child.text or b"").decode("utf-8")
                         break
 
                 elements.append(
@@ -362,7 +363,7 @@ class TestCoverageAnalyzer:
         traverse(tree.root_node)
         return elements
 
-    def _extract_go_elements(self, tree, file_path: str) -> list[SourceElement]:
+    def _extract_go_elements(self, tree: Any, file_path: str) -> list[SourceElement]:
         """Extract Go functions and methods."""
         import tree_sitter
 
@@ -373,7 +374,7 @@ class TestCoverageAnalyzer:
                 name = ""
                 for child in node.children:
                     if child.type == "identifier":
-                        name = child.text.decode("utf-8")
+                        name = (child.text or b"").decode("utf-8")
                         break
 
                 # Check if receiver exists (method)
