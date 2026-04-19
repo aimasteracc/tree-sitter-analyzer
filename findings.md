@@ -2111,3 +2111,44 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 - **架构适配**: 3/3 — 完美匹配 BaseAnalyzer 模式
 - **实现成本**: 3/3 — 单 Sprint，纯 AST 遍历
 - **总分**: 12/12 ✓ (通过 ≥8 门槛)
+
+## 产品讨论记录 - Inconsistent Return Type Detector - 2026-04-19
+
+**调用**: /office-hours (autonomous mode, Steve Jobs analysis)
+
+**功能候选**: Refused Bequest Detector → 转向 Inconsistent Return Type Detector
+
+**乔布斯的分析**:
+1. **聚焦即说不**: Refused Bequest 是二阶 smell，触发频率低（现代代码库组合优于继承）。
+   73 个分析器中每个都需要维护，机会成本很重要。相比之下，inconsistent return type 是每个代码库、每个开发者都遇到的真实 bug 源。
+
+2. **减法思维**: 最简版本 = 遍历 AST 中的 return 语句，检查同一函数内返回类型是否一致。
+   纯 AST 模式，无需类型推断引擎。
+
+3. **一句话定义**: "Find where a function promises one thing but returns another — the kind of bug that causes TypeErrors in production."
+
+**结论**: DON'T — Inconsistent Return Type Detector（与 return_path.py 重叠）
+
+## 技术架构讨论记录 - Dead Store Detector - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**功能**: Dead Store Detector — 检测变量赋值后值从未被读取
+
+**架构分析**:
+1. **技术可行性**: 纯 AST 模式，遍历函数体 scope，构建 assignment→read 映射，标记 dead store。风险低。
+2. **架构影响**: 完美适配 BaseAnalyzer，与 variable_shadowing.py 模式一致。
+3. **实现复杂度**: 单 Sprint。核心逻辑：scope tracking + assignment/read tracking + cross-language node types。
+4. **维护成本**: 低。声明性规则，无外部依赖。
+
+**推荐方案**: 方案 A（纯 AST，无类型推断）
+**理由**: 73 个分析器中无 dead store 检测，1 Sprint 可交付
+**风险**: scope tracking 边界情况（循环变量、闭包捕获）
+
+## Feature Score - Dead Store Detector - 2026-04-19
+
+- **独特性**: 3/3 — 73 个分析器中无 dead store 检测
+- **需求度**: 3/3 — dead store = 隐藏 bug 或不完整重构
+- **架构适配**: 3/3 — 完美匹配 BaseAnalyzer + variable_shadowing 模式
+- **实现成本**: 2/3 — scope tracking 增加一些复杂度
+- **总分**: 11/12 ✓ (通过 ≥8 门槛)

@@ -1073,6 +1073,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🎭",
     )
 
+    # dead_store
+    from .tools.dead_store_tool import DeadStoreTool
+    ds_tool = DeadStoreTool(project_root)
+    registry.register(
+        name="dead_store",
+        toolset="analysis",
+        category="bug-detection",
+        schema=ds_tool.get_tool_definition(),
+        handler=_make_handler(ds_tool),
+        description="Dead store: detect variables assigned but never read, self-assignments, and immediate reassignments across Python, JS/TS, Java, Go",
+        emoji="🗑️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
