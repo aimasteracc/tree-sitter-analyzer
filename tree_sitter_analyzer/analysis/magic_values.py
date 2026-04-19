@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils.tree_sitter_compat import TreeSitterQueryCompat
 
 _SAFE_NUMBERS = frozenset({0, 1, -1, 2})
@@ -14,15 +15,6 @@ _SAFE_STRINGS = frozenset({"", " ", "\n", "\t", "\r\n"})
 _URL_PATTERN = re.compile(r"^https?://[^\s]+|^ftp://[^\s]+", re.IGNORECASE)
 _PATH_PATTERN = re.compile(r"^/[\w/.-]+|^\./[\w/.-]+|^\.\./[\w/.-]+|^[A-Za-z]:\\")
 _COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{3,8}$")
-
-_EXT_TO_LANG: dict[str, tuple[str, str]] = {
-    ".py": ("tree_sitter_python", "language_python"),
-    ".js": ("tree_sitter_javascript", "language_javascript"),
-    ".ts": ("tree_sitter_typescript", "language_typescript"),
-    ".tsx": ("tree_sitter_typescript", "language_tsx"),
-    ".java": ("tree_sitter_java", "language_java"),
-    ".go": ("tree_sitter_go", "language_go"),
-}
 
 @dataclass(frozen=True)
 class MagicValueReference:
@@ -162,8 +154,10 @@ def _value_type_for_category(category: str) -> str:
     }
     return mapping.get(category, "string")
 
-class MagicValueDetector:
+class MagicValueDetector(BaseAnalyzer):
     """Detect hardcoded magic values in source code."""
+
+    SUPPORTED_EXTENSIONS: set[str] = {".py", ".js", ".ts", ".tsx", ".java", ".go"}
 
     _NUM_QUERIES: dict[str, str] = {
         "python": "(integer) @num (float) @num",
@@ -183,31 +177,17 @@ class MagicValueDetector:
     }
 
     def __init__(self, language_name: str = "python") -> None:
+        super().__init__()
         self.language_name = language_name
         self._language: Any = None
         self._parser: Any = None
         self._load_language(language_name)
 
     def _load_language(self, language_name: str) -> None:
-        """Load tree-sitter language and parser."""
-        import tree_sitter
-
-        lang_map = {
-            "python": ("tree_sitter_python", "language"),
-            "javascript": ("tree_sitter_javascript", "language"),
-            "typescript": ("tree_sitter_typescript", "language_typescript"),
-            "tsx": ("tree_sitter_typescript", "language_tsx"),
-            "java": ("tree_sitter_java", "language"),
-            "go": ("tree_sitter_go", "language"),
-        }
-        entry = lang_map.get(language_name)
-        if entry is None:
+        """Load tree-sitter language and parser via BaseAnalyzer."""
+        self._language, self._parser = self._get_parser_for_language(language_name)
+        if self._language is None:
             raise ValueError(f"Unsupported language: {language_name}")
-        module_name, func_name = entry
-        mod = __import__(module_name)
-        func = getattr(mod, func_name)
-        self._language = tree_sitter.Language(func())
-        self._parser = tree_sitter.Parser(self._language)
 
     def detect(self, file_path: str | Path) -> MagicValueResult:
         """Detect magic values in a single file."""
@@ -228,7 +208,7 @@ class MagicValueDetector:
         """Detect magic values across all files in a directory."""
         dir_path = Path(dir_path)
         results: list[MagicValueResult] = []
-        extensions = set(_EXT_TO_LANG.keys())
+        extensions = self.SUPPORTED_EXTENSIONS
         for f in sorted(dir_path.rglob("*")):
             if f.suffix in extensions and f.is_file():
                 try:

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils.tree_sitter_compat import TreeSitterQueryCompat
 
 
@@ -49,20 +50,20 @@ class CoverageResult:
             "stats": [s.to_dict() for s in self.stats],
         }
 
-class TypeAnnotationAnalyzer:
+class TypeAnnotationAnalyzer(BaseAnalyzer):
     """Analyze type annotation coverage in Python code."""
 
-    def __init__(self) -> None:
-        import tree_sitter
-        import tree_sitter_python
+    SUPPORTED_EXTENSIONS: set[str] = {".py"}
 
-        self._language = tree_sitter.Language(tree_sitter_python.language())
-        self._parser = tree_sitter.Parser(self._language)
+    def __init__(self) -> None:
+        super().__init__()
+        self._language, self._parser = self._get_parser(".py")
 
     def analyze(self, file_path: str | Path) -> CoverageResult:
         """Analyze type annotation coverage in a single file."""
         file_path = Path(file_path)
         source = file_path.read_bytes()
+        assert self._parser is not None  # guaranteed for .py
         tree = self._parser.parse(source)
         root = tree.root_node
 

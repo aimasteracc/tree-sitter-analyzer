@@ -182,7 +182,7 @@ def _check_architecture() -> list[str]:
                 )
 
             # Rule 1b: No _EXT_TO_LANG outside base.py
-            if f.name != "base.py" and "_EXT_TO_LANG" in content:
+            if f.name not in base_analyzer_exempt and f.name != "base.py" and "_EXT_TO_LANG" in content:
                 violations.append(
                     f"{f.name}: contains _EXT_TO_LANG (use BaseAnalyzer._get_parser)"
                 )

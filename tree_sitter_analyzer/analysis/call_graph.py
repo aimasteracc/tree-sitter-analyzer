@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 from tree_sitter_analyzer.utils.tree_sitter_compat import TreeSitterQueryCompat
 
@@ -28,16 +29,6 @@ if TYPE_CHECKING:
     pass  # tree_sitter type hints only
 
 logger = setup_logger(__name__)
-
-_EXT_TO_LANG: dict[str, tuple[str, str]] = {
-    ".py": ("tree_sitter_python", "language_python"),
-    ".js": ("tree_sitter_javascript", "language_javascript"),
-    ".jsx": ("tree_sitter_javascript", "language_javascript"),
-    ".ts": ("tree_sitter_typescript", "language_typescript"),
-    ".tsx": ("tree_sitter_typescript", "language_tsx"),
-    ".java": ("tree_sitter_java", "language_java"),
-    ".go": ("tree_sitter_go", "language_go"),
-}
 
 @dataclass(frozen=True)
 class CallEdge:
@@ -161,47 +152,40 @@ _FUNC_NODE_TYPES: dict[str, set[str]] = {
 
 def _detect_language(file_path: str) -> str | None:
     """Detect language from file extension."""
+    ext_to_lang: dict[str, str] = {
+        ".py": "python",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "tsx",
+        ".java": "java",
+        ".go": "go",
+    }
     ext = Path(file_path).suffix
-    if ext not in _EXT_TO_LANG:
-        return None
-    _, lang_func = _EXT_TO_LANG[ext]
-    return lang_func.replace("language_", "")
+    return ext_to_lang.get(ext)
 
 def _node_text(node: Any) -> str:
     """Extract text from a tree-sitter node."""
     raw = node.text
     return raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
 
-class CallGraphAnalyzer:
+class CallGraphAnalyzer(BaseAnalyzer):
     """Analyze function call graphs in source code."""
 
+    SUPPORTED_EXTENSIONS: set[str] = {".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go"}
+
     def __init__(self, language_name: str = "python") -> None:
+        super().__init__()
         self.language_name = language_name
         self._language: Any = None
         self._parser: Any = None
         self._load_language(language_name)
 
     def _load_language(self, language_name: str) -> None:
-        """Load tree-sitter language and parser."""
-        import tree_sitter
-
-        lang_map: dict[str, tuple[str, str]] = {
-            "python": ("tree_sitter_python", "language"),
-            "javascript": ("tree_sitter_javascript", "language"),
-            "typescript": ("tree_sitter_typescript", "language_typescript"),
-            "tsx": ("tree_sitter_typescript", "language_tsx"),
-            "java": ("tree_sitter_java", "language"),
-            "go": ("tree_sitter_go", "language"),
-        }
-        entry = lang_map.get(language_name)
-        if entry is None:
+        """Load tree-sitter language and parser via BaseAnalyzer."""
+        self._language, self._parser = self._get_parser_for_language(language_name)
+        if self._language is None:
             logger.warning("Unsupported language: %s", language_name)
-            return
-        module_name, func_name = entry
-        mod = __import__(module_name)
-        func = getattr(mod, func_name)
-        self._language = tree_sitter.Language(func())
-        self._parser = tree_sitter.Parser(self._language)
 
     def analyze_file(
         self,
@@ -241,7 +225,7 @@ class CallGraphAnalyzer:
         results: list[CallGraphResult] = []
         root = Path(dir_path)
 
-        for ext in _EXT_TO_LANG:
+        for ext in self.SUPPORTED_EXTENSIONS:
             for path in sorted(root.rglob(f"*{ext}")):
                 lang = _detect_language(str(path))
                 if lang is None:

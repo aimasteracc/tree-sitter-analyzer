@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -58,10 +59,11 @@ class FileComplexityHeatmap:
     source_lines: tuple[str, ...] = ()
 
 @dataclass
-class ComplexityAnalyzer:
+class ComplexityAnalyzer(BaseAnalyzer):
     """Analyzes code complexity and generates heatmaps."""
 
     def __init__(self, project_root: str) -> None:
+        super().__init__()
         self.project_root = Path(project_root)
 
     def analyze_file(self, file_path: str) -> FileComplexityHeatmap:

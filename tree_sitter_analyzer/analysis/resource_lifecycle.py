@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.analysis.base import BaseAnalyzer
 from tree_sitter_analyzer.utils import setup_logger
 
 logger = setup_logger(__name__)
@@ -231,8 +232,13 @@ def _analyze_csharp(content: str, file_path: str) -> list[ResourceIssue]:
 
 _EXT_TO_ANALYZER: dict[str, type] = {}  # populated below
 
-class ResourceLifecycleAnalyzer:
+class ResourceLifecycleAnalyzer(BaseAnalyzer):
     """Analyzes resource lifecycle management in source files."""
+
+    SUPPORTED_EXTENSIONS: set[str] = {".py", ".java", ".ts", ".tsx", ".js", ".jsx", ".cs"}
+
+    def __init__(self) -> None:
+        super().__init__()
 
     def analyze_file(self, file_path: str | Path) -> ResourceLifecycleResult:
         path = Path(file_path)
