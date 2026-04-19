@@ -1060,6 +1060,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🐛",
     )
 
+    # variable_shadowing
+    from .tools.variable_shadowing_tool import VariableShadowingTool
+    vs_tool = VariableShadowingTool(project_root)
+    registry.register(
+        name="variable_shadowing",
+        toolset="analysis",
+        category="bug-detection",
+        schema=vs_tool.get_tool_definition(),
+        handler=_make_handler(vs_tool),
+        description="Variable shadowing: detect inner-scope variables that shadow outer-scope variables across Python, JS/TS, Java, Go",
+        emoji="🎭",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

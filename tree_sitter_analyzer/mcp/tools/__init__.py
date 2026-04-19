@@ -127,6 +127,14 @@ AVAILABLE_TOOLS: dict[str, dict[str, Any]] = {
         "module": "assignment_in_conditional_tool",
         "class": "AssignmentInConditionalTool",
     },
+    "variable_shadowing": {
+        "description": (
+            "Analyze code for variable shadowing issues. "
+            "Detects inner-scope variables that shadow outer-scope variables."
+        ),
+        "module": "variable_shadowing_tool",
+        "class": "VariableShadowingTool",
+    },
 }
 
 __all__ = [

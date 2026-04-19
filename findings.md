@@ -2057,3 +2057,57 @@ tree_sitter_analyzer/mcp/tools/error_handling_tool.py
 - pytest: 32 passed in 12.48s
 
 **结论**: 新代码质量通过。72 个 false positive 是 AST 分析器的固有特征。
+
+## 产品讨论记录 - Variable Shadowing Detector - 2026-04-19
+
+**调用**: /office-hours (autonomous mode, Steve Jobs analysis)
+
+**功能候选**: Variable Shadowing Detector
+
+**产品分析** (GStack office-hours / Steve Jobs perspective):
+
+1. **聚焦即说不**: 这解决核心问题。Variable shadowing 不是 style issue — 是真实 bug 源。
+   - Python: list comprehension 变量遮蔽外部同名变量（闭包中的经典陷阱）
+   - JavaScript: var 提升 + 块作用域导致意外遮蔽
+   - Java: lambda/inner class 参数遮蔽外部变量
+   - Go: := 短声明在内层块遮蔽外部变量
+   72 个现有分析器中没有任何一个检测此模式。
+
+2. **减法思维**: 最简版本 = 遍历 AST scope，检查内层变量名是否匹配外层 scope 同名变量。
+   无需跨文件分析，无需类型推断，纯 AST 遍历。
+
+3. **一句话定义**: "Catch the lines where a variable hides another with the same name in an outer scope — the kind of bug that silently breaks things."
+
+**结论**: DO — 真实 bug 源，非理论问题，纯 AST 模式，填补真正空白
+
+## 技术架构讨论记录 - Variable Shadowing Detector - 2026-04-19
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**功能**: Variable Shadowing Detector
+
+**架构分析**:
+
+1. **技术可行性**: 风险极低。Tree-sitter 提供完整的 scope 信息，遍历每个 scope 层级，收集声明变量名，比对内外层重名。
+2. **架构影响**: 完美适配 BaseAnalyzer 模式。新增 analysis/variable_shadowing.py + mcp/tools/variable_shadowing_tool.py。
+3. **实现复杂度**: 1 Sprint 足够。核心逻辑 < 200 行，每个语言 10-20 行 scope 规则。
+4. **维护成本**: 低。纯声明性规则，无外部依赖。
+
+**推荐方案**: 方案 A（独立模块，继承 BaseAnalyzer）
+**理由**: 与 72 个现有分析器完全一致的模式，最低风险
+**关键技术决策**:
+- 检测目标: function parameter 遮蔽外层变量, 局部变量遮蔽 parameter, 内层 block 变量遮蔽外层
+- 语言支持: Python, JavaScript/TypeScript, Java, Go
+- 节点类型:
+  - Python: function_definition, lambda, list_comprehension, for_statement, with_statement
+  - JS: function_declaration, arrow_function, block_statement, for_statement
+  - Java: method_declaration, lambda_expression, class_declaration
+  - Go: function_declaration, if_statement, for_statement, block
+
+## Feature Score - Variable Shadowing Detector - 2026-04-19
+
+- **独特性**: 3/3 — 72 个分析器中无 variable shadowing 检测
+- **需求度**: 3/3 — 真实 bug 源（Python closure shadowing, JS var hoisting, Go := shadowing）
+- **架构适配**: 3/3 — 完美匹配 BaseAnalyzer 模式
+- **实现成本**: 3/3 — 单 Sprint，纯 AST 遍历
+- **总分**: 12/12 ✓ (通过 ≥8 门槛)
