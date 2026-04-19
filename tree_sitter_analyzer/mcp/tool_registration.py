@@ -1278,6 +1278,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🐛",
     )
 
+    # commented_code
+    from .tools.commented_code_tool import CommentedCodeTool
+    cc_tool = CommentedCodeTool(project_root)
+    registry.register(
+        name="commented_code",
+        toolset="analysis",
+        category="code-quality",
+        schema=cc_tool.get_tool_definition(),
+        handler=_make_handler(cc_tool),
+        description="Commented-out code: detect code blocks in comments (assignments, calls, imports, declarations) that should be removed",
+        emoji="🗑️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

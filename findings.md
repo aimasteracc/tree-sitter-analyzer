@@ -1,8 +1,93 @@
 # Findings — 自主开发调研笔记
 
 > 此文件是自主开发 Agent 的知识库。所有 wiki 知识都在这里索引。
-> 每个条目包含：页面名、一句话摘要、对 ts-analyzer 的价值、完整路径。
+> 每个条目包含：页面名、一句话摘要、对 ts-sitter-analyzer 的价值、完整路径。
 > Agent 需要深入时，直接用 `cat /Users/aisheng.yu/wiki/wiki/ai-tech/XXX.md` 读取。
+
+## 产品讨论记录 - Commented-Out Code Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Commented-Out Code Detector — 检测源代码中被注释掉的代码块
+
+**产品分析**:
+- 聚焦: Commented-out code is a well-known code smell. It clutters repos, confuses readers about active vs. inactive code, and should be in version control. 88 analyzers, none detect commented-out code (comment_quality checks quality, dead_code detects unused definitions)
+- 减法: MVP = detect comment nodes whose stripped content matches code patterns. 4 types: commented_assignment, commented_function_call, commented_import, commented_control_flow
+- 一句话: "Find the code you commented out instead of deleting — version control remembers everything."
+
+**独特性评估**:
+1. 独特性: 3/3 — no existing tool covers commented-out code detection
+2. 需求度: 2/3 — real code smell but not a runtime bug source
+3. 架构适配: 3/3 — standard BaseAnalyzer, comment nodes available in all 4 languages
+4. 实现成本: 2/3 — heuristic-based, needs tuning to avoid false positives on code-mentioning comments
+Total: 10/12 >= 8
+
+**结论**: DO — fills genuine gap, simple heuristic approach, valuable for code cleanliness audits
+
+## 技术架构讨论记录 - Commented-Out Code Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**功能**: Commented-Out Code Detector
+**技术方案**: Extract comment nodes from AST, strip delimiters, apply code-pattern heuristics
+
+**架构分析**:
+- 技术可行性: Low risk. Tree-sitter exposes comment nodes in all 4 languages (Python: "comment", JS: "comment", Java: "line_comment"/"block_comment", Go: "comment"). Strip delimiters, apply regex patterns for code detection
+- 架构影响: Fully compatible with existing 88 tools, standard BaseAnalyzer pattern
+- 实现复杂度: Single Sprint. 4 languages × same heuristic approach
+- 维护成本: Low. Heuristics may need occasional tuning
+
+**推荐方案**: BaseAnalyzer subclass + per-language comment node types + shared heuristic engine
+**检测类型**:
+- commented_assignment: Lines containing `= ` patterns (not `==`)
+- commented_function_call: Lines matching `identifier(args)` pattern
+- commented_import: Lines starting with import/include/require/use
+- commented_control_flow: Lines starting with if/for/while/return/try
+
+**风险**: False positives on comments that discuss code (e.g., "This function returns..."). Mitigated by requiring multiple indicators or high-confidence patterns
+
+## 产品讨论记录 - Debug Statement Detector - 2026-04-20
+
+**调用**: /office-hours (autonomous mode)
+
+**功能候选**: Debug Statement Detector — 检测生产代码中的调试输出语句
+
+**产品分析** (GStack office-hours framework):
+- 聚焦: 遗留debug语句是真实bug源 — 泄露敏感数据、性能下降、日志污染。88个分析器无工具覆盖此领域
+- 减法: MVP = 纯AST遍历，检测 print/console.log/System.out.println/fmt.Println。4类检测: debug_print, debug_log, debug_statement, debug_formatter
+- 一句话: "Find the debug prints you forgot to remove — because one of them is leaking user data in production."
+- 现有覆盖: logging_patterns检测日志框架使用，但不检测遗留debug语句。comment_quality检测注释，不检测代码
+
+**独特性评估**:
+1. 独特性: 3/3 — no existing tool covers debug statement detection
+2. 需求度: 3/3 — everyone leaves debug prints, real bug source
+3. 架构适配: 3/3 — standard BaseAnalyzer pattern
+4. 实现成本: 3/3 — 1 sprint, pure AST traversal
+Total: 12/12 >= 8
+
+**结论**: DO — fills genuine gap, high impact, simple implementation
+
+## 技术架构讨论记录 - Debug Statement Detector - 2026-04-20
+
+**调用**: /plan-eng-review (autonomous mode)
+
+**功能**: Debug Statement Detector
+**技术方案**: 纯AST遍历，匹配已知debug函数调用模式
+
+**架构分析**:
+- 技术可行性: 低风险。每个语言的debug函数都是固定集合，AST call_expression节点匹配即可
+- 架构影响: 与现有88工具完全协调，标准BaseAnalyzer模式
+- 实现复杂度: 单Sprint。4语言×3-5个函数模式
+- 维护成本: 低。函数名不会频繁变化
+
+**推荐方案**: BaseAnalyzer子类 + per-language debug function sets
+**检测类型**:
+- debug_print: Python print(), pprint.pprint(), breakpoint()
+- debug_log: JS/TS console.log/debug/info/warn, debugger statement
+- debug_println: Java System.out/err.println, printStackTrace
+- debug_formatter: Go fmt.Println/Printf, log.Println
+
+**风险**: 无重大风险。可能误报test files中的print，通过test file detection过滤
 
 ## 产品讨论记录 - Unused Return Value Detector - 2026-04-20
 
