@@ -1752,6 +1752,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🏗️",
     )
 
+    # redundant_super
+    from .tools.redundant_super_tool import RedundantSuperTool
+    rs_tool = RedundantSuperTool(project_root)
+    registry.register(
+        name="redundant_super",
+        toolset="analysis",
+        category="correctness",
+        schema=rs_tool.get_tool_definition(),
+        handler=_make_handler(rs_tool),
+        description="Redundant super: detect unnecessary super() calls in constructors across Python, JS/TS, Java",
+        emoji="♻️",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """

@@ -40,3 +40,58 @@
 
 **风险**: 低
 **依赖**: 无新依赖
+
+## 产品讨论记录 - Redundant Super Call Detector - 2026-04-20
+
+**调用**: /steve-jobs-perspective (office-hours)
+
+**输入**: 3 candidates — Subprocess Security, YAML Unsafe Load, Redundant Super Call
+
+**分析**:
+1. Subprocess Security → DON'T — already covered by `security_scan.py` (line 229-237: subprocess shell=True detection)
+2. YAML Unsafe Load → DON'T — already covered by `security_scan.py` (line 254-262: yaml.load without SafeLoader)
+3. Redundant Super Call → DO — genuine gap, not covered by any existing analyzer
+
+**Redundant Super Call Analysis**:
+- **聚焦即说不**: Solves real code noise. `super().__init__()` in Python 3 when parent has no custom `__init__` is unnecessary ceremony.
+- **减法思维**: Minimal version detects __init__ methods whose body is a single `super().__init__()` call (or `super().__init__(*args, **kwargs)`). Multi-language: Python super(), Java super(), JS super().
+- **一句话定义**: Detect unnecessary super() calls that add no value beyond boilerplate.
+
+**结论**: DO
+**理由**: Fills a genuine gap, not covered, clear AST pattern, multi-language potential (Python super(), Java super(), JS super())
+
+**功能评分** (>= 8/12 门槛):
+- 独特性: 3 (无重叠, checked all 142 analyzers)
+- 需求度: 2 (style issue, Pylint W0235, not a bug)
+- 架构适配: 3 (标准 BaseAnalyzer)
+- 实现成本: 3 (单 Sprint)
+- **总分: 11/12** ✅
+
+## 技术架构讨论记录 - Redundant Super Call Detector - 2026-04-20
+
+**调用**: /plan-eng-review (architect agent)
+
+**输入**: Redundant Super Call Detector
+
+**推荐方案**: 独立模块 (标准 BaseAnalyzer 模式)
+
+**两种检测类型**:
+1. `redundant_super_init` (severity: low) — Constructor body contains ONLY super() call with zero additional statements
+2. `passthrough_super_init` (severity: info) — Constructor params passed through to super() without transformation
+
+**技术方案**:
+- 新文件: `tree_sitter_analyzer/analysis/redundant_super.py`
+- 新工具: `tree_sitter_analyzer/mcp/tools/redundant_super_tool.py`
+- 模板: `missing_break.py` (cleanest template)
+- Category: `correctness`
+- 语言支持: Python (super()), Java (super()), JS/TS (super())
+
+**AST patterns**:
+- Python: `call_expression` → `attribute(__init__)` → `call_expression(super)`
+- Java: `explicit_constructor_invocation` (super not this)
+- JS/TS: `call_expression` → `identifier(super)`
+
+**重叠**: `inheritance_quality.py` 已有 `empty_override` 检测, 但不专门针对构造函数
+
+**风险**: 低
+**依赖**: 无新依赖
