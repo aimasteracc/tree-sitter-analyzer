@@ -1,5 +1,32 @@
 # Progress — 自主开发进度日志
 
+## Session 153 — 2026-04-21
+
+**Refactoring Sprint: Remove inconsistent_return analyzer** (1-in-1-out rule):
+- Analysis: `inconsistent_return.py` is fully subsumed by `return_path.py` (which detects all the same issues plus implicit_none, empty_return, complex_return_path, and deeper branch analysis)
+- Deleted: `analysis/inconsistent_return.py`, `mcp/tools/inconsistent_return_tool.py`, `tests/unit/analysis/test_inconsistent_return.py`
+- Removed tool registration from `tool_registration.py`
+- CI: ruff, mypy --strict, 53 related tests pass, self-hosting gate 100%
+- This is the "out" for the 1-in-1-out rule after adding Guard Clause + Config Drift detectors
+
+**Refactoring analysis: additional overlap candidates identified**:
+- `code_smells.py` — legacy regex-based, superseded by individual AST analyzers (but has active MCP tool dependency)
+- `error_handling.py` + `error_propagation.py` — overlapping swallowed error and finally-without-catch detection
+- `dead_code.py` — only data classes and helpers, no actual analysis engine
+- `complexity.py` — regex-based heatmap, doesn't properly use BaseAnalyzer
+
+## Session 152 — 2026-04-21
+
+**Sprint 1: Configuration Drift Detector** (sustainable loop):
+- Product analysis: DO — no competitor cross-references hardcoded config with env var usage
+- Architecture: standard BaseAnalyzer (config_drift.py), independent module
+- Detection: hardcoded_config (module-level assignments matching config patterns)
+- Cross-reference: confidence=high when same file uses os.getenv/process.env/System.getenv
+- 30 tests (10 Python + 4 JS/TS + 2 Java + 2 Go + 8 exclusion + 4 structure/edge)
+- CI: ruff, mypy --strict, pytest (30 pass), self-hosting gate 100%
+- MCP tool registered (config_drift, analysis toolset)
+- Commit: `4d1674bc`
+
 ## Session 151 — 2026-04-20
 
 **Sprint 1: Dict Merge in Loop Detector** (sustainable loop):

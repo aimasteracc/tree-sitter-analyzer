@@ -1369,19 +1369,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="📋",
     )
 
-    # inconsistent_return
-    from .tools.inconsistent_return_tool import InconsistentReturnTool
-    ir_tool = InconsistentReturnTool(project_root)
-    registry.register(
-        name="inconsistent_return",
-        toolset="analysis",
-        category="correctness",
-        schema=ir_tool.get_tool_definition(),
-        handler=_make_handler(ir_tool),
-        description="Inconsistent return: detect functions mixing value returns with bare/implicit returns",
-        emoji="↩️",
-    )
-
     from .tools.protocol_completeness_tool import ProtocolCompletenessTool
     pc_tool = ProtocolCompletenessTool(project_root)
     registry.register(
