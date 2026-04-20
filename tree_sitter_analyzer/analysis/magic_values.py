@@ -1,8 +1,9 @@
-"""Magic value detection — find hardcoded numbers, strings, URLs, and paths."""
+"""Magic value detection — find hardcoded numbers, strings, URLs, paths, and repeated strings."""
 
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ _SAFE_STRINGS = frozenset({"", " ", "\n", "\t", "\r\n"})
 _URL_PATTERN = re.compile(r"^https?://[^\s]+|^ftp://[^\s]+", re.IGNORECASE)
 _PATH_PATTERN = re.compile(r"^/[\w/.-]+|^\./[\w/.-]+|^\.\./[\w/.-]+|^[A-Za-z]:\\")
 _COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{3,8}$")
+_REPEAT_THRESHOLD = 3
 
 @dataclass(frozen=True)
 class MagicValueReference:
@@ -65,13 +67,19 @@ class MagicValueResult:
     file_path: str
     references: tuple[MagicValueReference, ...]
     total_count: int
+    repeated_strings: tuple[MagicValueUsage, ...] = ()
 
-    def to_dict(self) -> dict[str, str | int | list[dict[str, str | int]]]:
-        return {
+    def to_dict(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
             "file_path": self.file_path,
             "total_count": self.total_count,
             "references": [r.to_dict() for r in self.references],
         }
+        if self.repeated_strings:
+            result["repeated_strings"] = [
+                u.to_dict() for u in self.repeated_strings
+            ]
+        return result
 
 def _get_context(node: Any, source: bytes) -> str:
     """Get the parent expression as context string."""
@@ -151,6 +159,7 @@ def _value_type_for_category(category: str) -> str:
         "hardcoded_url": "url",
         "hardcoded_path": "path",
         "hardcoded_color": "color",
+        "repeated_string": "string",
     }
     return mapping.get(category, "string")
 
@@ -198,10 +207,12 @@ class MagicValueDetector(BaseAnalyzer):
         references: list[MagicValueReference] = []
         references.extend(self._detect_numbers(root, source, str(file_path)))
         references.extend(self._detect_strings(root, source, str(file_path)))
+        repeated = self._find_repeated_strings(references)
         return MagicValueResult(
             file_path=str(file_path),
             references=tuple(references),
             total_count=len(references),
+            repeated_strings=tuple(repeated),
         )
 
     def detect_directory(self, dir_path: str | Path) -> list[MagicValueResult]:
@@ -255,6 +266,30 @@ class MagicValueDetector(BaseAnalyzer):
                     )
                 )
         return filtered
+
+    def _find_repeated_strings(
+        self, references: list[MagicValueReference]
+    ) -> list[MagicValueUsage]:
+        """Find string values that appear 3+ times."""
+        string_refs = [r for r in references if r.category == "magic_string"]
+        counter: Counter[str] = Counter(r.value for r in string_refs)
+        repeated_vals = {v for v, c in counter.items() if c >= _REPEAT_THRESHOLD}
+        if not repeated_vals:
+            return []
+        usages: list[MagicValueUsage] = []
+        for val in sorted(repeated_vals):
+            refs = tuple(r for r in string_refs if r.value == val)
+            files = {r.file_path for r in refs}
+            usages.append(
+                MagicValueUsage(
+                    value=val,
+                    references=refs,
+                    file_count=len(files),
+                    total_refs=len(refs),
+                    category="repeated_string",
+                )
+            )
+        return usages
 
     def _detect_numbers(
         self, root: Any, source: bytes, file_path: str

@@ -5,6 +5,8 @@ Detects error handling anti-patterns across codebases using AST analysis:
 - Bare except / catch-all: except: or catch (e) without type filter
 - Swallowed errors: empty except/catch blocks
 - Broad exception types: except Exception, catch (Exception e)
+- Missing context: raise without preserving original exception chain
+- Generic error messages: raise/throw with unhelpful hardcoded strings
 - Go-specific: unchecked error returns
 
 Supports Python, JavaScript/TypeScript, Java, and Go.
@@ -44,10 +46,26 @@ class PatternType(Enum):
     UNCHECKED_ERROR = "unchecked_error"
     INCONSISTENT_STYLE = "inconsistent_style"
     FINALLY_WITHOUT_HANDLE = "finally_without_handle"
+    MISSING_CONTEXT = "missing_context"
+    GENERIC_ERROR_MESSAGE = "generic_error_message"
 
 BROAD_EXCEPTION_NAMES: frozenset[str] = frozenset({
     "Exception", "BaseException", "RuntimeException",
     "Error", "Throwable",
+})
+
+GENERIC_MESSAGES: frozenset[str] = frozenset({
+    "error", "Error", "ERROR",
+    "failed", "Failed", "FAILED",
+    "failure", "Failure",
+    "exception", "Exception",
+    "invalid", "Invalid",
+    "bad", "Bad",
+    "wrong", "Wrong",
+    "oops", "Oops",
+    "unknown error",
+    "unexpected error",
+    "something went wrong",
 })
 
 @dataclass(frozen=True)
@@ -198,6 +216,8 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
         self._detect_python_bare_excepts(language, tree, source, file_path, result)
         self._detect_python_swallowed_errors(language, tree, source, file_path, result)
         self._detect_python_broad_exceptions(language, tree, source, file_path, result)
+        self._detect_python_missing_context(tree, source, file_path, result)
+        self._detect_python_generic_messages(tree, source, file_path, result)
 
     def _detect_python_bare_excepts(
         self,
@@ -332,6 +352,150 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
                 language="python",
             ))
 
+    def _detect_python_missing_context(
+        self,
+        tree: Tree,
+        source: bytes,
+        file_path: str,
+        result: ErrorHandlingResult,
+    ) -> None:
+        """Detect raise inside except without preserving original exception."""
+        except_blocks: set[int] = set()
+
+        def find_except_blocks(node: tree_sitter.Node) -> None:
+            if node.type == "except_clause":
+                except_blocks.add(id(node))
+            for child in node.children:
+                find_except_blocks(child)
+
+        find_except_blocks(tree.root_node)
+
+        def find_raises_in_except(
+            node: tree_sitter.Node, in_except: bool
+        ) -> None:
+            if node.type == "except_clause":
+                in_except = True
+            if in_except and node.type == "raise_statement":
+                text = _node_text(node, source)
+                if "from " not in text and "from\t" not in text:
+                    has_bare_raise = any(
+                        c.type == "identifier" or c.type == "call"
+                        for c in node.children
+                    )
+                    if has_bare_raise:
+                        snippet = text.split("\n")[0]
+                        result.add_issue(ErrorHandlingIssue(
+                            pattern_type=PatternType.MISSING_CONTEXT.value,
+                            severity=PatternSeverity.INFO.value,
+                            message="Raise inside except without chaining original exception",
+                            file_path=file_path,
+                            line_number=_line(node),
+                            end_line=_line(node),
+                            code_snippet=snippet[:120],
+                            suggestion="Chain original: raise NewError(...) from e",
+                            language="python",
+                        ))
+            for child in node.children:
+                find_raises_in_except(child, in_except)
+
+        find_raises_in_except(tree.root_node, False)
+
+    def _detect_python_generic_messages(
+        self,
+        tree: Tree,
+        source: bytes,
+        file_path: str,
+        result: ErrorHandlingResult,
+    ) -> None:
+        """Detect raise with generic/unhelpful error messages."""
+
+        def visit(node: tree_sitter.Node) -> None:
+            if node.type == "raise_statement":
+                for child in node.children:
+                    if child.type == "call":
+                        for arg in child.children:
+                            if arg.type == "argument_list":
+                                real_args = [
+                                    a for a in arg.children
+                                    if a.type not in ("(", ")", ",")
+                                ]
+                                if real_args:
+                                    msg_node = real_args[0]
+                                    if msg_node.type == "string":
+                                        text = _node_text(
+                                            msg_node, source
+                                        ).strip("\"'")
+                                        if self._is_generic_message(text):
+                                            snippet = _node_text(
+                                                node, source
+                                            ).split("\n")[0]
+                                            result.add_issue(
+                                                ErrorHandlingIssue(
+                                                    pattern_type=(
+                                                        PatternType
+                                                        .GENERIC_ERROR_MESSAGE
+                                                        .value
+                                                    ),
+                                                    severity=(
+                                                        PatternSeverity.INFO
+                                                        .value
+                                                    ),
+                                                    message=(
+                                                        f"Generic error message"
+                                                        f': "{text}"'
+                                                    ),
+                                                    file_path=file_path,
+                                                    line_number=_line(node),
+                                                    end_line=_line(node),
+                                                    code_snippet=snippet[:120],
+                                                    suggestion=(
+                                                        "Include diagnostic"
+                                                        " context in error"
+                                                        " message"
+                                                    ),
+                                                    language="python",
+                                                )
+                                            )
+                            elif child.type == "string":
+                                text = _node_text(child, source).strip("\"'")
+                                if self._is_generic_message(text):
+                                    snippet = _node_text(
+                                        node, source
+                                    ).split("\n")[0]
+                                    result.add_issue(ErrorHandlingIssue(
+                                        pattern_type=(
+                                            PatternType.GENERIC_ERROR_MESSAGE
+                                            .value
+                                        ),
+                                        severity=PatternSeverity.INFO.value,
+                                        message=f'Generic error message: "{text}"',
+                                        file_path=file_path,
+                                        line_number=_line(node),
+                                        end_line=_line(node),
+                                        code_snippet=snippet[:120],
+                                        suggestion=(
+                                            "Include diagnostic context"
+                                            " in error message"
+                                        ),
+                                        language="python",
+                                    ))
+            for child in node.children:
+                visit(child)
+
+        visit(tree.root_node)
+
+    @staticmethod
+    def _is_generic_message(text: str) -> bool:
+        """Check if error message text is generic/unhelpful."""
+        stripped = text.strip()
+        if not stripped:
+            return True
+        if stripped.lower() in {m.lower() for m in GENERIC_MESSAGES}:
+            return True
+        if len(stripped) < 5:
+            return True
+        return False
+
     # --- JavaScript / TypeScript ---
 
     def _analyze_javascript(
@@ -344,6 +508,7 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
     ) -> None:
         self._detect_js_swallowed_errors(language, tree, source, file_path, result)
         self._detect_js_catch_all(language, tree, source, file_path, result)
+        self._detect_js_generic_messages(tree, source, file_path, result)
 
     def _detect_js_swallowed_errors(
         self,
@@ -439,6 +604,88 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
                     suggestion="Check error type: if (e instanceof TypeError) ...",
                     language="javascript",
                 ))
+
+    def _detect_js_generic_messages(
+        self,
+        tree: Tree,
+        source: bytes,
+        file_path: str,
+        result: ErrorHandlingResult,
+    ) -> None:
+        """Detect throw with generic/unhelpful error messages."""
+
+        def visit(node: tree_sitter.Node) -> None:
+            if node.type == "throw_statement":
+                for child in node.children:
+                    if child.type == "new_expression":
+                        for arg in child.children:
+                            if arg.type == "arguments":
+                                real_args = [
+                                    a for a in arg.children
+                                    if a.type not in ("(", ")", ",")
+                                ]
+                                if real_args and real_args[0].type in (
+                                    "string", "template_string"
+                                ):
+                                    text = _node_text(
+                                        real_args[0], source
+                                    ).strip("\"'`")
+                                    if self._is_generic_message(text):
+                                        snippet = _node_text(
+                                            node, source
+                                        ).split("\n")[0]
+                                        result.add_issue(
+                                            ErrorHandlingIssue(
+                                                pattern_type=(
+                                                    PatternType
+                                                    .GENERIC_ERROR_MESSAGE
+                                                    .value
+                                                ),
+                                                severity=(
+                                                    PatternSeverity.INFO.value
+                                                ),
+                                                message=(
+                                                    f'Generic error message:'
+                                                    f' "{text}"'
+                                                ),
+                                                file_path=file_path,
+                                                line_number=_line(node),
+                                                end_line=_line(node),
+                                                code_snippet=snippet[:120],
+                                                suggestion=(
+                                                    "Include diagnostic"
+                                                    " context in error"
+                                                    " message"
+                                                ),
+                                                language="javascript",
+                                            )
+                                        )
+                    elif child.type in ("string", "template_string"):
+                        text = _node_text(child, source).strip("\"'`")
+                        if self._is_generic_message(text):
+                            snippet = _node_text(
+                                node, source
+                            ).split("\n")[0]
+                            result.add_issue(ErrorHandlingIssue(
+                                pattern_type=(
+                                    PatternType.GENERIC_ERROR_MESSAGE.value
+                                ),
+                                severity=PatternSeverity.INFO.value,
+                                message=f'Generic error message: "{text}"',
+                                file_path=file_path,
+                                line_number=_line(node),
+                                end_line=_line(node),
+                                code_snippet=snippet[:120],
+                                suggestion=(
+                                    "Include diagnostic context in error"
+                                    " message"
+                                ),
+                                language="javascript",
+                            ))
+            for c in node.children:
+                visit(c)
+
+        visit(tree.root_node)
 
     # --- Java ---
 
