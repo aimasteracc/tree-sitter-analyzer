@@ -33,6 +33,8 @@ COOLDOWN_SEC=${COOLDOWN_SEC:-${AUTONOMOUS_COOLDOWN:-30}}
 MIN_DISK_GB=${MIN_DISK_GB:-5}
 BACKOFF_MAX=${BACKOFF_MAX:-300}
 KILL_GRACE_SEC=${KILL_GRACE_SEC:-10}
+MAX_MEMORY_PCT=${MAX_MEMORY_PCT:-85}
+MEMORY_WAIT_SEC=${MEMORY_WAIT_SEC:-120}
 
 # ─── 初始化 ───
 
@@ -131,6 +133,33 @@ check_disk() {
     return 0
 }
 
+check_memory() {
+    # 返回内存压力百分比（active+wired / 总量）
+    local mem_pct
+    mem_pct=$(vm_stat 2>/dev/null | awk -v ps=16384 '
+        /^Pages active/ { active = $3 + 0 }
+        /^Pages wired/ { wired = $3 + 0 }
+        /^Pages free/ { free = $3 + 0 }
+        /^Pages inactive/ { inactive = $3 + 0 }
+        /^Pages spec/ { spec = $3 + 0 }
+        END {
+            used = (active + wired) * ps
+            total = (active + wired + free + inactive + spec) * ps
+            if (total > 0) printf "%d", used * 100 / total
+            else print "0"
+        }')
+    if [ -z "$mem_pct" ]; then
+        echo "无法获取内存状态，跳过检查"
+        return 0
+    fi
+    if [ "$mem_pct" -ge "$MAX_MEMORY_PCT" ]; then
+        echo "内存压力过高: ${mem_pct}% >= ${MAX_MEMORY_PCT}%，暂停 session"
+        return 1
+    fi
+    echo "内存: ${mem_pct}% (阈值 ${MAX_MEMORY_PCT}%)"
+    return 0
+}
+
 get_logfile() {
     echo "$LOG_DIR/$(date '+%Y%m%d').log"
 }
@@ -222,6 +251,13 @@ while true; do
     if ! check_disk; then
         echo "等待 60s 后重试..."
         sleep 60
+        continue
+    fi
+
+    # 内存检查（防止 kernel panic）
+    if ! check_memory; then
+        echo "等待 ${MEMORY_WAIT_SEC}s 让内存释放..."
+        sleep "$MEMORY_WAIT_SEC"
         continue
     fi
 
