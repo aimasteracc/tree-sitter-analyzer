@@ -1587,28 +1587,16 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔑",
     )
 
-    from .tools.len_comparison_tool import LenComparisonTool
-    lencomp_tool = LenComparisonTool(project_root)
+    from .tools.len_anti_pattern_tool import LenAntiPatternTool
+    lenap_tool = LenAntiPatternTool(project_root)
     registry.register(
-        name="len_comparison",
+        name="len_anti_pattern",
         toolset="analysis",
         category="style",
-        schema=lencomp_tool.get_tool_definition(),
-        handler=_make_handler(lencomp_tool),
-        description="Len-comparison anti-pattern: detect len(x) == 0 (> 0, != 0) where truthiness is preferred",
+        schema=lenap_tool.get_tool_definition(),
+        handler=_make_handler(lenap_tool),
+        description="Len anti-patterns: detect len(x) == 0 (> 0, != 0) where truthiness is preferred, and for i in range(len(x))",
         emoji="📏",
-    )
-
-    from .tools.range_len_tool import RangeLenTool
-    rangelen_tool = RangeLenTool(project_root)
-    registry.register(
-        name="range_len",
-        toolset="analysis",
-        category="style",
-        schema=rangelen_tool.get_tool_definition(),
-        handler=_make_handler(rangelen_tool),
-        description="Range-len anti-pattern: detect for i in range(len(x)) where enumerate or direct iteration is preferred",
-        emoji="🔢",
     )
 
     from .tools.useless_loop_else_tool import UselessLoopElseTool

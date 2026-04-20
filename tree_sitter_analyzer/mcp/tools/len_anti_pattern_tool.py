@@ -1,12 +1,12 @@
-"""Len-Comparison Anti-pattern Tool — MCP Tool.
+"""Len Anti-pattern Tool — MCP Tool.
 
-Detects explicit len() comparisons that should use truthiness.
+Detects unidiomatic len() usage: comparison anti-patterns and range(len(x)).
 """
 from __future__ import annotations
 
 from typing import Any
 
-from ...analysis.len_comparison import LenComparisonAnalyzer
+from ...analysis.len_anti_pattern import LenAntiPatternAnalyzer
 from ...formatters.toon_encoder import ToonEncoder
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
@@ -15,21 +15,22 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 
-class LenComparisonTool(BaseMCPTool):
-    """MCP tool for detecting len() comparison anti-patterns."""
+class LenAntiPatternTool(BaseMCPTool):
+    """MCP tool for detecting unidiomatic len() usage patterns."""
 
     def __init__(self, project_root: str | None = None) -> None:
         super().__init__(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
-            "name": "len_comparison",
+            "name": "len_anti_pattern",
             "description": (
-                "Detect len() comparison anti-patterns where truthiness is preferred. "
-                "Flags `len(x) == 0` (use `not x`), `len(x) > 0` (use `x`), etc."
+                "Detect unidiomatic len() usage patterns. "
+                "Flags len(x) == 0 (use `not x`), len(x) > 0 (use `x`), "
+                "and for i in range(len(x)) (use enumerate or direct iteration)."
                 "\n\n"
                 "Supported Languages:\n"
-                "- Python: len(x) == 0, > 0, != 0, >= 1, < 1\n"
+                "- Python: len(x) == 0, > 0, != 0, >= 1, < 1; for i in range(len(x))\n"
                 "- JavaScript/TypeScript: x.length == 0, > 0, etc.\n"
                 "- Go: len(x) == 0, > 0, etc.\n"
                 "\n"
@@ -39,10 +40,7 @@ class LenComparisonTool(BaseMCPTool):
                 "- len_gt_zero: len(x) > 0 → use `x`\n"
                 "- len_ge_one: len(x) >= 1 → use `x`\n"
                 "- len_lt_one: len(x) < 1 → use `not x`\n"
-                "\n"
-                "WHEN TO USE:\n"
-                "- To find unidiomatic empty/collection checks\n"
-                "- To enforce PEP 8 style (Pylint C1801)\n"
+                "- range_len_for: for i in range(len(x)) → use enumerate\n"
             ),
             "inputSchema": {
                 "type": "object",
@@ -71,7 +69,7 @@ class LenComparisonTool(BaseMCPTool):
                 "format": output_format,
             }
 
-        analyzer = LenComparisonAnalyzer()
+        analyzer = LenAntiPatternAnalyzer()
         result = analyzer.analyze_file(file_path)
 
         if output_format == "json":
@@ -82,29 +80,27 @@ class LenComparisonTool(BaseMCPTool):
     def _format_json(self, result: Any) -> dict[str, Any]:
         return {
             "file": result.file_path,
-            "total_comparisons": result.total_comparisons,
+            "total_checks": result.total_checks,
             "issue_count": len(result.issues),
             "issues": [i.to_dict() for i in result.issues],
         }
 
     def _format_toon(self, result: Any) -> dict[str, Any]:
         lines: list[str] = []
-        lines.append("Len-Comparison Anti-pattern Analysis")
+        lines.append("Len Anti-pattern Analysis")
         lines.append(f"File: {result.file_path}")
-        lines.append(f"Total len comparisons: {result.total_comparisons}")
+        lines.append(f"Total checks: {result.total_checks}")
         lines.append("")
 
         if result.issues:
-            lines.append(
-                f"Found {len(result.issues)} len-comparison anti-pattern(s):"
-            )
+            lines.append(f"Found {len(result.issues)} len anti-pattern(s):")
             for issue in result.issues:
                 lines.append(
                     f"  L{issue.line}: [{issue.severity}] "
                     f"{issue.issue_type} — {issue.suggestion}"
                 )
         else:
-            lines.append("No len-comparison anti-patterns found.")
+            lines.append("No len anti-patterns found.")
 
         toon = ToonEncoder()
         return {
