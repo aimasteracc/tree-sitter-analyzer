@@ -1252,19 +1252,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🗑️",
     )
 
-    # literal_boolean_comparison
-    from .tools.literal_boolean_comparison_tool import LiteralBooleanComparisonTool
-    lbc_tool = LiteralBooleanComparisonTool(project_root)
-    registry.register(
-        name="literal_boolean_comparison",
-        toolset="analysis",
-        category="code-quality",
-        schema=lbc_tool.get_tool_definition(),
-        handler=_make_handler(lbc_tool),
-        description="Literal boolean comparison: detect x == True, x == None, x == null and suggest proper idioms",
-        emoji="⚖️",
-    )
-
     # double_negation
     from .tools.double_negation_tool import DoubleNegationTool
     dn_tool = DoubleNegationTool(project_root)
@@ -1330,19 +1317,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🗑️",
     )
 
-    # loose_equality
-    from .tools.loose_equality_tool import LooseEqualityTool
-    le_tool = LooseEqualityTool(project_root)
-    registry.register(
-        name="loose_equality",
-        toolset="analysis",
-        category="code-quality",
-        schema=le_tool.get_tool_definition(),
-        handler=_make_handler(le_tool),
-        description="Loose equality: detect == and != in JavaScript/TypeScript that should use === and !== to avoid type coercion bugs",
-        emoji="⚖️",
-    )
-
     # simplified_conditional
     from .tools.simplified_conditional_tool import SimplifiedConditionalTool
     sc_tool = SimplifiedConditionalTool(project_root)
@@ -1354,19 +1328,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(sc_tool),
         description="Simplified conditional: detect ternary expressions that can be simplified (cond ? true : false → cond)",
         emoji="✂️",
-    )
-
-    # yoda_condition
-    from .tools.yoda_condition_tool import YodaConditionTool
-    yoda_tool = YodaConditionTool(project_root)
-    registry.register(
-        name="yoda_condition",
-        toolset="analysis",
-        category="readability",
-        schema=yoda_tool.get_tool_definition(),
-        handler=_make_handler(yoda_tool),
-        description="Yoda condition: detect comparisons where literal is on the left (\"expected\" == actual → actual == \"expected\")",
-        emoji="🔄",
     )
 
     # long_parameter_list
@@ -1489,18 +1450,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(ul_tool),
         description="Unnecessary lambda: detect trivial wrappers (lambda x: f(x)) and identity (lambda x: x)",
         emoji="✂️",
-    )
-
-    from .tools.suspicious_type_check_tool import SuspiciousTypeCheckTool
-    stc_tool = SuspiciousTypeCheckTool(project_root)
-    registry.register(
-        name="suspicious_type_check",
-        toolset="analysis",
-        category="correctness",
-        schema=stc_tool.get_tool_definition(),
-        handler=_make_handler(stc_tool),
-        description="Suspicious type check: detect type(x) == Y (should use isinstance)",
-        emoji="🔍",
     )
 
     from .tools.late_binding_closure_tool import LateBindingClosureTool
