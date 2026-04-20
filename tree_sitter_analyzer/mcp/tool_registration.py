@@ -1200,6 +1200,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🛡️",
     )
 
+    # config_drift
+    from .tools.config_drift_tool import ConfigDriftTool
+    cd_tool = ConfigDriftTool(project_root)
+    registry.register(
+        name="config_drift",
+        toolset="analysis",
+        category="best-practice",
+        schema=cd_tool.get_tool_definition(),
+        handler=_make_handler(cd_tool),
+        description="Config drift: detect hardcoded configuration values (host, port, url, api_key, etc.) that should be externalized via env vars across Python, JS/TS, Java, Go",
+        emoji="⚙️",
+    )
+
     # unused_parameter
     from .tools.unused_parameter_tool import UnusedParameterTool
     up_tool = UnusedParameterTool(project_root)
