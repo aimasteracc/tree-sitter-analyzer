@@ -1187,6 +1187,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="↩️",
     )
 
+    # guard_clause
+    from .tools.guard_clause_tool import GuardClauseTool
+    gcl_tool = GuardClauseTool(project_root)
+    registry.register(
+        name="guard_clause",
+        toolset="analysis",
+        category="style",
+        schema=gcl_tool.get_tool_definition(),
+        handler=_make_handler(gcl_tool),
+        description="Guard clause: detect if/else blocks where inverting the condition and returning early would flatten the code across Python, JS/TS, Java, Go",
+        emoji="🛡️",
+    )
+
     # unused_parameter
     from .tools.unused_parameter_tool import UnusedParameterTool
     up_tool = UnusedParameterTool(project_root)
