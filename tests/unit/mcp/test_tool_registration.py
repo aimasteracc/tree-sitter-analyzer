@@ -35,7 +35,6 @@ class TestRegisterAllTools:
                 "analyze_scale",
                 "analyze_code_structure",
                 "code_diff",
-                "code_smell_detector",
                 "code_clone_detection",
                 "health_score",
                 "java_patterns",

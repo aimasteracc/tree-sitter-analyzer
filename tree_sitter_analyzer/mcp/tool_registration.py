@@ -19,9 +19,6 @@ from .tools.check_tools_tool import CheckToolsTool
 from .tools.ci_report_tool import CIReportTool
 from .tools.code_clone_detection_tool import CodeCloneDetectionTool
 from .tools.code_diff_tool import CodeDiffTool
-from .tools.code_smell_detector_tool import (
-    CodeSmellDetectorTool,
-)
 from .tools.complexity_heatmap_tool import ComplexityHeatmapTool
 from .tools.context_optimizer_tool import ContextOptimizerTool
 from .tools.dependency_query_tool import DependencyQueryTool
@@ -558,18 +555,6 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(ap_tool),
         description="Async patterns: detect missing await, fire-and-forget, unhandled promises, blocking in async across Python, JS/TS, Java, Go",
         emoji="⚡",
-    )
-
-    # code_smell_detector
-    cs_tool = CodeSmellDetectorTool(project_root)
-    registry.register(
-        name="code_smell_detector",
-        toolset="analysis",
-        category="code-quality",
-        schema=cs_tool.get_tool_definition(),
-        handler=_make_handler(cs_tool),
-        description="Code smell detection: identify god classes, long methods, magic numbers, and other common code smells",
-        emoji="👃",
     )
 
 

@@ -2,7 +2,7 @@
 Refactoring Suggestions - Actionable guidance to fix code smells.
 
 This module provides step-by-step refactoring suggestions based on code
-smell detection results from code_smells.py. Instead of just reporting
+analysis results. Instead of just reporting
 problems, it generates specific fixes with before/after examples.
 """
 

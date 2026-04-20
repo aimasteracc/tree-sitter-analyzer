@@ -10,10 +10,22 @@
 - This is the "out" for the 1-in-1-out rule after adding Guard Clause + Config Drift detectors
 
 **Refactoring analysis: additional overlap candidates identified**:
-- `code_smells.py` — legacy regex-based, superseded by individual AST analyzers (but has active MCP tool dependency)
+- `code_smells.py` — legacy regex-based, superseded by individual AST analyzers (DELETED this session)
 - `error_handling.py` + `error_propagation.py` — overlapping swallowed error and finally-without-catch detection
 - `dead_code.py` — only data classes and helpers, no actual analysis engine
 - `complexity.py` — regex-based heatmap, doesn't properly use BaseAnalyzer
+
+**Quality Sprint: Delete code_smells.py** (regex superseded by AST analyzers):
+- Deleted: `analysis/code_smells.py` (493 lines, regex-based), `mcp/tools/code_smell_detector_tool.py`, tests
+- Removed tool registration from `tool_registration.py`
+- Superseded by: `god_class.py`, `function_size.py`, `nesting_depth.py`, `magic_values.py` (all AST-based)
+- CI: ruff, mypy --strict, 11 tool registration tests pass, self-hosting gate 100%
+
+**Feature exploration: no new features pass 10/12 gate**:
+- After exhaustive analysis, no new analyzer feature scores >= 10/12
+- All remaining ideas either covered by competitors (ESLint/Ruff/SonarQBE), overlap with existing analyzers, or lack user signal
+- This is a valid finding — the codebase has excellent analysis coverage at 114+ analyzers
+- Future focus: "making existing tools useful" (merge overlapping, improve quality, add language support)
 
 ## Session 152 — 2026-04-21
 
