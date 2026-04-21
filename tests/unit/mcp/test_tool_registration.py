@@ -41,7 +41,7 @@ class TestRegisterAllTools:
                 "error_recovery",
                 "semantic_impact",
                 "understand_codebase",
-                "complexity_heatmap",
+
                 "dead_code_analysis",
                 "test_coverage",
                 "refactoring_suggestions",

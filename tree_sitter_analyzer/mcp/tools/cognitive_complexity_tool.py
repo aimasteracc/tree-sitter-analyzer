@@ -57,7 +57,7 @@ class CognitiveComplexityTool(BaseMCPTool):
                 "- When evaluating code maintainability\n"
                 "\n"
                 "WHEN NOT TO USE:\n"
-                "- For cyclomatic complexity (use complexity_heatmap)\n"
+                "- For nesting depth only (use nesting_depth)\n"
                 "- For detecting code smells (use code_smell_detector)\n"
                 "- For file-level metrics (use health_score)"
             ),

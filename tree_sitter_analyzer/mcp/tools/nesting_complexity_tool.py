@@ -70,7 +70,6 @@ class NestingComplexityTool(BaseMCPTool):
                 "\n"
                 "WHEN NOT TO USE:\n"
                 "- For cognitive complexity (use cognitive_complexity)\n"
-                "- For cyclomatic complexity (use complexity_heatmap)\n"
                 "- For code smell detection (use code_smell_detector)"
             ),
             "inputSchema": {

@@ -1,7 +1,7 @@
 """Risk scoring engine for project radar.
 
 This module provides functionality to calculate unified risk scores by combining:
-- Complexity scores (from complexity_heatmap)
+- Complexity scores (from cognitive_complexity)
 - Churn metrics (from git_analyzer)
 - Impact scores (from semantic_impact)
 """

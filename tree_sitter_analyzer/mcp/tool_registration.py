@@ -19,7 +19,6 @@ from .tools.check_tools_tool import CheckToolsTool
 from .tools.ci_report_tool import CIReportTool
 from .tools.code_clone_detection_tool import CodeCloneDetectionTool
 from .tools.code_diff_tool import CodeDiffTool
-from .tools.complexity_heatmap_tool import ComplexityHeatmapTool
 from .tools.context_optimizer_tool import ContextOptimizerTool
 from .tools.dependency_query_tool import DependencyQueryTool
 from .tools.error_recovery_tool import ErrorRecoveryTool
@@ -248,18 +247,6 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(understand_tool),
         description="理解代码库: 依赖、影响、健康评分（三深度级别）",
         emoji="🧠",
-    )
-
-    # complexity_heatmap
-    heatmap_tool = ComplexityHeatmapTool(project_root)
-    registry.register(
-        name="complexity_heatmap",
-        toolset="analysis",
-        category="complexity-visualization",
-        schema=heatmap_tool.get_tool_definition(),
-        handler=_make_handler(heatmap_tool),
-        description="Complexity heatmap: line-level complexity visualization",
-        emoji="🔥",
     )
 
     # dead_code_analysis (consolidated: dead_code + dead_code_path)
