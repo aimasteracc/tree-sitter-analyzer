@@ -89,7 +89,7 @@ _CATEGORY_KEYWORDS: dict[NeuronCategory, tuple[str, ...]] = {
     ),
     NeuronCategory.SMELL: (
         "smell", "god_class", "lazy_class", "middle_man", "feature_envy",
-        "data_clump", "primitive_obsession", "speculative", "refused_bequest",
+        "parameter_coupling", "primitive_obsession", "speculative", "refused_bequest",
         "shotgun_surgery", "side_effect", "flag_argument",
     ),
 }

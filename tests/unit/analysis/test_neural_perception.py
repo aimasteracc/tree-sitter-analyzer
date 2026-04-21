@@ -19,7 +19,7 @@ from tree_sitter_analyzer.analysis.neural_perception import (
 class TestNeuronClassification:
     def test_smell_category(self):
         assert _classify_neuron("god_class") == NeuronCategory.SMELL
-        assert _classify_neuron("data_clump") == NeuronCategory.SMELL
+        assert _classify_neuron("side_effect") == NeuronCategory.SMELL
 
     def test_complexity_category(self):
         assert _classify_neuron("cognitive_complexity") == NeuronCategory.COMPLEXITY

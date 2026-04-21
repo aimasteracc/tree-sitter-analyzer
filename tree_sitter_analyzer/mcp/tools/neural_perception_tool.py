@@ -62,7 +62,7 @@ class NeuralPerceptionTool(BaseMCPTool):
             },
         }
 
-    @handle_mcp_errors
+    @handle_mcp_errors(operation="execute")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         fmt = arguments.get("format", "toon")
         perception = NeuralPerception()
@@ -118,13 +118,13 @@ class NeuralPerceptionTool(BaseMCPTool):
             ],
         }
         if fmt == "toon":
-            return {"content": ToonEncoder().encode(data, "neural_perception")}
+            return {"content": ToonEncoder().encode(data)}
         return data
 
     def _format_result(
         self, result: Any, fmt: str
     ) -> dict[str, Any]:
-        data = result.to_dict()
+        data: dict[str, Any] = result.to_dict()
         if fmt == "toon":
-            return {"content": ToonEncoder().encode(data, "neural_perception")}
+            return {"content": ToonEncoder().encode(data)}
         return data

@@ -1226,19 +1226,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🌐",
     )
 
-    # missing_break
-    from .tools.missing_break_tool import MissingBreakTool
-    mb_tool = MissingBreakTool(project_root)
-    registry.register(
-        name="missing_break",
-        toolset="analysis",
-        category="bug-detection",
-        schema=mb_tool.get_tool_definition(),
-        handler=_make_handler(mb_tool),
-        description="Missing break: detect unintentional switch/case fall-through in JS/TS and Java",
-        emoji="🔍",
-    )
-
     # discarded_return
     from .tools.discarded_return_tool import DiscardedReturnTool
     dr_tool = DiscardedReturnTool(project_root)
@@ -1497,42 +1484,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(rif_tool),
         description="Return in finally: detect return/raise in finally blocks that swallow exceptions",
         emoji="🔇",
-    )
-
-    from .tools.duplicate_dict_key_tool import DuplicateDictKeyTool
-    ddk_tool = DuplicateDictKeyTool(project_root)
-    registry.register(
-        name="duplicate_dict_key",
-        toolset="analysis",
-        category="correctness",
-        schema=ddk_tool.get_tool_definition(),
-        handler=_make_handler(ddk_tool),
-        description="Duplicate dict key: detect duplicate keys in dictionary/object literals",
-        emoji="🔑",
-    )
-
-    from .tools.len_anti_pattern_tool import LenAntiPatternTool
-    lenap_tool = LenAntiPatternTool(project_root)
-    registry.register(
-        name="len_anti_pattern",
-        toolset="analysis",
-        category="style",
-        schema=lenap_tool.get_tool_definition(),
-        handler=_make_handler(lenap_tool),
-        description="Len anti-patterns: detect len(x) == 0 (> 0, != 0) where truthiness is preferred, and for i in range(len(x))",
-        emoji="📏",
-    )
-
-    from .tools.useless_loop_else_tool import UselessLoopElseTool
-    loopelse_tool = UselessLoopElseTool(project_root)
-    registry.register(
-        name="useless_loop_else",
-        toolset="analysis",
-        category="correctness",
-        schema=loopelse_tool.get_tool_definition(),
-        handler=_make_handler(loopelse_tool),
-        description="Useless loop else: detect for/while...else without break (else always runs)",
-        emoji="🔄",
     )
 
     # list_membership

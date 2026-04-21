@@ -84,7 +84,7 @@ class BrainTool(BaseMCPTool):
             },
         }
 
-    @handle_mcp_errors
+    @handle_mcp_errors(operation="execute")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         fmt = arguments.get("format", "toon")
         action = arguments.get("action", "summary")
@@ -125,5 +125,5 @@ class BrainTool(BaseMCPTool):
             raise ValueError(f"Unknown action: {action}")
 
         if fmt == "toon":
-            return {"content": ToonEncoder().encode(data, "brain")}
+            return {"content": ToonEncoder().encode(data)}
         return data
