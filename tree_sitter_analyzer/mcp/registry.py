@@ -298,7 +298,6 @@ TOOLSET_DEFINITIONS: dict[str, dict[str, Any]] = {
             "semantic_impact",
             "understand_codebase",
             "complexity_heatmap",
-            "dead_code",
             "test_coverage",
             "refactoring_suggestions",
             "design_patterns",

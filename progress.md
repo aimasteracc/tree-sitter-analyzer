@@ -1,5 +1,31 @@
 # Progress — 自主开发进度日志
 
+## Session 154 — 2026-04-21
+
+**Refactoring Sprint: Overlap cleanup** (1-in-1-out rule, quality improvement):
+
+1. **dead_store.py — remove self_assignment detection** (-40 lines):
+   - Self-assignment (x = x) now exclusively handled by dedicated `self_assignment.py`
+   - Removed: ISSUE_SELF_ASSIGNMENT constant, `_is_self_assignment()` function, `_get_assignment_value_node()` helper
+   - Removed: self-assignment check in `_analyze_function_body()`
+   - Tests: 30 pass (removed 7 self-assignment tests)
+
+2. **Delete orphan dead_code_tool.py** (unregistered stub, -275 lines):
+   - This MCP tool was never registered in `tool_registration.py`
+   - Its `_analyze_dead_code()` was a placeholder returning empty reports
+   - `dead_code_analysis_tool.py` is the registered tool (consolidates dead_code + dead_code_path)
+   - Removed: dead_code_tool.py, test_dead_code_tool.py
+   - Updated: registry.py (removed stale "dead_code" entry), self-hosting-gate.py
+
+3. **error_handling.py — remove dead enum entry**:
+   - `FINALLY_WITHOUT_HANDLE` was declared in PatternType but never implemented
+   - Fully implemented in `error_propagation.py` as `FINALLY_NO_CATCH`
+   - Tests: 36 pass
+
+- CI: ruff ✅, mypy --strict ✅, pytest ✅
+- Self-hosting gate: 100%
+- Architecture check: all invariants pass
+
 ## Session 153 — 2026-04-21
 
 **Refactoring Sprint: Remove inconsistent_return analyzer** (1-in-1-out rule):

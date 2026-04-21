@@ -9,7 +9,6 @@ import pytest
 from tree_sitter_analyzer.analysis.dead_store import (
     ISSUE_DEAD_STORE,
     ISSUE_IMMEDIATE_REASSIGNMENT,
-    ISSUE_SELF_ASSIGNMENT,
     DeadStoreAnalyzer,
     DeadStoreIssue,
     DeadStoreResult,
@@ -34,9 +33,6 @@ class TestClassification:
     def test_dead_store_constant(self) -> None:
         assert ISSUE_DEAD_STORE == "dead_store"
 
-    def test_self_assignment_constant(self) -> None:
-        assert ISSUE_SELF_ASSIGNMENT == "self_assignment"
-
     def test_immediate_reassignment_constant(self) -> None:
         assert ISSUE_IMMEDIATE_REASSIGNMENT == "immediate_reassignment"
 
@@ -60,14 +56,14 @@ class TestDataclasses:
     def test_issue_to_dict(self) -> None:
         issue = DeadStoreIssue(
             line_number=3,
-            issue_type=ISSUE_SELF_ASSIGNMENT,
+            issue_type=ISSUE_DEAD_STORE,
             variable_name="data",
-            severity="high",
+            severity="medium",
             description="test",
         )
         d = issue.to_dict()
         assert d["line_number"] == 3
-        assert d["issue_type"] == ISSUE_SELF_ASSIGNMENT
+        assert d["issue_type"] == ISSUE_DEAD_STORE
         assert d["variable_name"] == "data"
         assert "suggestion" in d
 
@@ -134,16 +130,6 @@ def foo():
         result = _analyze(code)
         immediate = [i for i in result.issues if i.issue_type == ISSUE_IMMEDIATE_REASSIGNMENT]
         assert len(immediate) >= 1
-
-    def test_self_assignment(self) -> None:
-        code = """\
-def foo():
-    x = 10
-    x = x
-"""
-        result = _analyze(code)
-        self_assign = [i for i in result.issues if i.issue_type == ISSUE_SELF_ASSIGNMENT]
-        assert len(self_assign) >= 1
 
     def test_no_issue_for_augmented_assignment(self) -> None:
         code = """\
@@ -212,17 +198,6 @@ function foo() {
         result = _analyze(code, ".js")
         dead = [i for i in result.issues if i.issue_type == ISSUE_DEAD_STORE and i.variable_name == "x"]
         assert len(dead) >= 1
-
-    def test_js_self_assignment(self) -> None:
-        code = """\
-function foo() {
-    let x = 10;
-    x = x;
-}
-"""
-        result = _analyze(code, ".js")
-        self_assign = [i for i in result.issues if i.issue_type == ISSUE_SELF_ASSIGNMENT]
-        assert len(self_assign) >= 1
 
     def test_js_variable_used(self) -> None:
         code = """\
@@ -313,19 +288,6 @@ public class Foo {
         dead = [i for i in result.issues if i.variable_name == "x" and i.issue_type == ISSUE_DEAD_STORE]
         assert len(dead) == 0
 
-    def test_java_self_assignment(self) -> None:
-        code = """\
-public class Foo {
-    public void bar() {
-        int x = 10;
-        x = x;
-    }
-}
-"""
-        result = _analyze(code, ".java")
-        self_assign = [i for i in result.issues if i.issue_type == ISSUE_SELF_ASSIGNMENT]
-        assert len(self_assign) >= 1
-
 
 # ── Go dead store detection ──────────────────────────────────────────────
 
@@ -355,19 +317,6 @@ func foo() int {
         result = _analyze(code, ".go")
         dead = [i for i in result.issues if i.variable_name == "x" and i.issue_type == ISSUE_DEAD_STORE]
         assert len(dead) == 0
-
-    def test_go_self_assignment(self) -> None:
-        code = """\
-package main
-
-func foo() {
-    x := 10
-    x = x
-}
-"""
-        result = _analyze(code, ".go")
-        self_assign = [i for i in result.issues if i.issue_type == ISSUE_SELF_ASSIGNMENT]
-        assert len(self_assign) >= 1
 
 
 # ── Edge cases ───────────────────────────────────────────────────────────

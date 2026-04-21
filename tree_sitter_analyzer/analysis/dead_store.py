@@ -2,8 +2,9 @@
 
 Detects variables that are assigned but whose value is never read:
   - dead_store: variable assigned but value never read before reassignment or scope exit
-  - self_assignment: variable assigned to itself (x = x)
   - immediate_reassignment: variable reassigned before the first value is read
+
+Self-assignment (x = x) is handled by the dedicated self_assignment.py analyzer.
 
 Supports Python, JavaScript/TypeScript, Java, Go.
 """
@@ -24,24 +25,20 @@ SEVERITY_MEDIUM = "medium"
 SEVERITY_LOW = "low"
 
 ISSUE_DEAD_STORE = "dead_store"
-ISSUE_SELF_ASSIGNMENT = "self_assignment"
 ISSUE_IMMEDIATE_REASSIGNMENT = "immediate_reassignment"
 
 _SEVERITY_MAP: dict[str, str] = {
     ISSUE_DEAD_STORE: SEVERITY_MEDIUM,
-    ISSUE_SELF_ASSIGNMENT: SEVERITY_HIGH,
     ISSUE_IMMEDIATE_REASSIGNMENT: SEVERITY_LOW,
 }
 
 _DESCRIPTIONS: dict[str, str] = {
     ISSUE_DEAD_STORE: "Variable is assigned but the value is never read before reassignment or scope exit",
-    ISSUE_SELF_ASSIGNMENT: "Variable is assigned to itself, this has no effect",
     ISSUE_IMMEDIATE_REASSIGNMENT: "Variable is reassigned before the previous value was read",
 }
 
 _SUGGESTIONS: dict[str, str] = {
     ISSUE_DEAD_STORE: "Remove the unused assignment or use the value.",
-    ISSUE_SELF_ASSIGNMENT: "Remove the self-assignment or fix the intended assignment.",
     ISSUE_IMMEDIATE_REASSIGNMENT: "Remove the first assignment if the value is not needed.",
 }
 
@@ -221,42 +218,6 @@ def _get_assignment_target(
     return None
 
 
-def _get_assignment_value_node(
-    node: tree_sitter.Node, ext: str,
-) -> tree_sitter.Node | None:
-    """Get the value/right-hand-side node of an assignment."""
-    if ext == ".py":
-        return node.child_by_field_name("right")
-    if ext in (".js", ".jsx", ".ts", ".tsx"):
-        if node.type == "assignment_expression":
-            return node.child_by_field_name("right")
-        if node.type == "variable_declarator":
-            return node.child_by_field_name("value")
-    if ext == ".java":
-        if node.type == "variable_declarator":
-            return node.child_by_field_name("value")
-        if node.type == "assignment_expression":
-            return node.child_by_field_name("right")
-    if ext == ".go":
-        if node.type == "short_var_declaration":
-            # Skip := operator and first expression_list (target), return value
-            seen_operator = False
-            for child in node.children:
-                if child.type == ":=":
-                    seen_operator = True
-                    continue
-                if seen_operator:
-                    return child
-            return None
-        if node.type == "assignment_statement":
-            right = node.child_by_field_name("right")
-            if right is not None and right.type == "expression_list":
-                children = right.children
-                return children[0] if children else right
-            return right
-    return None
-
-
 def _collect_identifiers_in(
     node: tree_sitter.Node,
     names: set[str],
@@ -270,18 +231,6 @@ def _collect_identifiers_in(
         return
     for child in node.children:
         _collect_identifiers_in(child, names, exclude_target)
-
-
-def _is_self_assignment(
-    node: tree_sitter.Node, ext: str, target_name: str,
-) -> bool:
-    """Check if an assignment is x = x (self-assignment)."""
-    value_node = _get_assignment_value_node(node, ext)
-    if value_node is None:
-        return False
-    if value_node.type == "identifier":
-        return _safe_text(value_node) == target_name
-    return False
 
 
 def _extract_reads(
@@ -338,22 +287,7 @@ def _analyze_function_body(
 
     # For each assignment, check if the previous value of that variable was read
     assigned_vars: dict[str, int] = {}
-    for idx, (var_name, line, assign_node) in enumerate(assignments):
-        # Check self-assignment first
-        if _is_self_assignment(assign_node, ext, var_name):
-            issues.append(DeadStoreIssue(
-                line_number=line,
-                issue_type=ISSUE_SELF_ASSIGNMENT,
-                variable_name=var_name,
-                severity=_SEVERITY_MAP[ISSUE_SELF_ASSIGNMENT],
-                description=_DESCRIPTIONS[ISSUE_SELF_ASSIGNMENT],
-            ))
-            if var_name in assigned_vars:
-                assigned_vars[var_name] = idx
-            else:
-                assigned_vars[var_name] = idx
-            continue
-
+    for idx, (var_name, _line, _assign_node) in enumerate(assignments):
         prev_idx = assigned_vars.get(var_name)
 
         if prev_idx is not None:

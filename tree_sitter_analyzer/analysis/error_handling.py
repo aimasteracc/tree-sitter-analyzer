@@ -45,7 +45,6 @@ class PatternType(Enum):
     BROAD_EXCEPTION = "broad_exception"
     UNCHECKED_ERROR = "unchecked_error"
     INCONSISTENT_STYLE = "inconsistent_style"
-    FINALLY_WITHOUT_HANDLE = "finally_without_handle"
     MISSING_CONTEXT = "missing_context"
     GENERIC_ERROR_MESSAGE = "generic_error_message"
 
