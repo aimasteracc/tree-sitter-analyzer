@@ -138,12 +138,14 @@ class ProjectBrain:
     def get_leverage_points(self) -> list[dict[str, Any]]:
         if self._causal_result is None:
             return []
-        return self._causal_result.to_dict()["leverage_points"]
+        result: list[dict[str, Any]] = self._causal_result.to_dict()["leverage_points"]
+        return result
 
     def get_the_one_thread(self) -> dict[str, Any] | None:
         if self._causal_result is None:
             return None
-        return self._causal_result.to_dict()["the_one_thread"]
+        thread: dict[str, Any] | None = self._causal_result.to_dict()["the_one_thread"]
+        return thread
 
     def _write_brain_state(self) -> None:
         state_path = Path(self.project_root) / ".brain_state"
