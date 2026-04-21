@@ -1003,18 +1003,7 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🐌",
     )
 
-    # dict_merge_loop
-    from .tools.dict_merge_loop_tool import DictMergeLoopTool
-    dml_tool = DictMergeLoopTool(project_root)
-    registry.register(
-        name="dict_merge_loop",
-        toolset="analysis",
-        category="performance",
-        schema=dml_tool.get_tool_definition(),
-        handler=_make_handler(dml_tool),
-        description="Dict merge in loops: detect d[k]=v patterns that should use dict.update() for O(1) bulk operation",
-        emoji="📝",
-    )
+
 
     # iterable_modification
     from .tools.iterable_modification_tool import IterableModificationTool

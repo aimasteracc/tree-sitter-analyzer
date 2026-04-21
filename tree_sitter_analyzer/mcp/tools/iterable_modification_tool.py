@@ -51,7 +51,7 @@ class IterableModificationTool(BaseMCPTool):
                 "\n"
                 "WHEN NOT TO USE:\n"
                 "- For loop performance (use loop_complexity)\n"
-                "- For dict merge in loops (use dict_merge_loop)"
+                "- For dict merge in loops (use string_concat_loop for loop perf patterns)"
             ),
             "inputSchema": {
                 "type": "object",
