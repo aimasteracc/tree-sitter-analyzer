@@ -145,7 +145,7 @@ class CausalChain:
         )
         self._file_health: dict[str, tuple[float, int]] = {}
 
-    def analyze(
+    def build_causal_model(
         self,
         file_maps: dict[str, Any],
         hotspots: list[dict[str, Any]],

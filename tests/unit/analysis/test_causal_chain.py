@@ -21,7 +21,7 @@ def chain() -> CausalChain:
 
 class TestCausalChainAnalyze:
     def test_empty_inputs(self, chain: CausalChain) -> None:
-        result = chain.analyze({}, [])
+        result = chain.build_causal_model({}, [])
         assert isinstance(result, CausalResult)
         assert result.leverage_points == []
         assert result.the_one_thread is None
@@ -32,7 +32,7 @@ class TestCausalChainAnalyze:
             {"file": f"{_PREFIX}b.py", "analyzer_names": ["empty_block"]},
             {"file": f"{_PREFIX}c.py", "analyzer_names": ["empty_block"]},
         ]
-        result = chain.analyze({}, hotspots)
+        result = chain.build_causal_model({}, hotspots)
         assert len(result.leverage_points) >= 1
         pattern_lp = [
             lp for lp in result.leverage_points if lp.kind == "pattern"
@@ -47,7 +47,7 @@ class TestCausalChainAnalyze:
             {"file": f"{_PREFIX}c.py", "analyzer_names": ["x"]},
             {"file": f"{_PREFIX}d.py", "analyzer_names": ["y"]},
         ]
-        result = chain.analyze({}, hotspots)
+        result = chain.build_causal_model({}, hotspots)
         assert result.the_one_thread is not None
         assert result.the_one_thread.hotspot_count == 3
 

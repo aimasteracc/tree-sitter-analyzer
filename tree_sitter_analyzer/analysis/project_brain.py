@@ -131,7 +131,7 @@ class ProjectBrain:
 
     def _run_causal_analysis(self) -> None:
         self._causal_chain = CausalChain(self.project_root)
-        self._causal_result = self._causal_chain.analyze(
+        self._causal_result = self._causal_chain.build_causal_model(
             self._file_map, self._hotspots
         )
 
