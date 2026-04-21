@@ -208,6 +208,6 @@ class ChangeImpactAnalyzer:
 
     def _rel(self, abs_path: str) -> str:
         try:
-            return str(Path(abs_path).relative_to(self.project_root))
+            return str(Path(abs_path).relative_to(self.project_root)).replace("\\", "/")
         except ValueError:
-            return abs_path
+            return abs_path.replace("\\", "/")

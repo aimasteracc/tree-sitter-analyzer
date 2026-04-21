@@ -10,6 +10,7 @@ import asyncio
 import functools
 import logging
 import signal
+import sys
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -119,6 +120,29 @@ class TimeoutGuard:
         return decorator
 
 
+if sys.platform != "win32":
+
+    def _run_with_alarm(
+        func: Callable[..., Any],
+        op_name: str,
+        timeout: float,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> Any:
+        """Run func with SIGALRM-based timeout (Unix only)."""
+
+        def _handler(signum: int, frame: Any) -> None:
+            raise AnalysisTimeoutError(op_name, timeout)
+
+        old_handler = signal.signal(signal.SIGALRM, _handler)
+        signal.setitimer(signal.ITIMER_REAL, timeout)
+        try:
+            return func(*args, **kwargs)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, old_handler)
+
+
 def with_sync_timeout(
     operation: str | None = None,
     timeout: float = DEFAULT_ANALYSIS_TIMEOUT,
@@ -132,23 +156,17 @@ def with_sync_timeout(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         op_name = operation or func.__name__
 
-        @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
-            import sys
+        if sys.platform == "win32":
 
-            if sys.platform == "win32":
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
                 return func(*args, **kwargs)
 
-            def _handler(signum: int, frame: Any) -> None:
-                raise AnalysisTimeoutError(op_name, timeout)
+        else:
 
-            old_handler = signal.signal(signal.SIGALRM, _handler)
-            signal.setitimer(signal.ITIMER_REAL, timeout)
-            try:
-                return func(*args, **kwargs)
-            finally:
-                signal.setitimer(signal.ITIMER_REAL, 0)
-                signal.signal(signal.SIGALRM, old_handler)
+            @functools.wraps(func)
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                return _run_with_alarm(func, op_name, timeout, args, kwargs)
 
         return wrapper
 

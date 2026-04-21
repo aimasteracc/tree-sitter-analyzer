@@ -144,8 +144,8 @@ class TestChangeImpactAnalyzer:
         result = analyzer.analyze(["pkg/c.py"])
 
         impacted_paths = {i.path for i in result.impacted}
-        assert str(Path("pkg/b.py")) in impacted_paths
-        assert str(Path("pkg/a.py")) in impacted_paths
+        assert "pkg/b.py" in impacted_paths
+        assert "pkg/a.py" in impacted_paths
 
         # b is direct (distance=1), a is transitive (distance=2)
         b_item = next(i for i in result.impacted if "b.py" in i.path)
@@ -167,5 +167,5 @@ class TestChangeImpactAnalyzer:
 
         # With default max_depth=10, both b and c should be found
         impacted_paths = {i.path for i in result.impacted}
-        assert str(Path("pkg/b.py")) in impacted_paths
-        assert str(Path("pkg/c.py")) in impacted_paths
+        assert "pkg/b.py" in impacted_paths
+        assert "pkg/c.py" in impacted_paths

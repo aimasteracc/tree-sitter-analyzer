@@ -7,16 +7,19 @@ and concurrent access support.
 
 from __future__ import annotations
 
-import fcntl
 import hashlib
 import os
 import pickle
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+if sys.platform != "win32":
+    import fcntl
 
 # Pickle protocol compatible with Python 3.8+
 PICKLE_PROTOCOL = 4
@@ -191,6 +194,7 @@ class IncrementalCacheManager:
         # File lock for concurrent access
         self._lock_path = self.cache_dir / ".lock"
         self._lock_fd: int | None = None
+        self._thread_lock = threading.Lock()
 
         # Git state tracking
         self._git_tracker = GitStateTracker(self.repo_path)
@@ -198,13 +202,23 @@ class IncrementalCacheManager:
 
     def _acquire_lock(self, exclusive: bool = False) -> None:
         """Acquire file lock for concurrent access safety."""
-        lock_mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
-        self._lock_fd = os.open(self._lock_path, os.O_CREAT | os.O_RDWR)
-        fcntl.flock(self._lock_fd, lock_mode)
+        if sys.platform == "win32":
+            # On Windows, msvcrt locks are per-process (not per-fd),
+            # so use a threading.Lock for intra-process concurrency
+            self._thread_lock.acquire()
+        else:
+            self._lock_fd = os.open(self._lock_path, os.O_CREAT | os.O_RDWR)
+            lock_mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+            fcntl.flock(self._lock_fd, lock_mode)
 
     def _release_lock(self) -> None:
         """Release file lock."""
-        if self._lock_fd is not None:
+        if sys.platform == "win32":
+            try:
+                self._thread_lock.release()
+            except RuntimeError:
+                pass
+        elif self._lock_fd is not None:
             fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
             os.close(self._lock_fd)
             self._lock_fd = None
@@ -243,10 +257,20 @@ class IncrementalCacheManager:
 
     def _write_atomically(self, path: Path, data: bytes) -> None:
         """Write to temporary file, then rename for atomicity."""
-        temp_path = path.with_suffix(f".tmp.{os.getpid()}")
+        temp_path = path.with_suffix(f".tmp.{os.getpid()}.{threading.get_ident()}")
         with open(temp_path, "wb") as f:
             f.write(data)
-        temp_path.rename(path)  # Atomic on POSIX
+        # On Windows, os.replace can transiently fail with PermissionError
+        # when antivirus or another handle briefly holds the target file
+        for attempt in range(3):
+            try:
+                os.replace(temp_path, path)
+                return
+            except PermissionError:
+                if attempt < 2:
+                    time.sleep(0.01 * (attempt + 1))
+                else:
+                    raise
 
     def get(self, file_path: str, language: str = "python") -> CachedAnalysis | None:
         """
