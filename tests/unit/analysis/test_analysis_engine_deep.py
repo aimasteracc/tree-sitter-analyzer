@@ -423,3 +423,118 @@ class TestModificationSuggestions:
         assert isinstance(score.suggestions, tuple)
         assert len(score.suggestions) >= 1
         assert 0 <= score.score <= 100
+
+
+class TestASTBasedHealthScore:
+    """Tests verifying AST-based metric accuracy (replaces regex approach)."""
+
+    def test_python_ignores_commented_functions(self, tmp_path: Path) -> None:
+        """Regex would match 'def' in comments; AST correctly ignores them."""
+        code = (
+            "# def fake_function():\n"
+            "#     pass\n"
+            "def real_function():\n"
+            "    return 42\n"
+        )
+        (tmp_path / "test.py").write_text(code, encoding="utf-8")
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("test.py")
+        assert score.methods == 1
+
+    def test_python_counts_imports_accurately(self, tmp_path: Path) -> None:
+        """AST-based import counting distinguishes real imports from strings."""
+        code = (
+            "import os\n"
+            "from pathlib import Path\n"
+            'msg = "import fake"\n'
+            "# import commented\n"
+        )
+        (tmp_path / "imports.py").write_text(code, encoding="utf-8")
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("imports.py")
+        assert score.imports == 2
+
+    def test_python_cyclomatic_with_boolean_ops(self, tmp_path: Path) -> None:
+        """Boolean 'and'/'or' operators increase cyclomatic complexity."""
+        code = (
+            "def check(x, y):\n"
+            "    if x > 0 and y > 0:\n"
+            "        return True\n"
+            "    return False\n"
+        )
+        (tmp_path / "bool_ops.py").write_text(code, encoding="utf-8")
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("bool_ops.py")
+        # 1 (if) + 1 (and) + 1 = cyclomatic 3
+        assert score.cyclomatic_complexity == 3
+
+    def test_python_function_length_from_ast(self, tmp_path: Path) -> None:
+        """Function length computed from AST node positions, not regex."""
+        code = (
+            "def short():\n"
+            "    return 1\n"
+            "\n"
+            "def long_func():\n"
+            "    x = 1\n"
+            "    y = 2\n"
+            "    z = 3\n"
+            "    return x + y + z\n"
+        )
+        (tmp_path / "funcs.py").write_text(code, encoding="utf-8")
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("funcs.py")
+        assert score.methods == 2
+        assert score.avg_function_length == 3.5
+
+    def test_javascript_counts_methods_accurately(self, tmp_path: Path) -> None:
+        """JS: arrow functions, function declarations, and methods all counted."""
+        code = (
+            "function regular() {}\n"
+            "const arrow = () => {};\n"
+            "class C {\n"
+            "  method() {}\n"
+            "}\n"
+        )
+        (tmp_path / "app.js").write_text(code, encoding="utf-8")
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("app.js")
+        assert score.methods == 3
+
+    def test_go_counts_functions(self, tmp_path: Path) -> None:
+        """Go: function and method declarations counted."""
+        code = (
+            'package main\n\n'
+            'func hello() int {\n'
+            '\treturn 1\n'
+            '}\n\n'
+            'func (s Server) handle() {\n'
+            '\treturn\n'
+            '}\n'
+        )
+        (tmp_path / "main.go").write_text(code, encoding="utf-8")
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("main.go")
+        assert score.methods == 2
+
+    def test_java_annotations_counted(self, tmp_path: Path) -> None:
+        """Java: @Override, @Deprecated etc. counted as annotations."""
+        code = (
+            "public class S {\n"
+            "  @Override\n"
+            "  public String toString() { return \"\"; }\n"
+            "  @Deprecated\n"
+            "  void old() {}\n"
+            "}\n"
+        )
+        (tmp_path / "S.java").write_text(code, encoding="utf-8")
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("S.java")
+        assert score.methods == 2
+
+    def test_unsupported_extension_fallback(self, tmp_path: Path) -> None:
+        """Files with unsupported extensions get F grade with zero metrics."""
+        (tmp_path / "data.csv").write_text("a,b,c\n1,2,3\n", encoding="utf-8")
+        scorer = HealthScorer(project_root=str(tmp_path))
+        score = scorer.score_file("data.csv")
+        assert score.grade == "F"
+        assert score.methods == 0
