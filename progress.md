@@ -7,24 +7,31 @@
 1. **dead_store.py — remove self_assignment detection** (-40 lines):
    - Self-assignment (x = x) now exclusively handled by dedicated `self_assignment.py`
    - Removed: ISSUE_SELF_ASSIGNMENT constant, `_is_self_assignment()` function, `_get_assignment_value_node()` helper
-   - Removed: self-assignment check in `_analyze_function_body()`
    - Tests: 30 pass (removed 7 self-assignment tests)
 
 2. **Delete orphan dead_code_tool.py** (unregistered stub, -275 lines):
-   - This MCP tool was never registered in `tool_registration.py`
-   - Its `_analyze_dead_code()` was a placeholder returning empty reports
-   - `dead_code_analysis_tool.py` is the registered tool (consolidates dead_code + dead_code_path)
+   - Never registered in `tool_registration.py`
    - Removed: dead_code_tool.py, test_dead_code_tool.py
-   - Updated: registry.py (removed stale "dead_code" entry), self-hosting-gate.py
+   - Updated: registry.py, self-hosting-gate.py
 
 3. **error_handling.py — remove dead enum entry**:
-   - `FINALLY_WITHOUT_HANDLE` was declared in PatternType but never implemented
+   - `FINALLY_WITHOUT_HANDLE` declared but never implemented
    - Fully implemented in `error_propagation.py` as `FINALLY_NO_CATCH`
-   - Tests: 36 pass
 
+4. **Remove stub unused-code mode from dead_code_analysis_tool.py** (-400 lines):
+   - The "unused" mode was a stub returning empty reports (no actual detection)
+   - Tool now focuses on what works: unreachable code path detection
+   - Deleted dead_code.py (data classes with no callers after stub removal)
+   - Deleted test_dead_code.py (39 tests for removed data classes)
+
+5. **Delete orphan dead_code_path_tool.py** (-139 lines):
+   - Unregistered, duplicated dead_code_analysis_tool.py
+   - Updated self-hosting-gate.py exclusion list
+
+- Total removed: ~1,567 lines of dead/stub code
 - CI: ruff ✅, mypy --strict ✅, pytest ✅
 - Self-hosting gate: 100%
-- Architecture check: all invariants pass
+- Commits: 285b7c38, 5b1f7889, 61e7e682
 
 ## Session 153 — 2026-04-21
 
