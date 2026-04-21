@@ -52,9 +52,10 @@ class TestDetectStyle:
     def test_upper_snake(self) -> None:
         assert _detect_style("MY_CONST") == STYLE_UPPER_SNAKE
 
-    def test_camel_subsumes_lower(self) -> None:
-        # "name" matches both _RE_LOWER and _RE_CAMEL; camelCase is checked first
-        assert _detect_style("name") == STYLE_CAMEL
+    def test_lower_before_camel(self) -> None:
+        # "name" has no uppercase — lowercase, not camelCase
+        assert _detect_style("name") == STYLE_LOWER
+        assert _detect_style("myName") == STYLE_CAMEL
 
     def test_screaming_snake(self) -> None:
         assert _detect_style("MAX_RETRIES") == STYLE_UPPER_SNAKE

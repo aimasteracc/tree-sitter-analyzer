@@ -42,6 +42,7 @@ _VIOLATION_SEVERITY: dict[str, str] = {
 
 _LOOP_VARS: frozenset[str] = frozenset({"i", "j", "k", "x", "y", "z", "n", "m", "_"})
 _COMMON_SHORT: frozenset[str] = frozenset({"id", "db", "ip", "fp", "fn", "ex", "ok"})
+_COMMON_NAMED: frozenset[str] = frozenset({"logger", "logging", "self", "cls", "super", "init", "main"})
 
 # Naming style detection patterns
 _RE_SNAKE = re.compile(r"^[a-z][a-z0-9]*(_[a-z0-9]+)+$")
@@ -128,16 +129,20 @@ _VAR_NODES: dict[str, frozenset[str]] = {
 }
 
 def _detect_style(name: str) -> str:
-    if _RE_UPPER_SNAKE.match(name) or _RE_SCREAMING.match(name):
-        return STYLE_UPPER_SNAKE
-    if _RE_PASCAL.match(name):
-        return STYLE_PASCAL
-    if _RE_SNAKE.match(name):
-        return STYLE_SNAKE
-    if _RE_CAMEL.match(name):
-        return STYLE_CAMEL
-    if _RE_LOWER.match(name):
+    # Strip leading underscores for style detection
+    stripped = name.lstrip("_")
+    if not stripped:
         return STYLE_LOWER
+    if _RE_UPPER_SNAKE.match(stripped) or _RE_SCREAMING.match(stripped):
+        return STYLE_UPPER_SNAKE
+    if _RE_PASCAL.match(stripped):
+        return STYLE_PASCAL
+    if _RE_SNAKE.match(stripped):
+        return STYLE_SNAKE
+    if _RE_LOWER.match(stripped):
+        return STYLE_LOWER
+    if _RE_CAMEL.match(stripped):
+        return STYLE_CAMEL
     return STYLE_UNKNOWN
 
 def _suggest_style(name: str, target_style: str) -> str | None:
@@ -297,7 +302,6 @@ class NamingConventionAnalyzer(BaseAnalyzer):
         tree = parser.parse(content)
         identifiers = self._extract_identifiers(tree.root_node, content, language, ext)
         violations = self._check_conventions(identifiers, ext, language)
-        style_dist = self._compute_style_distribution(identifiers)
         style_dist = self._compute_style_distribution(identifiers)
         score = self._compute_score(len(identifiers), len(violations))
 
@@ -566,21 +570,23 @@ class NamingConventionAnalyzer(BaseAnalyzer):
                 ))
                 continue
 
-            # Skip common short names
-            if name.lower() in _COMMON_SHORT:
+            # Skip common short names and well-known identifiers
+            if name.lower() in _COMMON_SHORT or name in _COMMON_NAMED:
+                continue
+
+            # Skip UPPER_SNAKE module-level names (constants)
+            if current_style == STYLE_UPPER_SNAKE:
                 continue
 
             # Check language convention
             expected = conventions.get(element_type)
             if expected and current_style != expected:
-                # Allow UPPER_SNAKE for constants even if convention differs
+                # lowercase is compatible with snake_case (single-word names)
                 if (
-                    current_style == STYLE_UPPER_SNAKE
-                    and expected != STYLE_UPPER_SNAKE
-                    and element_type == "variable"
+                    expected == STYLE_SNAKE
+                    and current_style == STYLE_LOWER
                 ):
                     continue
-
                 suggestion = _suggest_style(name, expected)
                 violations.append(NamingViolation(
                     name=name,
