@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from tree_sitter_analyzer.analysis.causal_chain import CausalChain, CausalResult
 from tree_sitter_analyzer.analysis.neural_perception import (
     NeuralPerception,
     PerceptionMap,
@@ -75,6 +76,7 @@ class ProjectBrain:
     _category_totals: dict[str, int] = field(default_factory=dict)
     _severity_totals: dict[str, int] = field(default_factory=dict)
     _language_distribution: dict[str, int] = field(default_factory=dict)
+    _causal_result: CausalResult | None = None
 
     def warm_up(self) -> None:
         """Scan all project files and build the perception model."""
@@ -123,7 +125,22 @@ class ProjectBrain:
         )
         self._warm_duration = time.monotonic() - start
         self._warm_time = time.time()
+        self._run_causal_analysis()
         self._write_brain_state()
+
+    def _run_causal_analysis(self) -> None:
+        chain = CausalChain(self.project_root)
+        self._causal_result = chain.analyze(self._file_map, self._hotspots)
+
+    def get_leverage_points(self) -> list[dict[str, Any]]:
+        if self._causal_result is None:
+            return []
+        return self._causal_result.to_dict()["leverage_points"]
+
+    def get_the_one_thread(self) -> dict[str, Any] | None:
+        if self._causal_result is None:
+            return None
+        return self._causal_result.to_dict()["the_one_thread"]
 
     def _write_brain_state(self) -> None:
         state_path = Path(self.project_root) / ".brain_state"
@@ -174,6 +191,21 @@ class ProjectBrain:
                     f"  FIX: {short} {fk.health_score:.1f}h "
                     f"{fk.total_findings}f → needs attention"
                 )
+
+        if self._causal_result is not None:
+            lines.append("")
+            lines.append("### LEVERAGE (pull this thread → N problems disappear)")
+            for lp in self._causal_result.leverage_points[:10]:
+                marker = "🔴" if lp.hotspot_count >= 10 else "🟡"
+                lines.append(
+                    f"  {marker} {lp.action:50s} → {lp.hotspot_count:3d}⚡ "
+                    f"({lp.file_count} files) [{lp.kind}]"
+                )
+            if self._causal_result.the_one_thread:
+                one = self._causal_result.the_one_thread
+                lines.append("")
+                lines.append("### THE ONE THREAD")
+                lines.append(f"  {one.cascade}")
         try:
             state_path.write_text("\n".join(lines))
         except OSError:
