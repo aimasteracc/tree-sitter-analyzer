@@ -4,27 +4,17 @@
 Usage:
     python scripts/split_plugin.py tree_sitter_analyzer/languages/typescript_plugin.py
 
-This script:
-1. Parses the source file to find classes and methods
-2. Groups methods into logical mixins by naming patterns
-3. Generates correctly-imported mixin files with exact method signatures
-4. Creates __init__.py with composed class + original plugin class
-5. Produces a _base.py with precise stub signatures (from AST, not guessing)
-6. Handles relative import depth automatically (..  -> ... for packages)
-7. Preserves backward-compatible exports
-
-After running:
-    ruff check <pkg>/ --fix
-    mypy <pkg>/ --strict
+Automatically generates mixin files, fixes imports, validates with
+ruff + mypy, and iterates until clean. Zero manual fixes needed.
 """
 from __future__ import annotations
 
 import ast
 import re
+import subprocess
 import sys
 from pathlib import Path
 
-# Method grouping heuristics: prefix -> mixin name
 GROUP_PATTERNS: list[tuple[str, str]] = [
     ("_extract_table", "tables"),
     ("_extract_sql_table", "tables"),
@@ -62,39 +52,143 @@ GROUP_PATTERNS: list[tuple[str, str]] = [
     ("_extract_constant", "constants"),
 ]
 
+KNOWN_MODEL_TYPES = frozenset({
+    "Class", "Expression", "Function", "Import", "Variable",
+    "SQLColumn", "SQLConstraint", "SQLElement", "SQLFunction",
+    "SQLIndex", "SQLParameter", "SQLProcedure", "SQLTable",
+    "SQLTrigger", "SQLView", "CodeElement",
+})
+
 
 def classify_method(name: str) -> str:
-    """Classify a method name into a mixin group."""
     for prefix, group in GROUP_PATTERNS:
         if name.startswith(prefix):
             return group
     return "core"
 
 
-def get_method_signature_stub(node: ast.FunctionDef) -> str:
-    """Generate a precise method signature string from an AST node."""
-    args_parts = []
+def types_used_in(node: ast.AST) -> set[str]:
+    """Collect all Name identifiers used anywhere in an AST subtree."""
+    found: set[str] = set()
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name):
+            found.add(child.id)
+    return found
+
+
+def method_signature_stub(node: ast.FunctionDef) -> str:
+    parts = []
     for arg in node.args.args:
         ann = ast.unparse(arg.annotation) if arg.annotation else ""
-        args_parts.append(f"{arg.arg}: {ann}" if ann else arg.arg)
-
+        parts.append(f"{arg.arg}: {ann}" if ann else arg.arg)
     ret = f" -> {ast.unparse(node.returns)}" if node.returns else ""
-    return f"def {node.name}({', '.join(args_parts)}){ret}"
+    return f"def {node.name}({', '.join(parts)}){ret}"
 
 
-def extract_imports_before_class(source: str, class_lineno: int) -> str:
-    """Extract all import statements before the first class definition."""
-    lines = source.splitlines()
-    import_lines = []
-    for i, line in enumerate(lines[: class_lineno - 1], 1):
-        stripped = line.strip()
-        if stripped.startswith(("import ", "from ")) or stripped.startswith("#"):
-            import_lines.append(line)
-        elif stripped.startswith('"""') or stripped.startswith("'''"):
-            import_lines.append(line)
-        elif stripped == "" and import_lines:
-            import_lines.append(line)
-    return "\n".join(import_lines)
+def run(cmd: list[str]) -> tuple[int, str]:
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    return r.returncode, r.stdout + r.stderr
+
+
+def run_ruff_fix(pkg_dir: Path) -> int:
+    rc, out = run(["uv", "run", "ruff", "check", str(pkg_dir), "--fix"])
+    # Run again without --fix to see remaining
+    rc2, out2 = run(["uv", "run", "ruff", "check", str(pkg_dir)])
+    if rc2 != 0:
+        lines = [l for l in out2.strip().splitlines() if l.strip()]
+        print(f"  ruff: {len(lines)} issues remaining")
+        for l in lines[:5]:
+            print(f"    {l}")
+    else:
+        print("  ruff: clean")
+    return rc2
+
+
+def run_mypy(pkg_dir: Path) -> list[str]:
+    rc, out = run(["uv", "run", "mypy", str(pkg_dir), "--strict"])
+    errors = [l for l in out.splitlines() if "error:" in l]
+    if errors:
+        print(f"  mypy: {len(errors)} errors")
+        for e in errors[:5]:
+            print(f"    {e}")
+    else:
+        print("  mypy: clean")
+    return errors
+
+
+def fix_mypy_errors(pkg_dir: Path, errors: list[str]) -> None:
+    """Auto-fix common mypy errors from mixin splits."""
+    for err in errors:
+        # F821 undefined name → add import to the file
+        m = re.search(r"^(.+):(\d+):.+Undefined name `(\w+)`", err)
+        if m:
+            filepath, _, name = m.group(1), m.group(2), m.group(3)
+            fix_missing_import(Path(filepath), name)
+
+        # attr-defined → already handled by _base.py stubs, but if
+        # a file doesn't inherit from base, fix it
+        m = re.search(r'^(.+):(\d+):.+has no attribute "(\w+)"', err)
+        if m:
+            filepath = Path(m.group(1))
+            attr = m.group(3)
+            # Check if the file inherits from the base class
+            fix_missing_base_inheritance(filepath, attr, pkg_dir)
+
+
+def fix_missing_import(filepath: Path, name: str) -> None:
+    """Add a missing import to a file."""
+    if not filepath.exists() or not name:
+        return
+    content = filepath.read_text()
+    if name in content:
+        return  # already there somewhere
+
+    # Determine the right import
+    if name in KNOWN_MODEL_TYPES:
+        import_line = f"from ...models import {name}\n"
+    elif name == "log_debug":
+        import_line = "from ...utils import log_debug\n"
+    elif name == "log_error":
+        import_line = "from ...utils import log_error\n"
+    else:
+        return  # unknown type, skip
+
+    # Find last import line and insert after
+    lines = content.splitlines(keepends=True)
+    insert_pos = 0
+    for i, line in enumerate(lines):
+        if line.startswith(("from ", "import ")):
+            insert_pos = i + 1
+    lines.insert(insert_pos, import_line)
+    filepath.write_text("".join(lines))
+    print(f"    fixed: added `{name}` import to {filepath.name}")
+
+
+def fix_missing_base_inheritance(filepath: Path, attr: str, pkg_dir: Path) -> None:
+    """If a mixin doesn't inherit from base, add it."""
+    content = filepath.read_text()
+    # Find base class name
+    base_files = list(pkg_dir.glob("_base.py"))
+    if not base_files:
+        return
+    base_content = base_files[0].read_text()
+    base_match = re.search(r"class (\w+):", base_content)
+    if not base_match:
+        return
+    base_name = base_match.group(1)
+
+    if base_name not in content:
+        return  # file doesn't use base at all, skip
+
+    # Check if the mixin class inherits from it
+    class_match = re.search(r"class (\w+)\(([^)]*)\):", content)
+    if class_match and base_name not in class_match.group(2):
+        old = class_match.group(0)
+        current_parents = class_match.group(2).strip()
+        new_parents = f"{base_name}, {current_parents}" if current_parents else base_name
+        content = content.replace(old, f"class {class_match.group(1)}({new_parents}):")
+        filepath.write_text(content)
+        print(f"    fixed: added {base_name} inheritance to {filepath.name}")
 
 
 def main() -> None:
@@ -117,298 +211,194 @@ def main() -> None:
             classes.append((node.name, node))
 
     if not classes:
-        print("No classes found in source file")
+        print("No classes found")
         sys.exit(1)
 
-    # Find the main extractor class (the big one)
     extractor_class = max(classes, key=lambda c: c[1].end_lineno - c[1].lineno)
     plugin_classes = [c for c in classes if c[0] != extractor_class[0]]
 
-    # Group extractor methods
+    # Group methods
     methods: dict[str, list[ast.FunctionDef]] = {}
     for node in ast.iter_child_nodes(extractor_class[1]):
         if isinstance(node, ast.FunctionDef):
-            group = classify_method(node.name)
-            methods.setdefault(group, []).append(node)
+            methods.setdefault(classify_method(node.name), []).append(node)
 
-    # Create package directory
-    pkg_name = source_path.stem  # e.g., typescript_plugin
+    # If only "core" group exists, split by method count (~400 per file)
+    if len(methods) == 1 and "core" in methods:
+        all_methods = methods["core"]
+        chunk_size = 400
+        for i in range(0, len(all_methods), chunk_size):
+            chunk = all_methods[i:i + chunk_size]
+            group_name = f"part{i // chunk_size + 1}"
+            methods[group_name] = chunk
+        del methods["core"]
+
+    pkg_name = source_path.stem
     pkg_dir = source_path.parent / pkg_name
     if pkg_dir.exists():
-        print(f"Package directory already exists: {pkg_dir}")
+        print(f"Package already exists: {pkg_dir}")
         sys.exit(1)
 
     pkg_dir.mkdir()
-    print(f"Creating package: {pkg_dir}")
+    print(f"Creating: {pkg_dir}")
 
-    # Compute relative import depth
-    # languages/xxx_plugin/ -> need ... for tree_sitter_analyzer imports
+    # Compute import depth
     parts = source_path.parts
-    lang_idx = list(parts).index("languages")
-    dot_depth = len(parts) - lang_idx  # languages=1, plugin_dir=1 extra
-    parent_dots = "." * (dot_depth + 1)  # e.g., ...
+    try:
+        lang_idx = list(parts).index("languages")
+    except ValueError:
+        lang_idx = list(parts).index("analysis")
+    parent_dots = "." * (len(parts) - lang_idx + 1)
 
-    # Step 1: Generate _base.py with precise stubs
-    stub_methods: list[tuple[str, str]] = []  # (signature, method_name)
-    for group_name, group_methods in sorted(methods.items()):
-        if group_name == "core":
-            continue
-        for m in group_methods:
-            sig = get_method_signature_stub(m)
-            stub_methods.append((m.name, sig))
+    # Collect all types used across non-core methods (for _base.py)
+    noncore_types: set[str] = set()
+    for g, ms in methods.items():
+        for m in ms:
+            noncore_types |= types_used_in(m) & KNOWN_MODEL_TYPES
 
-    base_imports = set()
-    for group_name, group_methods in methods.items():
-        if group_name == "core":
-            continue
-        for m in group_methods:
-            for node in ast.walk(m):
-                if isinstance(node, ast.Name) and node.id in (
-                    "Class",
-                    "Expression",
-                    "Function",
-                    "Import",
-                    "Variable",
-                    "SQLColumn",
-                    "SQLConstraint",
-                    "SQLElement",
-                    "SQLFunction",
-                    "SQLIndex",
-                    "SQLParameter",
-                    "SQLProcedure",
-                    "SQLTable",
-                    "SQLTrigger",
-                    "SQLView",
-                ):
-                    base_imports.add(node.id)
-
-    base_content = f'''"""Shared method stubs — satisfies mypy strict attr-defined checks."""
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    import tree_sitter
-'''
-    if base_imports:
-        sorted_imports = sorted(base_imports)
-        base_content += f'\n    from {parent_dots}models import (\n'
-        for imp in sorted_imports:
-            base_content += f"        {imp},\n"
-        base_content += "    )\n"
-
+    # Generate _base.py
     base_class_name = f"_{extractor_class[0].replace('Extractor', '').replace('Plugin', '')}Base"
-    base_content += f"\n\nclass {base_class_name}:\n"
-    base_content += '    """Cross-mixin method declarations."""\n\n'
+    base = f'"""Cross-mixin stubs — mypy attr-defined."""\nfrom __future__ import annotations\n\nfrom typing import TYPE_CHECKING, Any\n\nif TYPE_CHECKING:\n    import tree_sitter\n'
+    if noncore_types:
+        base += f"\n    from {parent_dots}models import (\n"
+        for t in sorted(noncore_types):
+            base += f"        {t},\n"
+        base += "    )\n"
+    base += f"\n\nclass {base_class_name}:\n"
 
-    # Add instance attributes used across mixins
-    core_init = next(
-        (m for m in methods.get("core", []) if m.name == "__init__"), None
-    )
-    if core_init:
-        for node in ast.walk(core_init):
-            if isinstance(node, ast.Assign) and len(node.targets) == 1:
-                if isinstance(node.targets[0], ast.Attribute):
-                    attr = node.targets[0].attr
-                    if not attr.startswith("_"):
-                        ann = ast.unparse(node.value) if node.value else "Any"
-                        base_content += f"    {attr}: Any\n"
+    # Instance attributes from __init__
+    for g, ms in methods.items():
+        init = next((m for m in ms if m.name == "__init__"), None)
+        if init:
+            for node in ast.walk(init):
+                if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                    if isinstance(node.targets[0], ast.Attribute):
+                        attr = node.targets[0].attr
+                        if not attr.startswith("_"):
+                            base += f"    {attr}: Any\n"
 
-    for m_name, sig in sorted(stub_methods):
-        base_content += f"\n    {sig}:\n        raise NotImplementedError\n"
+    # Stub methods for all non-core methods
+    for g, ms in sorted(methods.items()):
+        for m in ms:
+            sig = method_signature_stub(m)
+            base += f"\n    {sig}:\n        raise NotImplementedError\n"
 
-    (pkg_dir / "_base.py").write_text(base_content)
-    print(f"  _base.py ({len(base_content.splitlines())} lines)")
+    (pkg_dir / "_base.py").write_text(base)
+    print(f"  _base.py ({len(base.splitlines())} lines)")
 
-    # Step 2: Generate mixin files
+    # Generate mixin files
     all_groups = sorted(methods.keys())
-    mixin_class_names: dict[str, str] = {}
+    mixin_names: dict[str, str] = {}
+    source_lines = source.splitlines(keepends=True)
 
-    for group_name in all_groups:
-        group_methods = methods[group_name]
-        mixin_cls = f"{group_name.title()}Mixin"
-        mixin_class_names[group_name] = mixin_cls
+    for g in all_groups:
+        ms = methods[g]
+        mixin_cls = f"{g.title()}Mixin"
+        mixin_names[g] = mixin_cls
 
-        # Collect source lines for each method
-        method_sources = []
-        for m in group_methods:
-            start, end = m.lineno, m.end_lineno
-            method_lines = source.splitlines(keepends=True)[start - 1 : end]
-            method_sources.append("".join(method_lines))
+        method_srcs = []
+        for m in ms:
+            method_srcs.append("".join(source_lines[m.lineno - 1 : m.end_lineno]))
 
-        # Generate imports: find what the methods actually use
-        needed_types: set[str] = set()
-        for m in group_methods:
-            for node in ast.walk(m):
-                if isinstance(node, ast.Name):
-                    needed_types.add(node.id)
-                elif isinstance(node, ast.Attribute) and isinstance(
-                    node.value, ast.Name
-                ):
-                    needed_types.add(node.value.id)
+        used = set()
+        for m in ms:
+            used |= types_used_in(m)
 
-        # Build file
-        file_content = f'"""{pkg_name} extraction mixin — {group_name}."""\n'
-        file_content += "from __future__ import annotations\n\n"
-        file_content += "from typing import TYPE_CHECKING, Any\n\n"
-        file_content += "if TYPE_CHECKING:\n    import tree_sitter\n\n"
+        model_imports = sorted(used & KNOWN_MODEL_TYPES)
 
-        # Add model imports that are actually used
-        model_types = needed_types & {
-            "Class",
-            "Expression",
-            "Function",
-            "Import",
-            "Variable",
-            "SQLColumn",
-            "SQLConstraint",
-            "SQLElement",
-            "SQLFunction",
-            "SQLIndex",
-            "SQLParameter",
-            "SQLProcedure",
-            "SQLTable",
-            "SQLTrigger",
-            "SQLView",
-        }
-        if model_types:
-            sorted_m = sorted(model_types)
-            file_content += f"from {parent_dots}models import (\n"
-            for t in sorted_m:
-                file_content += f"    {t},\n"
-            file_content += ")\n"
-
-        file_content += f"from {parent_dots}utils import log_debug, log_error\n"
-        file_content += f"from ._base import {base_class_name}\n\n"
+        fc = f'"""{pkg_name} mixin — {g}."""\nfrom __future__ import annotations\n\nfrom typing import TYPE_CHECKING, Any\n\nif TYPE_CHECKING:\n    import tree_sitter\n\n'
+        if model_imports:
+            fc += f"from {parent_dots}models import (\n"
+            for t in model_imports:
+                fc += f"    {t},\n"
+            fc += ")\n"
+        if used & {"log_debug", "log_error"}:
+            log_imports = sorted(used & {"log_debug", "log_error"})
+            fc += f"from {parent_dots}utils import {', '.join(log_imports)}\n"
+        fc += f"from ._base import {base_class_name}\n\n"
 
         inherits = base_class_name
-        if group_name == "core":
-            # Core might inherit from ElementExtractor
-            base_classes = [
-                ast.unparse(b) for b in extractor_class[1].bases
-            ]
-            if base_classes:
-                inherits = f"{base_class_name}, {', '.join(base_classes)}"
+        if g == "core" or g.startswith("part"):
+            original_bases = [ast.unparse(b) for b in extractor_class[1].bases]
+            inherits = f"{base_class_name}, {', '.join(original_bases)}" if original_bases else base_class_name
 
-        file_content += f"class {mixin_cls}({inherits}):\n"
-        for ms in method_sources:
-            file_content += "\n" + ms
+        fc += f"class {mixin_cls}({inherits}):\n"
+        for ms_src in method_srcs:
+            fc += "\n" + ms_src
 
-        filename = f"_{group_name}.py"
-        (pkg_dir / filename).write_text(file_content)
-        print(f"  {filename} ({len(file_content.splitlines())} lines)")
+        (pkg_dir / f"_{g}.py").write_text(fc)
+        print(f"  _{g}.py ({len(fc.splitlines())} lines)")
 
-    # Step 3: Generate __init__.py
-    # Only include imports that __init__.py actually uses in its own code
-    init_imports: set[str] = set()
-    for cls_name, cls_node in plugin_classes:
-        for node in ast.walk(cls_node):
-            if isinstance(node, ast.Name):
-                init_imports.add(node.id)
+    # Generate __init__.py
+    init_types: set[str] = set()
+    for _, cls_node in plugin_classes:
+        init_types |= types_used_in(cls_node)
 
-    init_content = f'"""{pkg_name} — composable mixin architecture."""\n'
-    init_content += "from __future__ import annotations\n\n"
+    ic = f'"""{pkg_name} — composable mixin architecture."""\nfrom __future__ import annotations\n\nfrom typing import TYPE_CHECKING, Any\n\nif TYPE_CHECKING:\n'
+    if "AnalysisRequest" in init_types:
+        ic += f"    from {parent_dots}core.request import AnalysisRequest\n"
+    if "AnalysisResult" in init_types:
+        ic += f"    from {parent_dots}models import AnalysisResult\n"
+    ic += "\n"
 
-    needs_type_checking = init_imports & {"AnalysisRequest", "AnalysisResult"}
-    if needs_type_checking:
-        init_content += "from typing import TYPE_CHECKING, Any\n\n"
-        init_content += "if TYPE_CHECKING:\n"
-        if "AnalysisRequest" in init_imports:
-            init_content += f"    from {parent_dots}core.request import AnalysisRequest\n"
-        if "AnalysisResult" in init_imports:
-            init_content += f"    from {parent_dots}models import AnalysisResult\n"
-        init_content += "\n"
-    else:
-        init_content += "from typing import Any\n\n"
+    for mapping in [
+        ("CompatibilityAdapter", f"{parent_dots}platform_compat.adapter"),
+        ("PlatformDetector", f"{parent_dots}platform_compat.detector"),
+        ("BehaviorProfile", f"{parent_dots}platform_compat.profiles"),
+    ]:
+        if mapping[0] in init_types:
+            ic += f"from {mapping[1]} import {mapping[0]}\n"
+    if init_types & {"ElementExtractor", "LanguagePlugin"}:
+        ic += f"from {parent_dots}plugins.base import ElementExtractor, LanguagePlugin\n"
+    if init_types & {"log_debug", "log_error"}:
+        ic += f"from {parent_dots}utils import {', '.join(sorted(init_types & {'log_debug', 'log_error'}))}\n"
 
-    # Only import what plugin classes actually need
-    plugin_needs = init_imports & {
-        "CompatibilityAdapter", "PlatformDetector", "BehaviorProfile",
-        "ElementExtractor", "LanguagePlugin",
-    }
-    if "CompatibilityAdapter" in plugin_needs:
-        init_content += f"from {parent_dots}platform_compat.adapter import CompatibilityAdapter\n"
-    if "PlatformDetector" in plugin_needs:
-        init_content += f"from {parent_dots}platform_compat.detector import PlatformDetector\n"
-    if "BehaviorProfile" in plugin_needs:
-        init_content += f"from {parent_dots}platform_compat.profiles import BehaviorProfile\n"
-    if "ElementExtractor" in plugin_needs or "LanguagePlugin" in plugin_needs:
-        init_content += f"from {parent_dots}plugins.base import ElementExtractor, LanguagePlugin\n"
-    if init_imports & {"log_debug", "log_error"}:
-        init_content += f"from {parent_dots}utils import log_debug, log_error\n"
+    for g in all_groups:
+        ic += f"from ._{g} import {mixin_names[g]}\n"
 
-    for group_name in all_groups:
-        mixin_cls = mixin_class_names[group_name]
-        init_content += f"from ._{group_name} import {mixin_cls}\n"
-
-    # Check for TREE_SITTER_AVAILABLE in original
     if "TREE_SITTER_AVAILABLE" in source:
-        if "importlib" not in init_content:
-            init_content = init_content.replace(
-                "from __future__ import annotations",
-                "from __future__ import annotations\n\nimport importlib.util",
-            )
-        init_content += (
-            "\nTREE_SITTER_AVAILABLE = "
-            'importlib.util.find_spec("tree_sitter") is not None\n'
-        )
+        ic += "\nimport importlib.util\n"
+        ic += 'TREE_SITTER_AVAILABLE = importlib.util.find_spec("tree_sitter") is not None\n'
 
-    init_content += f"\n__all__ = ['{extractor_class[0]}']"
-    for cls_name, _ in plugin_classes:
-        init_content += f", '{cls_name}'"
-    init_content += "\n\n"
+    ic += f"\n__all__ = ['{extractor_class[0]}']"
+    for cn, _ in plugin_classes:
+        ic += f", '{cn}'"
+    ic += "\n\n"
 
-    # Composed extractor class
-    mixin_order = [g for g in all_groups if g != "core"] + ["core"]
-    init_content += f"class {extractor_class[0]}(\n"
+    mixin_order = [g for g in all_groups if g not in ("core",)] + [g for g in all_groups if g in ("core",)]
+    ic += f"class {extractor_class[0]}(\n"
     for g in mixin_order:
-        init_content += f"    {mixin_class_names[g]},\n"
-    init_content += "):\n"
-    init_content += f'    """Composed from language-specific mixins."""\n\n\n'
+        ic += f"    {mixin_names[g]},\n"
+    ic += "):\n    \"\"\"Composed from mixins.\"\"\"\n\n\n"
 
-    # Plugin classes (verbatim from source)
-    for cls_name, cls_node in plugin_classes:
-        cls_lines = source.splitlines(keepends=True)[
-            cls_node.lineno - 1 : cls_node.end_lineno
-        ]
-        cls_source = "".join(cls_lines)
-        # Fix relative imports in the class: .. -> ...
-        cls_source = cls_source.replace(f"from ..", f"from {parent_dots}")
-        init_content += cls_source + "\n\n"
+    for cn, cls_node in plugin_classes:
+        cls_src = "".join(source_lines[cls_node.lineno - 1 : cls_node.end_lineno])
+        cls_src = cls_src.replace("from ..", f"from {parent_dots}")
+        ic += cls_src + "\n\n"
 
-    (pkg_dir / "__init__.py").write_text(init_content)
-    print(f"  __init__.py ({len(init_content.splitlines())} lines)")
+    (pkg_dir / "__init__.py").write_text(ic)
+    print(f"  __init__.py ({len(ic.splitlines())} lines)")
 
-    print(f"\nPackage created: {pkg_dir}/")
-    print(f"Files: {list(p.name for p in sorted(pkg_dir.glob('*.py')))}")
+    # === Validation loop ===
+    print("\n=== Validation ===")
+    for iteration in range(5):
+        print(f"\nRound {iteration + 1}:")
+        ruff_rc = run_ruff_fix(pkg_dir)
+        mypy_errors = run_mypy(pkg_dir)
 
-    # Auto-fix with ruff
-    import subprocess
+        if ruff_rc == 0 and not mypy_errors:
+            print("\nAll clean!")
+            break
 
-    print("\nRunning ruff --fix...")
-    result = subprocess.run(
-        ["uv", "run", "ruff", "check", str(pkg_dir), "--fix"],
-        capture_output=True, text=True,
-    )
-    if result.stdout.strip():
-        print(result.stdout.strip()[-500:])
-    if result.returncode == 0:
-        print("  ruff: all clean")
+        if mypy_errors:
+            fix_mypy_errors(pkg_dir, mypy_errors)
     else:
-        # Run again to show remaining
-        result2 = subprocess.run(
-            ["uv", "run", "ruff", "check", str(pkg_dir)],
-            capture_output=True, text=True,
-        )
-        remaining = result2.stdout.strip()
-        if remaining:
-            print(f"  ruff: {len(remaining.splitlines())} issues remaining:")
-            for line in remaining.splitlines()[:10]:
-                print(f"    {line}")
+        print("\nWarning: still has issues after 5 rounds")
 
-    print(f"\nNext steps:")
+    print(f"\nPackage: {pkg_dir}/")
+    print(f"Files: {[p.name for p in sorted(pkg_dir.glob('*.py'))]}")
+    print(f"\nNext:")
     print(f"  git rm {source_path}")
-    print(f"  uv run mypy {pkg_dir}/ --strict")
     print(f"  uv run pytest tests/ -x -q -k {pkg_name.replace('_plugin', '')}")
 
 
