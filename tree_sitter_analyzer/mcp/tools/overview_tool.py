@@ -44,7 +44,7 @@ Aggregates results from multiple analysis tools:
 Parameters:
 - include (optional): List of specific analyses to run (default: all)
   Options: dependency_graph, health_score, design_patterns, security_scan,
-  dead_code, ownership, blast_radius
+  dead_code_analysis, ownership, blast_radius
 - format (optional): Output format - "markdown", "json", or "toon" (default: "markdown")
 - parallel (optional): Enable parallel execution (default: true)
 
@@ -73,7 +73,7 @@ Returns:
                                 "health_score",
                                 "design_patterns",
                                 "security_scan",
-                                "dead_code",
+                                "dead_code_analysis",
                                 "ownership",
                                 "blast_radius",
                             ],
@@ -139,7 +139,7 @@ Returns:
             "health_score": "health_score",
             "design_patterns": "design_patterns",
             "security_scan": "security_scan",
-            "dead_code": "dead_code",
+            "dead_code": "dead_code_analysis",
             "ownership": "ownership",
             "blast_radius": "blast_radius",
         }
