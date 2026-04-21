@@ -1109,19 +1109,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔐",
     )
 
-    # mutable_default_args
-    from .tools.mutable_default_args_tool import MutableDefaultArgsTool
-    mda_tool = MutableDefaultArgsTool(project_root)
-    registry.register(
-        name="mutable_default_args",
-        toolset="analysis",
-        category="bug-detection",
-        schema=mda_tool.get_tool_definition(),
-        handler=_make_handler(mda_tool),
-        description="Mutable default args: detect Python functions with mutable default values (list, dict, set) causing shared state bugs",
-        emoji="🐛",
-    )
-
     # variable_shadowing
     from .tools.variable_shadowing_tool import VariableShadowingTool
     vs_tool = VariableShadowingTool(project_root)
@@ -1342,18 +1329,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔧",
     )
 
-    from .tools.builtin_shadow_tool import BuiltinShadowTool
-    bs_tool = BuiltinShadowTool(project_root)
-    registry.register(
-        name="builtin_shadow",
-        toolset="analysis",
-        category="correctness",
-        schema=bs_tool.get_tool_definition(),
-        handler=_make_handler(bs_tool),
-        description="Builtin shadow: detect variable/function/class names that shadow Python builtins (list, dict, set, id, type)",
-        emoji="🏷️",
-    )
-
     from .tools.redundant_type_cast_tool import RedundantTypeCastTool
     rtc_tool = RedundantTypeCastTool(project_root)
     registry.register(
@@ -1366,18 +1341,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔄",
     )
 
-    from .tools.implicit_string_concat_tool import ImplicitStringConcatTool
-    isc_tool = ImplicitStringConcatTool(project_root)
-    registry.register(
-        name="implicit_string_concat",
-        toolset="analysis",
-        category="correctness",
-        schema=isc_tool.get_tool_definition(),
-        handler=_make_handler(isc_tool),
-        description="Implicit string concat: detect Python adjacent string literals (missing comma bug)",
-        emoji="🔤",
-    )
-
     from .tools.self_assignment_tool import SelfAssignmentTool
     sa_tool = SelfAssignmentTool(project_root)
     registry.register(
@@ -1388,30 +1351,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(sa_tool),
         description="Self-assignment: detect x = x, self.x = self.x (no-op or typo)",
         emoji="🪞",
-    )
-
-    from .tools.import_shadowing_tool import ImportShadowingTool
-    is_tool = ImportShadowingTool(project_root)
-    registry.register(
-        name="import_shadowing",
-        toolset="analysis",
-        category="correctness",
-        schema=is_tool.get_tool_definition(),
-        handler=_make_handler(is_tool),
-        description="Import shadowing: detect imported names reassigned later (import os; os = 'x')",
-        emoji="📦",
-    )
-
-    from .tools.unnecessary_lambda_tool import UnnecessaryLambdaTool
-    ul_tool = UnnecessaryLambdaTool(project_root)
-    registry.register(
-        name="unnecessary_lambda",
-        toolset="analysis",
-        category="style",
-        schema=ul_tool.get_tool_definition(),
-        handler=_make_handler(ul_tool),
-        description="Unnecessary lambda: detect trivial wrappers (lambda x: f(x)) and identity (lambda x: x)",
-        emoji="✂️",
     )
 
     from .tools.late_binding_closure_tool import LateBindingClosureTool
@@ -1448,30 +1387,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(fr_tool),
         description="Function redefinition: detect functions defined twice in the same scope",
         emoji="🔄",
-    )
-
-    from .tools.production_assert_tool import ProductionAssertTool
-    pa_tool = ProductionAssertTool(project_root)
-    registry.register(
-        name="production_assert",
-        toolset="analysis",
-        category="correctness",
-        schema=pa_tool.get_tool_definition(),
-        handler=_make_handler(pa_tool),
-        description="Production assert: detect assert statements in non-test code (stripped by python -O)",
-        emoji="🛑",
-    )
-
-    from .tools.assert_on_tuple_tool import AssertOnTupleTool
-    aot_tool = AssertOnTupleTool(project_root)
-    registry.register(
-        name="assert_on_tuple",
-        toolset="analysis",
-        category="correctness",
-        schema=aot_tool.get_tool_definition(),
-        handler=_make_handler(aot_tool),
-        description="Assert-on-tuple: detect assert (cond, msg) that always passes",
-        emoji="⚠️",
     )
 
     from .tools.return_in_finally_tool import ReturnInFinallyTool
