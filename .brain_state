@@ -1,0 +1,78 @@
+## ⚡ BRAIN_STATE
+elapsed=4.8s neurons=90 findings=2160 critical=282
+
+### NEURON_CATEGORIES
+  quality          ████████████████████████████████████████ (83)
+  smell            ██████████████████████ (22)
+  naming           ████████████████████ (20)
+  dead_code        ███████████████████ (19)
+  architecture     ███████████████ (15)
+  complexity       ██████████████ (14)
+  security         ████████████ (12)
+  error_handling   ███████ (7)
+
+### FILE_PERCEPTIONS
+  plugins/base.py                     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░  86.2h 436f 24/89n [high:86|info:10|low:142|medium:198]
+  mcp/server.py                       ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░  88.5h 473f 25/89n [high:108|info:10|low:193|medium:162]
+  core/analysis_engine.py             ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░  92.6h 254f 23/89n [high:59|info:1|low:87|medium:107]
+  plugins/manager.py                  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░  93.4h 222f 20/89n [high:75|info:13|low:85|medium:49]
+  analysis/finding_correlation.py     ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░  95.6h 166f 16/89n [high:56|info:20|low:53|medium:37]
+  analysis/health_score.py            ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░  95.7h 159f 19/89n [high:56|info:7|low:56|medium:40]
+  security/validator.py               ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░  96.1h 151f 21/89n [high:59|info:7|low:47|medium:38]
+  mcp/tool_registration.py            ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░  98.0h 180f 13/89n [high:16|low:137|medium:27]
+  mcp/tools/finding_correlation_tool.py ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░  98.2h  61f 18/89n [high:24|info:5|low:15|medium:17]
+  analysis/base.py                    ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░  98.5h  58f 13/89n [high:19|low:15|medium:24]
+
+### SYNAPSES
+  ⚡⚡⚡⚡⚡⚡⚡⚡ mcp/tools/finding_correlation_tool.py:51   [high    ] ← discarded_return|empty_block|feature_envy|inheritance_quality|naming_convention
+  ⚡⚡⚡⚡⚡⚡⚡  analysis/base.py:120  [high    ] ← concurrency_safety|dead_store|empty_block|feature_envy|naming_convention
+  ⚡⚡⚡⚡⚡⚡⚡  core/analysis_engine.py:375  [high    ] ← comment_quality|empty_block|error_handling|missing_static_method|naming_convention
+  ⚡⚡⚡⚡⚡⚡⚡  plugins/base.py:571  [high    ] ← comment_quality|contract_compliance|loop_complexity|missing_static_method|naming_convention
+  ⚡⚡⚡⚡⚡⚡   core/analysis_engine.py:101  [medium  ] ← comment_quality|discarded_return|empty_block|feature_envy|statement_no_effect
+  ⚡⚡⚡⚡⚡⚡   mcp/server.py:600  [high    ] ← concurrency_safety|dead_store|empty_block|feature_envy|naming_convention
+  ⚡⚡⚡⚡⚡⚡   mcp/server.py:670  [high    ] ← dead_store|discarded_return|empty_block|feature_envy|naming_convention
+  ⚡⚡⚡⚡⚡⚡   analysis/health_score.py:341  [high    ] ← comment_quality|long_parameter_list|missing_static_method|naming_convention|primitive_obsession
+  ⚡⚡⚡⚡⚡⚡   core/analysis_engine.py:500  [high    ] ← comment_quality|discarded_return|empty_block|feature_envy|naming_convention
+  ⚡⚡⚡⚡⚡⚡   plugins/base.py:560  [high    ] ← comment_quality|dead_store|missing_static_method|naming_convention|statement_no_effect
+  ⚡⚡⚡⚡⚡⚡   plugins/base.py:586  [high    ] ← comment_quality|dead_store|missing_static_method|naming_convention|statement_no_effect
+  ⚡⚡⚡⚡⚡⚡   plugins/base.py:597  [high    ] ← comment_quality|contract_compliance|loop_complexity|missing_static_method|naming_convention
+  ⚡⚡⚡⚡⚡⚡   plugins/base.py:625  [high    ] ← comment_quality|error_handling|missing_static_method|naming_convention|statement_no_effect
+  ⚡⚡⚡⚡⚡⚡   plugins/base.py:350  [high    ] ← contract_compliance|dead_store|feature_envy|loop_complexity|naming_convention
+  ⚡⚡⚡⚡⚡⚡   plugins/manager.py:358  [high    ] ← comment_quality|missing_static_method|naming_convention|solid_principles|statement_no_effect
+  ⚡⚡⚡⚡⚡⚡   plugins/manager.py:25   [high    ] ← contract_compliance|dead_store|error_handling|loop_complexity|naming_convention
+  ⚡⚡⚡⚡⚡⚡   security/validator.py:356  [high    ] ← comment_quality|contract_compliance|missing_static_method|naming_convention|statement_no_effect
+  ⚡⚡⚡⚡⚡    core/analysis_engine.py:35   [medium  ] ← comment_quality|empty_block|missing_static_method|statement_no_effect|unused_parameter
+  ⚡⚡⚡⚡⚡    plugins/base.py:703  [medium  ] ← comment_quality|empty_block|missing_static_method|statement_no_effect|unused_parameter
+  ⚡⚡⚡⚡⚡    plugins/base.py:708  [medium  ] ← comment_quality|empty_block|missing_static_method|statement_no_effect|unused_parameter
+
+### CROSS_PATTERNS
+  🔴 naming_convention          8/10 files (80%)
+  🟡 unused_parameter           6/10 files (60%)
+  🟡 empty_block                5/10 files (50%)
+  🟡 feature_envy               5/10 files (50%)
+  🟡 statement_no_effect        5/10 files (50%)
+  🟡 comment_quality            5/10 files (50%)
+  🟡 missing_static_method      5/10 files (50%)
+  🟡 dead_store                 4/10 files (40%)
+  🟢 discarded_return           3/10 files (30%)
+  🟢 error_handling             3/10 files (30%)
+  🟢 contract_compliance        3/10 files (30%)
+  🟢 concurrency_safety         2/10 files (20%)
+  🟢 variable_shadowing         2/10 files (20%)
+  🟢 loop_complexity            2/10 files (20%)
+  🟢 inheritance_quality        1/10 files (10%)
+  🟢 redundant_super            1/10 files (10%)
+  🟢 reflection_usage           1/10 files (10%)
+  🟢 long_parameter_list        1/10 files (10%)
+  🟢 primitive_obsession        1/10 files (10%)
+  🟢 solid_principles           1/10 files (10%)
+
+### DIAGNOSIS
+  ARCH: missing_static → 80% files → systematic @staticmethod gap
+  ARCH: naming_convention → 80% files → style inconsistency
+  ARCH: empty_block → 50% files → defensive coding debt
+  ARCH: feature_envy → 50% files → coupling in base classes
+  GOD:  plugins/base.py 86.2h 436f → decompose
+  GOD:  mcp/server.py 88.5h 473f → modularize
+  HOT:  finding_correlation_tool:51 → 8⚡ → most dangerous point
+  SAFE: analysis/base.py 98.5h → cleanest core

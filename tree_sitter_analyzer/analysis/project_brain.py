@@ -123,6 +123,61 @@ class ProjectBrain:
         )
         self._warm_duration = time.monotonic() - start
         self._warm_time = time.time()
+        self._write_brain_state()
+
+    def _write_brain_state(self) -> None:
+        state_path = Path(self.project_root) / ".brain_state"
+        lines: list[str] = []
+        lines.append("## ⚡ BRAIN_STATE")
+        lines.append(
+            f"elapsed={self._warm_duration:.1f}s "
+            f"files={self._total_files} "
+            f"hotspots={len(self._hotspots)} "
+            f"health={self.get_health_score()}"
+        )
+        lines.append("")
+        lines.append("### FILE_PERCEPTIONS")
+        for path, fk in sorted(
+            self._file_map.items(), key=lambda x: x[1].health_score
+        ):
+            short = path.split("tree_sitter_analyzer/")[-1]
+            filled = int(fk.health_score / 5)
+            bar = "▓" * filled + "░" * (20 - filled)
+            sev = "|".join(
+                f"{k}:{v}"
+                for k, v in sorted(fk.severity_distribution.items())
+            )
+            lines.append(
+                f"  {short:35s} {bar} {fk.health_score:5.1f}h "
+                f"{fk.total_findings:3d}f "
+                f"{fk.fired_neurons:2d}/{fk.total_neurons:2d}n "
+                f"[{sev}]"
+            )
+        lines.append("")
+        lines.append("### SYNAPSES")
+        for h in self._hotspots[:20]:
+            short = h["file"].split("tree_sitter_analyzer/")[-1]
+            intensity = "⚡" * min(h["analyzer_count"], 8)
+            neurons = "|".join(h["analyzer_names"][:5])
+            lines.append(
+                f"  {intensity:8s} {short}:{h['line']:<4d} "
+                f"[{h['max_severity']:8s}] ← {neurons}"
+            )
+        lines.append("")
+        lines.append("### DIAGNOSIS")
+        for path, fk in sorted(
+            self._file_map.items(), key=lambda x: x[1].health_score
+        ):
+            if fk.health_score < 95 and fk.total_findings > 100:
+                short = path.split("tree_sitter_analyzer/")[-1]
+                lines.append(
+                    f"  FIX: {short} {fk.health_score:.1f}h "
+                    f"{fk.total_findings}f → needs attention"
+                )
+        try:
+            state_path.write_text("\n".join(lines))
+        except OSError:
+            pass
 
     def warm_up_incremental(self, changed_files: list[str]) -> None:
         """Re-scan only changed files. Skips unchanged."""
