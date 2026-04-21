@@ -76,6 +76,7 @@ class ProjectBrain:
     _category_totals: dict[str, int] = field(default_factory=dict)
     _severity_totals: dict[str, int] = field(default_factory=dict)
     _language_distribution: dict[str, int] = field(default_factory=dict)
+    _causal_chain: CausalChain | None = None
     _causal_result: CausalResult | None = None
 
     def warm_up(self) -> None:
@@ -129,8 +130,10 @@ class ProjectBrain:
         self._write_brain_state()
 
     def _run_causal_analysis(self) -> None:
-        chain = CausalChain(self.project_root)
-        self._causal_result = chain.analyze(self._file_map, self._hotspots)
+        self._causal_chain = CausalChain(self.project_root)
+        self._causal_result = self._causal_chain.analyze(
+            self._file_map, self._hotspots
+        )
 
     def get_leverage_points(self) -> list[dict[str, Any]]:
         if self._causal_result is None:
@@ -272,6 +275,10 @@ class ProjectBrain:
         related = self._find_related_files(file_path)
         if related:
             result["related_files"] = related
+
+        if self._causal_chain is not None:
+            impact = self._causal_chain.predict_impact(file_path, line)
+            result["impact"] = impact.to_dict()
 
         return result
 
