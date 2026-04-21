@@ -299,32 +299,43 @@ if TYPE_CHECKING:
         print(f"  {filename} ({len(file_content.splitlines())} lines)")
 
     # Step 3: Generate __init__.py
+    # Only include imports that __init__.py actually uses in its own code
+    init_imports: set[str] = set()
+    for cls_name, cls_node in plugin_classes:
+        for node in ast.walk(cls_node):
+            if isinstance(node, ast.Name):
+                init_imports.add(node.id)
+
     init_content = f'"""{pkg_name} — composable mixin architecture."""\n'
     init_content += "from __future__ import annotations\n\n"
-    init_content += "import importlib.util\n"
-    init_content += "from typing import TYPE_CHECKING, Any\n\n"
-    init_content += "if TYPE_CHECKING:\n"
-    init_content += f"    from {parent_dots}core.request import AnalysisRequest\n"
-    init_content += f"    from {parent_dots}models import AnalysisResult\n\n"
 
-    # Collect all imports needed by plugin classes
-    # Re-scan the plugin class source for imports
-    for cls_name, cls_node in plugin_classes:
-        cls_source = "".join(
-            source.splitlines(keepends=True)[
-                cls_node.lineno - 1 : cls_node.end_lineno
-            ]
-        )
-        # Extract import statements from the original file that are used by plugin class
-        pass
+    needs_type_checking = init_imports & {"AnalysisRequest", "AnalysisResult"}
+    if needs_type_checking:
+        init_content += "from typing import TYPE_CHECKING, Any\n\n"
+        init_content += "if TYPE_CHECKING:\n"
+        if "AnalysisRequest" in init_imports:
+            init_content += f"    from {parent_dots}core.request import AnalysisRequest\n"
+        if "AnalysisResult" in init_imports:
+            init_content += f"    from {parent_dots}models import AnalysisResult\n"
+        init_content += "\n"
+    else:
+        init_content += "from typing import Any\n\n"
 
-    # Add all model imports that plugin classes might need
-    init_content += f"from {parent_dots}models import (\n"
-    for t in sorted(base_imports):
-        init_content += f"    {t},\n"
-    init_content += ")\n"
-    init_content += f"from {parent_dots}plugins.base import ElementExtractor, LanguagePlugin\n"
-    init_content += f"from {parent_dots}utils import log_debug, log_error\n"
+    # Only import what plugin classes actually need
+    plugin_needs = init_imports & {
+        "CompatibilityAdapter", "PlatformDetector", "BehaviorProfile",
+        "ElementExtractor", "LanguagePlugin",
+    }
+    if "CompatibilityAdapter" in plugin_needs:
+        init_content += f"from {parent_dots}platform_compat.adapter import CompatibilityAdapter\n"
+    if "PlatformDetector" in plugin_needs:
+        init_content += f"from {parent_dots}platform_compat.detector import PlatformDetector\n"
+    if "BehaviorProfile" in plugin_needs:
+        init_content += f"from {parent_dots}platform_compat.profiles import BehaviorProfile\n"
+    if "ElementExtractor" in plugin_needs or "LanguagePlugin" in plugin_needs:
+        init_content += f"from {parent_dots}plugins.base import ElementExtractor, LanguagePlugin\n"
+    if init_imports & {"log_debug", "log_error"}:
+        init_content += f"from {parent_dots}utils import log_debug, log_error\n"
 
     for group_name in all_groups:
         mixin_cls = mixin_class_names[group_name]
@@ -332,6 +343,11 @@ if TYPE_CHECKING:
 
     # Check for TREE_SITTER_AVAILABLE in original
     if "TREE_SITTER_AVAILABLE" in source:
+        if "importlib" not in init_content:
+            init_content = init_content.replace(
+                "from __future__ import annotations",
+                "from __future__ import annotations\n\nimport importlib.util",
+            )
         init_content += (
             "\nTREE_SITTER_AVAILABLE = "
             'importlib.util.find_spec("tree_sitter") is not None\n'
@@ -365,9 +381,33 @@ if TYPE_CHECKING:
 
     print(f"\nPackage created: {pkg_dir}/")
     print(f"Files: {list(p.name for p in sorted(pkg_dir.glob('*.py')))}")
+
+    # Auto-fix with ruff
+    import subprocess
+
+    print("\nRunning ruff --fix...")
+    result = subprocess.run(
+        ["uv", "run", "ruff", "check", str(pkg_dir), "--fix"],
+        capture_output=True, text=True,
+    )
+    if result.stdout.strip():
+        print(result.stdout.strip()[-500:])
+    if result.returncode == 0:
+        print("  ruff: all clean")
+    else:
+        # Run again to show remaining
+        result2 = subprocess.run(
+            ["uv", "run", "ruff", "check", str(pkg_dir)],
+            capture_output=True, text=True,
+        )
+        remaining = result2.stdout.strip()
+        if remaining:
+            print(f"  ruff: {len(remaining.splitlines())} issues remaining:")
+            for line in remaining.splitlines()[:10]:
+                print(f"    {line}")
+
     print(f"\nNext steps:")
     print(f"  git rm {source_path}")
-    print(f"  uv run ruff check {pkg_dir}/ --fix")
     print(f"  uv run mypy {pkg_dir}/ --strict")
     print(f"  uv run pytest tests/ -x -q -k {pkg_name.replace('_plugin', '')}")
 
