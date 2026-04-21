@@ -1626,6 +1626,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🧠",
     )
 
+    # brain
+    from .tools.brain_tool import BrainTool
+    brain_tool = BrainTool(project_root)
+    registry.register(
+        name="brain",
+        toolset="analysis",
+        category="meta-analysis",
+        schema=brain_tool.get_tool_definition(),
+        handler=_make_handler(brain_tool),
+        description="One-call complete project awareness: full file context, hotspots, impact analysis. No further tool calls needed after warm-up.",
+        emoji="🧠",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
