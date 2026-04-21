@@ -62,7 +62,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         # Mock encoding error to trigger fallback
         with patch(
-            "tree_sitter_analyzer.languages.typescript_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.typescript_plugin._core.extract_text_slice",
             side_effect=Exception("Encoding error"),
         ):
             text = extractor._get_node_text_optimized(mock_node)
@@ -74,7 +74,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         # Mock both primary and fallback methods to fail
         with patch(
-            "tree_sitter_analyzer.languages.typescript_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.typescript_plugin._core.extract_text_slice",
             side_effect=Exception("Primary error"),
         ):
             mock_node.start_point = (10, 0)  # Out of bounds
