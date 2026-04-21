@@ -1427,18 +1427,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🪞",
     )
 
-    from .tools.string_format_consistency_tool import StringFormatConsistencyTool
-    sfc_tool = StringFormatConsistencyTool(project_root)
-    registry.register(
-        name="string_format_consistency",
-        toolset="analysis",
-        category="style",
-        schema=sfc_tool.get_tool_definition(),
-        handler=_make_handler(sfc_tool),
-        description="String format consistency: detect mixed %s/.format()/f-string styles in Python",
-        emoji="📝",
-    )
-
     from .tools.import_shadowing_tool import ImportShadowingTool
     is_tool = ImportShadowingTool(project_root)
     registry.register(
