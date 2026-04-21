@@ -1613,6 +1613,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚡",
     )
 
+    # neural_perception
+    from .tools.neural_perception_tool import NeuralPerceptionTool
+    np_tool = NeuralPerceptionTool(project_root)
+    registry.register(
+        name="neural_perception",
+        toolset="analysis",
+        category="meta-analysis",
+        schema=np_tool.get_tool_definition(),
+        handler=_make_handler(np_tool),
+        description="Neural perception: run ALL analyzers on files, correlate findings into holistic perception map with compound hotspots and health scores",
+        emoji="🧠",
+    )
+
 
 def get_tool_info() -> dict[str, Any]:
     """
