@@ -1,5 +1,24 @@
 # Findings — 自主开发调研笔记
 
+## 产品讨论记录 - Finding Correlation (Meta Tool) - 2026-04-21 Session 154
+
+**调用**: inline product analysis (autonomous mode)
+
+**功能**: Cross-Analyzer Finding Correlation — 跨分析器发现关联，识别复合热点
+
+**分析**:
+- 聚焦: 164 个分析器的发现散落各处，用户不知道哪些代码位置问题最集中。关联发现是"让现有工具有用"的核心
+- 减法: MVP = 按位置分组，2+ 分析器 = 热点，3+ = 严重热点
+- 一句话: "Find code locations flagged by multiple independent analyzers, revealing compound quality hotspots"
+
+**竞品分析**:
+- ESLint: 无跨 rule 关联功能
+- SonarQBE: 有 "security hotspots" 但仅限安全维度，不跨质量维度
+- Ruff: 无关联功能
+
+**评分**: 11/12 (竞品差距3 + 用户信号3 + 架构适配3 + 实现成本2)
+**结论**: DO — 不增加新分析器，让现有 164 个分析器的输出更有价值
+
 ## 产品讨论记录 - Batch 4 Candidates - 2026-04-20 Session 152
 
 **调用**: inline product analysis (autonomous mode)

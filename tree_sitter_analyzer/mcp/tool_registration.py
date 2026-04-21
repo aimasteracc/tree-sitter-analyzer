@@ -24,6 +24,7 @@ from .tools.context_optimizer_tool import ContextOptimizerTool
 from .tools.dependency_query_tool import DependencyQueryTool
 from .tools.error_recovery_tool import ErrorRecoveryTool
 from .tools.find_and_grep_tool import FindAndGrepTool
+from .tools.finding_correlation_tool import FindingCorrelationTool
 from .tools.get_code_outline_tool import GetCodeOutlineTool
 from .tools.get_project_summary_tool import GetProjectSummaryTool
 from .tools.grammar_discovery_tool import GrammarDiscoveryTool
@@ -555,6 +556,18 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(ap_tool),
         description="Async patterns: detect missing await, fire-and-forget, unhandled promises, blocking in async across Python, JS/TS, Java, Go",
         emoji="⚡",
+    )
+
+    # finding_correlation
+    fc_tool = FindingCorrelationTool(project_root)
+    registry.register(
+        name="finding_correlation",
+        toolset="analysis",
+        category="finding-correlation",
+        schema=fc_tool.get_tool_definition(),
+        handler=_make_handler(fc_tool),
+        description="Finding correlation: run multiple analyzers and identify compound hotspots flagged by 2+ independent analyzers",
+        emoji="🎯",
     )
 
 
