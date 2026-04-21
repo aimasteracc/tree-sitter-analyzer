@@ -1,0 +1,731 @@
+"""Tool registration — optimization."""
+from typing import Any
+
+from ..tools.context_optimizer_tool import ContextOptimizerTool
+from ._shared import _make_handler
+
+
+def _register_optimization_tools(registry: Any, project_root: str | None) -> None:
+    """Register optimization tools."""
+    # context_optimizer
+    optimizer_tool = ContextOptimizerTool(project_root)
+    registry.register(
+        name="context_optimizer",
+        toolset="optimization",
+        category="context-optimization",
+        schema=optimizer_tool.get_tool_definition(),
+        handler=_make_handler(optimizer_tool),
+        description="Optimize code context for LLM windows: intelligent filtering",
+        emoji="⚡",
+    )
+
+    # i18n_strings
+    from ..tools.i18n_strings_tool import I18nStringsTool
+    i18n_tool = I18nStringsTool(project_root)
+    registry.register(
+        name="i18n_strings",
+        toolset="analysis",
+        category="quality",
+        schema=i18n_tool.get_tool_definition(),
+        handler=_make_handler(i18n_tool),
+        description="i18n readiness: detect user-visible strings needing internationalization",
+        emoji="🌐",
+    )
+
+    # function_size
+    from ..tools.function_size_tool import FunctionSizeTool
+    fs_tool = FunctionSizeTool(project_root)
+    registry.register(
+        name="function_size",
+        toolset="analysis",
+        category="complexity",
+        schema=fs_tool.get_tool_definition(),
+        handler=_make_handler(fs_tool),
+        description="Function size: detect oversized functions by LOC and parameter count",
+        emoji="📏",
+    )
+
+    # test_smells
+    from ..tools.test_smells_tool import TestSmellsTool
+    ts_tool = TestSmellsTool(project_root)
+    registry.register(
+        name="test_smells",
+        toolset="analysis",
+        category="quality",
+        schema=ts_tool.get_tool_definition(),
+        handler=_make_handler(ts_tool),
+        description="Test smell detection: empty tests, broad exception catches, sleep calls",
+        emoji="🧪",
+    )
+
+    # logging_patterns
+    from ..tools.logging_patterns_tool import LoggingPatternsTool
+    lp_tool = LoggingPatternsTool(project_root)
+    registry.register(
+        name="logging_patterns",
+        toolset="analysis",
+        category="quality",
+        schema=lp_tool.get_tool_definition(),
+        handler=_make_handler(lp_tool),
+        description="Logging anti-pattern detection: silent catch, print logging, sensitive data in logs",
+        emoji="📋",
+    )
+
+    # naming_conventions
+    from ..tools.naming_convention_tool import NamingConventionTool
+    nc_tool = NamingConventionTool(project_root)
+    registry.register(
+        name="naming_conventions",
+        toolset="analysis",
+        category="naming-quality",
+        schema=nc_tool.get_tool_definition(),
+        handler=_make_handler(nc_tool),
+        description="Naming conventions: detect identifiers that violate language conventions across Python, JS/TS, Java, Go",
+        emoji="🏷️",
+    )
+
+    # assertion_quality
+    from ..tools.assertion_quality_tool import AssertionQualityTool
+    aq_tool = AssertionQualityTool(project_root)
+    registry.register(
+        name="assertion_quality",
+        toolset="analysis",
+        category="test-quality",
+        schema=aq_tool.get_tool_definition(),
+        handler=_make_handler(aq_tool),
+        description="Assertion quality: detect weak, vague, clustered assertions and missing branch coverage in tests",
+        emoji="🎯",
+    )
+
+    # solid_principles
+    from ..tools.solid_principles_tool import SOLIDPrinciplesTool
+    sp_tool = SOLIDPrinciplesTool(project_root)
+    registry.register(
+        name="solid_principles",
+        toolset="analysis",
+        category="solid-principles",
+        schema=sp_tool.get_tool_definition(),
+        handler=_make_handler(sp_tool),
+        description="SOLID principles: detect SRP, OCP, LSP, ISP, DIP violations with per-principle scores",
+        emoji="🏗️",
+    )
+
+    # coupling_metrics
+    from ..tools.coupling_metrics_tool import CouplingMetricsTool
+    cm_tool = CouplingMetricsTool(project_root)
+    registry.register(
+        name="coupling_metrics",
+        toolset="analysis",
+        category="coupling-metrics",
+        schema=cm_tool.get_tool_definition(),
+        handler=_make_handler(cm_tool),
+        description="Coupling metrics: fan-out, fan-in, instability per file to identify coupling hotspots and critical modules",
+        emoji="🔗",
+    )
+
+    # return_path
+    from ..tools.return_path_tool import ReturnPathTool
+    rp_tool = ReturnPathTool(project_root)
+    registry.register(
+        name="return_path",
+        toolset="analysis",
+        category="return-path",
+        schema=rp_tool.get_tool_definition(),
+        handler=_make_handler(rp_tool),
+        description="Return path: detect inconsistent return paths, implicit None returns, and complex return logic across Python, JS/TS, Java, Go",
+        emoji="↩️",
+    )
+
+
+    # empty_block
+    from ..tools.empty_block_tool import EmptyBlockTool
+    eb_tool = EmptyBlockTool(project_root)
+    registry.register(
+        name="empty_block",
+        toolset="analysis",
+        category="design",
+        schema=eb_tool.get_tool_definition(),
+        handler=_make_handler(eb_tool),
+        description="Empty block: detect empty function/catch/loop blocks that may hide bugs across Python, JS/TS, Java, Go",
+        emoji="📭",
+    )
+
+    # god_class
+    from ..tools.god_class_tool import GodClassTool
+    gc_tool = GodClassTool(project_root)
+    registry.register(
+        name="god_class",
+        toolset="analysis",
+        category="design",
+        schema=gc_tool.get_tool_definition(),
+        handler=_make_handler(gc_tool),
+        description="God class: detect classes with too many methods and fields across Python, JS/TS, Java, Go",
+        emoji="👑",
+    )
+
+    # lazy_class
+    from ..tools.lazy_class_tool import LazyClassTool
+    lc_tool = LazyClassTool(project_root)
+    registry.register(
+        name="lazy_class",
+        toolset="analysis",
+        category="design",
+        schema=lc_tool.get_tool_definition(),
+        handler=_make_handler(lc_tool),
+        description="Lazy class: detect classes with too few methods that may not justify their existence across Python, JS/TS, Java, Go",
+        emoji="🦥",
+    )
+
+    # duplicate_condition
+    from ..tools.duplicate_condition_tool import DuplicateConditionTool
+    dc_tool = DuplicateConditionTool(project_root)
+    registry.register(
+        name="duplicate_condition",
+        toolset="analysis",
+        category="quality",
+        schema=dc_tool.get_tool_definition(),
+        handler=_make_handler(dc_tool),
+        description="Duplicate condition: detect identical if conditions that violate DRY across Python, JS/TS, Java, Go",
+        emoji="🔁",
+    )
+
+    # method_chain
+    from ..tools.method_chain_tool import MethodChainTool
+    mc_tool = MethodChainTool(project_root)
+    registry.register(
+        name="method_chain",
+        toolset="analysis",
+        category="design",
+        schema=mc_tool.get_tool_definition(),
+        handler=_make_handler(mc_tool),
+        description="Method chain: detect Law of Demeter violations via long attribute chains across Python, JS/TS, Java, Go",
+        emoji="🔗",
+    )
+
+    # string_concat_loop
+    from ..tools.string_concat_loop_tool import StringConcatLoopTool
+    scl_tool = StringConcatLoopTool(project_root)
+    registry.register(
+        name="string_concat_loop",
+        toolset="analysis",
+        category="performance",
+        schema=scl_tool.get_tool_definition(),
+        handler=_make_handler(scl_tool),
+        description="String concat in loops: detect O(n^2) string concatenation patterns across Python, JS/TS, Java, Go",
+        emoji="🐌",
+    )
+
+
+
+    # iterable_modification
+    from ..tools.iterable_modification_tool import IterableModificationTool
+    im_tool = IterableModificationTool(project_root)
+    registry.register(
+        name="iterable_modification",
+        toolset="analysis",
+        category="bugs",
+        schema=im_tool.get_tool_definition(),
+        handler=_make_handler(im_tool),
+        description="Iterable modification in loops: detect collection modification during iteration causing RuntimeError or silent bugs",
+        emoji="⚠️",
+    )
+
+    # unclosed_file
+    from ..tools.unclosed_file_tool import UnclosedFileTool
+    uf_tool = UnclosedFileTool(project_root)
+    registry.register(
+        name="unclosed_file",
+        toolset="analysis",
+        category="reliability",
+        schema=uf_tool.get_tool_definition(),
+        handler=_make_handler(uf_tool),
+        description="Unclosed file handles: detect open() without with statement causing potential file handle leaks",
+        emoji="📂",
+    )
+
+    # primitive_obsession
+    from ..tools.primitive_obsession_tool import PrimitiveObsessionTool
+    po_tool = PrimitiveObsessionTool(project_root)
+    registry.register(
+        name="primitive_obsession",
+        toolset="analysis",
+        category="design",
+        schema=po_tool.get_tool_definition(),
+        handler=_make_handler(po_tool),
+        description="Primitive obsession: detect overuse of primitive types where value objects would be better",
+        emoji="🔤",
+    )
+
+    # middle_man
+    from ..tools.middle_man_tool import MiddleManTool
+    mm_tool = MiddleManTool(project_root)
+    registry.register(
+        name="middle_man",
+        toolset="analysis",
+        category="design",
+        schema=mm_tool.get_tool_definition(),
+        handler=_make_handler(mm_tool),
+        description="Middle man: detect classes that primarily delegate without adding value across Python, JS/TS, Java, Go",
+        emoji="🎭",
+    )
+
+    # tautological_condition
+    from ..tools.tautological_condition_tool import TautologicalConditionTool
+    tc_tool = TautologicalConditionTool(project_root)
+    registry.register(
+        name="tautological_condition",
+        toolset="analysis",
+        category="quality",
+        schema=tc_tool.get_tool_definition(),
+        handler=_make_handler(tc_tool),
+        description="Tautological condition: detect contradictory, subsumed, and self-comparison conditions that always evaluate the same way",
+        emoji="⚖️",
+    )
+
+    # flag_argument
+    from ..tools.flag_argument_tool import FlagArgumentTool
+    fa_tool = FlagArgumentTool(project_root)
+    registry.register(
+        name="flag_argument",
+        toolset="analysis",
+        category="design",
+        schema=fa_tool.get_tool_definition(),
+        handler=_make_handler(fa_tool),
+        description="Flag argument: detect boolean parameters that indicate SRP violations across Python, JS/TS, Java, Go",
+        emoji="🚩",
+    )
+
+    # nested_ternary
+    from ..tools.nested_ternary_tool import NestedTernaryTool
+    nt_tool = NestedTernaryTool(project_root)
+    registry.register(
+        name="nested_ternary",
+        toolset="analysis",
+        category="readability",
+        schema=nt_tool.get_tool_definition(),
+        handler=_make_handler(nt_tool),
+        description="Nested ternary: detect deeply nested ternary/conditional expressions across Python, JS/TS, Java",
+        emoji="🔀",
+    )
+
+    # assignment_in_conditional
+    from ..tools.assignment_in_conditional_tool import AssignmentInConditionalTool
+    aic_tool = AssignmentInConditionalTool(project_root)
+    registry.register(
+        name="assignment_in_conditional",
+        toolset="analysis",
+        category="bug-detection",
+        schema=aic_tool.get_tool_definition(),
+        handler=_make_handler(aic_tool),
+        description="Assignment in conditional: detect = vs == typos in if/while conditions across JS/TS, Java, C/C++",
+        emoji="🐛",
+    )
+
+    # regex_safety
+    from ..tools.regex_safety_tool import RegexSafetyTool
+    rs_tool = RegexSafetyTool(project_root)
+    registry.register(
+        name="regex_safety",
+        toolset="analysis",
+        category="security",
+        schema=rs_tool.get_tool_definition(),
+        handler=_make_handler(rs_tool),
+        description="Regex safety: detect ReDoS-vulnerable regex patterns (nested quantifiers, overlapping alternations) across Python, JS/TS, Java, Go",
+        emoji="🔐",
+    )
+
+    # variable_shadowing
+    from ..tools.variable_shadowing_tool import VariableShadowingTool
+    vs_tool = VariableShadowingTool(project_root)
+    registry.register(
+        name="variable_shadowing",
+        toolset="analysis",
+        category="bug-detection",
+        schema=vs_tool.get_tool_definition(),
+        handler=_make_handler(vs_tool),
+        description="Variable shadowing: detect inner-scope variables that shadow outer-scope variables across Python, JS/TS, Java, Go",
+        emoji="🎭",
+    )
+
+    # dead_store
+    from ..tools.dead_store_tool import DeadStoreTool
+    ds_tool = DeadStoreTool(project_root)
+    registry.register(
+        name="dead_store",
+        toolset="analysis",
+        category="bug-detection",
+        schema=ds_tool.get_tool_definition(),
+        handler=_make_handler(ds_tool),
+        description="Dead store: detect variables assigned but never read, self-assignments, and immediate reassignments across Python, JS/TS, Java, Go",
+        emoji="🗑️",
+    )
+
+    # redundant_else
+    from ..tools.redundant_else_tool import RedundantElseTool
+    re_tool = RedundantElseTool(project_root)
+    registry.register(
+        name="redundant_else",
+        toolset="analysis",
+        category="style",
+        schema=re_tool.get_tool_definition(),
+        handler=_make_handler(re_tool),
+        description="Redundant else: detect unnecessary else blocks where the if branch already terminates across Python, JS/TS, Java, Go",
+        emoji="↩️",
+    )
+
+    # guard_clause
+    from ..tools.guard_clause_tool import GuardClauseTool
+    gcl_tool = GuardClauseTool(project_root)
+    registry.register(
+        name="guard_clause",
+        toolset="analysis",
+        category="style",
+        schema=gcl_tool.get_tool_definition(),
+        handler=_make_handler(gcl_tool),
+        description="Guard clause: detect if/else blocks where inverting the condition and returning early would flatten the code across Python, JS/TS, Java, Go",
+        emoji="🛡️",
+    )
+
+    # config_drift
+    from ..tools.config_drift_tool import ConfigDriftTool
+    cd_tool = ConfigDriftTool(project_root)
+    registry.register(
+        name="config_drift",
+        toolset="analysis",
+        category="best-practice",
+        schema=cd_tool.get_tool_definition(),
+        handler=_make_handler(cd_tool),
+        description="Config drift: detect hardcoded configuration values (host, port, url, api_key, etc.) that should be externalized via env vars across Python, JS/TS, Java, Go",
+        emoji="⚙️",
+    )
+
+    # unused_parameter
+    from ..tools.unused_parameter_tool import UnusedParameterTool
+    up_tool = UnusedParameterTool(project_root)
+    registry.register(
+        name="unused_parameter",
+        toolset="analysis",
+        category="bug-detection",
+        schema=up_tool.get_tool_definition(),
+        handler=_make_handler(up_tool),
+        description="Unused parameter: detect function/method parameters that are never referenced in the function body across Python, JS/TS, Java, Go",
+        emoji="👻",
+    )
+
+    # callback_hell
+    from ..tools.callback_hell_tool import CallbackHellTool
+    ch_tool = CallbackHellTool(project_root)
+    registry.register(
+        name="callback_hell",
+        toolset="analysis",
+        category="async-quality",
+        schema=ch_tool.get_tool_definition(),
+        handler=_make_handler(ch_tool),
+        description="Callback hell: detect deeply nested callbacks and long .then() chains across Python, JS/TS, Java, Go",
+        emoji="🌀",
+    )
+
+    # hardcoded_ip
+    from ..tools.hardcoded_ip_tool import HardcodedIPTool
+    hi_tool = HardcodedIPTool(project_root)
+    registry.register(
+        name="hardcoded_ip",
+        toolset="analysis",
+        category="security",
+        schema=hi_tool.get_tool_definition(),
+        handler=_make_handler(hi_tool),
+        description="Hardcoded IP/port: detect IP addresses and port numbers that should be externalized across Python, JS/TS, Java, Go",
+        emoji="🌐",
+    )
+
+    # discarded_return
+    from ..tools.discarded_return_tool import DiscardedReturnTool
+    dr_tool = DiscardedReturnTool(project_root)
+    registry.register(
+        name="discarded_return",
+        toolset="analysis",
+        category="bug-detection",
+        schema=dr_tool.get_tool_definition(),
+        handler=_make_handler(dr_tool),
+        description="Discarded return: detect function calls whose return values are silently thrown away",
+        emoji="🗑️",
+    )
+
+    # double_negation
+    from ..tools.double_negation_tool import DoubleNegationTool
+    dn_tool = DoubleNegationTool(project_root)
+    registry.register(
+        name="double_negation",
+        toolset="analysis",
+        category="readability",
+        schema=dn_tool.get_tool_definition(),
+        handler=_make_handler(dn_tool),
+        description="Double negation: detect not not x, !!x patterns and suggest clearer alternatives",
+        emoji="⁉️",
+    )
+
+    # global_state
+    from ..tools.global_state_tool import GlobalStateTool
+    gs_tool = GlobalStateTool(project_root)
+    registry.register(
+        name="global_state",
+        toolset="analysis",
+        category="state-quality",
+        schema=gs_tool.get_tool_definition(),
+        handler=_make_handler(gs_tool),
+        description="Global state: detect module-level mutable variables, global/nonlocal keywords, static non-final fields, and package-level variables",
+        emoji="🌐",
+    )
+
+    # reflection_usage
+    from ..tools.reflection_usage_tool import ReflectionUsageTool
+    ru_tool = ReflectionUsageTool(project_root)
+    registry.register(
+        name="reflection_usage",
+        toolset="analysis",
+        category="security",
+        schema=ru_tool.get_tool_definition(),
+        handler=_make_handler(ru_tool),
+        description="Reflection usage: detect eval/exec/getattr, Class.forName, reflect.* patterns that make code hard to audit",
+        emoji="🪞",
+    )
+
+    # debug_statement
+    from ..tools.debug_statement_tool import DebugStatementTool
+    debug_stmt_tool = DebugStatementTool(project_root)
+    registry.register(
+        name="debug_statement",
+        toolset="analysis",
+        category="code-quality",
+        schema=debug_stmt_tool.get_tool_definition(),
+        handler=_make_handler(debug_stmt_tool),
+        description="Debug statements: detect leftover print/console.log/System.out.println/fmt.Println calls that should be removed before production",
+        emoji="🐛",
+    )
+
+    # commented_code
+    from ..tools.commented_code_tool import CommentedCodeTool
+    cc_tool = CommentedCodeTool(project_root)
+    registry.register(
+        name="commented_code",
+        toolset="analysis",
+        category="code-quality",
+        schema=cc_tool.get_tool_definition(),
+        handler=_make_handler(cc_tool),
+        description="Commented-out code: detect code blocks in comments (assignments, calls, imports, declarations) that should be removed",
+        emoji="🗑️",
+    )
+
+    # simplified_conditional
+    from ..tools.simplified_conditional_tool import SimplifiedConditionalTool
+    sc_tool = SimplifiedConditionalTool(project_root)
+    registry.register(
+        name="simplified_conditional",
+        toolset="analysis",
+        category="readability",
+        schema=sc_tool.get_tool_definition(),
+        handler=_make_handler(sc_tool),
+        description="Simplified conditional: detect ternary expressions that can be simplified (cond ? true : false → cond)",
+        emoji="✂️",
+    )
+
+    # long_parameter_list
+    from ..tools.long_parameter_list_tool import LongParameterListTool
+    lpl_tool = LongParameterListTool(project_root)
+    registry.register(
+        name="long_parameter_list",
+        toolset="analysis",
+        category="complexity",
+        schema=lpl_tool.get_tool_definition(),
+        handler=_make_handler(lpl_tool),
+        description="Long parameter list: detect functions with 5+ parameters that should use a parameter object",
+        emoji="📋",
+    )
+
+    from ..tools.protocol_completeness_tool import ProtocolCompletenessTool
+    pc_tool = ProtocolCompletenessTool(project_root)
+    registry.register(
+        name="protocol_completeness",
+        toolset="analysis",
+        category="correctness",
+        schema=pc_tool.get_tool_definition(),
+        handler=_make_handler(pc_tool),
+        description="Protocol completeness: detect incomplete protocol implementations (__eq__ without __hash__, equals without hashCode)",
+        emoji="🔧",
+    )
+
+    from ..tools.redundant_type_cast_tool import RedundantTypeCastTool
+    rtc_tool = RedundantTypeCastTool(project_root)
+    registry.register(
+        name="redundant_type_cast",
+        toolset="analysis",
+        category="correctness",
+        schema=rtc_tool.get_tool_definition(),
+        handler=_make_handler(rtc_tool),
+        description="Redundant type cast: detect wrapping same type twice (str(str(x)), int(int(x)))",
+        emoji="🔄",
+    )
+
+    from ..tools.self_assignment_tool import SelfAssignmentTool
+    sa_tool = SelfAssignmentTool(project_root)
+    registry.register(
+        name="self_assignment",
+        toolset="analysis",
+        category="correctness",
+        schema=sa_tool.get_tool_definition(),
+        handler=_make_handler(sa_tool),
+        description="Self-assignment: detect x = x, self.x = self.x (no-op or typo)",
+        emoji="🪞",
+    )
+
+    from ..tools.late_binding_closure_tool import LateBindingClosureTool
+    lbclosure_tool = LateBindingClosureTool(project_root)
+    registry.register(
+        name="late_binding_closure",
+        toolset="analysis",
+        category="correctness",
+        schema=lbclosure_tool.get_tool_definition(),
+        handler=_make_handler(lbclosure_tool),
+        description="Late-binding closure: detect closures in loops capturing loop variables by reference",
+        emoji="🔗",
+    )
+
+    from ..tools.statement_no_effect_tool import StatementNoEffectTool
+    sne_tool = StatementNoEffectTool(project_root)
+    registry.register(
+        name="statement_no_effect",
+        toolset="analysis",
+        category="correctness",
+        schema=sne_tool.get_tool_definition(),
+        handler=_make_handler(sne_tool),
+        description="Statement no-effect: detect x == 5; (meant x = 5;), discarded arithmetic, standalone literals",
+        emoji="⚠️",
+    )
+
+    from ..tools.function_redefinition_tool import FunctionRedefinitionTool
+    fr_tool = FunctionRedefinitionTool(project_root)
+    registry.register(
+        name="function_redefinition",
+        toolset="analysis",
+        category="correctness",
+        schema=fr_tool.get_tool_definition(),
+        handler=_make_handler(fr_tool),
+        description="Function redefinition: detect functions defined twice in the same scope",
+        emoji="🔄",
+    )
+
+    from ..tools.return_in_finally_tool import ReturnInFinallyTool
+    rif_tool = ReturnInFinallyTool(project_root)
+    registry.register(
+        name="return_in_finally",
+        toolset="analysis",
+        category="correctness",
+        schema=rif_tool.get_tool_definition(),
+        handler=_make_handler(rif_tool),
+        description="Return in finally: detect return/raise in finally blocks that swallow exceptions",
+        emoji="🔇",
+    )
+
+    # list_membership
+    from ..tools.list_membership_tool import ListMembershipTool
+    lm_tool = ListMembershipTool(project_root)
+    registry.register(
+        name="list_membership",
+        toolset="analysis",
+        category="performance",
+        schema=lm_tool.get_tool_definition(),
+        handler=_make_handler(lm_tool),
+        description="List membership: detect `x in [...]` should use set `{...}` for O(1)",
+        emoji="🔍",
+    )
+
+    # deep_unpacking
+    from ..tools.deep_unpacking_tool import DeepUnpackingTool
+    du_tool = DeepUnpackingTool(project_root)
+    registry.register(
+        name="deep_unpacking",
+        toolset="analysis",
+        category="readability",
+        schema=du_tool.get_tool_definition(),
+        handler=_make_handler(du_tool),
+        description="Deep unpacking: detect excessive tuple unpacking with 4+ variables reducing readability",
+        emoji="📦",
+    )
+
+    # missing_static_method
+    from ..tools.missing_static_method_tool import MissingStaticMethodTool
+    msm_tool = MissingStaticMethodTool(project_root)
+    registry.register(
+        name="missing_static_method",
+        toolset="analysis",
+        category="design",
+        schema=msm_tool.get_tool_definition(),
+        handler=_make_handler(msm_tool),
+        description="Missing static method: detect instance methods that never use self and should be @staticmethod",
+        emoji="🔧",
+    )
+
+    # nested_class
+    from ..tools.nested_class_tool import NestedClassTool
+    ncls_tool = NestedClassTool(project_root)
+    registry.register(
+        name="nested_class",
+        toolset="analysis",
+        category="design",
+        schema=ncls_tool.get_tool_definition(),
+        handler=_make_handler(ncls_tool),
+        description="Nested class: detect classes inside other classes indicating potential design smell",
+        emoji="🏗️",
+    )
+
+    # redundant_super
+    from ..tools.redundant_super_tool import RedundantSuperTool
+    rsup_tool = RedundantSuperTool(project_root)
+    registry.register(
+        name="redundant_super",
+        toolset="analysis",
+        category="correctness",
+        schema=rsup_tool.get_tool_definition(),
+        handler=_make_handler(rsup_tool),
+        description="Redundant super: detect unnecessary super() calls in constructors across Python, JS/TS, Java",
+        emoji="♻️",
+    )
+
+    # constant_bool_operand
+    from ..tools.constant_bool_operand_tool import ConstantBoolOperandTool
+    cbo_tool = ConstantBoolOperandTool(project_root)
+    registry.register(
+        name="constant_bool_operand",
+        toolset="analysis",
+        category="bug-detection",
+        schema=cbo_tool.get_tool_definition(),
+        handler=_make_handler(cbo_tool),
+        description="Constant bool operand: detect non-boolean constants in and/or expressions (Python pitfall: x == a or b is always True)",
+        emoji="⚡",
+    )
+
+    # neural_perception
+    from ..tools.neural_perception_tool import NeuralPerceptionTool
+    np_tool = NeuralPerceptionTool(project_root)
+    registry.register(
+        name="neural_perception",
+        toolset="analysis",
+        category="meta-analysis",
+        schema=np_tool.get_tool_definition(),
+        handler=_make_handler(np_tool),
+        description="Neural perception: run ALL analyzers on files, correlate findings into holistic perception map with compound hotspots and health scores",
+        emoji="🧠",
+    )
+
+    # brain
+    from ..tools.brain_tool import BrainTool
+    brain_tool = BrainTool(project_root)
+    registry.register(
+        name="brain",
+        toolset="analysis",
+        category="meta-analysis",
+        schema=brain_tool.get_tool_definition(),
+        handler=_make_handler(brain_tool),
+        description="One-call complete project awareness: full file context, hotspots, impact analysis. No further tool calls needed after warm-up.",
+        emoji="🧠",
+    )
