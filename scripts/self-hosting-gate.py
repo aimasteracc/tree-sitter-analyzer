@@ -203,7 +203,7 @@ def _check_architecture() -> list[str]:
         "error_handling_tool.py", "exception_quality_tool.py",
         "error_message_quality_tool.py", "magic_string_tool.py",
         "code_smell_detector_tool.py",
-        "dead_code_path_tool.py", "data_clump_tool.py",
+        "data_clump_tool.py",
         "nesting_depth_tool.py", "loop_complexity_tool.py",
     }
     if tools_dir.exists() and registration.exists():
