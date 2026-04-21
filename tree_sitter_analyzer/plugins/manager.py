@@ -155,15 +155,11 @@ class PluginManager:
             for _finder, name, ispkg in pkgutil.iter_modules(
                 languages_module.__path__, languages_module.__name__ + "."
             ):
-                if ispkg:
-                    continue
-
                 # Derive language name from filename (e.g., python_plugin -> python)
                 base_name = name.split(".")[-1]
                 if base_name.endswith("_plugin"):
                     lang_hint = base_name[: -len("_plugin")]
                     self._plugin_modules[lang_hint] = name
-                    # Also support some common aliases if needed, but get_plugin will handle it
         except Exception as e:
             log_warning(f"Failed to discover local plugins: {e}")
 
