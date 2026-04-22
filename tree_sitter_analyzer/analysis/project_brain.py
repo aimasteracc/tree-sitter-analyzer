@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import json
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -483,6 +484,69 @@ class ProjectBrain:
     # -- Impact Graph ----------------------------------------------------------
 
     def _build_impact_graph(self) -> None:
+        """Build import graph (from cache if fresh, otherwise from AST)."""
+        cache_path = Path(self.project_root) / ".brain_graph.json"
+        if cache_path.exists():
+            try:
+                self._load_graph(cache_path)
+                if self._cache_is_fresh(cache_path):
+                    return
+            except (json.JSONDecodeError, KeyError, OSError):
+                pass
+
+        self._build_graph_from_ast()
+
+        try:
+            self._save_graph(cache_path)
+        except OSError:
+            pass
+
+    def _cache_is_fresh(self, cache_path: Path) -> bool:
+        """Check if cache is newer than the most recently modified .py file."""
+        cache_mtime = cache_path.stat().st_mtime
+        root = Path(self.project_root)
+        for ext in ("tree_sitter_analyzer", "tests"):
+            pkg = root / ext
+            if not pkg.exists():
+                continue
+            for py_file in pkg.rglob("*.py"):
+                if any(s in py_file.parts for s in ("__pycache__",)):
+                    continue
+                try:
+                    if py_file.stat().st_mtime > cache_mtime:
+                        return False
+                except OSError:
+                    pass
+        return True
+
+    def _save_graph(self, path: Path) -> None:
+        """Persist impact graph to JSON."""
+        data = {
+            "import_graph": {k: sorted(v) for k, v in self._import_graph.items()},
+            "reverse_imports": {k: sorted(v) for k, v in self._reverse_imports.items()},
+            "test_to_source": {k: sorted(v) for k, v in self._test_to_source.items()},
+            "source_to_tests": {k: sorted(v) for k, v in self._source_to_tests.items()},
+            "source_to_real_tests": {k: sorted(v) for k, v in self._source_to_real_tests.items()},
+            "source_stems": dict(self._source_stems),
+            "tool_refs": {k: sorted(v) for k, v in self._tool_refs.items()},
+            "symbol_defs": dict(self._symbol_defs),
+        }
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    def _load_graph(self, path: Path) -> None:
+        """Load impact graph from JSON cache."""
+        data = json.loads(path.read_text(encoding="utf-8"))
+        self._import_graph = {k: set(v) for k, v in data["import_graph"].items()}
+        self._reverse_imports = {k: set(v) for k, v in data["reverse_imports"].items()}
+        self._test_to_source = {k: set(v) for k, v in data["test_to_source"].items()}
+        self._source_to_tests = {k: set(v) for k, v in data["source_to_tests"].items()}
+        self._source_to_real_tests = {k: set(v) for k, v in data.get("source_to_real_tests", {}).items()}
+        self._source_stems = data["source_stems"]
+        self._tool_refs = {k: set(v) for k, v in data["tool_refs"].items()}
+        self._symbol_defs = data.get("symbol_defs", {})
+        self._built = True
+
+    def _build_graph_from_ast(self) -> None:
         """Build import graph, test mapping, and tool references from Python AST."""
         root = Path(self.project_root)
         skip_dirs = {

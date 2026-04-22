@@ -340,3 +340,4 @@ docs/designs/tree-sitter-analyzer-*.md
 
 # Autonomous loop logs
 autonomous-logs/
+.brain_graph.json
