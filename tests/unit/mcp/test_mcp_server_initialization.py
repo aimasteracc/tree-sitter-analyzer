@@ -51,9 +51,8 @@ class TestMCPServerInitialization:
         """Test _ensure_initialized when server is ready."""
         with tempfile.TemporaryDirectory() as temp_dir:
             server = TreeSitterAnalyzerMCPServer(temp_dir)
-
-            # Should not raise any exception
             server._ensure_initialized()
+            assert server._initialization_complete is True
 
     def test_ensure_initialized_when_not_ready(self):
         """Test _ensure_initialized when server is not ready."""

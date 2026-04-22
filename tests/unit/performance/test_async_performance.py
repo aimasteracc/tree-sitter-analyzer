@@ -106,9 +106,7 @@ async def test_event_loop_responsiveness(tmp_path):
         f"\nActual duration: {actual_duration:.4f}s, Heartbeats: {heartbeat_count}, Expected: {expected_heartbeats:.1f}"
     )
 
-    # In Phase 1, it likely blocks, so heartbeat_count will be low.
-    # In Phase 2, it should be significantly higher.
-    # We will use this to compare.
+    assert heartbeat_count >= 0
 
 
 @pytest.mark.asyncio

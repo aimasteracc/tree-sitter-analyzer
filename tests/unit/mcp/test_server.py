@@ -91,8 +91,8 @@ class TestEnsureInitialized:
 
     def test_ensure_initialized_passes(self, server):
         """Test ensure_initialized passes when initialized"""
-        # Should not raise any exception
         server._ensure_initialized()
+        assert server._initialization_complete is True
 
     def test_ensure_initialized_raises_when_not_initialized(self):
         """Test ensure_initialized raises when not initialized"""

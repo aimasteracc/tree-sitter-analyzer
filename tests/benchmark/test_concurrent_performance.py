@@ -211,3 +211,5 @@ class TestConcurrentPerformance:
             f"{'='*60}"
         )
         print(summary)
+        assert len(health_latencies) == 100
+        assert len(tools_latencies) == 50

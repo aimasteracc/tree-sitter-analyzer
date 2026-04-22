@@ -84,6 +84,7 @@ class TestConnectionTracker:
     def test_release_unknown_id_is_noop(self) -> None:
         tracker = ConnectionTracker(max_connections=10)
         tracker.release("nonexistent")
+        assert tracker.is_at_capacity() is False
 
     def test_max_connections_enforced(self) -> None:
         tracker = ConnectionTracker(max_connections=2)

@@ -157,7 +157,7 @@ class TestSummaryCommandCoverage(unittest.TestCase):
         mock_result.elements = []
 
         self.command._output_summary_analysis(mock_result)
-        # Should process classes and methods, but we have empty elements so just check execution doesn't crash
+        assert self.command.args.summary is None
 
 
 def asyncio_run(coro):

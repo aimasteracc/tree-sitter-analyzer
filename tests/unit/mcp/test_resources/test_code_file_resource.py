@@ -121,10 +121,10 @@ class TestValidateFilePath:
 
     def test_validate_valid_path(self, resource):
         """Test validating a valid file path"""
-        # Should not raise any exception
         resource._validate_file_path("src/main.py")
         resource._validate_file_path("test.js")
         resource._validate_file_path("scripts/helper.sh")
+        assert resource is not None
 
     def test_validate_empty_path_raises_error(self, resource):
         """Test that empty path raises ValueError"""

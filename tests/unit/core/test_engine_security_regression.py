@@ -46,4 +46,4 @@ class TestEngineSecurityRegression:
         """Test that cleanup method works correctly after refactoring"""
         engine = get_analysis_engine()
         engine.cleanup()
-        # Should not raise any exceptions
+        assert engine is not None

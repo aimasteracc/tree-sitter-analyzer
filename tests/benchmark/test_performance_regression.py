@@ -298,3 +298,5 @@ class TestPerformanceRegression:
             budget = budgets.get(op, 1.0)
             status = "OK" if t < budget else "SLOW"
             print(f"{op:>20} | {t:>10.4f} | {budget:>10.1f} | {status:>8}")
+
+        assert len(results) == 4
