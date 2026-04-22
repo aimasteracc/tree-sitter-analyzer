@@ -178,8 +178,8 @@ LEFT JOIN orders o ON u.id = o.user_id
 GROUP BY u.id, u.name;
 """
         tree = parser.parse(code.encode("utf-8"))
-        plugin.extract_elements(tree, code)
-        # May or may not extract view depending on parser
+        result = plugin.extract_elements(tree, code)
+        assert isinstance(result, dict)
 
     def test_extract_function_with_returns(self, plugin, parser):
         """Test CREATE FUNCTION with RETURNS clause."""
@@ -208,7 +208,8 @@ BEGIN
 END;
 """
         tree = parser.parse(code.encode("utf-8"))
-        plugin.extract_elements(tree, code)
+        result = plugin.extract_elements(tree, code)
+        assert isinstance(result, dict)
 
     def test_extract_trigger_before_insert(self, plugin, parser):
         """Test CREATE TRIGGER BEFORE INSERT."""
@@ -221,7 +222,8 @@ BEGIN
 END;
 """
         tree = parser.parse(code.encode("utf-8"))
-        plugin.extract_elements(tree, code)
+        result = plugin.extract_elements(tree, code)
+        assert isinstance(result, dict)
 
     def test_extract_trigger_after_delete(self, plugin, parser):
         """Test CREATE TRIGGER AFTER DELETE."""
@@ -234,7 +236,8 @@ BEGIN
 END;
 """
         tree = parser.parse(code.encode("utf-8"))
-        plugin.extract_elements(tree, code)
+        result = plugin.extract_elements(tree, code)
+        assert isinstance(result, dict)
 
     def test_extract_unique_index(self, plugin, parser):
         """Test CREATE UNIQUE INDEX."""
@@ -251,7 +254,8 @@ CREATE UNIQUE INDEX idx_email ON users(email);
 CREATE INDEX idx_user_date ON orders(user_id, created_at DESC);
 """
         tree = parser.parse(code.encode("utf-8"))
-        plugin.extract_elements(tree, code)
+        result = plugin.extract_elements(tree, code)
+        assert isinstance(result, dict)
 
     def test_extract_drop_statements(self, plugin, parser):
         """Test DROP statements don't cause errors."""

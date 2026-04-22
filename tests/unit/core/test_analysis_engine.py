@@ -52,6 +52,8 @@ class TestUnifiedAnalysisEngineInit:
         engine._ensure_initialized()
         assert engine._cache_service is not None
         assert engine._parser is not None
+        assert hasattr(engine._cache_service, "get")
+        assert hasattr(engine._parser, "parse_code")
 
     def test_get_analysis_engine_function(self):
         """Test get_analysis_engine convenience function."""
@@ -88,7 +90,7 @@ class TestUnifiedAnalysisEnginePluginManagement:
         """Test accessing plugin manager property."""
         engine = UnifiedAnalysisEngine()
         plugin_manager = engine.plugin_manager
-        assert plugin_manager is not None
+        assert hasattr(plugin_manager, "get_plugin")
 
     @classmethod
     def teardown_class(cls):
@@ -118,7 +120,7 @@ class TestUnifiedAnalysisEngineCacheManagement:
         """Test accessing cache service property."""
         engine = UnifiedAnalysisEngine()
         cache_service = engine.cache_service
-        assert cache_service is not None
+        assert hasattr(cache_service, "get")
 
     def test_cache_key_generation(self):
         """Test cache key generation for different requests."""
@@ -161,7 +163,7 @@ class TestUnifiedAnalysisEngineLanguageDetection:
         """Test accessing language detector property."""
         engine = UnifiedAnalysisEngine()
         detector = engine.language_detector
-        assert detector is not None
+        assert hasattr(detector, "detect_language")
 
     @classmethod
     def teardown_class(cls):
@@ -337,7 +339,7 @@ class TestUnifiedAnalysisEngineSecurity:
         """Test accessing security validator property."""
         engine = UnifiedAnalysisEngine()
         validator = engine.security_validator
-        assert validator is not None
+        assert hasattr(validator, "validate_path")
 
     @classmethod
     def teardown_class(cls):
@@ -358,7 +360,7 @@ class TestUnifiedAnalysisEngineQueries:
         """Test accessing query executor property."""
         engine = UnifiedAnalysisEngine()
         executor = engine.query_executor
-        assert executor is not None
+        assert hasattr(executor, "execute_query")
 
     @pytest.mark.asyncio
     async def test_analyze_with_queries(self):
@@ -410,7 +412,7 @@ class TestUnifiedAnalysisEnginePerformance:
         # Ensure initialization first
         engine._ensure_initialized()
         monitor = engine._performance_monitor
-        assert monitor is not None
+        assert hasattr(monitor, "record_operation") or hasattr(monitor, "start_monitoring")
 
     @classmethod
     def teardown_class(cls):
@@ -441,17 +443,22 @@ class TestUnifiedAnalysisEngineProperties:
         """Test accessing parser property."""
         engine = UnifiedAnalysisEngine()
         parser = engine.parser
-        assert parser is not None
+        assert hasattr(parser, "parse_code")
 
     def test_all_properties_accessible(self):
-        """Test that all properties are accessible."""
+        """Test that all properties are accessible and have expected methods."""
         engine = UnifiedAnalysisEngine()
-        assert engine.cache_service is not None
-        assert engine.parser is not None
-        assert engine.query_executor is not None
-        assert engine.language_detector is not None
-        assert engine.security_validator is not None
-        assert engine.plugin_manager is not None
+        props = {
+            "cache_service": "get",
+            "parser": "parse_code",
+            "query_executor": "execute_query",
+            "language_detector": "detect_language",
+            "security_validator": "validate_path",
+            "plugin_manager": "get_plugin",
+        }
+        for prop_name, method_name in props.items():
+            prop = getattr(engine, prop_name)
+            assert hasattr(prop, method_name), f"{prop_name} missing {method_name}"
 
     @classmethod
     def teardown_class(cls):

@@ -664,38 +664,6 @@ class TestHtmlCompactFormatter:
         assert "| CSS Rules | 1 |" in result
 
 
-class TestHtmlFormatterRegistration:
-    """Test HTML formatter registration"""
-
-    @pytest.mark.skip(
-        reason="HTML formatters intentionally excluded in v1.6.1.4 for format specification compliance"
-    )
-    def test_html_formatters_auto_registration(self):
-        """Test that HTML formatters are automatically registered"""
-        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
-
-        available_formats = FormatterRegistry.get_available_formats()
-
-        assert "html" in available_formats
-        assert "html_json" in available_formats
-        assert "html_compact" in available_formats
-
-    @pytest.mark.skip(
-        reason="HTML formatters intentionally excluded in v1.6.1.4 for format specification compliance"
-    )
-    def test_get_html_formatters(self):
-        """Test getting HTML formatter instances"""
-        from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
-
-        html_formatter = FormatterRegistry.get_formatter("html")
-        html_json_formatter = FormatterRegistry.get_formatter("html_json")
-        html_compact_formatter = FormatterRegistry.get_formatter("html_compact")
-
-        assert isinstance(html_formatter, HtmlFormatter)
-        assert isinstance(html_json_formatter, HtmlJsonFormatter)
-        assert isinstance(html_compact_formatter, HtmlCompactFormatter)
-
-
 class TestHtmlFormatterEdgeCases:
     """Test edge cases and error conditions"""
 

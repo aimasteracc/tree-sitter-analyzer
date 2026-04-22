@@ -430,20 +430,6 @@ class TestHandleSpecialCommands:
         assert result == 0
         mock_output_list.assert_called()
 
-    def test_handle_sql_platform_info(self):
-        """Test handling --sql-platform-info - skipped due to internal imports."""
-        # This test is skipped because PlatformDetector is imported inside handle_special_commands
-        pytest.skip(
-            "PlatformDetector is imported inside handle_special_commands function"
-        )
-
-    def test_handle_record_sql_profile(self):
-        """Test handling --record-sql-profile - skipped due to internal imports."""
-        # This test is skipped because BehaviorRecorder is imported inside handle_special_commands
-        pytest.skip(
-            "BehaviorRecorder is imported inside handle_special_commands function"
-        )
-
     @patch("tree_sitter_analyzer.cli_main.output_error")
     def test_handle_partial_read_missing_start_line(self, mock_output_error):
         """Test handling partial read without --start-line."""
@@ -544,18 +530,6 @@ class TestHandleSpecialCommands:
 
 class TestMainFunction:
     """Tests for main function."""
-
-    def test_main_quiet_mode_sets_env_var(self):
-        """Test that --quiet sets LOG_LEVEL environment variable - skipped due to complex mocking."""
-        # This test is skipped because it requires complex mocking of main() function
-        # which exits before setting LOG_LEVEL environment variable
-        pytest.skip("Complex mocking required for main() function")
-
-    def test_main_default_log_level(self):
-        """Test that default log level is ERROR - skipped due to complex mocking."""
-        # This test is skipped because it requires complex mocking of main() function
-        # which exits before setting LOG_LEVEL environment variable
-        pytest.skip("Complex mocking required for main() function")
 
     @patch("tree_sitter_analyzer.cli_main.create_argument_parser")
     @patch("tree_sitter_analyzer.cli_main.handle_special_commands")
@@ -674,11 +648,6 @@ class TestMainFunction:
 
         mock_output_error.assert_not_called()
 
-    def test_main_unexpected_exception(self):
-        """Test that main handles unexpected exceptions - skipped due to complex mocking."""
-        # This test is skipped because it requires complex mocking of main() function
-        pytest.skip("Complex mocking required for main() function")
-
 
 class TestArgumentValidation:
     """Tests for argument validation."""
@@ -709,19 +678,6 @@ class TestArgumentValidation:
 class TestSpecialCommandsIntegration:
     """Tests for special commands integration."""
 
-    def test_batch_partial_read_json(self):
-        """Test batch partial read with JSON requests - skipped due to internal imports."""
-        # This test is skipped because ReadPartialTool is imported inside handle_special_commands
-        pytest.skip(
-            "ReadPartialTool is imported inside handle_special_commands function"
-        )
-
-    def test_batch_metrics_only(self):
-        """Test batch metrics only mode - skipped due to internal imports."""
-        # This test is skipped because AnalyzeScaleTool is imported inside handle_special_commands
-        pytest.skip(
-            "AnalyzeScaleTool is imported inside handle_special_commands function"
-        )
 
 
 class TestLoggingConfiguration:

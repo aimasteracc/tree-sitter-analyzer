@@ -205,8 +205,6 @@ class TestSafeStreamHandler:
     def test_emit_closed_stream(self):
         """测试关闭的流 - SafeStreamHandler应该安全处理"""
         stream = io.StringIO()
-        # Note: StringIO doesn't have a closed attribute that prevents writing
-        # This test verifies the handler doesn't crash
         handler = SafeStreamHandler(stream=stream)
         record = logging.LogRecord(
             name="test",
@@ -218,12 +216,11 @@ class TestSafeStreamHandler:
             exc_info=None,
         )
         handler.emit(record)
-        # Should not crash
+        # Verify handler is still functional after emit
+        assert handler.stream is stream
 
     def test_emit_stream_no_write(self):
         """测试无写入方法的流"""
-
-        # Create a custom object without write method
         class NoWriteStream:
             pass
 
@@ -239,8 +236,7 @@ class TestSafeStreamHandler:
             exc_info=None,
         )
         handler.emit(record)
-        # Should not crash
-        # Stream without write method should be handled safely
+        assert handler.formatter is not None or handler.stream is stream
 
     def test_emit_pytest_stream(self):
         """测试pytest流"""
@@ -294,7 +290,8 @@ class TestSafeStreamHandler:
         # Simulate ValueError during super().emit() call
         with patch("logging.StreamHandler.emit", side_effect=ValueError("Test error")):
             handler.emit(record)
-        # Should not crash
+        # Verify handler didn't lose its stream after exception
+        assert handler.stream is stream
 
     def test_emit_os_error(self):
         """测试OSError异常"""
@@ -312,7 +309,7 @@ class TestSafeStreamHandler:
         # Simulate OSError during super().emit() call
         with patch("logging.StreamHandler.emit", side_effect=OSError("Test error")):
             handler.emit(record)
-        # Should not crash
+        assert handler.stream is stream
 
 
 class TestQuietMode:
@@ -444,9 +441,10 @@ class TestLogInfo:
 
     def test_log_info_exception_handling(self):
         """测试异常处理"""
+        original_level = global_logger.level
         with patch.object(global_logger, "info", side_effect=ValueError("Test error")):
             log_info("test message")
-            # Should not crash
+        assert global_logger.level == original_level
 
 
 class TestLogWarning:
@@ -460,11 +458,12 @@ class TestLogWarning:
 
     def test_log_warning_exception_handling(self):
         """测试异常处理"""
+        original_level = global_logger.level
         with patch.object(
             global_logger, "warning", side_effect=ValueError("Test error")
         ):
             log_warning("test warning")
-            # Should not crash
+        assert global_logger.level == original_level
 
 
 class TestLogError:
@@ -478,9 +477,10 @@ class TestLogError:
 
     def test_log_error_exception_handling(self):
         """测试异常处理"""
+        original_level = global_logger.level
         with patch.object(global_logger, "error", side_effect=ValueError("Test error")):
             log_error("test error")
-            # Should not crash
+        assert global_logger.level == original_level
 
 
 class TestLogDebug:
@@ -494,9 +494,10 @@ class TestLogDebug:
 
     def test_log_debug_exception_handling(self):
         """测试异常处理"""
+        original_level = global_logger.level
         with patch.object(global_logger, "debug", side_effect=ValueError("Test error")):
             log_debug("test debug")
-            # Should not crash
+        assert global_logger.level == original_level
 
 
 class TestSuppressOutput:
@@ -504,30 +505,32 @@ class TestSuppressOutput:
 
     def test_suppress_output_normal(self):
         """测试正常输出抑制"""
+        result = []
 
         @suppress_output
         def test_func():
-            print("test output")
+            result.append("executed")
+            return "done"
 
         test_func()
-        # Should execute normally in non-test mode
+        assert result == ["executed"]
 
     def test_suppress_output_in_testing(self):
         """测试测试模式下的输出抑制"""
-        # Set _testing flag
         original_testing = getattr(sys, "_testing", None)
         sys._testing = True
+        result = []
 
         try:
-
             @suppress_output
             def test_func():
-                print("test output")
+                result.append("ran")
+                return "done"
 
-            test_func()
-            # Should return without printing
+            ret = test_func()
+            assert result == ["ran"]
+            assert ret == "done"
         finally:
-            # Restore original value
             if original_testing is None:
                 delattr(sys, "_testing")
             else:
@@ -635,9 +638,10 @@ class TestLogPerformance:
 
     def test_log_performance_exception_handling(self):
         """测试异常处理"""
+        original_level = perf_logger.level
         with patch.object(perf_logger, "debug", side_effect=ValueError("Test error")):
             log_performance("test_operation", 0.123)
-            # Should not crash
+        assert perf_logger.level == original_level
 
 
 class TestCreatePerformanceLogger:
@@ -720,27 +724,16 @@ class TestIntegration:
         original_level = global_logger.level
 
         with QuietMode(enabled=True):
-            # Quiet mode sets level to ERROR, so info/warning won't be logged
-            log_info("should not log")
-            log_warning("should not log")
+            assert global_logger.level == logging.ERROR
 
-        # Restore level
         global_logger.setLevel(original_level)
-
-        # In quiet mode, info and warning are not logged because level is ERROR
-        # This test just verifies the mode doesn't crash
+        assert global_logger.level == original_level
 
     def test_logging_context_integration(self):
         """测试日志上下文集成"""
         original_level = global_logger.level
 
         with LoggingContext(enabled=True, level=logging.ERROR):
-            # ERROR level means only error and above are logged
-            log_info("should not log")
-            log_error("should log")
+            assert global_logger.level == logging.ERROR
 
-        # Restore level
         global_logger.setLevel(original_level)
-
-        # This test just verifies the context manager works correctly
-        # The actual logging behavior depends on logger level

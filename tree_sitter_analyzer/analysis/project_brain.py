@@ -137,7 +137,10 @@ class ProjectBrain:
     _source_stems: dict[str, str] = field(default_factory=dict)
     _tool_refs: dict[str, set[str]] = field(default_factory=dict)
     _symbol_defs: dict[str, str] = field(default_factory=dict)  # symbol_name → file_rel
-    _file_hashes: dict[str, str] = field(default_factory=dict)  # rel_path → md5
+    _method_defs: dict[str, str] = field(default_factory=dict)  # ClassName.method → file_rel
+    _bare_method_names: set[str] = field(default_factory=set)  # bare method names for fast lookup
+    _symbol_calls: dict[str, set[str]] = field(default_factory=dict)  # symbol → test files that call it
+    _test_quality: dict[str, dict[str, Any]] = field(default_factory=dict)  # test_rel → metrics
 
     def warm_up(self) -> None:
         """Scan all project files and build the perception model."""
@@ -368,6 +371,9 @@ class ProjectBrain:
             h for h in self._hotspots if h["file"] == file_path
         ]
         related = self._find_related_files(file_path)
+        rel = self._relative(file_path)
+        test_files = sorted(self._source_to_tests.get(rel, set()))
+        real_tests = sorted(self._source_to_real_tests.get(rel, set()))
 
         return {
             "file": file_path,
@@ -382,6 +388,10 @@ class ProjectBrain:
             "top_issues": list(knowledge.top_issues),
             "hotspots": file_hotspots[:5],
             "related_files": related,
+            "tests": test_files,
+            "real_tests": real_tests,
+            "test_count": len(test_files),
+            "real_test_count": len(real_tests),
             "project_health": self.get_health_score(),
             "project_files": self._total_files,
         }
@@ -464,6 +474,10 @@ class ProjectBrain:
         try:
             return str(Path(file_path).relative_to(self.project_root))
         except ValueError:
+            pass
+        try:
+            return str(Path(file_path).resolve().relative_to(Path(self.project_root).resolve()))
+        except ValueError:
             return file_path
 
     def _find_related_files(self, file_path: str) -> list[str]:
@@ -501,6 +515,9 @@ class ProjectBrain:
                 self._source_stems.clear()
                 self._tool_refs.clear()
                 self._symbol_defs.clear()
+                self._method_defs.clear()
+                self._symbol_calls.clear()
+                self._test_quality.clear()
                 self._file_hashes.clear()
 
         # Find all current .py files and their hashes
@@ -517,6 +534,11 @@ class ProjectBrain:
         changed = {rel for rel, h in current_hashes.items() if self._file_hashes.get(rel) != h}
         removed = {rel for rel in self._file_hashes if rel not in current_hashes}
 
+        # Sanity: if cache has hashes but no graph data, force full rebuild
+        if self._file_hashes and not self._source_stems and not self._import_graph:
+            self._file_hashes.clear()
+            changed = current_files
+
         if not changed and not removed and self._file_hashes:
             # Nothing changed — cache is perfect
             return
@@ -531,6 +553,10 @@ class ProjectBrain:
             self._source_stems.clear()
             self._tool_refs.clear()
             self._symbol_defs.clear()
+            self._method_defs.clear()
+            self._bare_method_names.clear()
+            self._symbol_calls.clear()
+            self._test_quality.clear()
             changed = current_files
 
         # Remove stale data for deleted/changed files
@@ -538,16 +564,21 @@ class ProjectBrain:
             self._remove_file_edges(rel)
             self._source_stems.pop(Path(rel).stem, None)
 
-        # Re-parse only changed files
+        # Re-parse only changed files — source files first, then tests
+        test_files: set[str] = set()
         for rel in changed:
             self._source_stems[Path(rel).stem] = rel
-            abs_path = str(Path(self.project_root) / rel)
+            fpath = str(Path(self.project_root) / rel)
             if "/tests/" in rel or rel.startswith("tests/"):
-                self._parse_imports(abs_path, rel)
-                self._map_test_file(abs_path, rel)
+                test_files.add(rel)
+                self._parse_imports(fpath, rel)
             else:
-                self._parse_imports(abs_path, rel)
-                self._extract_symbols(abs_path, rel)
+                self._parse_imports(fpath, rel)
+                self._extract_symbols(fpath, rel)
+
+        for rel in test_files:
+            fpath = str(Path(self.project_root) / rel)
+            self._map_test_file(fpath, rel)
 
         # Rebuild test mapping and tool refs (cheap — no AST parsing)
         self._rebuild_test_and_tool_maps()
@@ -562,16 +593,17 @@ class ProjectBrain:
 
     def _scan_py_files(self) -> set[str]:
         """Scan for all project .py files, return relative paths."""
-        skip_dirs = {"__pycache__", ".venv", "node_modules", ".git", ".tox", ".mypy_cache"}
+        skip_dirs = {
+            "__pycache__", ".venv", "node_modules", ".git", ".tox",
+            ".mypy_cache", ".pytest_cache", ".ruff_cache", "htmlcov",
+            ".eggs", "dist", "build", ".cache",
+        }
+        root = Path(self.project_root).resolve()
         result: set[str] = set()
-        for pkg in ("tree_sitter_analyzer", "tests"):
-            pkg_path = Path(self.project_root) / pkg
-            if not pkg_path.exists():
+        for p in root.rglob("*.py"):
+            if any(s in p.parts for s in skip_dirs):
                 continue
-            for p in pkg_path.rglob("*.py"):
-                if any(s in p.parts for s in skip_dirs):
-                    continue
-                result.add(self._relative(str(p)))
+            result.add(self._relative(str(p)))
         return result
 
     def _remove_file_edges(self, rel: str) -> None:
@@ -590,6 +622,15 @@ class ProjectBrain:
             src_set.pop(rel, None)
         # Remove symbols defined in this file
         self._symbol_defs = {s: f for s, f in self._symbol_defs.items() if f != rel}
+        self._method_defs = {m: f for m, f in self._method_defs.items() if f != rel}
+        self._bare_method_names.difference_update(
+            m.split(".", 1)[1] for m, f in list(self._method_defs.items()) if f == rel
+        )
+        self._test_quality.pop(rel, None)
+        for sym, callers in list(self._symbol_calls.items()):
+            callers.discard(rel)
+            if not callers:
+                self._symbol_calls.pop(sym, None)
 
     def _rebuild_test_and_tool_maps(self) -> None:
         """Rebuild derived mappings without re-parsing ASTs."""
@@ -623,7 +664,7 @@ class ProjectBrain:
                             self._tool_refs.setdefault(tool_name, set()).add(resolved)
 
     def _save_graph(self, path: Path) -> None:
-        """Persist impact graph + file hashes to JSON."""
+        """Persist impact graph + file hashes + test knowledge to JSON."""
         data = {
             "import_graph": {k: sorted(v) for k, v in self._import_graph.items()},
             "reverse_imports": {k: sorted(v) for k, v in self._reverse_imports.items()},
@@ -633,12 +674,16 @@ class ProjectBrain:
             "source_stems": dict(self._source_stems),
             "tool_refs": {k: sorted(v) for k, v in self._tool_refs.items()},
             "symbol_defs": dict(self._symbol_defs),
+            "method_defs": dict(self._method_defs),
+            "bare_method_names": sorted(self._bare_method_names),
+            "symbol_calls": {k: sorted(v) for k, v in self._symbol_calls.items()},
+            "test_quality": self._test_quality,
             "file_hashes": dict(self._file_hashes),
         }
         path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
     def _load_graph(self, path: Path) -> None:
-        """Load impact graph + file hashes from JSON cache."""
+        """Load impact graph + file hashes + test knowledge from JSON cache."""
         data = json.loads(path.read_text(encoding="utf-8"))
         self._import_graph = {k: set(v) for k, v in data["import_graph"].items()}
         self._reverse_imports = {k: set(v) for k, v in data["reverse_imports"].items()}
@@ -648,6 +693,10 @@ class ProjectBrain:
         self._source_stems = data["source_stems"]
         self._tool_refs = {k: set(v) for k, v in data["tool_refs"].items()}
         self._symbol_defs = data.get("symbol_defs", {})
+        self._method_defs = data.get("method_defs", {})
+        self._bare_method_names = set(data.get("bare_method_names", []))
+        self._symbol_calls = {k: set(v) for k, v in data.get("symbol_calls", {}).items()}
+        self._test_quality = data.get("test_quality", {})
         self._file_hashes = data.get("file_hashes", {})
         self._built = True
 
@@ -701,7 +750,7 @@ class ProjectBrain:
                     self._reverse_imports.setdefault(resolved, set()).add(rel)
 
     def _map_test_file(self, abs_path: str, rel: str) -> None:
-        """Map a test file to the source files it tests, with real coverage detection."""
+        """Map test file to source files, extract quality metrics, track symbol calls."""
         # Convention: test_health_score.py → health_score
         test_name = Path(rel).name
         if test_name.startswith("test_") and test_name.endswith(".py"):
@@ -711,7 +760,6 @@ class ProjectBrain:
                 self._test_to_source.setdefault(rel, set()).add(source_rel)
                 self._source_to_tests.setdefault(source_rel, set()).add(rel)
 
-        # Import-based: check what the test imports and actually uses
         try:
             source = Path(abs_path).read_text(encoding="utf-8")
             tree = ast.parse(source)
@@ -731,7 +779,7 @@ class ProjectBrain:
                     for alias in node.names:
                         imported_symbols.add(alias.name.split(" as ")[0])
 
-        # Real coverage: does the test actually call/instantiate imported symbols?
+        # Collect all called names and attribute accesses in one pass
         called_names: set[str] = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.Call):
@@ -740,16 +788,142 @@ class ProjectBrain:
                 elif isinstance(node.func, ast.Attribute):
                     called_names.add(node.func.attr)
 
+        # Track symbol-level calls (top-level + methods)
         actually_used = imported_symbols & called_names
+        for sym in actually_used:
+            self._symbol_calls.setdefault(sym, set()).add(rel)
+
+        # Track method-level calls: look for obj.method() patterns
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                method_name = node.func.attr
+                if method_name in self._bare_method_names:
+                    self._symbol_calls.setdefault(method_name, set()).add(rel)
+
+        # Real test mapping
         if actually_used:
             for sym in actually_used:
                 if sym in self._symbol_defs:
                     src = self._symbol_defs[sym]
                     self._source_to_real_tests.setdefault(src, set()).add(rel)
-        # If test calls any function from imported modules, count as real
         for mod in imported_modules:
             if actually_used:
                 self._source_to_real_tests.setdefault(mod, set()).add(rel)
+
+        # -- Test quality metrics --
+        test_funcs: list[str] = []
+        assert_count = 0
+        mock_count = 0
+        fixture_count = 0
+        zero_assert_funcs: list[str] = []
+        test_func_lines: list[int] = []
+
+        # Count mocks and fixtures via walk (anywhere in tree)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                func_name = ""
+                if isinstance(node.func, ast.Name):
+                    func_name = node.func.id
+                elif isinstance(node.func, ast.Attribute):
+                    func_name = node.func.attr
+                if func_name in ("patch", "MagicMock", "Mock", "AsyncMock",
+                                  "patch.object", "create_autospec"):
+                    mock_count += 1
+
+        # Count test functions — only direct class methods, not nested defs
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            for item in node.body:
+                if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if not (item.name.startswith("test_") or item.name.startswith("test")):
+                    # Count fixtures from non-test methods too
+                    for dec in item.decorator_list:
+                        dec_name = ""
+                        if isinstance(dec, ast.Name):
+                            dec_name = dec.id
+                        elif isinstance(dec, ast.Attribute):
+                            dec_name = dec.attr
+                        if dec_name == "fixture":
+                            fixture_count += 1
+                    continue
+                test_funcs.append(item.name)
+                func_asserts = 0
+                for child in ast.walk(item):
+                    if isinstance(child, ast.Assert):
+                        func_asserts += 1
+                    elif isinstance(child, ast.Call):
+                        f_name = ""
+                        if isinstance(child.func, ast.Attribute):
+                            f_name = child.func.attr
+                        elif isinstance(child.func, ast.Name):
+                            f_name = child.func.id
+                        if f_name.startswith("assert"):
+                            func_asserts += 1
+                        elif f_name in ("raises", "warns", "fixture"):
+                            func_asserts += 1
+                    elif isinstance(child, ast.With):
+                        # Count `with pytest.raises(...):` as an assertion
+                        for with_item in child.items:
+                            call = with_item.context_expr
+                            if isinstance(call, ast.Call):
+                                if isinstance(call.func, ast.Attribute) and call.func.attr in ("raises", "warns"):
+                                    func_asserts += 1
+                if func_asserts == 0:
+                    zero_assert_funcs.append(item.name)
+                else:
+                    assert_count += func_asserts
+                end_line = getattr(item, "end_lineno", None) or item.lineno
+                test_func_lines.append(max(1, end_line - item.lineno))
+
+        # Also count fixtures AND module-level test functions
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for dec in node.decorator_list:
+                dec_name = ""
+                if isinstance(dec, ast.Name):
+                    dec_name = dec.id
+                elif isinstance(dec, ast.Attribute):
+                    dec_name = dec.attr
+                if dec_name == "fixture":
+                    fixture_count += 1
+            if node.name.startswith("test_") or node.name.startswith("test"):
+                test_funcs.append(node.name)
+                func_asserts = 0
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Assert):
+                        func_asserts += 1
+                    elif isinstance(child, ast.Call):
+                        f_name = ""
+                        if isinstance(child.func, ast.Attribute):
+                            f_name = child.func.attr
+                        elif isinstance(child.func, ast.Name):
+                            f_name = child.func.id
+                        if f_name.startswith("assert"):
+                            func_asserts += 1
+                        elif f_name in ("raises", "warns", "fixture"):
+                            func_asserts += 1
+                if func_asserts == 0:
+                    zero_assert_funcs.append(node.name)
+                else:
+                    assert_count += func_asserts
+                end_line = getattr(node, "end_lineno", None) or node.lineno
+                test_func_lines.append(max(1, end_line - node.lineno))
+
+        self._test_quality[rel] = {
+            "test_count": len(test_funcs),
+            "assert_count": assert_count,
+            "mock_count": mock_count,
+            "fixture_count": fixture_count,
+            "zero_assert_tests": zero_assert_funcs,
+            "avg_test_lines": round(sum(test_func_lines) / len(test_func_lines), 1) if test_func_lines else 0,
+            "covers_symbols": sorted(actually_used),
+            "covers_sources": sorted(self._test_to_source.get(rel, set())),
+            "weak_asserts": self._count_weak_asserts(tree),
+            "fragile_patterns": self._count_fragile_patterns(tree),
+        }
 
     def _map_tool_files(self, root: Path) -> None:
         """Map MCP tool files to the source files they import (not string match)."""
@@ -777,7 +951,7 @@ class ProjectBrain:
                         self._tool_refs.setdefault(tool_name, set()).add(resolved)
 
     def _extract_symbols(self, abs_path: str, rel: str) -> None:
-        """Extract top-level class and function names from a source file."""
+        """Extract class names, function names, and class methods from a source file."""
         try:
             source = Path(abs_path).read_text(encoding="utf-8")
             tree = ast.parse(source)
@@ -787,6 +961,10 @@ class ProjectBrain:
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.ClassDef):
                 self._symbol_defs[node.name] = rel
+                for item in node.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        self._method_defs[f"{node.name}.{item.name}"] = rel
+                        self._bare_method_names.add(item.name)
             elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 self._symbol_defs[node.name] = rel
 
@@ -870,6 +1048,131 @@ class ProjectBrain:
             tests.update(self._source_to_real_tests.get(rel, set()))
         return sorted(tests)
 
+    def get_test_coverage(self, file_path: str) -> dict[str, Any]:
+        """Per-symbol test coverage for a source file."""
+        if not self._symbol_defs:
+            self._build_impact_graph()
+        rel = self._relative(file_path)
+
+        # Collect all symbols defined in this file
+        symbols_in_file = {s for s, f in self._symbol_defs.items() if f == rel}
+        methods_in_file = {m for m, f in self._method_defs.items() if f == rel}
+
+        covered: list[str] = []
+        uncovered: list[str] = []
+
+        for sym in sorted(symbols_in_file):
+            callers = self._symbol_calls.get(sym, set())
+            if callers:
+                covered.append(sym)
+            else:
+                uncovered.append(sym)
+
+        for method in sorted(methods_in_file):
+            short = method.split(".", 1)[1]
+            callers = self._symbol_calls.get(short, set())
+            # Also check full qualified name
+            callers |= self._symbol_calls.get(method, set())
+            if callers:
+                covered.append(method)
+            else:
+                uncovered.append(method)
+
+        test_files = sorted(self._source_to_tests.get(rel, set()))
+        real_test_files = sorted(self._source_to_real_tests.get(rel, set()))
+
+        # Aggregate test quality for this file's tests
+        test_metrics: list[dict[str, Any]] = []
+        for tf in test_files:
+            if tf in self._test_quality:
+                test_metrics.append({"file": tf, **self._test_quality[tf]})
+
+        return {
+            "file": rel,
+            "total_symbols": len(symbols_in_file) + len(methods_in_file),
+            "covered_symbols": covered,
+            "covered_count": len(covered),
+            "uncovered_symbols": uncovered,
+            "uncovered_count": len(uncovered),
+            "coverage_pct": round(
+                len(covered) / max(1, len(covered) + len(uncovered)) * 100, 1
+            ),
+            "test_files": test_files,
+            "real_test_files": real_test_files,
+            "test_count": len(test_files),
+            "real_test_count": len(real_test_files),
+            "test_metrics": test_metrics,
+        }
+
+    def uncovered_symbols(self, file_path: str) -> list[str]:
+        """Symbols in a source file with zero test callers."""
+        cov = self.get_test_coverage(file_path)
+        result: list[str] = cov["uncovered_symbols"]
+        return result
+
+    def test_health(self) -> dict[str, Any]:
+        """Project-wide test quality overview."""
+        if not self._test_quality:
+            self._build_impact_graph()
+
+        total_tests = 0
+        total_asserts = 0
+        total_mocks = 0
+        zero_assert_files: list[str] = []
+        high_mock_files: list[str] = []
+        all_zero_assert_tests: list[dict[str, str]] = []
+
+        for tf, metrics in self._test_quality.items():
+            tc = metrics.get("test_count", 0)
+            ac = metrics.get("assert_count", 0)
+            mc = metrics.get("mock_count", 0)
+            total_tests += tc
+            total_asserts += ac
+            total_mocks += mc
+
+            if tc > 0 and ac == 0:
+                zero_assert_files.append(tf)
+            elif mc > ac > 0 and mc / ac > 0.5:
+                high_mock_files.append(tf)
+
+            for zt in metrics.get("zero_assert_tests", []):
+                all_zero_assert_tests.append({"file": tf, "test": zt})
+
+        # Orphan sources: no test coverage at all
+        orphans: list[str] = []
+        for _sym, f in self._symbol_defs.items():
+            if "/tests/" in f or f.startswith("tests/"):
+                continue
+            if f not in self._source_to_tests and f not in orphans:
+                orphans.append(f)
+
+        # Per-module coverage summary
+        module_coverage: dict[str, dict[str, int]] = {}
+        for sym, f in self._symbol_defs.items():
+            if "/tests/" in f or f.startswith("tests/"):
+                continue
+            parts = f.split("/")
+            module = parts[0] if len(parts) > 1 else ""
+            if not module:
+                continue
+            entry = module_coverage.setdefault(module, {"total": 0, "covered": 0})
+            entry["total"] += 1
+            if self._symbol_calls.get(sym):
+                entry["covered"] += 1
+
+        return {
+            "total_test_functions": total_tests,
+            "total_asserts": total_asserts,
+            "total_mocks": total_mocks,
+            "assert_density": round(total_asserts / max(1, total_tests), 1),
+            "mock_ratio": round(total_mocks / max(1, total_asserts), 2),
+            "zero_assert_files": sorted(zero_assert_files),
+            "high_mock_files": sorted(high_mock_files),
+            "zero_assert_tests": all_zero_assert_tests,
+            "orphan_sources": sorted(orphans),
+            "module_coverage": module_coverage,
+        }
+
     def dependents(self, file_path: str) -> list[str]:
         """Files that import this file (reverse dependencies)."""
         rel = self._relative(file_path)
@@ -879,3 +1182,189 @@ class ProjectBrain:
         """Files that this file imports (forward dependencies)."""
         rel = self._relative(file_path)
         return sorted(self._import_graph.get(rel, set()))
+
+    def redundant_tests(self, min_callers: int = 3) -> list[dict[str, Any]]:
+        """Find symbols tested by many test files — likely over-tested."""
+        if not self._symbol_calls:
+            self._build_impact_graph()
+        results: list[dict[str, Any]] = []
+        for sym, callers in self._symbol_calls.items():
+            if len(callers) < min_callers:
+                continue
+            src = self._symbol_defs.get(sym, "")
+            results.append({
+                "symbol": sym,
+                "source": src,
+                "test_count": len(callers),
+                "test_files": sorted(callers),
+            })
+        results.sort(key=lambda r: r["test_count"], reverse=True)
+        return results
+
+    def assertion_quality(self) -> dict[str, Any]:
+        """Detect weak assertions across all test files."""
+        if not self._test_quality:
+            self._build_impact_graph()
+        total_weak = 0
+        total_asserts = 0
+        weak_by_file: list[dict[str, Any]] = []
+        for tf, q in self._test_quality.items():
+            weak = q.get("weak_asserts", 0)
+            total = q.get("assert_count", 0)
+            total_weak += weak
+            total_asserts += total
+            if weak > 0:
+                weak_by_file.append({
+                    "file": tf,
+                    "weak_asserts": weak,
+                    "total_asserts": total,
+                    "weak_ratio": round(weak / max(1, total), 2),
+                })
+        weak_by_file.sort(key=lambda x: x["weak_asserts"], reverse=True)
+        return {
+            "total_asserts": total_asserts,
+            "total_weak": total_weak,
+            "effective_ratio": round(
+                (total_asserts - total_weak) / max(1, total_asserts), 2
+            ),
+            "files": weak_by_file[:50],
+        }
+
+    def test_fragility(self) -> dict[str, Any]:
+        """Detect fragile test patterns: sleep, hardcoded paths, time deps."""
+        if not self._test_quality:
+            self._build_impact_graph()
+        fragile_files: list[dict[str, Any]] = []
+        for tf, q in self._test_quality.items():
+            fp = q.get("fragile_patterns", {})
+            if fp:
+                fragile_files.append({"file": tf, "patterns": fp})
+        fragile_files.sort(
+            key=lambda x: sum(x["patterns"].values()), reverse=True
+        )
+        return {"fragile_files": fragile_files}
+
+    def test_staleness(self) -> list[dict[str, Any]]:
+        """Find test files that haven't kept up with source changes."""
+        if not self._test_quality:
+            self._build_impact_graph()
+        root = Path(self.project_root)
+        stale: list[dict[str, Any]] = []
+        for test_rel, q in self._test_quality.items():
+            if q.get("test_count", 0) == 0:
+                continue
+            test_path = root / test_rel
+            try:
+                test_mtime = test_path.stat().st_mtime
+            except OSError:
+                continue
+            for src_rel in q.get("covers_sources", []):
+                src_path = root / src_rel
+                try:
+                    src_mtime = src_path.stat().st_mtime
+                except OSError:
+                    continue
+                if test_mtime < src_mtime - 86400:
+                    days_behind = int((src_mtime - test_mtime) / 86400)
+                    stale.append({
+                        "test": test_rel,
+                        "source": src_rel,
+                        "days_behind": days_behind,
+                    })
+        stale.sort(key=lambda x: x["days_behind"], reverse=True)
+        return stale
+
+    def test_smells(self) -> dict[str, Any]:
+        """Detect test smells: oversized functions, autouse fixtures, skip/xfail."""
+        smells: dict[str, Any] = {
+            "oversized_functions": [],
+            "autouse_fixtures": [],
+            "skipped_tests": 0,
+            "xfail_tests": 0,
+        }
+
+        root = Path(self.project_root)
+        for test_rel, q in self._test_quality.items():
+            if q.get("test_count", 0) == 0:
+                continue
+            abs_path = root / test_rel
+            try:
+                source = abs_path.read_text(encoding="utf-8")
+                tree = ast.parse(source)
+            except (SyntaxError, UnicodeDecodeError, OSError):
+                continue
+
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if not node.name.startswith("test_"):
+                    continue
+                end = getattr(node, "end_lineno", None) or node.lineno
+                size = end - node.lineno
+                if size > 50:
+                    smells["oversized_functions"].append({
+                        "file": test_rel,
+                        "function": node.name,
+                        "lines": size,
+                    })
+
+            for node in ast.walk(tree):
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                for dec in node.decorator_list:
+                    dec_src = ast.dump(dec)
+                    if "autouse" in dec_src and "True" in dec_src:
+                        smells["autouse_fixtures"].append({
+                            "file": test_rel,
+                            "function": node.name,
+                        })
+                    if "skip" in dec_src and "xfail" not in dec_src:
+                        smells["skipped_tests"] += 1
+                    if "xfail" in dec_src:
+                        smells["xfail_tests"] += 1
+
+        smells["oversized_functions"].sort(
+            key=lambda x: x["lines"], reverse=True
+        )
+        return smells
+
+    @staticmethod
+    def _count_weak_asserts(tree: ast.AST) -> int:
+        """Count trivial assertions that don't verify behavior."""
+        count = 0
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Assert):
+                continue
+            test = node.test
+            # assert True / assert False
+            if isinstance(test, ast.Constant) and test.value is True:
+                count += 1
+                continue
+            # assert x is not None / assert x is None
+            if isinstance(test, ast.Compare):
+                for op, comp in zip(test.ops, test.comparators, strict=False):
+                    if isinstance(op, (ast.Is, ast.IsNot)):
+                        if isinstance(comp, ast.Constant) and comp.value is None:
+                            count += 1
+        return count
+
+    @staticmethod
+    def _count_fragile_patterns(tree: ast.AST) -> dict[str, int]:
+        """Detect fragile patterns: sleep, hardcoded paths, etc."""
+        patterns: dict[str, int] = {}
+        for node in ast.walk(tree):
+            # time.sleep / sleep
+            if isinstance(node, ast.Call):
+                fname = ""
+                if isinstance(node.func, ast.Attribute):
+                    fname = node.func.attr
+                elif isinstance(node.func, ast.Name):
+                    fname = node.func.id
+                if fname == "sleep":
+                    patterns["sleep"] = patterns.get("sleep", 0) + 1
+            # Hardcoded absolute paths in strings
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                val = node.value
+                if val.startswith(("/Users/", "/home/", "/tmp/", "/var/")):
+                    patterns["hardcoded_path"] = patterns.get("hardcoded_path", 0) + 1
+        return patterns

@@ -43,10 +43,8 @@ def test_function():
             )
         )
 
-        # 验证结果结构
-        assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
         # 验证Golden Master一致性
         golden_master = self._get_golden_master("python", test_file.name)
@@ -100,8 +98,8 @@ def complex_function(param: Optional[str] = None) -> List[str]:
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 class TestFormatRegressionJava:
@@ -139,8 +137,8 @@ public class TestFormat {
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
     @pytest.mark.regression
     def test_java_format_with_imports(self, tmp_path):
@@ -172,8 +170,8 @@ public class TestImports {
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 class TestFormatRegressionJavaScript:
@@ -213,8 +211,8 @@ function testFunction() {
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
     @pytest.mark.regression
     def test_javascript_es6_format(self, tmp_path):
@@ -246,8 +244,8 @@ class TestClass {
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 class TestFormatRegressionTypeScript:
@@ -288,8 +286,8 @@ class TestClass implements TestInterface {
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 class TestFormatRegressionCSharp:
@@ -332,8 +330,8 @@ public class TestFormat
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 class TestFormatRegressionGo:
@@ -375,8 +373,8 @@ func main() {
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 class TestFormatRegressionRust:
@@ -421,8 +419,8 @@ fn main() {
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 class TestFormatRegressionToon:
@@ -452,8 +450,8 @@ class TestClass:
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
     @pytest.mark.regression
     def test_toon_format_with_details(self, tmp_path):
@@ -479,8 +477,8 @@ def complex_function(param):
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 class TestFormatRegressionMarkdown:
@@ -517,8 +515,8 @@ This is a test paragraph.
         )
 
         assert result is not None
-        assert hasattr(result, "elements")
-        assert result.elements is not None
+        assert result.success is True
+        assert isinstance(result.elements, list)
 
 
 # CSV is not a supported language for code analysis, removing this test class

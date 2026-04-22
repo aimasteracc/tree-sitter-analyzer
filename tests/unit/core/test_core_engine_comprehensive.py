@@ -79,12 +79,6 @@ class TestAnalysisEngineAnalyzeFile:
         with pytest.raises(FileNotFoundError):
             await engine.analyze_file("nonexistent_file.py")
 
-    @pytest.mark.skip(
-        reason="Permission error testing is unreliable across different platforms and CI environments"
-    )
-    async def test_analyze_file_permission_error(self):
-        """Test analyzing file with permission error (disabled due to platform inconsistencies)"""
-        pytest.skip("Permission error testing disabled due to platform inconsistencies")
 
     async def test_analyze_file_with_language_override(self):
         """Test analyzing file with language override"""

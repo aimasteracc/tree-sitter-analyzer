@@ -71,7 +71,6 @@ class TestGitStateTracker:
         """Git repo should return valid GitState."""
         tracker = GitStateTracker(git_repo.name)
         state = tracker.get_current_state()
-        assert state is not None
         assert isinstance(state.sha, str)
         assert len(state.sha) == 40  # SHA-1 hash
         assert state.branch in ("main", "master")  # Default branch name
@@ -80,7 +79,6 @@ class TestGitStateTracker:
         """get_file_sha should return blob SHA for tracked files."""
         tracker = GitStateTracker(git_repo.name)
         file_sha = tracker.get_file_sha("test.py")
-        assert file_sha is not None
         assert len(file_sha.strip()) == 40  # SHA-1 hash (strip newline)
 
     def test_untracked_file(self, git_repo: tempfile.TemporaryDirectory[str]) -> None:
@@ -91,7 +89,7 @@ class TestGitStateTracker:
             f.write("pass")
         file_sha = tracker.get_file_sha("untracked.py")
         # Git hash-object returns SHA even for untracked files
-        assert file_sha is not None
+        assert len(file_sha.strip()) == 40
 
 
 class TestGitAwareInvalidation:
@@ -108,7 +106,6 @@ class TestGitAwareInvalidation:
         """Git repo should return valid GitState."""
         manager = IncrementalCacheManager(git_repo.name)
         state = manager.get_git_state()
-        assert state is not None
         assert state.sha
         assert state.branch
 
@@ -126,7 +123,7 @@ class TestGitAwareInvalidation:
         """First call to invalidate_on_git_change should save state."""
         manager = IncrementalCacheManager(git_repo.name)
         state = manager.get_git_state()
-        assert state is not None
+        assert state.sha  # Verify state is valid
 
         # No previous state — should save current state
         invalidated = manager.invalidate_on_git_change(None)
@@ -148,7 +145,7 @@ class TestGitAwareInvalidation:
         manager.put(file_path, {"test": "data"}, ast_bytes=b"ast")
 
         # Verify cache exists
-        assert manager.get(file_path) is not None
+        assert manager.get(file_path) != {}
 
         # Create new commit
         with open(file_path, "w") as f:
@@ -174,7 +171,7 @@ class TestGitAwareInvalidation:
             f.write("def test(): pass")
 
         manager.put(file_path, {"fn": "test"}, ast_bytes=b"ast")
-        assert manager.get(file_path) is not None
+        assert manager.get(file_path).analysis_result == {"fn": "test"}
 
         # Create new branch
         os.system(f"cd {git_repo.name} && git checkout -b feature 2>/dev/null")
@@ -183,7 +180,7 @@ class TestGitAwareInvalidation:
         manager.handle_branch_switch("main", "feature")
 
         # File should still be cached (content unchanged)
-        assert manager.get(file_path) is not None
+        assert manager.get(file_path).analysis_result == {"fn": "test"}
 
         # Switch back to main
         os.system(f"cd {git_repo.name} && git checkout main 2>/dev/null")
@@ -200,7 +197,7 @@ class TestGitAwareInvalidation:
             f.write("original")
 
         manager.put(file_path, {"v": 1}, ast_bytes=b"ast")
-        assert manager.get(file_path) is not None
+        assert manager.get(file_path).analysis_result == {"v": 1}
 
         # Create new branch and modify file
         os.system(f"cd {git_repo.name} && git checkout -b feature2 2>/dev/null")
@@ -234,7 +231,7 @@ class TestGitAwareInvalidation:
         manager.put(file_path, {"test": True}, ast_bytes=b"ast", git_sha=state.sha if state else None)
 
         cached = manager.get(file_path)
-        assert cached is not None
+        assert cached.analysis_result == {"test": True}
         if state:
             assert cached.git_sha == state.sha
 
@@ -251,7 +248,6 @@ class TestGitAwareInvalidation:
         # Second instance (should read from disk)
         manager2 = IncrementalCacheManager(git_repo.name)
         result = manager2.get(file_path)
-        assert result is not None
         assert result.analysis_result == {"persist": True}
 
     def test_detached_head_handling(self, git_repo: tempfile.TemporaryDirectory[str]) -> None:
@@ -266,7 +262,6 @@ class TestGitAwareInvalidation:
         manager2 = IncrementalCacheManager(git_repo.name)
         new_state = manager2.get_git_state()
 
-        assert new_state is not None
         assert new_state.branch == "HEAD"  # Detached HEAD
         assert new_state.sha == sha
 

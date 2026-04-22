@@ -53,6 +53,14 @@ class BrainTool(BaseMCPTool):
                             "impact",
                             "blast_radius",
                             "tests_to_run",
+                            "test_coverage",
+                            "test_health",
+                            "redundant_tests",
+                            "assertion_quality",
+                            "test_fragility",
+                            "test_staleness",
+                            "uncovered",
+                            "test_smells",
                             "deps",
                             "dependents",
                             "warm_up",
@@ -64,6 +72,14 @@ class BrainTool(BaseMCPTool):
                             "impact: what happens if I change this file. "
                             "blast_radius: graph-based impact — all affected files, tests, tools. "
                             "tests_to_run: which test files cover these source files. "
+                            "test_coverage: per-symbol coverage for a source file. "
+                            "test_health: project-wide test quality overview. "
+                            "redundant_tests: symbols tested by many test files. "
+                            "assertion_quality: weak assertion detection. "
+                            "test_fragility: fragile patterns (sleep, hardcoded paths). "
+                            "test_staleness: tests that haven't kept up with source changes. "
+                            "test_smells: oversized functions, autouse fixtures, skip/xfail markers. "
+                            "uncovered: symbols with zero test coverage in a file. "
                             "deps: what does this file import. "
                             "dependents: what files import this file. "
                             "warm_up: rebuild the brain model."
@@ -104,6 +120,8 @@ class BrainTool(BaseMCPTool):
 
         brain = _get_brain(self.project_root)
 
+        data: dict[str, Any] | str | list[str]
+
         if action == "warm_up":
             brain.warm_up()
             data = brain.get_summary()
@@ -141,7 +159,7 @@ class BrainTool(BaseMCPTool):
                 files = [fp]
             if not files:
                 raise ValueError("files or file_path required for blast_radius")
-            data = brain.blast_radius(files).to_text()
+            return {"type": "text", "text": brain.blast_radius(files).to_text()}
 
         elif action == "tests_to_run":
             files = arguments.get("files", [])
@@ -152,6 +170,39 @@ class BrainTool(BaseMCPTool):
                 raise ValueError("files or file_path required for tests_to_run")
             tests = brain.affected_tests(files)
             data = {"files": files, "tests": tests, "count": len(tests)}
+
+        elif action == "test_coverage":
+            fp = arguments.get("file_path")
+            if not fp:
+                raise ValueError("file_path required for test_coverage")
+            resolved = self.resolve_and_validate_file_path(fp)
+            data = brain.get_test_coverage(resolved)
+
+        elif action == "test_health":
+            data = brain.test_health()
+
+        elif action == "redundant_tests":
+            min_c = arguments.get("min_callers", 3)
+            data = {"redundant": brain.redundant_tests(min_c)}
+
+        elif action == "assertion_quality":
+            data = brain.assertion_quality()
+
+        elif action == "test_fragility":
+            data = brain.test_fragility()
+
+        elif action == "test_staleness":
+            data = {"stale": brain.test_staleness()}
+
+        elif action == "test_smells":
+            data = brain.test_smells()
+
+        elif action == "uncovered":
+            fp = arguments.get("file_path")
+            if not fp:
+                raise ValueError("file_path required for uncovered")
+            resolved = self.resolve_and_validate_file_path(fp)
+            data = {"file": resolved, "uncovered": brain.uncovered_symbols(resolved)}
 
         elif action == "deps":
             fp = arguments.get("file_path")
@@ -170,8 +221,6 @@ class BrainTool(BaseMCPTool):
         else:
             raise ValueError(f"Unknown action: {action}")
 
-        if isinstance(data, str):
-            return {"type": "text", "text": data}
         if fmt == "toon":
             return {"content": ToonEncoder().encode(data)}
         return data

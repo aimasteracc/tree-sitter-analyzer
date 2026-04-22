@@ -32,37 +32,38 @@ class TestModuleExports:
 
     def test_tree_sitter_compat_exports(self) -> None:
         """Test tree-sitter compatibility exports are available."""
-        assert TreeSitterQueryCompat is not None
-        assert get_node_text_safe is not None
-        assert log_api_info is not None
+        assert callable(get_node_text_safe)
+        assert callable(log_api_info)
+        assert isinstance(TreeSitterQueryCompat, type)
 
     def test_logging_function_exports(self) -> None:
         """Test logging function exports are available."""
-        assert setup_logger is not None
-        assert log_debug is not None
-        assert log_error is not None
-        assert log_warning is not None
-        assert log_info is not None
-        assert log_performance is not None
+        assert callable(setup_logger)
+        assert callable(log_debug)
+        assert callable(log_error)
+        assert callable(log_warning)
+        assert callable(log_info)
+        assert callable(log_performance)
 
     def test_logging_class_exports(self) -> None:
         """Test logging class exports are available."""
-        assert QuietMode is not None
-        assert LoggingContext is not None
-        assert SafeStreamHandler is not None
+        assert isinstance(QuietMode, type)
+        assert isinstance(LoggingContext, type)
+        assert isinstance(SafeStreamHandler, type)
 
     def test_logging_utility_exports(self) -> None:
         """Test logging utility exports are available."""
-        assert safe_print is not None
-        assert setup_performance_logger is not None
-        assert create_performance_logger is not None
-        assert setup_safe_logging_shutdown is not None
-        assert suppress_output is not None
+        assert callable(safe_print)
+        assert callable(setup_performance_logger)
+        assert callable(create_performance_logger)
+        assert callable(setup_safe_logging_shutdown)
+        assert callable(suppress_output)
 
     def test_logger_instance_exports(self) -> None:
         """Test logger instance exports are available."""
-        assert logger is not None
-        assert perf_logger is not None
+        import logging
+        assert isinstance(logger, logging.Logger)
+        assert isinstance(perf_logger, logging.Logger)
 
 
 class TestImportability:
@@ -81,12 +82,12 @@ class TestImportability:
 
     def test_direct_import_from_utils(self) -> None:
         """Test direct import from utils works."""
-        # This import should not raise
         from tree_sitter_analyzer.utils import TreeSitterQueryCompat, log_info, logger
 
-        assert TreeSitterQueryCompat is not None
-        assert log_info is not None
-        assert logger is not None
+        assert isinstance(TreeSitterQueryCompat, type)
+        assert callable(log_info)
+        import logging
+        assert isinstance(logger, logging.Logger)
 
 
 class TestFunctionTypes:
@@ -260,10 +261,9 @@ class TestImportPerformance:
 
     def test_import_does_not_raise(self) -> None:
         """Test that importing the module doesn't raise exceptions."""
-        # This test passes if the import at the top of the file succeeds
         from tree_sitter_analyzer import utils
 
-        assert utils is not None
+        assert hasattr(utils, "__all__")
 
     def test_reimport_is_safe(self) -> None:
         """Test that reimporting the module is safe."""
@@ -281,29 +281,15 @@ class TestImportPerformance:
 class TestFunctionalityAvailability:
     """Test that exported functionality works."""
 
-    def test_log_info_works(self) -> None:
-        """Test that log_info can be called."""
-        # Should not raise
-        log_info("Test message")
+    def test_log_functions_callable(self) -> None:
+        """Test that all log functions can be called without raising."""
+        for fn in [log_info, log_error, log_warning, log_debug]:
+            assert callable(fn)
+            fn("test message")
 
-    def test_log_error_works(self) -> None:
-        """Test that log_error can be called."""
-        # Should not raise
-        log_error("Test error")
-
-    def test_log_warning_works(self) -> None:
-        """Test that log_warning can be called."""
-        # Should not raise
-        log_warning("Test warning")
-
-    def test_log_debug_works(self) -> None:
-        """Test that log_debug can be called."""
-        # Should not raise
-        log_debug("Test debug")
-
-    def test_safe_print_works(self) -> None:
+    def test_safe_print_callable(self) -> None:
         """Test that safe_print can be called."""
-        # Should not raise
+        assert callable(safe_print)
         safe_print("Test print")
 
 

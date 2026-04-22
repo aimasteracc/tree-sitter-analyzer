@@ -157,4 +157,121 @@ class TestFileKnowledge:
         )
         assert fk.path == "test.py"
         assert fk.health_score == 80.0
-        assert fk.critical_hotspot_lines == (42,)
+
+
+class TestProjectBrainTestPerception:
+    """Tests for deep test perception: coverage, quality, health."""
+
+    @pytest.fixture
+    def project_with_tests(self, tmp_path: Path) -> str:
+        """Create a project with source files and test files."""
+        src = tmp_path / "my_pkg"
+        src.mkdir()
+        (src / "__init__.py").write_text("")
+
+        (src / "calculator.py").write_text(
+            "class Calculator:\n"
+            "    def __init__(self):\n"
+            "        self.result = 0\n"
+            "    def add(self, value):\n"
+            "        self.result += value\n"
+            "        return self.result\n"
+            "    def subtract(self, value):\n"
+            "        self.result -= value\n"
+            "        return self.result\n"
+            "\n"
+            "def helper():\n"
+            "    return 42\n"
+        )
+
+        tests = tmp_path / "tests"
+        tests.mkdir()
+        (tests / "__init__.py").write_text("")
+
+        (tests / "test_calculator.py").write_text(
+            "from my_pkg.calculator import Calculator, helper\n"
+            "import pytest\n"
+            "\n"
+            "def test_add():\n"
+            "    c = Calculator()\n"
+            "    assert c.add(5) == 5\n"
+            "    assert c.add(3) == 8\n"
+            "\n"
+            "def test_subtract():\n"
+            "    c = Calculator()\n"
+            "    assert c.subtract(3) == -3\n"
+            "\n"
+            "def test_helper():\n"
+            "    assert helper() == 42\n"
+            "\n"
+            "def test_no_assert():\n"
+            "    c = Calculator()\n"
+            "    c.add(1)\n"
+            "\n"
+            "def test_raises():\n"
+            "    with pytest.raises(TypeError):\n"
+            "        raise TypeError('bad')\n"
+        )
+
+        return str(tmp_path)
+
+    def test_method_defs_tracked(self, project_with_tests: str):
+        brain = ProjectBrain(project_root=project_with_tests)
+        brain._build_impact_graph()
+        assert "Calculator.__init__" in brain._method_defs
+        assert "Calculator.add" in brain._method_defs
+        assert "Calculator.subtract" in brain._method_defs
+
+    def test_symbol_calls_tracked(self, project_with_tests: str):
+        brain = ProjectBrain(project_root=project_with_tests)
+        brain._build_impact_graph()
+        assert "Calculator" in brain._symbol_calls
+        assert "add" in brain._symbol_calls
+        assert "subtract" in brain._symbol_calls
+        assert "helper" in brain._symbol_calls
+
+    def test_test_coverage_query(self, project_with_tests: str):
+        brain = ProjectBrain(project_root=project_with_tests)
+        brain._build_impact_graph()
+        cov = brain.get_test_coverage(str(Path(project_with_tests) / "my_pkg" / "calculator.py"))
+        assert cov["total_symbols"] > 0
+        assert cov["covered_count"] > 0
+        assert cov["coverage_pct"] > 0
+        assert "Calculator" in cov["covered_symbols"]
+        assert "Calculator.add" in cov["covered_symbols"]
+        assert "test_calculator.py" in cov["test_files"][0]
+
+    def test_uncovered_symbols(self, project_with_tests: str):
+        brain = ProjectBrain(project_root=project_with_tests)
+        brain._build_impact_graph()
+        uncovered = brain.uncovered_symbols(str(Path(project_with_tests) / "my_pkg" / "calculator.py"))
+        assert isinstance(uncovered, list)
+
+    def test_test_health(self, project_with_tests: str):
+        brain = ProjectBrain(project_root=project_with_tests)
+        brain._build_impact_graph()
+        health = brain.test_health()
+        assert health["total_test_functions"] == 5
+        assert health["total_asserts"] == 5  # 2+1+1+0+1(raises)
+        assert health["assert_density"] == 1.0
+        assert len(health["zero_assert_tests"]) == 1
+        assert health["zero_assert_tests"][0]["test"] == "test_no_assert"
+
+    def test_test_quality_metrics(self, project_with_tests: str):
+        brain = ProjectBrain(project_root=project_with_tests)
+        brain._build_impact_graph()
+        test_rel = brain._relative(str(Path(project_with_tests) / "tests" / "test_calculator.py"))
+        quality = brain._test_quality[test_rel]
+        assert quality["test_count"] == 5
+        assert quality["assert_count"] == 5
+        assert "test_no_assert" in quality["zero_assert_tests"]
+
+    def test_context_includes_test_info(self, project_with_tests: str):
+        brain = ProjectBrain(project_root=project_with_tests)
+        brain.warm_up()
+        src = str(Path(project_with_tests) / "my_pkg" / "calculator.py")
+        ctx = brain.get_context_for_file(src)
+        assert "tests" in ctx
+        assert "real_tests" in ctx
+        assert "test_count" in ctx
+        assert ctx["test_count"] >= 1

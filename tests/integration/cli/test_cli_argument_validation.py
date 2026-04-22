@@ -54,7 +54,6 @@ class TestCLIArgumentValidation:
         """Test that --table and --query-key together is invalid."""
         args = self.create_args(table="full", query_key="methods")
         result = self.validator.validate_arguments(args)
-        assert result is not None
         assert "--table and --query-key cannot be used together" in result
         assert "Use --query-key with --filter instead" in result
 
@@ -62,7 +61,6 @@ class TestCLIArgumentValidation:
         """Test that --table and --query-key with --filter is invalid."""
         args = self.create_args(table="full", query_key="methods", filter="name=main")
         result = self.validator.validate_arguments(args)
-        assert result is not None
         assert "--table and --query-key cannot be used together" in result
 
     def test_table_query_exclusivity_validator(self):
@@ -79,7 +77,6 @@ class TestCLIArgumentValidation:
         # Invalid case
         args = self.create_args(table="full", query_key="methods")
         result = self.validator.validate_table_query_exclusivity(args)
-        assert result is not None
         assert "--table and --query-key cannot be used together" in result
 
     def test_usage_examples_content(self):
@@ -147,9 +144,6 @@ class TestCLIArgumentValidation:
     def test_validator_initialization(self):
         """Test validator can be initialized properly."""
         validator = CLIArgumentValidator()
-        assert validator is not None
-
-        # Test that methods are callable
         assert callable(validator.validate_arguments)
         assert callable(validator.validate_table_query_exclusivity)
         assert callable(validator.get_usage_examples)
