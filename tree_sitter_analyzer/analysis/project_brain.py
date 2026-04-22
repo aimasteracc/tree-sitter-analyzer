@@ -137,6 +137,7 @@ class ProjectBrain:
     _source_stems: dict[str, str] = field(default_factory=dict)
     _tool_refs: dict[str, set[str]] = field(default_factory=dict)
     _symbol_defs: dict[str, str] = field(default_factory=dict)  # symbol_name → file_rel
+    _file_hashes: dict[str, str] = field(default_factory=dict)  # rel_path → md5
 
     def warm_up(self) -> None:
         """Scan all project files and build the perception model."""
@@ -484,43 +485,145 @@ class ProjectBrain:
     # -- Impact Graph ----------------------------------------------------------
 
     def _build_impact_graph(self) -> None:
-        """Build import graph (from cache if fresh, otherwise from AST)."""
+        """Build impact graph — incremental if cache exists with file hashes."""
         cache_path = Path(self.project_root) / ".brain_graph.json"
+
+        # Try loading cache
         if cache_path.exists():
             try:
                 self._load_graph(cache_path)
-                if self._cache_is_fresh(cache_path):
-                    return
             except (json.JSONDecodeError, KeyError, OSError):
-                pass
+                self._import_graph.clear()
+                self._reverse_imports.clear()
+                self._test_to_source.clear()
+                self._source_to_tests.clear()
+                self._source_to_real_tests.clear()
+                self._source_stems.clear()
+                self._tool_refs.clear()
+                self._symbol_defs.clear()
+                self._file_hashes.clear()
 
-        self._build_graph_from_ast()
+        # Find all current .py files and their hashes
+        current_files = self._scan_py_files()
+        current_hashes = {}
+        for rel in current_files:
+            abs_path = Path(self.project_root) / rel
+            try:
+                current_hashes[rel] = hashlib.md5(abs_path.read_bytes()).hexdigest()
+            except OSError:
+                current_hashes[rel] = ""
+
+        # Determine what changed
+        changed = {rel for rel, h in current_hashes.items() if self._file_hashes.get(rel) != h}
+        removed = {rel for rel in self._file_hashes if rel not in current_hashes}
+
+        if not changed and not removed and self._file_hashes:
+            # Nothing changed — cache is perfect
+            return
+
+        # If cache is empty or too many changes (>50%), full rebuild is faster
+        if not self._file_hashes or len(changed) > 50:
+            self._import_graph.clear()
+            self._reverse_imports.clear()
+            self._test_to_source.clear()
+            self._source_to_tests.clear()
+            self._source_to_real_tests.clear()
+            self._source_stems.clear()
+            self._tool_refs.clear()
+            self._symbol_defs.clear()
+            changed = current_files
+
+        # Remove stale data for deleted/changed files
+        for rel in removed | changed:
+            self._remove_file_edges(rel)
+            self._source_stems.pop(Path(rel).stem, None)
+
+        # Re-parse only changed files
+        for rel in changed:
+            self._source_stems[Path(rel).stem] = rel
+            abs_path = str(Path(self.project_root) / rel)
+            if "/tests/" in rel or rel.startswith("tests/"):
+                self._parse_imports(abs_path, rel)
+                self._map_test_file(abs_path, rel)
+            else:
+                self._parse_imports(abs_path, rel)
+                self._extract_symbols(abs_path, rel)
+
+        # Rebuild test mapping and tool refs (cheap — no AST parsing)
+        self._rebuild_test_and_tool_maps()
+
+        # Update hashes
+        self._file_hashes = current_hashes
 
         try:
             self._save_graph(cache_path)
         except OSError:
             pass
 
-    def _cache_is_fresh(self, cache_path: Path) -> bool:
-        """Check if cache is newer than the most recently modified .py file."""
-        cache_mtime = cache_path.stat().st_mtime
-        root = Path(self.project_root)
-        for ext in ("tree_sitter_analyzer", "tests"):
-            pkg = root / ext
-            if not pkg.exists():
+    def _scan_py_files(self) -> set[str]:
+        """Scan for all project .py files, return relative paths."""
+        skip_dirs = {"__pycache__", ".venv", "node_modules", ".git", ".tox", ".mypy_cache"}
+        result: set[str] = set()
+        for pkg in ("tree_sitter_analyzer", "tests"):
+            pkg_path = Path(self.project_root) / pkg
+            if not pkg_path.exists():
                 continue
-            for py_file in pkg.rglob("*.py"):
-                if any(s in py_file.parts for s in ("__pycache__",)):
+            for p in pkg_path.rglob("*.py"):
+                if any(s in p.parts for s in skip_dirs):
                     continue
+                result.add(self._relative(str(p)))
+        return result
+
+    def _remove_file_edges(self, rel: str) -> None:
+        """Remove all graph edges related to a file."""
+        # Remove from import graph
+        old_imports = self._import_graph.pop(rel, set())
+        for dep in old_imports:
+            self._reverse_imports.get(dep, set()).discard(rel)
+        # Remove from reverse imports
+        old_reverse = self._reverse_imports.pop(rel, set())
+        for dep in old_reverse:
+            self._import_graph.get(dep, set()).discard(rel)
+        # Remove from test mappings
+        for src_set in (self._test_to_source, self._source_to_tests,
+                        self._source_to_real_tests):
+            src_set.pop(rel, None)
+        # Remove symbols defined in this file
+        self._symbol_defs = {s: f for s, f in self._symbol_defs.items() if f != rel}
+
+    def _rebuild_test_and_tool_maps(self) -> None:
+        """Rebuild derived mappings without re-parsing ASTs."""
+        # Rebuild source_to_tests from test_to_source
+        self._source_to_tests.clear()
+        for test_rel, sources in self._test_to_source.items():
+            for src in sources:
+                self._source_to_tests.setdefault(src, set()).add(test_rel)
+        # Rebuild tool refs
+        self._tool_refs.clear()
+        tools_dir = Path(self.project_root) / "tree_sitter_analyzer" / "mcp" / "tools"
+        if tools_dir.exists():
+            for tool_file in sorted(tools_dir.glob("*_tool.py")):
+                if tool_file.name in ("base_tool.py", "__init__.py"):
+                    continue
+                tool_name = tool_file.stem.removesuffix("_tool")
                 try:
-                    if py_file.stat().st_mtime > cache_mtime:
-                        return False
-                except OSError:
-                    pass
-        return True
+                    source = tool_file.read_text(encoding="utf-8")
+                    tree = ast.parse(source)
+                except (SyntaxError, UnicodeDecodeError, OSError):
+                    continue
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            resolved = self._resolve_import(alias.name)
+                            if resolved and resolved not in self._test_to_source:
+                                self._tool_refs.setdefault(tool_name, set()).add(resolved)
+                    elif isinstance(node, ast.ImportFrom) and node.module:
+                        resolved = self._resolve_import(node.module)
+                        if resolved and resolved not in self._test_to_source:
+                            self._tool_refs.setdefault(tool_name, set()).add(resolved)
 
     def _save_graph(self, path: Path) -> None:
-        """Persist impact graph to JSON."""
+        """Persist impact graph + file hashes to JSON."""
         data = {
             "import_graph": {k: sorted(v) for k, v in self._import_graph.items()},
             "reverse_imports": {k: sorted(v) for k, v in self._reverse_imports.items()},
@@ -530,11 +633,12 @@ class ProjectBrain:
             "source_stems": dict(self._source_stems),
             "tool_refs": {k: sorted(v) for k, v in self._tool_refs.items()},
             "symbol_defs": dict(self._symbol_defs),
+            "file_hashes": dict(self._file_hashes),
         }
         path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
     def _load_graph(self, path: Path) -> None:
-        """Load impact graph from JSON cache."""
+        """Load impact graph + file hashes from JSON cache."""
         data = json.loads(path.read_text(encoding="utf-8"))
         self._import_graph = {k: set(v) for k, v in data["import_graph"].items()}
         self._reverse_imports = {k: set(v) for k, v in data["reverse_imports"].items()}
@@ -544,6 +648,7 @@ class ProjectBrain:
         self._source_stems = data["source_stems"]
         self._tool_refs = {k: set(v) for k, v in data["tool_refs"].items()}
         self._symbol_defs = data.get("symbol_defs", {})
+        self._file_hashes = data.get("file_hashes", {})
         self._built = True
 
     def _build_graph_from_ast(self) -> None:
