@@ -132,8 +132,10 @@ class ProjectBrain:
     _reverse_imports: dict[str, set[str]] = field(default_factory=dict)
     _test_to_source: dict[str, set[str]] = field(default_factory=dict)
     _source_to_tests: dict[str, set[str]] = field(default_factory=dict)
+    _source_to_real_tests: dict[str, set[str]] = field(default_factory=dict)  # tests that actually call source code
     _source_stems: dict[str, str] = field(default_factory=dict)
     _tool_refs: dict[str, set[str]] = field(default_factory=dict)
+    _symbol_defs: dict[str, str] = field(default_factory=dict)  # symbol_name → file_rel
 
     def warm_up(self) -> None:
         """Scan all project files and build the perception model."""
@@ -498,6 +500,8 @@ class ProjectBrain:
             rel = self._relative(abs_path)
             self._source_stems[Path(rel).stem] = rel
             self._parse_imports(abs_path, rel)
+            if "/tests/" not in rel and not rel.startswith("tests/"):
+                self._extract_symbols(abs_path, rel)
 
         for abs_path in py_files:
             rel = self._relative(abs_path)
@@ -528,7 +532,7 @@ class ProjectBrain:
                     self._reverse_imports.setdefault(resolved, set()).add(rel)
 
     def _map_test_file(self, abs_path: str, rel: str) -> None:
-        """Map a test file to the source files it tests."""
+        """Map a test file to the source files it tests, with real coverage detection."""
         # Convention: test_health_score.py → health_score
         test_name = Path(rel).name
         if test_name.startswith("test_") and test_name.endswith(".py"):
@@ -538,12 +542,15 @@ class ProjectBrain:
                 self._test_to_source.setdefault(rel, set()).add(source_rel)
                 self._source_to_tests.setdefault(source_rel, set()).add(rel)
 
-        # Import-based: check what the test imports
+        # Import-based: check what the test imports and actually uses
         try:
             source = Path(abs_path).read_text(encoding="utf-8")
             tree = ast.parse(source)
         except (SyntaxError, UnicodeDecodeError, OSError):
             return
+
+        imported_symbols: set[str] = set()
+        imported_modules: set[str] = set()
 
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.module:
@@ -551,9 +558,32 @@ class ProjectBrain:
                 if resolved and "/tests/" not in resolved:
                     self._test_to_source.setdefault(rel, set()).add(resolved)
                     self._source_to_tests.setdefault(resolved, set()).add(rel)
+                    imported_modules.add(resolved)
+                    for alias in node.names:
+                        imported_symbols.add(alias.name.split(" as ")[0])
+
+        # Real coverage: does the test actually call/instantiate imported symbols?
+        called_names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    called_names.add(node.func.id)
+                elif isinstance(node.func, ast.Attribute):
+                    called_names.add(node.func.attr)
+
+        actually_used = imported_symbols & called_names
+        if actually_used:
+            for sym in actually_used:
+                if sym in self._symbol_defs:
+                    src = self._symbol_defs[sym]
+                    self._source_to_real_tests.setdefault(src, set()).add(rel)
+        # If test calls any function from imported modules, count as real
+        for mod in imported_modules:
+            if actually_used:
+                self._source_to_real_tests.setdefault(mod, set()).add(rel)
 
     def _map_tool_files(self, root: Path) -> None:
-        """Map MCP tool files to the source files they reference."""
+        """Map MCP tool files to the source files they import (not string match)."""
         tools_dir = root / "tree_sitter_analyzer" / "mcp" / "tools"
         if not tools_dir.exists():
             return
@@ -562,12 +592,34 @@ class ProjectBrain:
                 continue
             tool_name = tool_file.stem.removesuffix("_tool")
             try:
-                content = tool_file.read_text(encoding="utf-8")
-            except OSError:
+                source = tool_file.read_text(encoding="utf-8")
+                tree = ast.parse(source)
+            except (SyntaxError, UnicodeDecodeError, OSError):
                 continue
-            for stem, source_rel in self._source_stems.items():
-                if stem in content and source_rel not in self._test_to_source:
-                    self._tool_refs.setdefault(tool_name, set()).add(source_rel)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        resolved = self._resolve_import(alias.name)
+                        if resolved and resolved not in self._test_to_source:
+                            self._tool_refs.setdefault(tool_name, set()).add(resolved)
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    resolved = self._resolve_import(node.module)
+                    if resolved and resolved not in self._test_to_source:
+                        self._tool_refs.setdefault(tool_name, set()).add(resolved)
+
+    def _extract_symbols(self, abs_path: str, rel: str) -> None:
+        """Extract top-level class and function names from a source file."""
+        try:
+            source = Path(abs_path).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, UnicodeDecodeError, OSError):
+            return
+
+        for node in ast.iter_child_nodes(tree):
+            if isinstance(node, ast.ClassDef):
+                self._symbol_defs[node.name] = rel
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self._symbol_defs[node.name] = rel
 
     def _resolve_import(self, module_name: str) -> str | None:
         """Resolve a dot-path import to a project-relative path."""
@@ -637,6 +689,16 @@ class ProjectBrain:
         for f in files:
             rel = self._relative(f)
             tests.update(self._source_to_tests.get(rel, set()))
+        return sorted(tests)
+
+    def affected_real_tests(self, files: list[str]) -> list[str]:
+        """Return test files that actually call/instantiate code from the given source files."""
+        if not self._source_to_real_tests:
+            self._build_impact_graph()
+        tests: set[str] = set()
+        for f in files:
+            rel = self._relative(f)
+            tests.update(self._source_to_real_tests.get(rel, set()))
         return sorted(tests)
 
     def dependents(self, file_path: str) -> list[str]:
