@@ -848,6 +848,20 @@ class ProjectBrain:
                         if dec_name == "fixture":
                             fixture_count += 1
                     continue
+                # Skip methods decorated with @pytest.fixture
+                is_fixture = False
+                for dec in item.decorator_list:
+                    dec_name = ""
+                    if isinstance(dec, ast.Name):
+                        dec_name = dec.id
+                    elif isinstance(dec, ast.Attribute):
+                        dec_name = dec.attr
+                    if dec_name == "fixture":
+                        is_fixture = True
+                        fixture_count += 1
+                        break
+                if is_fixture:
+                    continue
                 test_funcs.append(item.name)
                 func_asserts = 0
                 for child in ast.walk(item):
@@ -881,6 +895,7 @@ class ProjectBrain:
         for node in ast.iter_child_nodes(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
+            is_fixture = False
             for dec in node.decorator_list:
                 dec_name = ""
                 if isinstance(dec, ast.Name):
@@ -889,6 +904,9 @@ class ProjectBrain:
                     dec_name = dec.attr
                 if dec_name == "fixture":
                     fixture_count += 1
+                    is_fixture = True
+            if is_fixture:
+                continue
             if node.name.startswith("test_") or node.name.startswith("test"):
                 test_funcs.append(node.name)
                 func_asserts = 0

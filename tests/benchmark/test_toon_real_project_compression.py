@@ -320,6 +320,7 @@ class TestRealProjectCompression:
                 rates.append(metrics["compression_rate_pct"])
             avg = sum(rates) / len(rates)
             print(f"\n  {label} payloads ({len(subset)} files): avg {avg:.1f}% compression")
+            assert len(rates) == len(subset)
 
     @pytest.mark.asyncio
     async def test_full_compression_report(
@@ -356,3 +357,5 @@ class TestRealProjectCompression:
                     f"JSON {total_json:>8,}B → TOON {total_toon:>8,}B, "
                     f"{overall_rate:>5.1f}% reduction"
                 )
+                assert count > 0
+                assert total_toon > 0

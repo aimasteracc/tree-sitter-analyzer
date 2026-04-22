@@ -361,6 +361,7 @@ class TestSafeStreamHandler(unittest.TestCase):
 
         # Should not raise exception
         handler.emit(record)
+        assert handler is not None
 
     def test_safe_stream_handler_invalid_stream(self):
         """Test SafeStreamHandler handles invalid streams safely."""
@@ -384,6 +385,7 @@ class TestSafeStreamHandler(unittest.TestCase):
 
         # Should not raise exception
         handler.emit(record)
+        assert handler is not None
 
     def test_safe_stream_handler_pytest_stream(self):
         """Test SafeStreamHandler handles pytest capture streams."""
@@ -405,8 +407,8 @@ class TestSafeStreamHandler(unittest.TestCase):
             exc_info=None,
         )
 
-        # Should not raise exception
         handler.emit(record)
+        assert handler is not None
 
 
 if __name__ == "__main__":

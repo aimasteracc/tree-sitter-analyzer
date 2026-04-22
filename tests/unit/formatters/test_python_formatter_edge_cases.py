@@ -524,6 +524,7 @@ class Test:
 
         formatter._extract_module_docstring(data)
         # Should handle gracefully without crashing
+        assert isinstance(formatter._extract_module_docstring(data), (str, type(None)))
 
     def test_extract_module_docstring_mixed_quotes(self, formatter):
         """Test extracting module docstring with mixed quote types."""

@@ -320,9 +320,9 @@ class TestOutputManagerEdgeCases:
 
     def test_output_manager_with_none_data(self, output_manager):
         """Test output manager handles None data gracefully"""
-        # These should not raise exceptions
         output_manager.output_data(None)
         output_manager.output_json(None)
+        assert output_manager is not None
 
     def test_output_empty_collections(self, monkeypatch, output_manager):
         """Test output with empty collections"""

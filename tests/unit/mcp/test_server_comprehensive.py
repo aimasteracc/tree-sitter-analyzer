@@ -84,9 +84,8 @@ class TestTreeSitterAnalyzerMCPServerInitialization:
     def test_ensure_initialized_success(self, temp_project_dir):
         """Test _ensure_initialized when server is initialized."""
         server = TreeSitterAnalyzerMCPServer(temp_project_dir)
-
-        # Should not raise any exception
         server._ensure_initialized()
+        assert server._initialization_complete is True
 
     def test_ensure_initialized_failure(self, temp_project_dir):
         """Test _ensure_initialized when server is not initialized."""
@@ -830,6 +829,7 @@ class TestTreeSitterAnalyzerMCPServerProjectPath:
         with tempfile.TemporaryDirectory() as new_project_dir:
             # Should not raise any exception
             server.set_project_path(new_project_dir)
+            assert server.universal_analyze_tool is None
 
 
 class TestTreeSitterAnalyzerMCPServerRuntime:

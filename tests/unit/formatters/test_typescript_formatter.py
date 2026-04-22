@@ -309,24 +309,6 @@ class TestTypeScriptTableFormatter:
         assert any("validate" in line for line in lines)
         assert any("userId" in line for line in lines)
 
-    def test_get_element_type_name(self, formatter):
-        """Test element type name generation - method may not exist in new implementation"""
-        # Skip if method doesn't exist
-        if not hasattr(formatter, "_get_element_type_name"):
-            pytest.skip("_get_element_type_name not implemented in new formatter")
-
-    def test_format_element_details(self, formatter):
-        """Test element details formatting - method may not exist in new implementation"""
-        # Skip if method doesn't exist
-        if not hasattr(formatter, "_format_element_details"):
-            pytest.skip("_format_element_details not implemented in new formatter")
-
-    def test_format_element_details_minimal(self, formatter):
-        """Test element details formatting with minimal data - method may not exist"""
-        # Skip if method doesn't exist
-        if not hasattr(formatter, "_format_element_details"):
-            pytest.skip("_format_element_details not implemented in new formatter")
-
     def test_format_empty_data(self, formatter):
         """Test formatting with empty data"""
         empty_data = {

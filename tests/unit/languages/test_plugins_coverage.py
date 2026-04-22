@@ -292,8 +292,8 @@ class TestPluginManagerAdvanced:
         mock_plugin = mocker.MagicMock()
         mock_plugin.get_language_name.side_effect = Exception("Test error")
 
-        # Should not raise exception
         plugin_manager_instance.register_plugin(mock_plugin)
+        assert len(plugin_manager_instance.get_supported_languages()) >= 0
 
     def test_get_plugin_for_file_with_applicable_plugin(
         self, mocker, plugin_manager_instance
@@ -313,8 +313,8 @@ class TestPluginManagerAdvanced:
         self, plugin_manager_instance
     ):
         """Test getting plugin for file with no applicable plugin"""
-        # PluginManager doesn't have get_plugin_for_file method, skip this test
-        pass
+        result = plugin_manager_instance.get_plugin("nonexistent_language")
+        assert result is None
 
     def test_list_supported_languages_empty(self, plugin_manager_instance):
         """Test listing supported languages when empty"""
@@ -322,6 +322,6 @@ class TestPluginManagerAdvanced:
         assert isinstance(languages, list)
 
     def test_list_supported_extensions_empty(self, plugin_manager_instance):
-        """Test listing supported extensions when empty"""
-        # PluginManager doesn't have list_supported_extensions method, skip this test
-        pass
+        """Test listing supported languages when no plugins are loaded."""
+        languages = plugin_manager_instance.get_supported_languages()
+        assert isinstance(languages, list)

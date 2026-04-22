@@ -180,8 +180,8 @@ class TestValidateProjectPath:
     def test_validate_valid_directory(self, resource, tmp_path):
         """Test validating a valid directory"""
         resource._project_path = str(tmp_path)
-        # Should not raise any exception
         resource._validate_project_path()
+        assert resource._project_path == str(tmp_path)
 
 
 class TestIsSupportedCodeFile:
@@ -217,9 +217,8 @@ class TestIsSupportedCodeFile:
         test_file = tmp_path / "test.txt"
         test_file.write_text("plain text")
         resource._project_path = str(tmp_path)
-        # May return False for unsupported file types
-        resource._is_supported_code_file(test_file)
-        # Just ensure it doesn't crash
+        result = resource._is_supported_code_file(test_file)
+        assert isinstance(result, bool)
 
 
 class TestGetLanguageFromFile:

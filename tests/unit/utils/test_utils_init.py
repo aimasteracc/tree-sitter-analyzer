@@ -298,9 +298,8 @@ class TestClassInstantiation:
 
     def test_quiet_mode_instantiation(self) -> None:
         """Test QuietMode can be instantiated."""
-        # Should not raise
-        with QuietMode():
-            pass
+        with QuietMode() as qm:
+            assert isinstance(qm, QuietMode)
 
     def test_logging_context_instantiation(self) -> None:
         """Test LoggingContext can be instantiated."""

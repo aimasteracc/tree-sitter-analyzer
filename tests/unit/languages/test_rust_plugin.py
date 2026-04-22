@@ -58,16 +58,6 @@ class TestRustPlugin:
             assert result.language == "rust"
 
 
-class TestRustElementExtractor:
-    def test_extract_function(self, rust_extractor):
-        # This requires mocking tree nodes which is complex.
-        # We will rely on integration tests or simpler unit tests if possible.
-        pass
-
-    def test_extract_struct(self, rust_extractor):
-        pass
-
-
 # Basic integration test with sample code
 @pytest.mark.asyncio
 async def test_full_flow_rust():

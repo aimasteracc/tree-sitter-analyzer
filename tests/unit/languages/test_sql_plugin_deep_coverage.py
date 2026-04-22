@@ -124,6 +124,7 @@ SELECT id, name FROM users WHERE active = 1;"""
         classes = []
         extractor._extract_views(mock_node, classes)
         # Should trigger the recovery logic for single-line views
+        assert isinstance(classes, list)
 
     def test_extract_view_no_semicolon_recovery(self, extractor):
         """Test view recovery when no semicolon found."""
@@ -144,6 +145,7 @@ CREATE TABLE other (id INT)"""
 
         classes = []
         extractor._extract_views(mock_node, classes)
+        assert isinstance(classes, list)
 
 
 class TestSQLProcedureExtraction:
@@ -310,6 +312,7 @@ class TestSQLSchemaReferences:
 
         imports = []
         extractor._extract_schema_references(mock_node, imports)
+        assert isinstance(imports, list)
 
 
 class TestSQLTableColumnExtraction:

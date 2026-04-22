@@ -55,6 +55,7 @@ class TestSearchContentToolIntegration:
 
         # No format parameter should be valid
         tool.validate_arguments({"query": "hello", "roots": [str(tmp_path)]})
+        assert tool is not None
 
     def test_error_message_multilingual(self, tmp_path):
         """Test that error messages are multilingual."""

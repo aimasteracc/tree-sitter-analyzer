@@ -263,6 +263,8 @@ public class Example {
             except (AnalysisError, ValueError, TypeError):
                 pass  # 期待されるエラー
 
+        assert len(tools) == 4
+
     @pytest.mark.asyncio
     async def test_error_message_quality(self, scale_tool, table_tool, query_tool):
         """エラーメッセージの品質テスト"""

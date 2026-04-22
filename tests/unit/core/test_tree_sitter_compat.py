@@ -239,8 +239,8 @@ class TestLogApiInfo:
 
     def test_log_api_info_callable(self):
         """Test that log_api_info can be called without errors"""
-        # Should not raise exceptions
-        log_api_info()
+        result = log_api_info()
+        assert result is None
 
     def test_log_api_info_logs_debug_info(self, caplog):
         """Test that log_api_info logs debug information"""

@@ -331,8 +331,8 @@ class TestKotlinPluginMissingLines:
 
         with patch.dict(sys.modules, {"tree_sitter_kotlin": None}):
             with patch("builtins.__import__", side_effect=ImportError("No module")):
-                # This should handle ImportError gracefully
-                pass  # The test just checks it doesn't crash
+                result = plugin.get_tree_sitter_language()
+                assert result is None
 
     def test_extract_elements_exception_handling(self):
         """Test extract_elements exception handling (lines 642-644, 654)."""
@@ -557,8 +557,9 @@ class TestKotlinPropertyExtraction:
 
         extractor._get_node_text = Mock(return_value="val x = 5")
 
-        extractor._extract_property(mock_node)
+        result = extractor._extract_property(mock_node)
         # Result may be None or Variable depending on parsing
+        assert result is None or hasattr(result, "name")
 
     def test_extract_property_var(self):
         """Test extracting var property."""
@@ -575,5 +576,6 @@ class TestKotlinPropertyExtraction:
 
         extractor._get_node_text = Mock(return_value="var x = 5")
 
-        extractor._extract_property(mock_node)
+        result = extractor._extract_property(mock_node)
         # Result may be None or Variable depending on parsing
+        assert result is None or hasattr(result, "name")

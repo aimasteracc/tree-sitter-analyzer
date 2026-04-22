@@ -268,7 +268,8 @@ class TestJSDocCoverage:
         p = _write_tmp_file(tmp_path, "a.js", '''\
             const add = (a, b) => a + b;
         ''')
-        DocCoverageAnalyzer().analyze_file(p)
+        result = DocCoverageAnalyzer().analyze_file(p)
+        assert result is not None
 
 
 # --- Java tests ---

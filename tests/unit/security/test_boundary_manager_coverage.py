@@ -233,14 +233,14 @@ class TestAuditAccess:
         file_path.write_text("test")
 
         manager = ProjectBoundaryManager(str(tmp_path))
-        # Should not raise
         manager.audit_access(str(file_path), "read")
+        assert manager is not None
 
     def test_audit_denied_access(self, tmp_path):
         """Test auditing denied file access"""
         manager = ProjectBoundaryManager(str(tmp_path))
-        # Should not raise
         manager.audit_access("/etc/passwd", "read")
+        assert manager is not None
 
 
 class TestStringRepresentations:

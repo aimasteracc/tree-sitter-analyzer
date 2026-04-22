@@ -551,8 +551,8 @@ class TestGoldenMasterUpdate:
         # 如果存在Golden Master，应该更新
         golden_file = golden_dir / "test_update.py.json"
         if golden_file.exists():
-            # 模拟更新逻辑
             pass
+        assert "--update-golden-master" in sys.argv
 
     @pytest.mark.regression
     def test_create_new_golden_master(self, tmp_path):

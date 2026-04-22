@@ -17,19 +17,19 @@ class TestOutputFormatValidator:
     def test_single_format_parameter_valid(self):
         """Test that single format parameter is valid."""
         validator = OutputFormatValidator()
-
-        # Each format parameter should be valid individually
         validator.validate_output_format_exclusion({"total_only": True})
         validator.validate_output_format_exclusion({"count_only_matches": True})
         validator.validate_output_format_exclusion({"summary_only": True})
         validator.validate_output_format_exclusion({"group_by_file": True})
         validator.validate_output_format_exclusion({"suppress_output": True})
+        assert validator.get_active_format({"total_only": True}) == "total_only"
 
     def test_no_format_parameter_valid(self):
         """Test that no format parameter is valid (normal mode)."""
         validator = OutputFormatValidator()
         validator.validate_output_format_exclusion({})
         validator.validate_output_format_exclusion({"query": "test"})
+        assert validator.get_active_format({}) == "normal"
 
     def test_multiple_format_parameters_raises_error(self):
         """Test that multiple format parameters raise ValueError."""
@@ -120,6 +120,7 @@ class TestOutputFormatValidator:
                 "group_by_file": False,
             }
         )
+        assert validator.get_active_format({"total_only": False}) == "normal"
 
     def test_language_detection(self):
         """Test language detection mechanism."""

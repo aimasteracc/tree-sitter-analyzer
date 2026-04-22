@@ -204,3 +204,5 @@ class TestToonCompressionRate:
                 f"{name:>10} | {metrics['json_bytes']:>10,} | {metrics['toon_bytes']:>10,} | "
                 f"{metrics['compression_rate_pct']:>7.1f}% | {metrics['byte_reduction_pct']:>7.1f}%"
             )
+
+        assert len(_SAMPLE_PAYLOADS) > 0

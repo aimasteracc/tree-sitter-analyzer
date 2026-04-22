@@ -609,6 +609,7 @@ class TestMCPServerUtilityEdgeCases:
                                 await main()
                             except SystemExit:
                                 pass  # Expected for KeyboardInterrupt handling
+                            assert mock_detect.return_value == "/fallback/path"
 
     def test_main_sync_with_exception(self):
         """Test synchronous main function with exception."""
@@ -662,8 +663,8 @@ class TestMCPServerLoggingEdgeCases:
                 try:
                     await server._analyze_code_scale(arguments)
                 except FileNotFoundError:
-                    # Expected for non-existent file
                     pass
                 except ValueError as e:
                     if "Logging failed" in str(e):
                         pytest.fail("Should handle logging failures gracefully")
+                assert server is not None

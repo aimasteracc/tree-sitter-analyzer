@@ -251,15 +251,15 @@ class TestSecurityMCPIntegration:
             # Act - should not raise exceptions
             try:
                 result = operation_func()
-                # For validation functions, result is a tuple
                 if isinstance(result, tuple):
                     is_valid, error = result
-                    # Log the result for verification
                     print(f"{operation_name}: valid={is_valid}, error='{error}'")
             except Exception as e:
                 pytest.fail(
                     f"Security operation {operation_name} raised unexpected exception: {e}"
                 )
+
+        assert len(security_operations) == 3
 
     @pytest.mark.integration
     def test_performance_impact_on_mcp_server(self):

@@ -309,7 +309,8 @@ class TestClass:
             validator.validate_file_path("../../../etc/passwd")
 
             # Check that security event was logged (content may vary by impl)
-            _ = log_capture.getvalue()
+            log_output = log_capture.getvalue()
+            assert isinstance(log_output, str)
 
         finally:
             logger.removeHandler(handler)

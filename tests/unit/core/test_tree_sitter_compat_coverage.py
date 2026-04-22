@@ -302,19 +302,19 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         # Test modern API present
         with patch.dict(sys.modules, {"tree_sitter": MagicMock()}):
             sys.modules["tree_sitter"].Query.matches = lambda: None
-            log_api_info()
+            self.assertIsNone(log_api_info())
 
         # Test legacy API present
         with patch.dict(sys.modules, {"tree_sitter": MagicMock()}):
             del sys.modules["tree_sitter"].Query.matches
             sys.modules["tree_sitter"].Query.captures = lambda: None
-            log_api_info()
+            self.assertIsNone(log_api_info())
 
         # Test no compatible API
         with patch.dict(sys.modules, {"tree_sitter": MagicMock()}):
             del sys.modules["tree_sitter"].Query.matches
             del sys.modules["tree_sitter"].Query.captures
-            log_api_info()
+            self.assertIsNone(log_api_info())
 
     def test_log_api_info_import_error(self):
         """Test log_api_info when tree-sitter import fails (covers lines 288-289)"""
@@ -335,7 +335,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
 
             with patch.object(builtins, "__import__", side_effect=mock_import):
                 # This should handle ImportError gracefully
-                log_api_info()
+                self.assertIsNone(log_api_info())
         finally:
             # Restore tree_sitter module if it was present
             if saved_module is not None:
@@ -353,7 +353,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
 
         with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter}):
             # This should handle the exception gracefully
-            log_api_info()
+            self.assertIsNone(log_api_info())
 
     def test_log_api_info_api_detection_exception_via_dir(self):
         """Test log_api_info when dir() on Query raises an exception (covers lines 285-286)"""
@@ -370,7 +370,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
 
         with patch.dict(sys.modules, {"tree_sitter": mock_tree_sitter}):
             # This should handle the exception gracefully
-            log_api_info()
+            self.assertIsNone(log_api_info())
 
     def test_execute_modern_api_exception_raises(self):
         """Test _execute_modern_api exception handling (covers lines 102-104)"""
