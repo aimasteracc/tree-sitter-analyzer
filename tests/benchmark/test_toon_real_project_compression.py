@@ -216,6 +216,7 @@ class TestRealProjectCompression:
                 print(
                     f"    {level_name}: {toon_tokens} tokens ({rate:+.1f}%)"
                 )
+                assert toon_tokens > 0, f"{level_name} produced zero tokens"
 
     @pytest.mark.asyncio
     async def test_synthetic_payloads_with_levels(self) -> None:
@@ -256,6 +257,7 @@ class TestRealProjectCompression:
                     f"  {name:>20}: {metrics['compression_rate_pct']:>+6.1f}% "
                     f"({metrics['toon_bytes']} vs {metrics['json_bytes']} bytes)"
                 )
+                assert metrics["toon_bytes"] > 0, f"Empty output for {name} at {level}"
 
     def test_is_toon_content_detection(self) -> None:
         """Verify TOON content detection works on our output."""
