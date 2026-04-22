@@ -1,21 +1,30 @@
 """Project Brain — pre-warmed holistic model of the entire codebase.
 
 On initialization, the Brain scans every source file, runs applicable neurons,
-and builds a living perception map. Any query is answered instantly from
-the pre-computed model — no per-request scanning needed.
+and builds a living perception map + impact graph. Any query is answered
+instantly from the pre-computed model — no per-request scanning needed.
+
+Two subsystems:
+  1. Perception Layer: runs all analyzers, finds hotspots, computes health
+  2. Impact Graph: tracks imports, calls, tests, tools — answers "what breaks if I change X?"
 
 Usage:
     brain = ProjectBrain("/path/to/project")
-    brain.warm_up()  # scans all files, builds perception
+    brain.warm_up()  # scans all files, builds perception + impact graph
 
-    # Instant queries — no tool calls, no re-scanning
+    # Perception queries
     brain.get_file_perception("src/foo.py")
     brain.get_hotspots()
     brain.get_health_score()
+
+    # Impact graph queries
+    brain.blast_radius(["src/foo.py"])       # what's affected?
+    brain.affected_tests(["src/foo.py"])      # which tests to run?
     brain.what_happens_if_i_change("src/foo.py", line=42)
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import time
 from collections import defaultdict
@@ -57,6 +66,46 @@ class FileKnowledge:
     top_issues: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class BlastRadius:
+    """Result of an impact query: what's affected if I change these files."""
+
+    changed: tuple[str, ...]
+    files: tuple[str, ...]
+    tests: tuple[str, ...]
+    tools: tuple[str, ...]
+    max_depth: int
+
+    @property
+    def total(self) -> int:
+        return len(self.files) + len(self.tests) + len(self.tools)
+
+    def to_text(self) -> str:
+        lines: list[str] = [
+            f"Blast Radius: {len(self.changed)} change(s) → {self.total} impacted"
+        ]
+        lines.append("=" * 55)
+        for c in self.changed:
+            lines.append(f"  Changed: {c}")
+        if self.files:
+            lines.append(f"\n  Files ({len(self.files)}):")
+            for f in sorted(self.files)[:25]:
+                lines.append(f"    - {f}")
+            if len(self.files) > 25:
+                lines.append(f"    ... +{len(self.files) - 25} more")
+        if self.tests:
+            lines.append(f"\n  Tests to run ({len(self.tests)}):")
+            for t in sorted(self.tests)[:15]:
+                lines.append(f"    - {t}")
+            if len(self.tests) > 15:
+                lines.append(f"    ... +{len(self.tests) - 15} more")
+        if self.tools:
+            lines.append(f"\n  MCP tools ({len(self.tools)}):")
+            for t in sorted(self.tools):
+                lines.append(f"    - {t}")
+        return "\n".join(lines)
+
+
 @dataclass
 class ProjectBrain:
     """Pre-warmed holistic model of the entire project.
@@ -78,6 +127,13 @@ class ProjectBrain:
     _language_distribution: dict[str, int] = field(default_factory=dict)
     _causal_chain: CausalChain | None = None
     _causal_result: CausalResult | None = None
+    # Impact graph
+    _import_graph: dict[str, set[str]] = field(default_factory=dict)
+    _reverse_imports: dict[str, set[str]] = field(default_factory=dict)
+    _test_to_source: dict[str, set[str]] = field(default_factory=dict)
+    _source_to_tests: dict[str, set[str]] = field(default_factory=dict)
+    _source_stems: dict[str, str] = field(default_factory=dict)
+    _tool_refs: dict[str, set[str]] = field(default_factory=dict)
 
     def warm_up(self) -> None:
         """Scan all project files and build the perception model."""
@@ -127,6 +183,7 @@ class ProjectBrain:
         self._warm_duration = time.monotonic() - start
         self._warm_time = time.time()
         self._run_causal_analysis()
+        self._build_impact_graph()
         self._write_brain_state()
 
     def _run_causal_analysis(self) -> None:
@@ -406,12 +463,188 @@ class ProjectBrain:
             return file_path
 
     def _find_related_files(self, file_path: str) -> list[str]:
-        """Heuristic: files in same directory with hotspots."""
+        """Graph-aware: files connected via imports, then fallback to same directory."""
+        rel = self._relative(file_path)
+        related = self._reverse_imports.get(rel, set()) | self._import_graph.get(rel, set())
+        if related:
+            return sorted(related)[:10]
+        # Fallback: same directory
         directory = str(Path(file_path).parent)
-        related: list[str] = []
+        related_list: list[str] = []
         for path, knowledge in self._file_map.items():
             if path == file_path:
                 continue
             if str(Path(path).parent) == directory and knowledge.total_findings > 0:
-                related.append(path)
-        return sorted(related)[:5]
+                related_list.append(path)
+        return sorted(related_list)[:5]
+
+    # -- Impact Graph ----------------------------------------------------------
+
+    def _build_impact_graph(self) -> None:
+        """Build import graph, test mapping, and tool references from Python AST."""
+        root = Path(self.project_root)
+        skip_dirs = {
+            ".git", "__pycache__", "node_modules", ".venv", ".tox",
+            ".mypy_cache", ".pytest_cache", ".ruff_cache", "htmlcov",
+            ".eggs", "dist", "build",
+        }
+        py_files: list[str] = []
+        for p in root.rglob("*.py"):
+            if any(skip in p.parts for skip in skip_dirs):
+                continue
+            py_files.append(str(p))
+
+        for abs_path in py_files:
+            rel = self._relative(abs_path)
+            self._source_stems[Path(rel).stem] = rel
+            self._parse_imports(abs_path, rel)
+
+        for abs_path in py_files:
+            rel = self._relative(abs_path)
+            if "/tests/" in rel or rel.startswith("tests/"):
+                self._map_test_file(abs_path, rel)
+
+        self._map_tool_files(root)
+
+    def _parse_imports(self, abs_path: str, rel: str) -> None:
+        """Extract import edges from a Python file."""
+        try:
+            source = Path(abs_path).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, UnicodeDecodeError, OSError):
+            return
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    resolved = self._resolve_import(alias.name)
+                    if resolved:
+                        self._import_graph.setdefault(rel, set()).add(resolved)
+                        self._reverse_imports.setdefault(resolved, set()).add(rel)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                resolved = self._resolve_import(node.module)
+                if resolved:
+                    self._import_graph.setdefault(rel, set()).add(resolved)
+                    self._reverse_imports.setdefault(resolved, set()).add(rel)
+
+    def _map_test_file(self, abs_path: str, rel: str) -> None:
+        """Map a test file to the source files it tests."""
+        # Convention: test_health_score.py → health_score
+        test_name = Path(rel).name
+        if test_name.startswith("test_") and test_name.endswith(".py"):
+            source_stem = test_name[5:-3]
+            if source_stem in self._source_stems:
+                source_rel = self._source_stems[source_stem]
+                self._test_to_source.setdefault(rel, set()).add(source_rel)
+                self._source_to_tests.setdefault(source_rel, set()).add(rel)
+
+        # Import-based: check what the test imports
+        try:
+            source = Path(abs_path).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (SyntaxError, UnicodeDecodeError, OSError):
+            return
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                resolved = self._resolve_import(node.module)
+                if resolved and "/tests/" not in resolved:
+                    self._test_to_source.setdefault(rel, set()).add(resolved)
+                    self._source_to_tests.setdefault(resolved, set()).add(rel)
+
+    def _map_tool_files(self, root: Path) -> None:
+        """Map MCP tool files to the source files they reference."""
+        tools_dir = root / "tree_sitter_analyzer" / "mcp" / "tools"
+        if not tools_dir.exists():
+            return
+        for tool_file in sorted(tools_dir.glob("*_tool.py")):
+            if tool_file.name in ("base_tool.py", "__init__.py"):
+                continue
+            tool_name = tool_file.stem.removesuffix("_tool")
+            try:
+                content = tool_file.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            for stem, source_rel in self._source_stems.items():
+                if stem in content and source_rel not in self._test_to_source:
+                    self._tool_refs.setdefault(tool_name, set()).add(source_rel)
+
+    def _resolve_import(self, module_name: str) -> str | None:
+        """Resolve a dot-path import to a project-relative path."""
+        parts = module_name.split(".")
+        candidate = Path(self.project_root)
+        for part in parts:
+            candidate = candidate / part
+        if candidate.is_dir() and (candidate / "__init__.py").exists():
+            return self._relative(str(candidate / "__init__.py"))
+        py_path = candidate.with_suffix(".py")
+        if py_path.exists():
+            return self._relative(str(py_path))
+        return None
+
+    def blast_radius(self, files: list[str], max_depth: int = 5) -> BlastRadius:
+        """BFS from changed files to find all impacted files, tests, tools."""
+        if not self._import_graph:
+            self._build_impact_graph()
+
+        visited: set[str] = set()
+        file_impacts: set[str] = set()
+        queue: list[tuple[str, int]] = []
+
+        for f in files:
+            rel = self._relative(f)
+            visited.add(rel)
+            queue.append((rel, 0))
+
+        while queue:
+            current, depth = queue.pop(0)
+            if depth >= max_depth:
+                continue
+            for dep in self._reverse_imports.get(current, set()):
+                if dep not in visited:
+                    visited.add(dep)
+                    file_impacts.add(dep)
+                    queue.append((dep, depth + 1))
+
+        # Collect tests
+        test_impacts: set[str] = set()
+        for f in files:
+            rel = self._relative(f)
+            test_impacts.update(self._source_to_tests.get(rel, set()))
+        for fi in file_impacts:
+            test_impacts.update(self._source_to_tests.get(fi, set()))
+
+        # Collect tools
+        tool_impacts: set[str] = set()
+        all_impacted = {self._relative(f) for f in files} | file_impacts
+        for tool_name, refs in self._tool_refs.items():
+            if refs & all_impacted:
+                tool_impacts.add(tool_name)
+
+        return BlastRadius(
+            changed=tuple(files),
+            files=tuple(sorted(file_impacts)),
+            tests=tuple(sorted(test_impacts)),
+            tools=tuple(sorted(tool_impacts)),
+            max_depth=max_depth,
+        )
+
+    def affected_tests(self, files: list[str]) -> list[str]:
+        """Return test files that cover the given source files."""
+        if not self._source_to_tests:
+            self._build_impact_graph()
+        tests: set[str] = set()
+        for f in files:
+            rel = self._relative(f)
+            tests.update(self._source_to_tests.get(rel, set()))
+        return sorted(tests)
+
+    def dependents(self, file_path: str) -> list[str]:
+        """Files that import this file (reverse dependencies)."""
+        rel = self._relative(file_path)
+        return sorted(self._reverse_imports.get(rel, set()))
+
+    def dependencies(self, file_path: str) -> list[str]:
+        """Files that this file imports (forward dependencies)."""
+        rel = self._relative(file_path)
+        return sorted(self._import_graph.get(rel, set()))

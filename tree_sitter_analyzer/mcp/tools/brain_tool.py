@@ -51,6 +51,10 @@ class BrainTool(BaseMCPTool):
                             "summary",
                             "hotspots",
                             "impact",
+                            "blast_radius",
+                            "tests_to_run",
+                            "deps",
+                            "dependents",
                             "warm_up",
                         ],
                         "description": (
@@ -58,6 +62,10 @@ class BrainTool(BaseMCPTool):
                             "summary: project overview. "
                             "hotspots: compound hotspots. "
                             "impact: what happens if I change this file. "
+                            "blast_radius: graph-based impact — all affected files, tests, tools. "
+                            "tests_to_run: which test files cover these source files. "
+                            "deps: what does this file import. "
+                            "dependents: what files import this file. "
                             "warm_up: rebuild the brain model."
                         ),
                     },
@@ -78,6 +86,11 @@ class BrainTool(BaseMCPTool):
                         "type": "string",
                         "enum": ["toon", "json"],
                         "default": "toon",
+                    },
+                    "files": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of files (for blast_radius, tests_to_run)",
                     },
                 },
                 "required": ["action"],
@@ -121,9 +134,44 @@ class BrainTool(BaseMCPTool):
             line = arguments.get("line")
             data = brain.what_happens_if_i_change(resolved, line=line)
 
+        elif action == "blast_radius":
+            files = arguments.get("files", [])
+            fp = arguments.get("file_path")
+            if fp and not files:
+                files = [fp]
+            if not files:
+                raise ValueError("files or file_path required for blast_radius")
+            data = brain.blast_radius(files).to_text()
+
+        elif action == "tests_to_run":
+            files = arguments.get("files", [])
+            fp = arguments.get("file_path")
+            if fp and not files:
+                files = [fp]
+            if not files:
+                raise ValueError("files or file_path required for tests_to_run")
+            tests = brain.affected_tests(files)
+            data = {"files": files, "tests": tests, "count": len(tests)}
+
+        elif action == "deps":
+            fp = arguments.get("file_path")
+            if not fp:
+                raise ValueError("file_path required for deps")
+            deps = brain.dependencies(fp)
+            data = {"file": fp, "dependencies": deps, "count": len(deps)}
+
+        elif action == "dependents":
+            fp = arguments.get("file_path")
+            if not fp:
+                raise ValueError("file_path required for dependents")
+            dependents = brain.dependents(fp)
+            data = {"file": fp, "dependents": dependents, "count": len(dependents)}
+
         else:
             raise ValueError(f"Unknown action: {action}")
 
+        if isinstance(data, str):
+            return {"type": "text", "text": data}
         if fmt == "toon":
             return {"content": ToonEncoder().encode(data)}
         return data
