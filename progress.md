@@ -1,5 +1,33 @@
 # Progress — 自主开发进度日志
 
+## Session 167 — 2026-04-25
+
+**Silent Error Suppression Detector Implementation (1-in-1-out)**
+
+**Added**: `silent_suppression.py` — detects catch/except blocks that silently suppress errors without meaningful recovery. Two issue types: `silent_suppression` (high — empty/pass/continue/return None) and `logging_only_suppression` (medium — only logging, no recovery). Supports Python, JS/TS, Java, Go.
+- Feature score: 10/12 (competitor gap 2/3, user signal 3/3, architecture fit 3/3, implementation cost 2/3)
+- 29 unit tests passing across 4 languages
+
+**Removed**: `java_patterns.py` (Java-only regex utility, doesn't inherit BaseAnalyzer, not a code quality detector)
+
+**Results**: 82 → 82 analyzers (1-in-1-out), self-hosting score: 100%
+
+**Files Created**:
+- tree_sitter_analyzer/analysis/silent_suppression.py (430 lines)
+- tree_sitter_analyzer/mcp/tools/silent_suppression_tool.py (116 lines)
+- tests/unit/analysis/test_silent_suppression.py (335 lines)
+
+**Files Deleted**:
+- tree_sitter_analyzer/analysis/java_patterns.py
+- tree_sitter_analyzer/mcp/tools/java_patterns_tool.py
+- tests/unit/analysis/test_java_patterns.py
+- tests/unit/mcp/test_tools/test_java_patterns_tool.py
+
+**Files Modified**:
+- tree_sitter_analyzer/mcp/tool_registration/_analysis.py (removed java_patterns registration)
+- tree_sitter_analyzer/mcp/tool_registration/_optimization.py (added silent_suppression registration)
+- findings.md (added product + architecture analysis for silent_suppression)
+
 ## Session 166 — 2026-04-25
 
 **Query Method Mutation Detector Implementation (1-in-1-out)**
