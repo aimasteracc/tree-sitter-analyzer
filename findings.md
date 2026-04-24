@@ -1,5 +1,38 @@
 # Findings — 自主开发调研笔记
 
+## Session 169 — 2026-04-25: Abstraction Level Mixing Detector (1-in-1-out)
+
+**类型**: 1-in-1-out (net zero)
+
+**新增**: `abstraction_level.py` — Abstraction Level Mixing Detector
+- 检测函数混合高层抽象（业务方法调用）和低层实现细节（字符串操作、算术、索引）
+- Issue types: `mixed_abstraction` (medium), `leaky_abstraction` (low)
+- 多语言支持: Python, JS/TS, Java, Go
+- 基于 Robert C. Martin "Clean Code" 原则：函数应在一个抽象层级操作
+
+**移除**: `nested_class.py`
+**原因**: nested_class 检测范围窄（仅检测类定义嵌套），没有实际的代码质量改进建议；竞品（ESLint no-inner-declarations, Ruff PLW...）已有类似规则覆盖；低用户信号
+
+**功能评分**: 10/12
+- 竞品差距: 3/3 — 无 ESLint/Ruff/SonarQBE 规则检测抽象层级混合
+- 用户信号: 2/3 — Clean Code 经典原则，Code Review 中常见的抽象层级混合问题
+- 架构适配: 3/3 — BaseAnalyzer, 函数级 AST 分析, 多语言
+- 实现成本: 2/3 — 中等复杂度（高层/低层语句分类 + 转换计数）
+
+**产品分析 (Steve Jobs Perspective)**:
+- 问题：读者被迫在"这段代码做什么"和"它怎么做"之间不断切换上下文
+- 一句话："Find functions that force readers to context-switch between 'what it does' and 'how it does it'"
+- 无竞品覆盖：ESLint 没有抽象层级规则，Ruff 没有，SonarQBE 也没有
+- 用户价值：在 Code Review 中识别需要 extract-method 重构的函数
+
+**架构分析**:
+- 组件：`tree_sitter_analyzer/analysis/abstraction_level.py`（~376 行）
+- Base class: BaseAnalyzer
+- 算法：1) 遍历 AST 找到函数节点 → 2) 对每个语句分类（high-level/low-level）→ 3) 计算转换次数 → 4) 混合度高则报告
+- 数据结构：`AbstractionIssue` (frozen dataclass), `AbstractionResult` (frozen dataclass)
+
+**结果**: 82 → 82 analyzers (1-in-1-out)
+
 ## Session 168 — 2026-04-25: Method Cohesion Detector (1-in-1-out)
 
 **类型**: 1-in-1-out (net zero)

@@ -1,5 +1,32 @@
 # Progress — 自主开发进度日志
 
+## Session 169 — 2026-04-25
+
+**Abstraction Level Mixing Detector Implementation (1-in-1-out)**
+
+**Added**: `abstraction_level.py` — detects functions that mix high-level abstractions (named business method calls) with low-level implementation details (raw string ops, arithmetic, indexing). Violates the Clean Code "one level of abstraction per function" principle.
+- Issue types: `mixed_abstraction` (medium — 3+ high and 3+ low statements), `leaky_abstraction` (low — abstraction level transitions)
+- Feature score: 10/12 (competitor gap 3/3, user signal 2/3, architecture fit 3/3, implementation cost 2/3)
+- 13 unit tests passing across 4 languages
+
+**Removed**: `nested_class.py` (narrow scope, no actionable quality improvement)
+
+**Results**: 82 → 82 analyzers (1-in-1-out), self-hosting score: 100%
+
+**Files Created**:
+- tree_sitter_analyzer/analysis/abstraction_level.py (~376 lines)
+- tree_sitter_analyzer/mcp/tools/abstraction_level_tool.py (~137 lines)
+- tests/unit/analysis/test_abstraction_level.py (~270 lines)
+
+**Files Deleted**:
+- tree_sitter_analyzer/analysis/nested_class.py
+- tree_sitter_analyzer/mcp/tools/nested_class_tool.py
+- tests/unit/analysis/test_nested_class.py
+
+**Files Modified**:
+- tree_sitter_analyzer/mcp/tool_registration/_optimization.py (replaced nested_class → abstraction_level)
+- findings.md (added product + architecture analysis for abstraction_level)
+
 ## Session 168 — 2026-04-25
 
 **Method Cohesion Detector Implementation (1-in-1-out)**

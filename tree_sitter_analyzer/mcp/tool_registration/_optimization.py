@@ -427,17 +427,17 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
     )
 
 
-    # nested_class
-    from ..tools.nested_class_tool import NestedClassTool
-    ncls_tool = NestedClassTool(project_root)
+    # abstraction_level
+    from ..tools.abstraction_level_tool import AbstractionLevelTool
+    abs_tool = AbstractionLevelTool(project_root)
     registry.register(
-        name="nested_class",
+        name="abstraction_level",
         toolset="analysis",
         category="design",
-        schema=ncls_tool.get_tool_definition(),
-        handler=_make_handler(ncls_tool),
-        description="Nested class: detect classes inside other classes indicating potential design smell",
-        emoji="🏗️",
+        schema=abs_tool.get_tool_definition(),
+        handler=_make_handler(abs_tool),
+        description="Abstraction level: detect functions mixing high-level business logic with low-level implementation details across Python, JS/TS, Java, Go",
+        emoji="📊",
     )
 
     # method_cohesion
