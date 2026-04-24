@@ -2,7 +2,22 @@
 
 ## Session 159 — 2026-04-25
 
-**Feature Sprint: Finding Suppression via Inline Comments**:
+**Feature Sprint 2: Finding Correlation Auto-Discovery + Suppression Integration**:
+
+1. **Enhanced finding_correlation_tool.py** (major rewrite):
+   - Replaced hardcoded 10-analyzer list with `pkgutil.iter_modules` auto-discovery
+   - Now automatically discovers and runs ALL 80+ file-level analyzers
+   - Integrated `finding_suppression` module for inline comment filtering
+   - Added `apply_suppressions` parameter (default: true)
+   - New `_discover_analyzers()` function dynamically finds all analyzers
+   - New `_apply_suppression_filter()` removes suppressed findings from hotspots
+   - Excluded non-file-level modules (utility, project-level tools)
+
+2. **Quality gates**:
+   - ruff ✅, mypy --strict ✅, 53 existing tests pass ✅
+   - Self-hosting gate: 100% (234/234 tools, 515 findings)
+
+**Feature Sprint 1: Finding Suppression via Inline Comments**:
 
 1. **Created finding_suppression.py** (~190 lines):
    - `parse_suppressions(file_path)` → parses `# tsa: disable <rule>` comments from source files

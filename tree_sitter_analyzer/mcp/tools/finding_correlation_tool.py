@@ -1,16 +1,23 @@
 """Finding Correlation Tool — MCP Tool.
 
-Runs multiple analyzers on a file and correlates their findings to identify
-compound hotspots: code locations flagged by several independent analyzers.
+Runs ALL auto-discovered analyzers on a file and correlates their findings
+to identify compound hotspots. Supports suppression filtering via inline
+comments (# tsa: disable <rule>).
 """
 from __future__ import annotations
 
+import importlib
+import pkgutil
 from pathlib import Path
 from typing import Any
 
 from ...analysis.finding_correlation import (
     CorrelationResult,
     FindingCorrelator,
+)
+from ...analysis.finding_suppression import (
+    build_suppression_set,
+    parse_suppressions,
 )
 from ...formatters.toon_encoder import ToonEncoder
 from ...utils import setup_logger
@@ -19,32 +26,49 @@ from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
 
-# Analyzers that produce findings with severity + line number.
-# Each entry: (analyzer_name, import_path, class_name, method)
-_ANALYZER_SPECS: list[tuple[str, str, str, str]] = [
-    ("dead_store", "...analysis.dead_store", "DeadStoreAnalyzer", "analyze_file"),
-    ("boolean_complexity", "...analysis.boolean_complexity", "BooleanComplexityAnalyzer", "analyze_file"),
-    ("cognitive_complexity", "...analysis.cognitive_complexity", "CognitiveComplexityAnalyzer", "analyze_file"),
-    ("function_size", "...analysis.function_size", "FunctionSizeAnalyzer", "analyze_file"),
-    ("nesting_depth", "...analysis.nesting_depth", "NestingDepthAnalyzer", "analyze_file"),
-    ("error_handling", "...analysis.error_handling", "ErrorHandlingAnalyzer", "analyze_file"),
-    ("security_scan", "...analysis.security_scan", "SecurityScanner", "scan_file"),
-    ("dead_code_path", "...analysis.dead_code_path", "DeadCodePathAnalyzer", "analyze_file"),
-    ("comment_quality", "...analysis.comment_quality", "CommentQualityAnalyzer", "analyze_file"),
-    ("naming_convention", "...analysis.naming_convention", "NamingConventionAnalyzer", "analyze_file"),
-]
+ANALYSIS_PACKAGE = "tree_sitter_analyzer.analysis"
+_ANALYSIS_METHOD_NAMES = ["analyze_file", "analyze", "detect_file", "detect"]
+
+# Modules that are not file-level analyzers (utility/framework modules).
+_EXCLUDED_MODULES: frozenset[str] = frozenset({
+    "__init__", "base", "finding_correlation", "finding_suppression",
+    "error_recovery", "dependency_graph", "context_optimizer",
+    "coupling_metrics", "design_patterns", "refactoring_suggestions",
+    "project_brain", "health_score", "ci_report", "code_clones",
+    "semantic_impact", "test_coverage", "llm_benchmark", "api_discovery",
+    "java_patterns", "causal_chain",
+})
 
 
-def _load_analyzer(module_path: str, class_name: str) -> Any | None:
-    """Dynamically load an analyzer class."""
-    import importlib
+def _discover_analyzers() -> list[tuple[str, str, str]]:
+    """Auto-discover all file-level analyzers via pkgutil.
 
-    try:
-        module = importlib.import_module(module_path)
-        return getattr(module, class_name)()
-    except (ImportError, AttributeError) as e:
-        logger.debug("Could not load analyzer %s.%s: %s", module_path, class_name, e)
-        return None
+    Returns list of (module_name, class_name, method_name).
+    """
+    import tree_sitter_analyzer.analysis as pkg
+
+    analyzers: list[tuple[str, str, str]] = []
+
+    for _importer, modname, _ispkg in pkgutil.iter_modules(pkg.__path__):
+        if modname.startswith("_") or modname in _EXCLUDED_MODULES:
+            continue
+
+        try:
+            mod = importlib.import_module(f"{ANALYSIS_PACKAGE}.{modname}")
+        except Exception:
+            continue
+
+        for attr_name in dir(mod):
+            obj = getattr(mod, attr_name)
+            if not isinstance(obj, type) or attr_name.startswith("_"):
+                continue
+
+            for method in _ANALYSIS_METHOD_NAMES:
+                if hasattr(obj, method):
+                    analyzers.append((modname, attr_name, method))
+                    break
+
+    return analyzers
 
 
 class FindingCorrelationTool(BaseMCPTool):
@@ -57,8 +81,9 @@ class FindingCorrelationTool(BaseMCPTool):
         return {
             "name": "finding_correlation",
             "description": (
-                "Correlate findings from multiple analyzers to identify "
-                "compound hotspots. "
+                "Correlate findings from ALL auto-discovered analyzers to identify "
+                "compound hotspots. Supports inline suppression filtering "
+                "(# tsa: disable <rule> comments). "
                 "\n\n"
                 "Runs all available analyzers on a file, then groups findings "
                 "by code location. Locations flagged by 2+ analyzers are "
@@ -81,6 +106,11 @@ class FindingCorrelationTool(BaseMCPTool):
                         "description": "Minimum number of analyzers to qualify as hotspot (default: 2)",
                         "default": 2,
                     },
+                    "apply_suppressions": {
+                        "type": "boolean",
+                        "description": "Apply inline suppression filtering (# tsa: disable comments). Default: true.",
+                        "default": True,
+                    },
                     "format": {
                         "type": "string",
                         "description": "Output format: toon (default) or json",
@@ -94,13 +124,14 @@ class FindingCorrelationTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         file_path = arguments.get("file_path", "")
         min_analyzers = arguments.get("min_analyzers", 2)
+        apply_suppressions = arguments.get("apply_suppressions", True)
         output_format = arguments.get("format", "toon")
 
         if not file_path:
             return {"error": "file_path must be provided", "format": output_format}
 
         resolved = self.resolve_and_validate_file_path(file_path)
-        result = self._run_correlation(resolved)
+        result = self._run_correlation(resolved, apply_suppressions)
 
         # Filter hotspots by min_analyzers.
         filtered = CorrelationResult(
@@ -114,26 +145,75 @@ class FindingCorrelationTool(BaseMCPTool):
             return filtered.to_dict()
         return self._format_toon(filtered, resolved)
 
-    def _run_correlation(self, file_path: str) -> CorrelationResult:
-        """Run all analyzers and correlate findings."""
+    def _run_correlation(
+        self, file_path: str, apply_suppressions: bool = True
+    ) -> CorrelationResult:
+        """Run all auto-discovered analyzers and correlate findings."""
         correlator = FindingCorrelator()
 
-        for name, module_path, class_name, method_name in _ANALYZER_SPECS:
-            full_module = module_path.replace("...analysis", "tree_sitter_analyzer.analysis")
-            analyzer = _load_analyzer(full_module, class_name)
-            if analyzer is None:
+        # Build suppression set if requested.
+        sup_set: set[tuple[str, int]] | None = set()
+        if apply_suppressions:
+            sup_result = parse_suppressions(file_path)
+            sup_set = build_suppression_set(sup_result)
+
+        for modname, class_name, method_name in _discover_analyzers():
+            try:
+                mod = importlib.import_module(
+                    f"{ANALYSIS_PACKAGE}.{modname}"
+                )
+                analyzer_cls = getattr(mod, class_name)
+            except (ImportError, AttributeError):
+                continue
+
+            try:
+                analyzer = analyzer_cls()
+            except Exception:
                 continue
 
             try:
                 method = getattr(analyzer, method_name)
-                result = method(file_path)
-                if result is not None:
-                    correlator.add_findings(name, result, file_path)
-            except Exception as e:
-                logger.debug("Analyzer %s failed on %s: %s", name, file_path, e)
+                analysis_result = method(file_path)
+                if analysis_result is not None:
+                    correlator.add_findings(modname, analysis_result, file_path)
+            except Exception:
                 continue
 
-        return correlator.correlate()
+        result = correlator.correlate()
+
+        if apply_suppressions and sup_set is not None:
+            result = self._apply_suppression_filter(result, sup_set)
+
+        return result
+
+    @staticmethod
+    def _apply_suppression_filter(
+        result: CorrelationResult,
+        sup_set: set[tuple[str, int]] | None,
+    ) -> CorrelationResult:
+        """Remove suppressed findings from hotspots."""
+        filtered_hotspots = []
+        total_remaining = 0
+
+        for hotspot in result.hotspots:
+            remaining_findings = [
+                f for f in hotspot.findings
+                if not (
+                    sup_set is None
+                    or (f.finding_type, f.line) in sup_set
+                )
+            ]
+            if remaining_findings:
+                total_remaining += len(remaining_findings)
+                hotspot.findings = remaining_findings
+                filtered_hotspots.append(hotspot)
+
+        return CorrelationResult(
+            hotspots=filtered_hotspots,
+            total_findings=total_remaining,
+            total_files=result.total_files,
+            analyzers_used=result.analyzers_used,
+        )
 
     def _format_toon(self, result: CorrelationResult, file_path: str) -> dict[str, Any]:
         lines: list[str] = []
