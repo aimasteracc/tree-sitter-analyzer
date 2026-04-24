@@ -451,19 +451,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🗑️",
     )
 
-    # double_negation
-    from ..tools.double_negation_tool import DoubleNegationTool
-    dn_tool = DoubleNegationTool(project_root)
-    registry.register(
-        name="double_negation",
-        toolset="analysis",
-        category="readability",
-        schema=dn_tool.get_tool_definition(),
-        handler=_make_handler(dn_tool),
-        description="Double negation: detect not not x, !!x patterns and suggest clearer alternatives",
-        emoji="⁉️",
-    )
-
     # global_state
     from ..tools.global_state_tool import GlobalStateTool
     gs_tool = GlobalStateTool(project_root)
@@ -488,19 +475,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(ru_tool),
         description="Reflection usage: detect eval/exec/getattr, Class.forName, reflect.* patterns that make code hard to audit",
         emoji="🪞",
-    )
-
-    # debug_statement
-    from ..tools.debug_statement_tool import DebugStatementTool
-    debug_stmt_tool = DebugStatementTool(project_root)
-    registry.register(
-        name="debug_statement",
-        toolset="analysis",
-        category="code-quality",
-        schema=debug_stmt_tool.get_tool_definition(),
-        handler=_make_handler(debug_stmt_tool),
-        description="Debug statements: detect leftover print/console.log/System.out.println/fmt.Println calls that should be removed before production",
-        emoji="🐛",
     )
 
     # commented_code
@@ -624,19 +598,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(rif_tool),
         description="Return in finally: detect return/raise in finally blocks that swallow exceptions",
         emoji="🔇",
-    )
-
-    # list_membership
-    from ..tools.list_membership_tool import ListMembershipTool
-    lm_tool = ListMembershipTool(project_root)
-    registry.register(
-        name="list_membership",
-        toolset="analysis",
-        category="performance",
-        schema=lm_tool.get_tool_definition(),
-        handler=_make_handler(lm_tool),
-        description="List membership: detect `x in [...]` should use set `{...}` for O(1)",
-        emoji="🔍",
     )
 
     # deep_unpacking

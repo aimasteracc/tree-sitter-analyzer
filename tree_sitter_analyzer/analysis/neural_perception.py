@@ -78,7 +78,6 @@ _CATEGORY_KEYWORDS: dict[NeuronCategory, tuple[str, ...]] = {
     ),
     NeuronCategory.NAMING: (
         "naming", "comment", "doc_", "type_annotation", "magic_value",
-        "debug_statement",
     ),
     NeuronCategory.PROJECT: (
         "health_score", "ci_report", "change_impact", "refactor",
