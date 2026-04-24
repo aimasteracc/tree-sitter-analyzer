@@ -1,5 +1,60 @@
 # Progress — 自主开发进度日志
 
+## Session 164 — 2026-04-25
+
+**Refactoring Sprint**: Removed 4 competitor-covered analyzers
+
+**Removed Analyzers** (competitor-covered):
+| Analyzer | Competitor | Competitor Rules |
+|----------|-----------|-----------------|
+| redundant_else | ESLint `no-else-return`, Pylint R1705 | else after return/break |
+| assignment_in_conditional | ESLint `no-cond-assign` | `=` vs `==` in if/while |
+| variable_shadowing | ESLint `no-shadow`, Ruff A001, Pylint W0621 | Inner scope shadows outer |
+| empty_block | ESLint `no-empty`, SonarQBE S108/S1181 | Empty function/catch/loop bodies |
+
+**Results**: 87 → 83 analyzers, MCP tools reduced accordingly, ~3700 lines removed
+- Self-hosting score: 100%, architecture check: pass
+- 2110 unit tests passing
+
+**Files Deleted** (16 files):
+- tree_sitter_analyzer/analysis/{redundant_else,assignment_in_conditional,variable_shadowing,empty_block}.py
+- tree_sitter_analyzer/mcp/tools/{redundant_else,assignment_in_conditional,variable_shadowing,empty_block}_tool.py
+- tests/unit/analysis/test_{redundant_else,assignment_in_conditional,variable_shadowing,empty_block}.py
+
+**Files Modified**:
+- tree_sitter_analyzer/mcp/tool_registration/_optimization.py (removed 4 registrations + fixed tc_tool name collision)
+
+## Session 163 — 2026-04-25
+
+**Temporal Coupling Detector Implementation (1-in-1-out)**
+
+**Scoring**: 10/12 (competitor gap 3 + user signal 2 + architecture fit 3 + cost 2)
+- No mainstream linter detects temporal coupling (ESLint/Ruff/SonarQBE/Pylint all empty)
+- Competitor veto check passed, recorded to findings.md
+
+**完成工作**:
+1. Implemented Temporal Coupling Detector (temporal_coupling.py)
+   - Detects hidden method ordering: method reads self.X but only method Y writes it
+   - Multi-language: Python (self.X), JS/TS (this.X), Java (this.X), Go (receiver.X)
+   - Constructor/init methods excluded from write_map (always called first)
+   - 26 unit tests all passing
+2. Created MCP tool (temporal_coupling_tool.py) + registered in _optimization.py
+3. Removed constant_bool_operand.py (1-in-1-out)
+   - Ruff PLC2201 / Pylint C2201 cover `x == "a" or "b"` pattern
+4. Self-hosting score: 100%, architecture check: pass
+
+**Files Created**:
+- tree_sitter_analyzer/analysis/temporal_coupling.py
+- tree_sitter_analyzer/mcp/tools/temporal_coupling_tool.py
+- tests/unit/analysis/test_temporal_coupling.py (26 tests)
+
+**Files Deleted**:
+- tree_sitter_analyzer/analysis/constant_bool_operand.py
+- tree_sitter_analyzer/mcp/tools/constant_bool_operand_tool.py
+- tests/unit/analysis/test_constant_bool_operand.py
+
+**Analyzer count**: 87 (1-in-1-out maintained)
+
 ## Session 162 — 2026-04-25 (continued)
 
 **Refactoring Sprint**: Removed unclosed_file analyzer

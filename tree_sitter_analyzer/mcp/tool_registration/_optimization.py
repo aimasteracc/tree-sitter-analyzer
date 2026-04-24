@@ -137,19 +137,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
     )
 
 
-    # empty_block
-    from ..tools.empty_block_tool import EmptyBlockTool
-    eb_tool = EmptyBlockTool(project_root)
-    registry.register(
-        name="empty_block",
-        toolset="analysis",
-        category="design",
-        schema=eb_tool.get_tool_definition(),
-        handler=_make_handler(eb_tool),
-        description="Empty block: detect empty function/catch/loop blocks that may hide bugs across Python, JS/TS, Java, Go",
-        emoji="📭",
-    )
-
     # god_class
     from ..tools.god_class_tool import GodClassTool
     gc_tool = GodClassTool(project_root)
@@ -270,19 +257,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
     )
 
 
-    # assignment_in_conditional
-    from ..tools.assignment_in_conditional_tool import AssignmentInConditionalTool
-    aic_tool = AssignmentInConditionalTool(project_root)
-    registry.register(
-        name="assignment_in_conditional",
-        toolset="analysis",
-        category="bug-detection",
-        schema=aic_tool.get_tool_definition(),
-        handler=_make_handler(aic_tool),
-        description="Assignment in conditional: detect = vs == typos in if/while conditions across JS/TS, Java, C/C++",
-        emoji="🐛",
-    )
-
     # regex_safety
     from ..tools.regex_safety_tool import RegexSafetyTool
     rs_tool = RegexSafetyTool(project_root)
@@ -296,19 +270,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔐",
     )
 
-    # variable_shadowing
-    from ..tools.variable_shadowing_tool import VariableShadowingTool
-    vs_tool = VariableShadowingTool(project_root)
-    registry.register(
-        name="variable_shadowing",
-        toolset="analysis",
-        category="bug-detection",
-        schema=vs_tool.get_tool_definition(),
-        handler=_make_handler(vs_tool),
-        description="Variable shadowing: detect inner-scope variables that shadow outer-scope variables across Python, JS/TS, Java, Go",
-        emoji="🎭",
-    )
-
     # dead_store
     from ..tools.dead_store_tool import DeadStoreTool
     ds_tool = DeadStoreTool(project_root)
@@ -320,19 +281,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         handler=_make_handler(ds_tool),
         description="Dead store: detect variables assigned but never read, self-assignments, and immediate reassignments across Python, JS/TS, Java, Go",
         emoji="🗑️",
-    )
-
-    # redundant_else
-    from ..tools.redundant_else_tool import RedundantElseTool
-    re_tool = RedundantElseTool(project_root)
-    registry.register(
-        name="redundant_else",
-        toolset="analysis",
-        category="style",
-        schema=re_tool.get_tool_definition(),
-        handler=_make_handler(re_tool),
-        description="Redundant else: detect unnecessary else blocks where the if branch already terminates across Python, JS/TS, Java, Go",
-        emoji="↩️",
     )
 
     # guard_clause
@@ -494,13 +442,13 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
 
     # temporal_coupling
     from ..tools.temporal_coupling_tool import TemporalCouplingTool
-    tc_tool = TemporalCouplingTool(project_root)
+    tmpc_tool = TemporalCouplingTool(project_root)
     registry.register(
         name="temporal_coupling",
         toolset="analysis",
         category="design",
-        schema=tc_tool.get_tool_definition(),
-        handler=_make_handler(tc_tool),
+        schema=tmpc_tool.get_tool_definition(),
+        handler=_make_handler(tmpc_tool),
         description="Temporal coupling: detect methods that read instance vars written only by other methods (hidden ordering dependency)",
         emoji="🔗",
     )
