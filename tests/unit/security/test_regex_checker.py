@@ -205,7 +205,7 @@ class TestCheckDangerousPatterns:
         """检测交替重叠"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(a|a)*")
-        assert result is not None
+        assert isinstance(result, str) and len(result) > 0
 
     def test_check_dangerous_patterns_backreference(self):
         """检测反向引用"""
@@ -220,25 +220,25 @@ class TestCheckDangerousPatterns:
         """检测前瞻断言"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(?=.*)+")
-        assert result is not None
+        assert isinstance(result, str) and len(result) > 0
 
     def test_check_dangerous_patterns_lookbehind(self):
         """检测后顾断言"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(?<=.*)+")
-        assert result is not None
+        assert isinstance(result, str) and len(result) > 0
 
     def test_check_dangerous_patterns_negative_lookahead(self):
         """检测负向前瞻"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(?!.*)+")
-        assert result is not None
+        assert isinstance(result, str) and len(result) > 0
 
     def test_check_dangerous_patterns_negative_lookbehind(self):
         """检测负向后顾"""
         checker = RegexSafetyChecker()
         result = checker._check_dangerous_patterns(r"(?<!.*)+")
-        assert result is not None
+        assert isinstance(result, str) and len(result) > 0
 
     def test_check_dangerous_patterns_invalid_dangerous_pattern(self):
         """测试无效的危险模式处理"""
@@ -270,19 +270,19 @@ class TestCheckCompilation:
         """测试未闭合的方括号"""
         checker = RegexSafetyChecker()
         result = checker._check_compilation(r"[a-z")
-        assert result is not None
+        assert isinstance(result, str) and len(result) > 0
 
     def test_check_compilation_unclosed_paren(self):
         """测试未闭合的圆括号"""
         checker = RegexSafetyChecker()
         result = checker._check_compilation(r"(test")
-        assert result is not None
+        assert isinstance(result, str) and len(result) > 0
 
     def test_check_compilation_invalid_quantifier(self):
         """测试无效量词"""
         checker = RegexSafetyChecker()
         result = checker._check_compilation(r"a{10,5}")
-        assert result is not None
+        assert isinstance(result, str) and len(result) > 0
 
 
 class TestCheckPerformance:
@@ -434,7 +434,7 @@ class TestSuggestSaferPattern:
         """测试部分匹配的建议"""
         checker = RegexSafetyChecker()
         result = checker.suggest_safer_pattern(r"prefix(a+)+suffix")
-        assert result is not None
+        assert isinstance(result, str) and "prefix" in result
 
 
 class TestGetSafeFlags:
