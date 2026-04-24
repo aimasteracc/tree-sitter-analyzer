@@ -27,6 +27,14 @@
 - tree_sitter_analyzer/mcp/tool_registration/_optimization.py (replaced redundant_type_cast → query_mutation)
 - findings.md (added product + architecture analysis for query_mutation)
 
+**Refactoring Sprint (Session 166)**:
+- Architecture check: all invariants pass
+- Orphan tool check: no orphans found
+- BaseAnalyzer adoption: 62/81 (76% — 19 non-inheriting are infrastructure modules)
+- Overlap analysis: no significant functional overlap found (checked nesting_depth/cognitive_complexity, error_handling/error_propagation, dead_code_path/return_path, speculative_generality/lazy_class, loop_complexity/string_concat_loop)
+- ruff + mypy: 411 source files, all clean
+- No changes needed — codebase in healthy state
+
 ## Session 165 — 2026-04-25
 
 **Encapsulation Break Detector Implementation (1-in-1-out)**
