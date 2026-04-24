@@ -1,5 +1,38 @@
 # Progress — 自主开发进度日志
 
+## Session 159 — 2026-04-25
+
+**Feature Sprint: Finding Suppression via Inline Comments**:
+
+1. **Created finding_suppression.py** (~190 lines):
+   - `parse_suppressions(file_path)` → parses `# tsa: disable <rule>` comments from source files
+   - `build_suppression_set(result)` → builds (rule, line) pairs or returns None for file-level
+   - `is_suppressed(rule, line, sup_set)` → checks if a finding should be suppressed
+   - `filter_findings(findings, sup_set)` → filters list of finding dicts
+   - Supports: Python `#`, JS/TS/Java/Go `//`, block comments `/* */`
+   - Actions: `disable <rule>`, `disable <r1>,<r2>`, `disable-all`, `enable`
+   - Scope: line-level (current + next line) and file-level (toggle on/off)
+
+2. **Added 38 new tests** (test_finding_suppression.py):
+   - TestParseSuppressions: 18 tests (Python, JS, Java, Go, block comment, edge cases)
+   - TestBuildSuppressionSet: 5 tests (single, multiple, file-level, toggle)
+   - TestIsSuppressed: 5 tests (specific, different rule/line, file-level, empty)
+   - TestFilterFindings: 7 tests (specific, file-level, custom keys, preserves original)
+   - TestIntegration: 6 tests (full pipeline for Python, JS, disable-all, toggle, TSX, encoding)
+
+3. **Quality gates**:
+   - ruff ✅, mypy --strict ✅, 38 tests pass ✅
+   - Self-hosting gate: 100% (234/234 tools, 774 findings)
+
+4. **Product analysis** (inline, autonomous mode):
+   - Score: 11/12 >= 10 (PASS)
+   - Competitor gap: 3/3 (no external tool provides suppression for ts-analyzer)
+   - User signal: 3/3 (774 self-hosting findings need management)
+   - Not a new analyzer (1-in-1-out rule does not apply)
+   - Recorded to findings.md with full product + architecture discussion
+
+- Commits: (pending)
+
 ## Session 158 — 2026-04-25
 
 **Feature Sprint: Finding Correlation Priority Ranking + Pattern Detection**:
