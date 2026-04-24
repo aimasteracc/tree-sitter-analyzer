@@ -1,5 +1,33 @@
 # Progress — 自主开发进度日志
 
+## Session 165 — 2026-04-25
+
+**Encapsulation Break Detector Implementation (1-in-1-out)**
+
+**Added**: `encapsulation_break.py` — detects methods that return direct references to internal mutable state (lists, dicts, sets), breaking encapsulation. Supports Python, JS/TS, Java.
+- Issue types: `state_exposure` (medium), `private_state_exposure` (low)
+- Feature score: 10/12 (competitor gap 3/3, user signal 2/3, architecture fit 3/3, implementation cost 2/3)
+- 23 unit tests passing, all multi-language
+
+**Removed**: `iterable_modification.py` (Python-only, subsumed by Pylint W4901-W4903)
+**Removed**: stale `test_boolean_complexity_tool.py` (missed in Session 164)
+
+**Results**: 82 → 82 analyzers (1-in-1-out), self-hosting score: 100%, architecture check: pass
+
+**Files Created**:
+- tree_sitter_analyzer/analysis/encapsulation_break.py
+- tree_sitter_analyzer/mcp/tools/encapsulation_break_tool.py
+- tests/unit/analysis/test_encapsulation_break.py
+
+**Files Deleted**:
+- tree_sitter_analyzer/analysis/iterable_modification.py
+- tree_sitter_analyzer/mcp/tools/iterable_modification_tool.py
+- tests/unit/analysis/test_iterable_modification.py
+- tests/unit/mcp/test_tools/test_boolean_complexity_tool.py
+
+**Files Modified**:
+- tree_sitter_analyzer/mcp/tool_registration/_optimization.py (replaced iterable_modification → encapsulation_break)
+
 ## Session 164 — 2026-04-25
 
 **Refactoring Sprint**: Removed 4 competitor-covered analyzers
