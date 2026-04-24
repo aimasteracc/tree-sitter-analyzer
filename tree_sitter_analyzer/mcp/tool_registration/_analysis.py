@@ -10,7 +10,6 @@ from ..tools.error_recovery_tool import ErrorRecoveryTool
 from ..tools.finding_correlation_tool import FindingCorrelationTool
 from ..tools.grammar_discovery_tool import GrammarDiscoveryTool
 from ..tools.health_score_tool import HealthScoreTool
-from ..tools.java_patterns_tool import JavaPatternAnalysisTool
 from ..tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
 from ..tools.semantic_impact_tool import SemanticImpactTool
 from ..tools.test_coverage_tool import TestCoverageTool
@@ -103,18 +102,6 @@ def _register_analysis_tools(registry: Any, project_root: str | None) -> None:
         handler=_make_handler(health_tool),
         description="Analyze file health: A-F grading, complexity, maintainability",
         emoji="🏥",
-    )
-
-    # java_patterns
-    java_tool = JavaPatternAnalysisTool(project_root)
-    registry.register(
-        name="java_patterns",
-        toolset="analysis",
-        category="language-specific",
-        schema=java_tool.get_tool_definition(),
-        handler=_make_handler(java_tool),
-        description="Java patterns: Lambda, Stream API, Spring annotations",
-        emoji="☕",
     )
 
     # error_recovery

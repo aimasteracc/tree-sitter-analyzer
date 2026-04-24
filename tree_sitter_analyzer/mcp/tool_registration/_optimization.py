@@ -413,6 +413,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔍",
     )
 
+    # silent_suppression
+    from ..tools.silent_suppression_tool import SilentSuppressionTool
+    ss_tool = SilentSuppressionTool(project_root)
+    registry.register(
+        name="silent_suppression",
+        toolset="analysis",
+        category="bug-detection",
+        schema=ss_tool.get_tool_definition(),
+        handler=_make_handler(ss_tool),
+        description="Silent error suppression: detect catch/except blocks that swallow errors (pass, continue, logging-only, return None)",
+        emoji="🤫",
+    )
+
 
     # nested_class
     from ..tools.nested_class_tool import NestedClassTool
