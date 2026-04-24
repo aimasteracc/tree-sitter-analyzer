@@ -191,17 +191,17 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
 
 
 
-    # iterable_modification
-    from ..tools.iterable_modification_tool import IterableModificationTool
-    im_tool = IterableModificationTool(project_root)
+    # encapsulation_break
+    from ..tools.encapsulation_break_tool import EncapsulationBreakTool
+    eb_tool = EncapsulationBreakTool(project_root)
     registry.register(
-        name="iterable_modification",
+        name="encapsulation_break",
         toolset="analysis",
-        category="bugs",
-        schema=im_tool.get_tool_definition(),
-        handler=_make_handler(im_tool),
-        description="Iterable modification in loops: detect collection modification during iteration causing RuntimeError or silent bugs",
-        emoji="⚠️",
+        category="encapsulation",
+        schema=eb_tool.get_tool_definition(),
+        handler=_make_handler(eb_tool),
+        description="Encapsulation break: detect methods that return direct references to internal mutable state across Python, JS/TS, Java",
+        emoji="🔓",
     )
 
     # primitive_obsession
