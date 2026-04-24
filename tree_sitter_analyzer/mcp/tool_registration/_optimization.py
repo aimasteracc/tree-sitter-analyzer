@@ -295,18 +295,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🚩",
     )
 
-    # nested_ternary
-    from ..tools.nested_ternary_tool import NestedTernaryTool
-    nt_tool = NestedTernaryTool(project_root)
-    registry.register(
-        name="nested_ternary",
-        toolset="analysis",
-        category="readability",
-        schema=nt_tool.get_tool_definition(),
-        handler=_make_handler(nt_tool),
-        description="Nested ternary: detect deeply nested ternary/conditional expressions across Python, JS/TS, Java",
-        emoji="🔀",
-    )
 
     # assignment_in_conditional
     from ..tools.assignment_in_conditional_tool import AssignmentInConditionalTool
@@ -412,31 +400,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="👻",
     )
 
-    # callback_hell
-    from ..tools.callback_hell_tool import CallbackHellTool
-    ch_tool = CallbackHellTool(project_root)
-    registry.register(
-        name="callback_hell",
-        toolset="analysis",
-        category="async-quality",
-        schema=ch_tool.get_tool_definition(),
-        handler=_make_handler(ch_tool),
-        description="Callback hell: detect deeply nested callbacks and long .then() chains across Python, JS/TS, Java, Go",
-        emoji="🌀",
-    )
-
-    # hardcoded_ip
-    from ..tools.hardcoded_ip_tool import HardcodedIPTool
-    hi_tool = HardcodedIPTool(project_root)
-    registry.register(
-        name="hardcoded_ip",
-        toolset="analysis",
-        category="security",
-        schema=hi_tool.get_tool_definition(),
-        handler=_make_handler(hi_tool),
-        description="Hardcoded IP/port: detect IP addresses and port numbers that should be externalized across Python, JS/TS, Java, Go",
-        emoji="🌐",
-    )
 
     # discarded_return
     from ..tools.discarded_return_tool import DiscardedReturnTool
@@ -477,31 +440,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🪞",
     )
 
-    # commented_code
-    from ..tools.commented_code_tool import CommentedCodeTool
-    cc_tool = CommentedCodeTool(project_root)
-    registry.register(
-        name="commented_code",
-        toolset="analysis",
-        category="code-quality",
-        schema=cc_tool.get_tool_definition(),
-        handler=_make_handler(cc_tool),
-        description="Commented-out code: detect code blocks in comments (assignments, calls, imports, declarations) that should be removed",
-        emoji="🗑️",
-    )
-
-    # simplified_conditional
-    from ..tools.simplified_conditional_tool import SimplifiedConditionalTool
-    sc_tool = SimplifiedConditionalTool(project_root)
-    registry.register(
-        name="simplified_conditional",
-        toolset="analysis",
-        category="readability",
-        schema=sc_tool.get_tool_definition(),
-        handler=_make_handler(sc_tool),
-        description="Simplified conditional: detect ternary expressions that can be simplified (cond ? true : false → cond)",
-        emoji="✂️",
-    )
 
     # long_parameter_list
     from ..tools.long_parameter_list_tool import LongParameterListTool
@@ -540,91 +478,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔄",
     )
 
-    from ..tools.self_assignment_tool import SelfAssignmentTool
-    sa_tool = SelfAssignmentTool(project_root)
-    registry.register(
-        name="self_assignment",
-        toolset="analysis",
-        category="correctness",
-        schema=sa_tool.get_tool_definition(),
-        handler=_make_handler(sa_tool),
-        description="Self-assignment: detect x = x, self.x = self.x (no-op or typo)",
-        emoji="🪞",
-    )
-
-    from ..tools.late_binding_closure_tool import LateBindingClosureTool
-    lbclosure_tool = LateBindingClosureTool(project_root)
-    registry.register(
-        name="late_binding_closure",
-        toolset="analysis",
-        category="correctness",
-        schema=lbclosure_tool.get_tool_definition(),
-        handler=_make_handler(lbclosure_tool),
-        description="Late-binding closure: detect closures in loops capturing loop variables by reference",
-        emoji="🔗",
-    )
-
-    from ..tools.statement_no_effect_tool import StatementNoEffectTool
-    sne_tool = StatementNoEffectTool(project_root)
-    registry.register(
-        name="statement_no_effect",
-        toolset="analysis",
-        category="correctness",
-        schema=sne_tool.get_tool_definition(),
-        handler=_make_handler(sne_tool),
-        description="Statement no-effect: detect x == 5; (meant x = 5;), discarded arithmetic, standalone literals",
-        emoji="⚠️",
-    )
-
-    from ..tools.function_redefinition_tool import FunctionRedefinitionTool
-    fr_tool = FunctionRedefinitionTool(project_root)
-    registry.register(
-        name="function_redefinition",
-        toolset="analysis",
-        category="correctness",
-        schema=fr_tool.get_tool_definition(),
-        handler=_make_handler(fr_tool),
-        description="Function redefinition: detect functions defined twice in the same scope",
-        emoji="🔄",
-    )
-
-    from ..tools.return_in_finally_tool import ReturnInFinallyTool
-    rif_tool = ReturnInFinallyTool(project_root)
-    registry.register(
-        name="return_in_finally",
-        toolset="analysis",
-        category="correctness",
-        schema=rif_tool.get_tool_definition(),
-        handler=_make_handler(rif_tool),
-        description="Return in finally: detect return/raise in finally blocks that swallow exceptions",
-        emoji="🔇",
-    )
-
-    # deep_unpacking
-    from ..tools.deep_unpacking_tool import DeepUnpackingTool
-    du_tool = DeepUnpackingTool(project_root)
-    registry.register(
-        name="deep_unpacking",
-        toolset="analysis",
-        category="readability",
-        schema=du_tool.get_tool_definition(),
-        handler=_make_handler(du_tool),
-        description="Deep unpacking: detect excessive tuple unpacking with 4+ variables reducing readability",
-        emoji="📦",
-    )
-
-    # missing_static_method
-    from ..tools.missing_static_method_tool import MissingStaticMethodTool
-    msm_tool = MissingStaticMethodTool(project_root)
-    registry.register(
-        name="missing_static_method",
-        toolset="analysis",
-        category="design",
-        schema=msm_tool.get_tool_definition(),
-        handler=_make_handler(msm_tool),
-        description="Missing static method: detect instance methods that never use self and should be @staticmethod",
-        emoji="🔧",
-    )
 
     # nested_class
     from ..tools.nested_class_tool import NestedClassTool

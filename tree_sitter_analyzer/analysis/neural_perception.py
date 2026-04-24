@@ -66,7 +66,6 @@ _CATEGORY_KEYWORDS: dict[NeuronCategory, tuple[str, ...]] = {
     ),
     NeuronCategory.DEAD_CODE: (
         "dead_", "unused", "import_sanitiz", "dead_code", "dead_store",
-        "commented_code",
     ),
     NeuronCategory.ARCHITECTURE: (
         "architect", "circular", "coupling", "dependency", "solid",

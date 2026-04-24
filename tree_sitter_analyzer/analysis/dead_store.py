@@ -4,7 +4,7 @@ Detects variables that are assigned but whose value is never read:
   - dead_store: variable assigned but value never read before reassignment or scope exit
   - immediate_reassignment: variable reassigned before the first value is read
 
-Self-assignment (x = x) is handled by the dedicated self_assignment.py analyzer.
+Self-assignment (x = x) was handled by self_assignment.py (removed — covered by Ruff PLW0127).
 
 Supports Python, JavaScript/TypeScript, Java, Go.
 """

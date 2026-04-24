@@ -43,7 +43,7 @@ class DeadStoreTool(BaseMCPTool):
                 "\n"
                 "Issue Types:\n"
                 "- dead_store: value assigned but never read (medium)\n"
-                "- self_assignment: variable assigned to itself (high)\n"
+                "- self_assignment: variable assigned to itself (handled by Ruff PLW0127)\n"
                 "- immediate_reassignment: variable reassigned before first read (low)\n"
                 "\n"
                 "WHEN TO USE:\n"
