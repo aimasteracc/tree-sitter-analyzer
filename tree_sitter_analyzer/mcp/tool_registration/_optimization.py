@@ -374,6 +374,19 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚙️",
     )
 
+    # exception_signature
+    from ..tools.exception_signature_tool import ExceptionSignatureTool
+    es_tool = ExceptionSignatureTool(project_root)
+    registry.register(
+        name="exception_signature",
+        toolset="analysis",
+        category="best-practice",
+        schema=es_tool.get_tool_definition(),
+        handler=_make_handler(es_tool),
+        description="Exception signature: extract what exceptions each function can throw and check documentation consistency across Python, JS/TS, Java, Go",
+        emoji="⚡",
+    )
+
     # unused_parameter
     from ..tools.unused_parameter_tool import UnusedParameterTool
     up_tool = UnusedParameterTool(project_root)

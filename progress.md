@@ -1,5 +1,33 @@
 # Progress — 自主开发进度日志
 
+## Session 162 — 2026-04-25
+
+**Exception Signature Analyzer Implementation**
+
+**完成工作**:
+1. Committed pending duplicate_condition deletion (1-in-1-out from Session 161)
+2. Implemented Exception Signature Analyzer (exception_signature.py)
+   - Two-pass AST: collect escaping exceptions + check documentation
+   - Python: raise -> except matching, docstring :raises extraction
+   - JS/TS: throw -> catch matching, JSDoc @throws extraction
+   - Java: throw -> catch matching, Javadoc @throws + throws clause
+   - Go: panic detection (partial)
+3. Created MCP tool (exception_signature_tool.py) + registered in _optimization.py
+4. 36 unit tests all passing
+5. Self-hosting score: 100%
+
+**Files Created**:
+- tree_sitter_analyzer/analysis/exception_signature.py (~500 lines)
+- tree_sitter_analyzer/mcp/tools/exception_signature_tool.py (~120 lines)
+- tests/unit/analysis/test_exception_signature.py (36 tests)
+
+**Files Modified**:
+- tree_sitter_analyzer/mcp/tool_registration/_optimization.py (registered tool)
+
+**CI Status**: ruff clean, mypy --strict clean, 36/36 tests pass
+
+**下一步**: Continue sustainable loop - next feature exploration or refactoring sprint
+
 ## Session 160 — 2026-04-25
 
 **Refactoring Sprint: 移除 12 个竞品已覆盖的 Analyzer**:
