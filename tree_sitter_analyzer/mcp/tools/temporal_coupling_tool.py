@@ -1,14 +1,14 @@
-"""Constant Boolean Operand Tool — MCP Tool.
+"""Temporal Coupling Tool — MCP Tool.
 
-Analyzes code for non-boolean constant operands in boolean expressions.
+Detects hidden method ordering dependencies within classes.
 """
 from __future__ import annotations
 
 from typing import Any
 
-from ...analysis.constant_bool_operand import (
-    ConstantBoolOperandAnalyzer,
-    ConstantBoolOperandResult,
+from ...analysis.temporal_coupling import (
+    TemporalCouplingAnalyzer,
+    TemporalCouplingResult,
 )
 from ...formatters.toon_encoder import ToonEncoder
 from ...utils import setup_logger
@@ -18,31 +18,36 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 
-class ConstantBoolOperandTool(BaseMCPTool):
-    """MCP tool for detecting constant boolean operands."""
+class TemporalCouplingTool(BaseMCPTool):
+    """MCP tool for detecting temporal coupling between methods."""
 
     def __init__(self, project_root: str | None = None) -> None:
         super().__init__(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
-            "name": "constant_bool_operand",
+            "name": "temporal_coupling",
             "description": (
-                "Analyze code for non-boolean constant operands in boolean expressions. "
+                "Detect temporal coupling: methods that read instance "
+                "variables written only by other methods."
                 "\n\n"
-                "Detects strings, numbers, lists, dicts used as operands in "
-                "and/or expressions. Classic Python pitfall: `if x == 'a' or 'b':` "
-                "is always True because 'b' is truthy."
+                "Identifies hidden ordering dependencies: if method A reads "
+                "self.x and only method B writes self.x, then A must be "
+                "called after B — a temporal coupling invisible in the type system."
                 "\n\n"
                 "Supported Languages:\n"
-                "- Python: and/or expressions\n"
+                "- Python: self.X access in methods\n"
+                "- JavaScript/TypeScript: this.X access in methods\n"
+                "- Java: this.X access in methods\n"
+                "- Go: receiver.X access in methods\n"
                 "\n"
                 "Issue Types:\n"
-                "- constant_bool_operand: non-boolean constant in boolean expression (medium)\n"
+                "- temporal_coupling: reader method depends on writer method (medium)\n"
                 "\n"
                 "WHEN TO USE:\n"
-                "- To find misleading boolean conditions\n"
-                "- To catch the `x == a or b` anti-pattern\n"
+                "- To find hidden ordering dependencies\n"
+                "- To identify methods that must be called in a specific order\n"
+                "- To improve class design for testability\n"
             ),
             "inputSchema": {
                 "type": "object",
@@ -71,44 +76,42 @@ class ConstantBoolOperandTool(BaseMCPTool):
                 "format": output_format,
             }
 
-        analyzer = ConstantBoolOperandAnalyzer()
+        analyzer = TemporalCouplingAnalyzer()
         result = analyzer.analyze_file(file_path)
 
         if output_format == "json":
             return self._format_json(result)
         return self._format_toon(result)
 
-    def _format_json(self, result: ConstantBoolOperandResult) -> dict[str, Any]:
+    def _format_json(self, result: TemporalCouplingResult) -> dict[str, Any]:
         return {
             "file": result.file_path,
-            "total_boolean_expressions": result.total_boolean_expressions,
+            "total_classes": result.total_classes,
             "issue_count": len(result.issues),
             "issues": [i.to_dict() for i in result.issues],
         }
 
-    def _format_toon(self, result: ConstantBoolOperandResult) -> dict[str, Any]:
+    def _format_toon(self, result: TemporalCouplingResult) -> dict[str, Any]:
         lines: list[str] = []
-        lines.append("Constant Boolean Operand Analysis")
+        lines.append("Temporal Coupling Analysis")
         lines.append(f"File: {result.file_path}")
-        lines.append(f"Boolean expressions: {result.total_boolean_expressions}")
+        lines.append(f"Classes analyzed: {result.total_classes}")
         lines.append("")
 
         if result.issues:
-            lines.append(
-                f"Found {len(result.issues)} constant operand issue(s):"
-            )
-            for i in result.issues:
+            lines.append(f"Found {len(result.issues)} temporal coupling issue(s):")
+            for issue in result.issues:
                 lines.append(
-                    f"  L{i.line_number}: [{i.issue_type}] "
-                    f"[{i.severity}] {i.operand_snippet}"
+                    f"  {issue.reader_method} reads .{issue.variable_name} "
+                    f"(written only by {issue.writer_method})"
                 )
         else:
-            lines.append("No constant boolean operand issues found.")
+            lines.append("No temporal coupling issues found.")
 
         toon = ToonEncoder()
         return {
             "content": toon.encode("\n".join(lines)),
-            "total_boolean_expressions": result.total_boolean_expressions,
+            "total_classes": result.total_classes,
             "issue_count": len(result.issues),
         }
 

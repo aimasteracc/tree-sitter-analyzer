@@ -74,7 +74,7 @@ class TestCheckSingleton:
             "fields": [{"name": "instance", "modifiers": ["private", "static"]}],
         }
         result = _check_singleton(cls, "test.java", "java")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.SINGLETON
         assert result.confidence == 0.95
         assert result.elements["has_private_constructor"] is True
@@ -114,7 +114,7 @@ class TestCheckFactoryMethod:
             "methods": [{"name": "createProduct", "modifiers": []}],
         }
         result = _check_factory_method(cls, "test.py", "python")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.FACTORY_METHOD
         assert "createproduct" in result.elements["factory_methods"][0].lower()
 
@@ -126,7 +126,7 @@ class TestCheckFactoryMethod:
             "methods": [{"name": "makeObject", "modifiers": []}],
         }
         result = _check_factory_method(cls, "test.java", "java")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.FACTORY_METHOD
 
     def test_factory_with_build_method(self):
@@ -137,7 +137,7 @@ class TestCheckFactoryMethod:
             "methods": [{"name": "build", "modifiers": []}],
         }
         result = _check_factory_method(cls, "test.py", "python")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.FACTORY_METHOD
 
 
@@ -165,7 +165,7 @@ class TestCheckObserver:
             ],
         }
         result = _check_observer(cls, "test.java", "java")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.OBSERVER
         assert result.elements["has_add"] is True
         assert result.elements["has_remove"] is True
@@ -183,7 +183,7 @@ class TestCheckObserver:
             ],
         }
         result = _check_observer(cls, "test.js", "javascript")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.OBSERVER
         assert result.elements["has_notify"] is True
         assert result.confidence == 0.95
@@ -199,7 +199,7 @@ class TestCheckObserver:
             ],
         }
         result = _check_observer(cls, "test.py", "python")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.OBSERVER
 
 
@@ -249,7 +249,7 @@ class TestCheckStrategy:
         all_classes = [interface, impl1, impl2]
 
         result = _check_strategy(interface, all_classes, "test.java", "java")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.STRATEGY
         assert result.elements["interface"] == "SortStrategy"
         assert len(result.elements["implementations"]) == 2
@@ -281,7 +281,7 @@ class TestCheckGodClass:
             "fields": [],
         }
         result = _check_god_class(cls, "test.py", "python")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.GOD_CLASS
         assert result.elements["method_count"] == 25
 
@@ -296,7 +296,7 @@ class TestCheckGodClass:
             "fields": fields,
         }
         result = _check_god_class(cls, "test.java", "java")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.GOD_CLASS
         assert result.elements["field_count"] == 15
 
@@ -310,7 +310,7 @@ class TestCheckGodClass:
             "fields": [],
         }
         result = _check_god_class(cls, "test.py", "python")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.GOD_CLASS
         assert result.elements["loc"] == 600
 
@@ -338,7 +338,7 @@ class TestCheckLongMethod:
             "parameters": [],
         }
         result = _check_long_method(func, "test.py", "python")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.LONG_METHOD
         assert result.elements["loc"] == 60
 
@@ -352,7 +352,7 @@ class TestCheckLongMethod:
             "parameters": params,
         }
         result = _check_long_method(func, "test.java", "java")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.LONG_METHOD
         assert result.elements["param_count"] == 12
 
@@ -376,7 +376,7 @@ class TestCheckTemplateMethod:
             "modifiers": ["abstract"],
         }
         result = _check_template_method(func, "test.java", "java")
-        assert isinstance(result, dict)
+        assert isinstance(result, PatternMatch)
         assert result.pattern_type == PatternType.TEMPLATE_METHOD
         assert result.elements["is_abstract"] is True
 

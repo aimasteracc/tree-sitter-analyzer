@@ -492,17 +492,17 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="♻️",
     )
 
-    # constant_bool_operand
-    from ..tools.constant_bool_operand_tool import ConstantBoolOperandTool
-    cbo_tool = ConstantBoolOperandTool(project_root)
+    # temporal_coupling
+    from ..tools.temporal_coupling_tool import TemporalCouplingTool
+    tc_tool = TemporalCouplingTool(project_root)
     registry.register(
-        name="constant_bool_operand",
+        name="temporal_coupling",
         toolset="analysis",
-        category="bug-detection",
-        schema=cbo_tool.get_tool_definition(),
-        handler=_make_handler(cbo_tool),
-        description="Constant bool operand: detect non-boolean constants in and/or expressions (Python pitfall: x == a or b is always True)",
-        emoji="⚡",
+        category="design",
+        schema=tc_tool.get_tool_definition(),
+        handler=_make_handler(tc_tool),
+        description="Temporal coupling: detect methods that read instance vars written only by other methods (hidden ordering dependency)",
+        emoji="🔗",
     )
 
     # neural_perception
