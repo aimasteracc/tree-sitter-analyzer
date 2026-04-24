@@ -3,7 +3,6 @@
 Detects error handling anti-patterns across codebases using AST analysis:
 
 - Bare except / catch-all: except: or catch (e) without type filter
-- Swallowed errors: empty except/catch blocks
 - Broad exception types: except Exception, catch (Exception e)
 - Missing context: raise without preserving original exception chain
 - Generic error messages: raise/throw with unhelpful hardcoded strings
@@ -41,10 +40,8 @@ class PatternType(Enum):
     """Type of error handling anti-pattern."""
 
     BARE_EXCEPT = "bare_except"
-    SWALLOWED_ERROR = "swallowed_error"
     BROAD_EXCEPTION = "broad_exception"
     UNCHECKED_ERROR = "unchecked_error"
-    INCONSISTENT_STYLE = "inconsistent_style"
     MISSING_CONTEXT = "missing_context"
     GENERIC_ERROR_MESSAGE = "generic_error_message"
 
@@ -117,13 +114,6 @@ def _count_named_children(block_node: tree_sitter.Node, exclude: frozenset[str] 
         1 for c in block_node.children
         if c.is_named and c.type not in exclude
     )
-
-def _is_only_pass(block_node: tree_sitter.Node) -> bool:
-    """Check if block only has pass_statement and comments."""
-    for child in block_node.children:
-        if child.is_named and child.type not in ("comment", "pass_statement"):
-            return False
-    return True
 
 class ErrorHandlingAnalyzer(BaseAnalyzer):
     """Analyses error handling patterns in source code using AST."""
@@ -213,7 +203,6 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
         result: ErrorHandlingResult,
     ) -> None:
         self._detect_python_bare_excepts(language, tree, source, file_path, result)
-        self._detect_python_swallowed_errors(language, tree, source, file_path, result)
         self._detect_python_broad_exceptions(language, tree, source, file_path, result)
         self._detect_python_missing_context(tree, source, file_path, result)
         self._detect_python_generic_messages(tree, source, file_path, result)
@@ -250,53 +239,6 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
                     end_line=_line(node),
                     code_snippet=snippet[:120],
                     suggestion="Specify exception type: except ValueError as e:",
-                    language="python",
-                ))
-
-    def _detect_python_swallowed_errors(
-        self,
-        language: tree_sitter.Language,
-        tree: Tree,
-        source: bytes,
-        file_path: str,
-        result: ErrorHandlingResult,
-    ) -> None:
-        """Detect empty except blocks (only pass/comments)."""
-        captures = self._run_query(
-            language,
-            "(except_clause (block) @body) @clause",
-            tree.root_node,
-        )
-        # Group captures by parent clause
-        clauses: dict[int, tree_sitter.Node] = {}
-        bodies: dict[int, tree_sitter.Node] = {}
-        for node, tag in captures:
-            if tag == "clause":
-                clauses[id(node)] = node
-            elif tag == "body":
-                bodies[id(node)] = node
-
-        for _clause_id, clause_node in clauses.items():
-            # Find the body that belongs to this clause
-            body_node = None
-            for child in clause_node.children:
-                if child.type == "block":
-                    body_node = child
-                    break
-            if body_node is None:
-                continue
-
-            if _is_only_pass(body_node):
-                snippet = _node_text(clause_node, source).split("\n")[0]
-                result.add_issue(ErrorHandlingIssue(
-                    pattern_type=PatternType.SWALLOWED_ERROR.value,
-                    severity=PatternSeverity.WARNING.value,
-                    message="Empty except block (only pass/comment)",
-                    file_path=file_path,
-                    line_number=_line(clause_node),
-                    end_line=_end_line(body_node),
-                    code_snippet=snippet[:120],
-                    suggestion="Log the error or re-raise: logger.error(...)",
                     language="python",
                 ))
 
@@ -505,48 +447,8 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
         file_path: str,
         result: ErrorHandlingResult,
     ) -> None:
-        self._detect_js_swallowed_errors(language, tree, source, file_path, result)
         self._detect_js_catch_all(language, tree, source, file_path, result)
         self._detect_js_generic_messages(tree, source, file_path, result)
-
-    def _detect_js_swallowed_errors(
-        self,
-        language: tree_sitter.Language,
-        tree: Tree,
-        source: bytes,
-        file_path: str,
-        result: ErrorHandlingResult,
-    ) -> None:
-        """Detect empty catch blocks in JS/TS."""
-        captures = self._run_query(
-            language,
-            "(catch_clause (statement_block) @body) @clause",
-            tree.root_node,
-        )
-        for node, tag in captures:
-            if tag != "clause":
-                continue
-            body_node = None
-            for child in node.children:
-                if child.type == "statement_block":
-                    body_node = child
-                    break
-            if body_node is None:
-                continue
-
-            if _count_named_children(body_node, frozenset({"comment"})) == 0:
-                snippet = _node_text(node, source).split("\n")[0]
-                result.add_issue(ErrorHandlingIssue(
-                    pattern_type=PatternType.SWALLOWED_ERROR.value,
-                    severity=PatternSeverity.WARNING.value,
-                    message="Empty catch block",
-                    file_path=file_path,
-                    line_number=_line(node),
-                    end_line=_end_line(body_node),
-                    code_snippet=snippet[:120],
-                    suggestion="Handle the error or re-throw: console.error(e); throw e;",
-                    language="javascript",
-                ))
 
     def _detect_js_catch_all(
         self,
@@ -696,47 +598,7 @@ class ErrorHandlingAnalyzer(BaseAnalyzer):
         file_path: str,
         result: ErrorHandlingResult,
     ) -> None:
-        self._detect_java_swallowed_errors(language, tree, source, file_path, result)
         self._detect_java_broad_exceptions(language, tree, source, file_path, result)
-
-    def _detect_java_swallowed_errors(
-        self,
-        language: tree_sitter.Language,
-        tree: Tree,
-        source: bytes,
-        file_path: str,
-        result: ErrorHandlingResult,
-    ) -> None:
-        """Detect empty catch blocks in Java."""
-        captures = self._run_query(
-            language,
-            "(catch_clause (block) @body) @clause",
-            tree.root_node,
-        )
-        for node, tag in captures:
-            if tag != "clause":
-                continue
-            body_node = None
-            for child in node.children:
-                if child.type == "block":
-                    body_node = child
-                    break
-            if body_node is None:
-                continue
-
-            if _count_named_children(body_node, frozenset({"comment"})) == 0:
-                snippet = _node_text(node, source).split("\n")[0]
-                result.add_issue(ErrorHandlingIssue(
-                    pattern_type=PatternType.SWALLOWED_ERROR.value,
-                    severity=PatternSeverity.WARNING.value,
-                    message="Empty catch block",
-                    file_path=file_path,
-                    line_number=_line(node),
-                    end_line=_end_line(body_node),
-                    code_snippet=snippet[:120],
-                    suggestion='Log or handle: log.error("message", e);',
-                    language="java",
-                ))
 
     def _detect_java_broad_exceptions(
         self,

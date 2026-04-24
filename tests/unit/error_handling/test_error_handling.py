@@ -173,7 +173,7 @@ class TestPythonBareExcept:
 
 
 class TestPythonSwallowedErrors:
-    def test_detects_empty_except_block(self, analyzer: ErrorHandlingAnalyzer, tmp_py_file):
+    def test_empty_except_block_not_flagged(self, analyzer: ErrorHandlingAnalyzer, tmp_py_file):
         path = tmp_py_file("""\
             try:
                 x = 1
@@ -181,11 +181,10 @@ class TestPythonSwallowedErrors:
                 pass
         """)
         result = analyzer.analyze_file(path)
-        swallowed = [i for i in result.issues if i.pattern_type == PatternType.SWALLOWED_ERROR.value]
-        assert len(swallowed) == 1
-        assert swallowed[0].severity == PatternSeverity.WARNING.value
+        bare = [i for i in result.issues if i.pattern_type == PatternType.BARE_EXCEPT.value]
+        assert len(bare) == 0
 
-    def test_no_swallowed_with_handling(self, analyzer: ErrorHandlingAnalyzer, tmp_py_file):
+    def test_handled_except_no_broad(self, analyzer: ErrorHandlingAnalyzer, tmp_py_file):
         path = tmp_py_file("""\
             try:
                 x = 1
@@ -194,10 +193,10 @@ class TestPythonSwallowedErrors:
                 raise
         """)
         result = analyzer.analyze_file(path)
-        swallowed = [i for i in result.issues if i.pattern_type == PatternType.SWALLOWED_ERROR.value]
-        assert len(swallowed) == 0
+        broad = [i for i in result.issues if i.pattern_type == PatternType.BROAD_EXCEPTION.value]
+        assert len(broad) == 0
 
-    def test_only_comment_is_swallowed(self, analyzer: ErrorHandlingAnalyzer, tmp_py_file):
+    def test_only_comment_except_no_broad(self, analyzer: ErrorHandlingAnalyzer, tmp_py_file):
         path = tmp_py_file("""\
             try:
                 x = 1
@@ -206,8 +205,8 @@ class TestPythonSwallowedErrors:
                 pass
         """)
         result = analyzer.analyze_file(path)
-        swallowed = [i for i in result.issues if i.pattern_type == PatternType.SWALLOWED_ERROR.value]
-        assert len(swallowed) == 1
+        broad = [i for i in result.issues if i.pattern_type == PatternType.BROAD_EXCEPTION.value]
+        assert len(broad) == 0
 
 
 class TestPythonBroadExceptions:
@@ -256,7 +255,7 @@ class TestPythonBroadExceptions:
 
 
 class TestJSSwallowedErrors:
-    def test_detects_empty_catch(self, analyzer: ErrorHandlingAnalyzer, tmp_js_file):
+    def test_empty_catch_not_flagged_by_error_handling(self, analyzer: ErrorHandlingAnalyzer, tmp_js_file):
         path = tmp_js_file("""\
             try {
                 const x = 1;
@@ -264,11 +263,9 @@ class TestJSSwallowedErrors:
             }
         """)
         result = analyzer.analyze_file(path)
-        swallowed = [i for i in result.issues if i.pattern_type == PatternType.SWALLOWED_ERROR.value]
-        assert len(swallowed) == 1
-        assert swallowed[0].language == "javascript"
+        assert result.total_issues == 0
 
-    def test_no_swallowed_with_handling(self, analyzer: ErrorHandlingAnalyzer, tmp_js_file):
+    def test_handled_catch_still_broad(self, analyzer: ErrorHandlingAnalyzer, tmp_js_file):
         path = tmp_js_file("""\
             try {
                 const x = 1;
@@ -278,8 +275,8 @@ class TestJSSwallowedErrors:
             }
         """)
         result = analyzer.analyze_file(path)
-        swallowed = [i for i in result.issues if i.pattern_type == PatternType.SWALLOWED_ERROR.value]
-        assert len(swallowed) == 0
+        broad = [i for i in result.issues if i.pattern_type == PatternType.BROAD_EXCEPTION.value]
+        assert len(broad) == 1
 
 
 class TestJSCatchAll:
@@ -314,7 +311,7 @@ class TestJSCatchAll:
 
 
 class TestJavaSwallowedErrors:
-    def test_detects_empty_catch(self, analyzer: ErrorHandlingAnalyzer, tmp_java_file):
+    def test_empty_catch_has_broad_exception(self, analyzer: ErrorHandlingAnalyzer, tmp_java_file):
         path = tmp_java_file("""\
             public class Test {
                 public void test() {
@@ -326,11 +323,10 @@ class TestJavaSwallowedErrors:
             }
         """)
         result = analyzer.analyze_file(path)
-        swallowed = [i for i in result.issues if i.pattern_type == PatternType.SWALLOWED_ERROR.value]
-        assert len(swallowed) == 1
-        assert swallowed[0].language == "java"
+        broad = [i for i in result.issues if i.pattern_type == PatternType.BROAD_EXCEPTION.value]
+        assert len(broad) == 1
 
-    def test_no_swallowed_with_handling(self, analyzer: ErrorHandlingAnalyzer, tmp_java_file):
+    def test_handled_catch_still_broad(self, analyzer: ErrorHandlingAnalyzer, tmp_java_file):
         path = tmp_java_file("""\
             public class Test {
                 public void test() {
@@ -343,8 +339,8 @@ class TestJavaSwallowedErrors:
             }
         """)
         result = analyzer.analyze_file(path)
-        swallowed = [i for i in result.issues if i.pattern_type == PatternType.SWALLOWED_ERROR.value]
-        assert len(swallowed) == 0
+        broad = [i for i in result.issues if i.pattern_type == PatternType.BROAD_EXCEPTION.value]
+        assert len(broad) == 1
 
 
 class TestJavaBroadExceptions:
@@ -464,6 +460,5 @@ class TestSeverityThreshold:
 
     def test_pattern_type_enum_values(self):
         assert PatternType.BARE_EXCEPT.value == "bare_except"
-        assert PatternType.SWALLOWED_ERROR.value == "swallowed_error"
         assert PatternType.BROAD_EXCEPTION.value == "broad_exception"
         assert PatternType.UNCHECKED_ERROR.value == "unchecked_error"
