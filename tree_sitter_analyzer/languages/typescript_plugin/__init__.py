@@ -1,7 +1,7 @@
 """typescript_plugin — composable mixin architecture."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ...core.request import AnalysisRequest
@@ -11,20 +11,13 @@ import importlib.util
 
 import tree_sitter
 
-from ...encoding_utils import read_file_safe
 from ...language_loader import loader
 from ...models import (
     AnalysisResult,
-    Class,
     CodeElement,
-    Expression,
-    Function,
-    Import,
-    Package,
-    Variable,
 )
 from ...plugins.base import ElementExtractor, LanguagePlugin
-from ...utils import log_debug, log_error, log_warning
+from ...utils import log_debug, log_error
 from ._classes import ClassesMixin
 from ._core import CoreMixin
 from ._functions import FunctionsMixin
