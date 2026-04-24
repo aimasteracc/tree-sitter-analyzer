@@ -217,19 +217,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="⚠️",
     )
 
-    # unclosed_file
-    from ..tools.unclosed_file_tool import UnclosedFileTool
-    uf_tool = UnclosedFileTool(project_root)
-    registry.register(
-        name="unclosed_file",
-        toolset="analysis",
-        category="reliability",
-        schema=uf_tool.get_tool_definition(),
-        handler=_make_handler(uf_tool),
-        description="Unclosed file handles: detect open() without with statement causing potential file handle leaks",
-        emoji="📂",
-    )
-
     # primitive_obsession
     from ..tools.primitive_obsession_tool import PrimitiveObsessionTool
     po_tool = PrimitiveObsessionTool(project_root)

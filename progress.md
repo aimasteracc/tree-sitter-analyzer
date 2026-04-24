@@ -1,5 +1,15 @@
 # Progress — 自主开发进度日志
 
+## Session 162 — 2026-04-25 (continued)
+
+**Refactoring Sprint**: Removed unclosed_file analyzer
+
+- unclosed_file.py: Python-only, always clean in self-hosting (0 findings)
+- Ruff SIM115 + SonarQBE S2765 + Pylint R1732 all cover `open()` without `with`
+- Removed: analyzer + tool + test file + registration
+- Self-hosting score: 100%, architecture check: pass
+- Analyzer count: 87 → 86
+
 ## Session 162 — 2026-04-25
 
 **Exception Signature Analyzer Implementation**
