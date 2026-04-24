@@ -1,5 +1,32 @@
 # Progress — 自主开发进度日志
 
+## Session 168 — 2026-04-25
+
+**Method Cohesion Detector Implementation (1-in-1-out)**
+
+**Added**: `method_cohesion.py` — detects classes with low method cohesion using the LCOM4 metric. LCOM4 counts connected components in the method-field access graph. LCOM4 > 1 means the class should be split. Constructors (__init__/constructor) are excluded from analysis. Supports Python, JS/TS, Java, Go.
+- Issue types: `low_cohesion` (medium — LCOM4 > 1, class should be split)
+- Feature score: 10/12 (competitor gap 3/3, user signal 2/3, architecture fit 3/3, implementation cost 2/3)
+- 26 unit tests passing across 4 languages
+
+**Removed**: `redundant_super.py` (Pylint W0235 covers Python case, narrow scope)
+
+**Results**: 82 → 82 analyzers (1-in-1-out)
+
+**Files Created**:
+- tree_sitter_analyzer/analysis/method_cohesion.py (~430 lines)
+- tree_sitter_analyzer/mcp/tools/method_cohesion_tool.py (~120 lines)
+- tests/unit/analysis/test_method_cohesion.py (~300 lines)
+
+**Files Deleted**:
+- tree_sitter_analyzer/analysis/redundant_super.py
+- tree_sitter_analyzer/mcp/tools/redundant_super_tool.py
+- tests/unit/analysis/test_redundant_super.py
+
+**Files Modified**:
+- tree_sitter_analyzer/mcp/tool_registration/_optimization.py (replaced redundant_super → method_cohesion)
+- findings.md (added product + architecture analysis for method_cohesion)
+
 ## Session 167 — 2026-04-25
 
 **Silent Error Suppression Detector Implementation (1-in-1-out)**
