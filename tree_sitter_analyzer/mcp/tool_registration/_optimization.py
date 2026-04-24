@@ -176,19 +176,6 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🦥",
     )
 
-    # duplicate_condition
-    from ..tools.duplicate_condition_tool import DuplicateConditionTool
-    dc_tool = DuplicateConditionTool(project_root)
-    registry.register(
-        name="duplicate_condition",
-        toolset="analysis",
-        category="quality",
-        schema=dc_tool.get_tool_definition(),
-        handler=_make_handler(dc_tool),
-        description="Duplicate condition: detect identical if conditions that violate DRY across Python, JS/TS, Java, Go",
-        emoji="🔁",
-    )
-
     # method_chain
     from ..tools.method_chain_tool import MethodChainTool
     mc_tool = MethodChainTool(project_root)

@@ -1,5 +1,21 @@
 # Progress — 自主开发进度日志
 
+## Session 160 — 2026-04-25
+
+**Refactoring Sprint: 移除 12 个竞品已覆盖的 Analyzer**:
+
+1. **Commit 1 (6f905c27)**: 清理前 session 未提交的变更
+   - 移除 debug_statement, double_negation, list_membership (3 个 veto'd analyzers)
+   - 归档 add-finding-suppression OpenSpec change
+
+2. **Commit 2 (5295cfc2)**: 重构 Sprint — 移除 12 个竞品已完美覆盖的 Analyzer
+   - 移除: callback_hell, statement_no_effect, function_redefinition, self_assignment, late_binding_closure, return_in_finally, hardcoded_ip, deep_unpacking, missing_static_method, commented_code, simplified_conditional, nested_ternary
+   - 更新: _optimization.py (移除注册), dead_store.py (注释), neural_perception.py (分类)
+   - 结果: 100→88 analyzers, 110→98 MCP tools, ~7487 lines removed
+   - CI: ruff ✅, mypy --strict ✅, self-hosting 252/252 (100%)
+
+**下一步**: 永续循环 — 寻找新功能候选，执行竞品否决检查 + 产品分析
+
 ## Session 159 — 2026-04-25
 
 **Feature Sprint 2: Finding Correlation Auto-Discovery + Suppression Integration**:
