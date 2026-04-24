@@ -401,16 +401,16 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
         emoji="🔧",
     )
 
-    from ..tools.redundant_type_cast_tool import RedundantTypeCastTool
-    rtc_tool = RedundantTypeCastTool(project_root)
+    from ..tools.query_mutation_tool import QueryMutationTool
+    qm_tool = QueryMutationTool(project_root)
     registry.register(
-        name="redundant_type_cast",
+        name="query_mutation",
         toolset="analysis",
         category="correctness",
-        schema=rtc_tool.get_tool_definition(),
-        handler=_make_handler(rtc_tool),
-        description="Redundant type cast: detect wrapping same type twice (str(str(x)), int(int(x)))",
-        emoji="🔄",
+        schema=qm_tool.get_tool_definition(),
+        handler=_make_handler(qm_tool),
+        description="Query method mutation: detect CQS violations (query-named methods that modify state)",
+        emoji="🔍",
     )
 
 

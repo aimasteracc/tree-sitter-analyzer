@@ -1,15 +1,16 @@
-"""Redundant Type Cast Tool — MCP Tool.
+"""Query Method Mutation Tool — MCP Tool.
 
-Detects redundant type conversions where the same type constructor
-wraps an expression already of that type (e.g., str(str(x))).
+Detects methods whose names suggest read-only queries (get*, is*, has*,
+check*, find*, can*, should*, validate*) but that modify object state,
+violating the Command-Query Separation principle.
 """
 from __future__ import annotations
 
 from typing import Any
 
-from ...analysis.redundant_type_cast import (
-    RedundantCastResult,
-    RedundantTypeCastAnalyzer,
+from ...analysis.query_mutation import (
+    QueryMutationAnalyzer,
+    QueryMutationResult,
 )
 from ...formatters.toon_encoder import ToonEncoder
 from ...utils import setup_logger
@@ -19,34 +20,32 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 
-class RedundantTypeCastTool(BaseMCPTool):
-    """MCP tool for detecting redundant type casts."""
+class QueryMutationTool(BaseMCPTool):
+    """MCP tool for detecting CQS violations in query-named methods."""
 
     def __init__(self, project_root: str | None = None) -> None:
         super().__init__(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
-            "name": "redundant_type_cast",
+            "name": "query_mutation",
             "description": (
-                "Detect redundant type casts: wrapping a value in the "
-                "same type constructor twice (e.g., str(str(x)), int(int(x)))."
+                "Detect query-named methods that mutate object state "
+                "(Command-Query Separation violations)."
                 "\n\n"
-                "Redundant casts are dead code suggesting programmer "
-                "confusion or leftover refactoring artifacts."
+                "Finds methods named get*, is*, has*, check*, find*, "
+                "can*, should*, validate* that write to self/this fields."
                 "\n\n"
                 "Supported Languages:\n"
-                "- Python, JavaScript/TypeScript, Java\n"
+                "- Python, JavaScript/TypeScript, Java, Go\n"
                 "\n"
                 "Issue Types:\n"
-                "- redundant_str: str(str(x))\n"
-                "- redundant_int: int(int(x))\n"
-                "- redundant_float: float(float(x))\n"
-                "- redundant_list/tuple/set/bool/bytes: same pattern\n"
+                "- query_method_mutation: query-named method modifies "
+                "object state\n"
                 "\n"
                 "WHEN TO USE:\n"
-                "- To find dead code in type conversions\n"
-                "- To catch copy-paste or refactoring leftovers\n"
+                "- To find subtle bugs from hidden state changes\n"
+                "- To enforce Command-Query Separation principle\n"
             ),
             "inputSchema": {
                 "type": "object",
@@ -77,7 +76,7 @@ class RedundantTypeCastTool(BaseMCPTool):
                 "format": output_format,
             }
 
-        analyzer = RedundantTypeCastAnalyzer()
+        analyzer = QueryMutationAnalyzer()
         result = analyzer.analyze_file(file_path)
 
         if output_format == "json":
@@ -85,30 +84,40 @@ class RedundantTypeCastTool(BaseMCPTool):
 
         return self._format_toon(result)
 
-    def _format_json(self, result: RedundantCastResult) -> dict[str, Any]:
+    def _format_json(self, result: QueryMutationResult) -> dict[str, Any]:
         return {
             "file": result.file_path,
-            "total_calls": result.total_calls,
+            "total_issues": result.total_issues,
             "issue_count": len(result.issues),
-            "issues": [i.to_dict() for i in result.issues],
+            "issues": [
+                {
+                    "line": i.line,
+                    "issue_type": i.issue_type,
+                    "severity": i.severity,
+                    "method_name": i.method_name,
+                    "field_name": i.field_name,
+                    "description": i.description,
+                    "suggestion": i.suggestion,
+                }
+                for i in result.issues
+            ],
         }
 
-    def _format_toon(self, result: RedundantCastResult) -> dict[str, Any]:
+    def _format_toon(self, result: QueryMutationResult) -> dict[str, Any]:
         lines: list[str] = []
-        lines.append("Redundant Type Cast Analysis")
+        lines.append("Query Method Mutation Analysis")
         lines.append(f"File: {result.file_path}")
-        lines.append(f"Total calls: {result.total_calls}")
         lines.append("")
 
         if result.issues:
-            lines.append(f"Found {len(result.issues)} redundant cast(s):")
+            lines.append(f"Found {len(result.issues)} CQS violation(s):")
             for issue in result.issues:
                 lines.append(
                     f"  L{issue.line}: [{issue.severity}] "
-                    f"{issue.issue_type} — {issue.context}"
+                    f"{issue.method_name} modifies {issue.field_name}"
                 )
         else:
-            lines.append("No redundant type casts found.")
+            lines.append("No query method mutations found.")
 
         toon = ToonEncoder()
         return {
