@@ -442,13 +442,13 @@ def _register_optimization_tools(registry: Any, project_root: str | None) -> Non
 
     # method_cohesion
     from ..tools.method_cohesion_tool import MethodCohesionTool
-    mc_tool = MethodCohesionTool(project_root)
+    mcoh_tool = MethodCohesionTool(project_root)
     registry.register(
         name="method_cohesion",
         toolset="analysis",
         category="design",
-        schema=mc_tool.get_tool_definition(),
-        handler=_make_handler(mc_tool),
+        schema=mcoh_tool.get_tool_definition(),
+        handler=_make_handler(mcoh_tool),
         description="Method cohesion: detect classes with LCOM4 > 1 where methods operate on disjoint field sets across Python, JS/TS, Java, Go",
         emoji="🧩",
     )
