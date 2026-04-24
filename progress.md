@@ -1,5 +1,32 @@
 # Progress — 自主开发进度日志
 
+## Session 166 — 2026-04-25
+
+**Query Method Mutation Detector Implementation (1-in-1-out)**
+
+**Added**: `query_mutation.py` — detects methods named get*/is*/has*/check*/find*/can*/should*/validate* that modify object state (self/this/receiver fields), violating Command-Query Separation. Supports Python, JS/TS, Java, Go (with pointer-receiver awareness).
+- Issue types: `query_method_mutation` (medium severity)
+- Feature score: 11/12 (competitor gap 3/3, user signal 3/3, architecture fit 3/3, implementation cost 2/3)
+- 26 unit tests passing across 4 languages
+
+**Removed**: `redundant_type_cast.py` (Python-only, narrow coverage, no real-world impact)
+
+**Results**: 82 → 82 analyzers (1-in-1-out), self-hosting score: 100%, architecture check: pass
+
+**Files Created**:
+- tree_sitter_analyzer/analysis/query_mutation.py (520 lines)
+- tree_sitter_analyzer/mcp/tools/query_mutation_tool.py (127 lines)
+- tests/unit/analysis/test_query_mutation.py (358 lines)
+
+**Files Deleted**:
+- tree_sitter_analyzer/analysis/redundant_type_cast.py
+- tree_sitter_analyzer/mcp/tools/redundant_type_cast_tool.py
+- tests/unit/analysis/test_redundant_type_cast.py
+
+**Files Modified**:
+- tree_sitter_analyzer/mcp/tool_registration/_optimization.py (replaced redundant_type_cast → query_mutation)
+- findings.md (added product + architecture analysis for query_mutation)
+
 ## Session 165 — 2026-04-25
 
 **Encapsulation Break Detector Implementation (1-in-1-out)**
