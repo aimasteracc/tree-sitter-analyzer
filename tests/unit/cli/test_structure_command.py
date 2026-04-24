@@ -135,7 +135,7 @@ class TestStructureCommandConvertToLegacyFormat:
             analysis_time=0.1,
         )
         result = command._convert_to_legacy_format(analysis_result)
-        assert result is not None
+        assert isinstance(result, dict)
         assert result["file_path"] == "test.py"
         assert result["language"] == "python"
         assert result["package"] is None

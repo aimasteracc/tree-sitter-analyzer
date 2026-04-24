@@ -164,7 +164,7 @@ class TestIncrementalCacheManager:
         )
 
         result = cache_manager.get(sample_file, language="python")
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.analysis_result == sample_analysis
         assert result.ast_bytes == b"fake_ast"
 
@@ -255,7 +255,7 @@ class TestIncrementalCacheManager:
         )
 
         result = cache_manager.get(sample_file)
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.git_sha == "abc123def"
 
     def test_size_based_eviction(self, cache_manager: IncrementalCacheManager, temp_repo: tempfile.TemporaryDirectory[str]) -> None:
@@ -324,7 +324,7 @@ class TestIncrementalCacheManager:
         # All should be retrievable
         for file_path in files:
             result = cache_manager.get(file_path)
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.analysis_result["file"] == file_path
 
     def test_relative_path_handling(self, cache_manager: IncrementalCacheManager, temp_repo: tempfile.TemporaryDirectory[str]) -> None:

@@ -184,7 +184,7 @@ class TestDesignPatternsToolOutputFormats:
 
     def test_toon_format_is_default(self):
         """Test TOON is the default format."""
-        tool = DesignPatternsTool("/tmp")
+        DesignPatternsTool("/tmp")
         args = {
             "file_path": "/tmp/test.py",
         }
@@ -206,7 +206,7 @@ class TestDesignPatternsToolPatternTypes:
 
     def test_all_pattern_types_default(self):
         """Test 'all' is the default for pattern_types."""
-        tool = DesignPatternsTool("/tmp")
+        DesignPatternsTool("/tmp")
         args = {
             "file_path": "/tmp/test.py",
         }

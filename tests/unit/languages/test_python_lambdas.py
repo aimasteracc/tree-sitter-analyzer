@@ -487,7 +487,7 @@ class TestLambdaExtraction:
 
         result = extractor._extract_lambda(node)
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.start_line == 6  # tree-sitter is 0-indexed
         assert result.end_line == 6
 
@@ -526,7 +526,7 @@ class TestLambdaExtraction:
 
         result = extractor._extract_lambda(node)
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.start_line == 1
         assert result.end_line == 3
 

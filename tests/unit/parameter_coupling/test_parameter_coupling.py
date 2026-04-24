@@ -16,7 +16,6 @@ from tree_sitter_analyzer.analysis.parameter_coupling import (
     _jaccard_similarity,
 )
 
-
 # --- Helpers ---
 
 

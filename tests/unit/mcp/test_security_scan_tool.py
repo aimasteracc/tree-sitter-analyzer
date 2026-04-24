@@ -5,6 +5,7 @@ Unit tests for Security Scan MCP Tool.
 from __future__ import annotations
 
 import json
+
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.security_scan_tool import SecurityScanTool

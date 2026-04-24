@@ -383,7 +383,7 @@ class TestCompatibleResultDerivation:
         cache = SearchCache()
         count_result = {"file_counts": {"file1.py": 5, "file2.py": 3}}
         result = cache._derive_file_list_result(count_result, "summary")
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.get("cache_derived") is True
 
     def test_derive_file_list_result_file_list(self):
@@ -391,7 +391,7 @@ class TestCompatibleResultDerivation:
         cache = SearchCache()
         count_result = {"file_counts": {"file1.py": 5, "file2.py": 3}}
         result = cache._derive_file_list_result(count_result, "file_list")
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.get("success") is True
         assert result.get("cache_derived") is True
         assert "files" in result

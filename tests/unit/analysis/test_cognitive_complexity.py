@@ -7,15 +7,13 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.analysis.cognitive_complexity import (
-    CognitiveComplexityAnalyzer,
-    CognitiveComplexityResult,
-    FunctionComplexity,
-    _rating,
-    RATING_SIMPLE,
-    RATING_MODERATE,
     RATING_COMPLEX,
-    RATING_VERY_COMPLEX,
     RATING_EXTREME,
+    RATING_MODERATE,
+    RATING_SIMPLE,
+    RATING_VERY_COMPLEX,
+    CognitiveComplexityAnalyzer,
+    _rating,
 )
 
 

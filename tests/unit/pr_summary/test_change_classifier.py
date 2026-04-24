@@ -2,10 +2,8 @@
 Unit tests for PR Summary change_classifier module.
 """
 
-import pytest
 
 from tree_sitter_analyzer.pr_summary.change_classifier import (
-    CategorizedChange,
     ChangeCategory,
     ChangeClassifier,
     PRType,

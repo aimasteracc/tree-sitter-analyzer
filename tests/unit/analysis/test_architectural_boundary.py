@@ -1,8 +1,6 @@
 """Tests for ArchitecturalBoundaryAnalyzer."""
 from __future__ import annotations
 
-import pytest
-
 from tree_sitter_analyzer.analysis.architectural_boundary import (
     VIOLATION_SKIP_LAYER,
     VIOLATION_WRONG_DIRECTION,

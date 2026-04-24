@@ -1,7 +1,6 @@
 """Tests for Nesting Depth Analyzer — Python + Multi-Language."""
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest

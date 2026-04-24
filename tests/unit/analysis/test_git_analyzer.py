@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
-from unittest import mock
 
 import pytest
 
 from tree_sitter_analyzer.analyzer.git_analyzer import (
-    FileChurn,
-    FileOwnership,
     GitAnalyzer,
 )
 

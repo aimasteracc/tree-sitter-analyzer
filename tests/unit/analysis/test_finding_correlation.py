@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 
 from tree_sitter_analyzer.analysis.finding_correlation import (
-    CorrelationResult,
     FindingCorrelator,
     Severity,
     UnifiedFinding,
@@ -18,7 +16,6 @@ from tree_sitter_analyzer.analysis.finding_correlation import (
     _get_severity,
     normalize_findings,
 )
-
 
 # ── Fixtures: mock analyzer results ─────────────────────────────────
 

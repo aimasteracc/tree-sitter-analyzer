@@ -498,7 +498,7 @@ class TestCacheThreadSafety:
 
         # Should have one of the values
         result = cache.get_language("file.py")
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.startswith("value_")
 
     def test_concurrent_different_keys(self):

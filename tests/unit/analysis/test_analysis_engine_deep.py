@@ -105,7 +105,7 @@ class TestTopologicalSort:
             edges=[("A", "B"), ("B", "C")],
         )
         result = graph.topological_sort()
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.index("A") < result.index("B")
         assert result.index("B") < result.index("C")
 
@@ -131,7 +131,7 @@ class TestTopologicalSort:
             edges=[("A", "B"), ("A", "C"), ("B", "D"), ("C", "D")],
         )
         result = graph.topological_sort()
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.index("A") < result.index("B")
         assert result.index("A") < result.index("C")
         assert result.index("B") < result.index("D")

@@ -6,7 +6,9 @@ import textwrap
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.circular_dependency_tool import CircularDependencyTool
+from tree_sitter_analyzer.mcp.tools.circular_dependency_tool import (
+    CircularDependencyTool,
+)
 
 
 @pytest.fixture

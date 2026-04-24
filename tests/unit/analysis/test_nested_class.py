@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 
 from tree_sitter_analyzer.analysis.nested_class import (
     NestedClassAnalyzer,

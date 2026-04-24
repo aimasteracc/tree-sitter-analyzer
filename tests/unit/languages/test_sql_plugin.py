@@ -181,7 +181,7 @@ class TestSQLPlugin:
                 request = AnalysisRequest(file_path=temp_path)
                 result = await plugin.analyze_file(temp_path, request)
 
-                assert result is not None
+                assert isinstance(result, dict)
                 assert result.language == "sql"
                 # If tree-sitter is missing, it might fall back to regex or fail
                 # The original test expected failure, but if Parser handles it gracefully (e.g. by returning empty tree),
@@ -225,7 +225,7 @@ class TestSQLPlugin:
                     request = AnalysisRequest(file_path=temp_path)
                     result = await plugin.analyze_file(temp_path, request)
 
-                    assert result is not None
+                    assert isinstance(result, dict)
                     assert result.language == "sql"
                     # Similar to above, check if it fails or falls back
                     if not result.success:
@@ -318,7 +318,7 @@ CREATE TABLE users (
             request = AnalysisRequest(file_path=temp_path)
             result = await plugin.analyze_file(temp_path, request)
 
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.language == "sql"
             # If tree-sitter-sql is available, we should get results
             # If not, result.success will be False
@@ -790,7 +790,7 @@ class TestSQLFormatterIntegration:
             request = AnalysisRequest(file_path=temp_path)
             result = await plugin.analyze_file(temp_path, request)
 
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.language == "sql"
 
             if result.success and len(result.elements) > 0:

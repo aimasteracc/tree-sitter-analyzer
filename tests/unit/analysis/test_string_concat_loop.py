@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.analysis.string_concat_loop import (
+    ConcatHotspot,
     StringConcatLoopAnalyzer,
     StringConcatLoopResult,
-    ConcatHotspot,
     _severity,
 )
 

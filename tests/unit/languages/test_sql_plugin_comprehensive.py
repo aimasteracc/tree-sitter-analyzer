@@ -361,7 +361,7 @@ CREATE TABLE users (
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         classes = result.get("classes", [])
         assert any(c.name == "users" for c in classes)
 
@@ -377,7 +377,7 @@ CREATE TABLE orders (
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         classes = result.get("classes", [])
         assert any(c.name == "orders" for c in classes)
 
@@ -396,7 +396,7 @@ CREATE TABLE categories (
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         classes = result.get("classes", [])
         table_names = [c.name for c in classes]
         assert "products" in table_names
@@ -414,7 +414,7 @@ WHERE status = 'active';
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         classes = result.get("classes", [])
         assert any(c.name == "active_users" for c in classes)
 
@@ -428,7 +428,7 @@ JOIN users u ON o.user_id = u.id;
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         classes = result.get("classes", [])
         assert any(c.name == "order_summary" for c in classes)
 
@@ -444,7 +444,7 @@ END;
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         functions = result.get("functions", [])
         assert any("get_user_by_id" in f.name for f in functions)
 
@@ -463,7 +463,7 @@ END;
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         functions = result.get("functions", [])
         proc_names = [f.name for f in functions]
         assert any("proc_one" in name for name in proc_names)
@@ -482,7 +482,7 @@ END;
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         functions = result.get("functions", [])
         assert any("get_full_name" in f.name for f in functions)
 
@@ -500,7 +500,7 @@ END;
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         functions = result.get("functions", [])
         assert any("before_user_insert" in f.name for f in functions)
 
@@ -513,7 +513,7 @@ CREATE INDEX idx_users_email ON users (email);
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         variables = result.get("variables", [])
         assert any("idx_users_email" in v.name for v in variables)
 
@@ -524,7 +524,7 @@ CREATE UNIQUE INDEX idx_users_email_unique ON users (email);
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         variables = result.get("variables", [])
         assert any("idx_users_email_unique" in v.name for v in variables)
 
@@ -558,7 +558,7 @@ SELECT * FROM employees;
         """Test extraction from empty source code."""
         result = extract_elements_from_sql(plugin, "")
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert len(result.get("classes", [])) == 0
         assert len(result.get("functions", [])) == 0
 
@@ -637,7 +637,7 @@ CREATE INDEX idx_users_email ON users (email);
 """
         result = extract_elements_from_sql(plugin, sql_code)
 
-        assert result is not None
+        assert isinstance(result, dict)
         table_names = [c.name for c in result.get("classes", [])]
         assert "users" in table_names
 
@@ -673,7 +673,7 @@ CREATE TABLE users (
             request = AnalysisRequest(file_path=temp_path)
             result = await plugin.analyze_file(temp_path, request)
 
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.language == "sql"
         finally:
             os.unlink(temp_path)
@@ -697,7 +697,7 @@ END;
             request = AnalysisRequest(file_path=temp_path)
             result = await plugin.analyze_file(temp_path, request)
 
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.language == "sql"
         finally:
             os.unlink(temp_path)

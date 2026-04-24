@@ -443,7 +443,7 @@ class TestClass {
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.language == "kotlin"
 
     @pytest.mark.asyncio
@@ -464,7 +464,7 @@ class ImportTest {
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.language == "kotlin"
 
     @pytest.mark.asyncio

@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
-
-from tree_sitter_analyzer.analysis.double_negation import (
-    DoubleNegationAnalyzer,
-    ISSUE_DOUBLE_NOT,
-    ISSUE_DOUBLE_BANG,
-    ISSUE_NOT_NOT_PARENS,
-)
 
 import pytest
+
+from tree_sitter_analyzer.analysis.double_negation import (
+    ISSUE_DOUBLE_BANG,
+    ISSUE_DOUBLE_NOT,
+    ISSUE_NOT_NOT_PARENS,
+    DoubleNegationAnalyzer,
+)
 
 
 @pytest.fixture

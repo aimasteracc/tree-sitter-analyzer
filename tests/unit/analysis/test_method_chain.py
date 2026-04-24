@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.analysis.method_chain import (
+    ChainHotspot,
     MethodChainAnalyzer,
     MethodChainResult,
-    ChainHotspot,
     _severity,
 )
 

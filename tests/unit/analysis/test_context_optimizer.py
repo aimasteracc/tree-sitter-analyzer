@@ -1,8 +1,6 @@
 """Unit tests for context optimizer module."""
 from __future__ import annotations
 
-import pytest
-
 from tree_sitter_analyzer.analysis.context_optimizer import (
     CodeElement,
     calculate_compression_ratio,

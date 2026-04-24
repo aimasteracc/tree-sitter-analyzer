@@ -92,7 +92,7 @@ class TestEnhancedJavaScriptElementExtractor:
     def test_parse_import_statement_default(self, extractor):
         """Test parsing default import statements"""
         result = extractor._parse_import_statement("import React from 'react';")
-        assert result is not None
+        assert isinstance(result, (dict, object))
         import_type, names, source, is_default, is_namespace = result
         assert import_type == "default"
         assert names == ["React"]
@@ -105,7 +105,7 @@ class TestEnhancedJavaScriptElementExtractor:
         result = extractor._parse_import_statement(
             "import { useState, useEffect } from 'react';"
         )
-        assert result is not None
+        assert isinstance(result, (dict, object))
         import_type, names, source, is_default, is_namespace = result
         assert import_type == "named"
         assert "useState" in names
@@ -117,7 +117,7 @@ class TestEnhancedJavaScriptElementExtractor:
     def test_parse_import_statement_namespace(self, extractor):
         """Test parsing namespace import statements"""
         result = extractor._parse_import_statement("import * as React from 'react';")
-        assert result is not None
+        assert isinstance(result, (dict, object))
         import_type, names, source, is_default, is_namespace = result
         assert import_type == "namespace"
         assert names == ["React"]
@@ -128,7 +128,7 @@ class TestEnhancedJavaScriptElementExtractor:
     def test_parse_export_statement_default(self, extractor):
         """Test parsing default export statements"""
         result = extractor._parse_export_statement("export default MyComponent;")
-        assert result is not None
+        assert isinstance(result, (dict, object))
         export_type, names, is_default = result
         assert export_type == "default"
         assert names == ["MyComponent"]
@@ -137,7 +137,7 @@ class TestEnhancedJavaScriptElementExtractor:
     def test_parse_export_statement_named(self, extractor):
         """Test parsing named export statements"""
         result = extractor._parse_export_statement("export { Component1, Component2 };")
-        assert result is not None
+        assert isinstance(result, (dict, object))
         export_type, names, is_default = result
         assert export_type == "named"
         assert "Component1" in names

@@ -5,7 +5,6 @@ from pathlib import Path
 
 from tree_sitter_analyzer.analysis.resource_lifecycle import (
     RISK_HIGH,
-    RISK_LOW,
     ResourceLifecycleAnalyzer,
 )
 

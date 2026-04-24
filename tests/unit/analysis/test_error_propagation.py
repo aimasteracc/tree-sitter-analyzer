@@ -1,8 +1,8 @@
 """Tests for Error Propagation Analyzer."""
 from __future__ import annotations
 
-import textwrap
 import tempfile
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -11,7 +11,6 @@ from tree_sitter_analyzer.analysis.error_propagation import (
     ErrorPropagationAnalyzer,
     ErrorPropagationIssue,
     PropagationGapType,
-    RiskLevel,
 )
 
 

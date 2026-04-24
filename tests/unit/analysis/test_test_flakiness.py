@@ -9,9 +9,7 @@ import pytest
 
 from tree_sitter_analyzer.analysis.test_flakiness import (
     FlakinessAnalyzer,
-    FlakinessFactor,
     FlakinessRiskLevel,
-    FlakinessResult,
 )
 
 

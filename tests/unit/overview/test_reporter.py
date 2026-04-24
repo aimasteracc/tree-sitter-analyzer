@@ -7,8 +7,8 @@ import pytest
 
 from tree_sitter_analyzer.overview.aggregator import OverviewReport
 from tree_sitter_analyzer.overview.reporter import (
-    OverviewReporter,
     OutputFormat,
+    OverviewReporter,
     format_score_bar,
     generate_health_badge,
 )
@@ -208,7 +208,7 @@ class TestOverviewReporter:
         # Verify ordering (all should be found and in increasing order)
         assert all(pos >= 0 for pos in sections.values())
 
-        order = list(sorted(sections.items(), key=lambda x: x[1]))
+        order = sorted(sections.items(), key=lambda x: x[1])
         assert order[0][0] == "Summary"
         assert order[1][0] == "Health Analysis"
 

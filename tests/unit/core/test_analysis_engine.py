@@ -188,7 +188,7 @@ class TestUnifiedAnalysisEngineAnalysis:
 
         try:
             result = await engine.analyze_file(temp_path)
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.success is True
             assert result.language == "python"
         finally:
@@ -228,7 +228,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         engine = UnifiedAnalysisEngine()
         code = "def hello():\n    pass\n"
         result = await engine.analyze_code(code, language="python")
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert result.language == "python"
 
@@ -240,7 +240,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         result = await engine.analyze_code(
             code, language="python", filename="custom.py"
         )
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.file_path == "custom.py"
 
     def test_analyze_code_sync(self):
@@ -248,7 +248,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         engine = UnifiedAnalysisEngine()
         code = "def hello():\n    pass\n"
         result = engine.analyze_code_sync(code, language="python")
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
 
     @pytest.mark.asyncio
@@ -271,7 +271,7 @@ class TestUnifiedAnalysisEngineAnalysis:
                 include_complexity=True,
             )
             result = await engine.analyze(request)
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.success is True
         finally:
             if os.path.exists(temp_path):
@@ -291,7 +291,7 @@ class TestUnifiedAnalysisEngineAnalysis:
         try:
             request = AnalysisRequest(file_path=temp_path, language="python")
             result = engine.analyze_sync(request)
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.success is True
         finally:
             if os.path.exists(temp_path):
@@ -311,7 +311,7 @@ class TestUnifiedAnalysisEngineAnalysis:
 
         try:
             result = await engine.analyze_file_async(temp_path)
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.success is True
         finally:
             if os.path.exists(temp_path):
@@ -382,7 +382,7 @@ class TestUnifiedAnalysisEngineQueries:
                 include_queries=True,
             )
             result = await engine.analyze(request)
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.success is True
         finally:
             if os.path.exists(temp_path):
@@ -497,6 +497,6 @@ class TestMockLanguagePlugin:
         plugin = MockLanguagePlugin("python")
         request = AnalysisRequest(file_path="test.py", language="python")
         result = await plugin.analyze_file("test.py", request)
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.language == "python"
         assert result.success is True

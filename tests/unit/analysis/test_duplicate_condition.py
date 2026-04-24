@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 from tree_sitter_analyzer.analysis.duplicate_condition import (
+    DuplicateCondition,
     DuplicateConditionAnalyzer,
     DuplicateConditionResult,
-    DuplicateCondition,
     _normalize,
 )
 

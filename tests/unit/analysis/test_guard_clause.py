@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 
 import pytest
 
 from tree_sitter_analyzer.analysis.guard_clause import (
     ISSUE_GUARD_CLAUSE,
+    MIN_IF_BODY_STATEMENTS,
     GuardClauseAnalyzer,
     GuardClauseIssue,
     GuardClauseResult,
-    MIN_IF_BODY_STATEMENTS,
 )
 
 ANALYZER = GuardClauseAnalyzer()

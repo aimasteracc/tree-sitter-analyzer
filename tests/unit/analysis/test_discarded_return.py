@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
-
-from tree_sitter_analyzer.analysis.discarded_return import (
-    DiscardedReturnAnalyzer,
-    ISSUE_DISCARDED_RESULT,
-    ISSUE_DISCARDED_AWAIT,
-    ISSUE_DISCARDED_ERROR,
-)
 
 import pytest
+
+from tree_sitter_analyzer.analysis.discarded_return import (
+    ISSUE_DISCARDED_AWAIT,
+    ISSUE_DISCARDED_ERROR,
+    ISSUE_DISCARDED_RESULT,
+    DiscardedReturnAnalyzer,
+)
 
 
 @pytest.fixture

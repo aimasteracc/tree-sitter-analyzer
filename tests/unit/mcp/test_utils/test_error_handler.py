@@ -659,7 +659,7 @@ class TestErrorHandlerEdgeCases:
         error = ValueError("Test")
 
         result = handler.handle_error(error, None, "test")
-        assert result is not None
+        assert isinstance(result, dict)
         assert result["details"] == {}
 
     def test_handle_error_with_empty_operation(self):
@@ -668,7 +668,7 @@ class TestErrorHandlerEdgeCases:
         error = ValueError("Test")
 
         result = handler.handle_error(error, {}, "")
-        assert result is not None
+        assert isinstance(result, dict)
         assert result["operation"] == ""
 
     def test_get_error_stats_with_no_errors(self):

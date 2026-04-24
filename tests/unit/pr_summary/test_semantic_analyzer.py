@@ -2,13 +2,12 @@
 Unit tests for PR Summary Semantic Analyzer
 """
 
-import pytest
 
 from tree_sitter_analyzer.pr_summary.diff_parser import ChangeType, FileChange
 from tree_sitter_analyzer.pr_summary.semantic_analyzer import (
+    SemanticAnalysisResult,
     SemanticAnalyzer,
     SemanticChangeType,
-    SemanticAnalysisResult,
 )
 
 

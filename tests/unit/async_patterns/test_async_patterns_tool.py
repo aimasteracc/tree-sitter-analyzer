@@ -4,7 +4,6 @@ Tests for Async Pattern Analyzer MCP Tool.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -155,7 +154,6 @@ func main() {
 class TestToolRegistration:
     def test_async_patterns_registered(self) -> None:
         from tree_sitter_analyzer.mcp.registry import get_registry
-
         from tree_sitter_analyzer.mcp.tool_registration import register_all_tools
 
         register_all_tools()

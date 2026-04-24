@@ -8,8 +8,6 @@ and HtmlCompactFormatter for MarkupElement and StyleElement formatting.
 
 import json
 
-import pytest
-
 from tree_sitter_analyzer.formatters.formatter_registry import IFormatter
 from tree_sitter_analyzer.formatters.html_formatter import (
     HtmlCompactFormatter,

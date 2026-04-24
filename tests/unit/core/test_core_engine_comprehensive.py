@@ -91,7 +91,7 @@ class TestAnalysisEngineAnalyzeFile:
         try:
             result = await engine.analyze_file(temp_path, language="python")
 
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.language == "python"
         finally:
             os.unlink(temp_path)
@@ -118,7 +118,7 @@ class TestAnalysisEngineAnalyzeFile:
 
                 result = await engine.analyze_file(temp_path)
 
-                assert result is not None
+                assert isinstance(result, dict)
                 assert result.error_message == "Syntax error"
         finally:
             os.unlink(temp_path)
@@ -134,7 +134,7 @@ class TestAnalysisEngineAnalyzeFile:
         try:
             result = await engine.analyze_file(temp_path)
 
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.language == "python"
         finally:
             os.unlink(temp_path)
@@ -152,7 +152,7 @@ class TestAnalysisEngineAnalyzeFile:
         try:
             result = await engine.analyze_file(temp_path)
 
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.language == "python"
         finally:
             os.unlink(temp_path)
@@ -169,7 +169,7 @@ class TestAnalysisEngineAnalyzeCode:
         code = "def hello():\n    print('world')"
         result = await engine.analyze_code(code, language="python")
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.language == "python"
 
     async def test_analyze_code_with_filename(self):
@@ -185,7 +185,7 @@ class TestAnalysisEngineAnalyzeCode:
             code, filename="test.js", language="javascript"
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.language == "javascript"
 
     async def test_analyze_code_without_language_or_filename(self):
@@ -222,7 +222,7 @@ class TestAnalysisEngineAnalyzeCode:
 
             result = await engine.analyze_code("invalid", language="python")
 
-            assert result is not None
+            assert isinstance(result, dict)
             assert result.error_message == "Parse error"
 
     async def test_analyze_code_with_queries(self):

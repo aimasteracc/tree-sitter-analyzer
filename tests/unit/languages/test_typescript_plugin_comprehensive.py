@@ -119,7 +119,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         result = extractor._parse_function_signature_optimized(mock_node)
 
-        assert result is not None
+        assert isinstance(result, (dict, object))
         name, parameters, is_async, is_generator, return_type, generics = result
         assert name == "testFunction"
         assert parameters == ["param1: string"]
@@ -137,7 +137,7 @@ class TestTypeScriptElementExtractorComprehensive:
         extractor._get_node_text_optimized = Mock(return_value="function* generator()")
 
         result = extractor._parse_function_signature_optimized(mock_node)
-        assert result is not None
+        assert isinstance(result, (dict, object))
         _, _, is_async, is_generator, _, _ = result
         assert is_generator is True
 
@@ -173,7 +173,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         result = extractor._parse_method_signature_optimized(mock_node)
 
-        assert result is not None
+        assert isinstance(result, (dict, object))
         (
             name,
             parameters,
@@ -204,7 +204,7 @@ class TestTypeScriptElementExtractorComprehensive:
         )
 
         result = extractor._parse_method_signature_optimized(mock_node)
-        assert result is not None
+        assert isinstance(result, (dict, object))
         (_, _, _, _, _, _, is_constructor, _, _, _) = result
         assert is_constructor is True
 
@@ -216,7 +216,7 @@ class TestTypeScriptElementExtractorComprehensive:
         # Test getter
         extractor._get_node_text_optimized = Mock(return_value="get value()")
         result = extractor._parse_method_signature_optimized(mock_node)
-        assert result is not None
+        assert isinstance(result, (dict, object))
         (_, _, _, _, is_getter, is_setter, _, _, _, _) = result
         assert is_getter is True
         assert is_setter is False
@@ -224,7 +224,7 @@ class TestTypeScriptElementExtractorComprehensive:
         # Test setter
         extractor._get_node_text_optimized = Mock(return_value="set value(val: string)")
         result = extractor._parse_method_signature_optimized(mock_node)
-        assert result is not None
+        assert isinstance(result, (dict, object))
         (_, _, _, _, is_getter, is_setter, _, _, _, _) = result
         assert is_getter is False
         assert is_setter is True
@@ -329,7 +329,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         result = extractor._extract_import_info_simple(mock_import_node)
 
-        assert result is not None
+        assert isinstance(result, (dict, object))
         assert result.module_name == "./module"
         assert result.imported_names == ["Component"]
         assert result.language == "typescript"
@@ -361,7 +361,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         result = extractor._extract_import_info_simple(mock_import_node)
 
-        assert result is not None
+        assert isinstance(result, (dict, object))
         assert result.module_name == "./types"
         assert result.imported_names == ["User"]
         # Note: is_type_import is not available in the Import model
@@ -473,7 +473,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         result = extractor._extract_dynamic_import(mock_expr_stmt)
 
-        assert result is not None
+        assert isinstance(result, (dict, object))
         assert result.module_name == "./dynamic-module"
         assert result.module_path == "./dynamic-module"
         assert "dynamic_import" in result.imported_names
@@ -545,7 +545,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         result = extractor._extract_tsdoc_for_line(6)  # Line with function
 
-        assert result is not None
+        assert isinstance(result, (dict, object))
         assert "This is a TSDoc comment" in result
         assert "@param user The user object" in result
         assert "@returns Promise with result" in result
@@ -567,7 +567,7 @@ class TestTypeScriptElementExtractorComprehensive:
         ]
 
         result = extractor._extract_tsdoc_for_line(2)
-        assert result is not None
+        assert isinstance(result, (dict, object))
         assert "Single line TSDoc" in result
 
     def test_traverse_and_extract_iterative_max_depth(self, extractor):

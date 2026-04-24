@@ -208,7 +208,7 @@ class TestPartialParsing:
         text = 'def foo():\n    pass\n\ndef bar():\n    pass\n'
 
         result = recovery._try_partial_parse("test.py", text)
-        assert result is not None
+        assert isinstance(result, dict)
         assert result["success"] is True
         method_names = [m["name"] for m in result["methods"]]
         assert "foo" in method_names
@@ -222,7 +222,7 @@ class TestPartialParsing:
         text = "public class MyClass {\n  int x;\n}\n"
 
         result = recovery._try_partial_parse("Test.java", text)
-        assert result is not None
+        assert isinstance(result, dict)
         assert result["success"] is True
         class_names = [c["name"] for c in result["classes"]]
         assert "MyClass" in class_names

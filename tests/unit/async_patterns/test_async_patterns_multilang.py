@@ -10,7 +10,6 @@ import pytest
 from tree_sitter_analyzer.analysis.async_patterns import (
     AsyncPatternAnalyzer,
     AsyncPatternType,
-    PatternSeverity,
 )
 
 

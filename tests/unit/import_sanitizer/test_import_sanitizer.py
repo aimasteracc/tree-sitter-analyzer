@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -10,11 +9,8 @@ import pytest
 from tree_sitter_analyzer.analysis.import_sanitizer import (
     CircularImport,
     FileAnalysis,
-    ImportAnalysisResult,
     ImportInfo,
     ImportSanitizer,
-    SortViolation,
-    SymbolRef,
     analyze_imports,
 )
 

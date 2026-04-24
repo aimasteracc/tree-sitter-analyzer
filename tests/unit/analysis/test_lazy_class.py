@@ -7,8 +7,8 @@ import pytest
 
 from tree_sitter_analyzer.analysis.lazy_class import (
     LazyClassAnalyzer,
-    LazyClassResult,
     LazyClassInfo,
+    LazyClassResult,
     _severity,
 )
 

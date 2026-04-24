@@ -13,8 +13,8 @@ from tree_sitter_analyzer.analysis.comment_quality import (
     CommentQualityResult,
     IssueType,
     Severity,
-    _extract_jsdoc_params,
     _extract_javadoc_params,
+    _extract_jsdoc_params,
     _extract_python_docstring_params,
     _find_todos,
 )

@@ -14,7 +14,6 @@ from tree_sitter_analyzer.analysis.global_state import (
     ISSUE_PACKAGE_VAR,
     ISSUE_STATIC_MUTABLE,
     GlobalStateAnalyzer,
-    GlobalStateResult,
 )
 
 

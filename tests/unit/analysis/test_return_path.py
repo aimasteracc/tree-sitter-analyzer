@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -17,8 +16,8 @@ from tree_sitter_analyzer.analysis.return_path import (
     FunctionReturnPath,
     ReturnPathAnalyzer,
     ReturnPathIssue,
-    ReturnPoint,
     ReturnPathResult,
+    ReturnPoint,
     _severity,
 )
 

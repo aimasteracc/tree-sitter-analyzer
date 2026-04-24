@@ -97,7 +97,7 @@ def complex_function(param: Optional[str] = None) -> List[str]:
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -136,7 +136,7 @@ public class TestFormat {
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -169,7 +169,7 @@ public class TestImports {
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -210,7 +210,7 @@ function testFunction() {
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -243,7 +243,7 @@ class TestClass {
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -285,7 +285,7 @@ class TestClass implements TestInterface {
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -329,7 +329,7 @@ public class TestFormat
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -372,7 +372,7 @@ func main() {
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -418,7 +418,7 @@ fn main() {
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -449,7 +449,7 @@ class TestClass:
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -476,7 +476,7 @@ def complex_function(param):
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 
@@ -514,7 +514,7 @@ This is a test paragraph.
             )
         )
 
-        assert result is not None
+        assert isinstance(result, dict)
         assert result.success is True
         assert isinstance(result.elements, list)
 

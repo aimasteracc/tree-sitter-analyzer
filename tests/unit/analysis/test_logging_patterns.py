@@ -11,10 +11,7 @@ from tree_sitter_analyzer.analysis.logging_patterns import (
     SMELL_PRINT_LOGGING,
     SMELL_SENSITIVE_IN_LOG,
     SMELL_SILENT_CATCH,
-    CatchBlock,
     LoggingPatternAnalyzer,
-    LoggingPatternResult,
-    LoggingSmell,
 )
 
 

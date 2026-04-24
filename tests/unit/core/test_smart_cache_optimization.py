@@ -145,7 +145,7 @@ class TestSmartCacheOptimization:
         result = cache.get_compatible_result(summary_key, "summary")
 
         # Should get derived result
-        assert result is not None
+        assert isinstance(result, dict)
         assert result["success"] is True
         assert result["total_matches"] == 5
         assert result["cache_derived"] is True

@@ -9,7 +9,6 @@ from tree_sitter_analyzer.analysis.env_tracker import (
     AccessType,
     EnvTrackingResult,
     EnvVarReference,
-    EnvVarTracker,
     EnvVarUsage,
     group_by_var_name,
     track_env_vars,
