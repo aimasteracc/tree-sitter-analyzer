@@ -154,7 +154,8 @@ class FindingCorrelationTool(BaseMCPTool):
                 severity_marker = ">>>" if h.analyzer_count >= 3 else "  >"
                 lines.append(
                     f"{severity_marker} L{h.line}-{h.end_line} "
-                    f"[{h.analyzer_count} analyzers, {h.max_severity.value}]"
+                    f"[{h.analyzer_count} analyzers, {h.max_severity.value}] "
+                    f"score={h.priority_score} {h.pattern.value}"
                 )
                 for name in h.analyzer_names:
                     lines.append(f"    - {name}")

@@ -7,6 +7,7 @@ import pytest
 
 from tree_sitter_analyzer.analysis.finding_correlation import (
     FindingCorrelator,
+    HotspotPattern,
     Severity,
     UnifiedFinding,
     _get_end_line,
@@ -426,3 +427,149 @@ class TestUnifiedFinding:
         f = _make_unified()
         with pytest.raises(AttributeError):
             f.line = 99  # type: ignore[misc]
+
+
+# ── Priority Score ──────────────────────────────────────────────────
+
+
+class TestPriorityScore:
+    def test_basic_priority(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="a1", severity=Severity.MEDIUM),
+            _make_unified(line=10, analyzer_name="a2", severity=Severity.MEDIUM),
+        ])
+        result = corr.correlate()
+        h = result.hotspots[0]
+        # 2 analyzers * severity_weight(MEDIUM=2) = 4
+        assert h.priority_score == 4
+
+    def test_critical_higher_priority(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="a1", severity=Severity.CRITICAL),
+            _make_unified(line=10, analyzer_name="a2", severity=Severity.CRITICAL),
+        ])
+        result = corr.correlate()
+        # 2 * 4 = 8
+        assert result.hotspots[0].priority_score == 8
+
+    def test_density_bonus(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="a1", severity=Severity.MEDIUM),
+            _make_unified(line=10, analyzer_name="a2", severity=Severity.MEDIUM),
+            _make_unified(line=10, analyzer_name="a2", severity=Severity.HIGH),
+        ])
+        result = corr.correlate()
+        h = result.hotspots[0]
+        # 2 analyzers, max_severity = HIGH(3), density = 3-2 = 1
+        # score = 2 * 3 + 1 = 7
+        assert h.priority_score == 7
+
+    def test_sorted_by_priority(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="a1", severity=Severity.LOW),
+            _make_unified(line=10, analyzer_name="a2", severity=Severity.LOW),
+            _make_unified(line=50, analyzer_name="a1", severity=Severity.CRITICAL),
+            _make_unified(line=50, analyzer_name="a2", severity=Severity.CRITICAL),
+        ])
+        result = corr.correlate()
+        # L50: 2*4=8, L10: 2*1=2
+        assert result.hotspots[0].line == 50
+        assert result.hotspots[1].line == 10
+
+
+# ── Pattern Detection ──────────────────────────────────────────────
+
+
+class TestPatternDetection:
+    def test_complexity_cluster(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="cognitive_complexity"),
+            _make_unified(line=10, analyzer_name="boolean_complexity"),
+        ])
+        result = corr.correlate()
+        assert result.hotspots[0].pattern == HotspotPattern.COMPLEXITY_CLUSTER
+
+    def test_dead_code_cluster(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="dead_store"),
+            _make_unified(line=10, analyzer_name="dead_code_path"),
+        ])
+        result = corr.correlate()
+        assert result.hotspots[0].pattern == HotspotPattern.DEAD_CODE_CLUSTER
+
+    def test_risk_cluster(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="error_handling"),
+            _make_unified(line=10, analyzer_name="security_scan"),
+        ])
+        result = corr.correlate()
+        assert result.hotspots[0].pattern == HotspotPattern.RISK_CLUSTER
+
+    def test_mixed_pattern(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="cognitive_complexity"),
+            _make_unified(line=10, analyzer_name="dead_store"),
+        ])
+        result = corr.correlate()
+        assert result.hotspots[0].pattern == HotspotPattern.MIXED
+
+    def test_pattern_in_to_dict(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(line=10, analyzer_name="dead_store"),
+            _make_unified(line=10, analyzer_name="dead_code_path"),
+        ])
+        d = corr.correlate().to_dict()
+        assert d["hotspots"][0]["pattern"] == "dead_code_cluster"
+
+
+# ── File Summary ───────────────────────────────────────────────────
+
+
+class TestFileSummary:
+    def test_single_file_summary(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(file_path="a.py", line=10, analyzer_name="a1", severity=Severity.HIGH),
+            _make_unified(file_path="a.py", line=10, analyzer_name="a2", severity=Severity.MEDIUM),
+        ])
+        result = corr.correlate()
+        summaries = result.file_summary
+        assert len(summaries) == 1
+        assert summaries[0].file_path == "a.py"
+        assert summaries[0].hotspot_count == 1
+        assert summaries[0].max_priority_score > 0
+
+    def test_multi_file_summary_sorted_by_priority(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(file_path="low.py", line=10, analyzer_name="a1", severity=Severity.LOW),
+            _make_unified(file_path="low.py", line=10, analyzer_name="a2", severity=Severity.LOW),
+            _make_unified(file_path="high.py", line=10, analyzer_name="a1", severity=Severity.CRITICAL),
+            _make_unified(file_path="high.py", line=10, analyzer_name="a2", severity=Severity.CRITICAL),
+        ])
+        result = corr.correlate()
+        summaries = result.file_summary
+        assert len(summaries) == 2
+        assert summaries[0].file_path == "high.py"
+        assert summaries[1].file_path == "low.py"
+
+    def test_file_summary_in_to_dict(self) -> None:
+        corr = FindingCorrelator()
+        corr.add_unified([
+            _make_unified(file_path="a.py", line=10, analyzer_name="a1"),
+            _make_unified(file_path="a.py", line=10, analyzer_name="a2"),
+        ])
+        d = corr.correlate().to_dict()
+        assert len(d["file_summary"]) == 1
+        assert d["file_summary"][0]["file_path"] == "a.py"
+        assert "max_priority_score" in d["file_summary"][0]
+        assert "top_pattern" in d["file_summary"][0]

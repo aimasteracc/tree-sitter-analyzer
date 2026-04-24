@@ -27,6 +27,15 @@ class Severity(Enum):
     INFO = "info"
 
 
+class HotspotPattern(Enum):
+    """Common finding cluster patterns."""
+
+    COMPLEXITY_CLUSTER = "complexity_cluster"
+    DEAD_CODE_CLUSTER = "dead_code_cluster"
+    RISK_CLUSTER = "risk_cluster"
+    MIXED = "mixed"
+
+
 # Maps raw severity strings to normalized Severity enum.
 # Covers all known severity vocabularies across 95+ analyzers.
 _SEVERITY_MAP: dict[str, Severity] = {
@@ -91,6 +100,50 @@ class Hotspot:
     def finding_types(self) -> list[str]:
         return sorted({f.finding_type for f in self.findings})
 
+    @property
+    def priority_score(self) -> int:
+        """Numeric priority: higher = fix first."""
+        severity_weight = _SEVERITY_ORDER[self.max_severity]
+        density_bonus = len(self.findings) - self.analyzer_count
+        return self.analyzer_count * severity_weight + max(0, density_bonus)
+
+    @property
+    def pattern(self) -> HotspotPattern:
+        """Categorize the cluster by dominant finding type."""
+        names = {f.analyzer_name for f in self.findings}
+        complexity = names & _COMPLEXITY_ANALYZERS
+        dead_code = names & _DEAD_CODE_ANALYZERS
+        risk = names & _RISK_ANALYZERS
+
+        scores = [
+            (len(complexity), HotspotPattern.COMPLEXITY_CLUSTER),
+            (len(dead_code), HotspotPattern.DEAD_CODE_CLUSTER),
+            (len(risk), HotspotPattern.RISK_CLUSTER),
+        ]
+        scores.sort(key=lambda s: s[0], reverse=True)
+
+        if scores[0][0] >= 2 and scores[0][0] > scores[1][0]:
+            return scores[0][1]
+        return HotspotPattern.MIXED
+
+
+@dataclass
+class FileSummary:
+    """Aggregated hotspot info for a single file."""
+
+    file_path: str
+    hotspot_count: int
+    max_priority_score: int
+    top_pattern: HotspotPattern
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "file_path": self.file_path,
+            "hotspot_count": self.hotspot_count,
+            "max_priority_score": self.max_priority_score,
+            "top_pattern": self.top_pattern.value,
+        }
+
 
 @dataclass
 class CorrelationResult:
@@ -111,6 +164,28 @@ class CorrelationResult:
         """Hotspots with exactly 2 analyzers."""
         return [h for h in self.hotspots if h.analyzer_count == 2]
 
+    @property
+    def file_summary(self) -> list[FileSummary]:
+        """Aggregate hotspots by file, sorted by max priority desc."""
+        by_file: dict[str, list[Hotspot]] = {}
+        for h in self.hotspots:
+            by_file.setdefault(h.file_path, []).append(h)
+
+        summaries: list[FileSummary] = []
+        for fpath, file_hotspots in by_file.items():
+            summaries.append(
+                FileSummary(
+                    file_path=fpath,
+                    hotspot_count=len(file_hotspots),
+                    max_priority_score=max(h.priority_score for h in file_hotspots),
+                    top_pattern=max(
+                        file_hotspots, key=lambda h: h.priority_score
+                    ).pattern,
+                )
+            )
+        summaries.sort(key=lambda s: s.max_priority_score, reverse=True)
+        return summaries
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "total_findings": self.total_findings,
@@ -119,6 +194,7 @@ class CorrelationResult:
             "hotspot_count": len(self.hotspots),
             "critical_count": len(self.critical_hotspots),
             "warning_count": len(self.warning_hotspots),
+            "file_summary": [s.to_dict() for s in self.file_summary],
             "hotspots": [
                 {
                     "file_path": h.file_path,
@@ -127,6 +203,8 @@ class CorrelationResult:
                     "analyzer_count": h.analyzer_count,
                     "analyzer_names": h.analyzer_names,
                     "max_severity": h.max_severity.value,
+                    "priority_score": h.priority_score,
+                    "pattern": h.pattern.value,
                     "finding_count": len(h.findings),
                     "finding_types": h.finding_types,
                     "findings": [
@@ -155,6 +233,18 @@ _SEVERITY_ORDER: dict[Severity, int] = {
 
 # Proximity window: findings within this many lines are grouped together.
 _LINE_PROXIMITY = 5
+
+# Analyzer categories for pattern detection.
+_COMPLEXITY_ANALYZERS: frozenset[str] = frozenset({
+    "cognitive_complexity", "boolean_complexity", "nesting_depth",
+    "function_size", "loop_complexity",
+})
+_DEAD_CODE_ANALYZERS: frozenset[str] = frozenset({
+    "dead_store", "dead_code_path", "unused_variable",
+})
+_RISK_ANALYZERS: frozenset[str] = frozenset({
+    "error_handling", "security_scan", "error_propagation",
+})
 
 
 def normalize_findings(
@@ -364,11 +454,8 @@ class FindingCorrelator:
                 )
             )
 
-        # Sort by analyzer_count desc, then max_severity desc.
-        hotspots.sort(
-            key=lambda h: (h.analyzer_count, _SEVERITY_ORDER[h.max_severity]),
-            reverse=True,
-        )
+        # Sort by priority_score desc.
+        hotspots.sort(key=lambda h: h.priority_score, reverse=True)
 
         return CorrelationResult(
             hotspots=hotspots,

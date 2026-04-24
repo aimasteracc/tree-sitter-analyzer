@@ -1,5 +1,50 @@
 # Progress — 自主开发进度日志
 
+## Session 158 — 2026-04-25
+
+**Feature Sprint: Finding Correlation Priority Ranking + Pattern Detection**:
+
+1. **Enhanced finding_correlation.py** (+97 lines, 383→471):
+   - `Hotspot.priority_score`: numeric scoring (analyzer_count × severity_weight + density_bonus)
+   - `Hotspot.pattern`: categorizes clusters (COMPLEXITY_CLUSTER, DEAD_CODE_CLUSTER, RISK_CLUSTER, MIXED)
+   - `FileSummary`: per-file aggregation with hotspot_count, max_priority_score, top_pattern
+   - `CorrelationResult.file_summary`: aggregates hotspots by file, sorted by max priority
+   - Updated `to_dict()` with priority_score, pattern, file_summary fields
+   - Analyzer category constants: `_COMPLEXITY_ANALYZERS`, `_DEAD_CODE_ANALYZERS`, `_RISK_ANALYZERS`
+
+2. **Updated MCP tool** (finding_correlation_tool.py):
+   - Toon format now displays priority_score and pattern for each hotspot
+
+3. **Added 24 new tests** (29→53 total):
+   - TestPriorityScore: basic, critical, density_bonus, sorted_by_priority
+   - TestPatternDetection: complexity/dead_code/risk/mixed clusters, to_dict
+   - TestFileSummary: single/multi file, sorted by priority, to_dict
+
+4. **Quality gates**:
+   - ruff ✅, mypy --strict ✅, 53 tests pass ✅
+   - Self-hosting gate: 100% (390/390 tools, 1452 findings)
+
+- Commits: (pending)
+
+## Session 157 — 2026-04-25
+
+**Refactoring Sprint: error_handling + error_propagation overlap merge**:
+
+1. **Removed swallowed_error from error_handling.py** (-138 lines):
+   - `error_propagation.py` already detects non-re-raising catch blocks (SWALLOWED_NO_PROPAGATION)
+   - This subsumes error_handling's SWALLOWED_ERROR (empty catch blocks)
+   - Removed: `_detect_python_swallowed_errors`, `_detect_js_swallowed_errors`, `_detect_java_swallowed_errors`
+   - Removed: `_is_only_pass` helper, SWALLOWED_ERROR and INCONSISTENT_STYLE enum values
+   - error_handling now focuses on: bare_except, broad_exception, missing_context, generic_error_message, unchecked_error (Go)
+   - error_propagation owns: unhandled_raise/throw, swallowed_no_propagation, finally_no_catch
+
+2. **Updated tests** (9 tests modified):
+   - Swallowed tests now verify error_handling no longer reports swallowed errors
+   - All 196 error-related tests pass
+   - CI: ruff ✅, mypy --strict ✅, self-hosting gate 100%
+
+- Commits: edcc463e
+
 ## Session 154 — 2026-04-21
 
 **Refactoring Sprint: Overlap cleanup** (1-in-1-out rule, quality improvement):

@@ -19,6 +19,41 @@
 **评分**: 11/12 (竞品差距3 + 用户信号3 + 架构适配3 + 实现成本2)
 **结论**: DO — 不增加新分析器，让现有 164 个分析器的输出更有价值
 
+## 产品讨论记录 - Finding Correlation Enhancement - 2026-04-25 Session 158
+
+**调用**: inline product analysis (autonomous mode)
+
+**功能**: Finding Correlation Pattern Detection + Priority Ranking — 增强现有 finding_correlation.py
+
+**背景**: Self-hosting gate 产生 678 个 findings，用户无法判断哪些热点优先修复
+
+**新增能力**:
+1. **Priority Score**: 数值评分 (analyzer_count × severity_weight)，排序热点
+2. **Pattern Categorization**: 识别常见问题聚类模式（complexity_cluster, dead_code_cluster, risk_cluster）
+3. **File-level Summary**: 按文件聚合热点，项目级优先级视图
+
+**竞品否决检查** (Session 158):
+- ESLint: 无跨 rule 关联 + 优先级排序。Searched: "ESLint cross-rule correlation priority ranking" → 无结果
+- Ruff: 无跨 rule 关联功能。Searched: "Ruff rule correlation priority ranking" → 无结果
+- SonarQBE: "security hotspots" 仅限安全维度。Searched: "SonarQBE cross-rule correlation priority" → 无结果
+- **结论**: 竞品差距 3/3 — 无任何工具提供跨规则关联 + 优先级排序
+
+**评分**: 11/12
+- 竞品差距: 3/3 (ESLint/Ruff/SonarQBE 均无此功能)
+- 用户信号: 3/3 (678 self-hosting findings 证实优先级需求)
+- 架构适配: 3/3 (扩展现有 finding_correlation.py，不新增分析器)
+- 实现成本: 2/3 (单 Sprint，moderate complexity)
+
+**结论**: DO — 增强现有模块，1-in-1-out 规则不适用（不新增分析器）
+
+**技术方案** (inline architecture analysis):
+1. 在 Hotspot 增加 `priority_score` 属性: `analyzer_count * (severity_weight + density_bonus)`
+2. 新增 `HotspotPattern` enum: COMPLEXITY_CLUSTER, DEAD_CODE_CLUSTER, RISK_CLUSTER, MIXED
+3. 新增 `_detect_pattern()` 方法: 根据聚类内 finding_types 判断模式
+4. CorrelationResult 新增 `file_summary` 属性: 按文件聚合热点数量和最高优先级
+5. 更新 to_dict() 输出包含新字段
+6. 更新 MCP tool 的 toon 格式显示 priority score 和 pattern
+
 ## 产品讨论记录 - Batch 4 Candidates - 2026-04-20 Session 152
 
 **调用**: inline product analysis (autonomous mode)
