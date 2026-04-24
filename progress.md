@@ -3885,3 +3885,41 @@ OpenSpec Changes Completed
 - **架构分析**: 纯 AST 模式，BaseAnalyzer 继承，4 语言支持
 - **关键发现**: return_path.py 已覆盖不一致返回类型, security_scan.py 已覆盖硬编码凭证
 
+
+### Session 156 — 2026-04-24/25
+
+**Zero-Assert Test Elimination Sprint** ✅ 完成
+
+**核心成果**:
+- Zero-assert tests: 67 → 0 (100% elimination)
+- Ruff F401 errors: 9 → 0 (typescript_plugin unused imports)
+- Brain fixture false positives fixed: @pytest.fixture with test_ names now correctly excluded
+
+**Commits** (5 commits on feat/autonomous-dev):
+1. `6113f544` — Remove 4 stub property tests + orphaned @given decorators
+2. `6f53b4ce` — Eliminate 30+ zero-assert tests + brain fixture detection fix
+3. `7f595cd9` — Eliminate last 9 zero-assert tests (67→0)
+4. `6c141cd6` — Strengthen weak assertions in regex_checker tests
+5. `18804871` — Remove unused imports from typescript_plugin __init__.py
+
+**Key Changes**:
+- project_brain.py: Added fixture detection for test_* named methods (class + module level)
+- 18+ test files: Added meaningful assertions to zero-assert tests
+- 5 dead stub tests deleted (rust plugin pass, typescript skip, property pass)
+- 9 standalone `is not None` → `isinstance(str) and len > 0`
+
+**Current Metrics**:
+- Test functions: 13,089
+- Total asserts: 28,095 (density: 2.1)
+- Zero-assert: 0
+- Mock ratio: 0.15
+- Self-hosting score: 100%
+- Ruff: All checks passed
+- Mypy: 0 errors
+
+**Test Smells Detected**:
+- 227 oversized functions (>50 lines)
+- 26 autouse fixtures (mostly mock_external_commands)
+- 30 conditional skips (all legitimate — platform/dependency guards)
+
+**下一步**: Continue autonomous loop — weak assertion strengthening, oversized test refactoring
