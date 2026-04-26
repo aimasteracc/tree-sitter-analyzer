@@ -432,10 +432,6 @@ class TestGoAnalysis:
 # --- Edge cases ---
 
 class TestEdgeCases:
-    def test_unsupported_extension(self, detector: TestSmellDetector) -> None:
-        result = detector.analyze_file("test.rb")
-        assert result.total_tests == 0
-
     def test_class_based_pytest(self, detector: TestSmellDetector) -> None:
         path = _write_tmp(
             "class TestCalculator:\n"

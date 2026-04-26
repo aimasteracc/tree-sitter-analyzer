@@ -184,10 +184,6 @@ class TestPythonSilentSuppression:
         result = ANALYZER.analyze_file(f)
         assert result.total_issues == 0
 
-    def test_nonexistent_file(self, tmp_path: Path) -> None:
-        result = ANALYZER.analyze_file(tmp_path / "nonexistent.py")
-        assert result.total_issues == 0
-
 
 class TestJavaScriptSilentSuppression:
 

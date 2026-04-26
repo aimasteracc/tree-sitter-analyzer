@@ -577,6 +577,8 @@ uv run pytest tests/ -x -q
 .github/scripts/local-ci-check.sh
 ```
 
+**重要**: pytest.ini 使用 `-n 2`（2 个 worker）而非 `-n auto`。24GB 机器无法承受 10 个 xdist worker + claude 进程同时运行。如需手动全速测试，可用 `pytest -n auto`。
+
 ## 进度报告
 
 每完成一个 Sprint，在 `progress.md` 中记录：

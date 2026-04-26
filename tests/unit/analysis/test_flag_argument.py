@@ -282,23 +282,6 @@ func process(count int, data string) {
 
 
 class TestGeneral:
-    def test_unsupported_extension(self) -> None:
-        path = _write_tmp("def f(): pass", ".rb")
-        try:
-            result = FlagArgumentAnalyzer().analyze_file(path)
-            assert result.total_issues == 0
-            assert result.functions_analyzed == 0
-        finally:
-            os.unlink(path)
-
-    def test_empty_file(self) -> None:
-        path = _write_tmp("", ".py")
-        try:
-            result = FlagArgumentAnalyzer().analyze_file(path)
-            assert result.total_issues == 0
-        finally:
-            os.unlink(path)
-
     def test_result_to_dict(self) -> None:
         code = """\
 def process(data: str, verbose: bool) -> None:

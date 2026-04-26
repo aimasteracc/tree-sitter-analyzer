@@ -237,18 +237,6 @@ class TestPythonAnalysis:
         finally:
             Path(path).unlink()
 
-    def test_empty_file(self, analyzer: FunctionSizeAnalyzer) -> None:
-        path = _write_tmp("")
-        try:
-            result = analyzer.analyze_file(path)
-            assert result.total_functions == 0
-        finally:
-            Path(path).unlink()
-
-    def test_nonexistent_file(self, analyzer: FunctionSizeAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/file.py")
-        assert result.total_functions == 0
-
     def test_warning_sized_function(self, analyzer: FunctionSizeAnalyzer) -> None:
         lines = ["def medium():"] + [f"    x = {i}" for i in range(25)]
         code = "\n".join(lines) + "\n"

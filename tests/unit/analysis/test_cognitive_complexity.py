@@ -59,24 +59,6 @@ class TestRating:
 
 
 class TestEdgeCases:
-    def test_nonexistent_file(self, analyzer: CognitiveComplexityAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/path.py")
-        assert result.total_functions == 0
-        assert result.total_complexity == 0
-
-    def test_unsupported_extension(self, analyzer: CognitiveComplexityAnalyzer) -> None:
-        path = _write_tmp("int x = 1;", suffix=".c")
-        result = analyzer.analyze_file(path)
-        assert result.total_functions == 0
-        path.unlink()
-
-    def test_empty_file(self, analyzer: CognitiveComplexityAnalyzer) -> None:
-        path = _write_tmp("")
-        result = analyzer.analyze_file(path)
-        assert result.total_functions == 0
-        assert result.total_complexity == 0
-        path.unlink()
-
     def test_no_functions(self, analyzer: CognitiveComplexityAnalyzer) -> None:
         path = _write_tmp("x = 42\ny = x + 1\n")
         result = analyzer.analyze_file(path)

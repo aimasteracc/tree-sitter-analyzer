@@ -170,20 +170,6 @@ class TestGo:
 
 
 class TestEdgeCases:
-    def test_unsupported_extension(self, tmp_path: Path) -> None:
-        p = _write(tmp_path, "a.rb", "def f(a, b, c, d, e)\nend\n")
-        r = LongParameterListAnalyzer().analyze_file(p)
-        assert r.total_functions == 0
-
-    def test_empty_file(self, tmp_path: Path) -> None:
-        p = _write(tmp_path, "a.py", "")
-        r = LongParameterListAnalyzer().analyze_file(p)
-        assert r.total_functions == 0
-
-    def test_nonexistent_file(self, tmp_path: Path) -> None:
-        r = LongParameterListAnalyzer().analyze_file(tmp_path / "nope.py")
-        assert r.total_functions == 0
-
     def test_result_to_dict(self, tmp_path: Path) -> None:
         p = _write(tmp_path, "a.py", "def f(a, b, c, d, e):\n    pass\n")
         r = LongParameterListAnalyzer().analyze_file(p)

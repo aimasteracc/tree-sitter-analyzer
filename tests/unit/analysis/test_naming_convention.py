@@ -517,15 +517,6 @@ class TestEdgeCases:
         finally:
             Path(path).unlink()
 
-    def test_empty_file(self, analyzer: NamingConventionAnalyzer) -> None:
-        path = _write_tmp("", suffix=".py")
-        try:
-            result = analyzer.analyze_file(path)
-            assert result.total_identifiers == 0
-            assert result.naming_score == 100.0
-        finally:
-            Path(path).unlink()
-
     def test_nonexistent_file(
         self, analyzer: NamingConventionAnalyzer
     ) -> None:

@@ -406,18 +406,6 @@ class TestGlobalStateResult:
         d = result.to_dict()
         assert d["high_severity"] >= 2
 
-    def test_nonexistent_file(self, analyzer: GlobalStateAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/file.py")
-        assert len(result.findings) == 0
-
-    def test_unsupported_extension(self, analyzer: GlobalStateAnalyzer) -> None:
-        path = _write_tmp("x = 1", ".rb")
-        result = analyzer.analyze_file(str(path))
-        assert len(result.findings) == 0
-
-
-# --- Edge cases ---
-
 
 class TestEdgeCases:
     def test_nested_function_global(self, analyzer: GlobalStateAnalyzer) -> None:

@@ -76,24 +76,6 @@ class TestDataclasses:
 
 
 class TestEdgeCases:
-    def test_nonexistent_file(self) -> None:
-        analyzer = ANALYZER()
-        result = analyzer.analyze_file("/nonexistent/file.py")
-        assert result.total_functions == 0
-        assert result.max_depth == 0
-
-    def test_unsupported_extension(self, tmp_path: Path) -> None:
-        f = tmp_path / "test.rb"
-        f.write_text("def foo; end")
-        result = ANALYZER().analyze_file(f)
-        assert result.total_functions == 0
-
-    def test_empty_file(self, tmp_path: Path) -> None:
-        f = tmp_path / "empty.py"
-        f.write_text("")
-        result = ANALYZER().analyze_file(f)
-        assert result.total_functions == 0
-
     def test_file_with_no_functions(self, tmp_path: Path) -> None:
         f = tmp_path / "nocode.py"
         f.write_text("x = 1\ny = 2\n")

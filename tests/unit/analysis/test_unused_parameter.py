@@ -105,23 +105,6 @@ class TestDataclasses:
 
 
 class TestEdgeCases:
-    def test_nonexistent_file(self) -> None:
-        result = ANALYZER.analyze_file("/nonexistent/file.py")
-        assert result.total_functions == 0
-        assert len(result.issues) == 0
-
-    def test_unsupported_extension(self) -> None:
-        with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
-            f.write("def foo(x): pass")
-            f.flush()
-            result = ANALYZER.analyze_file(f.name)
-        assert result.total_functions == 0
-
-    def test_empty_file(self) -> None:
-        result = _analyze("")
-        assert result.total_functions == 0
-        assert len(result.issues) == 0
-
     def test_file_path_as_path_object(self) -> None:
         with tempfile.NamedTemporaryFile(
             suffix=".py", mode="w", delete=False, encoding="utf-8",

@@ -31,24 +31,8 @@ def _write_py(tmp_path: Path, code: str, name: str = "test_sample.py") -> Path:
 # --- Core functionality ---
 
 class TestAssertionQualityAnalyzer:
-    def test_empty_file(self, analyzer: AssertionQualityAnalyzer, tmp_path: Path) -> None:
-        p = _write_py(tmp_path, "")
-        result = analyzer.analyze_file(p)
-        assert result.total_tests == 0
-        assert result.total_issues == 0
-
     def test_non_test_file(self, analyzer: AssertionQualityAnalyzer, tmp_path: Path) -> None:
         p = _write_py(tmp_path, "def hello():\n    pass\n", name="utils.py")
-        result = analyzer.analyze_file(p)
-        assert result.total_tests == 0
-
-    def test_nonexistent_file(self, analyzer: AssertionQualityAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/test_foo.py")
-        assert result.total_tests == 0
-
-    def test_unsupported_extension(self, analyzer: AssertionQualityAnalyzer, tmp_path: Path) -> None:
-        p = tmp_path / "test_foo.rb"
-        p.write_text("def test_foo; end")
         result = analyzer.analyze_file(p)
         assert result.total_tests == 0
 

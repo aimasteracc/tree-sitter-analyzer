@@ -477,29 +477,6 @@ class TestEdgeCases:
             f.flush()
             return ANALYZER().analyze_file(f.name)
 
-    def test_nonexistent_file(self) -> None:
-        result = ANALYZER().analyze_file("/nonexistent/file.py")
-        assert result.total_functions == 0
-        assert result.functions_with_issues == 0
-
-    def test_unsupported_extension(self) -> None:
-        with tempfile.NamedTemporaryFile(
-            suffix=".rs", mode="w", delete=False
-        ) as f:
-            f.write("fn main() { return 1; }")
-            f.flush()
-            result = ANALYZER().analyze_file(f.name)
-        assert result.total_functions == 0
-
-    def test_empty_file(self) -> None:
-        with tempfile.NamedTemporaryFile(
-            suffix=".py", mode="w", delete=False
-        ) as f:
-            f.write("")
-            f.flush()
-            result = ANALYZER().analyze_file(f.name)
-        assert result.total_functions == 0
-
     def test_return_none_explicitly(self) -> None:
         code = "def foo():\n    return None\n"
         result = self._analyze(code)

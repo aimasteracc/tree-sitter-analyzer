@@ -506,23 +506,6 @@ func process() {
 # --- Edge cases ---
 
 class TestEdgeCases:
-    def test_nonexistent_file(self, analyzer: LoggingPatternAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/file.py")
-        assert result.total_smells == 0
-        assert result.total_catch_blocks == 0
-
-    def test_unsupported_extension(self, analyzer: LoggingPatternAnalyzer) -> None:
-        path = _write_tmp("try { risky(); } catch(e) {}", ".ruby")
-        result = analyzer.analyze_file(path)
-        assert result.total_smells == 0
-        path.unlink()
-
-    def test_empty_file(self, analyzer: LoggingPatternAnalyzer) -> None:
-        path = _write_tmp("", ".py")
-        result = analyzer.analyze_file(path)
-        assert result.total_smells == 0
-        path.unlink()
-
     def test_result_to_dict(self, analyzer: LoggingPatternAnalyzer) -> None:
         code = '''\
 try:

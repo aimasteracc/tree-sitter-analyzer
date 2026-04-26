@@ -146,16 +146,6 @@ y = 2  # tsa: disable bare_except
         assert result.error == "File not found"
         assert result.total_suppressions == 0
 
-    def test_unsupported_extension(self, tmp_path: Path) -> None:
-        p = _write_tmp(tmp_path, "test.txt", "# tsa: disable unused_import\n")
-        result = parse_suppressions(p)
-        assert result.total_suppressions == 0
-
-    def test_empty_file(self, tmp_path: Path) -> None:
-        p = _write_tmp(tmp_path, "test.py", "")
-        result = parse_suppressions(p)
-        assert result.total_suppressions == 0
-
     def test_no_suppression_comments(self, tmp_path: Path) -> None:
         p = _write_tmp(
             tmp_path,

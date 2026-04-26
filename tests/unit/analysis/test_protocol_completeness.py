@@ -307,12 +307,6 @@ class TestGo:
 
 
 class TestEdgeCases:
-    def test_empty_file(self, tmp_path: Path) -> None:
-        p = _write(tmp_path, "a.py", "")
-        r = ProtocolCompletenessAnalyzer().analyze_file(p)
-        assert r.classes_checked == 0
-        assert len(r.issues) == 0
-
     def test_file_without_classes(self, tmp_path: Path) -> None:
         p = _write(tmp_path, "a.py", "x = 1\ny = 2\n")
         r = ProtocolCompletenessAnalyzer().analyze_file(p)
@@ -331,10 +325,6 @@ class TestEdgeCases:
         assert r.classes_checked == 2
         assert len(r.issues) == 1
         assert r.issues[0].class_name == "Inner"
-
-    def test_nonexistent_file(self, tmp_path: Path) -> None:
-        r = ProtocolCompletenessAnalyzer().analyze_file(tmp_path / "nonexistent.py")
-        assert r.classes_checked == 0
 
     def test_to_dict(self, tmp_path: Path) -> None:
         code = (

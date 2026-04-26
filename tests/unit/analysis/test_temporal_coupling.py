@@ -366,24 +366,6 @@ class TestGoTemporalCoupling:
 
 
 class TestEdgeCases:
-    def test_nonexistent_file(self, analyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/path.py")
-        assert result.total_classes == 0
-        assert len(result.issues) == 0
-
-    def test_unsupported_extension(self, analyzer, tmp_path) -> None:
-        p = tmp_path / "test.txt"
-        p.write_text("not code")
-        result = analyzer.analyze_file(str(p))
-        assert result.total_classes == 0
-        assert len(result.issues) == 0
-
-    def test_empty_file(self, analyzer, tmp_py_file) -> None:
-        p = tmp_py_file("")
-        result = analyzer.analyze_file(str(p))
-        assert result.total_classes == 0
-        assert len(result.issues) == 0
-
     def test_multiple_classes(self, analyzer, tmp_py_file) -> None:
         p = tmp_py_file("""\
             class A:

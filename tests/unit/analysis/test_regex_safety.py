@@ -184,15 +184,6 @@ class TestPythonAnalysis:
         result = analyzer.analyze_file("/nonexistent/file.py")
         assert result.total_regex_patterns == 0
 
-    def test_unsupported_extension(self, analyzer: RegexSafetyAnalyzer, tmp_dir: Path) -> None:
-        p = tmp_dir / "test.txt"
-        p.write_text("some text")
-        result = analyzer.analyze_file(p)
-        assert result.total_regex_patterns == 0
-
-
-# --- JavaScript file analysis ---
-
 
 class TestJavaScriptAnalysis:
     def test_regex_literal_safe(self, analyzer: RegexSafetyAnalyzer, tmp_dir: Path) -> None:

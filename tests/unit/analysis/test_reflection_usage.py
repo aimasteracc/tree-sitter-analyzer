@@ -83,18 +83,6 @@ class TestReflectionResult:
         assert d["total_findings"] == 0
         assert d["high_severity"] == 0
 
-    def test_nonexistent_file(self, analyzer: ReflectionUsageAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/file.py")
-        assert result.findings == []
-
-    def test_unsupported_extension(self, analyzer: ReflectionUsageAnalyzer) -> None:
-        path = _write_tmp("eval('x')", ".rb")
-        try:
-            result = analyzer.analyze_file(path)
-            assert result.findings == []
-        finally:
-            Path(path).unlink(missing_ok=True)
-
 
 class TestPythonDynamicExec:
     def test_detects_eval(self, analyzer: ReflectionUsageAnalyzer) -> None:

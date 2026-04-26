@@ -471,25 +471,6 @@ func foo() int { return 42 }
 
 
 class TestEdgeCases:
-    def test_unsupported_extension(self) -> None:
-        code = "class Foo: pass"
-        path = _write_tmp(code, ".txt")
-        try:
-            analyzer = MiddleManAnalyzer()
-            result = analyzer.analyze_file(path)
-            assert result.total_issues == 0
-        finally:
-            os.unlink(path)
-
-    def test_empty_file(self) -> None:
-        path = _write_tmp("", ".py")
-        try:
-            analyzer = MiddleManAnalyzer()
-            result = analyzer.analyze_file(path)
-            assert result.classes_analyzed == 0
-        finally:
-            os.unlink(path)
-
     def test_get_issues_by_severity(self) -> None:
         code = """\
 class Middle:

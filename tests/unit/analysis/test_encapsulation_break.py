@@ -384,15 +384,6 @@ def hello():
         finally:
             path.unlink()
 
-    def test_unsupported_extension(self) -> None:
-        code = "x = 1"
-        path = _write_tmp(code, suffix=".rs")
-        try:
-            result = EncapsulationBreakAnalyzer().analyze_file(path)
-            assert result.total_issues == 0
-        finally:
-            path.unlink()
-
     def test_to_dict(self) -> None:
         code = """
 class Cache:

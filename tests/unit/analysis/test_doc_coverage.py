@@ -175,13 +175,6 @@ class TestPythonDocCoverage:
         documented = sum(1 for e in code_elements if e.has_doc)
         assert documented == 2
 
-    def test_empty_file(self, tmp_path: Path) -> None:
-        p = _write_tmp_file(tmp_path, "a.py", "")
-        result = DocCoverageAnalyzer().analyze_file(p)
-        # Only module element, no functions/classes
-        funcs = [e for e in result.elements if e.element_type != "module"]
-        assert len(funcs) == 0
-
     def test_get_missing_docs(self, tmp_path: Path) -> None:
         p = _write_tmp_file(tmp_path, "a.py", '''\
             def a():

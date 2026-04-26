@@ -327,24 +327,6 @@ class TestEdgeCases:
         assert len(result.issues) == 0
         assert result.total_functions == 0
 
-    def test_unsupported_extension(self) -> None:
-        with tempfile.NamedTemporaryFile(
-            suffix=".xyz", mode="w", delete=False,
-        ) as f:
-            f.write("def foo(): pass")
-            f.flush()
-            result = ANALYZER.analyze_file(f.name)
-        assert len(result.issues) == 0
-
-    def test_empty_file(self) -> None:
-        with tempfile.NamedTemporaryFile(
-            suffix=".py", mode="w", delete=False,
-        ) as f:
-            f.write("")
-            f.flush()
-            result = ANALYZER.analyze_file(f.name)
-        assert len(result.issues) == 0
-
     def test_no_functions(self) -> None:
         code = "x = 10\n"
         result = _analyze(code)

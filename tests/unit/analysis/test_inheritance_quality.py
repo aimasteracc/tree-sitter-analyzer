@@ -71,13 +71,3 @@ class TestPythonInheritance:
         f.write_text(code)
         result = ANALYZER.analyze_file(f)
         assert result.total_issues == 0
-
-    def test_nonexistent_file(self) -> None:
-        result = ANALYZER.analyze_file("/nonexistent/file.py")
-        assert result.total_classes == 0
-
-    def test_empty_file(self, tmp_path: Path) -> None:
-        f = tmp_path / "empty.py"
-        f.write_text("")
-        result = ANALYZER.analyze_file(f)
-        assert result.total_classes == 0

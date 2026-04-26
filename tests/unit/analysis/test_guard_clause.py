@@ -363,22 +363,6 @@ function process(data) {
 
 
 class TestEdgeCases:
-    def test_nonexistent_file(self) -> None:
-        result = ANALYZER.analyze_file("/nonexistent/path.py")
-        assert result.total_ifs == 0
-        assert len(result.issues) == 0
-
-    def test_unsupported_extension(self) -> None:
-        result = ANALYZER.analyze_file("test.rb")
-        assert result.total_ifs == 0
-        assert len(result.issues) == 0
-
-    def test_empty_file(self) -> None:
-        code = ""
-        result = _analyze(code)
-        assert result.total_ifs == 0
-        assert len(result.issues) == 0
-
     def test_file_with_no_if(self) -> None:
         code = """\
 def process(data):

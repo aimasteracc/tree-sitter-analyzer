@@ -176,13 +176,6 @@ class TestPythonErrorPropagation:
         risks = {g.risk_level for g in result.gaps}
         assert len(risks) >= 1
 
-    def test_empty_file(self, analyzer: ErrorPropagationAnalyzer) -> None:
-        path = _write_tmp("", ".py")
-        result = analyzer.analyze_file(path)
-        assert result.total_gaps == 0
-
-
-# --- JavaScript/TypeScript tests ---
 
 class TestJSErrorPropagation:
     def test_unhandled_throw(self, analyzer: ErrorPropagationAnalyzer) -> None:

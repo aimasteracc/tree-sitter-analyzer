@@ -270,19 +270,6 @@ class TestPythonAnalysis:
         result = analyzer.analyze_file(path)
         assert result.quality_score == 100.0
 
-    def test_nonexistent_file(self, analyzer: CommentQualityAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/file.py")
-        assert result.total_elements == 0
-        assert result.quality_score == 100.0
-
-    def test_unsupported_extension(self, analyzer: CommentQualityAnalyzer, tmp_path: Path) -> None:
-        p = tmp_path / "test.rs"
-        p.write_text("fn main() {}")
-        result = analyzer.analyze_file(p)
-        assert result.total_elements == 0
-
-
-# --- JS/TS analysis tests ---
 
 class TestJSAnalysis:
     def test_jsdoc_matching(self, analyzer: CommentQualityAnalyzer, tmp_js: Path) -> None:

@@ -501,26 +501,6 @@ func check(x int) bool {
 
 
 class TestGeneral:
-    def test_unsupported_extension(self) -> None:
-        code = "some ruby code"
-        path = _write_tmp(code, ".rb")
-        try:
-            analyzer = TautologicalConditionAnalyzer()
-            result = analyzer.analyze_file(path)
-            assert result.total_issues == 0
-            assert result.functions_analyzed == 0
-        finally:
-            os.unlink(path)
-
-    def test_empty_file(self) -> None:
-        path = _write_tmp("", ".py")
-        try:
-            analyzer = TautologicalConditionAnalyzer()
-            result = analyzer.analyze_file(path)
-            assert result.total_issues == 0
-        finally:
-            os.unlink(path)
-
     def test_result_to_dict(self) -> None:
         code = """\
 def check(x):

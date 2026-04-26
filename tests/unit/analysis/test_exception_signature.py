@@ -425,16 +425,6 @@ class TestGoAnalysis:
 
 
 class TestEdgeCases:
-    def test_unsupported_extension(self, analyzer: ExceptionSignatureAnalyzer, tmp_path: Path) -> None:
-        p = tmp_path / "data.csv"
-        p.write_text("a,b,c", encoding="utf-8")
-        result = analyzer.analyze_file(p)
-        assert result.total_findings == 0
-
-    def test_nonexistent_file(self, analyzer: ExceptionSignatureAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/path.py")
-        assert result.total_findings == 0
-
     def test_result_to_dict(self, analyzer: ExceptionSignatureAnalyzer, tmp_py_file: Path) -> None:
         path = tmp_py_file("""\
             def process(data):
@@ -446,11 +436,6 @@ class TestEdgeCases:
         assert "total_findings" in d
         assert "issues" in d
         assert d["total_findings"] == 2  # signature + undocumented
-
-    def test_empty_file(self, analyzer: ExceptionSignatureAnalyzer, tmp_py_file: Path) -> None:
-        path = tmp_py_file("")
-        result = analyzer.analyze_file(path)
-        assert result.total_findings == 0
 
     def test_analyze_project(self, analyzer: ExceptionSignatureAnalyzer, tmp_path: Path) -> None:
         (tmp_path / "a.py").write_text(

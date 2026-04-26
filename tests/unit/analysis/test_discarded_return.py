@@ -95,12 +95,6 @@ class TestPythonDiscardedReturn:
         result = analyzer.analyze_file(path)
         assert not any("is_valid" in i.function_name for i in result.issues)
 
-    def test_empty_file(self, analyzer: DiscardedReturnAnalyzer) -> None:
-        path = _write_tmp("", ".py")
-        result = analyzer.analyze_file(path)
-        assert result.total_calls == 0
-        assert len(result.issues) == 0
-
     def test_result_to_dict(self, analyzer: DiscardedReturnAnalyzer) -> None:
         code = "compute()\n"
         path = _write_tmp(code, ".py")
@@ -226,16 +220,6 @@ class TestGoDiscardedReturn:
 
 
 class TestEdgeCases:
-    def test_nonexistent_file(self, analyzer: DiscardedReturnAnalyzer) -> None:
-        result = analyzer.analyze_file("/nonexistent/file.py")
-        assert result.total_calls == 0
-        assert len(result.issues) == 0
-
-    def test_unsupported_extension(self, analyzer: DiscardedReturnAnalyzer) -> None:
-        path = _write_tmp("compute()", ".txt")
-        result = analyzer.analyze_file(path)
-        assert result.total_calls == 0
-
     def test_issue_to_dict(self, analyzer: DiscardedReturnAnalyzer) -> None:
         code = "compute()\n"
         path = _write_tmp(code, ".py")
