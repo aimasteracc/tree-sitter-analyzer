@@ -171,7 +171,7 @@ class TestReadFileWithFallback:
         test_file.write_text("こんにちは", encoding="utf-8")
 
         result = read_file_with_fallback(str(test_file))
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.decode("utf-8") == "こんにちは"
 
     @patch("tree_sitter_analyzer.file_handler.read_file_safe")

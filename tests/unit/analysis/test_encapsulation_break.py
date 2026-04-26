@@ -5,9 +5,9 @@ import tempfile
 from pathlib import Path
 
 from tree_sitter_analyzer.analysis.encapsulation_break import (
-    EncapsulationBreakAnalyzer,
     ISSUE_PRIVATE_STATE_EXPOSURE,
     ISSUE_STATE_EXPOSURE,
+    EncapsulationBreakAnalyzer,
 )
 
 

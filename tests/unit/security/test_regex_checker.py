@@ -263,7 +263,7 @@ class TestCheckCompilation:
         """测试无效模式编译"""
         checker = RegexSafetyChecker()
         result = checker._check_compilation(r"[invalid(regex")
-        assert isinstance(result, dict)
+        assert result is not None
         assert "unterminated" in result.lower() or "missing" in result.lower()
 
     def test_check_compilation_unclosed_bracket(self):
@@ -327,7 +327,7 @@ class TestCheckPerformance:
                 mock_compile.return_value = mock_pattern
 
                 result = checker._check_performance(r"test")
-                assert isinstance(result, dict)
+                assert result is not None
                 assert "execution error" in result.lower()
 
 

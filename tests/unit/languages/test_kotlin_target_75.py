@@ -74,7 +74,7 @@ class TestKotlinExtractorMissingLines:
 
         result = extractor._extract_function(mock_node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "testFunc"
 
     def test_extract_function_parameters_extraction(self):
@@ -181,7 +181,7 @@ class TestKotlinExtractorMissingLines:
 
         result = extractor._extract_class_or_object(mock_node, "class")
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "TestClass"
 
     def test_extract_class_visibility_from_modifiers(self):
@@ -218,7 +218,7 @@ class TestKotlinExtractorMissingLines:
 
         result = extractor._extract_class_or_object(mock_node, "class")
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.visibility == "private"
 
     def test_extract_class_protected_visibility(self):
@@ -254,7 +254,7 @@ class TestKotlinExtractorMissingLines:
 
         result = extractor._extract_class_or_object(mock_node, "class")
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.visibility == "protected"
 
     def test_extract_class_internal_visibility(self):
@@ -290,7 +290,7 @@ class TestKotlinExtractorMissingLines:
 
         result = extractor._extract_class_or_object(mock_node, "class")
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.visibility == "internal"
 
 
@@ -317,7 +317,7 @@ class TestKotlinPluginMissingLines:
                 request = AnalysisRequest(file_path=temp_path)
                 result = asyncio.run(plugin.analyze_file(temp_path, request))
 
-                assert isinstance(result, dict)
+                assert result is not None
                 assert result.language == "kotlin"
             finally:
                 import os

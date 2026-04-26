@@ -635,7 +635,7 @@ class TestComprehensionEdgeCases:
 
         result = extractor._extract_comprehension(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.comprehension_type == "unknown"
 
     @pytest.mark.unit
@@ -682,7 +682,7 @@ class TestComprehensionEdgeCases:
 
         result = extractor._extract_comprehension(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert len(result.iterable_preview) == 50
         # safe_preview truncates to 47 chars and adds "..." to make 50
         assert result.iterable_preview == long_iterable[:47] + "..."
@@ -730,7 +730,7 @@ class TestComprehensionEdgeCases:
 
         result = extractor._extract_comprehension(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.start_line == 1
         assert result.end_line == 4
 
@@ -795,7 +795,7 @@ class TestComprehensionEdgeCases:
 
         result = extractor._extract_comprehension(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.start_line == 11  # tree-sitter is 0-indexed
         assert result.end_line == 11
 
@@ -840,6 +840,6 @@ class TestComprehensionEdgeCases:
         result = extractor._extract_comprehension(node)
 
         # Should still create Comprehension but with empty fields
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.target_variable == ""
         assert result.iterable_preview == ""

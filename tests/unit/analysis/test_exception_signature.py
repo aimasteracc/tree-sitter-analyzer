@@ -8,13 +8,6 @@ import pytest
 
 from tree_sitter_analyzer.analysis.exception_signature import (
     ExceptionSignatureAnalyzer,
-    ExceptionSignatureIssue,
-    ExceptionSignatureResult,
-    FindingType,
-    Severity,
-    _extract_java_exception_type,
-    _extract_js_exception_type,
-    _extract_python_exception_type,
     _is_exception_caught,
     _normalize_exception_name,
 )

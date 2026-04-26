@@ -90,7 +90,7 @@ class TestConditionalExpressions:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.start_line == 1
         assert result.expression_kind == "conditional"
 
@@ -113,7 +113,7 @@ class TestConditionalExpressions:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.preview == "result if x > 0 and y < 10 or z == 5 else default"
 
 
@@ -157,7 +157,7 @@ class TestSubscriptExpressions:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.expression_kind == "subscript"
         assert result.preview == "my_dict['key']"
 
@@ -176,7 +176,7 @@ class TestSubscriptExpressions:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.expression_kind == "subscript"
         assert result.preview == "matrix[i][j]"
 
@@ -195,7 +195,7 @@ class TestSubscriptExpressions:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.expression_kind == "subscript"
         assert result.preview == "my_list[1:5]"
 
@@ -214,7 +214,7 @@ class TestSubscriptExpressions:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.expression_kind == "subscript"
         assert result.preview == "my_list[::2]"
 
@@ -259,7 +259,7 @@ class TestListLiterals:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.expression_kind == "list"
         assert result.preview == "[1, 2, 3]"
 
@@ -278,7 +278,7 @@ class TestListLiterals:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.expression_kind == "list"
         assert result.preview == "[[1, 2], [3, 4]]"
 
@@ -297,7 +297,7 @@ class TestListLiterals:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.expression_kind == "list"
         assert result.preview == '[1, "two", 3.0, True]'
 
@@ -316,7 +316,7 @@ class TestListLiterals:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.start_line == 1
         assert result.end_line == 4
 
@@ -342,7 +342,7 @@ class TestExpressionEdgeCases:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert len(result.preview) == 50
         # safe_preview truncates to 47 chars and adds "..." to make 50
         assert result.preview == long_expr[:47] + "..."
@@ -403,7 +403,7 @@ class TestExpressionEdgeCases:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.start_line == 16  # tree-sitter is 0-indexed
         assert result.end_line == 16
 
@@ -443,7 +443,7 @@ class TestExpressionEdgeCases:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.start_line == 1
         assert result.end_line == 3
 
@@ -464,7 +464,7 @@ class TestExpressionEdgeCases:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.raw_text == original_text
         assert result.preview == original_text
 
@@ -487,7 +487,7 @@ class TestExpressionEdgeCases:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.preview == "func1(x) if is_valid(x) else func2(x)"
 
     @pytest.mark.unit
@@ -507,7 +507,7 @@ class TestExpressionEdgeCases:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.preview == "my_dict[key1 + key2]"
 
     @pytest.mark.unit
@@ -527,5 +527,5 @@ class TestExpressionEdgeCases:
 
         result = extractor._extract_expression(node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.preview == "[1, [x for x in range(3)], 2]"

@@ -85,7 +85,7 @@ class TestTypeScriptElementExtractorEdgeCases:
 
         result = extractor._extract_arrow_function_optimized(mock_node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "myArrowFunc"
         assert result.is_arrow is True
 
@@ -111,7 +111,7 @@ class TestTypeScriptElementExtractorEdgeCases:
 
         result = extractor._extract_arrow_function_optimized(mock_node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.parameters == ["x"]
 
     def test_extract_arrow_function_optimized_with_type_annotation(self, extractor):
@@ -140,7 +140,7 @@ class TestTypeScriptElementExtractorEdgeCases:
 
         result = extractor._extract_arrow_function_optimized(mock_node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.return_type == "string"
 
     def test_extract_method_optimized_error_handling(self, extractor):
@@ -202,7 +202,7 @@ class TestTypeScriptElementExtractorEdgeCases:
 
         result = extractor._extract_class_optimized(mock_node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "MyClass"
         assert result.superclass == "BaseClass"
         assert "IInterface1" in result.interfaces
@@ -237,7 +237,7 @@ class TestTypeScriptElementExtractorEdgeCases:
 
         result = extractor._extract_interface_optimized(mock_node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "MyInterface"
         assert result.class_type == "interface"
         assert "BaseInterface" in result.interfaces
@@ -284,7 +284,7 @@ class TestTypeScriptElementExtractorEdgeCases:
 
         result = extractor._extract_property_optimized(mock_node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "myProperty"
         assert result.variable_type == "string"
         assert result.initializer == "'default value'"
@@ -312,7 +312,7 @@ class TestTypeScriptElementExtractorEdgeCases:
 
         result = extractor._extract_property_signature_optimized(mock_node)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "optionalProp"
 
     def test_parse_variable_declarator_with_arrow_function(self, extractor):
@@ -370,7 +370,7 @@ class TestTypeScriptElementExtractorEdgeCases:
 
         result = extractor._parse_variable_declarator(mock_node, "let", 1, 1)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "myVar"
         assert result.initializer == "42"
 

@@ -4,10 +4,7 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
-import pytest
-
 from tree_sitter_analyzer.analysis.finding_suppression import (
-    Suppression,
     SuppressionParseResult,
     build_suppression_set,
     filter_findings,

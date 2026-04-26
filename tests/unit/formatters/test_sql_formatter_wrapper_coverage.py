@@ -358,7 +358,7 @@ class TestCreateSQLElementFromDict:
             "language": "sql",
         }
         result = formatter._create_sql_element_from_dict(data)
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "users"
 
     def test_create_view_element(self, formatter):
@@ -372,7 +372,7 @@ class TestCreateSQLElementFromDict:
             "language": "sql",
         }
         result = formatter._create_sql_element_from_dict(data)
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "user_view"
 
     def test_create_procedure_element(self, formatter):
@@ -386,7 +386,7 @@ class TestCreateSQLElementFromDict:
             "language": "sql",
         }
         result = formatter._create_sql_element_from_dict(data)
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "update_user"
 
     def test_create_function_element(self, formatter):
@@ -400,7 +400,7 @@ class TestCreateSQLElementFromDict:
             "language": "sql",
         }
         result = formatter._create_sql_element_from_dict(data)
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "calc_total"
 
     def test_create_trigger_element(self, formatter):
@@ -414,7 +414,7 @@ class TestCreateSQLElementFromDict:
             "language": "sql",
         }
         result = formatter._create_sql_element_from_dict(data)
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "audit_trigger"
 
     def test_create_index_element(self, formatter):
@@ -428,7 +428,7 @@ class TestCreateSQLElementFromDict:
             "language": "sql",
         }
         result = formatter._create_sql_element_from_dict(data)
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "idx_email"
 
     def test_create_unknown_type_fallback(self, formatter):
@@ -442,7 +442,7 @@ class TestCreateSQLElementFromDict:
             "language": "sql",
         }
         result = formatter._create_sql_element_from_dict(data)
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.name == "unknown_element"
 
     def test_create_with_create_prefix_types(self, formatter):

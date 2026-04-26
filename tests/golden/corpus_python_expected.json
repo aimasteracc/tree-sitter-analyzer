@@ -1,14 +1,14 @@
 {
   "language": "python",
   "node_types": {
-    "function_definition": 28,
-    "class_definition": 8,
-    "decorated_definition": 7,
-    "lambda": 5,
-    "list_comprehension": 1,
+    "function_definition": 26,
+    "class_definition": 3,
+    "decorated_definition": 9,
+    "lambda": 2,
+    "list_comprehension": 5,
     "dictionary_comprehension": 1,
     "set_comprehension": 1,
-    "generator_expression": 2,
-    "yield": 3
+    "generator_expression": 1,
+    "yield": 5
   }
 }

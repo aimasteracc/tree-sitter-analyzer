@@ -83,7 +83,7 @@ _CATEGORY_KEYWORDS: dict[NeuronCategory, tuple[str, ...]] = {
         "semantic_impact", "correlation", "code_clone", "call_graph",
     ),
     NeuronCategory.META: (
-        "context_optim", "env_tracker", "llm_benchmark",
+        "context_optim", "env_tracker",
     ),
     NeuronCategory.SMELL: (
         "smell", "god_class", "lazy_class", "middle_man", "feature_envy",

@@ -673,7 +673,7 @@ CREATE TABLE users (
             request = AnalysisRequest(file_path=temp_path)
             result = await plugin.analyze_file(temp_path, request)
 
-            assert isinstance(result, dict)
+            assert result is not None
             assert result.language == "sql"
         finally:
             os.unlink(temp_path)
@@ -697,7 +697,7 @@ END;
             request = AnalysisRequest(file_path=temp_path)
             result = await plugin.analyze_file(temp_path, request)
 
-            assert isinstance(result, dict)
+            assert result is not None
             assert result.language == "sql"
         finally:
             os.unlink(temp_path)

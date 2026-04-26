@@ -32,10 +32,10 @@ _ANALYSIS_METHOD_NAMES = ["analyze_file", "analyze", "detect_file", "detect"]
 # Modules that are not file-level analyzers (utility/framework modules).
 _EXCLUDED_MODULES: frozenset[str] = frozenset({
     "__init__", "base", "finding_correlation", "finding_suppression",
-    "error_recovery", "dependency_graph", "context_optimizer",
+    "error_recovery", "dependency_graph",
     "coupling_metrics", "design_patterns", "refactoring_suggestions",
     "project_brain", "health_score", "ci_report", "code_clones",
-    "semantic_impact", "test_coverage", "llm_benchmark", "api_discovery",
+    "semantic_impact", "test_coverage", "api_discovery",
     "java_patterns", "causal_chain",
 })
 

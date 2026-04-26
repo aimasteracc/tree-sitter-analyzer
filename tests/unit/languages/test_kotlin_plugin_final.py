@@ -349,7 +349,7 @@ class TestKotlinParserSetup:
         request = AnalysisRequest(file_path=str(kt_file))
         result = await plugin.analyze_file(str(kt_file), request)
 
-        assert isinstance(result, dict)
+        assert result is not None
         assert result.language == "kotlin"
 
 

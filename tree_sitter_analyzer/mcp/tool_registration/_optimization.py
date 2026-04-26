@@ -1,23 +1,11 @@
 """Tool registration — optimization."""
 from typing import Any
 
-from ..tools.context_optimizer_tool import ContextOptimizerTool
 from ._shared import _make_handler
 
 
 def _register_optimization_tools(registry: Any, project_root: str | None) -> None:
     """Register optimization tools."""
-    # context_optimizer
-    optimizer_tool = ContextOptimizerTool(project_root)
-    registry.register(
-        name="context_optimizer",
-        toolset="optimization",
-        category="context-optimization",
-        schema=optimizer_tool.get_tool_definition(),
-        handler=_make_handler(optimizer_tool),
-        description="Optimize code context for LLM windows: intelligent filtering",
-        emoji="⚡",
-    )
 
     # i18n_strings
     from ..tools.i18n_strings_tool import I18nStringsTool
