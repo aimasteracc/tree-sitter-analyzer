@@ -571,7 +571,7 @@ EOF
 # 每次代码修改后
 uv run ruff check tree_sitter_analyzer/ --fix
 uv run mypy tree_sitter_analyzer/ --strict
-uv run pytest tests/ -x -q
+uv run pytest tests/ -x -q -m "not slow"
 
 # commit 前
 .github/scripts/local-ci-check.sh

@@ -128,6 +128,7 @@ class GodClass:
         assert isinstance(pmap.hotspots, tuple)
         assert isinstance(pmap.critical_hotspots, tuple)
 
+    @pytest.mark.slow
     def test_self_perception(self):
         perception = NeuralPerception()
         result = perception.perceive_self()
