@@ -78,7 +78,12 @@ class TestIntegrationProperties:
         Property 11: Comprehensive diagnostic logging
         Validates: Requirements 5.2, 5.3, 5.4
         """
-        with patch("tree_sitter_analyzer.languages.sql_plugin.log_debug") as mock_log:
+        with (
+            patch("tree_sitter_analyzer.languages.sql_plugin.log_debug") as mock_log,
+            patch(
+                "tree_sitter_analyzer.languages.sql_plugin._core.log_debug"
+            ) as mock_log_core,
+        ):
             # Test SQLPlugin initialization logging
             # We need to mock PlatformDetector to ensure consistent behavior
             with patch(
@@ -126,9 +131,12 @@ class TestIntegrationProperties:
 
                     # Verify adaptation logging
                     # We expect "Diagnostic: Before adaptation:" and "Diagnostic: After adaptation:"
+                    all_calls = list(mock_log.call_args_list) + list(
+                        mock_log_core.call_args_list
+                    )
                     found_before = False
                     found_after = False
-                    for call in mock_log.call_args_list:
+                    for call in all_calls:
                         if "Diagnostic: Before adaptation:" in str(call):
                             found_before = True
                         if "Diagnostic: After adaptation:" in str(call):
@@ -150,9 +158,14 @@ class TestIntegrationProperties:
         with patch.object(
             extractor, "_extract_sql_tables", side_effect=Exception("Simulated failure")
         ):
-            with patch(
-                "tree_sitter_analyzer.languages.sql_plugin.log_error"
-            ) as mock_log:
+            with (
+                patch(
+                    "tree_sitter_analyzer.languages.sql_plugin.log_error"
+                ) as mock_log,
+                patch(
+                    "tree_sitter_analyzer.languages.sql_plugin._core.log_error"
+                ) as mock_log_core,
+            ):
                 tree = MagicMock()
                 tree.root_node = MagicMock()
 
@@ -163,6 +176,12 @@ class TestIntegrationProperties:
                 assert isinstance(results, list)
 
                 # Should log error
-                assert mock_log.called
-                args, _ = mock_log.call_args_list[0]
-                assert "Error during enhanced SQL extraction" in args[0]
+                all_calls = list(mock_log.call_args_list) + list(
+                    mock_log_core.call_args_list
+                )
+                assert len(all_calls) > 0
+                found = any(
+                    "Error during enhanced SQL extraction" in str(c)
+                    for c in all_calls
+                )
+                assert found, f"Expected error log not found in: {all_calls}"

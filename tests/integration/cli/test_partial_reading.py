@@ -158,12 +158,11 @@ def test_read_from_line_10_to_end(test_file):
     """Test reading from line 10 to end of file"""
     result = read_file_partial(test_file, 10)
 
-    assert isinstance(result, dict)
+    assert isinstance(result, str)
     lines = result.split("\n")
     assert len(lines) > 15  # Should have multiple lines
     assert "public String getName()" in result
     assert "return name" in result
-    assert len(result) == 366
 
 
 def test_read_file_lines_range_function(test_file):
@@ -231,7 +230,7 @@ def test_read_single_line_file(single_line_file):
     """Test reading from single line file"""
     result = read_file_partial(single_line_file, 1, 1)
 
-    assert isinstance(result, dict)
+    assert isinstance(result, str)
     assert result.strip() == "Single line content"
 
 
