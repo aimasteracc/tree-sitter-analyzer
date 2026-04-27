@@ -37,7 +37,6 @@ class TestRegisterAllTools:
                 "code_diff",
                 "code_clone_detection",
                 "health_score",
-                "java_patterns",
                 "error_recovery",
                 "semantic_impact",
                 "understand_codebase",
