@@ -246,6 +246,7 @@ class TestQueryExecutorConfiguration:
             assert executor is not None
 
 
+@pytest.mark.slow
 class TestQueryExecutorPerformance:
     """Test QueryExecutor performance characteristics."""
 

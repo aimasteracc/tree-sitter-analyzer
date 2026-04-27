@@ -8,6 +8,8 @@ from tree_sitter_analyzer.core.analysis_engine import (
     AnalysisRequest,
 )
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.mark.asyncio
 async def test_concurrent_analysis_performance(tmp_path):

@@ -16,6 +16,8 @@ from typing import Any
 import psutil
 import pytest
 
+pytestmark = pytest.mark.slow
+
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
 )

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from tree_sitter_analyzer.mcp.tools.design_patterns_tool import DesignPatternsTool
 
 
@@ -148,6 +150,7 @@ class TestDesignPatternsToolExecute:
         assert isinstance(result, dict)
         assert "patterns" in result or "error" in result
 
+    @pytest.mark.slow
     def test_min_confidence_filter(self):
         """Test that min_confidence filters results."""
         # This test verifies the filtering logic is in place

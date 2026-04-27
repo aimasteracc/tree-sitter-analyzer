@@ -245,6 +245,7 @@ class TestAnalysisEngineConfiguration:
             assert engine is not None  # Basic test that engine exists
 
 
+@pytest.mark.slow
 class TestAnalysisEnginePerformance:
     """Test AnalysisEngine performance characteristics."""
 
