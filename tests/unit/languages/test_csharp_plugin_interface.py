@@ -335,3 +335,11 @@ class TestCSharpPluginInterface:
         plugin = CSharpPlugin()
         result = plugin.execute_query_strategy(None, "csharp")
         assert result is None
+
+    def test_execute_query_strategy_csharp_classes(self):
+        """Query strategy returns string or None for valid C# keys."""
+        plugin = CSharpPlugin()
+        for key in ("classes", "methods", "variables", "imports"):
+            result = plugin.execute_query_strategy(key, "csharp")
+            assert result is None or isinstance(result, str)
+
