@@ -30,6 +30,17 @@
 - 零新依赖，全部基于现有 tree-sitter parser
 - 质量门禁: ruff 通过, pytest 全部通过, mastery scan 无新违规
 
+
+## 2026-05-12: Phase 8 Slice 1 — MCP 测试文件拆分
+
+- 拆分 test_mcp_fd_rg_tools.py (5633行) → 9 个文件，按源模块分组
+  (fd_rg_utils, list_files_p1-p4, search_content_p1-p2, find_and_grep_p1-p2)
+- 拆分 test_fd_rg_utils.py (1480行) → 2 个文件，按类边界拆分
+- 删除 2 个 oversized 文件，新增 11 个聚焦文件
+- ruff --fix: 消除 29 个未使用导入
+- 验证: 246 个拆分测试全部通过
+- mastery scan: oversized 22 → 20
+- Git commit: 357cec3
 ---
 
 ## 下一步
