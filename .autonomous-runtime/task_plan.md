@@ -12,7 +12,6 @@
 - [x] Phase 5: CI/CD + test mastery scan
 - [x] Phase 6: wiki 驱动性能优化（增量解析）
 - [x] Phase 7: 项目级可视化（依赖图、健康评分）
-- [ ] Phase 8: 代码瘦身与质量提纯
 
 ## Decisions Made
 | 决策 | 理由 | 日期 |
