@@ -25,6 +25,6 @@ def test_fixture_library_coverage():
 
     # Check that we have at least one edge case fixture for each type
     missing_edge_cases = construct_types - covered_edge_cases
-    assert (
-        not missing_edge_cases
-    ), f"Missing edge case fixtures for: {missing_edge_cases}"
+    assert not missing_edge_cases, (
+        f"Missing edge case fixtures for: {missing_edge_cases}"
+    )

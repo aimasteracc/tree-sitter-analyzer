@@ -465,36 +465,36 @@ CREATE UNIQUE INDEX idx_users_username ON users(username);
                     tables = elements_by_type[SQLElementType.TABLE]
                     table_names = {table.name for table in tables}
                     found_tables = table_names & expected_tables
-                    assert (
-                        len(found_tables) > 0
-                    ), f"Expected some tables from {expected_tables}, got {table_names}"
+                    assert len(found_tables) > 0, (
+                        f"Expected some tables from {expected_tables}, got {table_names}"
+                    )
 
                 # Check views
                 if SQLElementType.VIEW in elements_by_type:
                     views = elements_by_type[SQLElementType.VIEW]
                     view_names = {view.name for view in views}
                     found_views = view_names & expected_views
-                    assert (
-                        len(found_views) > 0
-                    ), f"Expected some views from {expected_views}, got {view_names}"
+                    assert len(found_views) > 0, (
+                        f"Expected some views from {expected_views}, got {view_names}"
+                    )
 
                 # Check procedures
                 if SQLElementType.PROCEDURE in elements_by_type:
                     procedures = elements_by_type[SQLElementType.PROCEDURE]
                     procedure_names = {proc.name for proc in procedures}
                     found_procedures = procedure_names & expected_procedures
-                    assert (
-                        len(found_procedures) > 0
-                    ), f"Expected some procedures from {expected_procedures}, got {procedure_names}"
+                    assert len(found_procedures) > 0, (
+                        f"Expected some procedures from {expected_procedures}, got {procedure_names}"
+                    )
 
                 # Check functions
                 if SQLElementType.FUNCTION in elements_by_type:
                     functions = elements_by_type[SQLElementType.FUNCTION]
                     function_names = {func.name for func in functions}
                     found_functions = function_names & expected_functions
-                    assert (
-                        len(found_functions) > 0
-                    ), f"Expected some functions from {expected_functions}, got {function_names}"
+                    assert len(found_functions) > 0, (
+                        f"Expected some functions from {expected_functions}, got {function_names}"
+                    )
 
                 # Check triggers
                 # Note: Trigger detection is environment-dependent and may vary
@@ -511,18 +511,18 @@ CREATE UNIQUE INDEX idx_users_username ON users(username);
                     found_triggers = trigger_names & expected_triggers
                     # Only assert if we found any triggers after filtering
                     if len(trigger_names) > 0:
-                        assert (
-                            len(found_triggers) > 0
-                        ), f"Expected some triggers from {expected_triggers}, got {trigger_names}"
+                        assert len(found_triggers) > 0, (
+                            f"Expected some triggers from {expected_triggers}, got {trigger_names}"
+                        )
 
                 # Check indexes
                 if SQLElementType.INDEX in elements_by_type:
                     indexes = elements_by_type[SQLElementType.INDEX]
                     index_names = {index.name for index in indexes}
                     found_indexes = index_names & expected_indexes
-                    assert (
-                        len(found_indexes) > 0
-                    ), f"Expected some indexes from {expected_indexes}, got {index_names}"
+                    assert len(found_indexes) > 0, (
+                        f"Expected some indexes from {expected_indexes}, got {index_names}"
+                    )
 
     def test_sql_element_metadata_extraction(self, plugin: SQLPlugin) -> None:
         """Test detailed metadata extraction for SQL elements"""
@@ -578,9 +578,9 @@ CREATE UNIQUE INDEX idx_users_username ON users(username);
                         "created_at",
                     }
                     found_columns = column_names & expected_columns
-                    assert (
-                        len(found_columns) > 0
-                    ), f"Expected some columns from {expected_columns}, got {column_names}"
+                    assert len(found_columns) > 0, (
+                        f"Expected some columns from {expected_columns}, got {column_names}"
+                    )
 
 
 class TestSQLFormatterIntegration:

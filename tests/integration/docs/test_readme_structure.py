@@ -48,9 +48,9 @@ class TestReadmeLineCount:
     def test_readme_under_500_lines(self) -> None:
         """README.md should be under 500 lines."""
         lines = get_readme_lines(README_PATH)
-        assert (
-            len(lines) < MAX_README_LINES
-        ), f"README.md has {len(lines)} lines, should be under {MAX_README_LINES}"
+        assert len(lines) < MAX_README_LINES, (
+            f"README.md has {len(lines)} lines, should be under {MAX_README_LINES}"
+        )
 
 
 class TestHeroSection:
@@ -65,19 +65,19 @@ class TestHeroSection:
         first_20_lines = "\n".join(lines[:HERO_SECTION_MAX_LINE])
 
         # Check for project name
-        assert (
-            "Tree-sitter Analyzer" in first_20_lines
-        ), "Project name should appear in first 20 lines"
+        assert "Tree-sitter Analyzer" in first_20_lines, (
+            "Project name should appear in first 20 lines"
+        )
 
         # Check for badges (at least one badge)
-        assert (
-            "[![" in first_20_lines
-        ), "At least one badge should appear in first 20 lines"
+        assert "[![" in first_20_lines, (
+            "At least one badge should appear in first 20 lines"
+        )
 
         # Check for value proposition (emoji + description)
-        assert (
-            ">" in first_20_lines or "Enterprise" in first_20_lines
-        ), "Value proposition should appear in first 20 lines"
+        assert ">" in first_20_lines or "Enterprise" in first_20_lines, (
+            "Value proposition should appear in first 20 lines"
+        )
 
 
 class TestSectionHeaders:

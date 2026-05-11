@@ -700,7 +700,9 @@ class TestExecuteQueryLanguageNameEdgeCases:
                 "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
                 return_value=[],
             ):
-                result = executor.execute_query(mock_tree, mock_language, "test", "code")
+                result = executor.execute_query(
+                    mock_tree, mock_language, "test", "code"
+                )
         assert result["success"] is True
 
     def test_execute_query_with_none_language_name_attr(self):
@@ -717,7 +719,9 @@ class TestExecuteQueryLanguageNameEdgeCases:
                 "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
                 return_value=[],
             ):
-                result = executor.execute_query(mock_tree, mock_language, "test", "code")
+                result = executor.execute_query(
+                    mock_tree, mock_language, "test", "code"
+                )
         assert result["success"] is True
 
     def test_execute_query_with_language_name_string_none(self):
@@ -733,7 +737,9 @@ class TestExecuteQueryLanguageNameEdgeCases:
                 "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
                 return_value=[],
             ):
-                result = executor.execute_query(mock_tree, mock_language, "test", "code")
+                result = executor.execute_query(
+                    mock_tree, mock_language, "test", "code"
+                )
         assert result["success"] is True
 
     def test_execute_query_with_whitespace_language_name(self):
@@ -749,7 +755,9 @@ class TestExecuteQueryLanguageNameEdgeCases:
                 "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
                 return_value=[],
             ):
-                result = executor.execute_query(mock_tree, mock_language, "test", "code")
+                result = executor.execute_query(
+                    mock_tree, mock_language, "test", "code"
+                )
         assert result["success"] is True
 
 
@@ -786,7 +794,9 @@ class TestExecuteQueryEdgeCases:
                 "tree_sitter_analyzer.core.query.TreeSitterQueryCompat.safe_execute_query",
                 return_value=[],
             ):
-                result = executor.execute_query(mock_tree, mock_language, "test", long_code)
+                result = executor.execute_query(
+                    mock_tree, mock_language, "test", long_code
+                )
         assert result["success"] is True
 
 

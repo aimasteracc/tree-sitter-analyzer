@@ -296,6 +296,6 @@ class MyClass:
         assert "query_result" in js_result or "success" in js_result
 
         duration = end_time - start_time
-        assert (
-            duration < 10.0
-        ), f"Different language queries took too long: {duration:.2f}s"
+        assert duration < 10.0, (
+            f"Different language queries took too long: {duration:.2f}s"
+        )

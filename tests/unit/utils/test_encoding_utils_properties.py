@@ -34,7 +34,13 @@ class TestEncodingRoundtripProperties:
         decoded = safe_decode(encoded, encoding="utf-8")
         assert decoded == text
 
-    @given(text=st.text(min_size=1, max_size=500, alphabet=st.characters(min_codepoint=32, max_codepoint=126)))
+    @given(
+        text=st.text(
+            min_size=1,
+            max_size=500,
+            alphabet=st.characters(min_codepoint=32, max_codepoint=126),
+        )
+    )
     @settings(max_examples=50)
     def test_ascii_roundtrip(self, text: str) -> None:
         """ASCII encode/decode should be lossless for ASCII text.
@@ -153,7 +159,9 @@ class TestFileReadingProperties:
 
         Property: read_file_safe works for any text file regardless of extension
         """
-        with tempfile.NamedTemporaryFile(mode="wb", suffix=extension, delete=False) as f:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", suffix=extension, delete=False
+        ) as f:
             temp_path = Path(f.name)
             f.write(content.encode("utf-8"))
 

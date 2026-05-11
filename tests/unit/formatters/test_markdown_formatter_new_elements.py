@@ -453,9 +453,9 @@ class TestMarkdownFormatterNewElements:
         ]
 
         for section in new_element_sections:
-            assert (
-                section not in result
-            ), f"Section '{section}' should not be present when no elements exist"
+            assert section not in result, (
+                f"Section '{section}' should not be present when no elements exist"
+            )
 
 
 if __name__ == "__main__":

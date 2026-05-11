@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Tests for previously untested core modules."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from tree_sitter_analyzer.cli.argument_validator import CLIArgumentValidator
 from tree_sitter_analyzer.constants import (
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,
     ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_VARIABLE,
     ELEMENT_TYPE_MAPPING,
     ELEMENT_TYPE_SQL_TABLE,
+    ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
 from tree_sitter_analyzer.core.engine_manager import EngineManager
@@ -89,7 +90,9 @@ class TestOutputFormatValidator:
     def test_mutual_exclusion_raises(self):
         v = OutputFormatValidator()
         with pytest.raises(ValueError):
-            v.validate_output_format_exclusion({"total_only": True, "count_only_matches": True})
+            v.validate_output_format_exclusion(
+                {"total_only": True, "count_only_matches": True}
+            )
 
     def test_single_format_passes(self):
         v = OutputFormatValidator()

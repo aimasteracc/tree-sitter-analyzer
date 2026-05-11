@@ -442,19 +442,19 @@ class TestSerializationRoundTripProperties:
         deserialized = json.loads(json_str)
 
         # Property: Round-trip should preserve all keys
-        assert set(serialized.keys()) == set(
-            deserialized.keys()
-        ), "All keys should be preserved in round-trip"
+        assert set(serialized.keys()) == set(deserialized.keys()), (
+            "All keys should be preserved in round-trip"
+        )
 
         # Property: Round-trip should preserve file_path
-        assert (
-            serialized["file_path"] == deserialized["file_path"]
-        ), "file_path should be preserved"
+        assert serialized["file_path"] == deserialized["file_path"], (
+            "file_path should be preserved"
+        )
 
         # Property: Round-trip should preserve success status
-        assert (
-            serialized["success"] == deserialized["success"]
-        ), "success status should be preserved"
+        assert serialized["success"] == deserialized["success"], (
+            "success status should be preserved"
+        )
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
@@ -473,9 +473,9 @@ class TestSerializationRoundTripProperties:
         mcp_format = result.to_mcp_format()
 
         # Property: MCP format should be a dictionary
-        assert isinstance(
-            mcp_format, dict
-        ), "to_mcp_format() should return a dictionary"
+        assert isinstance(mcp_format, dict), (
+            "to_mcp_format() should return a dictionary"
+        )
 
         # Property: MCP format should be JSON-serializable
         json_str = json.dumps(mcp_format)
@@ -487,9 +487,9 @@ class TestSerializationRoundTripProperties:
         assert "metadata" in deserialized, "metadata should be in MCP format"
 
         # Property: Round-trip should preserve file_path
-        assert (
-            mcp_format["file_path"] == deserialized["file_path"]
-        ), "file_path should be preserved in MCP format round-trip"
+        assert mcp_format["file_path"] == deserialized["file_path"], (
+            "file_path should be preserved in MCP format round-trip"
+        )
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
@@ -515,9 +515,9 @@ class TestSerializationRoundTripProperties:
         deserialized = json.loads(json_str)
 
         # Property: Round-trip should preserve file_path
-        assert (
-            summary["file_path"] == deserialized["file_path"]
-        ), "file_path should be preserved in summary round-trip"
+        assert summary["file_path"] == deserialized["file_path"], (
+            "file_path should be preserved in summary round-trip"
+        )
 
         # Property: Round-trip should preserve summary_elements list
         assert len(summary["summary_elements"]) == len(
@@ -550,19 +550,19 @@ class TestSerializationRoundTripProperties:
             ), "Package name should be preserved in JSON round-trip"
 
         # Property: Round-trip should preserve class count
-        assert len(deserialized.get("classes", [])) == len(
-            data.get("classes", [])
-        ), "Class count should be preserved in JSON round-trip"
+        assert len(deserialized.get("classes", [])) == len(data.get("classes", [])), (
+            "Class count should be preserved in JSON round-trip"
+        )
 
         # Property: Round-trip should preserve method count
-        assert len(deserialized.get("methods", [])) == len(
-            data.get("methods", [])
-        ), "Method count should be preserved in JSON round-trip"
+        assert len(deserialized.get("methods", [])) == len(data.get("methods", [])), (
+            "Method count should be preserved in JSON round-trip"
+        )
 
         # Property: Round-trip should preserve field count
-        assert len(deserialized.get("fields", [])) == len(
-            data.get("fields", [])
-        ), "Field count should be preserved in JSON round-trip"
+        assert len(deserialized.get("fields", [])) == len(data.get("fields", [])), (
+            "Field count should be preserved in JSON round-trip"
+        )
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
@@ -584,9 +584,9 @@ class TestSerializationRoundTripProperties:
         original_class_names = {c["name"] for c in data.get("classes", [])}
         deserialized_class_names = {c["name"] for c in deserialized.get("classes", [])}
 
-        assert (
-            original_class_names == deserialized_class_names
-        ), f"All class names should be preserved. Original: {original_class_names}, Got: {deserialized_class_names}"
+        assert original_class_names == deserialized_class_names, (
+            f"All class names should be preserved. Original: {original_class_names}, Got: {deserialized_class_names}"
+        )
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
@@ -610,9 +610,9 @@ class TestSerializationRoundTripProperties:
         original_method_names = {m["name"] for m in data.get("methods", [])}
         deserialized_method_names = {m["name"] for m in deserialized.get("methods", [])}
 
-        assert (
-            original_method_names == deserialized_method_names
-        ), f"All method names should be preserved. Original: {original_method_names}, Got: {deserialized_method_names}"
+        assert original_method_names == deserialized_method_names, (
+            f"All method names should be preserved. Original: {original_method_names}, Got: {deserialized_method_names}"
+        )
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())
@@ -634,9 +634,9 @@ class TestSerializationRoundTripProperties:
         original_field_names = {f["name"] for f in data.get("fields", [])}
         deserialized_field_names = {f["name"] for f in deserialized.get("fields", [])}
 
-        assert (
-            original_field_names == deserialized_field_names
-        ), f"All field names should be preserved. Original: {original_field_names}, Got: {deserialized_field_names}"
+        assert original_field_names == deserialized_field_names, (
+            f"All field names should be preserved. Original: {original_field_names}, Got: {deserialized_field_names}"
+        )
 
 
 class TestSerializationDataIntegrityProperties:
@@ -668,24 +668,24 @@ class TestSerializationDataIntegrityProperties:
         deserialized = json.loads(json_str)
 
         # Property: Class count should be preserved
-        assert (
-            len(deserialized.get("classes", [])) == summary_before["class_count"]
-        ), "Class count should be preserved after serialization"
+        assert len(deserialized.get("classes", [])) == summary_before["class_count"], (
+            "Class count should be preserved after serialization"
+        )
 
         # Property: Method count should be preserved
-        assert (
-            len(deserialized.get("methods", [])) == summary_before["method_count"]
-        ), "Method count should be preserved after serialization"
+        assert len(deserialized.get("methods", [])) == summary_before["method_count"], (
+            "Method count should be preserved after serialization"
+        )
 
         # Property: Field count should be preserved
-        assert (
-            len(deserialized.get("fields", [])) == summary_before["field_count"]
-        ), "Field count should be preserved after serialization"
+        assert len(deserialized.get("fields", [])) == summary_before["field_count"], (
+            "Field count should be preserved after serialization"
+        )
 
         # Property: Import count should be preserved
-        assert (
-            len(deserialized.get("imports", [])) == summary_before["import_count"]
-        ), "Import count should be preserved after serialization"
+        assert len(deserialized.get("imports", [])) == summary_before["import_count"], (
+            "Import count should be preserved after serialization"
+        )
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(result=analysis_result())
@@ -703,17 +703,17 @@ class TestSerializationDataIntegrityProperties:
         deserialized = json.loads(json_str)
 
         # Property: file_path should be preserved
-        assert (
-            deserialized["file_path"] == result.file_path
-        ), "file_path should be preserved"
+        assert deserialized["file_path"] == result.file_path, (
+            "file_path should be preserved"
+        )
 
         # Property: success should be preserved
         assert deserialized["success"] == result.success, "success should be preserved"
 
         # Property: analysis_time should be preserved (with float tolerance)
-        assert (
-            abs(deserialized["analysis_time"] - result.analysis_time) < 0.0001
-        ), "analysis_time should be preserved"
+        assert abs(deserialized["analysis_time"] - result.analysis_time) < 0.0001, (
+            "analysis_time should be preserved"
+        )
 
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
     @given(data=java_formatter_data())

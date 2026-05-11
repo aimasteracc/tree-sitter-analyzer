@@ -667,9 +667,9 @@ public class AnalyticsService {
             print(f"Full format validation warnings: {report['warnings']}")
 
         # Assert compliance
-        assert (
-            is_valid
-        ), f"Full format specification compliance failed: {report['errors']}"
+        assert is_valid, (
+            f"Full format specification compliance failed: {report['errors']}"
+        )
 
         # Additional checks
         assert "# com.example.analytics.AnalyticsService" in output
@@ -707,9 +707,9 @@ public class AnalyticsService {
             print(f"Compact format validation warnings: {report['warnings']}")
 
         # Assert compliance
-        assert (
-            is_valid
-        ), f"Compact format specification compliance failed: {report['errors']}"
+        assert is_valid, (
+            f"Compact format specification compliance failed: {report['errors']}"
+        )
 
         # Additional checks
         assert f"# {class_name}" in output
@@ -745,9 +745,9 @@ public class AnalyticsService {
             print(f"CSV format validation warnings: {report['warnings']}")
 
         # Assert compliance
-        assert (
-            is_valid
-        ), f"CSV format specification compliance failed: {report['errors']}"
+        assert is_valid, (
+            f"CSV format specification compliance failed: {report['errors']}"
+        )
 
         # Additional checks
         lines = output.strip().split("\n")
@@ -809,7 +809,9 @@ public class AnalyticsService {
 
             report = validator.get_validation_report()
 
-            assert is_valid, f"{format_type} format specification compliance failed: {report['errors']}"
+            assert is_valid, (
+                f"{format_type} format specification compliance failed: {report['errors']}"
+            )
 
         # Verify that all formats contain the same basic information
         # (though in different structures)
@@ -818,13 +820,13 @@ public class AnalyticsService {
 
             # All should contain method information
             if format_type == "csv":
-                assert (
-                    "method," in output
-                ), f"{format_type} format missing method information"
+                assert "method," in output, (
+                    f"{format_type} format missing method information"
+                )
             else:
-                assert (
-                    "processUserAnalytics" in output
-                ), f"{format_type} format missing method information"
+                assert "processUserAnalytics" in output, (
+                    f"{format_type} format missing method information"
+                )
 
     @pytest.mark.asyncio
     async def test_specification_error_handling(self, validator):
@@ -886,9 +888,9 @@ public class AnalyticsService {
         is_valid = validator.validate_full_format_specification(
             minimal_full, "TestClass"
         )
-        assert (
-            is_valid
-        ), f"Minimal valid format failed: {validator.get_validation_report()['errors']}"
+        assert is_valid, (
+            f"Minimal valid format failed: {validator.get_validation_report()['errors']}"
+        )
 
         # Test minimal valid CSV
         minimal_csv = """Type,Name,ReturnType,Parameters,Access,Static,Final,Line
@@ -896,6 +898,6 @@ class,TestClass,,,public,false,false,1
 """
 
         is_valid = validator.validate_csv_format_specification(minimal_csv)
-        assert (
-            is_valid
-        ), f"Minimal valid CSV failed: {validator.get_validation_report()['errors']}"
+        assert is_valid, (
+            f"Minimal valid CSV failed: {validator.get_validation_report()['errors']}"
+        )

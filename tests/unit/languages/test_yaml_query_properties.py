@@ -54,27 +54,27 @@ class TestYAMLQueryProperties:
         query_string = YAML_QUERIES[query_name]
 
         # Property: Query must be a non-empty string
-        assert isinstance(
-            query_string, str
-        ), f"Query '{query_name}' must be a string, got {type(query_string)}"
+        assert isinstance(query_string, str), (
+            f"Query '{query_name}' must be a string, got {type(query_string)}"
+        )
         assert len(query_string.strip()) > 0, f"Query '{query_name}' must not be empty"
 
         # Property: Query must have balanced parentheses
         open_count = query_string.count("(")
         close_count = query_string.count(")")
-        assert (
-            open_count == close_count
-        ), f"Query '{query_name}' has unbalanced parentheses: {open_count} open, {close_count} close"
+        assert open_count == close_count, (
+            f"Query '{query_name}' has unbalanced parentheses: {open_count} open, {close_count} close"
+        )
 
         # Property: Query must have at least one capture group (contains @)
-        assert (
-            "@" in query_string
-        ), f"Query '{query_name}' must have at least one capture group (@)"
+        assert "@" in query_string, (
+            f"Query '{query_name}' must have at least one capture group (@)"
+        )
 
         # Property: Query must have at least one node type (contains parentheses)
-        assert (
-            "(" in query_string and ")" in query_string
-        ), f"Query '{query_name}' must contain node types in parentheses"
+        assert "(" in query_string and ")" in query_string, (
+            f"Query '{query_name}' must contain node types in parentheses"
+        )
 
     @settings(max_examples=100)
     @given(query_name=st.sampled_from(list(YAML_QUERIES.keys())))
@@ -90,24 +90,24 @@ class TestYAMLQueryProperties:
         Validates: Requirements 5.1, 5.2, 5.3, 5.4
         """
         # Property: Every query must have a description
-        assert (
-            query_name in YAML_QUERY_DESCRIPTIONS
-        ), f"Query '{query_name}' must have a description in YAML_QUERY_DESCRIPTIONS"
+        assert query_name in YAML_QUERY_DESCRIPTIONS, (
+            f"Query '{query_name}' must have a description in YAML_QUERY_DESCRIPTIONS"
+        )
 
         description = YAML_QUERY_DESCRIPTIONS[query_name]
 
         # Property: Description must be a non-empty string
-        assert isinstance(
-            description, str
-        ), f"Description for '{query_name}' must be a string"
-        assert (
-            len(description.strip()) > 0
-        ), f"Description for '{query_name}' must not be empty"
+        assert isinstance(description, str), (
+            f"Description for '{query_name}' must be a string"
+        )
+        assert len(description.strip()) > 0, (
+            f"Description for '{query_name}' must not be empty"
+        )
 
         # Property: Description should contain meaningful content
-        assert (
-            len(description.split()) >= 2
-        ), f"Description for '{query_name}' should contain at least 2 words"
+        assert len(description.split()) >= 2, (
+            f"Description for '{query_name}' should contain at least 2 words"
+        )
 
     @settings(max_examples=100)
     @given(query_name=st.sampled_from(list(YAML_QUERIES.keys())))
@@ -123,30 +123,30 @@ class TestYAMLQueryProperties:
         Validates: Requirements 5.1, 5.2, 5.3, 5.4
         """
         # Property: Query must exist in ALL_QUERIES
-        assert (
-            query_name in ALL_QUERIES
-        ), f"Query '{query_name}' must exist in ALL_QUERIES"
+        assert query_name in ALL_QUERIES, (
+            f"Query '{query_name}' must exist in ALL_QUERIES"
+        )
 
         all_queries_entry = ALL_QUERIES[query_name]
 
         # Property: ALL_QUERIES entry must have 'query' and 'description' keys
-        assert (
-            "query" in all_queries_entry
-        ), f"ALL_QUERIES['{query_name}'] must have 'query' key"
-        assert (
-            "description" in all_queries_entry
-        ), f"ALL_QUERIES['{query_name}'] must have 'description' key"
+        assert "query" in all_queries_entry, (
+            f"ALL_QUERIES['{query_name}'] must have 'query' key"
+        )
+        assert "description" in all_queries_entry, (
+            f"ALL_QUERIES['{query_name}'] must have 'description' key"
+        )
 
         # Property: Query string must match between YAML_QUERIES and ALL_QUERIES
-        assert (
-            all_queries_entry["query"] == YAML_QUERIES[query_name]
-        ), f"Query string mismatch for '{query_name}'"
+        assert all_queries_entry["query"] == YAML_QUERIES[query_name], (
+            f"Query string mismatch for '{query_name}'"
+        )
 
         # Property: Description must match between YAML_QUERY_DESCRIPTIONS and ALL_QUERIES
         expected_description = YAML_QUERY_DESCRIPTIONS.get(query_name, "No description")
-        assert (
-            all_queries_entry["description"] == expected_description
-        ), f"Description mismatch for '{query_name}'"
+        assert all_queries_entry["description"] == expected_description, (
+            f"Description mismatch for '{query_name}'"
+        )
 
     @settings(max_examples=50)
     @given(query_name=st.sampled_from(list(YAML_QUERIES.keys())))
@@ -163,34 +163,34 @@ class TestYAMLQueryProperties:
         """
         # Property: get_yaml_query() must return the correct query string
         query_from_getter = get_yaml_query(query_name)
-        assert (
-            query_from_getter == YAML_QUERIES[query_name]
-        ), f"get_yaml_query('{query_name}') returned incorrect query"
+        assert query_from_getter == YAML_QUERIES[query_name], (
+            f"get_yaml_query('{query_name}') returned incorrect query"
+        )
 
         # Property: get_yaml_query_description() must return the correct description
         description_from_getter = get_yaml_query_description(query_name)
         expected_description = YAML_QUERY_DESCRIPTIONS.get(query_name, "No description")
-        assert (
-            description_from_getter == expected_description
-        ), f"get_yaml_query_description('{query_name}') returned incorrect description"
+        assert description_from_getter == expected_description, (
+            f"get_yaml_query_description('{query_name}') returned incorrect description"
+        )
 
         # Property: get_query() must return the correct query string
         query_from_get_query = get_query(query_name)
-        assert (
-            query_from_get_query == YAML_QUERIES[query_name]
-        ), f"get_query('{query_name}') returned incorrect query"
+        assert query_from_get_query == YAML_QUERIES[query_name], (
+            f"get_query('{query_name}') returned incorrect query"
+        )
 
         # Property: Query name must be in list_queries()
         all_query_names = list_queries()
-        assert (
-            query_name in all_query_names
-        ), f"Query '{query_name}' must be in list_queries() result"
+        assert query_name in all_query_names, (
+            f"Query '{query_name}' must be in list_queries() result"
+        )
 
         # Property: Query name must be in get_available_yaml_queries()
         available_queries = get_available_yaml_queries()
-        assert (
-            query_name in available_queries
-        ), f"Query '{query_name}' must be in get_available_yaml_queries() result"
+        assert query_name in available_queries, (
+            f"Query '{query_name}' must be in get_available_yaml_queries() result"
+        )
 
     def test_property_11_query_result_correctness_no_empty_queries(self):
         """
@@ -216,9 +216,9 @@ class TestYAMLQueryProperties:
         ]
 
         for essential_query in essential_queries:
-            assert (
-                essential_query in YAML_QUERIES
-            ), f"Essential query '{essential_query}' must exist in YAML_QUERIES"
+            assert essential_query in YAML_QUERIES, (
+                f"Essential query '{essential_query}' must exist in YAML_QUERIES"
+            )
 
     def test_property_11_query_result_correctness_invalid_query_handling(self):
         """
@@ -236,9 +236,9 @@ class TestYAMLQueryProperties:
             get_yaml_query(invalid_query_name)
 
         error_message = str(exc_info.value)
-        assert (
-            invalid_query_name in error_message
-        ), "Error message must mention the invalid query name"
+        assert invalid_query_name in error_message, (
+            "Error message must mention the invalid query name"
+        )
         assert (
             "does not exist" in error_message or "not found" in error_message.lower()
         ), "Error message must indicate query doesn't exist"
@@ -249,9 +249,9 @@ class TestYAMLQueryProperties:
             get_query(invalid_query_name)
 
         error_message = str(exc_info.value)
-        assert (
-            invalid_query_name in error_message
-        ), "Error message must mention the invalid query name"
+        assert invalid_query_name in error_message, (
+            "Error message must mention the invalid query name"
+        )
 
     @pytest.mark.skipif(not YAML_AVAILABLE, reason="tree-sitter-yaml not installed")
     @settings(max_examples=20)
@@ -305,9 +305,9 @@ class TestYAMLQueryProperties:
         for query_name, query_string in YAML_QUERIES.items():
             try:
                 compiled_query = yaml_language.query(query_string)
-                assert (
-                    compiled_query is not None
-                ), f"Query '{query_name}' compiled to None"
+                assert compiled_query is not None, (
+                    f"Query '{query_name}' compiled to None"
+                )
             except Exception as e:
                 failed_queries.append((query_name, str(e)))
 
@@ -364,18 +364,18 @@ class TestYAMLQueryProperties:
         list_queries_result = set(list_queries())
         available_queries_result = set(get_available_yaml_queries())
 
-        assert (
-            yaml_queries_keys == all_queries_keys
-        ), "YAML_QUERIES and ALL_QUERIES must have the same keys"
-        assert (
-            yaml_queries_keys == list_queries_result
-        ), "YAML_QUERIES and list_queries() must return the same keys"
-        assert (
-            yaml_queries_keys == available_queries_result
-        ), "YAML_QUERIES and get_available_yaml_queries() must return the same keys"
+        assert yaml_queries_keys == all_queries_keys, (
+            "YAML_QUERIES and ALL_QUERIES must have the same keys"
+        )
+        assert yaml_queries_keys == list_queries_result, (
+            "YAML_QUERIES and list_queries() must return the same keys"
+        )
+        assert yaml_queries_keys == available_queries_result, (
+            "YAML_QUERIES and get_available_yaml_queries() must return the same keys"
+        )
 
         # Property: get_all_queries() must return ALL_QUERIES
         all_queries_from_getter = get_all_queries()
-        assert (
-            all_queries_from_getter == ALL_QUERIES
-        ), "get_all_queries() must return ALL_QUERIES"
+        assert all_queries_from_getter == ALL_QUERIES, (
+            "get_all_queries() must return ALL_QUERIES"
+        )

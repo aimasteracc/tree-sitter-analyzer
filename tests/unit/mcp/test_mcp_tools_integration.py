@@ -438,9 +438,9 @@ class CoreClass:
         # Verify consistency across all tools
         for tool_name, result in test_scenarios:
             # All tools should have consistent suppress_output behavior
-            assert (
-                "count" in result or "content_length" in result
-            ), f"{tool_name} missing count/content_length"
+            assert "count" in result or "content_length" in result, (
+                f"{tool_name} missing count/content_length"
+            )
 
             # All tools should have file output indicators
             file_output_indicators = [
@@ -448,9 +448,9 @@ class CoreClass:
                 "file_saved" in result,
                 "output_file" in result,
             ]
-            assert any(
-                file_output_indicators
-            ), f"{tool_name} missing file output indicators"
+            assert any(file_output_indicators), (
+                f"{tool_name} missing file output indicators"
+            )
 
             # When suppress_output=True, detailed results should be minimal
             detailed_result_keys = ["results", "partial_content_result", "captures"]
@@ -544,9 +544,9 @@ class CoreClass:
         if created_files:
             base_dirs = [file_path.parent for _, file_path in created_files]
             # All files should be in the same directory (project root)
-            assert (
-                len(set(base_dirs)) <= 2
-            ), "Files created in inconsistent locations"  # Allow some variation
+            assert len(set(base_dirs)) <= 2, (
+                "Files created in inconsistent locations"
+            )  # Allow some variation
 
     @pytest.mark.asyncio
     async def test_error_handling_consistency(self, all_tools, comprehensive_project):
@@ -611,16 +611,16 @@ class CoreClass:
                     result = await tool.execute(args)
 
                     # All tools should handle file save errors consistently
-                    assert (
-                        "file_save_error" in result
-                    ), f"{tool_name} missing file_save_error"
+                    assert "file_save_error" in result, (
+                        f"{tool_name} missing file_save_error"
+                    )
                     assert "file_saved" in result, f"{tool_name} missing file_saved"
-                    assert (
-                        result["file_saved"] is False
-                    ), f"{tool_name} file_saved should be False"
-                    assert (
-                        "File save error" in result["file_save_error"]
-                    ), f"{tool_name} error message incorrect"
+                    assert result["file_saved"] is False, (
+                        f"{tool_name} file_saved should be False"
+                    )
+                    assert "File save error" in result["file_save_error"], (
+                        f"{tool_name} error message incorrect"
+                    )
                 except AnalysisError as e:
                     # If the error is wrapped in AnalysisError, that's expected for file save errors
                     # Check if the error is related to missing rg command
@@ -630,9 +630,9 @@ class CoreClass:
                             f"Skipping {tool_name} test due to missing rg command"
                         )
                     else:
-                        assert "File save error" in str(
-                            e
-                        ), f"{tool_name} AnalysisError should contain 'File save error'"
+                        assert "File save error" in str(e), (
+                            f"{tool_name} AnalysisError should contain 'File save error'"
+                        )
                 except Exception as e:
                     # If there's an error related to missing commands, skip the test
                     error_msg = str(e).lower()
@@ -737,37 +737,37 @@ class CoreClass:
             properties = schema["properties"]
 
             # All tools should have output_file parameter
-            assert (
-                "output_file" in properties
-            ), f"{tool_name} missing output_file parameter"
-            assert (
-                properties["output_file"]["type"] == "string"
-            ), f"{tool_name} output_file wrong type"
+            assert "output_file" in properties, (
+                f"{tool_name} missing output_file parameter"
+            )
+            assert properties["output_file"]["type"] == "string", (
+                f"{tool_name} output_file wrong type"
+            )
 
             # All tools should have suppress_output parameter
-            assert (
-                "suppress_output" in properties
-            ), f"{tool_name} missing suppress_output parameter"
-            assert (
-                properties["suppress_output"]["type"] == "boolean"
-            ), f"{tool_name} suppress_output wrong type"
-            assert (
-                properties["suppress_output"]["default"] is False
-            ), f"{tool_name} suppress_output wrong default"
+            assert "suppress_output" in properties, (
+                f"{tool_name} missing suppress_output parameter"
+            )
+            assert properties["suppress_output"]["type"] == "boolean", (
+                f"{tool_name} suppress_output wrong type"
+            )
+            assert properties["suppress_output"]["default"] is False, (
+                f"{tool_name} suppress_output wrong default"
+            )
 
             # Descriptions should mention file output and token optimization
             output_file_desc = properties["output_file"]["description"].lower()
-            assert (
-                "file" in output_file_desc
-            ), f"{tool_name} output_file description missing 'file'"
-            assert (
-                "save" in output_file_desc or "output" in output_file_desc
-            ), f"{tool_name} output_file description unclear"
+            assert "file" in output_file_desc, (
+                f"{tool_name} output_file description missing 'file'"
+            )
+            assert "save" in output_file_desc or "output" in output_file_desc, (
+                f"{tool_name} output_file description unclear"
+            )
 
             suppress_output_desc = properties["suppress_output"]["description"].lower()
-            assert (
-                "suppress" in suppress_output_desc
-            ), f"{tool_name} suppress_output description missing 'suppress'"
+            assert "suppress" in suppress_output_desc, (
+                f"{tool_name} suppress_output description missing 'suppress'"
+            )
             assert (
                 "token" in suppress_output_desc or "output" in suppress_output_desc
             ), f"{tool_name} suppress_output description unclear"
@@ -885,6 +885,6 @@ class CoreClass:
 
             # Each should have created a file
             file_indicators = ["output_file_path", "file_saved", "output_file"]
-            assert any(
-                key in result for key in file_indicators
-            ), f"Task {i} missing file output"
+            assert any(key in result for key in file_indicators), (
+                f"Task {i} missing file output"
+            )

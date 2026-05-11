@@ -324,3 +324,7 @@ tests/debug_artifacts/
 /output.toon
 /test_mcp_output.toon
 /test_mcp_suppress_output.toon
+
+# AI assistant skill cache (symlinks — not part of source)
+.claude/
+.agents/

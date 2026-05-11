@@ -1,3 +1,4 @@
+# ruff: noqa: W293
 #!/usr/bin/env python3
 """
 Real end-to-end integration test: real tree-sitter parse → formatter output.
@@ -6,28 +7,27 @@ Bridges the gap between mock-heavy tool tests (39% of test suite)
 and real-tree-sitter tests (8%). Validates the full pipeline for Python.
 """
 
-import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 from tree_sitter import Language, Parser
 
-from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 from tree_sitter_analyzer.core.parser import Parser as TSParser
+from tree_sitter_analyzer.formatters.formatter_registry import FormatterRegistry
 
 # Skip if tree-sitter-python is not available
 pytestmark = []
 
 try:
     import tree_sitter_python
+
     PYTHON_AVAILABLE = True
 except ImportError:
     PYTHON_AVAILABLE = False
 
 REQUIRES_PYTHON = pytest.mark.skipif(
-    not PYTHON_AVAILABLE,
-    reason="tree-sitter-python not installed"
+    not PYTHON_AVAILABLE, reason="tree-sitter-python not installed"
 )
 
 SAMPLE_PYTHON = """\"\"\"Sample module for integration testing.\"\"\"
@@ -41,10 +41,10 @@ class Greeter:
     
     def __init__(self, name: str) -> None:
         self.name = name
-    
+
     def greet(self, greeting: str = "Hello") -> str:
         return f"{greeting}, {self.name}!"
-    
+
     @staticmethod
     def static_hello() -> str:
         return "Hello, world!"
@@ -106,18 +106,20 @@ class TestRealTreeSitterIntegration:
         tree = parser.parse(bytes(SAMPLE_PYTHON, "utf8"))
 
         funcs = []
+
         def walk(node):
             if node.type == "function_definition":
                 funcs.append(node)
             for child in node.children:
                 walk(child)
+
         walk(tree.root_node)
 
         func_names = []
         for f in funcs:
             for child in f.children:
                 if child.type == "identifier":
-                    func_names.append(SAMPLE_PYTHON[child.start_byte:child.end_byte])
+                    func_names.append(SAMPLE_PYTHON[child.start_byte : child.end_byte])
                     break
 
         assert "standalone_function" in func_names
@@ -131,18 +133,20 @@ class TestRealTreeSitterIntegration:
         tree = parser.parse(bytes(SAMPLE_PYTHON, "utf8"))
 
         classes = []
+
         def walk(node):
             if node.type == "class_definition":
                 classes.append(node)
             for child in node.children:
                 walk(child)
+
         walk(tree.root_node)
 
         class_names = []
         for c in classes:
             for child in c.children:
                 if child.type == "identifier":
-                    class_names.append(SAMPLE_PYTHON[child.start_byte:child.end_byte])
+                    class_names.append(SAMPLE_PYTHON[child.start_byte : child.end_byte])
                     break
 
         assert "Greeter" in class_names
@@ -169,4 +173,5 @@ class TestRealTreeSitterIntegration:
             assert isinstance(output, str)
         finally:
             import os
+
             os.unlink(tmpfile)

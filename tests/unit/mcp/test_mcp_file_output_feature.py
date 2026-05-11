@@ -572,9 +572,9 @@ public class Test {
                         "file_saved" in result,
                         "output_file" in result,
                     ]
-                    assert any(
-                        file_output_indicators
-                    ), f"Tool {tool.__class__.__name__} missing file output indicators"
+                    assert any(file_output_indicators), (
+                        f"Tool {tool.__class__.__name__} missing file output indicators"
+                    )
 
 
 class TestFileOutputManagerIntegration:

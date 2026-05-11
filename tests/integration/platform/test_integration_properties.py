@@ -95,9 +95,9 @@ class TestIntegrationProperties:
                     if "Diagnostic: Platform detected:" in str(call):
                         found_platform_log = True
                         break
-                assert (
-                    found_platform_log
-                ), "Should log platform detection in diagnostic mode"
+                assert found_platform_log, (
+                    "Should log platform detection in diagnostic mode"
+                )
 
                 # Test Extractor logging
                 extractor = plugin.extractor

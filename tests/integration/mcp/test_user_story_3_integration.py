@@ -1097,9 +1097,9 @@ asyncio.run(main())
         memory_increase = final_memory - initial_memory
 
         # メモリ増加が合理的な範囲内であることを確認（100MB以下）
-        assert (
-            memory_increase < 100 * 1024 * 1024
-        ), f"メモリ使用量が{memory_increase / 1024 / 1024:.1f}MB増加"
+        assert memory_increase < 100 * 1024 * 1024, (
+            f"メモリ使用量が{memory_increase / 1024 / 1024:.1f}MB増加"
+        )
 
         print(
             f"✓ メモリ効率性テスト成功: メモリ増加{memory_increase / 1024 / 1024:.1f}MB"

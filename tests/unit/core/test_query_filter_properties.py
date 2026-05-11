@@ -145,9 +145,9 @@ class TestQueryFilterCorrectnessProperties:
         # Property: All filtered results must have the exact name
         for result in filtered:
             extracted_name = self.filter._extract_method_name(result["content"])
-            assert (
-                extracted_name == target_name
-            ), f"Filtered result has name '{extracted_name}' but filter was for '{target_name}'"
+            assert extracted_name == target_name, (
+                f"Filtered result has name '{extracted_name}' but filter was for '{target_name}'"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
@@ -164,9 +164,9 @@ class TestQueryFilterCorrectnessProperties:
 
         # Property: All filtered results must contain 'static'
         for result in filtered:
-            assert (
-                "static" in result["content"]
-            ), f"Filtered result does not contain 'static': {result['content']}"
+            assert "static" in result["content"], (
+                f"Filtered result does not contain 'static': {result['content']}"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
@@ -183,9 +183,9 @@ class TestQueryFilterCorrectnessProperties:
 
         # Property: All filtered results must NOT contain 'static'
         for result in filtered:
-            assert (
-                "static" not in result["content"]
-            ), f"Filtered result contains 'static' but filter was static=false: {result['content']}"
+            assert "static" not in result["content"], (
+                f"Filtered result contains 'static' but filter was static=false: {result['content']}"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
@@ -202,9 +202,9 @@ class TestQueryFilterCorrectnessProperties:
 
         # Property: All filtered results must contain 'public'
         for result in filtered:
-            assert (
-                "public" in result["content"]
-            ), f"Filtered result does not contain 'public': {result['content']}"
+            assert "public" in result["content"], (
+                f"Filtered result does not contain 'public': {result['content']}"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
@@ -221,9 +221,9 @@ class TestQueryFilterCorrectnessProperties:
 
         # Property: All filtered results must contain 'private'
         for result in filtered:
-            assert (
-                "private" in result["content"]
-            ), f"Filtered result does not contain 'private': {result['content']}"
+            assert "private" in result["content"], (
+                f"Filtered result does not contain 'private': {result['content']}"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
@@ -240,9 +240,9 @@ class TestQueryFilterCorrectnessProperties:
 
         # Property: All filtered results must contain 'protected'
         for result in filtered:
-            assert (
-                "protected" in result["content"]
-            ), f"Filtered result does not contain 'protected': {result['content']}"
+            assert "protected" in result["content"], (
+                f"Filtered result does not contain 'protected': {result['content']}"
+            )
 
     @given(
         results=query_results_strategy(),
@@ -265,9 +265,9 @@ class TestQueryFilterCorrectnessProperties:
         # Property: All filtered results must have exactly param_count parameters
         for result in filtered:
             actual_count = self.filter._count_parameters(result["content"])
-            assert (
-                actual_count == param_count
-            ), f"Filtered result has {actual_count} params but filter was for {param_count}: {result['content']}"
+            assert actual_count == param_count, (
+                f"Filtered result has {actual_count} params but filter was for {param_count}: {result['content']}"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
@@ -285,12 +285,12 @@ class TestQueryFilterCorrectnessProperties:
 
         # Property: All filtered results must satisfy BOTH conditions
         for result in filtered:
-            assert (
-                "public" in result["content"]
-            ), f"Filtered result does not contain 'public': {result['content']}"
-            assert (
-                "static" in result["content"]
-            ), f"Filtered result does not contain 'static': {result['content']}"
+            assert "public" in result["content"], (
+                f"Filtered result does not contain 'public': {result['content']}"
+            )
+            assert "static" in result["content"], (
+                f"Filtered result does not contain 'static': {result['content']}"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
@@ -319,9 +319,9 @@ class TestQueryFilterCorrectnessProperties:
         regex_pattern = pattern.replace("*", ".*")
         for result in filtered:
             extracted_name = self.filter._extract_method_name(result["content"])
-            assert (
-                re.match(regex_pattern, extracted_name, re.IGNORECASE) is not None
-            ), f"Filtered result name '{extracted_name}' does not match pattern '{pattern}'"
+            assert re.match(regex_pattern, extracted_name, re.IGNORECASE) is not None, (
+                f"Filtered result name '{extracted_name}' does not match pattern '{pattern}'"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])
@@ -356,9 +356,9 @@ class TestQueryFilterCorrectnessProperties:
 
         # Property: Every filtered result must exist in original results
         for result in filtered:
-            assert (
-                result in results
-            ), f"Filtered result not found in original results: {result}"
+            assert result in results, (
+                f"Filtered result not found in original results: {result}"
+            )
 
     @given(results=query_results_strategy())
     @settings(max_examples=100, suppress_health_check=[HealthCheck.too_slow])

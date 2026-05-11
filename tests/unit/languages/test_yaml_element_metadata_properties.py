@@ -151,21 +151,21 @@ class TestYAMLElementMetadataProperties:
 
         # Property: All elements must have start_line attribute
         for element in elements:
-            assert hasattr(
-                element, "start_line"
-            ), f"Element '{element.name}' must have start_line attribute"
-            assert isinstance(
-                element.start_line, int
-            ), f"start_line must be int, got {type(element.start_line)}"
+            assert hasattr(element, "start_line"), (
+                f"Element '{element.name}' must have start_line attribute"
+            )
+            assert isinstance(element.start_line, int), (
+                f"start_line must be int, got {type(element.start_line)}"
+            )
 
         # Property: All elements must have end_line attribute
         for element in elements:
-            assert hasattr(
-                element, "end_line"
-            ), f"Element '{element.name}' must have end_line attribute"
-            assert isinstance(
-                element.end_line, int
-            ), f"end_line must be int, got {type(element.end_line)}"
+            assert hasattr(element, "end_line"), (
+                f"Element '{element.name}' must have end_line attribute"
+            )
+            assert isinstance(element.end_line, int), (
+                f"end_line must be int, got {type(element.end_line)}"
+            )
 
         # Property: start_line must be positive (1-indexed)
         for element in elements:
@@ -240,18 +240,18 @@ class TestYAMLElementMetadataProperties:
 
         # Property: All elements must have raw_text attribute
         for element in elements:
-            assert hasattr(
-                element, "raw_text"
-            ), f"Element '{element.name}' must have raw_text attribute"
-            assert isinstance(
-                element.raw_text, str
-            ), f"raw_text must be str, got {type(element.raw_text)}"
+            assert hasattr(element, "raw_text"), (
+                f"Element '{element.name}' must have raw_text attribute"
+            )
+            assert isinstance(element.raw_text, str), (
+                f"raw_text must be str, got {type(element.raw_text)}"
+            )
 
         # Property: raw_text must not be None
         for element in elements:
-            assert (
-                element.raw_text is not None
-            ), f"Element '{element.name}' raw_text must not be None"
+            assert element.raw_text is not None, (
+                f"Element '{element.name}' raw_text must not be None"
+            )
 
         # Property: raw_text should match source content at specified lines
         for element in elements:
@@ -281,9 +281,9 @@ class TestYAMLElementMetadataProperties:
         scalars = [e for e in elements if e.element_type == "scalar" and e.value]
         for scalar in scalars:
             # Value might be quoted or transformed, so check if it's present in some form
-            assert (
-                len(scalar.raw_text) > 0
-            ), f"Scalar raw_text should not be empty. Value: '{scalar.value}'"
+            assert len(scalar.raw_text) > 0, (
+                f"Scalar raw_text should not be empty. Value: '{scalar.value}'"
+            )
 
     @settings(max_examples=100)
     @given(yaml_content=yaml_simple_sequence())
@@ -319,9 +319,9 @@ class TestYAMLElementMetadataProperties:
         for sequence in sequences:
             # Property: Must have line numbers
             assert sequence.start_line > 0, "Sequence start_line must be positive"
-            assert (
-                sequence.end_line >= sequence.start_line
-            ), "Sequence end_line must be >= start_line"
+            assert sequence.end_line >= sequence.start_line, (
+                "Sequence end_line must be >= start_line"
+            )
 
             # Property: Must have raw_text
             assert sequence.raw_text is not None, "Sequence raw_text must not be None"
@@ -334,9 +334,9 @@ class TestYAMLElementMetadataProperties:
             if main_sequence.child_count and main_sequence.child_count > 0:
                 # Multi-item sequences typically span multiple lines
                 line_count = main_sequence.end_line - main_sequence.start_line + 1
-                assert (
-                    line_count >= 1
-                ), f"Sequence with {main_sequence.child_count} items should span at least 1 line"
+                assert line_count >= 1, (
+                    f"Sequence with {main_sequence.child_count} items should span at least 1 line"
+                )
 
     @settings(max_examples=50)
     @given(yaml_content=yaml_with_comments())
@@ -374,9 +374,9 @@ class TestYAMLElementMetadataProperties:
             assert hasattr(element, "start_line"), "Must have start_line"
             assert hasattr(element, "end_line"), "Must have end_line"
             assert element.start_line > 0, "start_line must be positive"
-            assert (
-                element.end_line >= element.start_line
-            ), "end_line must be >= start_line"
+            assert element.end_line >= element.start_line, (
+                "end_line must be >= start_line"
+            )
 
             # Property: Must have raw_text
             assert hasattr(element, "raw_text"), "Must have raw_text"
@@ -387,9 +387,9 @@ class TestYAMLElementMetadataProperties:
         comments = [e for e in elements if e.element_type == "comment"]
         for comment in comments:
             # Comment raw_text should contain the # character
-            assert (
-                "#" in comment.raw_text
-            ), f"Comment raw_text should contain '#'. Got: '{comment.raw_text}'"
+            assert "#" in comment.raw_text, (
+                f"Comment raw_text should contain '#'. Got: '{comment.raw_text}'"
+            )
 
             # Verify against source
             start_idx = comment.start_line - 1
@@ -438,15 +438,15 @@ class TestYAMLElementMetadataProperties:
 
         # Property: Number of elements should match expected count
         mappings = [e for e in elements if e.element_type == "mapping"]
-        assert (
-            len(mappings) == num_keys
-        ), f"Expected {num_keys} mappings, got {len(mappings)}"
+        assert len(mappings) == num_keys, (
+            f"Expected {num_keys} mappings, got {len(mappings)}"
+        )
 
         # Property: Each mapping should be on a different line
         mapping_lines = [m.start_line for m in mappings]
-        assert len(mapping_lines) == len(
-            set(mapping_lines)
-        ), f"Mappings should be on different lines. Lines: {mapping_lines}"
+        assert len(mapping_lines) == len(set(mapping_lines)), (
+            f"Mappings should be on different lines. Lines: {mapping_lines}"
+        )
 
         # Property: Mappings should be in sequential order
         sorted_mappings = sorted(mappings, key=lambda m: m.start_line)
@@ -470,9 +470,9 @@ class TestYAMLElementMetadataProperties:
         # Property: Each mapping's key should be in its raw_text
         for mapping in mappings:
             if mapping.key:
-                assert (
-                    mapping.key in mapping.raw_text
-                ), f"Mapping key '{mapping.key}' should be in raw_text '{mapping.raw_text}'"
+                assert mapping.key in mapping.raw_text, (
+                    f"Mapping key '{mapping.key}' should be in raw_text '{mapping.raw_text}'"
+                )
 
     @settings(max_examples=50)
     @given(
@@ -522,18 +522,18 @@ class TestYAMLElementMetadataProperties:
 
         # Property: All elements must have complete metadata
         for element in elements:
-            assert (
-                element.start_line > 0
-            ), f"Element '{element.name}' must have positive start_line"
-            assert (
-                element.end_line >= element.start_line
-            ), f"Element '{element.name}' must have valid end_line"
-            assert (
-                element.raw_text is not None
-            ), f"Element '{element.name}' must have raw_text"
-            assert (
-                len(element.raw_text) > 0
-            ), f"Element '{element.name}' must have non-empty raw_text"
+            assert element.start_line > 0, (
+                f"Element '{element.name}' must have positive start_line"
+            )
+            assert element.end_line >= element.start_line, (
+                f"Element '{element.name}' must have valid end_line"
+            )
+            assert element.raw_text is not None, (
+                f"Element '{element.name}' must have raw_text"
+            )
+            assert len(element.raw_text) > 0, (
+                f"Element '{element.name}' must have non-empty raw_text"
+            )
 
         # Property: Mappings should have accurate metadata
         mappings = [e for e in elements if e.element_type == "mapping"]
@@ -544,17 +544,17 @@ class TestYAMLElementMetadataProperties:
             end_idx = mapping.end_line
             if start_idx < len(source_lines) and end_idx <= len(source_lines):
                 expected_text = "\n".join(source_lines[start_idx:end_idx])
-                assert (
-                    mapping.raw_text == expected_text
-                ), f"Mapping raw_text mismatch at line {mapping.start_line}"
+                assert mapping.raw_text == expected_text, (
+                    f"Mapping raw_text mismatch at line {mapping.start_line}"
+                )
 
         # Property: Sequences should have accurate metadata
         sequences = [e for e in elements if e.element_type == "sequence"]
         for sequence in sequences:
             assert sequence.start_line > 0, "Sequence must have valid start_line"
-            assert (
-                sequence.end_line >= sequence.start_line
-            ), "Sequence must have valid end_line"
+            assert sequence.end_line >= sequence.start_line, (
+                "Sequence must have valid end_line"
+            )
             assert sequence.raw_text is not None, "Sequence must have raw_text"
             assert len(sequence.raw_text) > 0, "Sequence must have non-empty raw_text"
 

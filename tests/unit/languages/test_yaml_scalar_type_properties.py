@@ -87,9 +87,9 @@ class TestYAMLScalarTypeProperties:
         ]
 
         # Property: At least one string scalar should be found
-        assert (
-            len(mappings) > 0
-        ), "Should extract at least one mapping with string value"
+        assert len(mappings) > 0, (
+            "Should extract at least one mapping with string value"
+        )
 
         # Property: String scalars must be identified as "string"
         for mapping in mappings:
@@ -159,9 +159,9 @@ class TestYAMLScalarTypeProperties:
         ]
 
         # Property: At least one number scalar should be found
-        assert (
-            len(mappings) > 0
-        ), "Should extract at least one mapping with number value"
+        assert len(mappings) > 0, (
+            "Should extract at least one mapping with number value"
+        )
 
         # Property: Number scalars must be identified as "number"
         for mapping in mappings:
@@ -228,9 +228,9 @@ class TestYAMLScalarTypeProperties:
         ]
 
         # Property: At least one boolean scalar should be found
-        assert (
-            len(mappings) > 0
-        ), "Should extract at least one mapping with boolean value"
+        assert len(mappings) > 0, (
+            "Should extract at least one mapping with boolean value"
+        )
 
         # Property: Boolean scalars must be identified as "boolean"
         for mapping in mappings:
@@ -243,9 +243,9 @@ class TestYAMLScalarTypeProperties:
         valid_booleans = ["true", "false", "yes", "no", "on", "off"]
         for mapping in mappings:
             assert mapping.value is not None, "Boolean value should not be None"
-            assert (
-                mapping.value in valid_booleans
-            ), f"Boolean value '{mapping.value}' should be a valid YAML boolean"
+            assert mapping.value in valid_booleans, (
+                f"Boolean value '{mapping.value}' should be a valid YAML boolean"
+            )
 
     @settings(max_examples=100)
     @given(
@@ -305,6 +305,6 @@ class TestYAMLScalarTypeProperties:
         # Property: Null values should be None or valid YAML null representations
         valid_nulls = ["null", "~", None]
         for mapping in mappings:
-            assert (
-                mapping.value in valid_nulls
-            ), f"Null value '{mapping.value}' should be None or a valid YAML null representation"
+            assert mapping.value in valid_nulls, (
+                f"Null value '{mapping.value}' should be None or a valid YAML null representation"
+            )

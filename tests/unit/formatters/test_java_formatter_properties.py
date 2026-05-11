@@ -224,9 +224,9 @@ class TestFormatterOutputCompletenessProperties:
         # Property: All class names should appear in the output
         for class_info in data.get("classes", []):
             class_name = class_info.get("name", "")
-            assert (
-                class_name in result
-            ), f"Class name '{class_name}' should appear in formatted output"
+            assert class_name in result, (
+                f"Class name '{class_name}' should appear in formatted output"
+            )
 
     @settings(
         max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
@@ -258,9 +258,9 @@ class TestFormatterOutputCompletenessProperties:
         for field in data.get("fields", []):
             field_name = field.get("name", "")
             if field_name and is_in_class_range(field):
-                assert (
-                    field_name in result
-                ), f"Field name '{field_name}' should appear in formatted output"
+                assert field_name in result, (
+                    f"Field name '{field_name}' should appear in formatted output"
+                )
 
     @settings(
         max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
@@ -292,9 +292,9 @@ class TestFormatterOutputCompletenessProperties:
         for method in data.get("methods", []):
             method_name = method.get("name", "")
             if method_name and is_in_class_range(method):
-                assert (
-                    method_name in result
-                ), f"Method name '{method_name}' should appear in formatted output"
+                assert method_name in result, (
+                    f"Method name '{method_name}' should appear in formatted output"
+                )
 
     @settings(
         max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
@@ -351,9 +351,9 @@ class TestFormatterOutputCompletenessProperties:
         for method in data.get("methods", []):
             method_name = method.get("name", "")
             if method_name:  # Only check non-empty names
-                assert (
-                    method_name in result
-                ), f"Method name '{method_name}' should appear in compact formatted output"
+                assert method_name in result, (
+                    f"Method name '{method_name}' should appear in compact formatted output"
+                )
 
     @settings(
         max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
@@ -375,9 +375,9 @@ class TestFormatterOutputCompletenessProperties:
         for imp in data.get("imports", []):
             statement = imp.get("statement", "")
             if statement:  # Only check non-empty statements
-                assert (
-                    statement in result
-                ), f"Import statement '{statement}' should appear in formatted output"
+                assert statement in result, (
+                    f"Import statement '{statement}' should appear in formatted output"
+                )
 
     @settings(
         max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
@@ -398,9 +398,9 @@ class TestFormatterOutputCompletenessProperties:
         # Property: Package name should appear in the output
         package_name = data.get("package", {}).get("name", "")
         if package_name and package_name != "unknown":
-            assert (
-                package_name in result
-            ), f"Package name '{package_name}' should appear in formatted output"
+            assert package_name in result, (
+                f"Package name '{package_name}' should appear in formatted output"
+            )
 
     @settings(
         max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
@@ -422,17 +422,17 @@ class TestFormatterOutputCompletenessProperties:
         for field in data.get("fields", []):
             field_name = field.get("name", "")
             if field_name:
-                assert (
-                    field_name in result
-                ), f"Field name '{field_name}' should appear in CSV output"
+                assert field_name in result, (
+                    f"Field name '{field_name}' should appear in CSV output"
+                )
 
         # Property: All method names should appear in CSV output
         for method in data.get("methods", []):
             method_name = method.get("name", "")
             if method_name:
-                assert (
-                    method_name in result
-                ), f"Method name '{method_name}' should appear in CSV output"
+                assert method_name in result, (
+                    f"Method name '{method_name}' should appear in CSV output"
+                )
 
     @settings(
         max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
@@ -522,9 +522,9 @@ class TestFormatterAnnotationHandlingProperties:
         result = formatter._format_full_table(data)
 
         # Property: Class name should appear in output
-        assert (
-            class_name in result
-        ), f"Class name '{class_name}' should appear in output"
+        assert class_name in result, (
+            f"Class name '{class_name}' should appear in output"
+        )
 
         # Property: Visibility should appear in output (either as word or symbol)
         visibility_symbols = {
@@ -535,7 +535,9 @@ class TestFormatterAnnotationHandlingProperties:
         }
         expected_symbols = visibility_symbols.get(visibility_val, [visibility_val])
         found = any(sym in result for sym in expected_symbols)
-        assert found, f"Visibility '{visibility_val}' should appear in output as one of {expected_symbols}"
+        assert found, (
+            f"Visibility '{visibility_val}' should appear in output as one of {expected_symbols}"
+        )
 
 
 class TestFormatterGenericTypeHandlingProperties:
@@ -599,9 +601,9 @@ class TestFormatterGenericTypeHandlingProperties:
         result = formatter._format_full_table(data)
 
         # Property: Method name should appear in output
-        assert (
-            method_name in result
-        ), f"Method name '{method_name}' should appear in output"
+        assert method_name in result, (
+            f"Method name '{method_name}' should appear in output"
+        )
 
     @settings(
         max_examples=50, suppress_health_check=[HealthCheck.too_slow], derandomize=True
@@ -633,15 +635,15 @@ class TestFormatterGenericTypeHandlingProperties:
         assert result, f"Shortened type for '{type_name}' should not be empty"
 
         # Property: Result should be a string
-        assert isinstance(
-            result, str
-        ), f"Shortened type should be a string, got {type(result)}"
+        assert isinstance(result, str), (
+            f"Shortened type should be a string, got {type(result)}"
+        )
 
         # Property: Generic brackets should be preserved
         if "<" in type_name:
-            assert (
-                "<" in result
-            ), f"Generic brackets should be preserved in '{result}' for type '{type_name}'"
+            assert "<" in result, (
+                f"Generic brackets should be preserved in '{result}' for type '{type_name}'"
+            )
 
 
 class TestFormatterEdgeCaseProperties:

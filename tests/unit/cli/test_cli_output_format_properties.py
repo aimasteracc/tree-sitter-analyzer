@@ -247,9 +247,9 @@ class TestCLIOutputFormatProperties:
             parsed = json.loads(captured.out)
             # Property: Parsed JSON should be equivalent to original data
             # (accounting for JSON serialization rules)
-            assert (
-                parsed is not None or data is None
-            ), "JSON output should parse to equivalent value"
+            assert parsed is not None or data is None, (
+                "JSON output should parse to equivalent value"
+            )
         except json.JSONDecodeError as e:
             pytest.fail(
                 f"JSON format should produce valid JSON: {e}\nOutput was: {captured.out}"
@@ -274,17 +274,17 @@ class TestCLIOutputFormatProperties:
 
         # Property: Round-trip should preserve data type
         if isinstance(data, dict):
-            assert isinstance(
-                parsed, dict
-            ), "Dict data should remain dict after round-trip"
+            assert isinstance(parsed, dict), (
+                "Dict data should remain dict after round-trip"
+            )
             # Property: All keys should be preserved
-            assert (
-                set(data.keys()) == set(parsed.keys())
-            ), f"All keys should be preserved. Original: {set(data.keys())}, Got: {set(parsed.keys())}"
+            assert set(data.keys()) == set(parsed.keys()), (
+                f"All keys should be preserved. Original: {set(data.keys())}, Got: {set(parsed.keys())}"
+            )
         elif isinstance(data, list):
-            assert isinstance(
-                parsed, list
-            ), "List data should remain list after round-trip"
+            assert isinstance(parsed, list), (
+                "List data should remain list after round-trip"
+            )
             assert len(data) == len(parsed), "List length should be preserved"
         elif isinstance(data, int):
             assert parsed == data, "Integer data should be preserved exactly"
@@ -310,9 +310,9 @@ class TestCLIOutputFormatProperties:
 
         # Property: Non-empty data should produce non-empty output
         if data is not None and data != [] and data != {}:
-            assert (
-                len(captured.out.strip()) > 0
-            ), f"Non-empty data should produce non-empty text output. Data: {data}"
+            assert len(captured.out.strip()) > 0, (
+                f"Non-empty data should produce non-empty text output. Data: {data}"
+            )
 
     @PROPERTY_SETTINGS
     @given(data=search_result())
@@ -334,15 +334,15 @@ class TestCLIOutputFormatProperties:
 
         # Property: Required fields should be present
         assert "success" in parsed, "Search result should contain 'success' field"
-        assert (
-            "total_matches" in parsed
-        ), "Search result should contain 'total_matches' field"
+        assert "total_matches" in parsed, (
+            "Search result should contain 'total_matches' field"
+        )
         assert "matches" in parsed, "Search result should contain 'matches' field"
 
         # Property: Match count should be consistent
-        assert parsed["total_matches"] == len(
-            parsed["matches"]
-        ), "total_matches should equal length of matches array"
+        assert parsed["total_matches"] == len(parsed["matches"]), (
+            "total_matches should equal length of matches array"
+        )
 
     @PROPERTY_SETTINGS
     @given(data=list_files_result())
@@ -368,9 +368,9 @@ class TestCLIOutputFormatProperties:
         assert "count" in parsed, "List files result should contain 'count' field"
 
         # Property: Count should match files length
-        assert parsed["count"] == len(
-            parsed["files"]
-        ), "count should equal length of files array"
+        assert parsed["count"] == len(parsed["files"]), (
+            "count should equal length of files array"
+        )
 
     @PROPERTY_SETTINGS
     @given(data=analysis_result_data())
@@ -416,14 +416,14 @@ class TestCLIOutputFormatProperties:
 
         if quiet:
             # Property: Quiet mode should suppress info messages
-            assert (
-                "Test info message" not in captured.out
-            ), "Quiet mode should suppress info messages"
+            assert "Test info message" not in captured.out, (
+                "Quiet mode should suppress info messages"
+            )
         else:
             # Property: Non-quiet mode should show info messages
-            assert (
-                "Test info message" in captured.out
-            ), "Non-quiet mode should show info messages"
+            assert "Test info message" in captured.out, (
+                "Non-quiet mode should show info messages"
+            )
 
     @PROPERTY_SETTINGS
     @given(
@@ -496,9 +496,9 @@ class TestCLIOutputFormatEdgeCases:
         # Property: Output should be valid JSON
         try:
             parsed = json.loads(captured.out)
-            assert isinstance(
-                parsed, dict
-            ), "Dict input should produce dict JSON output"
+            assert isinstance(parsed, dict), (
+                "Dict input should produce dict JSON output"
+            )
         except json.JSONDecodeError as e:
             pytest.fail(f"Arbitrary dict should produce valid JSON: {e}")
 
@@ -520,9 +520,9 @@ class TestCLIOutputFormatEdgeCases:
         # Property: Output should be valid JSON
         try:
             parsed = json.loads(captured.out)
-            assert isinstance(
-                parsed, list
-            ), "List input should produce list JSON output"
+            assert isinstance(parsed, list), (
+                "List input should produce list JSON output"
+            )
             assert len(parsed) == len(data), "List length should be preserved"
         except json.JSONDecodeError as e:
             pytest.fail(f"Arbitrary list should produce valid JSON: {e}")
@@ -546,9 +546,9 @@ class TestCLIOutputFormatEdgeCases:
         parsed = json.loads(captured.out)
 
         # Property: Integer should be preserved exactly
-        assert (
-            parsed == count
-        ), f"Integer {count} should be preserved exactly, got {parsed}"
+        assert parsed == count, (
+            f"Integer {count} should be preserved exactly, got {parsed}"
+        )
 
     @PROPERTY_SETTINGS
     @given(
@@ -574,9 +574,9 @@ class TestCLIOutputFormatEdgeCases:
         captured = capsys.readouterr()
 
         # Property: Error message should appear in stderr
-        assert (
-            error_msg in captured.err
-        ), f"Error message '{error_msg}' should appear in error output"
+        assert error_msg in captured.err, (
+            f"Error message '{error_msg}' should appear in error output"
+        )
 
         # Property: Error output should be prefixed with ERROR
         assert "ERROR:" in captured.err, "Error output should be prefixed with 'ERROR:'"

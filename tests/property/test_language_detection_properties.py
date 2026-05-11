@@ -375,12 +375,12 @@ class TestLanguageDetectionProperties:
         for ext in extensions:
             file_path = Path(f"test{ext}")
             language = detector.detect_from_extension(str(file_path))
-            assert (
-                language is not None
-            ), f"Failed to detect language for extension {ext}"
-            assert isinstance(
-                language, str
-            ), f"Expected string language for {ext}, got {type(language)}"
+            assert language is not None, (
+                f"Failed to detect language for extension {ext}"
+            )
+            assert isinstance(language, str), (
+                f"Expected string language for {ext}, got {type(language)}"
+            )
 
 
 class TestLanguageDetectionStateful(RuleBasedStateMachine):
@@ -427,9 +427,9 @@ class TestLanguageDetectionStateful(RuleBasedStateMachine):
     def all_detections_are_valid(self) -> None:
         """验证所有检测结果都是有效的。"""
         for file_path, language in self.detected_languages.items():
-            assert language is not None or isinstance(
-                language, str
-            ), f"Invalid detection for {file_path}: {language}"
+            assert language is not None or isinstance(language, str), (
+                f"Invalid detection for {file_path}: {language}"
+            )
 
     @invariant()
     def same_extension_same_language(self) -> None:
@@ -438,9 +438,9 @@ class TestLanguageDetectionStateful(RuleBasedStateMachine):
         for file_path, language in self.detected_languages.items():
             ext = Path(file_path).suffix
             if ext in extension_map:
-                assert (
-                    language == extension_map[ext]
-                ), f"Same extension {ext} but different languages: {language} vs {extension_map[ext]}"
+                assert language == extension_map[ext], (
+                    f"Same extension {ext} but different languages: {language} vs {extension_map[ext]}"
+                )
             else:
                 extension_map[ext] = language
 

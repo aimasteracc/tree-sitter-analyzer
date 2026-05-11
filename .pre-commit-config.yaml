@@ -12,7 +12,7 @@ repos:
 
   # Python linting and code quality
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.15.12
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -20,7 +20,7 @@ repos:
 
   # Basic file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         exclude: \.md$
@@ -53,7 +53,7 @@ repos:
         args: ['--baseline', '.secrets.baseline']
         exclude: package.lock
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.10
+    rev: 1.9.4
     hooks:
       - id: bandit
         exclude: ^tests/|^openspec/changes/archive/|^scripts/|^build_standalone\.py$|^check_quality\.py$|^run_regression_tests\.py$|^test_fixes\.py$|^upload_interactive\.py$|^upload_to_pypi\.py$|^examples/
@@ -61,7 +61,7 @@ repos:
 
   # Type checking
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
+    rev: v2.0.0
     hooks:
       - id: mypy
         args: [--ignore-missing-imports, --no-error-summary, --show-error-codes, --explicit-package-bases]
@@ -85,7 +85,7 @@ repos:
 
   # Python modernization
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.19.0
+    rev: v3.21.2
     hooks:
       - id: pyupgrade
         args: [--py310-plus]

@@ -783,9 +783,9 @@ public class ContractTestService {
             print(f"Information consistency warnings: {report['warnings']}")
 
         # Assert consistency
-        assert (
-            is_consistent
-        ), f"Information consistency contract violated: {report['violations']}"
+        assert is_consistent, (
+            f"Information consistency contract violated: {report['violations']}"
+        )
 
         # Verify that all formats contain the class name
         for format_type, output in outputs.items():
@@ -899,19 +899,19 @@ public class ContractTestService {
         csv_method_count = len(csv_info.get("methods", []))
 
         # All formats should report same method count
-        assert (
-            full_method_count == compact_method_count
-        ), f"Method count mismatch: full={full_method_count}, compact={compact_method_count}"
+        assert full_method_count == compact_method_count, (
+            f"Method count mismatch: full={full_method_count}, compact={compact_method_count}"
+        )
 
-        assert (
-            full_method_count == csv_method_count
-        ), f"Method count mismatch: full={full_method_count}, csv={csv_method_count}"
+        assert full_method_count == csv_method_count, (
+            f"Method count mismatch: full={full_method_count}, csv={csv_method_count}"
+        )
 
         # Verify expected method count (based on test file)
         expected_methods = 11  # Based on ContractTestService methods
-        assert (
-            full_method_count >= expected_methods - 2
-        ), f"Expected at least {expected_methods - 2} methods, got {full_method_count}"
+        assert full_method_count >= expected_methods - 2, (
+            f"Expected at least {expected_methods - 2} methods, got {full_method_count}"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.skip(
@@ -955,19 +955,19 @@ public class ContractTestService {
         csv_field_count = len(csv_info.get("fields", []))
 
         # All formats should report same field count
-        assert (
-            full_field_count == compact_field_count
-        ), f"Field count mismatch: full={full_field_count}, compact={compact_field_count}"
+        assert full_field_count == compact_field_count, (
+            f"Field count mismatch: full={full_field_count}, compact={compact_field_count}"
+        )
 
-        assert (
-            full_field_count == csv_field_count
-        ), f"Field count mismatch: full={full_field_count}, csv={csv_field_count}"
+        assert full_field_count == csv_field_count, (
+            f"Field count mismatch: full={full_field_count}, csv={csv_field_count}"
+        )
 
         # Verify expected field count (based on test file)
         expected_fields = 4  # Based on ContractTestService fields
-        assert (
-            full_field_count >= expected_fields - 1
-        ), f"Expected at least {expected_fields - 1} fields, got {full_field_count}"
+        assert full_field_count >= expected_fields - 1, (
+            f"Expected at least {expected_fields - 1} fields, got {full_field_count}"
+        )
 
     @pytest.mark.asyncio
     async def test_parameter_encoding_contract(
@@ -1059,9 +1059,9 @@ public class ContractTestService {
 
                 if compact_method and len(compact_method) >= 3:
                     compact_access = compact_method[2]  # Access column in compact
-                    assert (
-                        full_access == compact_access
-                    ), f"Access modifier mismatch for method {method_name}: full='{full_access}', compact='{compact_access}'"
+                    assert full_access == compact_access, (
+                        f"Access modifier mismatch for method {method_name}: full='{full_access}', compact='{compact_access}'"
+                    )
 
                 # Find corresponding method in CSV format
                 csv_method = None
@@ -1072,9 +1072,9 @@ public class ContractTestService {
 
                 if csv_method:
                     csv_access = csv_method.get("Access", "")
-                    assert (
-                        full_access == csv_access
-                    ), f"Access modifier mismatch for method {method_name}: full='{full_access}', csv='{csv_access}'"
+                    assert full_access == csv_access, (
+                        f"Access modifier mismatch for method {method_name}: full='{full_access}', csv='{csv_access}'"
+                    )
 
     @pytest.mark.asyncio
     async def test_line_number_consistency_contract(
@@ -1129,9 +1129,9 @@ public class ContractTestService {
 
                 if compact_method and len(compact_method) >= 4:
                     compact_line = compact_method[3]  # Line column in compact
-                    assert (
-                        full_line == compact_line
-                    ), f"Line number mismatch for method {method_name}: full='{full_line}', compact='{compact_line}'"
+                    assert full_line == compact_line, (
+                        f"Line number mismatch for method {method_name}: full='{full_line}', compact='{compact_line}'"
+                    )
 
                 # Find corresponding method in CSV format
                 # Match by both name and line number for overloaded methods
@@ -1146,9 +1146,9 @@ public class ContractTestService {
 
                 if csv_method:
                     csv_line = csv_method.get("Line", "")
-                    assert (
-                        full_line == csv_line
-                    ), f"Line number mismatch for method {method_name}: full='{full_line}', csv='{csv_line}'"
+                    assert full_line == csv_line, (
+                        f"Line number mismatch for method {method_name}: full='{full_line}', csv='{csv_line}'"
+                    )
 
     @pytest.mark.asyncio
     @pytest.mark.skip(
@@ -1186,24 +1186,24 @@ public class ContractTestService {
         full_output = current_outputs["full"]
         required_full_sections = ["# ", "## Class Info", "## Methods", "## Fields"]
         for section in required_full_sections:
-            assert (
-                section in full_output
-            ), f"Backward compatibility: missing {section} in full format"
+            assert section in full_output, (
+                f"Backward compatibility: missing {section} in full format"
+            )
 
         # Compact format should have simplified structure
         compact_output = current_outputs["compact"]
         required_compact_sections = ["# ", "## Info", "## Methods", "## Fields"]
         for section in required_compact_sections:
-            assert (
-                section in compact_output
-            ), f"Backward compatibility: missing {section} in compact format"
+            assert section in compact_output, (
+                f"Backward compatibility: missing {section} in compact format"
+            )
 
         # CSV format should have proper header
         csv_output = current_outputs["csv"]
         expected_csv_header = "Type,Name,ReturnType,Parameters,Access,Static,Final,Line"
-        assert csv_output.startswith(
-            expected_csv_header
-        ), "Backward compatibility: CSV header format changed"
+        assert csv_output.startswith(expected_csv_header), (
+            "Backward compatibility: CSV header format changed"
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.skip(
@@ -1246,16 +1246,16 @@ public class ContractTestService {
         report = contract_validator.get_contract_report()
 
         # Both consistency and contracts must be valid
-        assert (
-            is_consistent and is_contract_valid
-        ), f"Data integrity contract violated: {report['violations']}"
+        assert is_consistent and is_contract_valid, (
+            f"Data integrity contract violated: {report['violations']}"
+        )
 
         # Additional integrity checks
         # 1. No format should have empty essential information
         for format_type, output in outputs.items():
-            assert (
-                len(output.strip()) > 0
-            ), f"{format_type} format produced empty output"
+            assert len(output.strip()) > 0, (
+                f"{format_type} format produced empty output"
+            )
             assert class_name in output, f"{format_type} format missing class name"
 
         # 2. All formats should represent the same source file
@@ -1266,6 +1266,6 @@ public class ContractTestService {
         full_lines = len(outputs["full"].split("\n"))
         compact_lines = len(outputs["compact"].split("\n"))
 
-        assert (
-            full_lines >= compact_lines
-        ), "Full format should have more or equal lines compared to compact format"
+        assert full_lines >= compact_lines, (
+            "Full format should have more or equal lines compared to compact format"
+        )

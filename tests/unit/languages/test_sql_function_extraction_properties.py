@@ -232,15 +232,15 @@ END;
         ]
 
         # Property: Only the actual function name should be extracted, not column names
-        assert (
-            func_name in function_names
-        ), f"Expected function '{func_name}' to be extracted"
-        assert (
-            column_name not in function_names
-        ), f"Column name '{column_name}' should not be extracted as a function"
-        assert (
-            len(function_names) == 1
-        ), f"Expected exactly 1 function, got {len(function_names)}: {function_names}"
+        assert func_name in function_names, (
+            f"Expected function '{func_name}' to be extracted"
+        )
+        assert column_name not in function_names, (
+            f"Column name '{column_name}' should not be extracted as a function"
+        )
+        assert len(function_names) == 1, (
+            f"Expected exactly 1 function, got {len(function_names)}: {function_names}"
+        )
 
     @settings(
         max_examples=100,
@@ -412,15 +412,15 @@ END;
         ]
 
         # Property: Only the actual function name should be extracted, not SQL keywords
-        assert (
-            func_name in function_names
-        ), f"Expected function '{func_name}' to be extracted"
-        assert keyword.lower() not in [
-            name.lower() for name in function_names
-        ], f"SQL keyword '{keyword}' should not be extracted as a function"
-        assert (
-            len(function_names) == 1
-        ), f"Expected exactly 1 function, got {len(function_names)}: {function_names}"
+        assert func_name in function_names, (
+            f"Expected function '{func_name}' to be extracted"
+        )
+        assert keyword.lower() not in [name.lower() for name in function_names], (
+            f"SQL keyword '{keyword}' should not be extracted as a function"
+        )
+        assert len(function_names) == 1, (
+            f"Expected exactly 1 function, got {len(function_names)}: {function_names}"
+        )
 
     @settings(
         max_examples=100,
@@ -595,12 +595,12 @@ END;
         ]
 
         # Property: Only the CREATE FUNCTION declaration should be matched, not lines in the body
-        assert (
-            func_name in function_names
-        ), f"Expected function '{func_name}' to be extracted"
-        assert (
-            len(function_names) == 1
-        ), f"Expected exactly 1 function, got {len(function_names)}: {function_names}"
+        assert func_name in function_names, (
+            f"Expected function '{func_name}' to be extracted"
+        )
+        assert len(function_names) == 1, (
+            f"Expected exactly 1 function, got {len(function_names)}: {function_names}"
+        )
 
         # Verify that keywords from the body are not extracted
         body_keywords = [
@@ -614,9 +614,9 @@ END;
             "SET",
         ]
         for keyword in body_keywords:
-            assert (
-                keyword.lower() not in [name.lower() for name in function_names]
-            ), f"Keyword '{keyword}' from function body should not be extracted as a function"
+            assert keyword.lower() not in [name.lower() for name in function_names], (
+                f"Keyword '{keyword}' from function body should not be extracted as a function"
+            )
 
     @settings(
         max_examples=100,
@@ -806,19 +806,19 @@ END;
                 end_line = i + 1  # 1-indexed
 
         # Property: start_line should be the CREATE FUNCTION line
-        assert (
-            func.start_line == create_function_line
-        ), f"Expected start_line to be {create_function_line} (CREATE FUNCTION line), got {func.start_line}"
+        assert func.start_line == create_function_line, (
+            f"Expected start_line to be {create_function_line} (CREATE FUNCTION line), got {func.start_line}"
+        )
 
         # Property: end_line should be the END statement line
-        assert (
-            func.end_line == end_line
-        ), f"Expected end_line to be {end_line} (END statement line), got {func.end_line}"
+        assert func.end_line == end_line, (
+            f"Expected end_line to be {end_line} (END statement line), got {func.end_line}"
+        )
 
         # Property: end_line should be greater than start_line
-        assert (
-            func.end_line > func.start_line
-        ), f"Expected end_line ({func.end_line}) to be greater than start_line ({func.start_line})"
+        assert func.end_line > func.start_line, (
+            f"Expected end_line ({func.end_line}) to be greater than start_line ({func.start_line})"
+        )
 
     @settings(
         max_examples=100,
@@ -925,17 +925,17 @@ END;
 
         # Property: Invalid identifiers (column names and keywords) should be rejected
         # The function should NOT be extracted if it has an invalid name
-        assert (
-            invalid_name not in function_names
-        ), f"Invalid identifier '{invalid_name}' should not be extracted as a function name"
-        assert (
-            invalid_name.lower() not in [name.lower() for name in function_names]
-        ), f"Invalid identifier '{invalid_name}' (case-insensitive) should not be extracted as a function name"
+        assert invalid_name not in function_names, (
+            f"Invalid identifier '{invalid_name}' should not be extracted as a function name"
+        )
+        assert invalid_name.lower() not in [name.lower() for name in function_names], (
+            f"Invalid identifier '{invalid_name}' (case-insensitive) should not be extracted as a function name"
+        )
 
         # The extraction should result in 0 functions since the name is invalid
-        assert (
-            len(function_names) == 0
-        ), f"Expected 0 functions with invalid name '{invalid_name}', got {len(function_names)}: {function_names}"
+        assert len(function_names) == 0, (
+            f"Expected 0 functions with invalid name '{invalid_name}', got {len(function_names)}: {function_names}"
+        )
 
     @settings(
         max_examples=100,
@@ -1118,20 +1118,20 @@ END;
         ]
 
         # Property: Only valid identifiers should be extracted
-        assert (
-            valid_name in function_names
-        ), f"Valid function name '{valid_name}' should be extracted"
-        assert (
-            invalid_name not in function_names
-        ), f"Invalid function name '{invalid_name}' should not be extracted"
-        assert (
-            invalid_name.lower() not in [name.lower() for name in function_names]
-        ), f"Invalid function name '{invalid_name}' (case-insensitive) should not be extracted"
+        assert valid_name in function_names, (
+            f"Valid function name '{valid_name}' should be extracted"
+        )
+        assert invalid_name not in function_names, (
+            f"Invalid function name '{invalid_name}' should not be extracted"
+        )
+        assert invalid_name.lower() not in [name.lower() for name in function_names], (
+            f"Invalid function name '{invalid_name}' (case-insensitive) should not be extracted"
+        )
 
         # Should extract exactly 1 function (the valid one)
-        assert (
-            len(function_names) == 1
-        ), f"Expected exactly 1 function (valid one), got {len(function_names)}: {function_names}"
+        assert len(function_names) == 1, (
+            f"Expected exactly 1 function (valid one), got {len(function_names)}: {function_names}"
+        )
 
     @settings(
         max_examples=100,
@@ -1311,15 +1311,15 @@ END;
         ]
 
         # Property: Number of extracted functions should equal number of CREATE FUNCTION declarations
-        assert (
-            len(function_names) == len(valid_func_names)
-        ), f"Expected {len(valid_func_names)} functions, got {len(function_names)}: {function_names}"
+        assert len(function_names) == len(valid_func_names), (
+            f"Expected {len(valid_func_names)} functions, got {len(function_names)}: {function_names}"
+        )
 
         # Verify all expected functions are present
         for expected_name in valid_func_names:
-            assert (
-                expected_name in function_names
-            ), f"Expected function '{expected_name}' not found in extracted functions: {function_names}"
+            assert expected_name in function_names, (
+                f"Expected function '{expected_name}' not found in extracted functions: {function_names}"
+            )
 
     @settings(
         max_examples=100,
@@ -1494,15 +1494,15 @@ END;
         extracted_names = [func.name for func in extracted_functions]
 
         # Property: Functions should appear in the same order as in the source file
-        assert (
-            extracted_names == valid_func_names
-        ), f"Function order mismatch. Expected: {valid_func_names}, Got: {extracted_names}"
+        assert extracted_names == valid_func_names, (
+            f"Function order mismatch. Expected: {valid_func_names}, Got: {extracted_names}"
+        )
 
         # Also verify that start_line values are in ascending order
         start_lines = [func.start_line for func in extracted_functions]
-        assert start_lines == sorted(
-            start_lines
-        ), f"Function start lines are not in ascending order: {start_lines}"
+        assert start_lines == sorted(start_lines), (
+            f"Function start lines are not in ascending order: {start_lines}"
+        )
 
     @settings(
         max_examples=100,
@@ -1692,15 +1692,15 @@ END;
         # Property: All runs should produce identical results
         first_result = all_results[0]
         for i, result in enumerate(all_results[1:], start=1):
-            assert (
-                result == first_result
-            ), f"Run {i + 1} produced different results than run 1.\nRun 1: {first_result}\nRun {i + 1}: {result}"
+            assert result == first_result, (
+                f"Run {i + 1} produced different results than run 1.\nRun 1: {first_result}\nRun {i + 1}: {result}"
+            )
 
         # Verify that we got the expected functions
         extracted_names = [name for name, _, _ in first_result]
-        assert (
-            extracted_names == valid_func_names
-        ), f"Expected functions {valid_func_names}, got {extracted_names}"
+        assert extracted_names == valid_func_names, (
+            f"Expected functions {valid_func_names}, got {extracted_names}"
+        )
 
 
 if __name__ == "__main__":

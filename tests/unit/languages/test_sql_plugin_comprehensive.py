@@ -129,9 +129,9 @@ class TestSQLElementExtractorUnit:
             "REFERENCES",
         ]
         for kw in keywords:
-            assert not extractor._is_valid_identifier(
-                kw
-            ), f"Keyword {kw} should be invalid"
+            assert not extractor._is_valid_identifier(kw), (
+                f"Keyword {kw} should be invalid"
+            )
 
     def test_is_valid_identifier_quoted(self, extractor: SQLElementExtractor) -> None:
         """Test quoted identifiers."""

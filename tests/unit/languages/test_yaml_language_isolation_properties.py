@@ -102,9 +102,9 @@ class TestYAMLLanguageIsolationProperties:
 
         # Property: YAML plugin should be loaded
         yaml_plugin = manager.get_plugin("yaml")
-        assert (
-            yaml_plugin is not None
-        ), "YAML plugin must be available in plugin manager"
+        assert yaml_plugin is not None, (
+            "YAML plugin must be available in plugin manager"
+        )
 
         # Property: Other language plugins should still be available
         java_plugin = manager.get_plugin("java")
@@ -115,29 +115,29 @@ class TestYAMLLanguageIsolationProperties:
         other_plugins = [java_plugin, python_plugin, javascript_plugin]
         available_other_plugins = [p for p in other_plugins if p is not None]
 
-        assert (
-            len(available_other_plugins) > 0
-        ), "Other language plugins must remain available when YAML plugin is loaded"
+        assert len(available_other_plugins) > 0, (
+            "Other language plugins must remain available when YAML plugin is loaded"
+        )
 
         # Property: Each plugin should report its correct language
-        assert (
-            yaml_plugin.get_language_name() == "yaml"
-        ), "YAML plugin must report 'yaml' as its language"
+        assert yaml_plugin.get_language_name() == "yaml", (
+            "YAML plugin must report 'yaml' as its language"
+        )
 
         if java_plugin:
-            assert (
-                java_plugin.get_language_name() == "java"
-            ), "Java plugin must still report 'java' as its language"
+            assert java_plugin.get_language_name() == "java", (
+                "Java plugin must still report 'java' as its language"
+            )
 
         if python_plugin:
-            assert (
-                python_plugin.get_language_name() == "python"
-            ), "Python plugin must still report 'python' as its language"
+            assert python_plugin.get_language_name() == "python", (
+                "Python plugin must still report 'python' as its language"
+            )
 
         if javascript_plugin:
-            assert (
-                javascript_plugin.get_language_name() == "javascript"
-            ), "JavaScript plugin must still report 'javascript' as its language"
+            assert javascript_plugin.get_language_name() == "javascript", (
+                "JavaScript plugin must still report 'javascript' as its language"
+            )
 
     @settings(max_examples=50)
     @given(
@@ -182,9 +182,9 @@ class TestYAMLLanguageIsolationProperties:
             plugin_extensions = set(plugin.get_file_extensions())
             overlap = yaml_extensions & plugin_extensions
 
-            assert (
-                len(overlap) == 0
-            ), f"Plugin '{language}' must not claim YAML extensions, found overlap: {overlap}"
+            assert len(overlap) == 0, (
+                f"Plugin '{language}' must not claim YAML extensions, found overlap: {overlap}"
+            )
 
     @pytest.mark.skipif(not YAML_AVAILABLE, reason="tree-sitter-yaml not installed")
     @pytest.mark.asyncio
@@ -245,12 +245,12 @@ class TestYAMLLanguageIsolationProperties:
                 )
 
                 # Property: Python analysis should still work after YAML analysis
-                assert (
-                    python_result.success
-                ), "Python analysis must succeed after YAML analysis"
-                assert (
-                    python_result.language == "python"
-                ), "Python result must indicate 'python'"
+                assert python_result.success, (
+                    "Python analysis must succeed after YAML analysis"
+                )
+                assert python_result.language == "python", (
+                    "Python result must indicate 'python'"
+                )
 
             # Analyze Java file
             java_plugin = manager.get_plugin("java")
@@ -259,12 +259,12 @@ class TestYAMLLanguageIsolationProperties:
                 java_result = await java_plugin.analyze_file(java_path, java_request)
 
                 # Property: Java analysis should still work after YAML analysis
-                assert (
-                    java_result.success
-                ), "Java analysis must succeed after YAML analysis"
-                assert (
-                    java_result.language == "java"
-                ), "Java result must indicate 'java'"
+                assert java_result.success, (
+                    "Java analysis must succeed after YAML analysis"
+                )
+                assert java_result.language == "java", (
+                    "Java result must indicate 'java'"
+                )
 
         finally:
             # Clean up
@@ -310,9 +310,9 @@ class TestYAMLLanguageIsolationProperties:
             # Property: Each file should be detected as its correct language
             for lang, file_path in created_files.items():
                 detected = detect_language_from_file(file_path)
-                assert (
-                    detected == lang
-                ), f"File with extension for '{lang}' must be detected as '{lang}', got '{detected}'"
+                assert detected == lang, (
+                    f"File with extension for '{lang}' must be detected as '{lang}', got '{detected}'"
+                )
 
         finally:
             # Clean up
@@ -349,9 +349,9 @@ class TestYAMLLanguageIsolationProperties:
         # Get YAML plugin and verify it works
         yaml_plugin = manager.get_plugin("yaml")
         assert yaml_plugin is not None, "YAML plugin must be retrievable"
-        assert (
-            yaml_plugin.get_language_name() == "yaml"
-        ), "YAML plugin must report correct language"
+        assert yaml_plugin.get_language_name() == "yaml", (
+            "YAML plugin must report correct language"
+        )
 
         # Property: Other plugins should still be accessible and functional
         for language in initial_languages:
@@ -359,21 +359,21 @@ class TestYAMLLanguageIsolationProperties:
                 continue
 
             plugin = manager.get_plugin(language)
-            assert (
-                plugin is not None
-            ), f"Plugin for '{language}' must still be accessible"
+            assert plugin is not None, (
+                f"Plugin for '{language}' must still be accessible"
+            )
 
             # Verify plugin still reports correct language
             reported_language = plugin.get_language_name()
-            assert (
-                reported_language == language
-            ), f"Plugin for '{language}' must still report correct language, got '{reported_language}'"
+            assert reported_language == language, (
+                f"Plugin for '{language}' must still report correct language, got '{reported_language}'"
+            )
 
             # Verify plugin can still create extractor
             extractor = plugin.create_extractor()
-            assert (
-                extractor is not None
-            ), f"Plugin for '{language}' must still create extractor"
+            assert extractor is not None, (
+                f"Plugin for '{language}' must still create extractor"
+            )
 
     @pytest.mark.skipif(not YAML_AVAILABLE, reason="tree-sitter-yaml not installed")
     @pytest.mark.asyncio
@@ -430,9 +430,9 @@ class TestYAMLLanguageIsolationProperties:
             assert result2.success, "Second YAML analysis must succeed"
 
             # Property: Results should be independent
-            assert (
-                result1.file_path != result2.file_path
-            ), "Results must be for different files"
+            assert result1.file_path != result2.file_path, (
+                "Results must be for different files"
+            )
 
             # Analyze Python file after YAML analyses
             if python_plugin:
@@ -442,12 +442,12 @@ class TestYAMLLanguageIsolationProperties:
                 )
 
                 # Property: Python analysis should work correctly after multiple YAML analyses
-                assert (
-                    python_result.success
-                ), "Python analysis must succeed after multiple YAML analyses"
-                assert (
-                    python_result.language == "python"
-                ), "Python result must indicate 'python'"
+                assert python_result.success, (
+                    "Python analysis must succeed after multiple YAML analyses"
+                )
+                assert python_result.language == "python", (
+                    "Python result must indicate 'python'"
+                )
 
         finally:
             # Clean up
@@ -491,35 +491,35 @@ class TestYAMLLanguageIsolationProperties:
             "comment",
             "document",
         }
-        assert (
-            yaml_types == expected_yaml_types
-        ), f"YAML plugin must support expected types, got {yaml_types}"
+        assert yaml_types == expected_yaml_types, (
+            f"YAML plugin must support expected types, got {yaml_types}"
+        )
 
         # Property: Other plugins should have their own element types
         java_plugin = manager.get_plugin("java")
         if java_plugin:
             java_types = set(java_plugin.get_supported_element_types())
             # Java should have different element types
-            assert (
-                "class" in java_types or "method" in java_types
-            ), "Java plugin must have Java-specific element types"
+            assert "class" in java_types or "method" in java_types, (
+                "Java plugin must have Java-specific element types"
+            )
             # YAML-specific types should not be in Java
             yaml_specific = {"mapping", "sequence", "anchor", "alias"}
             java_yaml_overlap = java_types & yaml_specific
-            assert (
-                len(java_yaml_overlap) == 0
-            ), f"Java plugin must not have YAML-specific types: {java_yaml_overlap}"
+            assert len(java_yaml_overlap) == 0, (
+                f"Java plugin must not have YAML-specific types: {java_yaml_overlap}"
+            )
 
         python_plugin = manager.get_plugin("python")
         if python_plugin:
             python_types = set(python_plugin.get_supported_element_types())
             # Python should have different element types
-            assert (
-                "function" in python_types or "class" in python_types
-            ), "Python plugin must have Python-specific element types"
+            assert "function" in python_types or "class" in python_types, (
+                "Python plugin must have Python-specific element types"
+            )
             # YAML-specific types should not be in Python
             yaml_specific = {"mapping", "sequence", "anchor", "alias"}
             python_yaml_overlap = python_types & yaml_specific
-            assert (
-                len(python_yaml_overlap) == 0
-            ), f"Python plugin must not have YAML-specific types: {python_yaml_overlap}"
+            assert len(python_yaml_overlap) == 0, (
+                f"Python plugin must not have YAML-specific types: {python_yaml_overlap}"
+            )

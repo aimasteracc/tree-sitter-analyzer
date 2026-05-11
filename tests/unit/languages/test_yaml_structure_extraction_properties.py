@@ -197,18 +197,18 @@ class TestYAMLStructureExtractionProperties:
                 f"Mapping at line {mapping.start_line} must have a key. "
                 f"Raw text: {mapping.raw_text}"
             )
-            assert (
-                len(mapping.key) > 0
-            ), f"Mapping key at line {mapping.start_line} must not be empty"
+            assert len(mapping.key) > 0, (
+                f"Mapping key at line {mapping.start_line} must not be empty"
+            )
 
         # Property: Each mapping must have valid line numbers
         for mapping in mappings:
-            assert (
-                mapping.start_line > 0
-            ), f"Mapping start_line must be positive, got {mapping.start_line}"
-            assert (
-                mapping.end_line >= mapping.start_line
-            ), f"Mapping end_line ({mapping.end_line}) must be >= start_line ({mapping.start_line})"
+            assert mapping.start_line > 0, (
+                f"Mapping start_line must be positive, got {mapping.start_line}"
+            )
+            assert mapping.end_line >= mapping.start_line, (
+                f"Mapping end_line ({mapping.end_line}) must be >= start_line ({mapping.start_line})"
+            )
 
         # Property: Mappings must have correct element_type
         for mapping in mappings:
@@ -255,21 +255,21 @@ class TestYAMLStructureExtractionProperties:
 
         # Property: Each sequence must have valid line numbers
         for sequence in sequences:
-            assert (
-                sequence.start_line > 0
-            ), f"Sequence start_line must be positive, got {sequence.start_line}"
-            assert (
-                sequence.end_line >= sequence.start_line
-            ), f"Sequence end_line ({sequence.end_line}) must be >= start_line ({sequence.start_line})"
+            assert sequence.start_line > 0, (
+                f"Sequence start_line must be positive, got {sequence.start_line}"
+            )
+            assert sequence.end_line >= sequence.start_line, (
+                f"Sequence end_line ({sequence.end_line}) must be >= start_line ({sequence.start_line})"
+            )
 
         # Property: Sequences must have child_count
         for sequence in sequences:
-            assert (
-                sequence.child_count is not None
-            ), f"Sequence at line {sequence.start_line} must have child_count"
-            assert (
-                sequence.child_count >= 0
-            ), f"Sequence child_count must be non-negative, got {sequence.child_count}"
+            assert sequence.child_count is not None, (
+                f"Sequence at line {sequence.start_line} must have child_count"
+            )
+            assert sequence.child_count >= 0, (
+                f"Sequence child_count must be non-negative, got {sequence.child_count}"
+            )
 
         # Property: Sequences must have correct value_type
         for sequence in sequences:
@@ -318,15 +318,15 @@ class TestYAMLStructureExtractionProperties:
 
         # Property: All elements must have nesting_level attribute
         for element in elements:
-            assert hasattr(
-                element, "nesting_level"
-            ), f"Element at line {element.start_line} must have nesting_level attribute"
-            assert isinstance(
-                element.nesting_level, int
-            ), f"nesting_level must be int, got {type(element.nesting_level)}"
-            assert (
-                element.nesting_level >= 0
-            ), f"nesting_level must be non-negative, got {element.nesting_level}"
+            assert hasattr(element, "nesting_level"), (
+                f"Element at line {element.start_line} must have nesting_level attribute"
+            )
+            assert isinstance(element.nesting_level, int), (
+                f"nesting_level must be int, got {type(element.nesting_level)}"
+            )
+            assert element.nesting_level >= 0, (
+                f"nesting_level must be non-negative, got {element.nesting_level}"
+            )
 
         # Property: Nested elements should have higher nesting_level than parents
         mappings = [e for e in elements if e.element_type == "mapping"]
@@ -353,9 +353,9 @@ class TestYAMLStructureExtractionProperties:
         ]
         if root_elements:
             min_nesting = min(e.nesting_level for e in root_elements)
-            assert (
-                min_nesting <= 1
-            ), f"Root-level elements should have nesting_level 0 or 1, got minimum {min_nesting}"
+            assert min_nesting <= 1, (
+                f"Root-level elements should have nesting_level 0 or 1, got minimum {min_nesting}"
+            )
 
     @settings(max_examples=100)
     @given(
@@ -407,12 +407,12 @@ class TestYAMLStructureExtractionProperties:
 
         # Property: All elements must have valid line numbers
         for element in elements:
-            assert (
-                element.start_line > 0
-            ), f"Element start_line must be positive, got {element.start_line}"
-            assert (
-                element.end_line >= element.start_line
-            ), "Element end_line must be >= start_line"
+            assert element.start_line > 0, (
+                f"Element start_line must be positive, got {element.start_line}"
+            )
+            assert element.end_line >= element.start_line, (
+                "Element end_line must be >= start_line"
+            )
 
         # Property: No overlapping elements at the same nesting level
         same_level_elements = {}
@@ -500,9 +500,9 @@ class TestYAMLStructureExtractionProperties:
 
         # Property: At least one sequence should be found
         sequences = [e for e in elements if e.element_type == "sequence"]
-        assert (
-            len(sequences) >= 1
-        ), f"Expected at least 1 sequence, got {len(sequences)}"
+        assert len(sequences) >= 1, (
+            f"Expected at least 1 sequence, got {len(sequences)}"
+        )
 
         # Property: Sequence should have correct child count
         if sequences:

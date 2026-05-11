@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """Supplement SQL plugin coverage — targets error-recovery branches and edge cases."""
 
-import sys
-from unittest.mock import MagicMock, PropertyMock, patch
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from tree_sitter_analyzer.languages.sql_plugin import (
     SQLElementExtractor,
@@ -15,8 +12,16 @@ from tree_sitter_analyzer.languages.sql_plugin import (
 class MockNode:
     """Minimal mock tree-sitter node."""
 
-    def __init__(self, node_type, start_point=(0, 0), end_point=(0, 0),
-                 children=None, text="", start_byte=0, end_byte=0):
+    def __init__(
+        self,
+        node_type,
+        start_point=(0, 0),
+        end_point=(0, 0),
+        children=None,
+        text="",
+        start_byte=0,
+        end_byte=0,
+    ):
         self.type = node_type
         self.start_point = start_point
         self.end_point = end_point
@@ -32,6 +37,7 @@ class MockNode:
     @property
     def text(self):
         return self._text.encode() if isinstance(self._text, str) else self._text
+
 
 class TestSQLExtractorEdgeCases:
     """Targets error-recovery paths in _extract_functions, _extract_indexes etc."""
@@ -116,7 +122,9 @@ class TestSQLExtractorEdgeCases:
         """Cover encoding detection path in _load_file_safe."""
         plugin = SQLPlugin()
         with patch("builtins.open", create=True) as mock_open:
-            mock_open.return_value.__enter__.return_value.read.return_value = b"SELECT 1"
+            mock_open.return_value.__enter__.return_value.read.return_value = (
+                b"SELECT 1"
+            )
             with patch("chardet.detect", return_value={"encoding": "utf-8"}):
                 result = plugin._load_file_safe("test.sql")
                 assert "SELECT 1" in result

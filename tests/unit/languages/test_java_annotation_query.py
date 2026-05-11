@@ -61,15 +61,15 @@ public class TestClass {
             assert result["success"], f"Query failed: {result.get('error')}"
 
             method_with_annotations = result.get("results", [])
-            assert (
-                len(method_with_annotations) == 1
-            ), f"Expected 1 method with annotation, found {len(method_with_annotations)}"
+            assert len(method_with_annotations) == 1, (
+                f"Expected 1 method with annotation, found {len(method_with_annotations)}"
+            )
 
             captures = method_with_annotations[0].get("captures", {})
             assert "name" in captures, "Method name not captured"
-            assert (
-                captures["name"]["text"] == "toString"
-            ), f"Expected method name 'toString', got '{captures['name']['text']}'"
+            assert captures["name"]["text"] == "toString", (
+                f"Expected method name 'toString', got '{captures['name']['text']}'"
+            )
 
             assert "annotation" in captures, "Annotation not captured"
         finally:
@@ -166,9 +166,9 @@ public class TestClass {
 
             # Should match exactly 2 methods (toString with @Override, testMethod with @Test)
             # Should NOT match regularMethod (no annotation)
-            assert (
-                len(method_with_annotations) == 2
-            ), f"Expected 2 annotated methods, found {len(method_with_annotations)}"
+            assert len(method_with_annotations) == 2, (
+                f"Expected 2 annotated methods, found {len(method_with_annotations)}"
+            )
 
             # Check that the matched methods are the annotated ones
             matched_names = []

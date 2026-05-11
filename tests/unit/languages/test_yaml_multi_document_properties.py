@@ -139,9 +139,9 @@ class TestYAMLMultiDocumentProperties:
         # Property: Documents must have sequential document_index starting from 0
         if documents:
             doc_indices = sorted([d.document_index for d in documents])
-            assert (
-                doc_indices[0] == 0
-            ), f"First document should have index 0, got {doc_indices[0]}"
+            assert doc_indices[0] == 0, (
+                f"First document should have index 0, got {doc_indices[0]}"
+            )
 
             # Check that indices are sequential (allowing for gaps if parser skips empty docs)
             for idx in doc_indices:
@@ -149,31 +149,31 @@ class TestYAMLMultiDocumentProperties:
 
         # Property: Each document must have valid line numbers
         for doc in documents:
-            assert (
-                doc.start_line > 0
-            ), f"Document start_line must be positive, got {doc.start_line}"
-            assert (
-                doc.end_line >= doc.start_line
-            ), f"Document end_line ({doc.end_line}) must be >= start_line ({doc.start_line})"
+            assert doc.start_line > 0, (
+                f"Document start_line must be positive, got {doc.start_line}"
+            )
+            assert doc.end_line >= doc.start_line, (
+                f"Document end_line ({doc.end_line}) must be >= start_line ({doc.start_line})"
+            )
 
         # Property: Documents must have element_type "document"
         for doc in documents:
-            assert (
-                doc.element_type == "document"
-            ), f"Document element must have element_type 'document', got '{doc.element_type}'"
+            assert doc.element_type == "document", (
+                f"Document element must have element_type 'document', got '{doc.element_type}'"
+            )
 
         # Property: All non-document elements must have valid document_index
         non_doc_elements = [e for e in elements if e.element_type != "document"]
         for element in non_doc_elements:
-            assert hasattr(
-                element, "document_index"
-            ), f"Element at line {element.start_line} must have document_index attribute"
-            assert isinstance(
-                element.document_index, int
-            ), f"document_index must be int, got {type(element.document_index)}"
-            assert (
-                element.document_index >= 0
-            ), f"document_index must be non-negative, got {element.document_index}"
+            assert hasattr(element, "document_index"), (
+                f"Element at line {element.start_line} must have document_index attribute"
+            )
+            assert isinstance(element.document_index, int), (
+                f"document_index must be int, got {type(element.document_index)}"
+            )
+            assert element.document_index >= 0, (
+                f"document_index must be non-negative, got {element.document_index}"
+            )
 
         # Property: Elements should belong to documents within their line range
         for element in non_doc_elements:
@@ -228,9 +228,9 @@ class TestYAMLMultiDocumentProperties:
 
         # Property: Document indices must be unique
         doc_indices = [d.document_index for d in documents]
-        assert len(doc_indices) == len(
-            set(doc_indices)
-        ), f"Document indices must be unique, got {doc_indices}"
+        assert len(doc_indices) == len(set(doc_indices)), (
+            f"Document indices must be unique, got {doc_indices}"
+        )
 
         # Property: Documents must not overlap in line ranges
         sorted_docs = sorted(documents, key=lambda d: d.start_line)
@@ -288,9 +288,9 @@ class TestYAMLMultiDocumentProperties:
 
         # Property: All documents must be found
         doc_elements = [e for e in elements if e.element_type == "document"]
-        assert (
-            len(doc_elements) >= 1
-        ), f"Expected at least 1 document, got {len(doc_elements)}"
+        assert len(doc_elements) >= 1, (
+            f"Expected at least 1 document, got {len(doc_elements)}"
+        )
 
         # Property: All mappings must be associated with a document
         mappings = [e for e in elements if e.element_type == "mapping"]
@@ -360,15 +360,15 @@ class TestYAMLMultiDocumentProperties:
         # Property: First document must have index 0
         if documents:
             first_doc = min(documents, key=lambda d: d.document_index)
-            assert (
-                first_doc.document_index == 0
-            ), f"First document should have index 0, got {first_doc.document_index}"
+            assert first_doc.document_index == 0, (
+                f"First document should have index 0, got {first_doc.document_index}"
+            )
 
         # Property: All elements must have document_index attribute
         for element in elements:
-            assert hasattr(
-                element, "document_index"
-            ), f"Element at line {element.start_line} must have document_index"
+            assert hasattr(element, "document_index"), (
+                f"Element at line {element.start_line} must have document_index"
+            )
 
     @settings(max_examples=50)
     @given(yaml_content=yaml_multi_document_content())
@@ -401,13 +401,13 @@ class TestYAMLMultiDocumentProperties:
         documents = [e for e in elements if e.element_type == "document"]
 
         for doc in documents:
-            assert hasattr(
-                doc, "child_count"
-            ), f"Document at line {doc.start_line} must have child_count attribute"
+            assert hasattr(doc, "child_count"), (
+                f"Document at line {doc.start_line} must have child_count attribute"
+            )
             assert doc.child_count is not None, "Document child_count must not be None"
-            assert (
-                doc.child_count >= 0
-            ), f"Document child_count must be non-negative, got {doc.child_count}"
+            assert doc.child_count >= 0, (
+                f"Document child_count must be non-negative, got {doc.child_count}"
+            )
 
         # Property: Document child_count should be reasonable
         for doc in documents:

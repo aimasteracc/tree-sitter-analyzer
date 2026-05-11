@@ -271,9 +271,9 @@ class TestPathResolverExtended:
         normalized_result = result.replace("\\", "/")
         # On Windows, the result should start with the drive letter
         if os.name == "nt":
-            assert result.startswith(
-                "C:\\"
-            ), f"Result should start with 'C:\\', got: {result}"
+            assert result.startswith("C:\\"), (
+                f"Result should start with 'C:\\', got: {result}"
+            )
         else:
             # On non-Windows, Windows absolute paths should be returned as-is
             # They should not be resolved relative to project root
@@ -300,14 +300,14 @@ class TestPathResolverExtended:
                 print(f"DEBUG: Path.cwd().anchor={Path.cwd().anchor}")
 
             # Check if result starts with expected drive and ends with expected path
-            assert result.startswith(
-                expected_start
-            ), f"Expected result '{result}' to start with '{expected_start}'"
+            assert result.startswith(expected_start), (
+                f"Expected result '{result}' to start with '{expected_start}'"
+            )
             # The result should end with the converted Unix path
             expected_end = "\\home\\user\\file.txt"
-            assert result.endswith(
-                expected_end
-            ), f"Expected result '{result}' to end with '{expected_end}'"
+            assert result.endswith(expected_end), (
+                f"Expected result '{result}' to end with '{expected_end}'"
+            )
         else:
             # On Unix systems, handle macOS /System/Volumes/Data normalization
             expected = unix_path

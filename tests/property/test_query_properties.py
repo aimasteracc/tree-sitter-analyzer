@@ -27,9 +27,9 @@ class TestQueryProperties:
         """
         query_executor = QueryExecutor()
         available_queries = query_executor.get_available_queries("python")
-        assert (
-            query_name in available_queries
-        ), f"Query '{query_name}' not in available queries"
+        assert query_name in available_queries, (
+            f"Query '{query_name}' not in available queries"
+        )
 
     @given(query_name=st.text(min_size=1, max_size=50))
     @settings(max_examples=50)

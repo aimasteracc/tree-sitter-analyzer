@@ -374,9 +374,9 @@ CREATE TABLE users (
             expected_classes = expected_tables | expected_views
 
             actual_classes = {cls.name for cls in elements_by_type["classes"]}
-            assert expected_classes.issubset(
-                actual_classes
-            ), f"Missing classes: {expected_classes - actual_classes}"
+            assert expected_classes.issubset(actual_classes), (
+                f"Missing classes: {expected_classes - actual_classes}"
+            )
 
             # Expected procedures, functions, and triggers (functions)
             expected_procedures = {"get_user_orders", "update_product_stock"}
@@ -388,9 +388,9 @@ CREATE TABLE users (
 
             actual_functions = {func.name for func in elements_by_type["functions"]}
             # At least some of these should be extracted
-            assert (
-                len(actual_functions & expected_all_functions) > 0
-            ), f"No expected functions found. Got: {actual_functions}"
+            assert len(actual_functions & expected_all_functions) > 0, (
+                f"No expected functions found. Got: {actual_functions}"
+            )
 
             # Expected indexes (variables)
             expected_indexes = {
@@ -405,9 +405,9 @@ CREATE TABLE users (
 
             actual_indexes = {var.name for var in elements_by_type["variables"]}
             # At least some indexes should be extracted
-            assert (
-                len(actual_indexes & expected_indexes) > 0
-            ), f"No expected indexes found. Got: {actual_indexes}"
+            assert len(actual_indexes & expected_indexes) > 0, (
+                f"No expected indexes found. Got: {actual_indexes}"
+            )
 
     def test_extract_specific_sql_constructs(self, plugin: SQLPlugin) -> None:
         """Test extraction of specific SQL constructs"""
@@ -474,15 +474,15 @@ END;""",
             actual_functions = {func.name for func in elements["functions"]}
             actual_variables = {var.name for var in elements["variables"]}
 
-            assert (
-                actual_classes == test_case["expected_classes"]
-            ), f"{test_case['name']}: Expected classes {test_case['expected_classes']}, got {actual_classes}"
-            assert (
-                actual_functions == test_case["expected_functions"]
-            ), f"{test_case['name']}: Expected functions {test_case['expected_functions']}, got {actual_functions}"
-            assert (
-                actual_variables == test_case["expected_variables"]
-            ), f"{test_case['name']}: Expected variables {test_case['expected_variables']}, got {actual_variables}"
+            assert actual_classes == test_case["expected_classes"], (
+                f"{test_case['name']}: Expected classes {test_case['expected_classes']}, got {actual_classes}"
+            )
+            assert actual_functions == test_case["expected_functions"], (
+                f"{test_case['name']}: Expected functions {test_case['expected_functions']}, got {actual_functions}"
+            )
+            assert actual_variables == test_case["expected_variables"], (
+                f"{test_case['name']}: Expected variables {test_case['expected_variables']}, got {actual_variables}"
+            )
 
     def test_extract_multiple_indexes(self, plugin: SQLPlugin) -> None:
         """Test extraction of multiple INDEX statements"""
@@ -518,9 +518,9 @@ END;""",
         }
         actual_indexes = {var.name for var in elements["variables"]}
 
-        assert (
-            actual_indexes == expected_indexes
-        ), f"Expected indexes {expected_indexes}, got {actual_indexes}"
+        assert actual_indexes == expected_indexes, (
+            f"Expected indexes {expected_indexes}, got {actual_indexes}"
+        )
 
 
 class TestSQLEnhancedElementExtraction:

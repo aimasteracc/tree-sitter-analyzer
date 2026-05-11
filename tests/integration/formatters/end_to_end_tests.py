@@ -358,9 +358,9 @@ def create_processor(processor_type: str, config: Dict[str, Any]) -> DataProcess
             # Validate schema compliance
             schema_type = "markdown" if format_type in ["full", "compact"] else "csv"
             validation_result = validate_format(table_output, schema_type)
-            assert (
-                validation_result.is_valid
-            ), f"Schema validation failed for {format_type}: {validation_result.errors}"
+            assert validation_result.is_valid, (
+                f"Schema validation failed for {format_type}: {validation_result.errors}"
+            )
 
         # Validate cross-format consistency
         element_counts = {
@@ -418,9 +418,9 @@ def create_processor(processor_type: str, config: Dict[str, Any]) -> DataProcess
             # Validate schema compliance
             schema_type = "markdown" if format_type in ["full", "compact"] else "csv"
             validation_result = validate_format(table_output, schema_type)
-            assert (
-                validation_result.is_valid
-            ), f"Schema validation failed for {format_type}: {validation_result.errors}"
+            assert validation_result.is_valid, (
+                f"Schema validation failed for {format_type}: {validation_result.errors}"
+            )
 
     @pytest.mark.asyncio
     async def test_api_interface_format_validation(self, comprehensive_test_files):
@@ -555,9 +555,9 @@ def create_processor(processor_type: str, config: Dict[str, Any]) -> DataProcess
 
             # Validate that output is still valid format
             validation_result = validate_format(table_output, "markdown")
-            assert (
-                validation_result.is_valid
-            ), f"Empty file validation failed: {validation_result.errors}"
+            assert validation_result.is_valid, (
+                f"Empty file validation failed: {validation_result.errors}"
+            )
 
         except Exception as e:
             # If it fails, it should fail gracefully with meaningful error
@@ -590,9 +590,9 @@ def create_processor(processor_type: str, config: Dict[str, Any]) -> DataProcess
 
             # Validate format
             validation_result = validate_format(table_output, "markdown")
-            assert (
-                validation_result.is_valid
-            ), f"Comment file validation failed: {validation_result.errors}"
+            assert validation_result.is_valid, (
+                f"Comment file validation failed: {validation_result.errors}"
+            )
 
         except Exception as e:
             # Should fail gracefully
@@ -630,9 +630,9 @@ def create_processor(processor_type: str, config: Dict[str, Any]) -> DataProcess
 
             # Schema validation
             validation_result = validate_format(output, "markdown")
-            assert (
-                validation_result.is_valid
-            ), f"{language} schema validation failed: {validation_result.errors}"
+            assert validation_result.is_valid, (
+                f"{language} schema validation failed: {validation_result.errors}"
+            )
 
 
 class TestFormatStabilityValidation:
@@ -678,9 +678,9 @@ class TestFormatStabilityValidation:
 
         # Metadata should be consistent across formats
         for format_type, metadata in metadata_results.items():
-            assert (
-                "classes_count" in metadata or "total_lines" in metadata
-            ), f"Missing basic metadata in {format_type}"
+            assert "classes_count" in metadata or "total_lines" in metadata, (
+                f"Missing basic metadata in {format_type}"
+            )
 
             # If multiple formats have same metadata fields, values should match
             if "classes_count" in metadata:
@@ -691,4 +691,6 @@ class TestFormatStabilityValidation:
                     ):
                         assert (
                             metadata["classes_count"] == other_metadata["classes_count"]
-                        ), f"Class count mismatch between {format_type} and {other_format}"
+                        ), (
+                            f"Class count mismatch between {format_type} and {other_format}"
+                        )

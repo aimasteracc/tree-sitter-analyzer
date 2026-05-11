@@ -231,12 +231,12 @@ class TestSecurityBoundaryEnforcementProperties:
             traversal_path, temp_project_dir
         )
 
-        assert (
-            not is_valid
-        ), f"Path traversal attempt should be rejected: {traversal_path}"
-        assert (
-            error_msg
-        ), f"Error message should be provided for rejected path: {traversal_path}"
+        assert not is_valid, (
+            f"Path traversal attempt should be rejected: {traversal_path}"
+        )
+        assert error_msg, (
+            f"Error message should be provided for rejected path: {traversal_path}"
+        )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(null_path=null_byte_injection())
@@ -253,12 +253,12 @@ class TestSecurityBoundaryEnforcementProperties:
         # Property: Null byte injection should be rejected
         is_valid, error_msg = validator.validate_file_path(null_path, temp_project_dir)
 
-        assert (
-            not is_valid
-        ), f"Null byte injection should be rejected: {repr(null_path)}"
-        assert (
-            "null" in error_msg.lower()
-        ), f"Error message should mention null bytes: {error_msg}"
+        assert not is_valid, (
+            f"Null byte injection should be rejected: {repr(null_path)}"
+        )
+        assert "null" in error_msg.lower(), (
+            f"Error message should mention null bytes: {error_msg}"
+        )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
@@ -276,9 +276,9 @@ class TestSecurityBoundaryEnforcementProperties:
         # Property: Valid relative paths should be accepted
         is_valid, error_msg = validator.validate_file_path(rel_path, temp_project_dir)
 
-        assert (
-            is_valid
-        ), f"Valid relative path should be accepted: {rel_path}, error: {error_msg}"
+        assert is_valid, (
+            f"Valid relative path should be accepted: {rel_path}, error: {error_msg}"
+        )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(abs_path=absolute_path_outside_project())
@@ -306,9 +306,9 @@ class TestSecurityBoundaryEnforcementProperties:
         # Property: Absolute paths outside boundary should be rejected
         is_valid, error_msg = validator.validate_file_path(abs_path, temp_project_dir)
 
-        assert (
-            not is_valid
-        ), f"Absolute path outside boundary should be rejected: {abs_path}"
+        assert not is_valid, (
+            f"Absolute path outside boundary should be rejected: {abs_path}"
+        )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
@@ -387,7 +387,9 @@ class TestSecurityBoundaryEnforcementProperties:
             # If resolved path is outside project, it should be rejected
             if not resolved.startswith(project_resolved):
                 is_within = manager.is_within_project(full_path)
-                assert not is_within, f"Traversal path escaping boundary should be rejected: {full_path} -> {resolved}"
+                assert not is_within, (
+                    f"Traversal path escaping boundary should be rejected: {full_path} -> {resolved}"
+                )
         except (OSError, ValueError):
             # Invalid paths are acceptable to reject
             pass
@@ -410,12 +412,12 @@ class TestSecurityBoundaryEnforcementProperties:
         # Property: Valid paths should be resolved
         resolved = manager.validate_and_resolve_path(rel_path)
 
-        assert (
-            resolved is not None
-        ), f"Valid relative path should be resolved: {rel_path}"
-        assert Path(
-            resolved
-        ).is_absolute(), f"Resolved path should be absolute: {resolved}"
+        assert resolved is not None, (
+            f"Valid relative path should be resolved: {rel_path}"
+        )
+        assert Path(resolved).is_absolute(), (
+            f"Resolved path should be absolute: {resolved}"
+        )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(traversal_path=path_traversal_attempt())
@@ -441,9 +443,9 @@ class TestSecurityBoundaryEnforcementProperties:
             # Only test paths that actually escape
             if not str(resolved).startswith(str(project_resolved)):
                 result = manager.validate_and_resolve_path(traversal_path)
-                assert (
-                    result is None
-                ), f"Traversal path escaping boundary should return None: {traversal_path}"
+                assert result is None, (
+                    f"Traversal path escaping boundary should return None: {traversal_path}"
+                )
         except (OSError, ValueError):
             # Invalid paths are acceptable
             pass
@@ -521,9 +523,9 @@ class TestSecurityBoundaryEdgeCases:
         # Property: Relative path should be consistent
         if relative is not None:
             reconstructed = str(Path(temp_project_dir) / relative)
-            assert (
-                Path(reconstructed).resolve() == Path(full_path).resolve()
-            ), f"Relative path should reconstruct to original: {relative} -> {reconstructed} != {full_path}"
+            assert Path(reconstructed).resolve() == Path(full_path).resolve(), (
+                f"Relative path should reconstruct to original: {relative} -> {reconstructed} != {full_path}"
+            )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(abs_path=absolute_path_outside_project())
@@ -550,9 +552,9 @@ class TestSecurityBoundaryEdgeCases:
         # Property: External paths should return None
         relative = manager.get_relative_path(abs_path)
 
-        assert (
-            relative is None
-        ), f"External path should return None for get_relative_path: {abs_path}"
+        assert relative is None, (
+            f"External path should return None for get_relative_path: {abs_path}"
+        )
 
 
 class TestSecurityValidatorIntegrationProperties:
@@ -581,9 +583,9 @@ class TestSecurityValidatorIntegrationProperties:
         is_safe = validator.is_safe_path(rel_path, temp_project_dir)
         is_valid, _ = validator.validate_file_path(rel_path, temp_project_dir)
 
-        assert (
-            is_safe == is_valid
-        ), f"is_safe_path should match validate_file_path: {rel_path}"
+        assert is_safe == is_valid, (
+            f"is_safe_path should match validate_file_path: {rel_path}"
+        )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(rel_path=relative_path_within_project())
@@ -603,9 +605,9 @@ class TestSecurityValidatorIntegrationProperties:
         result1 = validator.validate_path(rel_path, temp_project_dir)
         result2 = validator.validate_file_path(rel_path, temp_project_dir)
 
-        assert (
-            result1 == result2
-        ), f"validate_path should be alias for validate_file_path: {rel_path}"
+        assert result1 == result2, (
+            f"validate_path should be alias for validate_file_path: {rel_path}"
+        )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(
@@ -633,9 +635,9 @@ class TestSecurityValidatorIntegrationProperties:
         # Property: Valid glob patterns should be accepted
         is_valid, error_msg = validator.validate_glob_pattern(glob_pattern)
 
-        assert (
-            is_valid
-        ), f"Valid glob pattern should be accepted: {glob_pattern}, error: {error_msg}"
+        assert is_valid, (
+            f"Valid glob pattern should be accepted: {glob_pattern}, error: {error_msg}"
+        )
 
     @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
     @given(
@@ -662,9 +664,9 @@ class TestSecurityValidatorIntegrationProperties:
         # Property: Dangerous glob patterns should be rejected
         is_valid, error_msg = validator.validate_glob_pattern(dangerous_glob)
 
-        assert (
-            not is_valid
-        ), f"Dangerous glob pattern should be rejected: {dangerous_glob}"
+        assert not is_valid, (
+            f"Dangerous glob pattern should be rejected: {dangerous_glob}"
+        )
 
 
 class TestProjectBoundaryManagerInitializationProperties:

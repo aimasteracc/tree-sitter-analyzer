@@ -82,9 +82,9 @@ class TestYAMLFileExtensionProperties:
         try:
             # Property: Language detector must identify .yaml and .yml files as 'yaml'
             detected_language = detect_language_from_file(tmp_file_path)
-            assert (
-                detected_language == "yaml"
-            ), f"File with extension '{extension}' must be detected as 'yaml', got '{detected_language}'"
+            assert detected_language == "yaml", (
+                f"File with extension '{extension}' must be detected as 'yaml', got '{detected_language}'"
+            )
 
         finally:
             # Clean up
@@ -111,9 +111,9 @@ class TestYAMLFileExtensionProperties:
         # Property: YAMLPlugin must report .yaml and .yml in its file extensions
         extensions = plugin.get_file_extensions()
         assert isinstance(extensions, list), "get_file_extensions() must return a list"
-        assert (
-            extension in extensions
-        ), f"YAMLPlugin must handle '{extension}' extension"
+        assert extension in extensions, (
+            f"YAMLPlugin must handle '{extension}' extension"
+        )
 
     # Windows cold-start imports can be highly variable; disable Hypothesis deadline there
     # to avoid flaky timing failures unrelated to correctness.
@@ -141,20 +141,20 @@ class TestYAMLFileExtensionProperties:
 
         # Property: Plugin manager must have a plugin for 'yaml' language
         yaml_plugin = plugin_manager.get_plugin("yaml")
-        assert (
-            yaml_plugin is not None
-        ), "Plugin manager must have a plugin for 'yaml' language"
+        assert yaml_plugin is not None, (
+            "Plugin manager must have a plugin for 'yaml' language"
+        )
 
         # Property: The plugin must be an instance of YAMLPlugin
-        assert isinstance(
-            yaml_plugin, YAMLPlugin
-        ), f"Plugin for 'yaml' must be YAMLPlugin, got {type(yaml_plugin)}"
+        assert isinstance(yaml_plugin, YAMLPlugin), (
+            f"Plugin for 'yaml' must be YAMLPlugin, got {type(yaml_plugin)}"
+        )
 
         # Property: The plugin must report the correct extensions
         extensions = yaml_plugin.get_file_extensions()
-        assert (
-            extension in extensions
-        ), f"YAML plugin must handle '{extension}' extension"
+        assert extension in extensions, (
+            f"YAML plugin must handle '{extension}' extension"
+        )
 
     @settings(max_examples=100)
     @given(
@@ -186,14 +186,14 @@ class TestYAMLFileExtensionProperties:
             detections = [detect_language_from_file(tmp_file_path) for _ in range(10)]
 
             # All detections must be 'yaml'
-            assert all(
-                lang == "yaml" for lang in detections
-            ), f"All detections must return 'yaml', got {set(detections)}"
+            assert all(lang == "yaml" for lang in detections), (
+                f"All detections must return 'yaml', got {set(detections)}"
+            )
 
             # All detections must be identical
-            assert (
-                len(set(detections)) == 1
-            ), f"Language detection must be consistent, got {set(detections)}"
+            assert len(set(detections)) == 1, (
+                f"Language detection must be consistent, got {set(detections)}"
+            )
 
         finally:
             # Clean up
@@ -225,9 +225,9 @@ class TestYAMLFileExtensionProperties:
         try:
             # Property: Language detection must identify the file as YAML
             detected_language = detect_language_from_file(tmp_file_path)
-            assert (
-                detected_language == "yaml"
-            ), f"File must be detected as 'yaml', got '{detected_language}'"
+            assert detected_language == "yaml", (
+                f"File must be detected as 'yaml', got '{detected_language}'"
+            )
 
             # Property: YAMLPlugin must be able to analyze the file
             plugin = YAMLPlugin()
@@ -238,9 +238,9 @@ class TestYAMLFileExtensionProperties:
             assert result.success, "Analysis must succeed for .yaml file"
 
             # Property: Result must indicate YAML language
-            assert (
-                result.language == "yaml"
-            ), f"Analysis result must indicate 'yaml' language, got '{result.language}'"
+            assert result.language == "yaml", (
+                f"Analysis result must indicate 'yaml' language, got '{result.language}'"
+            )
 
         finally:
             # Clean up
@@ -272,9 +272,9 @@ class TestYAMLFileExtensionProperties:
         try:
             # Property: Language detection must identify the file as YAML
             detected_language = detect_language_from_file(tmp_file_path)
-            assert (
-                detected_language == "yaml"
-            ), f"File must be detected as 'yaml', got '{detected_language}'"
+            assert detected_language == "yaml", (
+                f"File must be detected as 'yaml', got '{detected_language}'"
+            )
 
             # Property: YAMLPlugin must be able to analyze the file
             plugin = YAMLPlugin()
@@ -285,9 +285,9 @@ class TestYAMLFileExtensionProperties:
             assert result.success, "Analysis must succeed for .yml file"
 
             # Property: Result must indicate YAML language
-            assert (
-                result.language == "yaml"
-            ), f"Analysis result must indicate 'yaml' language, got '{result.language}'"
+            assert result.language == "yaml", (
+                f"Analysis result must indicate 'yaml' language, got '{result.language}'"
+            )
 
         finally:
             # Clean up
@@ -329,17 +329,17 @@ class TestYAMLFileExtensionProperties:
             yaml_lang = detect_language_from_file(yaml_path)
             yml_lang = detect_language_from_file(yml_path)
 
-            assert (
-                yaml_lang == "yaml"
-            ), f".yaml file must be detected as 'yaml', got '{yaml_lang}'"
-            assert (
-                yml_lang == "yaml"
-            ), f".yml file must be detected as 'yaml', got '{yml_lang}'"
+            assert yaml_lang == "yaml", (
+                f".yaml file must be detected as 'yaml', got '{yaml_lang}'"
+            )
+            assert yml_lang == "yaml", (
+                f".yml file must be detected as 'yaml', got '{yml_lang}'"
+            )
 
             # Property: Both must result in the same language
-            assert (
-                yaml_lang == yml_lang
-            ), f"Both extensions must map to same language: .yaml={yaml_lang}, .yml={yml_lang}"
+            assert yaml_lang == yml_lang, (
+                f"Both extensions must map to same language: .yaml={yaml_lang}, .yml={yml_lang}"
+            )
 
         finally:
             # Clean up
