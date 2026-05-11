@@ -21,8 +21,17 @@
 - task_plan.md + findings.md + progress.md
 - 7 Phase 中 6 个已完成, 2 个待开发
 
+## 2026-05-11: Phase 7 完成 — 项目级可视化
+
+- project_graph.py: DependencyGraph + BlastRadius（依赖图+爆炸半径分析）
+- health_scorer.py: HealthScorer（5维加权健康评分 0-100分制）
+- api.py: analyze_project_deps() / analyze_health() / analyze_blast_radius()
+- 测试: 30/30 通过（test_project_graph.py + test_health_scorer.py）
+- 零新依赖，全部基于现有 tree-sitter parser
+- 质量门禁: ruff 通过, pytest 全部通过, mastery scan 无新违规
+
 ---
 
 ## 下一步
 
-Phase 7: 项目级可视化 — 创建 OpenSpec change
+Phase 8: 代码瘦身与质量提纯（22 oversized + 76 low-density 测试文件）
