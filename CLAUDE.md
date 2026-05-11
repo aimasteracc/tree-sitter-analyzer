@@ -46,3 +46,55 @@ The five canonical roles use the default label names: `needs-triage`, `needs-inf
 ### Domain docs
 
 Single-context layout: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Development workflow
+
+### Pre-work alignment
+Before any non-trivial change, use `/grill-with-docs` to sharpen terminology and surface contradictions with the CONTEXT.md glossary. Use `/grill-me` for quick one-on-one interrogation without docs update.
+
+### Architecture stewardship  
+Run `/improve-codebase-architecture` when you notice repeated changes in the same module, or when adding the Nth language plugin. Use `/zoom-out` when unfamiliar with a code area to get a high-level map first.
+
+### Feature pipeline
+New features follow: `/grill-with-docs` → `/to-prd` (synthesize PRD) → `/to-issues` (split into vertical slices) → `/tdd` (implement one slice at a time). Each Issue gets a behavioral Agent Brief for AFK execution.
+
+### Branch and review
+- `/caveman` for ultra-compact communication (~75% token savings) in long sessions
+- `/review` for independent code review before merge
+- `/codex` for second opinion from OpenAI Codex
+- `/prototype` for throwaway logic/UI experiments
+
+### Quality and diagnosis
+- `/diagnose` with 10-step feedback loop when a bug passes existing tests
+- `/benchmark` for performance baseline before/after optimization
+- `/qa` for comprehensive testing with atomic fix commits
+- `/qa-only` for bug reports without code changes
+
+### Issue triage (via `/triage`)
+State machine: `needs-triage` → `needs-info` → `ready-for-agent` / `ready-for-human` / `wontfix`.
+Agent Briefs are behavioral (not procedural) — no file paths, just what must be true.
+
+### Release flow
+- `/ship` — sync main, run tests, push, open PR
+- `/land-and-deploy` — merge PR, wait for CI/deploy, verify
+- `/canary` — post-deploy monitoring loop
+- `/retro` — weekly retrospective
+
+### Safety
+- `/careful` — warn before destructive commands
+- `/freeze` — restrict edits to one directory
+- `/guard` — both combined
+
+### Meta
+- `/write-a-skill` — create new skills from patterns you discover
+- `/document-release` — update docs after shipping
+- `/gstack-upgrade` — keep gstack current
+
+## DeepSeek TUI — native skills
+
+DS TUI has its own skill system at `~/.deepseek/skills/`. Use `/skill-creator` to create new DS-native skills from reusable patterns discovered during development.
+
+### Automation integration
+- `/automation-list` — see all registered automations
+- `/automation-run ts-analyzer-autonomous-loop` — trigger autonomous dev loop manually
+- Read `.autonomous-runtime/ds-automation.yaml` for the full 8-step loop specification
