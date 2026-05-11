@@ -66,8 +66,13 @@ def scan() -> dict[str, Any]:
     src_files = [f for f in src_dir.rglob("*.py") if f.name != "__init__.py"]
     src_lines = sum(len(f.read_text().splitlines()) for f in src_files)
 
-    # Test metrics
-    test_files = [f for f in test_dir.rglob("*.py") if f.name not in ("__init__.py", "conftest.py")]
+    # Test metrics — exclude fixtures, test_data, conftest
+    test_files = [
+        f for f in test_dir.rglob("*.py")
+        if f.name not in ("__init__.py", "conftest.py")
+        and "test_data" not in str(f)
+        and "fixtures" not in str(f)
+    ]
     test_py_files = [f for f in test_files if f.suffix == ".py"]
 
     test_lines = 0
