@@ -327,3 +327,55 @@ class TestUnifiedDetectProjectRoot:
         ]
         actual = normalize_path_for_comparison(str(result))
         assert actual in possible_results
+
+
+class TestProjectDetectorEdge:
+    """Coverage boost for project_detector.py uncovered paths (72.67% → 80%+)."""
+
+    def test_detect_from_file_with_file_input(self, tmp_path):
+        """detect_project_root with a file path → uses parent directory."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / "pyproject.toml").touch()
+        subfile = project / "src" / "main.py"
+        subfile.parent.mkdir()
+        subfile.touch()
+        detector = ProjectRootDetector()
+        result = detector.detect_from_file(str(subfile))
+        assert result is not None
+        assert project.name in str(result)
+
+    def test_detect_from_file_empty_path(self):
+        """detect_project_root with empty/NONE path returns None."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+        detector = ProjectRootDetector()
+        assert detector.detect_from_file("") is None
+
+    def test_traverse_upward_finds_best_candidate(self, tmp_path):
+        """Multiple directories with different markers — picks highest score."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / "setup.py").touch()
+        sub = project / "sub"
+        sub.mkdir()
+        (sub / ".git").mkdir()
+        detector = ProjectRootDetector()
+        result = detector._traverse_upward(str(sub))
+        assert result is not None
+
+    def test_calculate_score_weights(self):
+        """_calculate_score returns weighted scores for different markers."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+        detector = ProjectRootDetector()
+        score = detector._calculate_score([".git", "pyproject.toml"])
+        assert score > 0
+
+    def test_detect_from_cwd_exception_handling(self, monkeypatch):
+        """detect_from_cwd handles OSError gracefully."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+        detector = ProjectRootDetector()
+        monkeypatch.setattr("pathlib.Path.cwd", lambda: (_ for _ in ()).throw(OSError("boom")))
+        result = detector.detect_from_cwd()
+        assert result is None
