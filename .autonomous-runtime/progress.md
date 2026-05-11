@@ -30,7 +30,6 @@
 - 零新依赖，全部基于现有 tree-sitter parser
 - 质量门禁: ruff 通过, pytest 全部通过, mastery scan 无新违规
 
-
 ## 2026-05-12: Phase 8 Slice 1 — MCP 测试文件拆分
 
 - 拆分 test_mcp_fd_rg_tools.py (5633行) → 9 个文件，按源模块分组
@@ -41,8 +40,22 @@
 - 验证: 246 个拆分测试全部通过
 - mastery scan: oversized 22 → 20
 - Git commit: 357cec3
+
+## 2026-05-12: Phase 8 Slice 2 — 低密度测试修复
+
+- 5 个低断言密度文件全部修复至 density ≥ 1.0:
+  - test_javascript_plugin_coverage_boost.py: 删除空文件
+  - test_conftest_query.py: +7 测试函数 → density 2.00
+  - test_tree_sitter_compat_coverage_boost.py: +2 断言 → density 1.00
+  - test_logging.py: +11 断言 → density 1.00
+  - test_logging_coverage.py: +16 断言 → density 1.00
+- 修复 2 个预存 ruff B017 违规
+- 质量门禁: ruff ✓, pytest 141 passed ✓, mastery scan ALL GATES PASSED
+- low-density violation: 5 → 0
+- Git commit: e6a6785 (+115 -3, 112 行净代码)
+
 ---
 
 ## 下一步
 
-Phase 8: 代码瘦身与质量提纯（22 oversized + 76 low-density 测试文件）
+Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
