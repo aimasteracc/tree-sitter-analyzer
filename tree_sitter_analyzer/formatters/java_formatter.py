@@ -272,6 +272,11 @@ class JavaTableFormatter(BaseTableFormatter):
                 lines.append(self._format_method_row(method))
             lines.append("")
 
+        # Recursively render inner classes within this parent class
+        for inner_cls in inner_classes:
+            inner_lines = self._format_class_section(inner_cls, data, all_classes)
+            lines.extend(inner_lines)
+
         return lines
 
     def _format_method_row(self, method: dict[str, Any]) -> str:
