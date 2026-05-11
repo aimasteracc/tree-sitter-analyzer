@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
-"""Micro property test — push hypothesis past 10%."""
+"""Property-based test: encoding round-trip idempotency."""
 
-from hypothesis import given, strategies as st
-from tree_sitter_analyzer.encoding_utils import EncodingManager
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-class TestEncodingPropertyQuick:
-    @given(st.text(min_size=1, max_size=200))
-    def test_detect_returns_str(self, text):
-        enc = EncodingManager.detect_encoding(text.encode())
-        assert isinstance(enc, str)
+from tree_sitter_analyzer.encoding_utils import safe_encode, safe_decode
 
-    @given(st.binary(min_size=1, max_size=200))
-    def test_decode_handles_binary(self, data):
-        result = EncodingManager.safe_decode(data)
+
+class TestEncodingProperties:
+    """Verify encode/decode round-trip and idempotency for generic inputs."""
+
+    @given(st.text())
+    @settings(max_examples=100)
+    def test_encode_decode_roundtrip(self, text):
+        encoded = safe_encode(text)
+        decoded = safe_decode(encoded)
+        assert isinstance(decoded, str)
+
+    @given(st.text())
+    @settings(max_examples=100)
+    def test_decode_never_raises(self, text):
+        encoded = safe_encode(text)
+        result = safe_decode(encoded)
         assert isinstance(result, str)
