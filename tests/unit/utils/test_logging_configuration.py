@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 # Import setup_logger and SafeStreamHandler from utils package
 from tree_sitter_analyzer.utils import SafeStreamHandler, setup_logger
 
+
 class TestLoggingConfiguration:
     """Test logging configuration with environment variables."""
 
@@ -317,6 +318,7 @@ class TestLoggingConfiguration:
         # Should still create logger successfully
         assert logger is not None
 
+
 class TestSafeStreamHandler:
     """Test SafeStreamHandler functionality."""
 
@@ -404,4 +406,3 @@ class TestSafeStreamHandler:
 
         # Should not raise exception
         handler.emit(record)
-

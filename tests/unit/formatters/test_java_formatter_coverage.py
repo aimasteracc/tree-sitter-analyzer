@@ -1,6 +1,5 @@
-
-import pytest
 from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
+
 
 class TestJavaTableFormatterCoverage:
     def test_format_full_table_multiple_classes_with_package(self):
@@ -43,7 +42,7 @@ class TestJavaTableFormatterCoverage:
 
         # Check multi-class table headers
         assert "| Class | Type | Visibility | Lines | Methods | Fields |" in result
-        
+
         assert "| ClassA | class | public | 1-10 | 1 | 1 |" in result
         assert "| ClassB | class | package | 11-20 | 1 | 1 |" in result
 

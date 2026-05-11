@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Coverage boost for markdown_plugin.py — targets uncovered extraction paths."""
 
-import pytest
 from unittest.mock import MagicMock, PropertyMock
 
 from tree_sitter_analyzer.languages.markdown_plugin import MarkdownElementExtractor
@@ -112,13 +111,17 @@ class TestMarkdownExtractorSupplement:
         assert isinstance(r, list)
 
     def test_extract_horizontal_rules(self):
-        mock = _build_mock_tree(self.MD_HR, {"---": "thematic_break", "***": "thematic_break"})
+        mock = _build_mock_tree(
+            self.MD_HR, {"---": "thematic_break", "***": "thematic_break"}
+        )
         ext = MarkdownElementExtractor()
         r = ext.extract_horizontal_rules(mock, self.MD_HR)
         assert isinstance(r, list)
 
     def test_extract_html_elements(self):
-        mock = _build_mock_tree(self.MD_HTML, {"<div>": "html_block", "<script>": "html_block"})
+        mock = _build_mock_tree(
+            self.MD_HTML, {"<div>": "html_block", "<script>": "html_block"}
+        )
         ext = MarkdownElementExtractor()
         ext.source_code = self.MD_HTML
         ext.content_lines = self.MD_HTML.split("\n")

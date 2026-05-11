@@ -5,14 +5,11 @@ Targets: lines 19-20, 146-154, 165-199, 370-398, 416, 519, 536-539, 556-558
 """
 
 import os
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import pytest
-
-from tree_sitter_analyzer.security.validator import SecurityValidator
 from tree_sitter_analyzer.security.boundary_manager import ProjectBoundaryManager
+from tree_sitter_analyzer.security.validator import SecurityValidator
 
 
 class TestValidatorUncovered:
@@ -41,18 +38,18 @@ class TestValidatorUncovered:
         validator = SecurityValidator()
         # Simulate test environment
         with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test_thing"}):
-            is_valid, error = validator._validate_absolute_path(
-                "/tmp/tmp_test_file.py"
-            )
+            is_valid, error = validator._validate_absolute_path("/tmp/tmp_test_file.py")
         # Should be allowed in test env by filename pattern
         assert is_valid is True
 
     def test_validate_absolute_path_test_env_multiple_temp_dirs(self):
         """Lines 165-177: test env with /var/tmp fallback."""
         validator = SecurityValidator()
-        with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test_thing"}), \
-             patch.object(Path, "exists", return_value=True), \
-             patch.object(Path, "resolve", return_value=Path("/var/tmp/thing.py")):
+        with (
+            patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test_thing"}),
+            patch.object(Path, "exists", return_value=True),
+            patch.object(Path, "resolve", return_value=Path("/var/tmp/thing.py")),
+        ):
             is_valid, error = validator._validate_absolute_path("/var/tmp/thing.py")
         assert is_valid is True
 
@@ -60,7 +57,9 @@ class TestValidatorUncovered:
         """Lines 185-199: file name starts with tmp/temp/tmp_test."""
         validator = SecurityValidator()
         with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test"}):
-            is_valid, error = validator._validate_absolute_path("/some/dir/temp_file.py")
+            is_valid, error = validator._validate_absolute_path(
+                "/some/dir/temp_file.py"
+            )
         assert is_valid is True
 
     def test_validate_file_path_none_input(self):
@@ -80,8 +79,10 @@ class TestValidatorUncovered:
     def test_validate_absolute_path_test_env_exception_fallback(self):
         """Line 416: exception in test env check falls through to deny."""
         validator = SecurityValidator()
-        with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test"}), \
-             patch.object(Path, "resolve", side_effect=Exception("boom")):
+        with (
+            patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test"}),
+            patch.object(Path, "resolve", side_effect=Exception("boom")),
+        ):
             is_valid, error = validator._validate_absolute_path("/some/file.py")
         assert is_valid is False
         assert "Absolute file paths are not allowed" in error
@@ -120,9 +121,7 @@ class TestValidatorUncovered:
         """Line 519: returns True when no boundary manager."""
         validator = SecurityValidator()  # no project_root
         assert validator.boundary_manager is None
-        is_valid, error = validator._validate_project_boundary(
-            "anything.txt", None
-        )
+        is_valid, error = validator._validate_project_boundary("anything.txt", None)
         assert is_valid is True
 
     def test_validate_project_boundary_no_base_path(self):

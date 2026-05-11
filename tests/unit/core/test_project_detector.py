@@ -17,6 +17,7 @@ from tree_sitter_analyzer.project_detector import (
     detect_project_root,
 )
 
+
 def normalize_path_for_comparison(path_str):
     """
     Normalize path for comparison, handling platform-specific differences.
@@ -69,6 +70,7 @@ def normalize_path_for_comparison(path_str):
         return str(path).replace("/private/var/", "/var/")
 
     return str(path)
+
 
 class TestProjectRootDetector:
     """Test cases for ProjectRootDetector class"""
@@ -231,6 +233,7 @@ class TestProjectRootDetector:
         actual = normalize_path_for_comparison(str(result))
         assert actual in possible_results
 
+
 class TestUnifiedDetectProjectRoot:
     """Test cases for unified detect_project_root function"""
 
@@ -324,4 +327,3 @@ class TestUnifiedDetectProjectRoot:
         ]
         actual = normalize_path_for_comparison(str(result))
         assert actual in possible_results
-

@@ -1,6 +1,7 @@
-import pytest
 import sys
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # tree_sitter_analyzer.utils.tree_sitter_compat をインポート
 from tree_sitter_analyzer.utils.tree_sitter_compat import (
@@ -9,6 +10,7 @@ from tree_sitter_analyzer.utils.tree_sitter_compat import (
     get_node_text_safe,
     log_api_info,
 )
+
 
 class TestTreeSitterCompatCoverage:
     def test_execute_query_newest_api(self):

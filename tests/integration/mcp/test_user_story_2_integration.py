@@ -23,6 +23,7 @@ from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
 # Mark tests that require ripgrep
 pytestmark = pytest.mark.requires_ripgrep
 
+
 class TestUserStory2Integration:
     """User Story 2: 高度な解析ツール統合テスト"""
 
@@ -790,6 +791,7 @@ temp/
         # suppress_outputが有効な場合、ファイルに保存され、file_savedがTrueになる
         assert extract_result["file_saved"] is True
         assert extract_result["content_length"] > 0
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

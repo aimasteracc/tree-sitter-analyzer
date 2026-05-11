@@ -16,6 +16,7 @@ from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 
+
 class TestMCPToolsPathResolution:
     """Test that all MCP tools use the PathResolver consistently."""
 
@@ -153,6 +154,7 @@ class TestMCPToolsPathResolution:
             # Verify path resolver was called
             mock_resolve.assert_called_once_with("test_file.txt")
 
+
 class TestMCPToolsIntegration:
     """Integration tests for MCP tools working together."""
 
@@ -207,4 +209,3 @@ public class Test {
 
         # Verify that the path resolver works correctly
         assert resolved_path.endswith("Test.java")
-

@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from tree_sitter_analyzer.cli.commands.summary_command import SummaryCommand
@@ -8,6 +7,7 @@ from tree_sitter_analyzer.constants import (
     ELEMENT_TYPE_IMPORT,
     ELEMENT_TYPE_VARIABLE,
 )
+
 
 class TestSummaryCommandCoverage:
     def setup_method(self):
@@ -157,6 +157,7 @@ class TestSummaryCommandCoverage:
 
         self.command._output_summary_analysis(mock_result)
         # Should process classes and methods, but we have empty elements so just check execution doesn't crash
+
 
 def asyncio_run(coro):
     import asyncio

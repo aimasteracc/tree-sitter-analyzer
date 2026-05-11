@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Supplementary tests for query_loader.py uncovered branches."""
 
-import pytest
 from unittest.mock import MagicMock, patch
+
 from tree_sitter_analyzer.query_loader import QueryLoader
 
 
