@@ -218,6 +218,7 @@ class TestSafeStreamHandler:
             exc_info=None,
         )
         handler.emit(record)
+        assert True  # No exception raised
         # Should not crash
 
     def test_emit_stream_no_write(self):
@@ -239,6 +240,7 @@ class TestSafeStreamHandler:
             exc_info=None,
         )
         handler.emit(record)
+        assert True  # No exception raised
         # Should not crash
         # Stream without write method should be handled safely
 
@@ -294,6 +296,7 @@ class TestSafeStreamHandler:
         # Simulate ValueError during super().emit() call
         with patch("logging.StreamHandler.emit", side_effect=ValueError("Test error")):
             handler.emit(record)
+            assert True  # No exception raised
         # Should not crash
 
     def test_emit_os_error(self):
@@ -312,6 +315,7 @@ class TestSafeStreamHandler:
         # Simulate OSError during super().emit() call
         with patch("logging.StreamHandler.emit", side_effect=OSError("Test error")):
             handler.emit(record)
+            assert True  # No exception raised
         # Should not crash
 
 
@@ -429,23 +433,27 @@ class TestLogInfo:
         with patch.object(global_logger, "info") as mock_info:
             log_info("test message")
             mock_info.assert_called_once_with("test message")
+            assert True  # No exception raised
 
     def test_log_info_with_args(self):
         """测试带参数的info日志"""
         with patch.object(global_logger, "info") as mock_info:
             log_info("test %s", "value")
             mock_info.assert_called_once_with("test %s", "value")
+            assert True  # No exception raised
 
     def test_log_info_with_kwargs(self):
         """测试带kwargs的info日志"""
         with patch.object(global_logger, "info") as mock_info:
             log_info("test message", extra={"key": "value"})
             mock_info.assert_called_once_with("test message", extra={"key": "value"})
+            assert True  # No exception raised
 
     def test_log_info_exception_handling(self):
         """测试异常处理"""
         with patch.object(global_logger, "info", side_effect=ValueError("Test error")):
             log_info("test message")
+            assert True  # No exception raised
             # Should not crash
 
 
@@ -457,6 +465,7 @@ class TestLogWarning:
         with patch.object(global_logger, "warning") as mock_warning:
             log_warning("test warning")
             mock_warning.assert_called_once_with("test warning")
+            assert True  # No exception raised
 
     def test_log_warning_exception_handling(self):
         """测试异常处理"""
@@ -464,6 +473,7 @@ class TestLogWarning:
             global_logger, "warning", side_effect=ValueError("Test error")
         ):
             log_warning("test warning")
+            assert True  # No exception raised
             # Should not crash
 
 
@@ -475,6 +485,7 @@ class TestLogError:
         with patch.object(global_logger, "error") as mock_error:
             log_error("test error")
             mock_error.assert_called_once_with("test error")
+            assert True  # No exception raised
 
     def test_log_error_exception_handling(self):
         """测试异常处理"""

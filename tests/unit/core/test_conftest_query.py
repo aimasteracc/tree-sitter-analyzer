@@ -71,3 +71,45 @@ def temp_file():
         temp_path = f.name
     yield temp_path
     Path(temp_path).unlink(missing_ok=True)
+
+
+class TestQueryFixtures:
+    """Tests for query fixture functionality."""
+
+    def test_executor_initialized(self, executor):
+        """Test that QueryExecutor fixture initializes correctly."""
+        assert executor is not None
+        assert hasattr(executor, '_execution_stats')
+        assert executor._execution_stats["total_queries"] == 0
+        assert executor._execution_stats["successful_queries"] == 0
+
+    def test_query_executor_alias(self, query_executor):
+        """Test that query_executor alias fixture works."""
+        assert query_executor is not None
+
+    def test_query_service_initialized(self, query_service):
+        """Test that QueryService fixture initializes correctly."""
+        assert query_service is not None
+        assert query_service.parser is not None
+        assert query_service.filter is not None
+
+    def test_query_filter_initialized(self, query_filter):
+        """Test that QueryFilter fixture initializes correctly."""
+        assert query_filter is not None
+
+    def test_query_filter_noop(self, query_filter):
+        """Test QueryFilter.filter_results with no filter returns all results."""
+        results = [{"name": "main", "type": "function"}]
+        filtered = query_filter.filter_results(results, "")
+        assert filtered == results
+
+    def test_temp_project_dir(self, temp_project_dir):
+        """Test that temp_project_dir fixture creates a valid path."""
+        assert temp_project_dir is not None
+        assert temp_project_dir.exists()
+
+    def test_temp_file(self, temp_file):
+        """Test that temp_file fixture creates a valid file."""
+        assert temp_file is not None
+        import os
+        assert os.path.exists(temp_file)

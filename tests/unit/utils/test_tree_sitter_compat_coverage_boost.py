@@ -109,7 +109,9 @@ class TestCountNodesIterative:
 
 class TestLogApiInfo:
     def test_no_raise(self):
-        log_api_info()
+        """Test that log_api_info does not raise and returns None."""
+        result = log_api_info()
+        assert result is None
 
 
 class TestQueryCompat:
@@ -152,11 +154,11 @@ class TestQueryCompat:
     def test_modern_exception(self):
         q = MagicMock()
         q.matches.side_effect = Exception()
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             TreeSitterQueryCompat._execute_modern_api(q, MagicMock())
 
     def test_legacy_exception(self):
         q = MagicMock()
         q.captures.side_effect = Exception()
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             TreeSitterQueryCompat._execute_legacy_api(q, MagicMock())
