@@ -5,10 +5,11 @@ Extended tests for utils module to improve test coverage.
 
 import logging
 import tempfile
-import unittest
 import unittest.mock
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from tree_sitter_analyzer.utils import (
     LoggingContext,
@@ -23,15 +24,15 @@ from tree_sitter_analyzer.utils import (
 )
 
 
-class TestUtilsExtended(unittest.TestCase):
+class TestUtilsExtended:
     """Extended tests for utils module."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.log_file = str(Path(self.temp_dir) / "test.log")
 
-    def tearDown(self):
+    def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
 
@@ -41,19 +42,19 @@ class TestUtilsExtended(unittest.TestCase):
         """Test setup_logger with custom log level."""
         logger = setup_logger("test_logger", level="DEBUG")
         # The logger level might be different due to parent logger inheritance
-        self.assertIsNotNone(logger)
+        assert logger is not None
 
     def test_setup_logger_with_custom_format(self):
         """Test setup_logger with custom format."""
         # setup_logger doesn't support custom format, so just test basic functionality
         logger = setup_logger("test_logger")
-        self.assertIsNotNone(logger)
+        assert logger is not None
 
     def test_setup_logger_with_file_handler(self):
         """Test setup_logger with file handler."""
         # setup_logger doesn't support custom log_file, so just test basic functionality
         logger = setup_logger("test_logger")
-        self.assertIsNotNone(logger)
+        assert logger is not None
 
     def test_logging_functions_with_kwargs(self):
         """Test logging functions with keyword arguments."""
@@ -64,27 +65,27 @@ class TestUtilsExtended(unittest.TestCase):
             log_error("test error", extra={"key": "value"})
             log_debug("test debug", extra={"key": "value"})
             # If no exception is raised, the test passes
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"Logging functions failed with kwargs: {e}")
+            pytest.fail(f"Logging functions failed with kwargs: {e}")
 
     def test_log_performance_with_details(self):
         """Test log_performance with details."""
         # Test that function exists and can be called without errors
         try:
             log_performance("test operation", 1.5, details={"lines": 100, "files": 5})
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"log_performance with details failed: {e}")
+            pytest.fail(f"log_performance with details failed: {e}")
 
     def test_log_performance_without_details(self):
         """Test log_performance without details."""
         # Test that function exists and can be called without errors
         try:
             log_performance("test operation", 1.5)
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"log_performance without details failed: {e}")
+            pytest.fail(f"log_performance without details failed: {e}")
 
     def test_safe_print_functions(self):
         """Test safe print functions."""
@@ -96,9 +97,9 @@ class TestUtilsExtended(unittest.TestCase):
             safe_print("test error", level="error")
             safe_print("test warning", level="warning")
             # If no exception is raised, the test passes
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"safe_print functions failed: {e}")
+            pytest.fail(f"safe_print functions failed: {e}")
 
     def test_safe_print_with_none_message(self):
         """Test safe print functions with None message."""
@@ -128,9 +129,9 @@ class TestUtilsExtended(unittest.TestCase):
         try:
             safe_print("test", level="INVALID")
             # If no exception is raised, the test passes
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"safe_print with invalid level failed: {e}")
+            pytest.fail(f"safe_print with invalid level failed: {e}")
 
     def test_safe_print_quiet_mode(self):
         """Test safe print in quiet mode."""
@@ -141,7 +142,7 @@ class TestUtilsExtended(unittest.TestCase):
     def test_get_performance_monitor(self):
         """Test get_performance_monitor function."""
         monitor = create_performance_logger("test")
-        self.assertIsNotNone(monitor)
+        assert monitor is not None
 
     def test_is_testing_mode(self):
         """Test is_testing_mode function."""
@@ -163,9 +164,9 @@ class TestUtilsExtended(unittest.TestCase):
                 raise ValueError("test exception")
             except ValueError:
                 log_error("Error occurred", exc_info=True)
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"Logging with exception failed: {e}")
+            pytest.fail(f"Logging with exception failed: {e}")
 
     def test_logging_with_unicode(self):
         """Test logging with unicode characters."""
@@ -173,9 +174,9 @@ class TestUtilsExtended(unittest.TestCase):
         # Test that function exists and can be called without errors
         try:
             log_info(unicode_message)
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"Logging with unicode failed: {e}")
+            pytest.fail(f"Logging with unicode failed: {e}")
 
     def test_logging_context_manager(self):
         """Test logging context manager."""
@@ -183,9 +184,9 @@ class TestUtilsExtended(unittest.TestCase):
             # Test that function exists and can be called without errors
             try:
                 log_debug("test debug message")
-                self.assertTrue(True)
+                assert True
             except Exception as e:
-                self.fail(f"Logging context manager failed: {e}")
+                pytest.fail(f"Logging context manager failed: {e}")
 
     def test_logging_context_nesting(self):
         """Test nested logging contexts."""
@@ -194,9 +195,9 @@ class TestUtilsExtended(unittest.TestCase):
                 # Test that function exists and can be called without errors
                 try:
                     log_debug("test debug message")
-                    self.assertTrue(True)
+                    assert True
                 except Exception as e:
-                    self.fail(f"Logging context nesting failed: {e}")
+                    pytest.fail(f"Logging context nesting failed: {e}")
 
     def test_logging_context_level_change(self):
         """Test logging context level change."""
@@ -215,12 +216,12 @@ class TestUtilsExtended(unittest.TestCase):
     def test_performance_logger_setup(self):
         """Test performance logger setup."""
         logger = create_performance_logger("test")
-        self.assertIsNotNone(logger)
+        assert logger is not None
 
     def test_performance_logging_integration(self):
         """Test performance logging integration."""
         logger = create_performance_logger("test")
-        self.assertIsNotNone(logger)
+        assert logger is not None
 
     def test_logging_with_safe_print_integration(self):
         """Test integration between logging and safe print."""
@@ -228,9 +229,9 @@ class TestUtilsExtended(unittest.TestCase):
         try:
             log_info("test message")
             safe_print("test message", level="info")
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"Logging with safe_print integration failed: {e}")
+            pytest.fail(f"Logging with safe_print integration failed: {e}")
 
     def test_all_logging_functions_work_together(self):
         """Test that all logging functions work together."""
@@ -240,9 +241,9 @@ class TestUtilsExtended(unittest.TestCase):
             log_warning("warning message")
             log_error("error message")
             log_debug("debug message")
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"All logging functions together failed: {e}")
+            pytest.fail(f"All logging functions together failed: {e}")
 
     def test_logging_context_with_safe_print(self):
         """Test logging context with safe print."""
@@ -251,9 +252,9 @@ class TestUtilsExtended(unittest.TestCase):
             with LoggingContext(level=logging.INFO):
                 safe_print("test message", level="info")
             # If no exception is raised, the test passes
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"safe_print within logging context failed: {e}")
+            pytest.fail(f"safe_print within logging context failed: {e}")
 
     def test_edge_cases(self):
         """Test various edge cases."""
@@ -270,9 +271,9 @@ class TestUtilsExtended(unittest.TestCase):
             special_message = "test@#$%^&*()_+-=[]{}|;':\",./<>?`~"
             log_info(special_message)
 
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"Edge cases failed: {e}")
+            pytest.fail(f"Edge cases failed: {e}")
 
     def test_error_handling(self):
         """Test error handling in various scenarios."""
@@ -288,10 +289,6 @@ class TestUtilsExtended(unittest.TestCase):
             test_obj = object()
             log_info(test_obj)
 
-            self.assertTrue(True)
+            assert True
         except Exception as e:
-            self.fail(f"Error handling failed: {e}")
-
-
-if __name__ == "__main__":
-    unittest.main()
+            pytest.fail(f"Error handling failed: {e}")

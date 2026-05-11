@@ -1,9 +1,8 @@
-import unittest
 
+import pytest
 from tree_sitter_analyzer.formatters.java_formatter import JavaTableFormatter
 
-
-class TestJavaTableFormatterCoverage(unittest.TestCase):
+class TestJavaTableFormatterCoverage:
     def test_format_full_table_multiple_classes_with_package(self):
         """Test full table formatting with multiple classes and package"""
         formatter = JavaTableFormatter()
@@ -40,14 +39,13 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
         result = formatter._format_full_table(data)
 
         # Check header uses package and filename (without .java extension)
-        self.assertIn("# com.example.MyFile", result)
+        assert "# com.example.MyFile" in result
 
         # Check multi-class table headers
-        self.assertIn(
-            "| Class | Type | Visibility | Lines | Methods | Fields |", result
-        )
-        self.assertIn("| ClassA | class | public | 1-10 | 1 | 1 |", result)
-        self.assertIn("| ClassB | class | package | 11-20 | 1 | 1 |", result)
+        assert "| Class | Type | Visibility | Lines | Methods | Fields |" in result
+        
+        assert "| ClassA | class | public | 1-10 | 1 | 1 |" in result
+        assert "| ClassB | class | package | 11-20 | 1 | 1 |" in result
 
     def test_format_full_table_multiple_classes_no_package(self):
         """Test full table formatting with multiple classes without package"""
@@ -62,7 +60,7 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
 
         result = formatter._format_full_table(data)
         # Check header uses filename without .java extension
-        self.assertIn("# MyFile", result)
+        assert "# MyFile" in result
 
     def test_format_full_table_single_class_no_package(self):
         """Test full table formatting single class no package"""
@@ -73,7 +71,7 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
             ]
         }
         result = formatter._format_full_table(data)
-        self.assertIn("# A", result)
+        assert "# A" in result
 
     def test_format_enum_details(self):
         """Test formatting enum details including fields and methods within enum range"""
@@ -109,17 +107,17 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
 
         result = formatter._format_full_table(data)
 
-        self.assertIn("## MyEnum", result)
-        self.assertIn("| Type | enum |", result)
+        assert "## MyEnum" in result
+        assert "| Type | enum |" in result
         # Note: Constants are no longer displayed as a separate row in the new format
         # The enum constants are part of the class definition
 
-        self.assertIn("### Fields", result)
-        self.assertIn("| value | int | - | final | 5 | - |", result)
+        assert "### Fields" in result
+        assert "| value | int | - | final | 5 | - |" in result
 
         # Check for Public Methods section (new format uses visibility-based sections)
-        self.assertIn("Public Methods", result)
-        self.assertIn("getValue", result)
+        assert "Public Methods" in result
+        assert "getValue" in result
 
     def test_shorten_type_complex(self):
         """Test shortening of complex types"""
@@ -130,34 +128,34 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
         # but let's test what it supports.
 
         # "List<String>" -> "L<S>"
-        self.assertEqual(formatter._shorten_type("List<String>"), "L<S>")
+        assert formatter._shorten_type("List<String>") == "L<S>"
 
         # "Map<String,Object>" -> "M<S,O>"
-        self.assertEqual(formatter._shorten_type("Map<String,Object>"), "M<S,O>")
+        assert formatter._shorten_type("Map<String,Object>") == "M<S,O>"
 
         # "String[]" -> "S[]"
-        self.assertEqual(formatter._shorten_type("String[]"), "S[]")
+        assert formatter._shorten_type("String[]") == "S[]"
 
         # "Object[]" -> "O[]"
-        self.assertEqual(formatter._shorten_type("Object[]"), "O[]")
+        assert formatter._shorten_type("Object[]") == "O[]"
 
         # "int[]" -> "i[]"
-        self.assertEqual(formatter._shorten_type("int[]"), "i[]")
+        assert formatter._shorten_type("int[]") == "i[]"
 
         # "Unknown[]" -> "U[]" (first char upper)
-        self.assertEqual(formatter._shorten_type("Unknown[]"), "U[]")
+        assert formatter._shorten_type("Unknown[]") == "U[]"
 
         # "RuntimeException" -> "RE"
-        self.assertEqual(formatter._shorten_type("RuntimeException"), "RE")
+        assert formatter._shorten_type("RuntimeException") == "RE"
 
         # "SQLException" -> "SE"
-        self.assertEqual(formatter._shorten_type("SQLException"), "SE")
+        assert formatter._shorten_type("SQLException") == "SE"
 
         # "IllegalArgumentException" -> "IAE"
-        self.assertEqual(formatter._shorten_type("IllegalArgumentException"), "IAE")
+        assert formatter._shorten_type("IllegalArgumentException") == "IAE"
 
         # Non-string input
-        self.assertEqual(formatter._shorten_type(123), "123")
+        assert formatter._shorten_type(123) == "123"
 
     def test_format_json_error(self):
         """Test JSON serialization error handling"""
@@ -170,7 +168,7 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
         data = {"key": Unserializable()}
 
         result = formatter._format_json(data)
-        self.assertIn("# JSON serialization error:", result)
+        assert "# JSON serialization error:" in result
 
     def test_format_advanced_variations(self):
         """Test format_advanced with various outputs"""
@@ -179,17 +177,17 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
 
         # JSON
         res_json = formatter.format_advanced(data, "json")
-        self.assertIn('"name": "Test"', res_json)
+        assert '"name": "Test"' in res_json
 
         # CSV (base implementation returns "CSV format not implemented" or empty/headers depending on base)
         # JavaTableFormatter inherits BaseTableFormatter._format_csv which might just return "" or raise
         # Let's just check it returns string
         res_csv = formatter.format_advanced(data, "csv")
-        self.assertIsInstance(res_csv, str)
+        assert isinstance(res_csv, str)
 
         # Default (full table)
         res_full = formatter.format_advanced(data, "unknown")
-        self.assertIn("# Test", res_full)
+        assert "# Test" in res_full
 
     def test_format_table_context_manager(self):
         """Test format_table ensures format_type is restored"""
@@ -202,7 +200,7 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
         formatter.format_table(data, "json")
 
         # Should be restored to "compact"
-        self.assertEqual(formatter.format_type, "compact")
+        assert formatter.format_type == "compact"
 
     def test_clean_csv_text(self):
         """Test _clean_csv_text inherited method usage in Java formatter context"""
@@ -214,4 +212,4 @@ class TestJavaTableFormatterCoverage(unittest.TestCase):
 
         row = formatter._format_method_row(method)
         # _extract_doc_summary takes first line only, so "Line 1" is expected
-        self.assertIn("Line 1", row)
+        assert "Line 1" in row

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
+import pytest
 Integration tests for MCP tools path resolution.
 """
 
 import tempfile
-import unittest
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,11 +16,10 @@ from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import UniversalAnalyzeTool
 
-
-class TestMCPToolsPathResolution(unittest.TestCase):
+class TestMCPToolsPathResolution:
     """Test that all MCP tools use the PathResolver consistently."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.project_root = str(Path(self.temp_dir) / "project")
@@ -38,7 +37,7 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         self.analyze_code_structure_tool = AnalyzeCodeStructureTool(self.project_root)
         self.universal_analyze_tool = UniversalAnalyzeTool(self.project_root)
 
-    def tearDown(self):
+    def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
 
@@ -46,51 +45,51 @@ class TestMCPToolsPathResolution(unittest.TestCase):
 
     def test_analyze_scale_tool_uses_path_resolver(self):
         """Test that AnalyzeScaleTool uses PathResolver."""
-        self.assertIsNotNone(self.analyze_scale_tool.path_resolver)
+        assert self.analyze_scale_tool.path_resolver is not None
         # Use Path.resolve() for proper normalization
         actual_root = str(
             Path(self.analyze_scale_tool.path_resolver.project_root).resolve()
         )
         expected_root = str(Path(self.project_root).resolve())
-        self.assertEqual(actual_root, expected_root)
+        assert actual_root == expected_root
 
     def test_query_tool_uses_path_resolver(self):
         """Test that QueryTool uses PathResolver."""
-        self.assertIsNotNone(self.query_tool.path_resolver)
+        assert self.query_tool.path_resolver is not None
         # Use Path.resolve() for proper normalization
         actual_root = str(Path(self.query_tool.path_resolver.project_root).resolve())
         expected_root = str(Path(self.project_root).resolve())
-        self.assertEqual(actual_root, expected_root)
+        assert actual_root == expected_root
 
     def test_read_partial_tool_uses_path_resolver(self):
         """Test that ReadPartialTool uses PathResolver."""
-        self.assertIsNotNone(self.read_partial_tool.path_resolver)
+        assert self.read_partial_tool.path_resolver is not None
         # Use Path.resolve() for proper normalization
         actual_root = str(
             Path(self.read_partial_tool.path_resolver.project_root).resolve()
         )
         expected_root = str(Path(self.project_root).resolve())
-        self.assertEqual(actual_root, expected_root)
+        assert actual_root == expected_root
 
     def test_analyze_code_structure_tool_uses_path_resolver(self):
         """Test that AnalyzeCodeStructureTool uses PathResolver."""
-        self.assertIsNotNone(self.analyze_code_structure_tool.path_resolver)
+        assert self.analyze_code_structure_tool.path_resolver is not None
         # Use Path.resolve() for proper normalization
         actual_root = str(
             Path(self.analyze_code_structure_tool.path_resolver.project_root).resolve()
         )
         expected_root = str(Path(self.project_root).resolve())
-        self.assertEqual(actual_root, expected_root)
+        assert actual_root == expected_root
 
     def test_universal_analyze_tool_uses_path_resolver(self):
         """Test that UniversalAnalyzeTool uses PathResolver."""
-        self.assertIsNotNone(self.universal_analyze_tool.path_resolver)
+        assert self.universal_analyze_tool.path_resolver is not None
         # Use Path.resolve() for proper normalization
         actual_root = str(
             Path(self.universal_analyze_tool.path_resolver.project_root).resolve()
         )
         expected_root = str(Path(self.project_root).resolve())
-        self.assertEqual(actual_root, expected_root)
+        assert actual_root == expected_root
 
     def test_consistent_path_resolution_across_tools(self):
         """Test that all tools resolve paths consistently."""
@@ -106,11 +105,11 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         ]
 
         # All resolved paths should be the same
-        self.assertEqual(len(set(resolved_paths)), 1)
+        assert len(set(resolved_paths)) == 1
         # Use Path.resolve() for proper normalization
         actual_path = str(Path(resolved_paths[0]).resolve())
         expected_path = str(Path(self.test_file).resolve())
-        self.assertEqual(actual_path, expected_path)
+        assert actual_path == expected_path
 
     def test_cross_platform_path_handling(self):
         """Test cross-platform path handling in all tools."""
@@ -126,12 +125,12 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         # Convert both to forward slashes for consistent comparison
         normalized_windows = resolved_windows.replace("\\", "/")
         normalized_unix = resolved_unix.replace("\\", "/")
-        self.assertEqual(normalized_windows, normalized_unix)
+        assert normalized_windows == normalized_unix
 
     def test_tools_without_project_root(self):
         """Test tools initialized without project root."""
         tool_without_root = AnalyzeScaleTool()
-        self.assertIsNone(tool_without_root.path_resolver.project_root)
+        assert tool_without_root.path_resolver.project_root is None
 
         # Should still work with absolute paths
         absolute_path = self.test_file
@@ -139,7 +138,7 @@ class TestMCPToolsPathResolution(unittest.TestCase):
         # Use Path.resolve() for proper normalization
         resolved_normalized = str(Path(resolved).resolve())
         expected_normalized = str(Path(absolute_path).resolve())
-        self.assertEqual(resolved_normalized, expected_normalized)
+        assert resolved_normalized == expected_normalized
 
     def test_query_tool_execute_with_path_resolution(self):
         """Test that QueryTool execute method uses path resolution."""
@@ -149,16 +148,15 @@ class TestMCPToolsPathResolution(unittest.TestCase):
             # Since execute is async, we'll test the path resolution part separately
             # and verify that the path resolver was called correctly
             resolved_path = self.query_tool.path_resolver.resolve("test_file.txt")
-            self.assertEqual(resolved_path, self.test_file)
+            assert resolved_path == self.test_file
 
             # Verify path resolver was called
             mock_resolve.assert_called_once_with("test_file.txt")
 
-
-class TestMCPToolsIntegration(unittest.TestCase):
+class TestMCPToolsIntegration:
     """Integration tests for MCP tools working together."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.project_root = str(Path(self.temp_dir) / "project")
@@ -176,7 +174,7 @@ public class Test {
 """
             )
 
-    def tearDown(self):
+    def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
 
@@ -193,11 +191,11 @@ public class Test {
         ]
 
         for tool in tools:
-            self.assertIsNotNone(tool.path_resolver)
+            assert tool.path_resolver is not None
             # Use Path.resolve() for proper normalization
             actual_root = str(Path(tool.path_resolver.project_root).resolve())
             expected_root = str(Path(self.project_root).resolve())
-            self.assertEqual(actual_root, expected_root)
+            assert actual_root == expected_root
 
     def test_query_tool_execute_with_path_resolution(self):
         """Test that QueryTool execute method uses path resolution."""
@@ -205,11 +203,8 @@ public class Test {
 
         # Test path resolution without calling the async execute method
         resolved_path = tool.path_resolver.resolve("Test.java")
-        self.assertIsNotNone(resolved_path)
+        assert resolved_path is not None
 
         # Verify that the path resolver works correctly
-        self.assertTrue(resolved_path.endswith("Test.java"))
+        assert resolved_path.endswith("Test.java")
 
-
-if __name__ == "__main__":
-    unittest.main()

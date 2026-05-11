@@ -627,6 +627,7 @@ export default GeneratedComponent{i};
             f"総マッチ数: {total_matches}, 実行時間: {metrics['execution_time']:.2f}秒"
         )
 
+    @pytest.mark.slow
     @pytest.mark.asyncio
     async def test_memory_efficiency_under_load(self, large_scale_project):
         """負荷下でのメモリ効率性テスト"""
@@ -698,6 +699,7 @@ export default GeneratedComponent{i};
         print(f"平均実行時間: {avg_execution_time:.2f}秒")
 
     @pytest.mark.requires_fd
+    @pytest.mark.slow
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_scalability_limits(self, large_scale_project):
@@ -812,6 +814,7 @@ export default GeneratedComponent{i};
             )
 
     @pytest.mark.requires_fd
+    @pytest.mark.slow
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_sustained_load_performance(self, large_scale_project):
@@ -894,6 +897,7 @@ export default GeneratedComponent{i};
         print(f"平均メモリ使用量: {avg_memory:.2f}MB")
 
     @pytest.mark.requires_fd
+    @pytest.mark.slow
     @pytest.mark.requires_ripgrep
     @pytest.mark.asyncio
     async def test_resource_cleanup_efficiency(self, large_scale_project):

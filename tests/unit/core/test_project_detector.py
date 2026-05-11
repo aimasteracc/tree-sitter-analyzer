@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+import pytest
 Tests for Project Root Detection
 
 Tests the intelligent project root detection functionality.
@@ -9,14 +10,12 @@ import os
 import shutil
 import sys
 import tempfile
-import unittest
 from pathlib import Path
 
 from tree_sitter_analyzer.project_detector import (
     ProjectRootDetector,
     detect_project_root,
 )
-
 
 def normalize_path_for_comparison(path_str):
     """
@@ -71,15 +70,14 @@ def normalize_path_for_comparison(path_str):
 
     return str(path)
 
-
-class TestProjectRootDetector(unittest.TestCase):
+class TestProjectRootDetector:
     """Test cases for ProjectRootDetector class"""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures"""
         self.temp_dir = Path(tempfile.mkdtemp())
 
-    def tearDown(self):
+    def teardown_method(self):
         """Clean up test fixtures"""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -95,7 +93,7 @@ class TestProjectRootDetector(unittest.TestCase):
 
         expected = normalize_path_for_comparison(str(git_dir))
         actual = normalize_path_for_comparison(str(result))
-        self.assertEqual(actual, expected)
+        assert actual == expected
 
     def test_detect_from_python_project(self):
         """Test detection from Python project"""
@@ -109,7 +107,7 @@ class TestProjectRootDetector(unittest.TestCase):
 
         expected = normalize_path_for_comparison(str(python_dir))
         actual = normalize_path_for_comparison(str(result))
-        self.assertEqual(actual, expected)
+        assert actual == expected
 
     def test_detect_from_javascript_project(self):
         """Test detection from JavaScript project"""
@@ -123,7 +121,7 @@ class TestProjectRootDetector(unittest.TestCase):
 
         expected = normalize_path_for_comparison(str(js_dir))
         actual = normalize_path_for_comparison(str(result))
-        self.assertEqual(actual, expected)
+        assert actual == expected
 
     def test_detect_from_java_project(self):
         """Test detection from Java project"""
@@ -137,7 +135,7 @@ class TestProjectRootDetector(unittest.TestCase):
 
         expected = normalize_path_for_comparison(str(java_dir))
         actual = normalize_path_for_comparison(str(result))
-        self.assertEqual(actual, expected)
+        assert actual == expected
 
     def test_multiple_markers_priority(self):
         """Test priority when multiple markers are found"""
@@ -152,7 +150,7 @@ class TestProjectRootDetector(unittest.TestCase):
 
         expected = normalize_path_for_comparison(str(multi_dir))
         actual = normalize_path_for_comparison(str(result))
-        self.assertEqual(actual, expected)
+        assert actual == expected
 
     def test_no_markers_found(self):
         """Test behavior when no markers are found"""
@@ -165,7 +163,7 @@ class TestProjectRootDetector(unittest.TestCase):
 
         # When no markers are found, detect_from_file returns None
         # The fallback behavior is tested separately
-        self.assertIsNone(result)
+        assert result is None
 
     def test_max_depth_limit(self):
         """Test max depth limit"""
@@ -177,7 +175,7 @@ class TestProjectRootDetector(unittest.TestCase):
         result = detector.detect_from_file(str(deep_dir / "test.py"))
 
         # With limited depth, no markers should be found
-        self.assertIsNone(result)
+        assert result is None
 
     def test_fallback_behavior(self):
         """Test fallback behavior"""
@@ -191,7 +189,7 @@ class TestProjectRootDetector(unittest.TestCase):
         fallback = detector.get_fallback_root("/non/existing/file.py")
         expected_cwd = normalize_path_for_comparison(str(Path.cwd()))
         actual_cwd = normalize_path_for_comparison(str(fallback))
-        self.assertEqual(actual_cwd, expected_cwd)
+        assert actual_cwd == expected_cwd
 
         # Test fallback for existing file in temp directory
         test_file = fallback_dir / "existing.py"
@@ -199,19 +197,16 @@ class TestProjectRootDetector(unittest.TestCase):
         fallback = detector.get_fallback_root(str(test_file))
         expected_file_dir = normalize_path_for_comparison(str(fallback_dir))
         actual_file_dir = normalize_path_for_comparison(str(fallback))
-        self.assertEqual(actual_file_dir, expected_file_dir)
+        assert actual_file_dir == expected_file_dir
 
         # Test fallback for non-existing file in temp directory
         # This might return cwd if the current directory is detected as project root
         fallback = detector.get_fallback_root(str(fallback_dir / "nonexistent.py"))
         # The result could be either the temp directory or cwd, depending on project detection
-        self.assertIn(
-            normalize_path_for_comparison(str(fallback)),
-            [
-                normalize_path_for_comparison(str(fallback_dir)),
-                normalize_path_for_comparison(str(Path.cwd())),
-            ],
-        )
+        assert normalize_path_for_comparison(str(fallback)) in [
+            normalize_path_for_comparison(str(fallback_dir)),
+            normalize_path_for_comparison(str(Path.cwd())),
+        ]
 
     def test_invalid_explicit_root(self):
         """Test behavior with invalid explicit root"""
@@ -234,17 +229,16 @@ class TestProjectRootDetector(unittest.TestCase):
             normalize_path_for_comparison(str(project_root)),
         ]
         actual = normalize_path_for_comparison(str(result))
-        self.assertIn(actual, possible_results)
+        assert actual in possible_results
 
-
-class TestUnifiedDetectProjectRoot(unittest.TestCase):
+class TestUnifiedDetectProjectRoot:
     """Test cases for unified detect_project_root function"""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures"""
         self.temp_dir = Path(tempfile.mkdtemp())
 
-    def tearDown(self):
+    def teardown_method(self):
         """Clean up test fixtures"""
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
@@ -266,7 +260,7 @@ class TestUnifiedDetectProjectRoot(unittest.TestCase):
 
         expected = normalize_path_for_comparison(explicit_root)
         actual = normalize_path_for_comparison(str(result))
-        self.assertEqual(actual, expected)
+        assert actual == expected
 
     def test_auto_detection_from_file(self):
         """Test auto detection from file"""
@@ -283,7 +277,7 @@ class TestUnifiedDetectProjectRoot(unittest.TestCase):
 
         expected = normalize_path_for_comparison(str(project_dir))
         actual = normalize_path_for_comparison(str(result))
-        self.assertEqual(actual, expected)
+        assert actual == expected
 
     def test_fallback_to_file_directory(self):
         """Test fallback to file directory"""
@@ -306,7 +300,7 @@ class TestUnifiedDetectProjectRoot(unittest.TestCase):
         fallback = detector.get_fallback_root(str(test_file))
         expected = normalize_path_for_comparison(str(isolated_base))
         actual = normalize_path_for_comparison(str(fallback))
-        self.assertEqual(actual, expected)
+        assert actual == expected
 
     def test_invalid_explicit_root(self):
         """Test behavior with invalid explicit root"""
@@ -329,8 +323,5 @@ class TestUnifiedDetectProjectRoot(unittest.TestCase):
             normalize_path_for_comparison(str(project_root)),
         ]
         actual = normalize_path_for_comparison(str(result))
-        self.assertIn(actual, possible_results)
+        assert actual in possible_results
 
-
-if __name__ == "__main__":
-    unittest.main()

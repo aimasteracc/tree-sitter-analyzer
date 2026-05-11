@@ -1,5 +1,5 @@
+import pytest
 import sys
-import unittest
 from unittest.mock import MagicMock, patch
 
 # tree_sitter_analyzer.utils.tree_sitter_compat をインポート
@@ -10,8 +10,7 @@ from tree_sitter_analyzer.utils.tree_sitter_compat import (
     log_api_info,
 )
 
-
-class TestTreeSitterCompatCoverage(unittest.TestCase):
+class TestTreeSitterCompatCoverage:
     def test_execute_query_newest_api(self):
         """Test execution with newest API (QueryCursor)"""
         mock_language = MagicMock()
@@ -39,9 +38,9 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
                 mock_language, "query", mock_root_node
             )
 
-            self.assertEqual(len(results), 1)
-            self.assertEqual(results[0][0], mock_node)
-            self.assertEqual(results[0][1], "capture_name")
+            assert len(results) == 1
+            assert results[0][0] == mock_node
+            assert results[0][1] == "capture_name"
 
             # Verify QueryCursor was used
             mock_tree_sitter.QueryCursor.assert_called_once_with(mock_query)
@@ -75,9 +74,9 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
                 mock_language, "query", mock_root_node
             )
 
-            self.assertEqual(len(results), 1)
-            self.assertEqual(results[0][0], mock_node)
-            self.assertEqual(results[0][1], "capture_name")
+            assert len(results) == 1
+            assert results[0][0] == mock_node
+            assert results[0][1] == "capture_name"
 
     def test_execute_query_legacy_api(self):
         """Test execution with legacy API (captures)"""
@@ -101,9 +100,9 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
                 mock_language, "query", mock_root_node
             )
 
-            self.assertEqual(len(results), 1)
-            self.assertEqual(results[0][0], mock_node)
-            self.assertEqual(results[0][1], "capture_name")
+            assert len(results) == 1
+            assert results[0][0] == mock_node
+            assert results[0][1] == "capture_name"
 
     def test_execute_query_old_api_callable(self):
         """Test execution with old API (callable query)"""
@@ -132,9 +131,9 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
                 mock_language, "query", mock_root_node
             )
 
-            self.assertEqual(len(results), 1)
-            self.assertEqual(results[0][0], mock_node)
-            self.assertEqual(results[0][1], "capture_name")
+            assert len(results) == 1
+            assert results[0][0] == mock_node
+            assert results[0][1] == "capture_name"
 
     def test_execute_query_old_api_callable_named_tuple(self):
         """Test execution with old API (callable returning objects with node/name attrs)"""
@@ -161,9 +160,9 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
                 mock_language, "query", mock_root_node
             )
 
-            self.assertEqual(len(results), 1)
-            self.assertEqual(results[0][0], mock_node)
-            self.assertEqual(results[0][1], "capture_name")
+            assert len(results) == 1
+            assert results[0][0] == mock_node
+            assert results[0][1] == "capture_name"
 
     def test_execute_query_no_compatible_api(self):
         """Test execution when no compatible API is found"""
@@ -183,7 +182,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
             results = TreeSitterQueryCompat.execute_query(
                 mock_language, "query", mock_root_node
             )
-            self.assertEqual(results, [])
+            assert results == []
 
     def test_execute_query_exception(self):
         """Test exception handling during query execution"""
@@ -197,7 +196,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
             results = TreeSitterQueryCompat.execute_query(
                 mock_language, "query", mock_root_node
             )
-            self.assertEqual(results, [])
+            assert results == []
 
     def test_safe_execute_query(self):
         """Test safe_execute_query wrapper"""
@@ -207,7 +206,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         ) as mock_exec:
             mock_exec.return_value = ["result"]
             result = TreeSitterQueryCompat.safe_execute_query(None, "q", None)
-            self.assertEqual(result, ["result"])
+            assert result == ["result"]
 
         # Failure case
         with patch(
@@ -217,7 +216,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
             result = TreeSitterQueryCompat.safe_execute_query(
                 None, "q", None, fallback_result=["fallback"]
             )
-            self.assertEqual(result, ["fallback"])
+            assert result == ["fallback"]
 
     def test_create_query_safely(self):
         """Test create_query_safely"""
@@ -225,13 +224,13 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         with patch.dict(sys.modules, {"tree_sitter": MagicMock()}):
             sys.modules["tree_sitter"].Query.return_value = "query_obj"
             result = create_query_safely(None, "q")
-            self.assertEqual(result, "query_obj")
+            assert result == "query_obj"
 
         # Failure
         with patch.dict(sys.modules, {"tree_sitter": MagicMock()}):
             sys.modules["tree_sitter"].Query.side_effect = Exception("Fail")
             result = create_query_safely(None, "q")
-            self.assertIsNone(result)
+            assert result is None
 
     def test_get_node_text_safe_byte_range(self):
         """Test get_node_text_safe using byte range"""
@@ -241,7 +240,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         # Ensure other attributes don't interfere if this path is taken
 
         text = get_node_text_safe(mock_node, "hello world")
-        self.assertEqual(text, "hello")
+        assert text == "hello"
 
     def test_get_node_text_safe_text_attr_bytes(self):
         """Test get_node_text_safe using text attribute (bytes)"""
@@ -250,7 +249,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         mock_node.text = b"hello"
 
         text = get_node_text_safe(mock_node, "source")
-        self.assertEqual(text, "hello")
+        assert text == "hello"
 
     def test_get_node_text_safe_text_attr_str(self):
         """Test get_node_text_safe using text attribute (str)"""
@@ -259,7 +258,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         mock_node.text = "hello"
 
         text = get_node_text_safe(mock_node, "source")
-        self.assertEqual(text, "hello")
+        assert text == "hello"
 
     def test_get_node_text_safe_points_single_line(self):
         """Test get_node_text_safe using points (single line)"""
@@ -270,7 +269,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         mock_node.end_point = (0, 5)
 
         text = get_node_text_safe(mock_node, "hello world")
-        self.assertEqual(text, "hello")
+        assert text == "hello"
 
     def test_get_node_text_safe_points_multi_line(self):
         """Test get_node_text_safe using points (multi line)"""
@@ -285,7 +284,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         # Line 1: "this is a test" -> to col 4: "this"
 
         text = get_node_text_safe(mock_node, source)
-        self.assertEqual(text, "world\nthis")
+        assert text == "world\nthis"
 
     def test_get_node_text_safe_fallback_empty(self):
         """Test get_node_text_safe fallback to empty"""
@@ -295,7 +294,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         del mock_node.start_point
 
         text = get_node_text_safe(mock_node, "source")
-        self.assertEqual(text, "")
+        assert text == ""
 
     def test_log_api_info(self):
         """Test log_api_info"""
@@ -381,10 +380,10 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         mock_query.matches.side_effect = Exception("Modern API error")
 
         # The method should raise the exception
-        with self.assertRaises(Exception) as context:
+        with pytest.raises(Exception) as context:
             TreeSitterQueryCompat._execute_modern_api(mock_query, mock_root_node)
 
-        self.assertIn("Modern API error", str(context.exception))
+        assert "Modern API error" in str(context.value)
 
     def test_execute_legacy_api_exception_raises(self):
         """Test _execute_legacy_api exception handling (covers lines 116-118)"""
@@ -395,10 +394,10 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         mock_query.captures.side_effect = Exception("Legacy API error")
 
         # The method should raise the exception
-        with self.assertRaises(Exception) as context:
+        with pytest.raises(Exception) as context:
             TreeSitterQueryCompat._execute_legacy_api(mock_query, mock_root_node)
 
-        self.assertIn("Legacy API error", str(context.exception))
+        assert "Legacy API error" in str(context.value)
 
     def test_execute_old_api_exception_handling(self):
         """Test _execute_old_api exception handling (covers lines 138-143)"""
@@ -413,7 +412,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
 
         # The method should handle the exception and return empty list
         result = TreeSitterQueryCompat._execute_old_api(mock_query, mock_root_node)
-        self.assertEqual(result, [])
+        assert result == []
 
     def test_execute_old_api_with_invalid_result_items(self):
         """Test _execute_old_api with invalid result items"""
@@ -433,7 +432,7 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
         # The method should handle invalid items gracefully
         result = TreeSitterQueryCompat._execute_old_api(mock_query, mock_root_node)
         # Should return empty list since no valid items
-        self.assertEqual(result, [])
+        assert result == []
 
     def test_execute_old_api_non_callable_warning(self):
         """Test _execute_old_api with non-callable query (covers line 138)"""
@@ -447,4 +446,4 @@ class TestTreeSitterCompatCoverage(unittest.TestCase):
 
         # The method should log a warning and return empty list
         result = TreeSitterQueryCompat._execute_old_api(mock_query, mock_root_node)
-        self.assertEqual(result, [])
+        assert result == []

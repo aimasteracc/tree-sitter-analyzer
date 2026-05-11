@@ -1,4 +1,4 @@
-import unittest
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from tree_sitter_analyzer.cli.commands.summary_command import SummaryCommand
@@ -9,9 +9,8 @@ from tree_sitter_analyzer.constants import (
     ELEMENT_TYPE_VARIABLE,
 )
 
-
-class TestSummaryCommandCoverage(unittest.TestCase):
-    def setUp(self):
+class TestSummaryCommandCoverage:
+    def setup_method(self):
         self.mock_args = MagicMock()
         self.mock_args.output_format = "text"
         self.mock_args.summary = "classes,methods,fields,imports"
@@ -24,7 +23,7 @@ class TestSummaryCommandCoverage(unittest.TestCase):
         """Test execute_async with no analysis result"""
         self.command.analyze_file.return_value = None
         result = asyncio_run(self.command.execute_async("python"))
-        self.assertEqual(result, 1)
+        assert result == 1
 
     @patch("tree_sitter_analyzer.cli.commands.summary_command.output_section")
     @patch("tree_sitter_analyzer.cli.commands.summary_command.output_data")
@@ -39,11 +38,11 @@ class TestSummaryCommandCoverage(unittest.TestCase):
         self.command.analyze_file.return_value = mock_result
 
         result = asyncio_run(self.command.execute_async("python"))
-        self.assertEqual(result, 0)
+        assert result == 0
         mock_output_section.assert_called_with("Summary Results")
         # verify output calls
         calls = [str(c) for c in mock_output_data.call_args_list]
-        self.assertTrue(any("File: test.py" in c for c in calls))
+        assert any("File: test.py" in c for c in calls)
 
     @patch("tree_sitter_analyzer.cli.commands.summary_command.output_json")
     def test_execute_async_with_result_json(self, mock_output_json):
@@ -56,7 +55,7 @@ class TestSummaryCommandCoverage(unittest.TestCase):
         self.command.analyze_file.return_value = mock_result
 
         result = asyncio_run(self.command.execute_async("python"))
-        self.assertEqual(result, 0)
+        assert result == 0
         mock_output_json.assert_called()
 
     @patch("tree_sitter_analyzer.cli.commands.summary_command.output_data")
@@ -103,14 +102,14 @@ class TestSummaryCommandCoverage(unittest.TestCase):
 
             # Check outputs
             calls = [str(c) for c in mock_output_data.call_args_list]
-            self.assertTrue(any("Classes (1 items)" in c for c in calls))
-            self.assertTrue(any("MyClass" in c for c in calls))
-            self.assertTrue(any("Methods (1 items)" in c for c in calls))
-            self.assertTrue(any("my_method" in c for c in calls))
-            self.assertTrue(any("Fields (1 items)" in c for c in calls))
-            self.assertTrue(any("my_field" in c for c in calls))
-            self.assertTrue(any("Imports (1 items)" in c for c in calls))
-            self.assertTrue(any("os" in c for c in calls))
+            assert any("Classes (1 items" in c for c in calls)
+            assert any("MyClass" in c for c in calls)
+            assert any("Methods (1 items" in c for c in calls)
+            assert any("my_method" in c for c in calls)
+            assert any("Fields (1 items" in c for c in calls)
+            assert any("my_field" in c for c in calls)
+            assert any("Imports (1 items" in c for c in calls)
+            assert any("os" in c for c in calls)
 
     @patch("tree_sitter_analyzer.cli.commands.summary_command.output_data")
     def test_output_summary_analysis_filtered_types(self, mock_output_data):
@@ -143,8 +142,8 @@ class TestSummaryCommandCoverage(unittest.TestCase):
             self.command._output_summary_analysis(mock_result)
 
             calls = [str(c) for c in mock_output_data.call_args_list]
-            self.assertTrue(any("Classes (1 items)" in c for c in calls))
-            self.assertFalse(any("Methods" in c for c in calls))
+            assert any("Classes (1 items" in c for c in calls)
+            assert not any("Methods" in c for c in calls)
 
     @patch("tree_sitter_analyzer.cli.commands.summary_command.output_data")
     def test_output_summary_analysis_default_types(self, mock_output_data):
@@ -158,7 +157,6 @@ class TestSummaryCommandCoverage(unittest.TestCase):
 
         self.command._output_summary_analysis(mock_result)
         # Should process classes and methods, but we have empty elements so just check execution doesn't crash
-
 
 def asyncio_run(coro):
     import asyncio

@@ -9,18 +9,16 @@ including file logging, log directory configuration, and log level settings.
 import logging
 import os
 import tempfile
-import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Import setup_logger and SafeStreamHandler from utils package
 from tree_sitter_analyzer.utils import SafeStreamHandler, setup_logger
 
-
-class TestLoggingConfiguration(unittest.TestCase):
+class TestLoggingConfiguration:
     """Test logging configuration with environment variables."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.original_env = {}
@@ -37,7 +35,7 @@ class TestLoggingConfiguration(unittest.TestCase):
             if var in os.environ:
                 del os.environ[var]
 
-    def tearDown(self):
+    def teardown_method(self):
         """Clean up test fixtures."""
         import shutil
 
@@ -68,15 +66,15 @@ class TestLoggingConfiguration(unittest.TestCase):
         logger = setup_logger("test_logging_default")
 
         # Should have only one handler (SafeStreamHandler)
-        self.assertEqual(len(logger.handlers), 1)
+        assert len(logger.handlers) == 1
         # Check handler type by class name instead of isinstance due to import differences
-        self.assertEqual(logger.handlers[0].__class__.__name__, "SafeStreamHandler")
+        assert logger.handlers[0].__class__.__name__ == "SafeStreamHandler"
 
         # Should not have any file handlers
         file_handlers = [
             h for h in logger.handlers if isinstance(h, logging.FileHandler)
         ]
-        self.assertEqual(len(file_handlers), 0)
+        assert len(file_handlers) == 0
 
     def test_enable_file_logging_true(self):
         """Test file logging when TREE_SITTER_ANALYZER_ENABLE_FILE_LOG=true."""
@@ -85,24 +83,24 @@ class TestLoggingConfiguration(unittest.TestCase):
         logger = setup_logger("test_logging_enabled")
 
         # Should have two handlers: SafeStreamHandler and FileHandler
-        self.assertEqual(len(logger.handlers), 2)
+        assert len(logger.handlers) == 2
 
         # Check for SafeStreamHandler by class name
         stream_handlers = [
             h for h in logger.handlers if h.__class__.__name__ == "SafeStreamHandler"
         ]
-        self.assertEqual(len(stream_handlers), 1)
+        assert len(stream_handlers) == 1
 
         # Check for FileHandler
         file_handlers = [
             h for h in logger.handlers if isinstance(h, logging.FileHandler)
         ]
-        self.assertEqual(len(file_handlers), 1)
+        assert len(file_handlers) == 1
 
         # Verify file handler is writing to temp directory
         file_handler = file_handlers[0]
         log_path = Path(file_handler.baseFilename)
-        self.assertTrue(log_path.name == "tree_sitter_analyzer.log")
+        assert log_path.name == "tree_sitter_analyzer.log"
 
     def test_custom_log_directory(self):
         """Test custom log directory with TREE_SITTER_ANALYZER_LOG_DIR."""
@@ -116,16 +114,16 @@ class TestLoggingConfiguration(unittest.TestCase):
         file_handlers = [
             h for h in logger.handlers if isinstance(h, logging.FileHandler)
         ]
-        self.assertEqual(len(file_handlers), 1)
+        assert len(file_handlers) == 1
 
         # Verify file is in custom directory
         file_handler = file_handlers[0]
         log_path = Path(file_handler.baseFilename)
-        self.assertEqual(str(log_path.parent), custom_log_dir)
-        self.assertEqual(log_path.name, "tree_sitter_analyzer.log")
+        assert str(log_path.parent) == custom_log_dir
+        assert log_path.name == "tree_sitter_analyzer.log"
 
         # Verify directory was created
-        self.assertTrue(Path(custom_log_dir).exists())
+        assert Path(custom_log_dir).exists()
 
     def test_custom_file_log_level(self):
         """Test custom file log level with TREE_SITTER_ANALYZER_FILE_LOG_LEVEL."""
@@ -138,15 +136,15 @@ class TestLoggingConfiguration(unittest.TestCase):
         file_handlers = [
             h for h in logger.handlers if isinstance(h, logging.FileHandler)
         ]
-        self.assertEqual(len(file_handlers), 1)
+        assert len(file_handlers) == 1
 
         file_handler = file_handlers[0]
-        self.assertEqual(file_handler.level, logging.DEBUG)
+        assert file_handler.level == logging.DEBUG
 
         # Logger level should be minimum of main level and file level
         # Note: The actual implementation may not set the minimum level correctly
         # Let's check what the actual level is
-        self.assertIn(logger.level, [logging.DEBUG, logging.WARNING])
+        assert logger.level in [logging.DEBUG, logging.WARNING]
 
     def test_system_temp_directory_fallback(self):
         """Test fallback to system temporary directory."""
@@ -159,13 +157,13 @@ class TestLoggingConfiguration(unittest.TestCase):
         file_handlers = [
             h for h in logger.handlers if isinstance(h, logging.FileHandler)
         ]
-        self.assertEqual(len(file_handlers), 1)
+        assert len(file_handlers) == 1
 
         # Verify file is in system temp directory
         file_handler = file_handlers[0]
         log_path = Path(file_handler.baseFilename)
         temp_dir = Path(tempfile.gettempdir())
-        self.assertEqual(log_path.parent, temp_dir)
+        assert log_path.parent == temp_dir
 
     def test_file_logging_error_handling(self):
         """Test error handling when file logging setup fails."""
@@ -187,11 +185,11 @@ class TestLoggingConfiguration(unittest.TestCase):
                 for h in logger.handlers
                 if h.__class__.__name__ == "SafeStreamHandler"
             ]
-            self.assertEqual(len(stream_handlers), 1)
+            assert len(stream_handlers) == 1
 
             # File handler creation might still succeed with fallback to temp directory
             # So we'll just check that we have at least the stream handler
-            self.assertGreaterEqual(len(logger.handlers), 1)
+            assert len(logger.handlers) >= 1
 
     def test_log_level_environment_variable(self):
         """Test LOG_LEVEL environment variable."""
@@ -200,7 +198,7 @@ class TestLoggingConfiguration(unittest.TestCase):
         logger = setup_logger("test_logging_env_level")
 
         # Logger level should be set to DEBUG
-        self.assertEqual(logger.level, logging.DEBUG)
+        assert logger.level == logging.DEBUG
 
     def test_log_level_string_conversion(self):
         """Test string to log level conversion."""
@@ -216,7 +214,7 @@ class TestLoggingConfiguration(unittest.TestCase):
 
         for level_str, expected_level in test_cases:
             logger = setup_logger(f"test_logging_level_{level_str}", level=level_str)
-            self.assertEqual(logger.level, expected_level)
+            assert logger.level == expected_level
 
     def test_file_log_level_string_conversion(self):
         """Test file log level string conversion."""
@@ -243,10 +241,10 @@ class TestLoggingConfiguration(unittest.TestCase):
             if level_str == "INVALID":
                 # Should use main logger level as fallback
                 if file_handlers:
-                    self.assertEqual(file_handlers[0].level, logging.WARNING)
+                    assert file_handlers[0].level == logging.WARNING
             else:
-                self.assertEqual(len(file_handlers), 1)
-                self.assertEqual(file_handlers[0].level, expected_level)
+                assert len(file_handlers) == 1
+                assert file_handlers[0].level == expected_level
 
     def test_logger_level_minimum_calculation(self):
         """Test that logger level is set to minimum of main and file levels."""
@@ -258,21 +256,21 @@ class TestLoggingConfiguration(unittest.TestCase):
 
         # Logger level should be DEBUG (minimum) or WARNING depending on implementation
         # Let's be more flexible in our assertion
-        self.assertIn(logger.level, [logging.DEBUG, logging.WARNING])
+        assert logger.level in [logging.DEBUG, logging.WARNING]
 
     def test_test_logger_special_handling(self):
         """Test special handling for test loggers."""
         logger = setup_logger("test_special_logger")
 
         # Test loggers should not propagate
-        self.assertFalse(logger.propagate)
+        assert not logger.propagate
 
         # Should clear existing handlers
         initial_handler_count = len(logger.handlers)
         logger2 = setup_logger("test_special_logger")  # Same name
 
         # Should not duplicate handlers
-        self.assertEqual(len(logger2.handlers), initial_handler_count)
+        assert len(logger2.handlers) == initial_handler_count
 
     def test_file_logging_utf8_encoding(self):
         """Test that file logging uses UTF-8 encoding."""
@@ -283,11 +281,11 @@ class TestLoggingConfiguration(unittest.TestCase):
         file_handlers = [
             h for h in logger.handlers if isinstance(h, logging.FileHandler)
         ]
-        self.assertEqual(len(file_handlers), 1)
+        assert len(file_handlers) == 1
 
         file_handler = file_handlers[0]
         # Check that encoding is set to utf-8
-        self.assertEqual(file_handler.encoding, "utf-8")
+        assert file_handler.encoding == "utf-8"
 
     def test_concurrent_logger_setup(self):
         """Test that concurrent logger setup doesn't create duplicate handlers."""
@@ -299,12 +297,12 @@ class TestLoggingConfiguration(unittest.TestCase):
         logger3 = setup_logger("test_logging_concurrent")
 
         # Should all be the same logger instance
-        self.assertIs(logger1, logger2)
-        self.assertIs(logger2, logger3)
+        assert logger1 is logger2
+        assert logger2 is logger3
 
         # Should not have duplicate handlers
         expected_handlers = 2  # SafeStreamHandler + FileHandler
-        self.assertEqual(len(logger1.handlers), expected_handlers)
+        assert len(logger1.handlers) == expected_handlers
 
     @patch("sys.stderr")
     def test_stderr_error_handling(self, mock_stderr):
@@ -317,10 +315,9 @@ class TestLoggingConfiguration(unittest.TestCase):
         logger = setup_logger("test_logging_stderr_error")
 
         # Should still create logger successfully
-        self.assertIsNotNone(logger)
+        assert logger is not None
 
-
-class TestSafeStreamHandler(unittest.TestCase):
+class TestSafeStreamHandler:
     """Test SafeStreamHandler functionality."""
 
     def test_safe_stream_handler_default_stream(self):
@@ -328,7 +325,7 @@ class TestSafeStreamHandler(unittest.TestCase):
         import sys
 
         handler = SafeStreamHandler()
-        self.assertIs(handler.stream, sys.stderr)
+        assert handler.stream is sys.stderr
 
     def test_safe_stream_handler_custom_stream(self):
         """Test SafeStreamHandler with custom stream."""
@@ -336,7 +333,7 @@ class TestSafeStreamHandler(unittest.TestCase):
 
         custom_stream = StringIO()
         handler = SafeStreamHandler(custom_stream)
-        self.assertIs(handler.stream, custom_stream)
+        assert handler.stream is custom_stream
 
     def test_safe_stream_handler_closed_stream(self):
         """Test SafeStreamHandler handles closed streams safely."""
@@ -408,6 +405,3 @@ class TestSafeStreamHandler(unittest.TestCase):
         # Should not raise exception
         handler.emit(record)
 
-
-if __name__ == "__main__":
-    unittest.main()
