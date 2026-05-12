@@ -539,3 +539,205 @@ class TestMarkdownGetNodeTextOptimized:
             result = self.extractor._get_node_text_optimized(mock_node)
             # Fallback extraction should succeed and return the text
             assert result == "test"
+
+
+class TestMarkdownIndentedCodeBlocks:
+    """Tests for _extract_indented_code_blocks"""
+
+    def setup_method(self):
+        self.extractor = MarkdownElementExtractor()
+        self.extractor.source_code = "    code line\n    more code"
+        self.extractor.content_lines = ["    code line", "    more code"]
+        self.extractor._node_text_cache = {}
+        self.extractor._processed_nodes = set()
+        self.extractor._element_cache = {}
+
+    def test_extract_indented_code_block_success(self):
+        """Test indented code block extraction success path (lines 646-663)"""
+        from unittest.mock import Mock
+
+        mock_root = Mock()
+        mock_root.children = []
+
+        code_node = Mock()
+        code_node.children = []
+        code_node.type = "indented_code_block"
+        code_node.start_point = (0, 0)
+        code_node.end_point = (1, 0)
+        code_node.start_byte = 0
+        code_node.end_byte = 24
+
+        mock_root.children = [code_node]
+
+        code_blocks = []
+        self.extractor._extract_indented_code_blocks(mock_root, code_blocks)
+
+        assert len(code_blocks) == 1
+        assert code_blocks[0].language == "text"
+        assert code_blocks[0].type == "code_block"
+        assert code_blocks[0].element_type == "code_block"
+        assert code_blocks[0].line_count == 2
+
+    def test_extract_indented_code_block_exception(self):
+        """Test indented code block exception handler (lines 664-665)"""
+        from unittest.mock import Mock, patch
+
+        mock_root = Mock()
+        mock_root.children = []
+
+        code_node = Mock()
+        code_node.children = []
+        code_node.type = "indented_code_block"
+        code_node.start_point = (0, 0)
+        code_node.end_point = (1, 0)
+
+        mock_root.children = [code_node]
+
+        with patch.object(
+            self.extractor, "_get_node_text_optimized",
+            side_effect=RuntimeError("test error")
+        ):
+            code_blocks = []
+            self.extractor._extract_indented_code_blocks(mock_root, code_blocks)
+            assert len(code_blocks) == 0
+
+
+class TestMarkdownReferenceLinks:
+    """Tests for _extract_reference_links inline node path"""
+
+    def setup_method(self):
+        self.extractor = MarkdownElementExtractor()
+        self.extractor.source_code = "[text][ref]\n[other][ref2]"
+        self.extractor.content_lines = ["[text][ref]", "[other][ref2]"]
+        self.extractor._node_text_cache = {}
+        self.extractor._processed_nodes = set()
+        self.extractor._element_cache = {}
+        self.extractor._extracted_links = set()
+
+    def test_extract_reference_links_inline_node(self):
+        """Test reference link extraction from inline node (lines 731-759)"""
+        from unittest.mock import Mock
+
+        mock_root = Mock()
+        mock_root.children = []
+
+        inline_node = Mock()
+        inline_node.children = []
+        inline_node.type = "inline"
+        inline_node.start_point = (0, 0)
+        inline_node.end_point = (1, 0)
+        inline_node.start_byte = 0
+        inline_node.end_byte = 26
+
+        mock_root.children = [inline_node]
+
+        links = []
+        self.extractor._extract_reference_links(mock_root, links)
+
+        assert len(links) == 2
+        assert links[0].name == "text"
+        assert links[1].name == "other"
+
+
+class TestMarkdownThematicBreaks:
+    """Tests for _extract_thematic_breaks"""
+
+    def setup_method(self):
+        self.extractor = MarkdownElementExtractor()
+        self.extractor.source_code = "---\n\n***"
+        self.extractor.content_lines = ["---", "", "***"]
+        self.extractor._node_text_cache = {}
+        self.extractor._processed_nodes = set()
+        self.extractor._element_cache = {}
+
+    def test_extract_thematic_breaks_success(self):
+        """Test thematic break extraction (lines 1011-1027)"""
+        from unittest.mock import Mock
+
+        mock_root = Mock()
+        mock_root.children = []
+
+        tb_node = Mock()
+        tb_node.children = []
+        tb_node.type = "thematic_break"
+        tb_node.start_point = (0, 0)
+        tb_node.end_point = (0, 3)
+        tb_node.start_byte = 0
+        tb_node.end_byte = 3
+
+        mock_root.children = [tb_node]
+
+        breaks = []
+        self.extractor._extract_thematic_breaks(mock_root, breaks)
+
+        assert len(breaks) == 1
+        assert breaks[0].element_type == "horizontal_rule"
+        assert breaks[0].type == "horizontal_rule"
+
+
+class TestMarkdownLinkRefDefinitions:
+    """Tests for _extract_link_reference_definitions success path"""
+
+    def setup_method(self):
+        self.extractor = MarkdownElementExtractor()
+        self.extractor.source_code = '[label]: https://example.com "Title"'
+        self.extractor.content_lines = ['[label]: https://example.com "Title"']
+        self.extractor._node_text_cache = {}
+        self.extractor._processed_nodes = set()
+        self.extractor._element_cache = {}
+
+    def test_extract_link_reference_defs_success(self):
+        """Test link reference definition extraction success (lines 955-980)"""
+        from unittest.mock import Mock
+
+        mock_root = Mock()
+        mock_root.children = []
+
+        ref_node = Mock()
+        ref_node.children = []
+        ref_node.type = "link_reference_definition"
+        ref_node.start_point = (0, 0)
+        ref_node.end_point = (0, 35)
+        ref_node.start_byte = 0
+        ref_node.end_byte = 35
+
+        mock_root.children = [ref_node]
+
+        refs = []
+        self.extractor._extract_link_reference_definitions(mock_root, refs)
+
+        assert len(refs) >= 1
+
+
+class TestMarkdownAllElementsExtract:
+    """Tests for extract_all_elements method"""
+
+    def setup_method(self):
+        self.extractor = MarkdownElementExtractor()
+
+    def test_extract_all_elements_with_markdown_extractor(self):
+        """Test extract_all_elements MarkdownElementExtractor branch (lines 1726-1790)"""
+        from unittest.mock import Mock, patch
+
+        mock_tree = Mock()
+        mock_root = Mock()
+        mock_root.children = []
+        mock_tree.root_node = mock_root
+
+        source = "# Test"
+
+        # Patch all internal extraction methods to return known items
+        with patch.object(self.extractor, "extract_headers", return_value=[]), \
+             patch.object(self.extractor, "extract_code_blocks", return_value=[]), \
+             patch.object(self.extractor, "extract_links", return_value=[]), \
+             patch.object(self.extractor, "extract_images", return_value=[]), \
+             patch.object(self.extractor, "extract_references", return_value=[]), \
+             patch.object(self.extractor, "extract_lists", return_value=[]), \
+             patch.object(self.extractor, "extract_tables", return_value=[]), \
+             patch.object(self.extractor, "extract_blockquotes", return_value=[]), \
+             patch.object(self.extractor, "extract_horizontal_rules", return_value=[]), \
+             patch.object(self.extractor, "extract_html_elements", return_value=[]), \
+             patch.object(self.extractor, "extract_text_formatting", return_value=[]), \
+             patch.object(self.extractor, "extract_footnotes", return_value=[]):
+            elements = self.extractor.extract_all_elements(mock_tree, source)
+            assert isinstance(elements, list)
