@@ -329,3 +329,4 @@ tests/debug_artifacts/
 .claude/
 .agents/
 coverage.json
+coverage.json
