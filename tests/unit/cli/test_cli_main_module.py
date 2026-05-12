@@ -1063,7 +1063,7 @@ class TestHandleSpecialCommands:
 
     @patch("tree_sitter_analyzer.platform_compat.recorder.BehaviorRecorder")
     @patch("tree_sitter_analyzer.cli_main.output_info")
-    @patch("tree_sitter_analyzer.cli_main.Path")
+    @patch("pathlib.Path")
     def test_record_sql_profile_success(
         self, mock_path_cls, mock_output_info, mock_recorder_cls
     ):
@@ -1119,7 +1119,7 @@ class TestHandleSpecialCommands:
 
     # --- compare_sql_profiles ---
 
-    @patch("tree_sitter_analyzer.cli_main.Path")
+    @patch("pathlib.Path")
     @patch("tree_sitter_analyzer.cli_main.output_error")
     def test_compare_sql_profiles_missing_first(
         self, mock_output_error, mock_path_cls
@@ -1146,7 +1146,7 @@ class TestHandleSpecialCommands:
         assert result == 1
         mock_output_error.assert_called_once()
 
-    @patch("tree_sitter_analyzer.cli_main.Path")
+    @patch("pathlib.Path")
     @patch("tree_sitter_analyzer.cli_main.output_error")
     def test_compare_sql_profiles_missing_second(
         self, mock_output_error, mock_path_cls
@@ -1173,7 +1173,7 @@ class TestHandleSpecialCommands:
         assert result == 1
         mock_output_error.assert_called_once()
 
-    @patch("tree_sitter_analyzer.cli_main.Path")
+    @patch("pathlib.Path")
     @patch("tree_sitter_analyzer.platform_compat.compare.compare_profiles")
     @patch("tree_sitter_analyzer.platform_compat.compare.generate_diff_report")
     @patch("builtins.print")
@@ -1226,7 +1226,7 @@ class TestHandleSpecialCommands:
             mock_generate_diff.assert_called_once_with(mock_comparison)
             mock_print.assert_called_once_with("Diff report content")
 
-    @patch("tree_sitter_analyzer.cli_main.Path")
+    @patch("pathlib.Path")
     @patch("tree_sitter_analyzer.cli_main.output_error")
     def test_compare_sql_profiles_error(
         self, mock_output_error, mock_path_cls
