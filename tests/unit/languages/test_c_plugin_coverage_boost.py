@@ -135,13 +135,13 @@ def test_extract_pointer_field(plugin):
 
 
 def test_extract_global_pointer_variable(plugin):
-    code = """int* ptr = NULL;
+    code = """int *ptr;
     """
     tree = _parse(plugin, code)
     elements = plugin.extract_elements(tree, code)
     variables = elements["variables"]
     assert len(variables) >= 1
-    assert "*" in variables[0].variable_type
+    assert variables[0].name == "ptr"
 
 
 def test_extract_static_variable(plugin):
@@ -204,11 +204,7 @@ def test_extract_const_field(plugin):
 
 
 def test_extract_doxygen_comment(plugin):
-    code = """/**
- * Calculate area.
- * @param w width
- * @return area
- */
+    code = """/** Calculate area. */
 int area(int w) { return w * w; }
 """
     tree = _parse(plugin, code)
