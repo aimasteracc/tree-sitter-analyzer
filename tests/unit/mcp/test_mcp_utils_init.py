@@ -1,7 +1,6 @@
 """Tests for tree_sitter_analyzer.mcp.utils.__init__ module."""
 
 import importlib
-from unittest.mock import patch
 
 import tree_sitter_analyzer.mcp.utils as mcp_utils_mod
 from tree_sitter_analyzer.mcp.utils import (
@@ -46,20 +45,75 @@ class TestGetPerformanceMonitor:
 
 
 class TestImportErrorFallback:
-    @patch.dict("sys.modules", {"tree_sitter_analyzer.core.cache_service": None})
     def test_fallback_get_cache_manager_returns_none(self):
-        importlib.reload(mcp_utils_mod)
-        try:
-            result = mcp_utils_mod.get_cache_manager()
-            assert result is None
-        finally:
-            importlib.reload(mcp_utils_mod)
+        """Test that fallback returns None when core services unavailable."""
+        import sys
 
-    @patch.dict("sys.modules", {"tree_sitter_analyzer.core.cache_service": None})
-    def test_fallback_get_performance_monitor_returns_none(self):
-        importlib.reload(mcp_utils_mod)
+        # Remove the cache_service module from sys.modules so the import
+        # machinery actually calls find_spec (where we block it).
+        blocked = "tree_sitter_analyzer.core.cache_service"
+        saved = sys.modules.pop(blocked, None)
+
+        block_list = {blocked}
+
+        class BlockFinder:
+            def find_spec(self, fullname, path, target=None):
+                if fullname in block_list:
+                    raise ImportError(f"Blocked import of {fullname}")
+                return None
+
+        finder = BlockFinder()
+        sys.meta_path.insert(0, finder)
+
+        # Remove cached mcp.utils modules to force fresh import
+        for mod in list(sys.modules):
+            if mod.startswith("tree_sitter_analyzer.mcp.utils"):
+                del sys.modules[mod]
+
         try:
-            result = mcp_utils_mod.get_performance_monitor()
+            mod = importlib.import_module("tree_sitter_analyzer.mcp.utils")
+            result = mod.get_cache_manager()
             assert result is None
         finally:
-            importlib.reload(mcp_utils_mod)
+            sys.meta_path.remove(finder)
+            if saved is not None:
+                sys.modules[blocked] = saved
+            for mod in list(sys.modules):
+                if mod.startswith("tree_sitter_analyzer.mcp.utils"):
+                    del sys.modules[mod]
+            importlib.import_module("tree_sitter_analyzer.mcp.utils")
+
+    def test_fallback_get_performance_monitor_returns_none(self):
+        """Test that fallback performance monitor returns None."""
+        import sys
+
+        blocked = "tree_sitter_analyzer.core.cache_service"
+        saved = sys.modules.pop(blocked, None)
+
+        block_list = {blocked}
+
+        class BlockFinder:
+            def find_spec(self, fullname, path, target=None):
+                if fullname in block_list:
+                    raise ImportError(f"Blocked import of {fullname}")
+                return None
+
+        finder = BlockFinder()
+        sys.meta_path.insert(0, finder)
+
+        for mod in list(sys.modules):
+            if mod.startswith("tree_sitter_analyzer.mcp.utils"):
+                del sys.modules[mod]
+
+        try:
+            mod = importlib.import_module("tree_sitter_analyzer.mcp.utils")
+            result = mod.get_performance_monitor()
+            assert result is None
+        finally:
+            sys.meta_path.remove(finder)
+            if saved is not None:
+                sys.modules[blocked] = saved
+            for mod in list(sys.modules):
+                if mod.startswith("tree_sitter_analyzer.mcp.utils"):
+                    del sys.modules[mod]
+            importlib.import_module("tree_sitter_analyzer.mcp.utils")
