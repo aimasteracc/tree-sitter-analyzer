@@ -9,10 +9,24 @@ from tree_sitter_analyzer.queries.python import (
     ALL_QUERIES,
     CLASSES,
     COMMENTS,
+    COMPREHENSIONS,
+    CONTEXT_MANAGERS,
+    DECORATORS,
+    EXCEPTIONS,
     FUNCTIONS,
     IMPORTS,
+    LAMBDAS,
+    METHODS,
+    MODERN_PATTERNS,
+    PYTHON_QUERIES,
+    PYTHON_QUERY_DESCRIPTIONS,
+    STRING_FORMATTING,
+    TYPE_HINTS,
     VARIABLES,
     get_all_queries,
+    get_available_python_queries,
+    get_python_query,
+    get_python_query_description,
     get_query,
     list_queries,
 )
@@ -146,3 +160,203 @@ class TestPythonQueries:
             assert open_count == close_count, (
                 f"Unbalanced parentheses in {query_name} query"
             )
+
+
+class TestGetPythonQuery:
+    """Test get_python_query function"""
+
+    def test_valid_query_name(self) -> None:
+        query = get_python_query("function")
+        assert isinstance(query, str)
+        assert "function_definition" in query
+
+    def test_valid_query_various_names(self) -> None:
+        names = [
+            "class_definition",
+            "async_function",
+            "lambda",
+            "constructor",
+            "import_from",
+            "decorator_call",
+            "try_statement",
+            "list_comprehension",
+            "type_hint",
+            "match_statement",
+            "f_string",
+            "django_model",
+            "dataclass",
+        ]
+        for name in names:
+            query = get_python_query(name)
+            assert isinstance(query, str)
+            assert len(query.strip()) > 0
+
+    def test_invalid_query_name_raises(self) -> None:
+        with pytest.raises(ValueError) as exc_info:
+            get_python_query("nonexistent")
+        assert "does not exist" in str(exc_info.value)
+        assert "Available:" in str(exc_info.value)
+
+    def test_returns_python_queries_dict_entries(self) -> None:
+        for name in PYTHON_QUERIES:
+            query = get_python_query(name)
+            assert query == PYTHON_QUERIES[name]
+
+
+class TestGetPythonQueryDescription:
+    """Test get_python_query_description function"""
+
+    def test_known_query_description(self) -> None:
+        desc = get_python_query_description("function")
+        assert isinstance(desc, str)
+        assert len(desc) > 0
+
+    def test_all_descriptions_are_strings(self) -> None:
+        for name in PYTHON_QUERIES:
+            desc = get_python_query_description(name)
+            assert isinstance(desc, str)
+            assert len(desc) > 0
+
+    def test_unknown_query_returns_default(self) -> None:
+        desc = get_python_query_description("totally_fake_query")
+        assert desc == "No description"
+
+
+class TestGetAvailablePythonQueries:
+    """Test get_available_python_queries function"""
+
+    def test_returns_list(self) -> None:
+        result = get_available_python_queries()
+        assert isinstance(result, list)
+        assert len(result) > 0
+
+    def test_contains_essential_queries(self) -> None:
+        result = set(get_available_python_queries())
+        assert "function" in result
+        assert "class" in result
+        assert "import" in result
+        assert "variable" in result
+        assert "lambda" in result
+
+    def test_matches_python_queries_keys(self) -> None:
+        result = get_available_python_queries()
+        assert set(result) == set(PYTHON_QUERIES.keys())
+
+
+class TestPythonQueryConstants:
+    """Test individual query constants"""
+
+    def test_decorators_constant(self) -> None:
+        assert "decorator" in DECORATORS
+        assert "@decorator" in DECORATORS
+
+    def test_methods_constant(self) -> None:
+        assert "function_definition" in METHODS
+        assert "@method" in METHODS
+
+    def test_exceptions_constant(self) -> None:
+        assert "try_statement" in EXCEPTIONS
+        assert "@try" in EXCEPTIONS
+
+    def test_comprehensions_constant(self) -> None:
+        assert "list_comprehension" in COMPREHENSIONS
+        assert "@comprehension" in COMPREHENSIONS
+
+    def test_type_hints_constant(self) -> None:
+        assert "typed_parameter" in TYPE_HINTS
+        assert "@type" in TYPE_HINTS
+
+    def test_string_formatting_constant(self) -> None:
+        assert "formatted_string" in STRING_FORMATTING
+
+    def test_context_managers_constant(self) -> None:
+        assert "with_statement" in CONTEXT_MANAGERS or "with_item" in CONTEXT_MANAGERS
+
+    def test_lambdas_constant(self) -> None:
+        assert "lambda" in LAMBDAS
+        assert "@lambda" in LAMBDAS
+
+    def test_modern_patterns_constant(self) -> None:
+        assert "match_statement" in MODERN_PATTERNS
+
+
+class TestAllQueriesLegacyEntries:
+    """Test legacy entries in ALL_QUERIES"""
+
+    def test_methods_legacy(self) -> None:
+        assert "methods" in ALL_QUERIES
+        assert ALL_QUERIES["methods"]["query"] == METHODS
+
+    def test_exceptions_legacy(self) -> None:
+        assert "exceptions" in ALL_QUERIES
+        assert ALL_QUERIES["exceptions"]["query"] == EXCEPTIONS
+
+    def test_comprehensions_legacy(self) -> None:
+        assert "comprehensions" in ALL_QUERIES
+        assert ALL_QUERIES["comprehensions"]["query"] == COMPREHENSIONS
+
+    def test_type_hints_legacy(self) -> None:
+        assert "type_hints" in ALL_QUERIES
+
+    def test_async_patterns_legacy(self) -> None:
+        assert "async_patterns" in ALL_QUERIES
+
+    def test_string_formatting_legacy(self) -> None:
+        assert "string_formatting" in ALL_QUERIES
+
+    def test_context_managers_legacy(self) -> None:
+        assert "context_managers" in ALL_QUERIES
+
+    def test_lambdas_legacy(self) -> None:
+        assert "lambdas" in ALL_QUERIES
+
+    def test_modern_patterns_legacy(self) -> None:
+        assert "modern_patterns" in ALL_QUERIES
+
+    def test_function_names_alias(self) -> None:
+        assert "function_names" in ALL_QUERIES
+        assert ALL_QUERIES["function_names"]["query"] == FUNCTIONS
+
+    def test_class_names_alias(self) -> None:
+        assert "class_names" in ALL_QUERIES
+
+    def test_all_declarations_combined(self) -> None:
+        assert "all_declarations" in ALL_QUERIES
+        query = ALL_QUERIES["all_declarations"]["query"]
+        assert "function_definition" in query
+        assert "class_definition" in query
+        assert "assignment" in query
+
+
+class TestPythonQueriesDictCompleteness:
+    """Test PYTHON_QUERIES and PYTHON_QUERY_DESCRIPTIONS"""
+
+    def test_every_query_has_description(self) -> None:
+        for name in PYTHON_QUERIES:
+            assert name in PYTHON_QUERY_DESCRIPTIONS, f"Missing description for {name}"
+
+    def test_every_description_has_query(self) -> None:
+        for name in PYTHON_QUERY_DESCRIPTIONS:
+            assert name in PYTHON_QUERIES, f"Missing query for {name}"
+
+    def test_query_categories_exist(self) -> None:
+        categories = [
+            "function",
+            "class",
+            "variable",
+            "import",
+            "decorator",
+            "if_statement",
+            "for_statement",
+            "while_statement",
+            "try_statement",
+            "except_clause",
+            "raise_statement",
+            "list_comprehension",
+            "comment",
+            "docstring",
+            "yield_expression",
+            "await_expression",
+        ]
+        for cat in categories:
+            assert cat in PYTHON_QUERIES
