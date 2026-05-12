@@ -328,3 +328,4 @@ tests/debug_artifacts/
 # AI assistant skill cache (symlinks — not part of source)
 .claude/
 .agents/
+coverage.json
