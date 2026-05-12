@@ -76,27 +76,44 @@ def test_cli_has_dir() -> None:
 
 def test_cli_import_error_fallback() -> None:
     """Test CLI package sets None fallbacks when core imports fail."""
-    import builtins
     import importlib
+    import importlib.util
     import sys
-    from unittest import mock
 
-    original_import = builtins.__import__
-
-    def selective_import(name, *args, **kwargs):
-        if "cli_main" in name:
-            raise ImportError("simulated")
-        return original_import(name, *args, **kwargs)
-
+    # Remove both cli and its parent from cache to force clean reimport.
+    # Also clear any cached cli reference on the parent package.
+    parent = sys.modules.pop("tree_sitter_analyzer", None)
     sys.modules.pop("tree_sitter_analyzer.cli", None)
 
-    try:
-        with mock.patch("builtins.__import__", selective_import):
-            import tree_sitter_analyzer.cli as cli
+    # Use a meta_path finder to block the specific modules.
+    # This works regardless of whether __import__ is patched.
+    block_list = {
+        "tree_sitter_analyzer.cli_main",
+        "tree_sitter_analyzer.core.analysis_engine",
+        "tree_sitter_analyzer.query_loader",
+    }
 
-            assert cli.main is None
-            assert cli.get_analysis_engine is None
-            assert cli.query_loader is None
+    class BlockFinder:
+        def find_spec(self, fullname, path, target=None):
+            if fullname in block_list:
+                raise ImportError(f"Blocked import of {fullname}")
+            return None
+
+    finder = BlockFinder()
+    sys.meta_path.insert(0, finder)
+
+    try:
+        cli = importlib.import_module("tree_sitter_analyzer.cli")
+        assert cli.main is None, f"Expected main=None, got {cli.main}"
+        assert cli.get_analysis_engine is None, f"Expected get_analysis_engine=None"
+        assert cli.query_loader is None, f"Expected query_loader=None"
     finally:
-        sys.modules.pop("tree_sitter_analyzer.cli", None)
+        # Restore meta_path and modules
+        sys.meta_path.remove(finder)
+        for mod in list(sys.modules):
+            if "tree_sitter_analyzer" in mod:
+                del sys.modules[mod]
+        if parent is not None:
+            sys.modules["tree_sitter_analyzer"] = parent
+        # Re-import normally to restore state
         importlib.import_module("tree_sitter_analyzer.cli")
