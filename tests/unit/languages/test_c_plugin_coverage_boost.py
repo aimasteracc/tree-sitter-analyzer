@@ -263,3 +263,167 @@ def test_traverse_max_depth(plugin):
         FakeNode(), {"translation_unit": lambda n: None}, results, "test"
     )
     assert isinstance(results, list)
+
+
+def test_traverse_none_root(plugin):
+    extractor = CElementExtractor()
+    results = []
+    extractor._traverse_and_extract_iterative(None, {}, results, "test")
+    assert results == []
+
+
+def test_extract_variable_in_struct_body_skipped(plugin):
+    code = """struct S { int x; };
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    variables = elements["variables"]
+    non_field = [v for v in variables if v.name == "x" and v.visibility != "public"]
+    assert len(non_field) == 0
+
+
+def test_extract_macro_function_with_variadic(plugin):
+    code = """#define LOG(fmt, ...) printf(fmt, __VA_ARGS__)
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    funcs = elements["functions"]
+    macro_fns = [f for f in funcs if "macro" in f.modifiers]
+    assert len(macro_fns) >= 1
+    assert "..." in macro_fns[0].parameters
+
+
+def test_extract_anonymous_struct(plugin):
+    code = """struct { int a; } instance;
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    classes = elements["classes"]
+    assert len(classes) >= 1
+    assert "anonymous_struct" in classes[0].name
+
+
+def test_extract_anonymous_union(plugin):
+    code = """union { int a; float b; } u;
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    classes = elements["classes"]
+    unions = [c for c in classes if c.class_type == "union"]
+    assert len(unions) >= 1
+    assert "anonymous_union" in unions[0].name
+
+
+def test_extract_anonymous_enum(plugin):
+    code = """enum { VAL1, VAL2 } my_enum;
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    classes = elements["classes"]
+    enums = [c for c in classes if c.class_type == "enum"]
+    assert len(enums) >= 1
+    assert "anonymous_enum" in enums[0].name
+
+
+def test_extract_const_function_qualifier(plugin):
+    code = """const int get_val(void) { return 42; }
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    funcs = elements["functions"]
+    assert len(funcs) >= 1
+    assert "const" in funcs[0].modifiers
+
+
+def test_count_tree_nodes(plugin):
+    code = """int x;
+void f(void) {}
+"""
+    tree = _parse(plugin, code)
+    count = plugin._count_tree_nodes(tree.root_node)
+    assert count > 0
+
+
+def test_count_tree_nodes_none(plugin):
+    assert plugin._count_tree_nodes(None) == 0
+
+
+def test_get_tree_sitter_language_cached(plugin):
+    lang1 = plugin.get_tree_sitter_language()
+    assert lang1 is not None
+    lang2 = plugin.get_tree_sitter_language()
+    assert lang2 is lang1
+
+
+def test_extract_function_with_for_loop(plugin):
+    code = """int sum(int n) {
+    int s = 0;
+    for (int i = 0; i < n; i++) { s += i; }
+    if (s > 0) { return s; }
+    return 0;
+}
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    funcs = elements["functions"]
+    assert len(funcs) >= 1
+    assert funcs[0].complexity_score > 1
+
+
+def test_extract_field_with_init_declarator(plugin):
+    code = """struct Config {
+        int timeout = 30;
+    };
+    """
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    variables = elements["variables"]
+    timeout_vars = [v for v in variables if v.name == "timeout"]
+    assert len(timeout_vars) >= 1
+
+
+def test_extractor_init_state():
+    ext = CElementExtractor()
+    assert ext.current_file == ""
+    assert ext.source_code == ""
+    assert ext._file_encoding is None
+
+
+def test_plugin_properties(plugin):
+    assert plugin.get_language_name() == "c"
+    assert ".c" in plugin.get_file_extensions()
+    assert ".h" in plugin.get_file_extensions()
+    assert isinstance(plugin.create_extractor(), CElementExtractor)
+
+
+def test_extract_local_include_regex_fallback():
+    extractor = CElementExtractor()
+    code = '#include "utils.h"\n#include "helpers.h"\n'
+    imports = extractor._extract_includes_fallback(code)
+    assert len(imports) == 2
+    assert imports[0].name == "utils.h"
+    assert imports[1].name == "helpers.h"
+
+
+def test_extract_system_include_regex_fallback():
+    extractor = CElementExtractor()
+    code = "#include <stdlib.h>\n#include <string.h>\n"
+    imports = extractor._extract_includes_fallback(code)
+    assert len(imports) == 2
+    assert imports[0].name == "stdlib.h"
+
+
+def test_extract_function_with_switch(plugin):
+    code = """int classify(int x) {
+    switch(x) {
+        case 1: return 10;
+        case 2: return 20;
+        default: return 0;
+    }
+}
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    funcs = elements["functions"]
+    assert len(funcs) >= 1
+    assert funcs[0].complexity_score >= 3
