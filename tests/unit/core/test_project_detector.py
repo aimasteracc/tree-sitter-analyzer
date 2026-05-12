@@ -335,6 +335,7 @@ class TestProjectDetectorEdge:
     def test_detect_from_file_with_file_input(self, tmp_path):
         """detect_project_root with a file path → uses parent directory."""
         from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
         project = tmp_path / "proj"
         project.mkdir()
         (project / "pyproject.toml").touch()
@@ -349,12 +350,14 @@ class TestProjectDetectorEdge:
     def test_detect_from_file_empty_path(self):
         """detect_project_root with empty/NONE path returns None."""
         from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
         detector = ProjectRootDetector()
         assert detector.detect_from_file("") is None
 
     def test_traverse_upward_finds_best_candidate(self, tmp_path):
         """Multiple directories with different markers — picks highest score."""
         from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
         project = tmp_path / "proj"
         project.mkdir()
         (project / "setup.py").touch()
@@ -368,6 +371,7 @@ class TestProjectDetectorEdge:
     def test_calculate_score_weights(self):
         """_calculate_score returns weighted scores for different markers."""
         from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
         detector = ProjectRootDetector()
         score = detector._calculate_score([".git", "pyproject.toml"])
         assert score > 0
@@ -375,7 +379,102 @@ class TestProjectDetectorEdge:
     def test_detect_from_cwd_exception_handling(self, monkeypatch):
         """detect_from_cwd handles OSError gracefully."""
         from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
         detector = ProjectRootDetector()
-        monkeypatch.setattr("pathlib.Path.cwd", lambda: (_ for _ in ()).throw(OSError("boom")))
+        monkeypatch.setattr(
+            "pathlib.Path.cwd", lambda: (_ for _ in ()).throw(OSError("boom"))
+        )
         result = detector.detect_from_cwd()
+        assert result is None
+
+    def test_detect_from_file_exception_handling(self, monkeypatch, tmp_path):
+        """detect_from_file handles exceptions gracefully."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        detector = ProjectRootDetector()
+        monkeypatch.setattr(
+            "pathlib.Path.resolve",
+            lambda self: (_ for _ in ()).throw(OSError("resolve boom")),
+        )
+        result = detector.detect_from_file(str(tmp_path / "test.py"))
+        assert result is None
+
+    def test_traverse_candidates_without_high_priority(self, tmp_path):
+        """Non-high-priority markers trigger candidate sorting path."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        project = tmp_path / "proj"
+        project.mkdir()
+        (project / "README.md").touch()
+        sub = project / "sub"
+        sub.mkdir()
+        detector = ProjectRootDetector()
+        result = detector._traverse_upward(str(sub))
+        assert result is not None
+        assert "proj" in result
+
+    def test_find_markers_with_glob_patterns(self, tmp_path):
+        """Glob markers like *.sln are matched correctly."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        detector = ProjectRootDetector()
+        (tmp_path / "MySolution.sln").touch()
+        markers = detector._find_markers_in_dir(str(tmp_path))
+        assert "*.sln" in markers
+
+    def test_find_markers_oserror(self, monkeypatch):
+        """_find_markers_in_dir handles OSError gracefully."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        detector = ProjectRootDetector()
+        monkeypatch.setattr(
+            "pathlib.Path.exists",
+            lambda self: (_ for _ in ()).throw(OSError("access denied")),
+        )
+        markers = detector._find_markers_in_dir("/no/access")
+        assert markers == []
+
+    def test_calculate_score_medium_and_low_priority(self):
+        """Medium and low priority markers score correctly."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        detector = ProjectRootDetector()
+        high = detector._calculate_score([".git"])
+        medium = detector._calculate_score(["setup.py"])
+        low = detector._calculate_score(["README.md"])
+        assert high > medium > low
+
+    def test_get_fallback_root_existing_directory(self, tmp_path):
+        """get_fallback_root returns the directory itself for an existing dir."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        detector = ProjectRootDetector()
+        result = detector.get_fallback_root(str(tmp_path))
+        assert Path(result).resolve() == tmp_path.resolve()
+
+    def test_get_fallback_root_empty_string(self):
+        """get_fallback_root with empty string returns cwd."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        detector = ProjectRootDetector()
+        result = detector.get_fallback_root("")
+        assert result == str(Path.cwd())
+
+    def test_get_fallback_root_nonexistent_path(self):
+        """get_fallback_root with nonexistent path returns cwd."""
+        from tree_sitter_analyzer.project_detector import ProjectRootDetector
+
+        detector = ProjectRootDetector()
+        result = detector.get_fallback_root("/nonexistent_dir_xyz/file.py")
+        assert result == str(Path.cwd())
+
+    def test_detect_project_root_no_args_no_markers(self, monkeypatch, tmp_path):
+        """detect_project_root returns None when cwd has no markers."""
+        import tree_sitter_analyzer.project_detector as pd_module
+
+        isolated = tmp_path / "empty_dir"
+        isolated.mkdir()
+        monkeypatch.setattr(pd_module.Path, "cwd", lambda: isolated)
+        monkeypatch.setattr("pathlib.Path.cwd", lambda: isolated)
+        result = detect_project_root()
         assert result is None
