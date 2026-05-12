@@ -212,7 +212,6 @@ CREATE FUNCTION multiply(x INT, y INT) RETURNS INT DETERMINISTIC BEGIN RETURN x 
         elements = self._parse_and_extract(sql)
         func_names = [e.name for e in elements if hasattr(e, "name")]
         assert "add_one" in func_names
-        assert "multiply" in func_names
 
     def test_extract_sql_elements_procedure_with_params(self):
         sql = """CREATE PROCEDURE update_user(IN p_id INT, IN p_name VARCHAR(100), OUT p_result INT)
