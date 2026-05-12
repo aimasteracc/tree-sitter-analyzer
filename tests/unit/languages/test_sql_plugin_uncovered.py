@@ -219,3 +219,152 @@ SELECT id, name FROM products;
         plugin2 = SQLPlugin()
         result = plugin2.extract_elements(tree, code)
         assert len(result["classes"]) >= 1
+
+
+class TestErrorNodeViewExtraction:
+    """Cover _extract_sql_views ERROR node path (lines 1405-1455)."""
+
+    def test_error_node_with_view(self, plugin, parser):
+        """Unclosed BEGIN block produces ERROR node containing CREATE VIEW."""
+        code = "BEGIN SELECT 1; CREATE VIEW error_block_view AS SELECT * FROM users;"
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        views = [e for e in elements if isinstance(e, SQLView)]
+        assert len(views) >= 1
+        assert any(v.name == "error_block_view" for v in views)
+
+    def test_error_node_view_with_if_not_exists(self, plugin, parser):
+        """ERROR node containing CREATE VIEW IF NOT EXISTS."""
+        code = "BEGIN SELECT 1; CREATE VIEW IF NOT EXISTS safe_view AS SELECT a, b FROM mytable;"
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        views = [e for e in elements if isinstance(e, SQLView)]
+        assert any(v.name == "safe_view" for v in views)
+
+
+class TestFunctionRegexFallback:
+    """Cover _extract_sql_functions regex fallback (lines 1013-1023)."""
+
+    def test_function_with_keyword_name(self, plugin, parser):
+        """Function named 'count' triggers AST rejection + regex fallback."""
+        code = "CREATE FUNCTION count(IN x INT) RETURNS INT RETURN x + 1;"
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        # Both AST and regex reject 'count' as invalid, so no function extracted
+        # But both code paths are exercised
+        funcs = [e for e in elements if isinstance(e, SQLFunction)]
+        # 'count' is rejected by _is_valid_identifier, so no function
+        assert len(funcs) == 0
+
+    def test_function_with_column_name(self, plugin, parser):
+        """Function named 'price' triggers AST rejection + regex fallback."""
+        code = "CREATE FUNCTION price(IN x INT) RETURNS INT RETURN x * 2;"
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        # price is in common_column_names, should be rejected
+        funcs = [e for e in elements if isinstance(e, SQLFunction)]
+        assert len(funcs) == 0
+
+
+class TestProcedureRegexFallback:
+    """Cover _extract_sql_procedures regex-based extraction paths."""
+
+    def test_multi_procedure_extraction(self, plugin, parser):
+        """Multiple procedures in one file tests iteration loop."""
+        code = """\
+CREATE PROCEDURE first_proc()
+BEGIN
+    SELECT 'first';
+END;
+
+CREATE PROCEDURE second_proc(IN param INT)
+BEGIN
+    SELECT param;
+END;
+"""
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        procs = [e for e in elements if isinstance(e, SQLProcedure)]
+        assert len(procs) >= 1
+
+    def test_procedure_with_dependencies(self, plugin, parser):
+        """Procedure that references tables tests dependency extraction."""
+        code = """\
+CREATE PROCEDURE update_status(IN user_id INT, IN new_status VARCHAR(20))
+BEGIN
+    UPDATE users SET status = new_status WHERE id = user_id;
+    INSERT INTO audit_log (user_id, action) VALUES (user_id, 'status_change');
+END;
+"""
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        procs = [e for e in elements if isinstance(e, SQLProcedure)]
+        assert len(procs) >= 1
+
+
+class TestEnhancedFunctionExtraction:
+    """Cover _extract_sql_functions_enhanced text-based fallback paths."""
+
+    def test_function_body_text_extraction(self, plugin, parser):
+        """Function body parsed via text-based approach (not AST children)."""
+        code = """\
+CREATE FUNCTION calc_bonus(salary DECIMAL(10,2)) RETURNS DECIMAL(10,2)
+BEGIN
+    DECLARE bonus DECIMAL(10,2);
+    SET bonus = salary * 0.1;
+    RETURN bonus;
+END;
+"""
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        funcs = [e for e in elements if isinstance(e, SQLFunction)]
+        assert len(funcs) >= 1
+
+    def test_function_with_return_type_metadata(self, plugin, parser):
+        """Function with complex return type to test metadata extraction."""
+        code = """\
+CREATE FUNCTION get_full_name(first_id INT) RETURNS VARCHAR(255)
+BEGIN
+    DECLARE full_name VARCHAR(255);
+    SELECT CONCAT(first_name, ' ', last_name) INTO full_name
+    FROM users WHERE id = first_id;
+    RETURN full_name;
+END;
+"""
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        funcs = [e for e in elements if isinstance(e, SQLFunction)]
+        assert len(funcs) >= 1
+        f = funcs[0]
+        assert f.return_type is not None
+
+    def test_function_deterministic(self, plugin, parser):
+        """DETERMINISTIC function to test metadata extraction."""
+        code = """\
+CREATE FUNCTION square(x INT) RETURNS INT DETERMINISTIC
+BEGIN
+    RETURN x * x;
+END;
+"""
+        tree = _parse(parser, code)
+        extractor = SQLElementExtractor()
+        elements = extractor.extract_sql_elements(tree, code)
+
+        funcs = [e for e in elements if isinstance(e, SQLFunction)]
+        assert len(funcs) >= 1
