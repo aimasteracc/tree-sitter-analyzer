@@ -524,5 +524,159 @@ class TestOutputFormatValidator:
         assert lang in ["en", "ja"]
 
 
+# =============================================================================
+# Coverage Gap Tests
+# =============================================================================
+
+
+class TestOutputManagerQueryResultSingular:
+    """Test the singular query_result method (not output_query_results)"""
+
+    def test_query_result_prints_details(self, monkeypatch, output_manager):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        result = {
+            "capture_name": "method",
+            "node_type": "function",
+            "start_line": 5,
+            "end_line": 10,
+            "content": "void foo() {}",
+        }
+        output_manager.query_result(1, result)
+        output = mock_stdout.getvalue()
+        assert "method" in output
+        assert "function" in output
+        assert "5-10" in output
+        assert "void foo() {}" in output
+
+    def test_query_result_no_content(self, monkeypatch, output_manager):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        result = {
+            "capture_name": "class",
+            "node_type": "class",
+            "start_line": 1,
+            "end_line": 20,
+        }
+        output_manager.query_result(2, result)
+        output = mock_stdout.getvalue()
+        assert "class" in output
+        assert "1-20" in output
+        assert "Content" not in output
+
+    def test_query_result_quiet_mode(self, monkeypatch):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        manager = OutputManager(quiet=True)
+        manager.query_result(1, {"capture_name": "x", "node_type": "y"})
+        assert mock_stdout.getvalue() == ""
+
+
+class TestOutputManagerListWithTitle:
+    """Test output_list with title parameter"""
+
+    def test_output_list_with_title(self, monkeypatch, output_manager):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        output_manager.output_list(["a", "b"], title="My List")
+        output = mock_stdout.getvalue()
+        assert "My List:" in output
+        assert "a" in output
+        assert "b" in output
+
+
+class TestOutputManagerAliasMethods:
+    """Test alias/delegate methods that forward to other methods"""
+
+    def test_output_languages_delegates(self, monkeypatch, output_manager):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        output_manager.output_languages(["java", "python"])
+        output = mock_stdout.getvalue()
+        assert "java" in output
+        assert "python" in output
+
+    def test_output_queries_delegates(self, monkeypatch, output_manager):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        output_manager.output_queries(["q1", "q2"])
+        output = mock_stdout.getvalue()
+        assert "q1" in output
+        assert "q2" in output
+
+
+class TestOutputManagerToonDataHandling:
+    """Test TOON-formatted data handling in data() method"""
+
+    def test_data_toon_format_with_toon_content(self, monkeypatch):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        manager = OutputManager(output_format="toon")
+        data = {"format": "toon", "toon_content": "## Result\nline1\nline2"}
+        manager.data(data, format_type="toon")
+        output = mock_stdout.getvalue()
+        assert "## Result" in output
+
+    def test_data_json_format_with_toon_content(self, monkeypatch):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        manager = OutputManager(output_format="json")
+        data = {"format": "toon", "toon_content": "## Result", "extra": 1}
+        manager.data(data, format_type="json")
+        output = mock_stdout.getvalue()
+        parsed = json.loads(output.strip())
+        assert parsed["format"] == "toon"
+
+
+class TestOutputManagerCallableFormatter:
+    """Test callable formatter and fallback paths"""
+
+    def test_data_with_callable_formatter(self, monkeypatch):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        manager = OutputManager()
+        manager._formatter_registry["custom"] = lambda d: f"CUSTOM:{d}"
+        manager.data("hello", format_type="custom")
+        output = mock_stdout.getvalue()
+        assert "CUSTOM:hello" in output
+
+    def test_data_with_non_callable_formatter(self, monkeypatch):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        manager = OutputManager()
+        manager._formatter_registry["bad"] = 42
+        manager.data({"x": 1}, format_type="bad")
+        output = mock_stdout.getvalue()
+        parsed = json.loads(output.strip())
+        assert parsed["x"] == 1
+
+    def test_data_unregistered_format_falls_back(self, monkeypatch):
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        manager = OutputManager()
+        manager.data({"key": "val"}, format_type="nonexistent")
+        output = mock_stdout.getvalue()
+        assert "key" in output
+
+
+class TestGetOutputManager:
+    """Test module-level get_output_manager"""
+
+    def test_get_output_manager_returns_instance(self):
+        from tree_sitter_analyzer.output_manager import get_output_manager
+
+        manager = get_output_manager()
+        assert isinstance(manager, OutputManager)
+
+    def test_output_query_results_module_function(self, monkeypatch):
+        from tree_sitter_analyzer.output_manager import output_query_results as oqr
+
+        mock_stdout = StringIO()
+        monkeypatch.setattr("sys.stdout", mock_stdout)
+        oqr({"test": "data"})
+        output = mock_stdout.getvalue()
+        assert "test" in output
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
