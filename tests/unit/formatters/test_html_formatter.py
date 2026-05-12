@@ -812,3 +812,22 @@ class TestHtmlFormatterEdgeCases:
         # Should produce valid JSON
         data = json.loads(result)
         assert len(data["html_analysis"]["markup_elements"]) == 1
+
+
+def test_html_formatter_summary():
+    formatter = HtmlFormatter()
+    result = {"file_path": "test.html", "language": "html", "elements": []}
+    output = formatter.format_summary(result)
+    assert isinstance(output, str)
+
+def test_html_formatter_structure():
+    formatter = HtmlFormatter()
+    result = {"file_path": "test.html", "language": "html", "classes": []}
+    output = formatter.format_structure(result)
+    assert isinstance(output, str)
+
+def test_html_formatter_advanced():
+    formatter = HtmlFormatter()
+    result = {"file_path": "test.html", "language": "html"}
+    output = formatter.format_advanced(result)
+    assert isinstance(output, str)
