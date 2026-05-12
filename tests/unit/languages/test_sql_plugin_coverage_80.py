@@ -300,7 +300,11 @@ CREATE TABLE orders (
         tree = parser.parse(code.encode("utf-8"))
         extractor = SQLElementExtractor()
         elements = extractor.extract_sql_elements(tree, code)
-        tables = [e for e in elements if hasattr(e, "sql_element_type") and e.sql_element_type.value == "table"]
+        tables = [
+            e
+            for e in elements
+            if hasattr(e, "sql_element_type") and e.sql_element_type.value == "table"
+        ]
         assert any(t.name == "orders" for t in tables)
 
     def test_view_with_source_tables(self, plugin, parser):
@@ -323,10 +327,57 @@ class TestPluginPlatformInitFailure:
 
     def test_plugin_init_platform_failure(self):
         """Plugin init handles platform detection failure gracefully."""
-        with patch("tree_sitter_analyzer.languages.sql_plugin.PlatformDetector") as mock_pd:
+        with patch(
+            "tree_sitter_analyzer.languages.sql_plugin.PlatformDetector"
+        ) as mock_pd:
             mock_pd.detect.side_effect = Exception("platform error")
             p = SQLPlugin()
             assert p.adapter is not None
+
+
+@pytest.mark.skipif(
+    not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not installed"
+)
+class TestProcedureRegexFallback:
+    """Cover lines 1536-1551, 1660-1697: procedure regex fallback paths."""
+
+    def test_procedure_with_multiple_statements(self):
+        """Procedure extraction finds procedures via regex."""
+        code = """CREATE PROCEDURE proc_one(IN p1 INT)
+BEGIN
+    SELECT p1;
+END;
+CREATE PROCEDURE proc_two()
+BEGIN
+    SELECT 1;
+END;
+"""
+        extractor = SQLElementExtractor()
+        language = tree_sitter.Language(tree_sitter_sql.language())
+        parser = tree_sitter.Parser(language)
+        tree = parser.parse(code.encode("utf-8"))
+        elements = extractor.extract_sql_elements(tree, code)
+        procs = [
+            e
+            for e in elements
+            if hasattr(e, "sql_element_type")
+            and e.sql_element_type.value == "procedure"
+        ]
+        assert len(procs) >= 1
+
+    def test_procedure_with_params(self):
+        """Procedure with IN/OUT parameters."""
+        code = """CREATE PROCEDURE my_proc(IN x INT, OUT y INT)
+BEGIN
+    SET y = x * 2;
+END;
+"""
+        extractor = SQLElementExtractor()
+        language = tree_sitter.Language(tree_sitter_sql.language())
+        parser = tree_sitter.Parser(language)
+        tree = parser.parse(code.encode("utf-8"))
+        elements = extractor.extract_sql_elements(tree, code)
+        assert any(e.name == "my_proc" for e in elements)
 
 
 @pytest.mark.skipif(
@@ -337,7 +388,9 @@ class TestSQLPluginAnalyzeFileError:
 
     @pytest.fixture
     def plugin(self):
-        with patch("tree_sitter_analyzer.languages.sql_plugin.PlatformDetector") as mock_pd:
+        with patch(
+            "tree_sitter_analyzer.languages.sql_plugin.PlatformDetector"
+        ) as mock_pd:
             mock_pd.detect.side_effect = Exception("no platform")
             return SQLPlugin()
 

@@ -199,12 +199,7 @@ def test_struct_default_visibility(extractor):
 
 # --- Doxygen comment extraction ---
 def test_doxygen_comment_extraction(extractor):
-    code = (
-        "/**\n"
-        " * Calculate area\n"
-        " */\n"
-        "double area() { return 0.0; }\n"
-    )
+    code = "/**\n * Calculate area\n */\ndouble area() { return 0.0; }\n"
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     area_funcs = [f for f in funcs if f.name == "area"]
@@ -488,15 +483,216 @@ def test_variadic_function(extractor):
 # --- Full qualified name with namespace ---
 def test_qualified_name_with_namespace(extractor):
     code = (
-        "namespace gfx {\n"
-        "    class Color {\n"
-        "    public:\n"
-        "        int r;\n"
-        "    };\n"
-        "}\n"
+        "namespace gfx {\n    class Color {\n    public:\n        int r;\n    };\n}\n"
     )
     tree = _parse(code)
     classes = extractor.extract_classes(tree, code)
     color_classes = [c for c in classes if c.name == "Color"]
     assert len(color_classes) >= 1
-    assert color_classes[0].full_qualified_name == "gfx::Color" or color_classes[0].package_name == "gfx"
+    assert (
+        color_classes[0].full_qualified_name == "gfx::Color"
+        or color_classes[0].package_name == "gfx"
+    )
+
+
+# --- Deleted method (= delete) ---
+def test_deleted_method(extractor):
+    code = "class NonCopy {\npublic:\n    NonCopy(const NonCopy&) = delete;\n};\n"
+    tree = _parse(code)
+    funcs = extractor.extract_functions(tree, code)
+    nc_funcs = [f for f in funcs if f.name and "NonCopy" in f.name]
+    assert len(nc_funcs) >= 1
+    assert "deleted" in (nc_funcs[0].modifiers or [])
+
+
+# --- Defaulted method (= default) ---
+def test_defaulted_method(extractor):
+    code = "class Defaults {\npublic:\n    Defaults() = default;\n};\n"
+    tree = _parse(code)
+    funcs = extractor.extract_functions(tree, code)
+    assert isinstance(funcs, list)
+    defaults_funcs = [f for f in funcs if f.name and "Defaults" in f.name]
+    assert len(defaults_funcs) >= 1
+    assert "default" in (defaults_funcs[0].modifiers or [])
+
+
+# --- Protected visibility via explicit access specifier ---
+def test_protected_access_specifier(extractor):
+    code = "class Base {\nprotected:\n    void do_thing() {}\n};\n"
+    tree = _parse(code)
+    funcs = extractor.extract_functions(tree, code)
+    thing_funcs = [f for f in funcs if f.name == "do_thing"]
+    assert len(thing_funcs) >= 1
+    assert thing_funcs[0].visibility == "protected"
+
+
+# --- Protected visibility via explicit modifier ---
+def test_protected_explicit_modifier_determine_visibility(extractor):
+    result = extractor._determine_visibility(["protected"], is_global=False, node=None)
+    assert result == "protected"
+
+
+# --- Private visibility via explicit modifier ---
+def test_private_explicit_modifier_determine_visibility(extractor):
+    result = extractor._determine_visibility(["private"], is_global=False, node=None)
+    assert result == "private"
+
+
+# --- Public visibility via explicit modifier ---
+def test_public_explicit_modifier_determine_visibility(extractor):
+    result = extractor._determine_visibility(["public"], is_global=True, node=None)
+    assert result == "public"
+
+
+# --- Static global visibility is private ---
+def test_static_global_determine_visibility(extractor):
+    result = extractor._determine_visibility(["static"], is_global=True, node=None)
+    assert result == "private"
+
+
+# --- Default: public for global, private for non-global ---
+def test_default_visibility(extractor):
+    assert extractor._determine_visibility([], is_global=True, node=None) == "public"
+    assert extractor._determine_visibility([], is_global=False, node=None) == "private"
+
+
+# --- Field with init_declarator containing identifier in class ---
+def test_field_init_declarator_identifier(extractor):
+    code = "class Pair { int val = 0; };\n"
+    tree = _parse(code)
+    variables = extractor.extract_variables(tree, code)
+    val_vars = [v for v in variables if v.name == "val"]
+    assert len(val_vars) >= 1
+    assert val_vars[0].variable_type == "int"
+
+
+# --- Extract includes fallback with local include only ---
+def test_include_fallback_local_only(extractor):
+    code = '#include "local_header.h"\n'
+    tree = _parse(code)
+    imports = extractor.extract_imports(tree, code)
+    names = [i.name for i in imports]
+    assert "local_header.h" in names
+
+
+# --- Virtual function with const qualifier ---
+def test_virtual_const_function(extractor):
+    code = "class Shape {\npublic:\n    virtual double area() const = 0;\n};\n"
+    tree = _parse(code)
+    funcs = extractor.extract_functions(tree, code)
+    area_funcs = [f for f in funcs if f.name == "area"]
+    assert len(area_funcs) >= 1
+    assert "virtual" in (area_funcs[0].modifiers or [])
+    assert "pure_virtual" in (area_funcs[0].modifiers or [])
+
+
+# --- For-range loop complexity ---
+def test_for_range_complexity(extractor):
+    code = "int sum_items() {\n    int total = 0;\n    for (int x : items) { total += x; }\n    return total;\n}\n"
+    tree = _parse(code)
+    funcs = extractor.extract_functions(tree, code)
+    sum_funcs = [f for f in funcs if f.name == "sum_items"]
+    assert len(sum_funcs) >= 1
+    assert sum_funcs[0].complexity_score > 1
+
+
+# --- Switch statement complexity ---
+def test_switch_complexity(extractor):
+    code = "int grade(int score) {\n    switch(score) {\n        case 90: return 4;\n        case 80: return 3;\n        default: return 0;\n    }\n}\n"
+    tree = _parse(code)
+    funcs = extractor.extract_functions(tree, code)
+    grade_funcs = [f for f in funcs if f.name == "grade"]
+    assert len(grade_funcs) >= 1
+    assert grade_funcs[0].complexity_score > 1
+
+
+# --- Catch clause complexity ---
+def test_try_catch_complexity(extractor):
+    code = (
+        "void safe_op() {\n    try { risky(); }\n    catch (int e) { handle(e); }\n}\n"
+    )
+    tree = _parse(code)
+    funcs = extractor.extract_functions(tree, code)
+    safe_funcs = [f for f in funcs if f.name == "safe_op"]
+    assert len(safe_funcs) >= 1
+    assert safe_funcs[0].complexity_score > 1
+
+
+# --- _get_access_specifier with no parent ---
+def test_get_access_specifier_no_parent(extractor):
+    assert extractor._get_access_specifier(None) is None
+
+
+# --- _is_global_scope for class member ---
+def test_is_global_scope_class_member(plugin):
+    code = "class Foo { int x; };\n"
+    tree = _parse(code)
+    # The root is global, so check that root itself is global
+    assert extractor._is_global_scope(tree.root_node) is True
+
+
+# --- Extract elements with exception in plugin ---
+def test_extract_elements_with_bad_extractor(plugin, monkeypatch):
+    def bad_extractor_factory(self):
+        class BadExtractor:
+            def extract_functions(self, tree, src):
+                raise RuntimeError("boom")
+
+            def extract_classes(self, tree, src):
+                return []
+
+            def extract_variables(self, tree, src):
+                return []
+
+            def extract_imports(self, tree, src):
+                return []
+
+            def extract_packages(self, tree, src):
+                return []
+
+        return BadExtractor()
+
+    code = "int x;\n"
+    tree = _parse(code)
+    from unittest.mock import patch
+
+    with patch.object(type(plugin), "create_extractor", bad_extractor_factory):
+        result = plugin.extract_elements(tree, code)
+    assert result["functions"] == []
+
+
+# --- Multiple global variables with init_declarator ---
+def test_multiple_global_variables_init_declarator(extractor):
+    code = "int a = 1, b = 2;\n"
+    tree = _parse(code)
+    variables = extractor.extract_variables(tree, code)
+    names = [v.name for v in variables]
+    assert "a" in names or "b" in names
+
+
+# --- _count_tree_nodes with child nodes ---
+def test_count_tree_nodes_with_children(plugin):
+    code = "class Foo { int x; void bar() {} };\n"
+    tree = _parse(code)
+    count = plugin._count_tree_nodes(tree.root_node)
+    assert count > 5
+
+
+# --- Extract with doxygen comment on class ---
+def test_doxygen_comment_on_class(extractor):
+    code = "/**\n * A documented class.\n */\nclass DocClass {\n};\n"
+    tree = _parse(code)
+    classes = extractor.extract_classes(tree, code)
+    dc = [c for c in classes if c.name == "DocClass"]
+    assert len(dc) >= 1
+    assert dc[0].docstring is not None
+    assert "documented" in dc[0].docstring
+
+
+# --- Extract namespace with namespace_identifier child ---
+def test_namespace_identifier_node(extractor):
+    code = "namespace my_lib { int val = 42; }\n"
+    tree = _parse(code)
+    packages = extractor.extract_packages(tree, code)
+    assert len(packages) >= 1
+    assert packages[0].name == "my_lib"
