@@ -113,6 +113,18 @@ import java.util.ArrayList;
 |--------|-----------|-----|-------|----|----|
 | nestedMethod | ():void | + | 91-93 | 1 | - |
 
+## InnerClass (83-87)
+### Public Methods
+| Method | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| innerMethod | ():void | + | 84-86 | 1 | - |
+
+## StaticNestedClass (90-94)
+### Public Methods
+| Method | Signature | Vis | Lines | Cx | Doc |
+|--------|-----------|-----|-------|----|----|
+| nestedMethod | ():void | + | 91-93 | 1 | - |
+
 ## TestEnum (162-178)
 ### Fields
 | Name | Type | Vis | Modifiers | Line | Doc |

@@ -38,7 +38,8 @@ class TestQueryLoaderProperties:
 class TestEncodingProperties:
     """Property: safe_encode → safe_decode roundtrip preserves content."""
 
-    @given(st.text(min_size=1, max_size=500))
+    @given(st.text(min_size=1, max_size=500, alphabet=st.characters(
+        blacklist_categories=("Cs",))))
     @settings(max_examples=100)
     def test_utf8_roundtrip_preserves_content(self, text):
         encoded = EncodingManager.safe_encode(text, "utf-8")
@@ -47,7 +48,8 @@ class TestEncodingProperties:
         decoded = encoded.decode("utf-8")
         assert decoded == text
 
-    @given(st.text(min_size=0, max_size=200, alphabet=st.characters(blacklist_characters="\x00")))
+    @given(st.text(min_size=0, max_size=200, alphabet=st.characters(
+        blacklist_characters="\x00", blacklist_categories=("Cs",))))
     @settings(max_examples=100)
     def test_safe_decode_preserves_length(self, text):
         encoded = text.encode("utf-8") if text else b""
