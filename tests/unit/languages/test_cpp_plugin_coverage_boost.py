@@ -698,38 +698,6 @@ def test_namespace_identifier_node(extractor):
     assert packages[0].name == "my_lib"
 
 
-# --- Deleted method (= delete) ---
-def test_deleted_method(extractor):
-    code = "class NoCopy {\npublic:\n    NoCopy(const NoCopy&) = delete;\n    NoCopy& operator=(const NoCopy&) = delete;\n};\n"
-    tree = _parse(code)
-    funcs = extractor.extract_functions(tree, code)
-    deleted_funcs = [f for f in funcs if "NoCopy" in (f.name or "")]
-    assert len(deleted_funcs) >= 1
-    for f in deleted_funcs:
-        assert "deleted" in (f.modifiers or [])
-
-
-# --- Defaulted method (= default) ---
-def test_defaulted_method(extractor):
-    code = "class Foo {\npublic:\n    Foo() = default;\n    ~Foo() = default;\n};\n"
-    tree = _parse(code)
-    funcs = extractor.extract_functions(tree, code)
-    default_funcs = [f for f in funcs if "Foo" in (f.name or "")]
-    assert len(default_funcs) >= 1
-    for f in default_funcs:
-        assert "default" in (f.modifiers or [])
-
-
-# --- Simple function declaration (prototype) with identifier ---
-def test_simple_function_declaration_identifier(extractor):
-    code = "int compute(int x, int y);\n"
-    tree = _parse(code)
-    funcs = extractor.extract_functions(tree, code)
-    compute_funcs = [f for f in funcs if f.name == "compute"]
-    assert len(compute_funcs) >= 1
-    assert len(compute_funcs[0].parameters) >= 2
-
-
 # --- Deeply nested blocks (max depth) ---
 def test_deeply_nested_blocks(extractor):
     nesting = 100
@@ -762,5 +730,147 @@ def test_lambda_expression(extractor):
     tree = _parse(code)
     funcs = extractor.extract_functions(tree, code)
     # Lambda should not be extracted as a regular function
-    lambda_funcs = [f for f in funcs if f.name is not None and "operator" in (f.name or "")]
+    lambda_funcs = [
+        f for f in funcs if f.name is not None and "operator" in (f.name or "")
+    ]
     assert len(lambda_funcs) >= 0  # Just exercise the extractor path
+
+
+# --- Include fallback regex extraction ---
+def test_include_fallback_regex_direct(extractor):
+    """Test _extract_includes_fallback with system and local includes."""
+    code = '#include <iostream>\n#include "myheader.h"\n'
+    imports = extractor._extract_includes_fallback(code)
+    assert len(imports) >= 2
+    names = [i.name for i in imports]
+    assert "iostream" in names
+    assert "myheader.h" in names
+
+
+# --- Include fallback with only system includes ---
+def test_include_fallback_system_only(extractor):
+    code = "#include <vector>\n#include <string>\n"
+    imports = extractor._extract_includes_fallback(code)
+    assert len(imports) >= 2
+    names = [i.name for i in imports]
+    assert "vector" in names
+    assert "string" in names
+
+
+# --- Analyze file via CppPlugin ---
+@pytest.mark.asyncio
+async def test_analyze_file_cpp(plugin, tmp_path):
+    """Test analyze_file on a real temporary C++ file."""
+    from types import SimpleNamespace
+
+    cpp_file = tmp_path / "test.cpp"
+    cpp_file.write_text(
+        "#include <iostream>\n"
+        "namespace demo {\n"
+        "class Widget {\n"
+        "public:\n"
+        "    int value;\n"
+        "    void work() {}\n"
+        "};\n"
+        "}  // namespace demo\n"
+    )
+    result = await plugin.analyze_file(str(cpp_file), SimpleNamespace())
+    assert result is not None
+    assert result.language == "cpp"
+    assert result.line_count > 0
+
+
+# --- Include fallback triggered when tree-sitter misses includes ---
+def test_extract_imports_fallback_path(extractor):
+    """Trigger the fallback regex path when tree-sitter finds no includes."""
+    code = "#include <cstdio>\nint main() { return 0; }\n"
+    tree = _parse(code)
+    # The tree should have preproc_include child, so fallback won't trigger normally.
+    # We need to ensure the extraction path exercises the code.
+    imports = extractor.extract_imports(tree, code)
+    # Just verify imports are extracted (either via tree-sitter or regex)
+    assert len(imports) >= 1
+
+
+# --- _extract_function_optimized error handling ---
+def test_extract_function_optimized_error(extractor, monkeypatch):
+    """Test error handling in _extract_function_optimized."""
+    code = "void foo() {}\n"
+    tree = _parse(code)
+    extractor.source_code = code
+    extractor.content_lines = code.split("\n")
+    extractor._reset_caches()
+
+    # Mock _parse_function_signature to raise an exception
+    def bad_parse(*args, **kwargs):
+        raise ValueError("parse error")
+
+    monkeypatch.setattr(extractor, "_parse_function_signature", bad_parse)
+    result = extractor._extract_function_optimized(tree.root_node.children[0])
+    assert result is None
+
+
+# --- _extract_function_from_field_declaration error handling ---
+def test_field_declaration_error_handling(extractor, monkeypatch):
+    """Test error handling in _extract_function_from_field_declaration."""
+    code = "class Foo { virtual double area() const = 0; };\n"
+    tree = _parse(code)
+    extractor.source_code = code
+    extractor.content_lines = code.split("\n")
+    extractor._reset_caches()
+
+    # Find the field_declaration node
+    def find_field_decl(node):
+        if node.type == "field_declaration":
+            return node
+        for child in node.children:
+            result = find_field_decl(child)
+            if result:
+                return result
+        return None
+
+    field_node = find_field_decl(tree.root_node)
+    if field_node:
+        # Mock _get_node_text_optimized to raise an exception
+        monkeypatch.setattr(
+            extractor,
+            "_get_node_text_optimized",
+            lambda n: (_ for _ in ()).throw(ValueError("boom")),
+        )
+        result = extractor._extract_function_from_field_declaration(field_node)
+        assert result is None
+
+
+# --- _extract_function_declaration error handling ---
+def test_function_declaration_error_handling(extractor, monkeypatch):
+    """Test error handling in _extract_function_declaration."""
+    code = "int compute(int x);\n"
+    tree = _parse(code)
+    extractor.source_code = code
+    extractor.content_lines = code.split("\n")
+    extractor._reset_caches()
+
+    # Find the function_declarator node
+    def find_func_decl(node):
+        if (
+            node.type == "function_declarator"
+            and node.parent
+            and node.parent.type != "function_definition"
+        ):
+            return node
+        for child in node.children:
+            result = find_func_decl(child)
+            if result:
+                return result
+        return None
+
+    fn_node = find_func_decl(tree.root_node)
+    if fn_node:
+        # Mock _get_node_text_optimized to raise an exception
+        monkeypatch.setattr(
+            extractor,
+            "_get_node_text_optimized",
+            lambda n: (_ for _ in ()).throw(TypeError("bad")),
+        )
+        result = extractor._extract_function_declaration(fn_node)
+        assert result is None

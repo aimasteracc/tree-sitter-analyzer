@@ -225,6 +225,7 @@ class CppElementExtractor(ElementExtractor):
             "field_declaration_list",
             "compound_statement",
             "template_declaration",
+            "declaration",
         }
 
         node_stack = [(root_node, 0)]
@@ -616,6 +617,12 @@ class CppElementExtractor(ElementExtractor):
                         modifiers.append(mod)
                 elif child.type == "virtual":
                     modifiers.append("virtual")
+                elif child.type == "delete_method_clause":
+                    if "deleted" not in modifiers:
+                        modifiers.append("deleted")
+                elif child.type == "default_method_clause":
+                    if "default" not in modifiers:
+                        modifiers.append("default")
 
             if not name:
                 return None
