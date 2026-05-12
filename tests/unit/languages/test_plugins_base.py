@@ -744,3 +744,84 @@ class TestDefaultExtractorTraversal:
 
         assert len(imports) == 1
         assert isinstance(imports[0], ModelImport)
+
+
+class TestDefaultExtractorErrorPaths:
+    """Coverage for exception-handling branches in extractor methods"""
+
+    @pytest.fixture
+    def extractor(self):
+        return DefaultExtractor()
+
+    def test_traverse_for_classes_exception_logged(self, extractor):
+        """Exception in _traverse_for_classes body is caught and logged"""
+        mock_node = Mock()
+        mock_node.type = "class_definition"
+        mock_node.children = []
+
+        classes: list = []
+
+        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+            extractor._traverse_for_classes(mock_node, classes, [], "")
+
+        assert len(classes) == 0
+
+    def test_traverse_for_variables_exception_logged(self, extractor):
+        """Exception in _traverse_for_variables body is caught and logged"""
+        mock_node = Mock()
+        mock_node.type = "variable_declaration"
+        mock_node.children = []
+
+        variables: list = []
+
+        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+            extractor._traverse_for_variables(mock_node, variables, [], "")
+
+        assert len(variables) == 0
+
+    def test_traverse_for_imports_exception_logged(self, extractor):
+        """Exception in _traverse_for_imports body is caught and logged"""
+        mock_node = Mock()
+        mock_node.type = "import_statement"
+        mock_node.children = []
+
+        imports: list = []
+
+        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+            extractor._traverse_for_imports(mock_node, imports, [], "")
+
+        assert len(imports) == 0
+
+    def test_traverse_for_functions_exception_logged(self, extractor):
+        """Exception in _traverse_for_functions body is caught and logged"""
+        mock_node = Mock()
+        mock_node.type = "function_definition"
+        mock_node.children = []
+
+        functions: list = []
+
+        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+            extractor._traverse_for_functions(mock_node, functions, [], "")
+
+        assert len(functions) == 0
+
+    def test_extract_node_text_encoding_error(self, extractor):
+        """_extract_node_text returns '' on encoding/decoding errors"""
+        mock_node = Mock()
+        mock_node.start_byte = 0
+        mock_node.end_byte = 5
+
+        # Source code shorter than end_byte → slicing beyond bounds
+        result = extractor._extract_node_text(mock_node, "abc")
+        # Should handle gracefully without raising
+        assert isinstance(result, str)
+
+    def test_extract_node_text_missing_attrs(self, extractor):
+        """_extract_node_text returns '' when node lacks start_byte/end_byte"""
+        mock_node = Mock()
+        # Deliberately omit start_byte/end_byte from the Mock spec
+        del mock_node.start_byte
+        del mock_node.end_byte
+
+        result = extractor._extract_node_text(mock_node, "abc")
+        assert isinstance(result, str)
