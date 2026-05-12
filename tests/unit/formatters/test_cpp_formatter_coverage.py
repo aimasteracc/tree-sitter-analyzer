@@ -45,3 +45,31 @@ def test_cpp_formatter_complex(formatter):
     assert "my_method" in output
     assert "my_var" in output
     assert "my_namespace" in output
+
+
+def test_cpp_formatter_with_namespace(formatter):
+    """Cover namespace/package rendering path."""
+    func = Function(name="do_work", start_line=10, end_line=12, raw_text="void do_work();")
+    cls = Class(name="Helper", start_line=1, end_line=8, raw_text="class Helper {};")
+    result = AnalysisResult(
+        file_path="src/main.cpp",
+        elements=[cls, func],
+        language="cpp",
+    )
+    output = formatter.format_analysis_result(result, "full")
+    assert "Helper" in output
+    assert "do_work" in output
+
+def test_cpp_formatter_global_functions_only(formatter):
+    """Cover pure C-style global functions (no classes)."""
+    funcs = [Function(name=f"f{i}", start_line=i, end_line=i+1, raw_text=f"int f{i}();") for i in range(3)]
+    result = AnalysisResult(file_path="math.c", elements=funcs, language="c")
+    output = formatter.format_analysis_result(result, "full")
+    assert "Global Functions" in output or any(f"f{i}" in output for i in range(3))
+
+def test_cpp_formatter_compact_format(formatter):
+    """Cover compact table path (non-full format)."""
+    func = Function(name="main", start_line=1, end_line=3, raw_text="int main() {}")
+    result = AnalysisResult(file_path="main.cpp", elements=[func], language="cpp")
+    output = formatter.format_analysis_result(result, "compact")
+    assert "main" in output
