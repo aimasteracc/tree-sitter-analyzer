@@ -468,6 +468,24 @@ class TestProjectDetectorEdge:
         result = detector.get_fallback_root("/nonexistent_dir_xyz/file.py")
         assert result == str(Path.cwd())
 
+    def test_get_fallback_root_exception_returns_cwd(self, monkeypatch):
+        """get_fallback_root returns cwd when an unexpected exception occurs."""
+        detector = ProjectRootDetector()
+        monkeypatch.setattr(
+            Path, "exists", lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
+        result = detector.get_fallback_root("/some/path")
+        assert result == str(Path.cwd())
+
+    def test_detect_project_root_falls_back_to_cwd(self, tmp_path):
+        """detect_project_root falls back to cwd when file_path has no markers."""
+        isolated = tmp_path / "very" / "deep" / "isolated"
+        isolated.mkdir(parents=True)
+        test_file = isolated / "test.py"
+        test_file.touch()
+        result = detect_project_root(str(test_file))
+        assert result is not None
+
     def test_detect_project_root_no_args_no_markers(self, monkeypatch, tmp_path):
         """detect_project_root returns None when cwd has no markers."""
         import tree_sitter_analyzer.project_detector as pd_module
