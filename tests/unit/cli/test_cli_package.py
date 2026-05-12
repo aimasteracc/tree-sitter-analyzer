@@ -72,3 +72,31 @@ def test_cli_has_dir() -> None:
 
     assert hasattr(tree_sitter_analyzer.cli, "__all__")
     assert hasattr(tree_sitter_analyzer.cli, "__doc__")
+
+
+def test_cli_import_error_fallback() -> None:
+    """Test CLI package sets None fallbacks when core imports fail."""
+    import builtins
+    import importlib
+    import sys
+    from unittest import mock
+
+    original_import = builtins.__import__
+
+    def selective_import(name, *args, **kwargs):
+        if "cli_main" in name:
+            raise ImportError("simulated")
+        return original_import(name, *args, **kwargs)
+
+    sys.modules.pop("tree_sitter_analyzer.cli", None)
+
+    try:
+        with mock.patch("builtins.__import__", selective_import):
+            import tree_sitter_analyzer.cli as cli
+
+            assert cli.main is None
+            assert cli.get_analysis_engine is None
+            assert cli.query_loader is None
+    finally:
+        sys.modules.pop("tree_sitter_analyzer.cli", None)
+        importlib.import_module("tree_sitter_analyzer.cli")
