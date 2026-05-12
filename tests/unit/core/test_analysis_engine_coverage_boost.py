@@ -89,6 +89,7 @@ class TestAnalyzeFileCoverage:
 
         with patch.object(engine, "analyze", return_value=Mock()):
             await engine.analyze_file(
+                "test.py",
                 request=request,
                 language="python",
                 format_type="json",
