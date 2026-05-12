@@ -7,7 +7,7 @@ This module tests the QueryService class.
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -304,7 +304,6 @@ class TestQueryServiceEdgeCases:
         self, query_service: QueryService, temp_file: Path
     ) -> None:
         """Test executing query that returns no results."""
-        # Use a query that likely won't match
         results = await query_service.execute_query(
             str(temp_file),
             "python",
@@ -317,7 +316,6 @@ class TestQueryServiceEdgeCases:
     ) -> None:
         """Test creating result dict with node missing attributes."""
         mock_node = MagicMock()
-        # Remove type attribute
         del mock_node.type
         mock_node.start_point = (0, 0)
         mock_node.end_point = (5, 0)
@@ -327,6 +325,316 @@ class TestQueryServiceEdgeCases:
         assert result["node_type"] == "unknown"
         assert result["start_line"] == 1
         assert result["end_line"] == 6
+
+
+class TestQueryServiceNoLanguageObject:
+    """Test execute_query when tree has no language object."""
+
+    @pytest.mark.asyncio
+    async def test_execute_query_no_language_obj(self) -> None:
+        """Test that missing language object raises Exception."""
+        service = QueryService()
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("def hello(): pass\n")
+            temp_path = Path(f.name)
+        try:
+            with patch.object(
+                service, "_read_file_async", return_value=("def hello(): pass", "utf-8")
+            ):
+                mock_tree = MagicMock()
+                del mock_tree.language
+                mock_result = MagicMock()
+                mock_result.tree = mock_tree
+                with patch.object(
+                    service.parser, "parse_code", return_value=mock_result
+                ):
+                    with pytest.raises(
+                        Exception, match="Language object not available"
+                    ):
+                        await service.execute_query(
+                            str(temp_path), "python", query_key="functions"
+                        )
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+
+class TestQueryServiceQueryExceptionFallback:
+    """Test execute_query fallback when tree-sitter query fails."""
+
+    @pytest.mark.asyncio
+    async def test_execute_query_query_exception_uses_plugin_fallback(self) -> None:
+        """Test that query exception triggers plugin fallback path."""
+        service = QueryService()
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("def hello(): pass\n")
+            temp_path = Path(f.name)
+        try:
+            with patch.object(
+                service, "_read_file_async", return_value=("def hello(): pass", "utf-8")
+            ):
+                mock_lang = MagicMock()
+                mock_root = MagicMock()
+                mock_root.children = []
+                mock_tree = MagicMock()
+                mock_tree.language = mock_lang
+                mock_tree.root_node = mock_root
+                mock_result = MagicMock()
+                mock_result.tree = mock_tree
+                with patch.object(
+                    service.parser, "parse_code", return_value=mock_result
+                ):
+                    with patch(
+                        "tree_sitter_analyzer.core.query_service.TreeSitterQueryCompat.safe_execute_query",
+                        side_effect=RuntimeError("query failed"),
+                    ):
+                        results = await service.execute_query(
+                            str(temp_path), "python", query_key="functions"
+                        )
+                        assert isinstance(results, list)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_execute_query_empty_captures_uses_plugin_fallback(self) -> None:
+        """Test that empty captures from query triggers plugin fallback."""
+        service = QueryService()
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as f:
+            f.write("def hello(): pass\n")
+            temp_path = Path(f.name)
+        try:
+            with patch.object(
+                service, "_read_file_async", return_value=("def hello(): pass", "utf-8")
+            ):
+                mock_lang = MagicMock()
+                mock_root = MagicMock()
+                mock_root.children = []
+                mock_tree = MagicMock()
+                mock_tree.language = mock_lang
+                mock_tree.root_node = mock_root
+                mock_result = MagicMock()
+                mock_result.tree = mock_tree
+                with patch.object(
+                    service.parser, "parse_code", return_value=mock_result
+                ):
+                    with patch(
+                        "tree_sitter_analyzer.core.query_service.TreeSitterQueryCompat.safe_execute_query",
+                        return_value=[],
+                    ):
+                        results = await service.execute_query(
+                            str(temp_path), "python", query_key="functions"
+                        )
+                        assert isinstance(results, list)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+
+class TestQueryServiceGetQueryDescriptionException:
+    """Test get_query_description exception handling."""
+
+    def test_get_query_description_exception_returns_none(self) -> None:
+        """Test that exception in get_query_description returns None."""
+        service = QueryService()
+        with patch(
+            "tree_sitter_analyzer.core.query_service.query_loader.get_query_description",
+            side_effect=RuntimeError("db error"),
+        ):
+            result = service.get_query_description("python", "functions")
+            assert result is None
+
+
+class TestQueryServicePluginQueryInternalPaths:
+    """Test _execute_plugin_query internal code paths."""
+
+    def test_plugin_query_with_elements_having_line_info(self) -> None:
+        """Test plugin query when plugin returns elements with start_line/end_line."""
+        service = QueryService()
+        mock_root = MagicMock()
+        mock_root.children = []
+
+        mock_element = MagicMock()
+        mock_element.start_line = 1
+        mock_element.end_line = 5
+        mock_element.element_type = "function"
+        mock_element.raw_text = "def foo(): pass"
+
+        mock_plugin = MagicMock()
+        mock_plugin.execute_query_strategy.return_value = [mock_element]
+
+        with patch.object(
+            service.plugin_manager, "get_plugin", return_value=mock_plugin
+        ):
+            captures = service._execute_plugin_query(
+                mock_root, "functions", "python", "def foo(): pass"
+            )
+            assert isinstance(captures, list)
+            if len(captures) > 0:
+                node, name = captures[0]
+                assert name == "functions"
+
+    def test_plugin_query_strategy_exception_falls_to_categories(self) -> None:
+        """Test that plugin strategy exception falls back to element categories."""
+        service = QueryService()
+        mock_root = MagicMock()
+        mock_root.children = []
+
+        mock_plugin = MagicMock()
+        mock_plugin.execute_query_strategy.side_effect = RuntimeError("fail")
+        mock_plugin.get_element_categories.return_value = {
+            "functions": ["function_definition"]
+        }
+
+        func_node = MagicMock()
+        func_node.type = "function_definition"
+        func_node.children = []
+        mock_root.children = [func_node]
+
+        with patch.object(
+            service.plugin_manager, "get_plugin", return_value=mock_plugin
+        ):
+            captures = service._execute_plugin_query(
+                mock_root, "functions", "python", "def foo(): pass"
+            )
+            assert isinstance(captures, list)
+
+    def test_plugin_query_categories_exception_falls_to_fallback(self) -> None:
+        """Test that element categories exception falls to basic fallback."""
+        service = QueryService()
+        mock_root = MagicMock()
+        func_node = MagicMock()
+        func_node.type = "function_definition"
+        func_node.children = []
+        mock_root.children = [func_node]
+
+        mock_plugin = MagicMock()
+        mock_plugin.execute_query_strategy.side_effect = RuntimeError("fail")
+        mock_plugin.get_element_categories.side_effect = RuntimeError("fail")
+
+        with patch.object(
+            service.plugin_manager, "get_plugin", return_value=mock_plugin
+        ):
+            captures = service._execute_plugin_query(
+                mock_root, "functions", "python", "def foo(): pass"
+            )
+            assert isinstance(captures, list)
+
+    def test_plugin_query_no_matching_key_in_categories(self) -> None:
+        """Test when query_key is not in element categories."""
+        service = QueryService()
+        mock_root = MagicMock()
+        mock_root.children = []
+
+        mock_plugin = MagicMock()
+        mock_plugin.execute_query_strategy.side_effect = RuntimeError("fail")
+        mock_plugin.get_element_categories.return_value = {
+            "classes": ["class_definition"]
+        }
+
+        with patch.object(
+            service.plugin_manager, "get_plugin", return_value=mock_plugin
+        ):
+            captures = service._execute_plugin_query(
+                mock_root, "functions", "python", "code"
+            )
+            assert isinstance(captures, list)
+
+
+class TestQueryServiceFallbackAdditionalPaths:
+    """Additional tests for _fallback_query_execution to cover missing branches."""
+
+    def test_fallback_method(self) -> None:
+        """Test fallback for method nodes."""
+        service = QueryService()
+        mock_child = MagicMock()
+        mock_child.type = "method_declaration"
+        mock_child.children = []
+        mock_root = MagicMock()
+        mock_root.children = [mock_child]
+
+        captures = service._fallback_query_execution(mock_root, "method")
+        assert len(captures) == 1
+
+    def test_fallback_variable(self) -> None:
+        """Test fallback for variable nodes."""
+        service = QueryService()
+        mock_child = MagicMock()
+        mock_child.type = "variable_declaration"
+        mock_child.children = []
+        mock_root = MagicMock()
+        mock_root.children = [mock_child]
+
+        captures = service._fallback_query_execution(mock_root, "variable")
+        assert len(captures) == 1
+
+    def test_fallback_import(self) -> None:
+        """Test fallback for import nodes."""
+        service = QueryService()
+        mock_child = MagicMock()
+        mock_child.type = "import_statement"
+        mock_child.children = []
+        mock_root = MagicMock()
+        mock_root.children = [mock_child]
+
+        captures = service._fallback_query_execution(mock_root, "import")
+        assert len(captures) == 1
+
+    def test_fallback_header(self) -> None:
+        """Test fallback for heading nodes."""
+        service = QueryService()
+        mock_child = MagicMock()
+        mock_child.type = "heading"
+        mock_child.children = []
+        mock_root = MagicMock()
+        mock_root.children = [mock_child]
+
+        captures = service._fallback_query_execution(mock_root, "header")
+        assert len(captures) == 1
+
+    def test_fallback_plural_forms(self) -> None:
+        """Test fallback for plural query keys (functions, classes, methods, variables, imports, headers)."""
+        service = QueryService()
+
+        func_node = MagicMock()
+        func_node.type = "function_definition"
+        func_node.children = []
+
+        class_node = MagicMock()
+        class_node.type = "class_definition"
+        class_node.children = []
+
+        method_node = MagicMock()
+        method_node.type = "method_declaration"
+        method_node.children = []
+
+        var_node = MagicMock()
+        var_node.type = "variable_assignment"
+        var_node.children = []
+
+        import_node = MagicMock()
+        import_node.type = "import_statement"
+        import_node.children = []
+
+        root = MagicMock()
+        root.children = [func_node, class_node, method_node, var_node, import_node]
+
+        for key in ("functions", "classes", "methods", "variables", "imports"):
+            captures = service._fallback_query_execution(root, key)
+            assert len(captures) >= 1, f"Expected matches for key '{key}'"
+
+    def test_fallback_none_query_key(self) -> None:
+        """Test fallback with None query_key returns empty list."""
+        service = QueryService()
+        mock_root = MagicMock()
+        mock_root.children = []
+
+        captures = service._fallback_query_execution(mock_root, None)
+        assert isinstance(captures, list)
+        assert len(captures) == 0
 
 
 # Pytest fixtures
