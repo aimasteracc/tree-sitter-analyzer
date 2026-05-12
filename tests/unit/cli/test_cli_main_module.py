@@ -1193,7 +1193,7 @@ class TestHandleSpecialCommands:
             "schema_version": "1.0.0",
             "platform_key": "test-platform",
             "behaviors": {
-                "func_call": {"name": "test"}
+                "func_call": {"construct_id": "func_call", "node_type": "call", "element_count": 5, "attributes": ["name"], "has_error": False}
             },
             "adaptation_rules": []
         })
