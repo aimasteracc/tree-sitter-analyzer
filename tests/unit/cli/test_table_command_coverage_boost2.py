@@ -236,22 +236,13 @@ class TestConvertToStructureFormatException:
         """Test _convert_to_structure_format handles element processing exception."""
         from tree_sitter_analyzer.constants import ELEMENT_TYPE_CLASS
 
-        # Element that raises on getattr
         bad_elem = MagicMock()
         bad_elem.element_type = ELEMENT_TYPE_CLASS
-        # Make name attribute raise exception
         bad_elem.name = "BadClass"
         bad_elem.visibility = "public"
         bad_elem.start_line = 1
         bad_elem.end_line = 10
-        bad_elem.class_type = "class"
-        # Force _convert_class_element to throw
-        bad_elem.class_type = MagicMock(side_effect=Exception("Boom"))
-        # Actually, simpler approach: make element_type access raise
-        type(bad_elem).element_type = property(lambda self: (_ for _ in ()).throw(Exception("Boom")))
 
-        del bad_elem.element_type
-        # Simpler: just patch _convert_class_element to raise
         good_elem = MagicMock()
         good_elem.name = "GoodClass"
         good_elem.element_type = ELEMENT_TYPE_CLASS
@@ -264,14 +255,23 @@ class TestConvertToStructureFormatException:
         analysis_result.language = "python"
         analysis_result.line_count = 10
         analysis_result.elements = [bad_elem, good_elem]
+        # Remove package attribute to trigger _get_default_package_name path
         del analysis_result.package
 
-        with patch.object(command, "_convert_class_element", side_effect=[Exception("Boom"), None]):
-            with patch("tree_sitter_analyzer.cli.commands.table_command.output_error") as mock_err:
+        with patch.object(
+            command,
+            "_convert_class_element",
+            side_effect=[Exception("Boom"), {"name": "GoodClass"}],
+        ):
+            with patch(
+                "tree_sitter_analyzer.cli.commands.table_command.output_error"
+            ) as mock_err:
                 result = command._convert_to_structure_format(analysis_result, "python")
                 mock_err.assert_called_once()
                 # Should continue processing despite exception
                 assert "file_path" in result
+                assert len(result["classes"]) == 1
+                assert result["classes"][0]["name"] == "GoodClass"
 
 
 class TestConvertSQLElement:
