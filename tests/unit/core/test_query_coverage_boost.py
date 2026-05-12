@@ -82,8 +82,8 @@ class TestExecuteQueryErrors:
         language = _mock_language()
 
         with patch.object(
-            executor,
-            "_get_query_string",
+            executor._query_loader,
+            "get_query",
             side_effect=KeyError("simulated unexpected"),
         ):
             result = executor.execute_query(tree, language, "functions", "code")
@@ -282,7 +282,7 @@ class TestModuleLevelFunctions:
             mock_loader.get_query_description.side_effect = RuntimeError("fail")
             mock_get_loader.return_value = mock_loader
 
-            result = get_query_description("python", "functions")
+            result = get_query_description("_nonexistent_lang_", "_nonexistent_query_")
             assert result is None
 
     def test_get_all_queries_for_language_deprecated(self):
