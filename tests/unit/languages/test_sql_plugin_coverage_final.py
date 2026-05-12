@@ -272,7 +272,6 @@ class TestMultilineTextExtraction:
         extractor.content_lines = sql.split("\n")
         extractor._node_text_cache = {}
         elements = extractor.extract_sql_elements(None, sql)
-        # Should not crash; extraction with None tree returns regex-fallback results
         assert isinstance(elements, list)
 
 
@@ -297,3 +296,97 @@ END;
         assert isinstance(result, dict)
         assert "functions" in result
         assert "classes" in result
+
+
+class TestExtractClassesAndVariablesAndImports:
+    """Cover extract_classes, extract_variables, extract_imports on SQLElementExtractor."""
+
+    def test_extract_classes_with_table(self):
+        sql = """
+CREATE TABLE orders (
+    id INT PRIMARY KEY,
+    customer_id INT,
+    total DECIMAL
+);
+"""
+        extractor = SQLElementExtractor()
+        tree, source = _parse(extractor, sql)
+        classes = extractor.extract_classes(tree, source)
+        assert isinstance(classes, list)
+        assert any(c.name == "orders" for c in classes)
+
+    def test_extract_classes_with_view(self):
+        sql = """
+CREATE TABLE t1 (id INT);
+CREATE VIEW v1 AS SELECT id FROM t1;
+"""
+        extractor = SQLElementExtractor()
+        tree, source = _parse(extractor, sql)
+        classes = extractor.extract_classes(tree, source)
+        names = [c.name for c in classes]
+        assert "t1" in names
+        assert "v1" in names
+
+    def test_extract_variables_with_index(self):
+        sql = """
+CREATE TABLE users (id INT, email VARCHAR(255));
+CREATE INDEX idx_email ON users(email);
+"""
+        extractor = SQLElementExtractor()
+        tree, source = _parse(extractor, sql)
+        variables = extractor.extract_variables(tree, source)
+        assert isinstance(variables, list)
+        assert any(v.name == "idx_email" for v in variables)
+
+    def test_extract_imports_with_schema_reference(self):
+        sql = """
+SELECT * FROM schema2.orders;
+"""
+        extractor = SQLElementExtractor()
+        tree, source = _parse(extractor, sql)
+        imports = extractor.extract_imports(tree, source)
+        assert isinstance(imports, list)
+
+    def test_extract_functions_none_tree(self):
+        extractor = SQLElementExtractor()
+        result = extractor.extract_functions(None, "")
+        assert result == []
+
+    def test_extract_classes_none_tree(self):
+        extractor = SQLElementExtractor()
+        result = extractor.extract_classes(None, "")
+        assert result == []
+
+    def test_extract_variables_none_tree(self):
+        extractor = SQLElementExtractor()
+        result = extractor.extract_variables(None, "")
+        assert result == []
+
+    def test_extract_imports_none_tree(self):
+        extractor = SQLElementExtractor()
+        result = extractor.extract_imports(None, "")
+        assert result == []
+
+    def test_extract_sql_elements_with_table_and_view(self):
+        sql = """
+CREATE TABLE customers (
+    id INT PRIMARY KEY,
+    name VARCHAR(100),
+    region VARCHAR(50)
+);
+
+CREATE VIEW v_regional AS
+SELECT region, COUNT(*) as cnt
+FROM customers
+GROUP BY region;
+
+CREATE INDEX idx_region ON customers(region);
+"""
+        extractor = SQLElementExtractor()
+        tree, source = _parse(extractor, sql)
+        elements = extractor.extract_sql_elements(tree, source)
+        assert isinstance(elements, list)
+        names = [e.name for e in elements]
+        assert "customers" in names
+        assert "v_regional" in names
+        assert "idx_region" in names
