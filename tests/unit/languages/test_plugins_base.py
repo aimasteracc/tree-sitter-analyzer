@@ -580,3 +580,167 @@ class TestEdgeCases:
         # Should handle without memory issues
         elements = extractor.extract_all_elements(mock_tree, large_source)
         assert isinstance(elements, list)
+
+
+class TestDefaultExtractorTraversal:
+    """Direct tests for _traverse_for_* methods in DefaultExtractor"""
+
+    @pytest.fixture
+    def extractor(self):
+        return DefaultExtractor()
+
+    # ── _traverse_for_classes ──────────────────────────────────────
+
+    def test_traverse_for_classes_creates_element(self, extractor):
+        """_traverse_for_classes should create and append a Class element"""
+        from tree_sitter_analyzer.models import Class as ModelClass
+
+        mock_node = Mock()
+        mock_node.type = "class_definition"
+        mock_node.start_point = (5, 0)
+        mock_node.end_point = (10, 0)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 21
+        mock_node.children = []
+
+        classes: list = []
+        source = "class MyClass:\n    pass\n"
+        extractor._traverse_for_classes(mock_node, classes, source.splitlines(), source)
+
+        assert len(classes) == 1
+        assert isinstance(classes[0], ModelClass)
+
+    def test_traverse_for_classes_error_handling(self, extractor):
+        """_traverse_for_classes should not raise on extraction errors"""
+        mock_node = Mock()
+        mock_node.type = "class_definition"
+        mock_node.children = []
+
+        classes: list = []
+
+        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+            extractor._traverse_for_classes(mock_node, classes, [], "")
+
+        assert len(classes) == 0
+
+    def test_traverse_for_classes_recursive(self, extractor):
+        """_traverse_for_classes should recurse into children"""
+        from tree_sitter_analyzer.models import Class as ModelClass
+
+        mock_child = Mock()
+        mock_child.type = "class_definition"
+        mock_child.start_point = (3, 0)
+        mock_child.end_point = (5, 0)
+        mock_child.start_byte = 0
+        mock_child.end_byte = 18
+        mock_child.children = []
+
+        mock_parent = Mock()
+        mock_parent.type = "block"  # non-class type
+        mock_parent.children = [mock_child]
+
+        classes: list = []
+        source = "class Child:\n    pass\n"
+        extractor._traverse_for_classes(mock_parent, classes, source.splitlines(), source)
+
+        assert len(classes) == 1
+        assert isinstance(classes[0], ModelClass)
+
+    def test_traverse_for_classes_skips_non_class_nodes(self, extractor):
+        """_traverse_for_classes should skip nodes that are not class-like"""
+        mock_node = Mock()
+        mock_node.type = "function_definition"
+        mock_node.children = []
+
+        classes: list = []
+        extractor._traverse_for_classes(mock_node, classes, [], "")
+
+        assert len(classes) == 0
+
+    # ── _traverse_for_variables ────────────────────────────────────
+
+    def test_traverse_for_variables_creates_element(self, extractor):
+        """_traverse_for_variables should create and append a Variable element"""
+        from tree_sitter_analyzer.models import Variable as ModelVariable
+
+        mock_node = Mock()
+        mock_node.type = "variable_declaration"
+        mock_node.start_point = (7, 0)
+        mock_node.end_point = (7, 10)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 6
+        mock_node.children = []
+
+        variables: list = []
+        source = "x = 42"
+        extractor._traverse_for_variables(mock_node, variables, source.splitlines(), source)
+
+        assert len(variables) == 1
+        assert isinstance(variables[0], ModelVariable)
+
+    def test_traverse_for_variables_recursive(self, extractor):
+        """_traverse_for_variables should recurse into children"""
+        from tree_sitter_analyzer.models import Variable as ModelVariable
+
+        mock_child = Mock()
+        mock_child.type = "variable_declaration"
+        mock_child.start_point = (2, 0)
+        mock_child.end_point = (2, 10)
+        mock_child.start_byte = 0
+        mock_child.end_byte = 6
+        mock_child.children = []
+
+        mock_parent = Mock()
+        mock_parent.type = "block"
+        mock_parent.children = [mock_child]
+
+        variables: list = []
+        source = "y = 1"
+        extractor._traverse_for_variables(mock_parent, variables, source.splitlines(), source)
+
+        assert len(variables) == 1
+        assert isinstance(variables[0], ModelVariable)
+
+    # ── _traverse_for_imports ──────────────────────────────────────
+
+    def test_traverse_for_imports_creates_element(self, extractor):
+        """_traverse_for_imports should create and append an Import element"""
+        from tree_sitter_analyzer.models import Import as ModelImport
+
+        mock_node = Mock()
+        mock_node.type = "import_statement"
+        mock_node.start_point = (0, 0)
+        mock_node.end_point = (0, 20)
+        mock_node.start_byte = 0
+        mock_node.end_byte = 14
+        mock_node.children = []
+
+        imports: list = []
+        source = "import os, sys"
+        extractor._traverse_for_imports(mock_node, imports, source.splitlines(), source)
+
+        assert len(imports) == 1
+        assert isinstance(imports[0], ModelImport)
+
+    def test_traverse_for_imports_recursive(self, extractor):
+        """_traverse_for_imports should recurse into children"""
+        from tree_sitter_analyzer.models import Import as ModelImport
+
+        mock_child = Mock()
+        mock_child.type = "import_declaration"
+        mock_child.start_point = (0, 0)
+        mock_child.end_point = (0, 15)
+        mock_child.start_byte = 0
+        mock_child.end_byte = 14
+        mock_child.children = []
+
+        mock_parent = Mock()
+        mock_parent.type = "program"
+        mock_parent.children = [mock_child]
+
+        imports: list = []
+        source = "import os, sys"
+        extractor._traverse_for_imports(mock_parent, imports, source.splitlines(), source)
+
+        assert len(imports) == 1
+        assert isinstance(imports[0], ModelImport)
