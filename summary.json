@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "count": 1,
+  "truncated": false,
+  "elapsed_ms": 0,
+  "summary": {
+    "total_matches": 1,
+    "total_files": 1,
+    "summary": "Found 1 matches in 1 files",
+    "top_files": [
+      {
+        "file": "f",
+        "match_count": 1,
+        "sample_lines": [
+          "L1: test"
+        ]
+      }
+    ],
+    "truncated": false
+  }
+}
