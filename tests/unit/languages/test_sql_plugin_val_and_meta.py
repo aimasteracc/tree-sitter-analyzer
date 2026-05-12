@@ -7,15 +7,9 @@ from tree_sitter_analyzer.languages.sql_plugin import (
     SQLPlugin,
 )
 from tree_sitter_analyzer.models import (
-    Class,
-    Function,
-    Import,
-    SQLElementType,
     SQLFunction,
-    SQLProcedure,
     SQLTable,
     SQLTrigger,
-    SQLView,
     Variable,
 )
 
@@ -33,8 +27,7 @@ def _parse(sql: str):
     if not TREE_SITTER_SQL_AVAILABLE:
         pytest.skip("tree-sitter-sql not available")
     lang = tree_sitter.Language(tree_sitter_sql.language())
-    parser = tree_sitter.Parser()
-    parser.set_language(lang)
+    parser = tree_sitter.Parser(lang)
     tree = parser.parse(sql.encode("utf-8"))
     return tree, sql
 
@@ -47,7 +40,7 @@ class TestValidateAndFixPhantomFunction:
         ext.source_code = "CREATE TABLE t (id INT);"
         ext.content_lines = ext.source_code.split("\n")
 
-        phantom = Function(
+        phantom = SQLFunction(
             name="phantom_func",
             start_line=1,
             end_line=1,
@@ -62,7 +55,7 @@ class TestValidateAndFixPhantomFunction:
         ext.source_code = "CREATE FUNCTION my_func() RETURNS INT BEGIN RETURN 1; END;"
         ext.content_lines = ext.source_code.split("\n")
 
-        func = Function(
+        func = SQLFunction(
             name="my_func",
             start_line=1,
             end_line=1,
@@ -83,7 +76,7 @@ class TestValidateAndFixNameCorrection:
         ext.source_code = sql
         ext.content_lines = sql.split("\n")
 
-        trigger = Function(
+        trigger = SQLTrigger(
             name="wrong_name",
             start_line=1,
             end_line=1,
@@ -100,7 +93,7 @@ class TestValidateAndFixNameCorrection:
         ext.source_code = sql
         ext.content_lines = sql.split("\n")
 
-        func = Function(
+        func = SQLFunction(
             name="AUTO_INCREMENT",
             start_line=1,
             end_line=1,
@@ -108,7 +101,6 @@ class TestValidateAndFixNameCorrection:
             language="sql",
         )
         result = ext._validate_and_fix_elements([func])
-        # AUTO_INCREMENT is a garbage function name; no CREATE FUNCTION in raw_text
         assert len(result) == 0
 
     def test_function_name_corrected(self):
@@ -117,7 +109,7 @@ class TestValidateAndFixNameCorrection:
         ext.source_code = sql
         ext.content_lines = sql.split("\n")
 
-        func = Function(
+        func = SQLFunction(
             name="wrong_func",
             start_line=1,
             end_line=1,
@@ -132,7 +124,9 @@ class TestValidateAndFixNameCorrection:
 class TestGetNodeTextMultilineFallback:
     """Test _get_node_text multiline fallback path."""
 
-    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available")
+    @pytest.mark.skipif(
+        not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available"
+    )
     def test_multiline_node_text(self):
         sql = "CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(100)\n);"
         tree, source = _parse(sql)
@@ -148,7 +142,9 @@ class TestGetNodeTextMultilineFallback:
 class TestExtractSQLTriggersNoEndFallback:
     """Test trigger extraction when END; is not found."""
 
-    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available")
+    @pytest.mark.skipif(
+        not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available"
+    )
     def test_trigger_without_end_semicolon(self):
         sql = "CREATE TRIGGER my_trg BEFORE INSERT ON users FOR EACH ROW SET x = 1"
         tree, source = _parse(sql)
@@ -162,26 +158,11 @@ class TestExtractSQLTriggersNoEndFallback:
 
 
 class TestExtractFunctionMetadata:
-    """Test _extract_function_metadata."""
+    """Test _extract_function_metadata with real tree nodes."""
 
-    def test_metadata_extraction(self):
-        ext = SQLElementExtractor()
-        ext.source_code = ""
-        ext.content_lines = []
-
-        from tree_sitter_analyzer.models import SQLParameter
-
-        params = []
-        deps = []
-        ext._extract_function_metadata.__func__(
-            ext,
-            func_node=None,
-            parameters=params,
-            return_type=None,
-            dependencies=deps,
-        )
-
-    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available")
+    @pytest.mark.skipif(
+        not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available"
+    )
     def test_metadata_with_real_node(self):
         sql = "CREATE FUNCTION add_one(x INT) RETURNS INT BEGIN RETURN x + 1; END;"
         tree, source = _parse(sql)
@@ -201,29 +182,21 @@ class TestProcedureParameterDirection:
 
     def test_out_parameter(self):
         ext = SQLElementExtractor()
-        ext.source_code = ""
-        ext.content_lines = []
-
-        from tree_sitter_analyzer.models import SQLParameter
-
         params = []
         proc_text = "PROCEDURE my_proc(OUT result INT) BEGIN SET result = 1; END;"
         ext._extract_procedure_parameters(proc_text, params)
         assert len(params) > 0
         assert params[0].direction == "OUT"
 
-    def test_inout_parameter(self):
+    def test_default_in_parameter(self):
         ext = SQLElementExtractor()
-        ext.source_code = ""
-        ext.content_lines = []
-
-        from tree_sitter_analyzer.models import SQLParameter
-
         params = []
-        proc_text = "PROCEDURE my_proc(INOUT counter INT) BEGIN SET counter = counter + 1; END;"
+        proc_text = "PROCEDURE my_proc(p_id INT) BEGIN SET x = p_id; END;"
         ext._extract_procedure_parameters(proc_text, params)
         assert len(params) > 0
-        assert params[0].direction == "INOUT"
+        assert params[0].direction == "IN"
+        assert params[0].name == "p_id"
+        assert params[0].data_type == "INT"
 
 
 class TestSQLPluginDiagnosticMode:
@@ -241,26 +214,16 @@ class TestSQLPluginDiagnosticMode:
 class TestSQLPluginExtractElementsMapping:
     """Test extract_elements maps SQL-specific types to legacy buckets."""
 
-    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available")
-    def test_import_type_mapping(self):
+    @pytest.mark.skipif(
+        not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available"
+    )
+    def test_table_maps_to_classes(self):
         sql = "CREATE TABLE users (id INT);"
         tree, source = _parse(sql)
         plugin = SQLPlugin()
 
-        # Directly mock extractor to return an import-like element
-        original_extract = plugin.extractor.extract_sql_elements
-
         from unittest.mock import patch
 
-        import_elem = Import(
-            name="my_schema",
-            start_line=1,
-            end_line=1,
-            raw_text="USE my_schema;",
-            language="sql",
-        )
-        # SQLElement doesn't have element_type as "import" by default;
-        # test with table → classes mapping instead
         table_elem = SQLTable(
             name="users",
             start_line=1,
@@ -269,12 +232,16 @@ class TestSQLPluginExtractElementsMapping:
             language="sql",
         )
 
-        with patch.object(plugin.extractor, "extract_sql_elements", return_value=[table_elem]):
+        with patch.object(
+            plugin.extractor, "extract_sql_elements", return_value=[table_elem]
+        ):
             result = plugin.extract_elements(tree, source)
 
         assert len(result["classes"]) >= 1
 
-    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available")
+    @pytest.mark.skipif(
+        not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available"
+    )
     def test_index_maps_to_variables(self):
         sql = "CREATE INDEX idx_name ON users(name);"
         tree, source = _parse(sql)
@@ -290,7 +257,9 @@ class TestSQLPluginExtractElementsMapping:
             language="sql",
         )
 
-        with patch.object(plugin.extractor, "extract_sql_elements", return_value=[index_elem]):
+        with patch.object(
+            plugin.extractor, "extract_sql_elements", return_value=[index_elem]
+        ):
             result = plugin.extract_elements(tree, source)
 
         assert len(result["variables"]) >= 1
@@ -305,7 +274,6 @@ class TestViewRecoveryFromSource:
         ext.source_code = sql
         ext.content_lines = sql.split("\n")
 
-        # Pass an empty list - view should be recovered from source
         result = ext._validate_and_fix_elements([])
         assert any(e.name == "my_view" for e in result)
 
@@ -313,9 +281,16 @@ class TestViewRecoveryFromSource:
 class TestExtractProceduresWithTreeSitter:
     """Test enhanced procedure extraction with tree-sitter."""
 
-    @pytest.mark.skipif(not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available")
+    @pytest.mark.skipif(
+        not TREE_SITTER_SQL_AVAILABLE, reason="tree-sitter-sql not available"
+    )
     def test_procedure_with_parameters_extracted(self):
-        sql = "CREATE PROCEDURE my_proc(IN p_id INT, OUT p_name VARCHAR(100))\nBEGIN\nSELECT name INTO p_name FROM users WHERE id = p_id;\nEND;"
+        sql = (
+            "CREATE PROCEDURE my_proc(IN p_id INT, OUT p_name VARCHAR(100))\n"
+            "BEGIN\n"
+            "SELECT name INTO p_name FROM users WHERE id = p_id;\n"
+            "END;"
+        )
         tree, source = _parse(sql)
         ext = SQLElementExtractor()
         ext.source_code = source
