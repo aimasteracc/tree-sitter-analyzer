@@ -77,16 +77,15 @@ def test_cli_has_dir() -> None:
 def test_cli_import_error_fallback() -> None:
     """Test CLI package sets None fallbacks when core imports fail."""
     import importlib
-    import importlib.util
     import sys
 
-    # Remove both cli and its parent from cache to force clean reimport.
-    # Also clear any cached cli reference on the parent package.
-    parent = sys.modules.pop("tree_sitter_analyzer", None)
-    sys.modules.pop("tree_sitter_analyzer.cli", None)
+    # Only remove the cli package; keep parent (tree_sitter_analyzer) cached
+    # to avoid cascading re-imports of the parent __init__.py.
+    for mod in list(sys.modules):
+        if mod.startswith("tree_sitter_analyzer.cli"):
+            del sys.modules[mod]
 
-    # Use a meta_path finder to block the specific modules.
-    # This works regardless of whether __import__ is patched.
+    # Block only the 3 modules that cli/__init__.py tries to import
     block_list = {
         "tree_sitter_analyzer.cli_main",
         "tree_sitter_analyzer.core.analysis_engine",
@@ -105,15 +104,16 @@ def test_cli_import_error_fallback() -> None:
     try:
         cli = importlib.import_module("tree_sitter_analyzer.cli")
         assert cli.main is None, f"Expected main=None, got {cli.main}"
-        assert cli.get_analysis_engine is None, f"Expected get_analysis_engine=None"
-        assert cli.query_loader is None, f"Expected query_loader=None"
+        assert cli.get_analysis_engine is None, (
+            f"Expected get_analysis_engine=None, got {cli.get_analysis_engine}"
+        )
+        assert cli.query_loader is None, (
+            f"Expected query_loader=None, got {cli.query_loader}"
+        )
     finally:
-        # Restore meta_path and modules
         sys.meta_path.remove(finder)
+        # Clean up and re-import to restore normal state
         for mod in list(sys.modules):
-            if "tree_sitter_analyzer" in mod:
+            if mod.startswith("tree_sitter_analyzer.cli"):
                 del sys.modules[mod]
-        if parent is not None:
-            sys.modules["tree_sitter_analyzer"] = parent
-        # Re-import normally to restore state
         importlib.import_module("tree_sitter_analyzer.cli")
