@@ -49,10 +49,14 @@ class TestImportErrorFallback:
         """Test that fallback returns None when core services unavailable."""
         import sys
 
-        # Remove the cache_service module from sys.modules so the import
-        # machinery actually calls find_spec (where we block it).
         blocked = "tree_sitter_analyzer.core.cache_service"
         saved = sys.modules.pop(blocked, None)
+
+        mcp_utils_snapshot = {
+            m: sys.modules[m]
+            for m in list(sys.modules)
+            if m.startswith("tree_sitter_analyzer.mcp.utils")
+        }
 
         block_list = {blocked}
 
@@ -65,7 +69,6 @@ class TestImportErrorFallback:
         finder = BlockFinder()
         sys.meta_path.insert(0, finder)
 
-        # Remove cached mcp.utils modules to force fresh import
         for mod in list(sys.modules):
             if mod.startswith("tree_sitter_analyzer.mcp.utils"):
                 del sys.modules[mod]
@@ -81,7 +84,7 @@ class TestImportErrorFallback:
             for mod in list(sys.modules):
                 if mod.startswith("tree_sitter_analyzer.mcp.utils"):
                     del sys.modules[mod]
-            importlib.import_module("tree_sitter_analyzer.mcp.utils")
+            sys.modules.update(mcp_utils_snapshot)
 
     def test_fallback_get_performance_monitor_returns_none(self):
         """Test that fallback performance monitor returns None."""
@@ -89,6 +92,12 @@ class TestImportErrorFallback:
 
         blocked = "tree_sitter_analyzer.core.cache_service"
         saved = sys.modules.pop(blocked, None)
+
+        mcp_utils_snapshot = {
+            m: sys.modules[m]
+            for m in list(sys.modules)
+            if m.startswith("tree_sitter_analyzer.mcp.utils")
+        }
 
         block_list = {blocked}
 
@@ -116,4 +125,4 @@ class TestImportErrorFallback:
             for mod in list(sys.modules):
                 if mod.startswith("tree_sitter_analyzer.mcp.utils"):
                     del sys.modules[mod]
-            importlib.import_module("tree_sitter_analyzer.mcp.utils")
+            sys.modules.update(mcp_utils_snapshot)
