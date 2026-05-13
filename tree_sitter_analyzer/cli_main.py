@@ -27,6 +27,7 @@ from .cli.info_commands import (
     ShowLanguagesCommand,
 )
 from .output_manager import output_error, output_info, output_list
+from . import __version__
 from .query_loader import query_loader
 
 
@@ -646,5 +647,16 @@ if __name__ == "__main__":
         output_info("\nOperation cancelled by user.")
         sys.exit(1)
     except Exception as e:
-        output_error(f"Unexpected error: {e}")
+        msg = str(e)
+        if "does not exist" in msg.lower() or "file not found" in msg.lower():
+            output_error(f"File not found: {msg}")
+            output_info("Check the file path and try again.")
+        elif "unsupported language" in msg.lower():
+            output_error(f"Unsupported language: {msg}")
+            output_info("Run with --show-supported-languages to see available languages.")
+        elif "invalid file path" in msg.lower():
+            output_error(f"Invalid path: {msg}")
+            output_info("Use --project-root to set the project root directory.")
+        else:
+            output_error(f"Unexpected error: {msg}")
         sys.exit(1)

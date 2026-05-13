@@ -93,7 +93,6 @@ class OutputManager:
     def error(self, message: str) -> None:
         """Output error message"""
         print(f"ERROR: {message}", file=sys.stderr)
-        log_error(message)
 
     def success(self, message: str) -> None:
         """Output success message"""
