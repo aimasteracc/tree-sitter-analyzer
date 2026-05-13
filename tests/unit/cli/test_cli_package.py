@@ -78,14 +78,10 @@ def test_cli_import_error_fallback() -> None:
     """Test CLI package sets None fallbacks when core imports fail."""
     import importlib
     import sys
+    from unittest.mock import patch
 
-    # Only remove the cli package; keep parent (tree_sitter_analyzer) cached
-    # to avoid cascading re-imports of the parent __init__.py.
-    for mod in list(sys.modules):
-        if mod.startswith("tree_sitter_analyzer.cli"):
-            del sys.modules[mod]
+    cli_mods_snapshot = {m: sys.modules[m] for m in list(sys.modules) if m.startswith("tree_sitter_analyzer.cli")}
 
-    # Block only the 3 modules that cli/__init__.py tries to import
     block_list = {
         "tree_sitter_analyzer.cli_main",
         "tree_sitter_analyzer.core.analysis_engine",
@@ -102,18 +98,21 @@ def test_cli_import_error_fallback() -> None:
     sys.meta_path.insert(0, finder)
 
     try:
+        for mod in list(sys.modules):
+            if mod.startswith("tree_sitter_analyzer.cli"):
+                del sys.modules[mod]
+
         cli = importlib.import_module("tree_sitter_analyzer.cli")
         assert cli.main is None, f"Expected main=None, got {cli.main}"
         assert cli.get_analysis_engine is None, (
             f"Expected get_analysis_engine=None, got {cli.get_analysis_engine}"
         )
         assert cli.query_loader is None, (
-            f"Expected query_loader=None, got {cli.query_loader}"
+            f"Expected queryloader=None, got {cli.query_loader}"
         )
     finally:
         sys.meta_path.remove(finder)
-        # Clean up and re-import to restore normal state
         for mod in list(sys.modules):
             if mod.startswith("tree_sitter_analyzer.cli"):
                 del sys.modules[mod]
-        importlib.import_module("tree_sitter_analyzer.cli")
+        sys.modules.update(cli_mods_snapshot)
