@@ -156,7 +156,8 @@ class AdvancedCommand(BaseCommand):
             "node_count": analysis_result.node_count,
             "language": analysis_result.language,
         }
-        output_section("Statistics")
+        if self.args.output_format not in ("json", "toon"):
+            output_section("Statistics")
         if self.args.output_format == "json":
             output_json(stats)
         elif self.args.output_format == "toon" and _toon_available:
@@ -169,7 +170,8 @@ class AdvancedCommand(BaseCommand):
 
     def _output_full_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output full analysis results."""
-        output_section("Advanced Analysis Results")
+        if self.args.output_format not in ("json", "toon"):
+            output_section("Advanced Analysis Results")
         result_dict = {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,

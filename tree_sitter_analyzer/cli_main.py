@@ -101,7 +101,18 @@ def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
         description="Analyze code using Tree-sitter and extract structured information.",
-        epilog="Example: uv run tree-sitter-analyzer examples/Sample.java --table=full",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  tree-sitter-analyzer file.java --table=full         Markdown table of classes/methods\n"
+            "  tree-sitter-analyzer file.java --query-key class    Extract all class definitions\n"
+            "  tree-sitter-analyzer file.java --advanced            Full analysis with all elements\n"
+            "  tree-sitter-analyzer file.java --structure           Structure overview in JSON\n"
+            "  tree-sitter-analyzer file.java --summary             Quick summary of classes/methods\n"
+            "  tree-sitter-analyzer file.java --partial-read --start-line 10 --end-line 20\n"
+            "  tree-sitter-analyzer --list-queries                  Show available query keys\n"
+            "  tree-sitter-analyzer --show-supported-languages      List supported languages\n"
+        ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
