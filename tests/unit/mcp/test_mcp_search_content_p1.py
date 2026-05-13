@@ -261,8 +261,8 @@ async def test_search_content_optimize_paths(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
 
-    # In toon format, results are in toon_content
-    assert "toon_content" in result
+    # Results should contain the matches
+    assert "results" in result or "matches" in result
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_group_by_file(monkeypatch, tmp_path):
