@@ -272,6 +272,9 @@ all = [
     "psutil>=5.9.6,<6",
     "pre-commit>=3.0.0",
 ]
+swift = [
+    "tree-sitter-swift>=0.7.2",
+]
 
 [project.scripts]
 # Main CLI entry point
