@@ -264,6 +264,9 @@ class TestUnifiedEngineCompatibilityProperties:
 class TestUnifiedAnalysisEngineInit:
     """Test cases for UnifiedAnalysisEngine initialization and singleton pattern."""
 
+    def setup_method(self):
+        UnifiedAnalysisEngine._reset_instance()
+
     def test_singleton_pattern_same_project_root(self):
         """Test that same project root returns same instance."""
         engine1 = UnifiedAnalysisEngine(project_root="/test")
