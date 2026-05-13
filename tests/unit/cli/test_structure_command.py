@@ -345,19 +345,15 @@ class TestStructureCommandOutputStructureAnalysis:
             mock_formatter_class.return_value = mock_formatter
             with patch("builtins.print") as mock_print:
                 command._output_structure_analysis(analysis_result)
-                # formatter.format is called once, and print is called twice:
-                # 1. output_section header
-                # 2. formatted output
+                # formatter.format is called once, and print is called once:
+                # (section header is skipped for toon/json to keep output clean)
                 mock_formatter_class.assert_called_once_with(use_tabs=False)
                 mock_formatter.format.assert_called_once()
-                assert mock_print.call_count == 2
-                # First call is to section header
+                assert mock_print.call_count == 1
+                # The print call contains the formatted output
                 assert (
-                    mock_print.call_args_list[0][0][0]
-                    == "\n--- Structure Analysis Results ---"
+                    mock_print.call_args_list[0][0][0] == "formatted_output"
                 )
-                # Second call is to formatted output
-                assert mock_print.call_args_list[1][0][0] == "formatted_output"
 
 
 class TestStructureCommandOutputTextFormat:

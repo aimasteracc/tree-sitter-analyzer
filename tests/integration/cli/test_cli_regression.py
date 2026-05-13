@@ -52,12 +52,9 @@ class TestCLIRegression:
         )
 
         assert returncode == 0, f"Command failed with stderr: {stderr}"
-        assert "Summary Results" in stdout
 
-        # Parse JSON output
-        json_start = stdout.find("{")
-        json_output = stdout[json_start:]
-        data = json.loads(json_output)
+        # Parse JSON output (output is clean JSON, no header)
+        data = json.loads(stdout)
 
         # Verify expected structure
         assert data["file_path"] == bigservice_path
@@ -190,13 +187,8 @@ class TestCLIRegression:
 
         assert returncode == 0, f"Command failed with stderr: {stderr}"
 
-        # Verify structure output contains expected sections
-        assert "Structure Analysis Results" in stdout
-
-        # Parse JSON output
-        json_start = stdout.find("{")
-        json_output = stdout[json_start:]
-        data = json.loads(json_output)
+        # Parse JSON output (output is clean JSON, no header)
+        data = json.loads(stdout)
 
         # Verify expected structure
         assert data["file_path"] == bigservice_path

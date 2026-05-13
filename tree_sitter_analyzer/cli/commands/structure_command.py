@@ -43,7 +43,8 @@ class StructureCommand(BaseCommand):
 
     def _output_structure_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output structure analysis results with appropriate header."""
-        output_section("Structure Analysis Results")
+        if self.args.output_format not in ("json", "toon"):
+            output_section("Structure Analysis Results")
 
         # Convert to legacy structure format expected by tests
         structure_dict = self._convert_to_legacy_format(analysis_result)

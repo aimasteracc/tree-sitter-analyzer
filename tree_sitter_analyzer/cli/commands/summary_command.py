@@ -42,7 +42,8 @@ class SummaryCommand(BaseCommand):
 
     def _output_summary_analysis(self, analysis_result: "AnalysisResult") -> None:
         """Output summary analysis results."""
-        output_section("Summary Results")
+        if self.args.output_format not in ("json", "toon"):
+            output_section("Summary Results")
 
         # Get summary types from args (default: classes,methods)
         summary_types = getattr(self.args, "summary", "classes,methods")
@@ -81,22 +82,49 @@ class SummaryCommand(BaseCommand):
 
         if "classes" in requested_types:
             summary_data["summary"]["classes"] = [
-                {"name": getattr(c, "name", "unknown")} for c in classes
+                {
+                    "name": getattr(c, "name", "unknown"),
+                    "start_line": getattr(c, "start_line", None),
+                    "end_line": getattr(c, "end_line", None),
+                    "visibility": getattr(c, "visibility", None),
+                    "modifiers": getattr(c, "modifiers", []),
+                }
+                for c in classes
             ]
 
         if "methods" in requested_types:
             summary_data["summary"]["methods"] = [
-                {"name": getattr(m, "name", "unknown")} for m in methods
+                {
+                    "name": getattr(m, "name", "unknown"),
+                    "start_line": getattr(m, "start_line", None),
+                    "end_line": getattr(m, "end_line", None),
+                    "visibility": getattr(m, "visibility", None),
+                    "modifiers": getattr(m, "modifiers", []),
+                    "parameters": getattr(m, "parameters", []),
+                    "return_type": getattr(m, "return_type", None),
+                }
+                for m in methods
             ]
 
         if "fields" in requested_types:
             summary_data["summary"]["fields"] = [
-                {"name": getattr(f, "name", "unknown")} for f in fields
+                {
+                    "name": getattr(f, "name", "unknown"),
+                    "start_line": getattr(f, "start_line", None),
+                    "end_line": getattr(f, "end_line", None),
+                    "visibility": getattr(f, "visibility", None),
+                    "modifiers": getattr(f, "modifiers", []),
+                }
+                for f in fields
             ]
 
         if "imports" in requested_types:
             summary_data["summary"]["imports"] = [
-                {"name": getattr(i, "name", "unknown")} for i in imports
+                {
+                    "name": getattr(i, "name", "unknown"),
+                    "start_line": getattr(i, "start_line", None),
+                }
+                for i in imports
             ]
 
         if self.args.output_format == "json":
@@ -125,4 +153,17 @@ class SummaryCommand(BaseCommand):
                 type_name = type_name_map.get(element_type, element_type)
                 output_data(f"\n{type_name} ({len(elements)} items):")
                 for element in elements:
-                    output_data(f"  - {element['name']}")
+                    name = str(element.get("name", "unknown"))
+                    start = element.get("start_line")
+                    end = element.get("end_line")
+                    vis = element.get("visibility")
+                    modifiers = element.get("modifiers", [])
+
+                    parts = [name]
+                    if start and end:
+                        parts.append(f"L{start}-{end}")
+                    if vis and str(vis) not in ("unknown", "None", ""):
+                        parts.append(str(vis))
+                    if modifiers:
+                        parts.append(" ".join(str(m) for m in modifiers))
+                    output_data(f"  - {' | '.join(parts)}")
