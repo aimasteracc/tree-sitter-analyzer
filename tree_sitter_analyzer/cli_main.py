@@ -102,6 +102,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         description="Analyze code using Tree-sitter and extract structured information.",
         epilog="Example: uv run tree-sitter-analyzer examples/Sample.java --table=full",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
 
     # File path
     parser.add_argument("file_path", nargs="?", help="Path to the file to analyze")
