@@ -14,14 +14,14 @@ from typing import Any
 class OutputFormatValidator:
     """Validator for output format parameters mutual exclusion."""
 
-    # Output format parameters that are mutually exclusive
-    OUTPUT_FORMAT_PARAMS = {
+    # Output format parameters that are mutually exclusive (ordered by priority)
+    OUTPUT_FORMAT_PARAMS = [
         "total_only",
         "count_only_matches",
         "summary_only",
         "group_by_file",
         "suppress_output",
-    }
+    ]
 
     # Token efficiency guidance for error messages
     FORMAT_EFFICIENCY_GUIDE = {
