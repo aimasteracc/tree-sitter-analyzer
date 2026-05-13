@@ -184,6 +184,10 @@ class AdvancedCommand(BaseCommand):
                     "type": get_element_type(element),
                     "start_line": getattr(element, "start_line", 0),
                     "end_line": getattr(element, "end_line", 0),
+                    "visibility": getattr(element, "visibility", None),
+                    "modifiers": getattr(element, "modifiers", []),
+                    "parameters": getattr(element, "parameters", []),
+                    "return_type": getattr(element, "return_type", None),
                 }
                 for element in analysis_result.elements
             ],
