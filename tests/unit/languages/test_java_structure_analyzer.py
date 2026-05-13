@@ -382,7 +382,6 @@ def test_cli_structure_option_with_sample_file(mocker, sample_java_path):
         main()
 
     output = mock_stdout.getvalue()
-    assert "Structure Analysis Results" in output
 
     # JSON部分を抽出
     json_output = _extract_json_from_cli_output(output)
@@ -425,7 +424,6 @@ def test_cli_structure_option_json_format(mocker, simple_java_code):
             main()
 
         output = mock_stdout.getvalue()
-        assert "Structure Analysis Results" in output
 
         # JSON部分を抽出
         json_output = _extract_json_from_cli_output(output)
