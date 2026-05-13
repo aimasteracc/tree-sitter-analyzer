@@ -74,7 +74,7 @@ class TestValidatorCoverageRound2:
             assert "Symbolic links" in error
 
     @patch("tree_sitter_analyzer.security.validator.log_warning")
-    def test_junction_in_path_hierarchy_rejected(self):
+    def test_junction_in_path_hierarchy_rejected(self, mock_log_warning):
         """Lines 183-184: junction in path hierarchy returns False."""
         validator = SecurityValidator()
         with (
@@ -86,7 +86,7 @@ class TestValidatorCoverageRound2:
         ):
             is_valid, error = validator.validate_file_path("deep.py", "/base")
             assert is_valid is False
-            assert "Junctions" in error
+            assert "junction" in error.lower()
 
     def test_junction_hierarchy_oserror_fallback(self):
         """Line 187: OSError during junction hierarchy check."""
@@ -126,7 +126,7 @@ class TestValidatorCoverageRound2:
         ):
             is_valid, error = validator.validate_file_path("/some/abs/path.py")
             assert is_valid is False
-            assert "Junctions" in error
+            assert "junction" in error.lower()
 
     def test_no_base_path_junction_oserror_fallback(self):
         """Line 199: OSError during junction check without base_path."""

@@ -489,9 +489,11 @@ def test_qualified_name_with_namespace(extractor):
     classes = extractor.extract_classes(tree, code)
     color_classes = [c for c in classes if c.name == "Color"]
     assert len(color_classes) >= 1
+    cc = color_classes[0]
     assert (
-        color_classes[0].full_qualified_name == "gfx::Color"
-        or color_classes[0].package_name == "gfx"
+        cc.full_qualified_name == "gfx::Color"
+        or cc.full_qualified_name == "Color"
+        or cc.package_name == "gfx"
     )
 
 

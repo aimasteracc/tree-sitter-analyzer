@@ -303,12 +303,12 @@ class TestExecuteQueryWithLanguage:
         language = _mock_language()
 
         with patch.object(
-            executor,
-            "_get_query_string",
+            executor._query_loader,
+            "get_query",
             return_value=None,
         ):
             result = executor.execute_query_with_language_name(
-                tree, language, "nonexistent", "code"
+                tree, language, "nonexistent", "code", "python"
             )
             assert "error" in result
 
@@ -320,8 +320,8 @@ class TestExecuteQueryWithLanguage:
 
         with (
             patch.object(
-                executor,
-                "_get_query_string",
+                executor._query_loader,
+                "get_query",
                 return_value="(test) @capture",
             ),
             patch(
@@ -330,7 +330,7 @@ class TestExecuteQueryWithLanguage:
             ),
         ):
             result = executor.execute_query_with_language_name(
-                tree, language, "functions", "code"
+                tree, language, "functions", "code", "python"
             )
             assert "error" in result
 
@@ -341,12 +341,12 @@ class TestExecuteQueryWithLanguage:
         language = _mock_language()
 
         with patch.object(
-            executor,
-            "_get_query_string",
+            executor._query_loader,
+            "get_query",
             side_effect=KeyError("unexpected"),
         ):
             result = executor.execute_query_with_language_name(
-                tree, language, "functions", "code"
+                tree, language, "functions", "code", "python"
             )
             assert "error" in result
 
