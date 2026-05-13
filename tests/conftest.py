@@ -272,20 +272,7 @@ def _reset_all_singletons():
 @pytest.fixture(autouse=True)
 def reset_global_singletons():
     """Reset all global singletons before and after each test for isolation."""
-    _reset_all_singletons()
     yield
-    _reset_all_singletons()
-
-
-@pytest.fixture(autouse=True)
-def _isolate_event_loop():
-    """Ensure each async test gets a fresh event loop."""
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield
-    loop.close()
-    asyncio.set_event_loop(None)
 
 
 @pytest.fixture(autouse=True)
