@@ -13,12 +13,25 @@ RUBY_CLASS_QUERY = """
   name: (constant) @module.name) @module.definition
 """
 
+# Query for Ruby modules only
+RUBY_MODULE_QUERY = """
+(module
+  name: (constant) @module.name) @module.definition
+"""
+
 # Query for Ruby methods
 RUBY_METHOD_QUERY = """
 (method
   name: (identifier) @method.name
   parameters: (method_parameters)? @method.parameters) @method.definition
 
+(singleton_method
+  name: (identifier) @singleton.method.name
+  parameters: (method_parameters)? @singleton.method.parameters) @singleton.method.definition
+"""
+
+# Query for Ruby singleton methods only
+RUBY_SINGLETON_METHOD_QUERY = """
 (singleton_method
   name: (identifier) @singleton.method.name
   parameters: (method_parameters)? @singleton.method.parameters) @singleton.method.definition
@@ -51,6 +64,15 @@ RUBY_REQUIRE_QUERY = """
     (string) @require.module)) @require.definition
 """
 
+# Query for Ruby include/extend/prepend
+RUBY_MIXIN_QUERY = """
+(call
+  method: (identifier) @mixin.method
+  (#match? @mixin.method "^(include|extend|prepend)$")
+  arguments: (argument_list
+    (constant) @mixin.name)) @mixin.definition
+"""
+
 # Query for Ruby attr_accessor, attr_reader, attr_writer
 RUBY_ATTR_QUERY = """
 (call
@@ -72,6 +94,57 @@ RUBY_PROC_LAMBDA_QUERY = """
 (call
   method: (identifier) @proc.method
   (#match? @proc.method "^(lambda|proc)$")) @proc.definition
+"""
+
+# Query for Ruby begin/rescue exception handling
+RUBY_RESCUE_QUERY = """
+(begin
+  (rescue
+    (rescue_clause
+      (constant) @exception.type)? @exception.handler) @rescue.block) @begin.block
+"""
+
+# Query for Ruby alias
+RUBY_ALIAS_QUERY = """
+(alias
+  (symbol) @alias.new_name
+  (symbol) @alias.old_name) @alias.definition
+
+(alias_method
+  arguments: (argument_list
+    (symbol) @alias.new_name
+    (symbol) @alias.old_name)) @alias_method.definition
+"""
+
+# Query for Ruby yield statements
+RUBY_YIELD_QUERY = """
+(yield) @yield.statement
+"""
+
+# Query for Ruby if/unless modifiers and conditionals
+RUBY_CONDITIONAL_QUERY = """
+(if
+  condition: (_) @if.condition) @if.definition
+
+(unless
+  condition: (_) @unless.condition) @unless.definition
+"""
+
+# Query for Ruby class with inheritance
+RUBY_INHERITANCE_QUERY = """
+(class
+  name: (constant) @class.name
+  superclass: (constant) @class.superclass) @class.with_inheritance
+"""
+
+# Query for Ruby global variables
+RUBY_GLOBAL_VAR_QUERY = """
+(global_variable) @global.var.reference
+"""
+
+# Query for Ruby heredoc strings
+RUBY_HEREDOC_QUERY = """
+(heredoc_string) @heredoc.definition
 """
 
 # Combined query for all Ruby elements
@@ -97,9 +170,17 @@ ALL_QUERIES = {
         "query": RUBY_CLASS_QUERY,
         "description": "Extract Ruby classes and modules",
     },
+    "module": {
+        "query": RUBY_MODULE_QUERY,
+        "description": "Extract Ruby module declarations",
+    },
     "method": {
         "query": RUBY_METHOD_QUERY,
         "description": "Extract Ruby methods and singleton methods",
+    },
+    "singleton_method": {
+        "query": RUBY_SINGLETON_METHOD_QUERY,
+        "description": "Extract Ruby singleton (class) methods",
     },
     "constant": {
         "query": RUBY_CONSTANT_QUERY,
@@ -117,6 +198,10 @@ ALL_QUERIES = {
         "query": RUBY_REQUIRE_QUERY,
         "description": "Extract Ruby require/load statements",
     },
+    "mixin": {
+        "query": RUBY_MIXIN_QUERY,
+        "description": "Extract Ruby include/extend/prepend calls",
+    },
     "attr": {
         "query": RUBY_ATTR_QUERY,
         "description": "Extract Ruby attr_accessor/attr_reader/attr_writer",
@@ -128,6 +213,34 @@ ALL_QUERIES = {
     "proc_lambda": {
         "query": RUBY_PROC_LAMBDA_QUERY,
         "description": "Extract Ruby proc and lambda calls",
+    },
+    "rescue": {
+        "query": RUBY_RESCUE_QUERY,
+        "description": "Extract Ruby begin/rescue exception handling",
+    },
+    "alias": {
+        "query": RUBY_ALIAS_QUERY,
+        "description": "Extract Ruby alias and alias_method",
+    },
+    "yield": {
+        "query": RUBY_YIELD_QUERY,
+        "description": "Extract Ruby yield statements",
+    },
+    "conditional": {
+        "query": RUBY_CONDITIONAL_QUERY,
+        "description": "Extract Ruby if/unless conditionals",
+    },
+    "inheritance": {
+        "query": RUBY_INHERITANCE_QUERY,
+        "description": "Extract Ruby classes with inheritance (superclass)",
+    },
+    "global_variable": {
+        "query": RUBY_GLOBAL_VAR_QUERY,
+        "description": "Extract Ruby global variable references",
+    },
+    "heredoc": {
+        "query": RUBY_HEREDOC_QUERY,
+        "description": "Extract Ruby heredoc strings",
     },
 }
 

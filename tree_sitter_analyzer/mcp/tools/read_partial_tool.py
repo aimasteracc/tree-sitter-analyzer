@@ -297,6 +297,13 @@ class ReadPartialTool(BaseMCPTool):
                     "lines_extracted": lines_extracted,
                 }
 
+                # Add next_steps if there are likely more lines to read
+                if end_line and end_line > start_line:
+                    result["next_steps"] = [
+                        "query_code to find related elements in this file",
+                        "search_content to find callers or usages of this code",
+                    ]
+
                 # Only include partial_content_result if not suppressed or no output file specified
                 if not suppress_output or not output_file:
                     if content_format == "json":

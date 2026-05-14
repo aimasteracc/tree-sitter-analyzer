@@ -1648,3 +1648,246 @@ class TestExecuteInvalidQueryKey:
             result = await tool.execute(arguments)
             # suppress_output without output_file falls through to else branch
             assert result["success"] is True
+
+
+class TestBuildNextSteps:
+    """Tests for _build_next_steps method."""
+
+    def test_empty_results_returns_empty(self, tool):
+        results = []
+        steps = tool._build_next_steps(results, "test.py", "methods")
+        assert steps == []
+
+    def test_single_result_suggests_other_queries(self, tool):
+        results = [
+            {
+                "capture_name": "method",
+                "start_line": 1,
+                "end_line": 5,
+                "name": "foo",
+                "node_type": "func",
+            }
+        ]
+        steps = tool._build_next_steps(results, "test.py", "methods")
+        assert any("Try other query keys" in s for s in steps)
+
+    def test_many_results_suggests_filter(self, tool):
+        results = [
+            {
+                "capture_name": "method",
+                "start_line": i,
+                "end_line": i + 1,
+                "name": f"m{i}",
+                "node_type": "func",
+            }
+            for i in range(5)
+        ]
+        steps = tool._build_next_steps(results, "test.py", "methods")
+        assert any("filter" in s.lower() for s in steps)
+
+    def test_named_results_with_method_query_suggests_search(self, tool):
+        results = [
+            {
+                "capture_name": "method",
+                "start_line": 1,
+                "end_line": 3,
+                "name": "doWork",
+                "node_type": "func",
+            },
+            {
+                "capture_name": "method",
+                "start_line": 5,
+                "end_line": 7,
+                "name": "process",
+                "node_type": "func",
+            },
+        ]
+        steps = tool._build_next_steps(results, "test.py", "methods")
+        assert any("search_content" in s for s in steps)
+
+    def test_named_results_with_function_query_suggests_search(self, tool):
+        results = [
+            {
+                "capture_name": "func",
+                "start_line": 1,
+                "end_line": 3,
+                "name": "handler",
+                "node_type": "func",
+            },
+        ]
+        steps = tool._build_next_steps(results, "test.py", "functions")
+        assert any("search_content" in s for s in steps)
+
+    def test_unnamed_results_no_search_suggestion(self, tool):
+        results = [
+            {
+                "capture_name": "method",
+                "start_line": 1,
+                "end_line": 3,
+                "node_type": "func",
+            },
+        ]
+        steps = tool._build_next_steps(results, "test.py", "methods")
+        assert not any("search_content" in s for s in steps)
+
+    def test_non_method_function_query_no_search(self, tool):
+        results = [
+            {
+                "capture_name": "class",
+                "start_line": 1,
+                "end_line": 3,
+                "name": "Foo",
+                "node_type": "class",
+            },
+        ]
+        steps = tool._build_next_steps(results, "test.py", "classes")
+        assert not any("search_content" in s for s in steps)
+
+    def test_returns_at_most_three_steps(self, tool):
+        results = [
+            {
+                "capture_name": "m",
+                "start_line": i,
+                "end_line": i + 2,
+                "name": f"n{i}",
+                "node_type": "func",
+            }
+            for i in range(10)
+        ]
+        steps = tool._build_next_steps(results, "test.py", "methods")
+        assert len(steps) <= 3
+
+    def test_extractable_result_generates_extract_step(self, tool):
+        results = [
+            {
+                "capture_name": "m",
+                "start_line": 10,
+                "end_line": 20,
+                "name": "myFunc",
+                "node_type": "func",
+            }
+        ]
+        steps = tool._build_next_steps(results, "app.py", "methods")
+        assert any("extract_code_section" in s for s in steps)
+
+    def test_no_line_range_no_extract_step(self, tool):
+        results = [{"capture_name": "m", "name": "myFunc", "node_type": "func"}]
+        steps = tool._build_next_steps(results, "app.py", "methods")
+        assert not any("extract_code_section" in s for s in steps)
+
+    def test_same_start_end_line_no_extract(self, tool):
+        results = [
+            {
+                "capture_name": "m",
+                "start_line": 5,
+                "end_line": 5,
+                "name": "myFunc",
+                "node_type": "func",
+            }
+        ]
+        steps = tool._build_next_steps(results, "app.py", "methods")
+        assert not any("extract_code_section" in s for s in steps)
+
+
+class TestCategorizeQueriesCoverage:
+    """Tests for _categorize_queries covering remaining branches."""
+
+    def test_linq_categorized_as_framework(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["linq_expressions"], "csharp")
+        assert "framework" in result
+        assert "linq_expressions" in result["framework"]
+
+    def test_lambda_categorized_as_framework(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["lambda_functions"], "python")
+        # "lambda" contains "function" keyword -> declarations, not framework
+        assert "declarations" in result
+        assert "lambda_functions" in result["declarations"]
+
+    def test_channel_categorized_as_framework(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["channel_operations"], "go")
+        assert "framework" in result
+        assert "channel_operations" in result["framework"]
+
+    def test_annotation_categorized_as_framework(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["annotation_declarations"], "java")
+        assert "framework" in result
+        assert "annotation_declarations" in result["framework"]
+
+    def test_attribute_categorized_as_framework(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["attribute_usage"], "csharp")
+        assert "framework" in result
+        assert "attribute_usage" in result["framework"]
+
+    def test_async_categorized_as_framework(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["async_functions"], "javascript")
+        # "async_functions" contains "function" keyword -> declarations, not framework
+        assert "declarations" in result
+        assert "async_functions" in result["declarations"]
+
+    def test_http_categorized_as_framework(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["http_handlers"], "typescript")
+        assert "framework" in result
+        assert "http_handlers" in result["framework"]
+
+    def test_authorize_categorized_as_framework(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["authorize_attributes"], "csharp")
+        assert "framework" in result
+        assert "authorize_attributes" in result["framework"]
+
+    def test_trait_categorized_as_declaration(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["trait_implementations"], "rust")
+        assert "declarations" in result
+        assert "trait_implementations" in result["declarations"]
+
+    def test_module_categorized_as_declaration(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["module_exports"], "javascript")
+        assert "declarations" in result
+        assert "module_exports" in result["declarations"]
+
+    def test_property_categorized_as_declaration(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["property_declarations"], "typescript")
+        assert "declarations" in result
+        assert "property_declarations" in result["declarations"]
+
+    def test_constructor_categorized_as_declaration(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["constructor_declarations"], "java")
+        assert "declarations" in result
+        assert "constructor_declarations" in result["declarations"]
+
+    def test_fn_categorized_as_declaration(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["fn_definitions"], "rust")
+        assert "declarations" in result
+        assert "fn_definitions" in result["declarations"]
+
+    def test_field_categorized_as_declaration(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["field_declarations"], "java")
+        assert "declarations" in result
+        assert "field_declarations" in result["declarations"]

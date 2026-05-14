@@ -18,10 +18,24 @@ KOTLIN_QUERIES: dict[str, str] = {
     "object": """
     (object_declaration) @object
     """,
+    "companion_object": """
+    (object_declaration
+      (companion_modifier)) @companion_object
+    """,
     "interface": """
     (class_declaration
       name: (identifier) @interface_name
       (class_body)) @interface
+    """,
+    "enum_class": """
+    (class_declaration
+      (class_modifier "enum")
+      name: (identifier) @name) @enum_class
+    """,
+    "annotation_class": """
+    (class_declaration
+      (class_modifier "annotation")
+      name: (identifier) @name) @annotation_class
     """,
     # --- Functions ---
     "function": """
@@ -29,6 +43,17 @@ KOTLIN_QUERIES: dict[str, str] = {
     """,
     "lambda": """
     (lambda_literal) @lambda
+    """,
+    "constructor": """
+    (secondary_constructor) @secondary_constructor
+
+    (class_declaration
+      (primary_constructor)) @primary_constructor
+    """,
+    "extension_function": """
+    (function_declaration
+      name: (identifier) @name
+      (receiver_type) @receiver) @extension_function
     """,
     # --- Properties and Variables ---
     "property": """
@@ -45,6 +70,17 @@ KOTLIN_QUERIES: dict[str, str] = {
     # --- Annotations ---
     "annotation": """
     (annotation) @annotation
+    """,
+    # --- Control Flow ---
+    "when_expression": """
+    (when_expression) @when_expression
+    """,
+    "try_expression": """
+    (try_expression) @try_expression
+    """,
+    # --- Type Aliases ---
+    "type_alias": """
+    (type_alias) @type_alias
     """,
     # --- Detailed Queries ---
     "class_with_body": """
@@ -68,10 +104,25 @@ KOTLIN_QUERIES: dict[str, str] = {
       (modifiers (class_modifier "sealed"))
       name: (identifier) @name) @sealed_class
     """,
+    "abstract_class": """
+    (class_declaration
+      (modifiers (class_modifier "abstract"))
+      name: (identifier) @name) @abstract_class
+    """,
+    "open_class": """
+    (class_declaration
+      (modifiers (class_modifier "open"))
+      name: (identifier) @name) @open_class
+    """,
     "suspend_function": """
     (function_declaration
       (modifiers (function_modifier "suspend"))
       name: (identifier) @name) @suspend_function
+    """,
+    "inline_function": """
+    (function_declaration
+      (modifiers (function_modifier "inline"))
+      name: (identifier) @name) @inline_function
     """,
     # --- Names ---
     "class_name": """
@@ -89,18 +140,29 @@ KOTLIN_QUERY_DESCRIPTIONS: dict[str, str] = {
     "package": "Extract Kotlin package header",
     "class": "Extract Kotlin class declarations",
     "object": "Extract Kotlin object declarations",
+    "companion_object": "Extract Kotlin companion object declarations",
     "interface": "Extract Kotlin interface declarations",
+    "enum_class": "Extract Kotlin enum class declarations",
+    "annotation_class": "Extract Kotlin annotation class declarations",
     "function": "Extract Kotlin function declarations",
     "lambda": "Extract Kotlin lambda literals",
+    "constructor": "Extract Kotlin primary and secondary constructors",
+    "extension_function": "Extract Kotlin extension functions",
     "property": "Extract Kotlin property declarations",
     "val": "Extract Kotlin read-only properties (val)",
     "var": "Extract Kotlin mutable properties (var)",
     "annotation": "Extract Kotlin annotations",
+    "when_expression": "Extract Kotlin when expressions",
+    "try_expression": "Extract Kotlin try/catch expressions",
+    "type_alias": "Extract Kotlin type aliases",
     "class_with_body": "Extract class declarations with body",
     "function_with_body": "Extract function declarations with body",
     "data_class": "Extract data classes",
     "sealed_class": "Extract sealed classes",
+    "abstract_class": "Extract abstract class declarations",
+    "open_class": "Extract open class declarations",
     "suspend_function": "Extract suspend functions",
+    "inline_function": "Extract inline function declarations",
     "class_name": "Extract class names only",
     "function_name": "Extract function names only",
 }
