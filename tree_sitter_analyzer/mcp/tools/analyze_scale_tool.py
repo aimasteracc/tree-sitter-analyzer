@@ -216,10 +216,11 @@ class AnalyzeScaleTool(BaseMCPTool):
             "key_areas": [],
             "complexity_assessment": "",
             "size_category": "",
+            "suggested_queries": [],
         }
 
         total_lines = file_metrics["total_lines"]
-        # estimated_tokens = file_metrics["estimated_tokens"]  # Not used currently
+        language = file_metrics.get("language", "")
 
         # Determine size category
         if total_lines < 100:
@@ -283,6 +284,40 @@ class AnalyzeScaleTool(BaseMCPTool):
 
         if len(structural_overview["imports"]) > 10:
             guidance["key_areas"].append("Many imports - consider dependency analysis")
+
+        # Suggest language-specific queries
+        lang_queries = {
+            "java": ["methods", "classes", "imports", "spring_service", "jpa_entity"],
+            "python": [
+                "functions",
+                "classes",
+                "imports",
+                "decorator",
+                "async_patterns",
+            ],
+            "javascript": [
+                "functions",
+                "classes",
+                "imports",
+                "export",
+                "react_component",
+            ],
+            "typescript": [
+                "functions",
+                "interfaces",
+                "type_aliases",
+                "enums",
+                "decorators",
+            ],
+            "go": ["function", "struct", "interface", "goroutine", "channel_send"],
+            "rust": ["fn", "struct", "enum", "trait", "impl"],
+            "c": ["function", "struct", "enum", "include", "typedef"],
+            "cpp": ["class", "function", "namespace", "template", "include"],
+            "kotlin": ["function", "class", "data_class", "object", "annotation"],
+            "csharp": ["class", "method", "property", "interface", "attribute"],
+        }
+        if language in lang_queries:
+            guidance["suggested_queries"] = lang_queries[language]
 
         return guidance
 
@@ -817,7 +852,9 @@ class AnalyzeScaleTool(BaseMCPTool):
             "analysis_recommendations": {
                 "suitable_for_full_analysis": file_metrics["total_lines"] < 1000,
                 "recommended_approach": "JSON files are configuration/data files - structural analysis not applicable",
-                "token_efficiency_notes": "JSON files can be read directly without tree-sitter parsing",
+                "token_efficiency_notes": (  # nosec B105
+                    "JSON files can be read directly without tree-sitter parsing"
+                ),
             },
         }
 
@@ -825,7 +862,9 @@ class AnalyzeScaleTool(BaseMCPTool):
             result["llm_analysis_guidance"] = {
                 "file_characteristics": "JSON configuration/data file",
                 "recommended_workflow": "Direct file reading for content analysis",
-                "token_optimization": "Use simple file reading tools for JSON content",
+                "token_optimization": (  # nosec B105
+                    "Use simple file reading tools for JSON content"
+                ),
                 "analysis_focus": "Data structure and configuration values",
             }
 

@@ -1185,3 +1185,254 @@ class TestValidateArgumentsAdditional:
             "output_format": "toon",
         }
         assert tool.validate_arguments(arguments) is True
+
+
+class TestExecuteCoverageBoost:
+    """Tests targeting specific uncovered lines in execute()."""
+
+    @pytest.mark.asyncio
+    async def test_execute_generic_exception_returns_error(
+        self, tool, sample_python_file
+    ):
+        """Test execute catches generic Exception and returns error dict (lines 277-283)."""
+        with patch.object(
+            tool,
+            "resolve_and_validate_file_path",
+            side_effect=RuntimeError("file resolve boom"),
+        ):
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_key": "methods",
+                "language": "python",
+            }
+            result = await tool.execute(arguments)
+            assert result["success"] is False
+            assert "file resolve boom" in result["error"]
+            assert result["file_path"] == str(sample_python_file)
+            assert result["language"] == "python"
+
+    @pytest.mark.asyncio
+    async def test_execute_suppress_output_without_file_save(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test suppress_output=True but output_file not triggering file save path (line 243)."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_key": "methods",
+                "language": "python",
+                "output_file": "results.json",
+                "suppress_output": True,
+            }
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.return_value = "/output/results.json"
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["output_file_path"] == "/output/results.json"
+                assert result["file_saved"] is True
+                assert "results" not in result
+
+    @pytest.mark.asyncio
+    async def test_execute_file_output_with_toon_format(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test file output with toon output_format (line 222-224)."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.return_value = "/output/toon_results.txt"
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_key": "methods",
+                    "language": "python",
+                    "output_file": "toon_results",
+                    "output_format": "toon",
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["file_saved"] is True
+                assert result["output_file_path"] == "/output/toon_results.txt"
+
+    @pytest.mark.asyncio
+    async def test_execute_empty_arguments_dict_triggers_error(self, tool):
+        """Test execute with empty dict triggers file_path required (line 134)."""
+        with pytest.raises(Exception, match="file_path is required"):
+            await tool.execute({})
+
+    @pytest.mark.asyncio
+    async def test_execute_none_file_path_triggers_error(self, tool):
+        """Test execute with None file_path triggers error (line 134)."""
+        with pytest.raises(Exception, match="file_path is required"):
+            await tool.execute({"file_path": None})
+
+
+class TestFormatSummaryCoverageBoost:
+    """Tests targeting uncovered _format_summary branches."""
+
+    def test_format_summary_multi_capture_with_items(self, tool):
+        """Test summary formatting with multiple captures and item extraction (lines 316-329)."""
+        results = [
+            {
+                "capture_name": "class",
+                "content": "class MyClass:\n    pass",
+                "start_line": 1,
+                "end_line": 2,
+                "node_type": "class_definition",
+            },
+            {
+                "capture_name": "class",
+                "content": "class OtherClass:\n    pass",
+                "start_line": 10,
+                "end_line": 11,
+                "node_type": "class_definition",
+            },
+            {
+                "capture_name": "method",
+                "content": "def my_method(self):\n    pass",
+                "start_line": 5,
+                "end_line": 6,
+                "node_type": "function_definition",
+            },
+        ]
+        summary = tool._format_summary(results, "all", "python")
+
+        assert summary["total_count"] == 3
+        assert summary["captures"]["class"]["count"] == 2
+        assert summary["captures"]["method"]["count"] == 1
+        class_items = summary["captures"]["class"]["items"]
+        assert class_items[0]["name"] == "MyClass"
+        assert class_items[1]["name"] == "OtherClass"
+        assert class_items[0]["line_range"] == "1-2"
+        method_items = summary["captures"]["method"]["items"]
+        assert method_items[0]["name"] == "my_method"
+
+
+class TestExtractNameCoverageBoost:
+    """Tests targeting uncovered _extract_name_from_content branches."""
+
+    def test_extract_simple_function_call(self, tool):
+        """Test extracting from simple function call pattern (line 355)."""
+        name = tool._extract_name_from_content("process(data)")
+        assert name == "process"
+
+    def test_extract_private_static_class(self, tool):
+        """Test extracting private static class name (line 353)."""
+        name = tool._extract_name_from_content("private static class Singleton {")
+        assert name == "Singleton"
+
+    def test_extract_unnamed_no_pattern_match(self, tool):
+        """Test fallback to 'unnamed' when no pattern matches (line 363)."""
+        name = tool._extract_name_from_content("return 42")
+        assert name == "unnamed"
+
+
+class TestValidateArgumentsCoverageBoost:
+    """Tests targeting uncovered validate_arguments branches."""
+
+    def test_validate_no_file_path_key(self, tool):
+        """Test validation when file_path key is missing (line 392)."""
+        with pytest.raises(ValueError, match="file_path is required"):
+            tool.validate_arguments({"query_key": "methods"})
+
+    def test_validate_file_path_not_string(self, tool):
+        """Test validation when file_path is not a string (line 396)."""
+        with pytest.raises(ValueError, match="file_path must be a string"):
+            tool.validate_arguments({"file_path": 123, "query_key": "methods"})
+
+    def test_validate_file_path_empty(self, tool):
+        """Test validation when file_path is empty string (line 399)."""
+        with pytest.raises(ValueError, match="file_path cannot be empty"):
+            tool.validate_arguments({"file_path": "   ", "query_key": "methods"})
+
+    def test_validate_query_key_not_string(self, tool):
+        """Test validation when query_key is not a string (line 409)."""
+        with pytest.raises(ValueError, match="query_key must be a string"):
+            tool.validate_arguments({"file_path": "t.py", "query_key": 123})
+
+    def test_validate_query_string_not_string(self, tool):
+        """Test validation when query_string is not a string (line 413)."""
+        with pytest.raises(ValueError, match="query_string must be a string"):
+            tool.validate_arguments({"file_path": "t.py", "query_string": 123})
+
+    def test_validate_language_not_string(self, tool):
+        """Test validation when language is not a string (line 418)."""
+        with pytest.raises(ValueError, match="language must be a string"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "query_key": "m", "language": 42}
+            )
+
+    def test_validate_filter_not_string(self, tool):
+        """Test validation when filter is not a string (line 425)."""
+        with pytest.raises(ValueError, match="filter must be a string"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "query_key": "m", "filter": 42}
+            )
+
+    def test_validate_result_format_invalid_value(self, tool):
+        """Test validation when result_format has invalid value (line 432)."""
+        with pytest.raises(ValueError, match="result_format must be one of"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "query_key": "m", "result_format": "xml"}
+            )
+
+    def test_validate_result_format_not_string(self, tool):
+        """Test validation when result_format is not a string (line 429)."""
+        with pytest.raises(ValueError, match="result_format must be a string"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "query_key": "m", "result_format": 123}
+            )
+
+    def test_validate_output_format_invalid_value(self, tool):
+        """Test validation when output_format has invalid value (line 438)."""
+        with pytest.raises(ValueError, match="output_format must be one of"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "query_key": "m", "output_format": "xml"}
+            )
+
+    def test_validate_output_format_not_string(self, tool):
+        """Test validation when output_format is not a string (line 436)."""
+        with pytest.raises(ValueError, match="output_format must be a string"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "query_key": "m", "output_format": 123}
+            )
+
+    def test_validate_output_file_not_string(self, tool):
+        """Test validation when output_file is not a string (line 444)."""
+        with pytest.raises(ValueError, match="output_file must be a string"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "query_key": "m", "output_file": 123}
+            )
+
+    def test_validate_suppress_output_not_bool(self, tool):
+        """Test validation when suppress_output is not a boolean (line 452)."""
+        with pytest.raises(ValueError, match="suppress_output must be a boolean"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "query_key": "m", "suppress_output": "yes"}
+            )
+
+    def test_validate_all_valid_fields(self, tool):
+        """Test validation passes with all valid fields (line 455)."""
+        arguments = {
+            "file_path": "test.py",
+            "query_key": "methods",
+            "language": "python",
+            "filter": "name=foo",
+            "result_format": "json",
+            "output_format": "toon",
+            "output_file": "out.txt",
+            "suppress_output": True,
+        }
+        assert tool.validate_arguments(arguments) is True
