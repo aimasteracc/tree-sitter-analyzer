@@ -191,6 +191,7 @@ class PythonElementExtractor(ElementExtractor):
             "module",
             "class_definition",
             "function_definition",
+            "decorated_definition",
             "if_statement",
             "for_statement",
             "while_statement",
@@ -802,113 +803,132 @@ class PythonElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", source_code: str
     ) -> list[Import]:
         """Manual import extraction for tree-sitter 0.25.x compatibility"""
-        imports = []
-
-        def walk_tree(node: "tree_sitter.Node") -> None:
-            if node.type in ["import_statement", "import_from_statement"]:
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = (
-                        source_code[node.start_byte : node.end_byte]
-                        if hasattr(node, "start_byte")
-                        else ""
-                    )
-
-                    # Parse the import statement correctly
-                    if node.type == "import_statement":
-                        # Simple import: import os, sys, json
-                        # Extract all imported modules
-                        for child in node.children:
-                            if (
-                                child.type == "dotted_name"
-                                or child.type == "identifier"
-                            ):
-                                module_name = (
-                                    source_code[child.start_byte : child.end_byte]
-                                    if hasattr(child, "start_byte")
-                                    else ""
-                                )
-                                if module_name and module_name != "import":
-                                    import_obj = Import(
-                                        name=module_name,
-                                        start_line=start_line,
-                                        end_line=end_line,
-                                        raw_text=raw_text,
-                                        module_name=module_name,
-                                        imported_names=[module_name],
-                                        element_type="import",
-                                    )
-                                    imports.append(import_obj)
-                    elif node.type == "import_from_statement":
-                        # From import: from abc import ABC, abstractmethod
-                        module_name = ""
-                        imported_items = []
-
-                        # Find the module name (after 'from')
-                        for child in node.children:
-                            if child.type == "dotted_name" and not module_name:
-                                module_name = (
-                                    source_code[child.start_byte : child.end_byte]
-                                    if hasattr(child, "start_byte")
-                                    else ""
-                                )
-                            elif child.type == "import_list":
-                                # Extract items from import list
-                                for grandchild in child.children:
-                                    if (
-                                        grandchild.type == "dotted_name"
-                                        or grandchild.type == "identifier"
-                                    ):
-                                        item_name = (
-                                            source_code[
-                                                grandchild.start_byte : grandchild.end_byte
-                                            ]
-                                            if hasattr(grandchild, "start_byte")
-                                            else ""
-                                        )
-                                        if item_name and item_name not in [
-                                            ",",
-                                            "(",
-                                            ")",
-                                        ]:
-                                            imported_items.append(item_name)
-                            elif child.type == "dotted_name" and module_name:
-                                # Single import item (not in a list)
-                                item_name = (
-                                    source_code[child.start_byte : child.end_byte]
-                                    if hasattr(child, "start_byte")
-                                    else ""
-                                )
-                                if item_name:
-                                    imported_items.append(item_name)
-
-                        # Create import object for from import
-                        if module_name:
-                            import_obj = Import(
-                                name=(
-                                    f"from {module_name} import {', '.join(imported_items)}"
-                                    if imported_items
-                                    else f"from {module_name}"
-                                ),
-                                start_line=start_line,
-                                end_line=end_line,
-                                raw_text=raw_text,
-                                module_name=module_name,
-                                imported_names=imported_items,
-                                element_type="import",
-                            )
-                            imports.append(import_obj)
-
-                except Exception as e:
-                    log_warning(f"Failed to extract import manually: {e}")
-
-            # Recursively process children
-            for child in node.children:
-                walk_tree(child)
-
-        walk_tree(root_node)
+        imports: list[Import] = []
+        self._walk_import_nodes(root_node, source_code, imports)
         return imports
+
+    def _walk_import_nodes(
+        self, node: "tree_sitter.Node", source_code: str, imports: list[Import]
+    ) -> None:
+        """Recursively walk AST to extract import nodes."""
+        if node.type in ("import_statement", "import_from_statement"):
+            try:
+                self._parse_import_node(node, source_code, imports)
+            except Exception as e:
+                log_warning(f"Failed to extract import manually: {e}")
+
+        for child in node.children:
+            self._walk_import_nodes(child, source_code, imports)
+
+    def _parse_import_node(
+        self, node: "tree_sitter.Node", source_code: str, imports: list[Import]
+    ) -> None:
+        """Parse a single import_statement or import_from_statement node."""
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+        raw_text = (
+            source_code[node.start_byte : node.end_byte]
+            if hasattr(node, "start_byte")
+            else ""
+        )
+
+        if node.type == "import_statement":
+            self._parse_simple_import(
+                node, source_code, start_line, end_line, raw_text, imports
+            )
+        elif node.type == "import_from_statement":
+            self._parse_from_import(
+                node, source_code, start_line, end_line, raw_text, imports
+            )
+
+    def _parse_simple_import(
+        self,
+        node: "tree_sitter.Node",
+        source_code: str,
+        start_line: int,
+        end_line: int,
+        raw_text: str,
+        imports: list[Import],
+    ) -> None:
+        """Handle: import os, sys, json"""
+        for child in node.children:
+            if child.type not in ("dotted_name", "identifier"):
+                continue
+            module_name = (
+                source_code[child.start_byte : child.end_byte]
+                if hasattr(child, "start_byte")
+                else ""
+            )
+            if module_name and module_name != "import":
+                imports.append(
+                    Import(
+                        name=module_name,
+                        start_line=start_line,
+                        end_line=end_line,
+                        raw_text=raw_text,
+                        module_name=module_name,
+                        imported_names=[module_name],
+                        element_type="import",
+                    )
+                )
+
+    def _parse_from_import(
+        self,
+        node: "tree_sitter.Node",
+        source_code: str,
+        start_line: int,
+        end_line: int,
+        raw_text: str,
+        imports: list[Import],
+    ) -> None:
+        """Handle: from abc import ABC, abstractmethod"""
+        module_name = ""
+        imported_items: list[str] = []
+
+        for child in node.children:
+            if child.type == "dotted_name" and not module_name:
+                module_name = (
+                    source_code[child.start_byte : child.end_byte]
+                    if hasattr(child, "start_byte")
+                    else ""
+                )
+            elif child.type == "import_list":
+                for gc in child.children:
+                    if gc.type in ("dotted_name", "identifier"):
+                        item = (
+                            source_code[gc.start_byte : gc.end_byte]
+                            if hasattr(gc, "start_byte")
+                            else ""
+                        )
+                        if item and item not in (",", "(", ")"):
+                            imported_items.append(item)
+            elif child.type == "dotted_name" and module_name:
+                item = (
+                    source_code[child.start_byte : child.end_byte]
+                    if hasattr(child, "start_byte")
+                    else ""
+                )
+                if item:
+                    imported_items.append(item)
+
+        if not module_name:
+            return
+
+        imports.append(
+            Import(
+                name=(
+                    f"from {module_name} import {', '.join(imported_items)}"
+                    if imported_items
+                    else f"from {module_name}"
+                ),
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                module_name=module_name,
+                imported_names=imported_items,
+                element_type="import",
+            )
+        )
 
     def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list:
         """Extract Python package information from file path"""
