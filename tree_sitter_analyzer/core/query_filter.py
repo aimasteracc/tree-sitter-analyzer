@@ -158,9 +158,9 @@ class QueryFilter:
 
     def _extract_method_name(self, content: str) -> str:
         """Extract method name from content"""
-        # Match method declaration patterns
         patterns = [
-            r"(?:public|private|protected)?\s*(?:static)?\s*\w+\s+(\w+)\s*\(",  # Java method
+            r"(?:public|private|protected)\s+(?:static\s+)?(?:final\s+)?(?:abstract\s+)?(?:synchronized\s+)?(?:[\w<>,\s\[\]]+)\s+(\w+)\s*\(",  # Java/C# method
+            r"(?:static\s+)?(?:final\s+)?(?:abstract\s+)?(?:[\w<>,\s\[\]]+)\s+(\w+)\s*\(",  # Java/C# method (no visibility)
             r"def\s+(\w+)\s*\(",  # Python method
             r"function\s+(\w+)\s*\(",  # JavaScript function
         ]
@@ -173,8 +173,7 @@ class QueryFilter:
         return "unknown"
 
     def _count_parameters(self, content: str) -> int:
-        """Count method parameters"""
-        # Find parameter list
+        """Count method parameters, handling nested generics/parens."""
         match = re.search(r"\(([^)]*)\)", content)
         if not match:
             return 0
@@ -183,10 +182,20 @@ class QueryFilter:
         if not params_str:
             return 0
 
-        # Simple parameter counting (by comma separation)
-        # Note: This is a simple implementation, doesn't handle generics etc.
-        params = [p.strip() for p in params_str.split(",") if p.strip()]
-        return len(params)
+        count = 0
+        depth = 0
+        for ch in params_str:
+            if ch in "(<":
+                depth += 1
+            elif ch in ")>":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                count += 1
+
+        if params_str:
+            count += 1
+
+        return count
 
     def get_filter_help(self) -> str:
         """Get filter help information"""

@@ -356,5 +356,173 @@ class TestFormatterProtocolCompliance:
         assert ":" in result or "{" in result
 
 
+class TestToonFormatterFormatAnalysisResult:
+    """Tests for ToonFormatter.format_analysis_result."""
+
+    def test_format_analysis_result_with_elements(self):
+        formatter = ToonFormatter()
+        from tree_sitter_analyzer.models import AnalysisResult, CodeElement
+
+        elements = [
+            CodeElement(element_type="class", name="MyClass", start_line=1, end_line=10),
+            CodeElement(element_type="method", name="run", start_line=3, end_line=8, visibility="public"),
+            CodeElement(element_type="function", name="helper", start_line=12, end_line=15),
+        ]
+        result = AnalysisResult(file_path="test.py", language="python", elements=elements)
+        output = formatter.format_analysis_result(result)
+        assert "file: test.py" in output
+        assert "language: python" in output
+        assert "classes" in output
+        assert "MyClass" in output
+        assert "methods" in output
+        assert "functions" in output
+        assert "helper" in output
+
+    def test_format_analysis_result_no_metadata(self):
+        formatter = ToonFormatter(include_metadata=False)
+        from tree_sitter_analyzer.models import AnalysisResult
+
+        result = AnalysisResult(file_path="x.py", language="python", elements=[])
+        output = formatter.format_analysis_result(result)
+        assert "file:" not in output
+
+    def test_format_analysis_result_with_package(self):
+        formatter = ToonFormatter()
+        from tree_sitter_analyzer.models import AnalysisResult
+
+        result = AnalysisResult(file_path="a.py", language="python", elements=[])
+        result.package = type("Pkg", (), {"name": "mypkg"})()
+        output = formatter.format_analysis_result(result)
+        assert "package: mypkg" in output
+
+    def test_format_analysis_result_dict_fallback(self):
+        formatter = ToonFormatter()
+        output = formatter.format_analysis_result({"key": "val"})
+        assert "key: val" in output
+
+    def test_format_analysis_result_other_type(self):
+        formatter = ToonFormatter()
+        output = formatter.format_analysis_result(42)
+        assert "42" in output
+
+    def test_format_analysis_result_compact_off(self):
+        formatter = ToonFormatter(compact_arrays=False)
+        from tree_sitter_analyzer.models import AnalysisResult, CodeElement
+
+        elements = [CodeElement(element_type="method", name="foo", start_line=1, end_line=2)]
+        result = AnalysisResult(file_path="t.py", language="python", elements=elements)
+        output = formatter.format_analysis_result(result)
+        assert "foo" in output
+
+
+class TestToonFormatterBaseMethods:
+    """Tests for BaseFormatter method implementations."""
+
+    def test_format_summary(self):
+        formatter = ToonFormatter()
+        result = formatter.format_summary({"name": "test"})
+        assert "name: test" in result
+
+    def test_format_advanced(self):
+        formatter = ToonFormatter()
+        result = formatter.format_advanced({"name": "test"})
+        assert "name: test" in result
+
+    def test_format_table(self):
+        formatter = ToonFormatter()
+        result = formatter.format_table({"name": "test"})
+        assert "name: test" in result
+
+
+class TestToonFormatterFormatErrorHandling:
+    """Tests for error handling in format()."""
+
+    def test_format_toon_encode_error_with_fallback(self):
+        formatter = ToonFormatter(fallback_to_json=True)
+        from tree_sitter_analyzer.formatters.toon_encoder import ToonEncodeError
+
+        original = formatter._format_internal
+
+        def raise_toon_error(data):
+            raise ToonEncodeError("test error", data=data)
+
+        formatter._format_internal = raise_toon_error
+        result = formatter.format({"key": "value"})
+        assert '"key"' in result
+        formatter._format_internal = original
+
+    def test_format_unexpected_error_with_fallback(self):
+        formatter = ToonFormatter(fallback_to_json=True)
+
+        original = formatter._format_internal
+
+        def raise_error(data):
+            raise RuntimeError("boom")
+
+        formatter._format_internal = raise_error
+        result = formatter.format({"key": "value"})
+        assert '"key"' in result
+        formatter._format_internal = original
+
+    def test_format_toon_encode_error_without_fallback(self):
+        from tree_sitter_analyzer.formatters.toon_encoder import ToonEncodeError
+
+        formatter = ToonFormatter(fallback_to_json=False)
+        original = formatter._format_internal
+
+        def raise_toon_error(data):
+            raise ToonEncodeError("test error", data=data)
+
+        formatter._format_internal = raise_toon_error
+        with pytest.raises(ToonEncodeError):
+            formatter.format({"key": "value"})
+        formatter._format_internal = original
+
+    def test_format_unexpected_error_without_fallback(self):
+        from tree_sitter_analyzer.formatters.toon_encoder import ToonEncodeError
+
+        formatter = ToonFormatter(fallback_to_json=False)
+        original = formatter._format_internal
+
+        def raise_error(data):
+            raise RuntimeError("boom")
+
+        formatter._format_internal = raise_error
+        with pytest.raises(ToonEncodeError):
+            formatter.format({"key": "value"})
+        formatter._format_internal = original
+
+
+class TestToonIsToonContent:
+    """Tests for ToonFormatter.is_toon_content static method."""
+
+    def test_empty_string(self):
+        assert ToonFormatter.is_toon_content("") is False
+
+    def test_whitespace_only(self):
+        assert ToonFormatter.is_toon_content("   ") is False
+
+    def test_json_object(self):
+        assert ToonFormatter.is_toon_content('{"key": "value"}') is False
+
+    def test_json_array(self):
+        assert ToonFormatter.is_toon_content('["a", "b"]') is False
+
+    def test_toon_format(self):
+        content = "file: test.py\nlanguage: python\nelements[3]:"
+        assert ToonFormatter.is_toon_content(content) is True
+
+    def test_toon_array_table_header(self):
+        content = "[2]{name,age}:\nAlice,30\nBob,25"
+        assert ToonFormatter.is_toon_content(content) is True
+
+    def test_single_kv_not_toon(self):
+        assert ToonFormatter.is_toon_content("key: value") is False
+
+    def test_toon_with_blank_lines(self):
+        content = "\n\nfile: test.py\n\nlanguage: python\n"
+        assert ToonFormatter.is_toon_content(content) is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
