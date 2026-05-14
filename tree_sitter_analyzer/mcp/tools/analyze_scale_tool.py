@@ -299,6 +299,7 @@ class AnalyzeScaleTool(BaseMCPTool):
             "complexity_assessment": "",
             "size_category": "",
             "suggested_queries": [],
+            "workflow_steps": [],
         }
 
         total_lines = file_metrics["total_lines"]
@@ -407,6 +408,19 @@ class AnalyzeScaleTool(BaseMCPTool):
         }
         if language in lang_queries:
             guidance["suggested_queries"] = lang_queries[language]
+
+        # Generate SMART workflow steps
+        steps = ["check_code_scale (done)"]
+        if guidance["size_category"] in ("large", "very_large"):
+            steps.append("analyze_code_structure with format=compact for overview")
+            steps.append(
+                "query_code with specific query keys to find target elements"
+            )
+            steps.append("extract_code_section for targeted line ranges")
+        else:
+            steps.append("analyze_code_structure for full structure table")
+            steps.append("query_code for specific elements if needed")
+        guidance["workflow_steps"] = steps
 
         return guidance
 
