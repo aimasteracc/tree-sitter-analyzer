@@ -428,6 +428,11 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "table_output": table_output,
                 }
 
+                # Add actionable next steps based on structure
+                next_steps = self._build_next_steps(structure_dict, file_path)
+                if next_steps:
+                    result["next_steps"] = next_steps
+
                 # Include table_output in response if needed
                 if suppress_output and output_file:
                     del result["table_output"]
@@ -462,6 +467,56 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         except Exception as e:
             self.logger.error(f"Error in code structure analysis tool: {e}")
             raise
+
+    def _build_next_steps(
+        self, structure_dict: dict[str, Any], file_path: str
+    ) -> list[str]:
+        """Build actionable next-step suggestions based on structure analysis."""
+        steps: list[str] = []
+        methods = structure_dict.get("methods", [])
+        classes = structure_dict.get("classes", [])
+        stats = structure_dict.get("statistics", {})
+
+        # Suggest extracting high-complexity or notable methods
+        complex_methods = [m for m in methods if m.get("complexity_score", 0) >= 8]
+        if complex_methods:
+            top = max(complex_methods, key=lambda m: m.get("complexity_score", 0))
+            lr = top.get("line_range", {})
+            name = top.get("name", "method")
+            start = lr.get("start", 0)
+            end = lr.get("end", 0)
+            if start and end:
+                steps.append(
+                    f"extract_code_section(start_line={start}, end_line={end}) "
+                    f"to read complex method '{name}' (complexity={top.get('complexity_score', '?')})"
+                )
+
+        # Suggest querying for specific element types
+        if len(methods) > 5:
+            steps.append(
+                "query_code(query_key='methods') to get detailed method list with filters"
+            )
+        if len(classes) > 1:
+            steps.append(
+                "query_code(query_key='classes') to examine class relationships"
+            )
+
+        # For large files, suggest targeted extraction
+        total_lines = stats.get("total_lines", 0)
+        if total_lines > 500 and not complex_methods:
+            first_method = methods[0] if methods else None
+            if first_method:
+                lr = first_method.get("line_range", {})
+                start = lr.get("start", 0)
+                end = lr.get("end", 0)
+                name = first_method.get("name", "first method")
+                if start and end:
+                    steps.append(
+                        f"extract_code_section(start_line={start}, end_line={end}) "
+                        f"to read '{name}'"
+                    )
+
+        return steps[:3]
 
     def get_tool_definition(self) -> dict[str, Any]:
         """

@@ -414,10 +414,29 @@ class AnalyzeScaleTool(BaseMCPTool):
         if guidance["size_category"] in ("large", "very_large"):
             steps.append("analyze_code_structure with format=compact for overview")
             steps.append("query_code with specific query keys to find target elements")
-            steps.append("extract_code_section for targeted line ranges")
+            # Add specific hotspot extraction hints
+            hotspots = structural_overview.get("complexity_hotspots", [])
+            if hotspots:
+                top = hotspots[0]
+                name = top.get("name", "hotspot")
+                lines = top.get("lines", "")
+                steps.append(
+                    f"extract_code_section for '{name}' (lines {lines}) - complexity hotspot"
+                )
+            else:
+                steps.append("extract_code_section for targeted line ranges")
         else:
             steps.append("analyze_code_structure for full structure table")
             steps.append("query_code for specific elements if needed")
+            # Suggest extraction for notable methods even in small files
+            notable = structural_overview.get("methods", [])
+            long_methods = [m for m in notable if m.get("complexity", 0) >= 8]
+            if long_methods:
+                top = long_methods[0]
+                steps.append(
+                    f"extract_code_section for '{top.get('name', 'method')}' "
+                    f"(lines {top.get('lines', '')}) - high complexity"
+                )
         guidance["workflow_steps"] = steps
 
         # Include full list of available queries for this language

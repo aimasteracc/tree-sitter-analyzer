@@ -254,6 +254,13 @@ class QueryTool(BaseMCPTool):
                     "query": query_key or query_string,
                 }
 
+            # Add actionable next steps based on results
+            next_steps = self._build_next_steps(
+                results, file_path, query_key or query_string or ""
+            )
+            if next_steps:
+                formatted_result["next_steps"] = next_steps
+
             # Handle file output if requested
             if output_file:
                 try:
@@ -412,6 +419,51 @@ class QueryTool(BaseMCPTool):
                     return match.group(1).strip()
 
         return "unnamed"
+
+    def _build_next_steps(
+        self,
+        results: list[dict[str, Any]],
+        file_path: str,
+        query_used: str,
+    ) -> list[str]:
+        """Build actionable next-step suggestions based on query results."""
+        if not results:
+            return []
+
+        steps: list[str] = []
+
+        # Suggest extracting code for the first few results with line ranges
+        extractable = [
+            r
+            for r in results
+            if "start_line" in r and "end_line" in r and r["end_line"] > r["start_line"]
+        ]
+        if extractable:
+            first = extractable[0]
+            name = first.get("name", first.get("capture_name", "element"))
+            steps.append(
+                f"extract_code_section(file_path='{file_path}', "
+                f"start_line={first['start_line']}, end_line={first['end_line']}) "
+                f"to read '{name}'"
+            )
+
+        # For single results, suggest the broader query set
+        if len(results) == 1:
+            steps.append("Try other query keys to discover more elements in this file")
+        elif len(results) > 3:
+            # Suggest using filter to narrow down
+            steps.append("Add filter (e.g., 'name=~pattern') to narrow results")
+
+        # If results have names, suggest searching for callers
+        named = [r for r in results if r.get("name")]
+        if named and query_used in ("methods", "functions", "method", "function"):
+            names = [r["name"] for r in named[:3]]
+            steps.append(
+                f"search_content(query='{'|'.join(names)}') "
+                f"to find callers of these elements"
+            )
+
+        return steps[:3]  # Keep concise
 
     def get_available_queries(self, language: str) -> list[str]:
         """
