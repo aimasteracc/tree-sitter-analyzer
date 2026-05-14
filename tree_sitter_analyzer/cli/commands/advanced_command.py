@@ -13,6 +13,7 @@ from ...constants import (
     ELEMENT_TYPE_IMPORT,
     ELEMENT_TYPE_VARIABLE,
     get_element_type,
+    is_element_of_type,
 )
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
@@ -172,6 +173,16 @@ class AdvancedCommand(BaseCommand):
         """Output full analysis results."""
         if self.args.output_format not in ("json", "toon"):
             output_section("Advanced Analysis Results")
+        complexity_scores = [
+            getattr(element, "complexity_score", 1)
+            for element in analysis_result.elements
+            if is_element_of_type(element, ELEMENT_TYPE_FUNCTION)
+        ]
+        total_complexity = sum(complexity_scores) if complexity_scores else 0
+        avg_complexity = (
+            total_complexity / len(complexity_scores) if complexity_scores else 0
+        )
+
         result_dict = {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
@@ -188,9 +199,15 @@ class AdvancedCommand(BaseCommand):
                     "modifiers": getattr(element, "modifiers", []),
                     "parameters": getattr(element, "parameters", []),
                     "return_type": getattr(element, "return_type", None),
+                    "complexity": getattr(element, "complexity_score", None),
                 }
                 for element in analysis_result.elements
             ],
+            "complexity": {
+                "total": total_complexity,
+                "average": round(avg_complexity, 2),
+                "max": max(complexity_scores) if complexity_scores else 0,
+            },
             "success": analysis_result.success,
             "analysis_time": analysis_result.analysis_time,
         }

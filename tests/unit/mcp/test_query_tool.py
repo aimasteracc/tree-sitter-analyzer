@@ -724,7 +724,7 @@ class TestExecute:
     async def test_execute_with_empty_output_file_string(
         self, tool, sample_python_file, mock_query_results
     ):
-        """Test execution with empty string output_file generates base name."""
+        """Test execution with whitespace output_file generates base name from file path."""
         with patch.object(
             tool.query_service, "execute_query", new_callable=AsyncMock
         ) as mock_query:
@@ -737,19 +737,20 @@ class TestExecute:
                     "file_path": str(sample_python_file),
                     "query_key": "methods",
                     "language": "python",
-                    "output_file": "",
+                    "output_file": "   ",
                 }
 
                 result = await tool.execute(arguments)
 
                 assert result["success"] is True
                 assert result["file_saved"] is True
+                mock_save.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_execute_with_query_string_and_file_output(
         self, tool, sample_python_file, mock_query_results
     ):
-        """Test execution with query_string and file output."""
+        """Test execution with query_string and file output using auto base name."""
         with patch.object(
             tool.query_service, "execute_query", new_callable=AsyncMock
         ) as mock_query:
@@ -762,7 +763,7 @@ class TestExecute:
                     "file_path": str(sample_python_file),
                     "query_string": "(function_definition) @func",
                     "language": "python",
-                    "output_file": "",
+                    "output_file": "   ",
                 }
 
                 result = await tool.execute(arguments)
@@ -797,6 +798,31 @@ class TestFormatSummary:
             assert "name" in item
             assert "line_range" in item
             assert "node_type" in item
+
+    def test_format_summary_multiple_captures(self, tool):
+        """Test summary with multiple capture types."""
+        results = [
+            {
+                "capture_name": "class",
+                "content": "class Foo:\n    pass",
+                "start_line": 1,
+                "end_line": 2,
+                "node_type": "class_definition",
+            },
+            {
+                "capture_name": "function",
+                "content": "def bar():\n    pass",
+                "start_line": 4,
+                "end_line": 5,
+                "node_type": "function_definition",
+            },
+        ]
+        summary = tool._format_summary(results, "all", "python")
+        assert summary["total_count"] == 2
+        assert "class" in summary["captures"]
+        assert "function" in summary["captures"]
+        assert summary["captures"]["class"]["count"] == 1
+        assert summary["captures"]["function"]["count"] == 1
 
 
 class TestExtractNameFromContent:
