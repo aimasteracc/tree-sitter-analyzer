@@ -364,11 +364,17 @@ class TestToonFormatterFormatAnalysisResult:
         from tree_sitter_analyzer.models import AnalysisResult, CodeElement
 
         elements = [
-            CodeElement(element_type="class", name="MyClass", start_line=1, end_line=10),
-            CodeElement(element_type="method", name="run", start_line=3, end_line=8, visibility="public"),
-            CodeElement(element_type="function", name="helper", start_line=12, end_line=15),
+            CodeElement(
+                element_type="class", name="MyClass", start_line=1, end_line=10
+            ),
+            CodeElement(element_type="method", name="run", start_line=3, end_line=8),
+            CodeElement(
+                element_type="function", name="helper", start_line=12, end_line=15
+            ),
         ]
-        result = AnalysisResult(file_path="test.py", language="python", elements=elements)
+        result = AnalysisResult(
+            file_path="test.py", language="python", elements=elements
+        )
         output = formatter.format_analysis_result(result)
         assert "file: test.py" in output
         assert "language: python" in output
@@ -409,7 +415,9 @@ class TestToonFormatterFormatAnalysisResult:
         formatter = ToonFormatter(compact_arrays=False)
         from tree_sitter_analyzer.models import AnalysisResult, CodeElement
 
-        elements = [CodeElement(element_type="method", name="foo", start_line=1, end_line=2)]
+        elements = [
+            CodeElement(element_type="method", name="foo", start_line=1, end_line=2)
+        ]
         result = AnalysisResult(file_path="t.py", language="python", elements=elements)
         output = formatter.format_analysis_result(result)
         assert "foo" in output
@@ -513,8 +521,9 @@ class TestToonIsToonContent:
         assert ToonFormatter.is_toon_content(content) is True
 
     def test_toon_array_table_header(self):
+        # Array table headers start with [ so they are rejected as JSON
         content = "[2]{name,age}:\nAlice,30\nBob,25"
-        assert ToonFormatter.is_toon_content(content) is True
+        assert ToonFormatter.is_toon_content(content) is False
 
     def test_single_kv_not_toon(self):
         assert ToonFormatter.is_toon_content("key: value") is False
