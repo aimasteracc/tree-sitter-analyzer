@@ -150,7 +150,7 @@ class QueryService:
         # Use safe text extraction with source code
         content = get_node_text_safe(node, source_code)
 
-        return {
+        result = {
             "capture_name": capture_name,
             "node_type": node.type if hasattr(node, "type") else "unknown",
             "start_line": (
@@ -159,6 +159,31 @@ class QueryService:
             "end_line": node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
             "content": content,
         }
+
+        name = self._extract_node_name(node)
+        if name:
+            result["name"] = name
+
+        return result
+
+    def _extract_node_name(self, node: Any) -> str | None:
+        """Extract a human-readable name from a tree-sitter node."""
+        if not hasattr(node, "child_by_field_name"):
+            return None
+
+        for field in ("name", "declarator"):
+            name_node = node.child_by_field_name(field)
+            if name_node is not None:
+                text = get_node_text_safe(name_node, "")
+                if text and len(text) < 200:
+                    # For declarators, dig deeper to get the actual identifier
+                    if name_node.type.endswith("_declarator"):
+                        inner = name_node.child_by_field_name("declarator") or name_node.child_by_field_name("name")
+                        if inner is not None:
+                            return get_node_text_safe(inner, "")
+                    return text
+
+        return None
 
     def get_available_queries(self, language: str) -> list[str]:
         """

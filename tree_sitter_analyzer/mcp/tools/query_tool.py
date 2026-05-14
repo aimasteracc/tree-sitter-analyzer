@@ -51,10 +51,12 @@ class QueryTool(BaseMCPTool):
             "name": "query_code",
             "description": (
                 "SMART Workflow 'Retrieve' step: Extract specific code elements "
-                "(classes, methods, functions, imports) using predefined query keys "
-                "or custom tree-sitter patterns. Supports filtering (name, visibility, params) "
-                "and toon format for token reduction. Use AFTER analyze_code_structure "
-                "to identify which elements to query."
+                "using predefined query keys or custom tree-sitter patterns. "
+                "Common query keys: 'methods', 'classes', 'functions', 'imports', 'variables'. "
+                "Many languages offer 20-90 queries (e.g., 'spring_controller' for Java, "
+                "'async_function' for JS/TS, 'goroutine' for Go, 'trait' for Rust). "
+                "Supports filtering (name, visibility, params) and toon format for token reduction. "
+                "Use AFTER analyze_code_structure to identify which elements to query."
             ),
             "inputSchema": {
                 "type": "object",
@@ -69,7 +71,13 @@ class QueryTool(BaseMCPTool):
                     },
                     "query_key": {
                         "type": "string",
-                        "description": "Predefined query key (e.g., 'methods', 'class', 'functions')",
+                        "description": (
+                            "Predefined query key. Common: 'methods', 'classes', 'functions', 'imports', "
+                            "'variables'. Language-specific examples: 'spring_service' (Java), "
+                            "'decorator' (Python), 'goroutine' (Go), 'trait' (Rust), "
+                            "'namespace' (C++/C#), 'interface' (TS/Kotlin). "
+                            "Invalid keys return the full list of available queries for that language."
+                        ),
                     },
                     "query_string": {
                         "type": "string",

@@ -246,6 +246,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         # Recommend tools based on file size and complexity
         if total_lines > 200:
             guidance["recommended_tools"].append("extract_code_section")
+            guidance["recommended_tools"].append("query_code")
 
         # Ensure all required fields exist
         required_fields = [
