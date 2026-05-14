@@ -146,8 +146,8 @@ class AnalyzeScaleTool(BaseMCPTool):
             }
             overview["methods"].append(method_info)
 
-            # Track complexity hotspots
-            if method.complexity_score > 10:  # High complexity threshold
+            # Track complexity hotspots (top methods worth reviewing)
+            if method.complexity_score >= 8:
                 overview["complexity_hotspots"].append(
                     {
                         "type": "method",
@@ -238,7 +238,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                 }
                 overview["methods"].append(method_info)
                 complexity = getattr(e, "complexity_score", 0)
-                if complexity and complexity > 10:
+                if complexity and complexity >= 8:
                     overview["complexity_hotspots"].append(
                         {
                             "type": "method",
