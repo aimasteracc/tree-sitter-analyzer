@@ -96,6 +96,12 @@ class QueryFilter:
             return self._match_modifier(result, "private", filter_value)
         elif filter_key == "protected":
             return self._match_modifier(result, "protected", filter_value)
+        elif filter_key == "async":
+            return self._match_modifier(result, "async", filter_value)
+        elif filter_key == "final":
+            return self._match_modifier(result, "final", filter_value)
+        elif filter_key == "abstract":
+            return self._match_modifier(result, "abstract", filter_value)
 
         return True
 
@@ -131,9 +137,14 @@ class QueryFilter:
     def _match_modifier(
         self, result: dict[str, Any], modifier: str, value: str
     ) -> bool:
-        """Match modifier"""
+        """Match modifier as a keyword in the declaration prefix"""
         content = result.get("content", "")
-        has_modifier = modifier in content
+        # Only check first line of the declaration to avoid matching
+        # identifiers like "abstractMethod" or "staticValue"
+        first_line = content.split("\n")[0]
+        # Match modifier as a standalone keyword before the return type/name
+        pattern = r"(?:^|\s)" + re.escape(modifier) + r"(?:\s|<)"
+        has_modifier = bool(re.search(pattern, first_line))
 
         return (value.lower() == "true") == has_modifier
 
@@ -205,6 +216,15 @@ Supported filter keys:
 
   private    - Whether it is a private method
              e.g.: private=true, private=false
+
+  async      - Whether it is async
+             e.g.: async=true, async=false
+
+  final      - Whether it is final
+             e.g.: final=true, final=false
+
+  abstract   - Whether it is abstract
+             e.g.: abstract=true, abstract=false
 
 Examples:
   --query-key methods --filter "name=main"
