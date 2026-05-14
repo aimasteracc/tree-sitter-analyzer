@@ -12,9 +12,14 @@ from tree_sitter_analyzer.queries.javascript import (
     EXPORTS,
     FUNCTIONS,
     IMPORTS,
+    JAVASCRIPT_QUERIES,
+    JAVASCRIPT_QUERY_DESCRIPTIONS,
     OBJECTS,
     VARIABLES,
     get_all_queries,
+    get_available_javascript_queries,
+    get_javascript_query,
+    get_javascript_query_description,
     get_query,
     list_queries,
 )
@@ -136,3 +141,68 @@ class TestJavaScriptQueries:
         assert ALL_QUERIES["exports"]["query"] == EXPORTS
         assert ALL_QUERIES["objects"]["query"] == OBJECTS
         assert ALL_QUERIES["comments"]["query"] == COMMENTS
+
+
+class TestJavaScriptQueryFunctions:
+    """Cover get_javascript_query, get_javascript_query_description, and related functions."""
+
+    def test_get_javascript_query_returns_string(self) -> None:
+        result = get_javascript_query("function")
+        assert isinstance(result, str)
+        assert "function_declaration" in result
+
+    def test_get_javascript_query_all_keys(self) -> None:
+        for key in JAVASCRIPT_QUERIES:
+            result = get_javascript_query(key)
+            assert isinstance(result, str)
+            assert len(result.strip()) > 0
+
+    def test_get_javascript_query_invalid_raises(self) -> None:
+        with pytest.raises(
+            ValueError, match="JavaScript query 'no_such_query' does not exist"
+        ):
+            get_javascript_query("no_such_query")
+
+    def test_get_javascript_query_description_known(self) -> None:
+        desc = get_javascript_query_description("function")
+        assert isinstance(desc, str)
+        assert "function" in desc.lower()
+
+    def test_get_javascript_query_description_unknown(self) -> None:
+        assert get_javascript_query_description("zzz_missing") == "No description"
+
+    def test_get_javascript_query_description_all_keys(self) -> None:
+        for key in JAVASCRIPT_QUERIES:
+            desc = get_javascript_query_description(key)
+            assert isinstance(desc, str)
+            assert len(desc) > 0
+
+    def test_get_query_through_all_queries(self) -> None:
+        for key in ALL_QUERIES:
+            result = get_query(key)
+            assert isinstance(result, str)
+
+    def test_get_all_queries_returns_dict(self) -> None:
+        queries = get_all_queries()
+        assert isinstance(queries, dict)
+        assert len(queries) >= len(JAVASCRIPT_QUERIES)
+
+    def test_list_queries_returns_list(self) -> None:
+        names = list_queries()
+        assert isinstance(names, list)
+        assert "functions" in names
+
+    def test_get_available_javascript_queries(self) -> None:
+        names = get_available_javascript_queries()
+        assert isinstance(names, list)
+        assert "function" in names
+        assert "class" in names
+        assert set(names) == set(JAVASCRIPT_QUERIES.keys())
+
+    def test_all_queries_built_from_javascript_queries(self) -> None:
+        for key in JAVASCRIPT_QUERIES:
+            assert key in ALL_QUERIES
+            assert ALL_QUERIES[key]["query"] == JAVASCRIPT_QUERIES[key]
+            assert ALL_QUERIES[key]["description"] == JAVASCRIPT_QUERY_DESCRIPTIONS.get(
+                key, "No description"
+            )
