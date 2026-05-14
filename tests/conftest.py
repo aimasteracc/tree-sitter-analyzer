@@ -17,7 +17,7 @@ import pytest  # noqa: E402
 
 
 def pytest_configure(config):
-    """Configure pytest with custom markers."""
+    """Configure pytest with custom markers and safety checks."""
     config.addinivalue_line(
         "markers", "requires_ripgrep: mark test as requiring ripgrep (rg) command"
     )
@@ -26,6 +26,22 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "performance: mark test as performance test")
     config.addinivalue_line("markers", "regression: mark test as regression test")
     config.addinivalue_line("markers", "property: mark test as property-based test")
+
+    # HARD BLOCK: detect duplicate --cov arguments that cause memory blowup.
+    # Only count --cov and --cov= (NOT --cov-report, --cov-fail-under, etc.)
+    import re
+
+    cli_cov_count = 0
+    for arg in config.invocation_params.args:
+        arg_str = str(arg)
+        if re.match(r"^--cov(=|$)", arg_str):
+            cli_cov_count += 1
+    if cli_cov_count > 1:
+        raise SystemExit(
+            "FATAL: --cov specified multiple times on the command line. "
+            "This causes double coverage tracking and can exhaust system memory. "
+            "Use --cov exactly once. Example: uv run pytest --cov=tree_sitter_analyzer --cov-report=json"
+        )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -137,6 +153,35 @@ def pytest_sessionfinish(session, exitstatus):
     import gc
 
     gc.collect()
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Warn if memory usage is dangerously high at end of session."""
+    try:
+        import os
+
+        import psutil
+
+        process = psutil.Process(os.getpid())
+        rss_gb = process.memory_info().rss / (1024**3)
+        system_total_gb = psutil.virtual_memory().total / (1024**3)
+        usage_pct = process.memory_info().rss / psutil.virtual_memory().total * 100
+
+        if rss_gb > 2.0:
+            terminalreporter.write_sep(
+                "!",
+                f"MEMORY WARNING: pytest RSS = {rss_gb:.1f} GB "
+                f"({usage_pct:.0f}% of {system_total_gb:.0f} GB system RAM). "
+                f"Consider running fewer tests or using -x.",
+            )
+        if rss_gb > 4.0:
+            terminalreporter.write_sep(
+                "!",
+                f"MEMORY CRITICAL: pytest RSS = {rss_gb:.1f} GB! "
+                f"This can crash the system. Reduce test batch size.",
+            )
+    except ImportError:
+        pass
 
 
 @pytest.fixture(autouse=True)
@@ -272,15 +317,17 @@ def _reset_all_singletons():
 @pytest.fixture(autouse=True)
 def reset_global_singletons():
     """Reset all global singletons before and after each test for isolation."""
+    _reset_all_singletons()
     yield
+    _reset_all_singletons()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def cleanup_test_databases():
-    """Clean up test databases after each test."""
+    """Clean up test databases once per session instead of per-test."""
     yield
 
-    # Clean up any test databases
+    import glob
     import os
     import tempfile
 
@@ -295,15 +342,10 @@ def cleanup_test_databases():
     ]
 
     for pattern in test_db_patterns:
-        import glob
-
-        db_files = glob.glob(os.path.join(temp_dir, pattern))
-        for db_file in db_files:
+        for db_file in glob.glob(os.path.join(temp_dir, pattern)):
             try:
-                if os.path.exists(db_file):
-                    os.remove(db_file)
+                os.remove(db_file)
             except (OSError, PermissionError):
-                # Ignore permission errors or file not found
                 pass
 
 

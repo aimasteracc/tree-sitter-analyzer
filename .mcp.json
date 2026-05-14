@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "tree-sitter-analyzer": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/Users/aisheng.yu/git-private/tree-sitter-analyzer",
+        "tree-sitter-analyzer-mcp"
+      ]
+    }
+  }
+}

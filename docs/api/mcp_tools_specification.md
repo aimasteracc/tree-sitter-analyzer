@@ -1,19 +1,19 @@
 # Tree-sitter Analyzer MCP Tools API Specification
 
-**Version**: 1.6.2
+**Version**: 1.11.0
 **Date**: 2026-05-14
 **Protocol**: Model Context Protocol (MCP) v1.0
 
 ## Overview
 
-Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための8つの専門ツールと2つのリソースを提供します。すべてのツールはMCP v1.0仕様に準拠し、統一されたエラーハンドリングとセキュリティ機能を実装しています。
+Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための11の専門ツール、2つのリソース、および2つのSMART workflowプロンプトを提供します。すべてのツールはMCP v1.0仕様に準拠し、統一されたエラーハンドリングとセキュリティ機能を実装しています。
 
 ## Server Information
 
 - **Name**: `tree-sitter-analyzer`
-- **Version**: `1.6.2`
+- **Version**: `1.11.0`
 - **Protocol Version**: `2024-11-05`
-- **Capabilities**: `tools`, `resources`, `logging`
+- **Capabilities**: `tools`, `resources`, `logging`, `prompts`
 
 ## Authentication & Security
 
@@ -1236,7 +1236,153 @@ mcp_servers:
 4. **複数ファイル**: `group_by_file=true` で重複を削減
 5. **プロジェクト検索**: 適切な `include_globs` で範囲を限定
 
-## Version History
+---
+
+## Project-Level Tools (v1.11.0)
+
+### 9. get_project_overview
+
+**Purpose**: One-call project portrait for AI agents — language distribution, file counts, largest files, optional health summary.
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "include_health": {
+      "type": "boolean",
+      "description": "Include health grades for top-10 largest source files (slower)",
+      "default": false
+    },
+    "max_depth": {
+      "type": "integer",
+      "description": "Max directory depth to scan (default: 5)",
+      "default": 5
+    },
+    "output_format": {
+      "type": "string",
+      "enum": ["json", "toon"],
+      "default": "toon"
+    }
+  }
+}
+```
+
+**Output**:
+```json
+{
+  "success": true,
+  "project_root": "/path/to/project",
+  "summary": {
+    "total_files": 150,
+    "source_files": 80,
+    "non_source_files": 70,
+    "total_lines": 45000,
+    "languages_count": 5
+  },
+  "language_distribution": {"python": 60, "javascript": 15, "typescript": 5},
+  "largest_source_files": [{"path": "src/main.py", "language": "python", "lines": 800}],
+  "smart_workflow_hint": "Next: call check_code_scale on any interesting file..."
+}
+```
+
+**SMART Workflow**: Use as the **Map (M)** step when exploring a new project.
+
+### 10. check_file_health
+
+**Purpose**: Score a single file's code health (A-F grade) across 5 dimensions.
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "file_path": {"type": "string", "description": "Path to the source file"},
+    "output_format": {"type": "string", "enum": ["json", "toon"], "default": "toon"}
+  },
+  "required": ["file_path"]
+}
+```
+
+**Output**:
+```json
+{
+  "success": true,
+  "file_path": "src/main.py",
+  "grade": "B",
+  "total_score": 82.5,
+  "dimensions": {
+    "lines": 95.0,
+    "complexity": 72.0,
+    "dependencies": 100.0,
+    "comments": 65.0,
+    "coverage": 50.0
+  },
+  "recommendation": "File is in good shape. No immediate action needed."
+}
+```
+
+**SMART Workflow**: Use in the **Analyze (A)** step to quickly identify files needing refactoring.
+
+### 11. analyze_dependencies
+
+**Purpose**: Project-level dependency graph analysis with 4 modes.
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["blast_radius", "file_deps", "cycles", "summary"],
+      "default": "summary"
+    },
+    "file_path": {
+      "type": "string",
+      "description": "Required for blast_radius and file_deps modes"
+    },
+    "output_format": {"type": "string", "enum": ["json", "toon"], "default": "toon"}
+  }
+}
+```
+
+**Modes**:
+- `summary` — Project-wide stats: hub files, high-dependency files
+- `blast_radius` — Impact analysis: how many files affected by changing this one
+- `file_deps` — Direct dependencies and dependents of a file
+- `cycles` — Detect circular dependencies
+
+**SMART Workflow**: Use in the **Trace (T)** step to understand change impact.
+
+---
+
+## MCP Prompts (v1.11.0)
+
+### smart_analyze
+Guided single-file analysis prompt. AI agents call this to get step-by-step SMART workflow instructions for analyzing a specific file.
+
+### smart_explore
+Guided project exploration prompt. AI agents call this to discover how to explore a new project systematically.
+
+---
+
+## Error Response Format (v1.11.0)
+
+All error responses now include actionable recovery guidance:
+
+```json
+{
+  "success": false,
+  "error": "File not found: /path/to/missing.py",
+  "error_type": "FileNotFoundError",
+  "error_category": "file_not_found",
+  "recovery_hint": "The file does not exist at the given path. Verify the path or use list_files to discover files.",
+  "suggested_tool": "list_files"
+}
+```
+
+Categories: `file_not_found`, `language_unsupported`, `project_not_set`, `security_violation`, `missing_parameter`, `validation_error`, `resource_exhausted`, `timeout`, `unknown`
 
 ### v1.0.0 (2025-10-12)
 - 初回リリース
@@ -1259,6 +1405,17 @@ mcp_servers:
   - SearchContentToolとFindAndGrepToolに新規追加
   - 動的プロジェクトパス変更の統一サポート
   - FileOutputManager統合による設計一貫性確保
+
+### v1.11.0 (2026-05-14)
+- **3 new project-level tools** exposed to AI agents
+  - `get_project_overview` — One-call project portrait (language distribution, file counts, health summary)
+  - `check_file_health` — A-F grade scoring per file (lines, complexity, dependencies, comments, coverage)
+  - `analyze_dependencies` — 4 modes: blast_radius, file_deps, cycles, summary
+- **MCP Prompts** for SMART workflow self-discovery
+  - `smart_analyze` — Guided single-file analysis prompt
+  - `smart_explore` — Guided project exploration prompt
+- **AI-agent-friendly error responses** with `recovery_hint` and `suggested_tool` fields
+- **Error responses no longer leak `arguments`** — reduces token waste and sensitive path exposure
 
 ## Support & Documentation
 

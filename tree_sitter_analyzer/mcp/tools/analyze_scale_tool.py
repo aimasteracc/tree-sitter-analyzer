@@ -470,6 +470,13 @@ class AnalyzeScaleTool(BaseMCPTool):
                 )
         guidance["workflow_steps"] = steps
 
+        # Add dependency/health suggestions for deeper analysis
+        if len(structural_overview.get("imports", [])) > 5:
+            steps.append(
+                "analyze_dependencies mode=blast_radius to assess change impact"
+            )
+        steps.append("check_file_health to see if this file needs refactoring")
+
         # Include full list of available queries for this language
         from ...query_loader import get_query_loader
 

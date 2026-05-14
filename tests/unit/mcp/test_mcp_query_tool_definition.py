@@ -49,12 +49,13 @@ class TestMCPQueryToolDefinition:
         assert "filter expression" in filter_def["description"].lower()
 
     def test_tool_definition_required_fields(self):
-        """Test that required fields are properly defined"""
+        """Test that key fields are defined (file_path or symbol required at runtime)"""
         definition = self.query_tool.get_tool_definition()
         schema = definition["inputSchema"]
 
-        assert "required" in schema
-        assert "file_path" in schema["required"]
+        assert "properties" in schema
+        assert "file_path" in schema["properties"]
+        assert "symbol" in schema["properties"]
 
     def test_tool_definition_properties_types(self):
         """Test that all properties have correct types"""

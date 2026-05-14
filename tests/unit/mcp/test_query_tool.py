@@ -131,15 +131,16 @@ class TestGetToolDefinition:
         schema = definition["inputSchema"]
         assert schema["type"] == "object"
         assert "properties" in schema
-        assert "required" in schema
+        assert "file_path" in schema["properties"]
+        assert "symbol" in schema["properties"]
 
     def test_required_fields(self, tool):
-        """Test that required fields are correctly defined."""
+        """Test that key fields are defined (file_path or symbol required at runtime)."""
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
-        required = schema.get("required", [])
-        assert "file_path" in required
-        assert len(required) == 1
+        properties = schema.get("properties", {})
+        assert "file_path" in properties
+        assert "symbol" in properties
 
     def test_file_path_property(self, tool):
         """Test that file_path property is correctly defined."""
@@ -241,7 +242,7 @@ class TestValidateArguments:
     def test_validate_missing_file_path(self, tool):
         """Test validation fails when file_path is missing."""
         arguments = {"query_key": "methods"}
-        with pytest.raises(ValueError, match="file_path is required"):
+        with pytest.raises(ValueError, match="file_path or symbol is required"):
             tool.validate_arguments(arguments)
 
     def test_validate_empty_file_path(self, tool):
@@ -406,14 +407,14 @@ class TestExecute:
     @pytest.mark.asyncio
     async def test_execute_empty_arguments(self, tool):
         """Test execute fails with empty arguments."""
-        with pytest.raises(Exception, match="file_path is required"):
+        with pytest.raises(Exception, match="file_path or symbol is required"):
             await tool.execute({})
 
     @pytest.mark.asyncio
     async def test_execute_missing_file_path(self, tool):
         """Test execute fails when file_path is missing."""
         arguments = {"query_key": "methods"}
-        with pytest.raises(Exception, match="file_path is required"):
+        with pytest.raises(Exception, match="file_path or symbol is required"):
             await tool.execute(arguments)
 
     @pytest.mark.asyncio
@@ -907,7 +908,7 @@ class TestExecuteAdditionalCoverage:
     @pytest.mark.asyncio
     async def test_execute_none_arguments(self, tool):
         """Test execute with None as arguments."""
-        with pytest.raises(Exception, match="file_path is required"):
+        with pytest.raises(Exception, match="file_path or symbol is required"):
             await tool.execute(None)
 
     @pytest.mark.asyncio
@@ -1269,13 +1270,13 @@ class TestExecuteCoverageBoost:
     @pytest.mark.asyncio
     async def test_execute_empty_arguments_dict_triggers_error(self, tool):
         """Test execute with empty dict triggers file_path required (line 134)."""
-        with pytest.raises(Exception, match="file_path is required"):
+        with pytest.raises(Exception, match="file_path or symbol is required"):
             await tool.execute({})
 
     @pytest.mark.asyncio
     async def test_execute_none_file_path_triggers_error(self, tool):
         """Test execute with None file_path triggers error (line 134)."""
-        with pytest.raises(Exception, match="file_path is required"):
+        with pytest.raises(Exception, match="file_path or symbol is required"):
             await tool.execute({"file_path": None})
 
 
@@ -1344,7 +1345,7 @@ class TestValidateArgumentsCoverageBoost:
 
     def test_validate_no_file_path_key(self, tool):
         """Test validation when file_path key is missing (line 392)."""
-        with pytest.raises(ValueError, match="file_path is required"):
+        with pytest.raises(ValueError, match="file_path or symbol is required"):
             tool.validate_arguments({"query_key": "methods"})
 
     def test_validate_file_path_not_string(self, tool):

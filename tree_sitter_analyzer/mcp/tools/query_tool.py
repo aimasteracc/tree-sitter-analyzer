@@ -50,20 +50,26 @@ class QueryTool(BaseMCPTool):
         return {
             "name": "query_code",
             "description": (
-                "SMART Workflow 'Retrieve' step: Extract specific code elements "
-                "using predefined query keys or custom tree-sitter patterns. "
-                "Common query keys: 'methods', 'classes', 'functions', 'imports', 'variables'. "
-                "Many languages offer 20-90 queries (e.g., 'spring_controller' for Java, "
-                "'async_function' for JS/TS, 'goroutine' for Go, 'trait' for Rust). "
-                "Supports filtering (name, visibility, params) and toon format for token reduction. "
-                "Use AFTER analyze_code_structure to identify which elements to query."
+                "SMART Workflow 'Retrieve' step: Extract specific code elements. "
+                "TWO MODES — choose based on what you need:\n"
+                "Mode 1 - Single file: provide file_path + query_key (e.g. 'classes', 'functions'). "
+                "Use when you already know which file to analyze.\n"
+                "Mode 2 - Cross-file symbol search: provide symbol (no file_path). "
+                "Use when user asks 'where is X defined?', 'find class Y', "
+                "'who implements Z?', or you see a symbol name but don't know which file it's in. "
+                "Returns all definitions across the project with file, line, and type.\n"
+                "Supports filtering and toon format for token reduction."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Path to the code file to query (relative to project root or absolute path)",
+                        "description": "Path to the code file to query. Omit when using 'symbol' for cross-file search.",
+                    },
+                    "symbol": {
+                        "type": "string",
+                        "description": "Symbol name to search across the entire project (e.g., 'UserService', 'authenticate'). Returns definitions with file, line, and type. Omit file_path when using this.",
                     },
                     "language": {
                         "type": "string",
@@ -109,7 +115,6 @@ class QueryTool(BaseMCPTool):
                         "default": False,
                     },
                 },
-                "required": ["file_path"],
             },
         }
 
@@ -124,17 +129,34 @@ class QueryTool(BaseMCPTool):
             Query results
         """
         try:
+            # Handle None arguments
+            if not arguments:
+                from ..utils.error_handler import AnalysisError
+
+                raise AnalysisError(
+                    "file_path or symbol is required", operation="query_code"
+                )
+
+            # Cross-file symbol search mode
+            symbol = arguments.get("symbol")
+            if symbol and not arguments.get("file_path"):
+                return await self._execute_symbol_search(arguments)
+
             # Validate input parameters - check for empty arguments first
             if not arguments:
                 from ..utils.error_handler import AnalysisError
 
-                raise AnalysisError("file_path is required", operation="query_code")
+                raise AnalysisError(
+                    "file_path or symbol is required", operation="query_code"
+                )
 
             file_path = arguments.get("file_path")
             if not file_path:
                 from ..utils.error_handler import AnalysisError
 
-                raise AnalysisError("file_path is required", operation="query_code")
+                raise AnalysisError(
+                    "file_path or symbol is required", operation="query_code"
+                )
 
             # Check that either query_key or query_string is provided early
             query_key = arguments.get("query_key")
@@ -490,16 +512,16 @@ class QueryTool(BaseMCPTool):
         Raises:
             ValueError: If arguments are invalid
         """
-        # Check required fields
-        if "file_path" not in arguments:
-            raise ValueError("file_path is required")
+        # Check required fields: file_path for single-file mode, symbol for cross-file
+        if "file_path" not in arguments and "symbol" not in arguments:
+            raise ValueError("file_path or symbol is required")
 
-        # Validate file_path
-        file_path = arguments["file_path"]
-        if not isinstance(file_path, str):
-            raise ValueError("file_path must be a string")
-        if not file_path.strip():
-            raise ValueError("file_path cannot be empty")
+        if "file_path" in arguments:
+            file_path = arguments["file_path"]
+            if not isinstance(file_path, str):
+                raise ValueError("file_path must be a string")
+            if not file_path.strip():
+                raise ValueError("file_path cannot be empty")
 
         # Check that either query_key or query_string is provided
         query_key = arguments.get("query_key")
@@ -556,6 +578,10 @@ class QueryTool(BaseMCPTool):
                 raise ValueError("suppress_output must be a boolean")
 
         return True
+
+    async def _execute_symbol_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Delegate to module-level symbol search implementation."""
+        return await _execute_symbol_search_impl(self, arguments)
 
 
 def _categorize_queries(query_names: list[str], language: str) -> dict[str, list[str]]:
@@ -615,3 +641,138 @@ def _categorize_queries(query_names: list[str], language: str) -> dict[str, list
             categories["other"].append(name)
 
     return {k: v for k, v in categories.items() if v}
+
+
+# Symbol search constants
+_SYMBOL_SEARCH_EXTS = {
+    ".py",
+    ".java",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".kt",
+    ".cs",
+    ".rb",
+    ".php",
+    ".c",
+    ".cpp",
+}
+_SYMBOL_SEARCH_EXCLUDE = {
+    "node_modules",
+    ".git",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    "htmlcov",
+    ".cache",
+    ".eggs",
+    ".claude",
+}
+
+
+async def _execute_symbol_search_impl(
+    query_tool: QueryTool, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    """Search for a symbol definition across all project source files."""
+    symbol = arguments.get("symbol", "").strip()
+    if not symbol:
+        raise ValueError("symbol must be a non-empty string")
+
+    output_format = arguments.get("output_format", "toon")
+    language = arguments.get("language")
+
+    if not query_tool.project_root:
+        raise ValueError("Project root not set. Call set_project_path first.")
+
+    root = Path(query_tool.project_root).resolve()
+    if not root.is_dir():
+        raise ValueError(f"Project root is not a directory: {root}")
+
+    # Collect source files
+    source_files: list[Path] = []
+    for ext in _SYMBOL_SEARCH_EXTS:
+        for f in root.rglob(f"*{ext}"):
+            if any(part in _SYMBOL_SEARCH_EXCLUDE for part in f.parts):
+                continue
+            source_files.append(f)
+
+    # Limit to prevent memory issues
+    max_files = 500
+    if len(source_files) > max_files:
+        source_files = source_files[:max_files]
+
+    # Search using the analysis engine
+    import asyncio
+
+    from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+    from ...language_detector import detect_language_from_file
+
+    engine = get_analysis_engine(str(root))
+    results: list[dict[str, Any]] = []
+
+    async def _search_file(fp: Path) -> list[dict[str, Any]]:
+        matches: list[dict[str, Any]] = []
+        lang = language or detect_language_from_file(str(fp))
+        if lang == "unknown":
+            return matches
+
+        try:
+            req = AnalysisRequest(
+                file_path=str(fp), language=lang, include_details=False
+            )
+            result = await engine.analyze(req)
+            if not result or not result.success:
+                return matches
+
+            for e in result.elements:
+                name = getattr(e, "name", "")
+                if name == symbol:
+                    etype = getattr(e, "element_type", "")
+                    matches.append(
+                        {
+                            "name": name,
+                            "type": etype,
+                            "file": str(fp.relative_to(root)),
+                            "start_line": getattr(e, "start_line", 0),
+                            "end_line": getattr(e, "end_line", 0),
+                        }
+                    )
+        except Exception:  # nosec B110
+            pass
+        return matches
+
+    # Process in batches to control memory
+    batch_size = 50
+    for i in range(0, len(source_files), batch_size):
+        batch = source_files[i : i + batch_size]
+        batch_results = await asyncio.gather(*[_search_file(fp) for fp in batch])
+        for matches in batch_results:
+            results.extend(matches)
+
+    response = {
+        "success": True,
+        "symbol": symbol,
+        "files_searched": min(len(source_files), max_files),
+        "matches_found": len(results),
+        "definitions": results[:50],
+        "smart_workflow_hint": (
+            f"Found {len(results)} definition(s) for '{symbol}'. "
+            "Use extract_code_section to read the implementation, "
+            "or analyze_dependencies mode=blast_radius to see usage impact."
+        )
+        if results
+        else f"No definitions found for '{symbol}'. Try a different name or check spelling.",
+    }
+
+    from ..utils.format_helper import apply_toon_format_to_response
+
+    return apply_toon_format_to_response(response, output_format)
