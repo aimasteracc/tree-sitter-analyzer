@@ -672,9 +672,14 @@ class TestTreeSitterAnalyzerMCPServerToolHandling:
 
         with (
             patch("tree_sitter_analyzer.mcp.server.Server") as mock_server_class,
-            patch("tree_sitter_analyzer.mcp.server.TextContent") as mock_text_content,
+            patch(
+                "tree_sitter_analyzer.mcp.server_utils.tool_registration.TextContent"
+            ) as mock_text_content,
         ):
             # Mock TextContent to return a simple object with text attribute
+            mock_text_content_instance = Mock()
+            mock_text_content_instance.text = ""
+            mock_text_content.return_value = mock_text_content_instance
             mock_text_content_instance = Mock()
             mock_text_content_instance.text = ""
             mock_text_content.return_value = mock_text_content_instance

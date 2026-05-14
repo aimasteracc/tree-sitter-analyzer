@@ -8,7 +8,6 @@ functionality through the Model Context Protocol.
 
 import argparse
 import asyncio
-import json
 import os
 import sys
 from pathlib import Path as PathClass
@@ -20,7 +19,7 @@ try:
     from mcp.server.stdio import stdio_server as _stdio_server
 
     stdio_server: Any = _stdio_server
-    from mcp.types import Resource, TextContent, Tool
+    from mcp.types import Resource, Tool
 
     MCP_AVAILABLE = True
 except ImportError:
@@ -58,9 +57,9 @@ from ..utils import setup_logger
 from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
 from .server_utils.code_scale_handler import analyze_code_scale
-from .server_utils.error_recovery import build_agent_friendly_error
 from .server_utils.prompt_registration import register_prompts
 from .server_utils.resource_registration import register_resources
+from .server_utils.tool_registration import register_tools
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.dependency_analysis_tool import DependencyAnalysisTool
@@ -244,78 +243,8 @@ class TreeSitterAnalyzerMCPServer:
 
         server: Server = Server(self.name)
 
-        # Register tools using @server decorators (standard MCP pattern)
-        @server.list_tools()  # type: ignore[untyped-decorator]
-        async def handle_list_tools() -> list[Tool]:
-            """List all available tools."""
-            logger.info("Client requesting tools list")
-
-            tools = [Tool(**t.get_tool_definition()) for _, t in self._tool_instances]
-            tools.append(
-                Tool(
-                    name="set_project_path",
-                    description="SMART Workflow 'Set' step (FIRST): Set the project root path for security boundaries. Call this before any other tool to ensure correct file resolution and security validation.",
-                    inputSchema={
-                        "type": "object",
-                        "properties": {
-                            "project_path": {
-                                "type": "string",
-                                "description": "Absolute path to the project root",
-                            }
-                        },
-                        "required": ["project_path"],
-                        "additionalProperties": False,
-                    },
-                ),
-            )
-
-            logger.info(f"Returning {len(tools)} tools: {[t.name for t in tools]}")
-            return tools
-
-        @server.call_tool()  # type: ignore[untyped-decorator]
-        async def handle_call_tool(
-            name: str, arguments: dict[str, Any]
-        ) -> list[TextContent]:
-            try:
-                self._ensure_initialized()
-                logger.info(
-                    f"MCP tool call: {name} with args: {list(arguments.keys())}"
-                )
-
-                # Security pre-check for file_path arguments
-                self._validate_file_path_security(arguments)
-
-                # Dispatch
-                if name == "set_project_path":
-                    result = self._handle_set_project_path(arguments)
-                elif name == "extract_code_section":
-                    result = await self._handle_extract_code_section(arguments)
-                elif name == "analyze_code_structure":
-                    result = await self.table_format_tool.execute(arguments)
-                elif name in self._tools:
-                    result = await self._tools[name].execute(arguments)
-                else:
-                    raise ValueError(f"Unknown tool: {name}")
-
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(result, indent=2, ensure_ascii=False),
-                    )
-                ]
-
-            except Exception as e:
-                try:
-                    logger.error(f"Tool call error for {name}: {e}")
-                except (ValueError, OSError):
-                    pass
-                error_body = build_agent_friendly_error(name, e)
-                return [
-                    TextContent(
-                        type="text",
-                        text=json.dumps(error_body, indent=2, ensure_ascii=False),
-                    )
-                ]
+        # Register tools, resources, and prompts
+        register_tools(server, self)
 
         # Register resources
         register_resources(server, self)
