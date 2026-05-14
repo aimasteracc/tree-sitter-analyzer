@@ -235,7 +235,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         elif total_lines < 1500:
             guidance["size_category"] = "large"
             guidance["analysis_strategy"] = (
-                "This is a large file. Use targeted analysis with read_code_partial."
+                "This is a large file. Use targeted analysis with extract_code_section."
             )
         else:
             guidance["size_category"] = "very_large"
@@ -245,7 +245,7 @@ class AnalyzeScaleTool(BaseMCPTool):
 
         # Recommend tools based on file size and complexity
         if total_lines > 200:
-            guidance["recommended_tools"].append("read_code_partial")
+            guidance["recommended_tools"].append("extract_code_section")
 
         # Ensure all required fields exist
         required_fields = [
@@ -260,7 +260,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                 structural_overview[field] = []
 
         if len(structural_overview["complexity_hotspots"]) > 0:
-            guidance["recommended_tools"].append("format_table")
+            guidance["recommended_tools"].append("analyze_code_structure")
             guidance["complexity_assessment"] = (
                 f"Found {len(structural_overview['complexity_hotspots'])} complexity hotspots"
             )
