@@ -18,22 +18,97 @@ from .core.parser import Parser, ParseResult
 
 # Standard library / well-known external module prefixes
 _STDLIB_TOP_LEVEL = {
-    "os", "sys", "re", "json", "math", "time", "datetime", "collections",
-    "itertools", "functools", "typing", "io", "pathlib", "hashlib", "random",
-    "string", "textwrap", "logging", "argparse", "subprocess", "shutil",
-    "tempfile", "unittest", "pytest", "warnings", "traceback",
-    "abc", "base64", "csv", "enum", "glob", "gzip", "http", "inspect",
-    "struct", "threading", "multiprocessing", "asyncio", "concurrent",
-    "socket", "ssl", "email", "xml", "html", "urllib", "sqlite3",
-    "copy", "pprint", "statistics", "dataclasses", "contextlib",
-    "importlib", "types", "typing_extensions", "decimal", "fractions",
-    "array", "binascii", "bisect", "calendar", "cmath", "codecs",
+    "os",
+    "sys",
+    "re",
+    "json",
+    "math",
+    "time",
+    "datetime",
+    "collections",
+    "itertools",
+    "functools",
+    "typing",
+    "io",
+    "pathlib",
+    "hashlib",
+    "random",
+    "string",
+    "textwrap",
+    "logging",
+    "argparse",
+    "subprocess",
+    "shutil",
+    "tempfile",
+    "unittest",
+    "pytest",
+    "warnings",
+    "traceback",
+    "abc",
+    "base64",
+    "csv",
+    "enum",
+    "glob",
+    "gzip",
+    "http",
+    "inspect",
+    "struct",
+    "threading",
+    "multiprocessing",
+    "asyncio",
+    "concurrent",
+    "socket",
+    "ssl",
+    "email",
+    "xml",
+    "html",
+    "urllib",
+    "sqlite3",
+    "copy",
+    "pprint",
+    "statistics",
+    "dataclasses",
+    "contextlib",
+    "importlib",
+    "types",
+    "typing_extensions",
+    "decimal",
+    "fractions",
+    "array",
+    "binascii",
+    "bisect",
+    "calendar",
+    "cmath",
+    "codecs",
 }
 _JS_BUILTIN = {
-    "fs", "path", "os", "http", "https", "url", "crypto", "stream",
-    "events", "util", "assert", "buffer", "child_process", "cluster",
-    "dgram", "dns", "domain", "net", "readline", "repl", "tls",
-    "string_decoder", "timers", "tty", "v8", "vm", "zlib",
+    "fs",
+    "path",
+    "os",
+    "http",
+    "https",
+    "url",
+    "crypto",
+    "stream",
+    "events",
+    "util",
+    "assert",
+    "buffer",
+    "child_process",
+    "cluster",
+    "dgram",
+    "dns",
+    "domain",
+    "net",
+    "readline",
+    "repl",
+    "tls",
+    "string_decoder",
+    "timers",
+    "tty",
+    "v8",
+    "vm",
+    "zlib",
 }
 
 
@@ -82,7 +157,9 @@ def _resolve_relative_import(module_path: str, current_file_rel: str) -> str | N
     return str(resolved)
 
 
-def extract_imports_from_file(file_path: str, language: str | None = None) -> list[dict[str, Any]]:
+def extract_imports_from_file(
+    file_path: str, language: str | None = None
+) -> list[dict[str, Any]]:
     """
     Extract import statements from a single source file.
 
@@ -117,14 +194,16 @@ def extract_imports_from_file(file_path: str, language: str | None = None) -> li
     return imports
 
 
-def _walk_imports(node: Any, source: str, language: str, imports: list[dict[str, Any]]) -> None:
+def _walk_imports(
+    node: Any, source: str, language: str, imports: list[dict[str, Any]]
+) -> None:
     """Walk the AST to collect import statements."""
     try:
         if language in ("python",):
             _extract_python_imports(node, source, imports)
         elif language in ("javascript", "typescript"):
             _extract_js_imports(node, source, imports)
-    except Exception:
+    except Exception:  # nosec B110
         pass
 
     # Recurse into children
@@ -133,85 +212,85 @@ def _walk_imports(node: Any, source: str, language: str, imports: list[dict[str,
             _walk_imports(child, source, language, imports)
 
 
-def _extract_python_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
+def _extract_python_imports(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
     """Extract Python import statements."""
     node_type = getattr(node, "type", None)
 
     if node_type == "import_statement":
-        # import os, sys → multiple names
-        for child in node.children:
-            if getattr(child, "type", None) == "dotted_name":
-                name = _node_text(child, source)
-                if name and name.split(".")[0] in _STDLIB_TOP_LEVEL:
-                    continue  # skip stdlib
-                imports.append({
-                    "module_name": name,
-                    "resolved_path": name.replace(".", "/") + ".py",
-                    "names": [name],
-                    "is_relative": False,
-                    "language": "python",
-                })
-
+        _extract_python_import_simple(node, source, imports)
     elif node_type == "import_from_statement":
-        # from [.][.]module import name1, name2
-        # Tree-sitter Python grammar structure:
-        #   Absolute: "from" dotted_name(module) "import" dotted_name(name) ...
-        #   Relative: "from" relative_import(import_prefix + dotted_name) "import" ...
+        _extract_python_import_from(node, source, imports)
 
-        module_name = ""
-        dots_prefix = ""
-        imported_names: list[str] = []
 
-        for child in node.children:
-            ct = getattr(child, "type", None)
+def _extract_python_import_simple(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
+    """Handle: import os, sys"""
+    for child in node.children:
+        if getattr(child, "type", None) != "dotted_name":
+            continue
+        name = _node_text(child, source)
+        if not name or name.split(".")[0] in _STDLIB_TOP_LEVEL:
+            continue
+        imports.append(
+            {
+                "module_name": name,
+                "resolved_path": name.replace(".", "/") + ".py",
+                "names": [name],
+                "is_relative": False,
+                "language": "python",
+            }
+        )
 
-            if ct == "relative_import":
-                # Extract dots and module from relative_import wrapper
-                for sub in child.children:
-                    st = getattr(sub, "type", None)
-                    if st == "import_prefix":
-                        dots_prefix = _node_text(sub, source)
-                    elif st == "dotted_name":
-                        module_name = _node_text(sub, source)
 
-            elif ct == "dotted_name":
-                # If there's no relative_import, the first dotted_name is the module
-                if not module_name and not dots_prefix:
-                    module_name = _node_text(child, source)
-                else:
-                    # Subsequent dotted_name = imported name
-                    imported_names.append(_node_text(child, source))
+def _extract_python_import_from(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
+    """Handle: from [.][.]module import name1, name2"""
+    module_name = ""
+    dots_prefix = ""
+    imported_names: list[str] = []
 
-            elif ct == "aliased_import":
-                # Extract the base name from 'base as base_models'
-                imported_names.extend(_extract_import_names(child, source))
+    for child in node.children:
+        ct = getattr(child, "type", None)
 
-            elif ct in ("from", "import", ","):
-                continue  # keywords and separators
+        if ct == "relative_import":
+            for sub in child.children:
+                st = getattr(sub, "type", None)
+                if st == "import_prefix":
+                    dots_prefix = _node_text(sub, source)
+                elif st == "dotted_name":
+                    module_name = _node_text(sub, source)
 
-        if not module_name:
-            return
+        elif ct == "dotted_name":
+            if not module_name and not dots_prefix:
+                module_name = _node_text(child, source)
+            else:
+                imported_names.append(_node_text(child, source))
 
-        # Build full module path with dots prefix
-        full_module = dots_prefix + module_name
+        elif ct == "aliased_import":
+            imported_names.extend(_extract_import_names(child, source))
 
-        # Check if stdlib (only for absolute imports)
-        if not dots_prefix and module_name.split(".")[0] in _STDLIB_TOP_LEVEL:
-            return
+    if not module_name:
+        return
 
-        is_relative = bool(dots_prefix)
+    full_module = dots_prefix + module_name
+    if not dots_prefix and module_name.split(".")[0] in _STDLIB_TOP_LEVEL:
+        return
 
-        imports.append({
+    imports.append(
+        {
             "module_name": full_module,
-            "resolved_path": full_module.replace(".", "/") + ".py" if full_module else "",
+            "resolved_path": full_module.replace(".", "/") + ".py"
+            if full_module
+            else "",
             "names": imported_names,
-            "is_relative": is_relative,
+            "is_relative": bool(dots_prefix),
             "language": "python",
-        })
-
-    elif node_type == "future_import_statement":
-        # from __future__ import ... → skip
-        pass
+        }
+    )
 
 
 def _extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
@@ -231,13 +310,15 @@ def _extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) -
                 module_path = raw
 
         if module_path:
-            imports.append({
-                "module_name": module_path,
-                "resolved_path": module_path,
-                "names": [],
-                "is_relative": module_path.startswith("."),
-                "language": "javascript",
-            })
+            imports.append(
+                {
+                    "module_name": module_path,
+                    "resolved_path": module_path,
+                    "names": [],
+                    "is_relative": module_path.startswith("."),
+                    "language": "javascript",
+                }
+            )
 
     elif node_type == "call_expression":
         # require('./foo') or require('fs')
@@ -253,13 +334,15 @@ def _extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) -
                         if raw in _JS_BUILTIN:
                             continue
 
-                        imports.append({
-                            "module_name": raw,
-                            "resolved_path": raw,
-                            "names": [],
-                            "is_relative": raw.startswith("."),
-                            "language": "javascript",
-                        })
+                        imports.append(
+                            {
+                                "module_name": raw,
+                                "resolved_path": raw,
+                                "names": [],
+                                "is_relative": raw.startswith("."),
+                                "language": "javascript",
+                            }
+                        )
 
 
 def _extract_import_names(names_node: Any, source: str) -> list[str]:
@@ -286,8 +369,14 @@ def _node_text(node: Any, source: str) -> str:
     try:
         start = node.start_byte
         end = node.end_byte
-        if start is not None and end is not None and start < end <= len(source.encode("utf-8", errors="replace")):
-            return source.encode("utf-8", errors="replace")[start:end].decode("utf-8", errors="replace")
+        if (
+            start is not None
+            and end is not None
+            and start < end <= len(source.encode("utf-8", errors="replace"))
+        ):
+            return source.encode("utf-8", errors="replace")[start:end].decode(
+                "utf-8", errors="replace"
+            )
         return ""
     except Exception:
         return ""
@@ -296,6 +385,7 @@ def _node_text(node: Any, source: str) -> str:
 # ============================================================
 # DependencyGraph
 # ============================================================
+
 
 class DependencyGraph:
     """
@@ -326,7 +416,7 @@ class DependencyGraph:
         return instance
 
     def __init__(self, project_root: str) -> None:
-        if hasattr(self, "_initialized") and self._initialized:
+        if hasattr(self, "_initialized") and self._initialized:  # type: ignore[has-type]
             return
 
         self.project_root = Path(project_root).resolve()
@@ -347,14 +437,42 @@ class DependencyGraph:
         except OSError:
             return None
 
+    _EXCLUDE_DIRS = {
+        "node_modules",
+        ".git",
+        ".hg",
+        ".svn",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "htmlcov",
+        ".cache",
+        ".eggs",
+        ".idea",
+        ".vscode",
+        ".claude",
+    }
+
+    def _is_excluded(self, path: Path) -> bool:
+        """Check if a path is inside an excluded directory."""
+        return any(part in self._EXCLUDE_DIRS for part in path.parts)
+
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""
         supported_exts = {".py", ".js", ".ts", ".jsx", ".tsx", ".java"}
 
-        # Collect all source files
+        # Collect all source files (excluding generated/dependency dirs)
         all_files: list[Path] = []
         for ext in supported_exts:
-            all_files.extend(self.project_root.rglob(f"*{ext}"))
+            for f in self.project_root.rglob(f"*{ext}"):
+                if not self._is_excluded(f):
+                    all_files.append(f)
 
         # Build relative path mapping
         rel_to_abs: dict[str, str] = {}
@@ -397,11 +515,11 @@ class DependencyGraph:
                 return resolved
             else:
                 # Absolute import: e.g., "pkg.submodule" → pkg/submodule.py
-                candidate = module.replace(".", "/") + ".py"
+                candidate: str = module.replace(".", "/") + ".py"
                 if candidate in self._nodes:
                     return candidate
                 # Also try matching without .py (e.g., __init__.py packages)
-                init_candidate = module.replace(".", "/") + "/__init__.py"
+                init_candidate: str = module.replace(".", "/") + "/__init__.py"
                 if init_candidate in self._nodes:
                     return init_candidate
                 return None
@@ -480,6 +598,7 @@ class DependencyGraph:
 # ============================================================
 # BlastRadius — Impact / blast radius analysis
 # ============================================================
+
 
 class BlastRadius:
     """

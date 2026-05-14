@@ -25,14 +25,14 @@ DIMENSION_WEIGHTS = {
 }
 
 # Thresholds for scoring
-LINE_SCORE_IDEAL = 200    # Files under 200 lines get full line score
-LINE_SCORE_MAX = 2000     # Files over 2000 lines get 0 line score
-COMPLEXITY_IDEAL = 50     # Under 50 AST nodes → full complexity score
-COMPLEXITY_MAX = 2000     # Over 2000 AST nodes → 0 complexity score
-NESTING_MAX_DEPTH = 8     # Nesting depth of 8+ → significant penalty
+LINE_SCORE_IDEAL = 200  # Files under 200 lines get full line score
+LINE_SCORE_MAX = 2000  # Files over 2000 lines get 0 line score
+COMPLEXITY_IDEAL = 500  # Under 500 AST nodes → full complexity score
+COMPLEXITY_MAX = 15000  # Over 15000 AST nodes → 0 complexity score
+NESTING_MAX_DEPTH = 15  # AST nesting depth of 15+ → penalty starts
 COMMENT_RATIO_IDEAL = 0.20  # 20% comment ratio → full score
-DEP_IDEAL = 3              # ≤ 3 deps → full score
-DEP_MAX = 100              # ≥ 100 deps → 0 score
+DEP_IDEAL = 3  # ≤ 3 deps → full score
+DEP_MAX = 100  # ≥ 100 deps → 0 score
 
 
 @dataclass
@@ -153,6 +153,28 @@ class HealthScorer:
             dimensions={k: round(v, 1) for k, v in dims.items()},
         )
 
+    _EXCLUDE_DIRS = {
+        "node_modules",
+        ".git",
+        ".hg",
+        ".svn",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "htmlcov",
+        ".cache",
+        ".eggs",
+        ".idea",
+        ".vscode",
+        ".claude",
+    }
+
     def score_project(self, project_root: str) -> list[HealthScore]:
         """
         Score all source files in a project directory.
@@ -169,9 +191,11 @@ class HealthScorer:
         results: list[HealthScore] = []
         for ext in supported_exts:
             for f in root.rglob(f"*{ext}"):
+                if any(part in self._EXCLUDE_DIRS for part in f.parts):
+                    continue
                 try:
                     results.append(self.score_file(str(f)))
-                except Exception:
+                except Exception:  # nosec B112
                     continue
 
         results.sort(key=lambda r: r.total, reverse=True)
@@ -234,15 +258,17 @@ class HealthScorer:
             elif node_count >= COMPLEXITY_MAX:
                 node_score = 0.0
             else:
-                ratio = (node_count - COMPLEXITY_IDEAL) / (COMPLEXITY_MAX - COMPLEXITY_IDEAL)
+                ratio = (node_count - COMPLEXITY_IDEAL) / (
+                    COMPLEXITY_MAX - COMPLEXITY_IDEAL
+                )
                 node_score = max(0.0, 100.0 * (1.0 - ratio))
 
-            # Depth penalty
-            depth_penalty = 0.0
+            # Depth penalty (proportional, capped at 40%)
+            depth_penalty_pct = 0.0
             if max_depth > NESTING_MAX_DEPTH:
-                depth_penalty = min(50.0, (max_depth - NESTING_MAX_DEPTH) * 10.0)
+                depth_penalty_pct = min(40.0, (max_depth - NESTING_MAX_DEPTH) * 5.0)
 
-            return max(0.0, node_score - depth_penalty)
+            return max(0.0, node_score * (1.0 - depth_penalty_pct / 100.0))
 
         except Exception:
             return 50.0
@@ -255,13 +281,29 @@ class HealthScorer:
             imports = extract_imports_from_file(file_path)
             # Count only non-stdlib imports
             stdlib = {
-                "os", "sys", "re", "json", "math", "time", "datetime",
-                "collections", "itertools", "functools", "typing", "io",
-                "pathlib", "hashlib", "random", "string", "textwrap",
+                "os",
+                "sys",
+                "re",
+                "json",
+                "math",
+                "time",
+                "datetime",
+                "collections",
+                "itertools",
+                "functools",
+                "typing",
+                "io",
+                "pathlib",
+                "hashlib",
+                "random",
+                "string",
+                "textwrap",
             }
             internal_imports = [
-                i for i in imports
-                if i.get("module_name", "") and i["module_name"].split(".")[0] not in stdlib
+                i
+                for i in imports
+                if i.get("module_name", "")
+                and i["module_name"].split(".")[0] not in stdlib
             ]
             dep_count = len(internal_imports)
 
@@ -289,7 +331,11 @@ class HealthScorer:
             stripped = line.strip()
             if not stripped:
                 continue
-            if stripped.startswith("#") or stripped.startswith("//") or stripped.startswith("/*"):
+            if (
+                stripped.startswith("#")
+                or stripped.startswith("//")
+                or stripped.startswith("/*")
+            ):
                 comment_lines += 1
             elif stripped.startswith('"""') or stripped.startswith("'''"):
                 comment_lines += 1
