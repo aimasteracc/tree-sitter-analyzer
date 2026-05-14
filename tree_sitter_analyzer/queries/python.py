@@ -154,14 +154,17 @@ TYPE_HINTS = """
 
 # Async/await patterns
 ASYNC_PATTERNS = """
-(function_definition) @async.function
+(function_definition
+  (async) @async.keyword) @async.function
 
 (await
     (call) @async.await_call) @async.await
 
-(async_for_statement) @async.for
+(for_statement
+  (async) @async.keyword) @async.for
 
-(async_with_statement) @async.with
+(with_statement
+  (async) @async.keyword) @async.with
 """
 
 # F-strings and string formatting
@@ -182,7 +185,8 @@ CONTEXT_MANAGERS = """
         (with_item
             value: (_) @context.manager)) @context.clause) @context.with
 
-(async_with_statement
+(with_statement
+    (async) @context.async_keyword
     (with_clause
         (with_item
             value: (_) @context.manager)) @context.clause) @context.async_with
@@ -197,18 +201,11 @@ LAMBDAS = """
 
 # Modern Python patterns
 MODERN_PATTERNS = """
-(match_statement
-    subject: (_) @match.subject
-    body: (case_clause)+ @match.cases) @pattern.match
+(match_statement) @pattern.match
 
-(case_clause
-    pattern: (_) @case.pattern
-    guard: (_)? @case.guard
-    consequence: (block) @case.body) @pattern.case
+(case_clause) @pattern.case
 
-(walrus_operator
-    left: (_) @walrus.target
-    right: (_) @walrus.value) @assignment.walrus
+(named_expression) @assignment.walrus
 """
 
 # Python-specific comprehensive query library
