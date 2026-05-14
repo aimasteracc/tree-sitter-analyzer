@@ -94,20 +94,12 @@ IMPORTS = """
 
 (import_statement
     (import_clause
-        (import_default_specifier
-            (identifier) @import.default))) @import.default
+        (identifier) @import.default)) @import.default
 
 (import_statement
     (import_clause
         (namespace_import
             (identifier) @import.namespace))) @import.namespace
-
-(type_import
-    (import_clause
-        (named_imports
-            (import_specifier
-                name: (identifier) @import.type.name
-                alias: (identifier)? @import.type.alias)))) @import.type
 """
 
 EXPORTS = """
