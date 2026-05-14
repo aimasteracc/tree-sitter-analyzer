@@ -144,20 +144,10 @@ class TestTypeScriptExtendedQueries:
             assert "description" in query_data
 
     def test_jsx_queries(self):
-        """Test JSX-specific queries"""
-        jsx_queries = [
-            "jsx_element",
-            "jsx_self_closing",
-            "jsx_fragment",
-            "jsx_expression",
-        ]
-
+        """Test that JSX queries are not in TypeScript grammar (TSX-only)"""
+        jsx_queries = ["jsx_element", "jsx_self_closing", "jsx_fragment", "jsx_expression"]
         for query_name in jsx_queries:
-            assert query_name in ts_queries.ALL_QUERIES
-            query_data = ts_queries.ALL_QUERIES[query_name]
-            assert "query" in query_data
-            assert "description" in query_data
-            assert "jsx" in query_data["description"].lower()
+            assert query_name not in ts_queries.ALL_QUERIES
 
     def test_expression_queries(self):
         """Test expression-specific queries"""
@@ -384,7 +374,7 @@ class TestTypeScriptExtendedQueries:
         all_queries = ts_queries.get_all_queries()
         assert len(all_queries) >= 80
         assert "union_type" in all_queries
-        assert "jsx_element" in all_queries
+        assert "as_expression" in all_queries
 
         # Test list_queries function (if exists)
         if hasattr(ts_queries, "list_queries"):
@@ -432,7 +422,7 @@ class TestTypeScriptQueryComparison:
             "classes": ["class_declaration", "abstract_class"],
             "types": ["union_type", "intersection_type", "conditional_type"],
             "imports": ["import_statement", "type_import"],
-            "jsx": ["jsx_element", "jsx_self_closing"],
+            "jsx": [],  # JSX nodes only exist in TSX grammar, not TypeScript
             "expressions": ["as_expression", "optional_chain"],
             "modifiers": ["readonly_modifier", "static_modifier"],
         }
