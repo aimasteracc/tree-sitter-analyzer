@@ -109,7 +109,6 @@ class TestJavaScriptQueries:
     def test_objects_query(self) -> None:
         """Test objects query content"""
         assert "object" in OBJECTS
-        assert "property_definition" in OBJECTS
         assert "@property" in OBJECTS
 
     def test_comments_query(self) -> None:

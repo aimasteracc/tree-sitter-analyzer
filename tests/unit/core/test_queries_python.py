@@ -267,7 +267,8 @@ class TestPythonQueryConstants:
         assert "@type" in TYPE_HINTS
 
     def test_string_formatting_constant(self) -> None:
-        assert "formatted_string" in STRING_FORMATTING
+        assert "string" in STRING_FORMATTING
+        assert "interpolation" in STRING_FORMATTING
 
     def test_context_managers_constant(self) -> None:
         assert "with_statement" in CONTEXT_MANAGERS or "with_item" in CONTEXT_MANAGERS

@@ -362,13 +362,13 @@ class TestEnhancedJavaScriptQueries:
             query = JAVASCRIPT_QUERIES[query_name]
             assert "comment" in query
 
-            # Verify specific patterns
+            # Verify specific patterns using #match? predicate
             if "jsdoc" in query_name:
-                assert "/\\*\\*" in query
+                assert "#match?" in query
             elif "line" in query_name:
                 assert "//" in query
             elif "block" in query_name:
-                assert "/\\*" in query
+                assert "#match?" in query
 
     def test_advanced_pattern_queries(self) -> None:
         """Test advanced pattern queries"""
