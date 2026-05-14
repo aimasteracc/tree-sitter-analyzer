@@ -44,7 +44,7 @@ PHP_PROPERTY_QUERY = """
 PHP_CONSTANT_QUERY = """
 (const_declaration
   (const_element
-    name: (name) @constant.name)) @constant.definition
+    (name) @constant.name)) @constant.definition
 """
 
 # Query for PHP use statements
@@ -65,7 +65,7 @@ PHP_ATTRIBUTE_QUERY = """
 (attribute_list
   (attribute_group
     (attribute
-      name: (name) @attribute.name))) @attribute.definition
+      (name) @attribute.name))) @attribute.definition
 """
 
 # Query for PHP magic methods

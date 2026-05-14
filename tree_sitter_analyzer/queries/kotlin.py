@@ -20,7 +20,8 @@ KOTLIN_QUERIES: dict[str, str] = {
     """,
     "interface": """
     (class_declaration
-      (#match? @class "interface")) @interface
+      name: (identifier) @interface_name
+      (class_body)) @interface
     """,
     # --- Functions ---
     "function": """
@@ -35,11 +36,11 @@ KOTLIN_QUERIES: dict[str, str] = {
     """,
     "val": """
     (property_declaration
-      (#match? @property "^val")) @val
+      "val" (_)) @val
     """,
     "var": """
     (property_declaration
-      (#match? @property "^var")) @var
+      "var" (_)) @var
     """,
     # --- Annotations ---
     "annotation": """
@@ -48,38 +49,38 @@ KOTLIN_QUERIES: dict[str, str] = {
     # --- Detailed Queries ---
     "class_with_body": """
     (class_declaration
-      (simple_identifier) @name
+      name: (identifier) @name
       (class_body) @body) @class_with_body
     """,
     "function_with_body": """
     (function_declaration
-      (simple_identifier) @name
+      name: (identifier) @name
       (function_body) @body) @function_with_body
     """,
     # --- Modifiers ---
     "data_class": """
     (class_declaration
-      (modifiers "data")
-      (simple_identifier) @name) @data_class
+      (modifiers (class_modifier "data"))
+      name: (identifier) @name) @data_class
     """,
     "sealed_class": """
     (class_declaration
-      (modifiers "sealed")
-      (simple_identifier) @name) @sealed_class
+      (modifiers (class_modifier "sealed"))
+      name: (identifier) @name) @sealed_class
     """,
     "suspend_function": """
     (function_declaration
-      (modifiers "suspend")
-      (simple_identifier) @name) @suspend_function
+      (modifiers (function_modifier "suspend"))
+      name: (identifier) @name) @suspend_function
     """,
     # --- Names ---
     "class_name": """
     (class_declaration
-      (simple_identifier) @class_name)
+      name: (identifier) @class_name)
     """,
     "function_name": """
     (function_declaration
-      (simple_identifier) @function_name)
+      name: (identifier) @function_name)
     """,
 }
 

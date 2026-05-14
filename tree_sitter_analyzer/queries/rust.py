@@ -33,7 +33,7 @@ RUST_QUERIES: dict[str, str] = {
     """,
     "async_fn": """
     (function_item
-      (modifiers) @mod
+      (function_modifiers) @mod
       (#match? @mod "async")) @async_fn
     """,
     # --- Fields and Variants ---
@@ -59,10 +59,10 @@ RUST_QUERIES: dict[str, str] = {
     """,
     "derive_attribute": """
     (attribute_item
-      (meta_item
+      (attribute
         (identifier) @name
         (#eq? @name "derive")
-        (meta_arguments) @arguments)) @derive_attribute
+        (token_tree) @arguments)) @derive_attribute
     """,
     # --- Detailed Queries ---
     "struct_with_fields": """
