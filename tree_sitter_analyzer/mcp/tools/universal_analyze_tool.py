@@ -63,7 +63,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         """
         return {
             "name": "analyze_code_universal",
-            "description": "Universal code analysis for multiple programming languages with automatic language detection",
+            "description": "SMART Workflow 'Analyze' step: Universal code analysis with automatic language detection. Supports basic, detailed, structure, and metrics analysis modes. Use for quick single-file analysis when you don't need the full table output of analyze_code_structure.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

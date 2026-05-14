@@ -407,7 +407,7 @@ class TreeSitterAnalyzerMCPServer:
                 Tool(**self.read_partial_tool.get_tool_definition()),
                 Tool(
                     name="set_project_path",
-                    description="Set or override the project root path used for security boundaries",
+                    description="SMART Workflow 'Set' step (FIRST): Set the project root path for security boundaries. Call this before any other tool to ensure correct file resolution and security validation.",
                     inputSchema={
                         "type": "object",
                         "properties": {

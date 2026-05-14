@@ -840,7 +840,13 @@ class AnalyzeScaleTool(BaseMCPTool):
         """
         return {
             "name": "check_code_scale",
-            "description": "Analyze code scale, complexity, and structure metrics with LLM-optimized guidance for efficient large file analysis and token-aware workflow recommendations",
+            "description": (
+                "SMART Workflow 'Analyze' step (use FIRST for any file): "
+                "Get file size, element counts (classes/methods/fields/imports), "
+                "complexity metrics, and LLM-optimized analysis guidance. "
+                "Use this BEFORE analyze_code_structure to decide the right strategy. "
+                "Supports batch mode for multiple files and token-aware recommendations."
+            ),
             "inputSchema": self.get_tool_schema(),
         }
 

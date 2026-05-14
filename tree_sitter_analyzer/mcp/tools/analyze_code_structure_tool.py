@@ -473,9 +473,11 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return {
             "name": "analyze_code_structure",
             "description": (
-                "Analyze code structure and generate detailed overview tables "
-                "(classes, methods, fields) with line positions for large files, "
-                "optionally save to file"
+                "SMART Workflow 'Analyze' step: Generate detailed structure tables "
+                "(classes, methods, fields with line positions) for code files. "
+                "Use this AFTER check_code_scale to understand file organization. "
+                "Supports full/compact/csv table formats, optional file output, "
+                "and toon format for 50-70% token reduction."
             ),
             "inputSchema": self.get_tool_schema(),
         }

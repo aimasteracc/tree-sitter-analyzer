@@ -809,7 +809,12 @@ class ReadPartialTool(BaseMCPTool):
         """
         return {
             "name": "extract_code_section",
-            "description": "Extract specific code sections by line/column range with multiple output formats (text/json/raw), optionally save to file with token optimization",
+            "description": (
+                "SMART Workflow 'Retrieve' step: Extract specific code sections by "
+                "line/column range. Use AFTER analyze_code_structure to identify target lines. "
+                "Supports text/json/raw formats, batch mode for multiple ranges/files, "
+                "and toon format for token reduction."
+            ),
             "inputSchema": self.get_tool_schema(),
         }
 
