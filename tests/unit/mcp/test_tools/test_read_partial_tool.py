@@ -739,7 +739,6 @@ class TestReadPartialToolReadFilePartial:
         tool = ReadPartialTool()
         test_content = "line1\nline2\nline3"
 
-        # Use temporary file to avoid permission issues
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
             f.write(test_content)
             f.flush()
@@ -751,3 +750,704 @@ class TestReadPartialToolReadFilePartial:
         finally:
             if test_file.exists():
                 test_file.unlink()
+
+
+class TestReadPartialToolExecuteExtra:
+    """Additional tests for uncovered execute() paths."""
+
+    @pytest.mark.asyncio
+    async def test_execute_resolve_path_value_error(self):
+        tool = ReadPartialTool()
+        with patch.object(
+            tool, "resolve_and_validate_file_path", side_effect=ValueError("blocked")
+        ):
+            result = await tool.execute({"file_path": "secret.py", "start_line": 1})
+        assert result["success"] is False
+        assert "blocked" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_content_none(self):
+        tool = ReadPartialTool()
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(tool, "_read_file_partial", return_value=None),
+        ):
+            result = await tool.execute({"file_path": "t.py", "start_line": 1})
+        assert result["success"] is False
+        assert "Failed to read" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_success_with_output_file_text(self):
+        tool = ReadPartialTool()
+        test_content = "hello\nworld\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(
+                tool.file_output_manager, "save_to_file", return_value="/out/test.md"
+            ),
+        ):
+            result = await tool.execute(
+                {
+                    "file_path": "t.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "output_file": "result",
+                    "format": "text",
+                }
+            )
+        assert result["success"] is True
+        assert result["file_saved"] is True
+        assert result["output_file_path"] == "/out/test.md"
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_execute_success_with_output_file_json(self):
+        tool = ReadPartialTool()
+        test_content = "hello\nworld\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(
+                tool.file_output_manager, "save_to_file", return_value="/out/j.md"
+            ),
+        ):
+            result = await tool.execute(
+                {
+                    "file_path": "t.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "output_file": "res",
+                    "format": "json",
+                    "output_format": "json",
+                }
+            )
+        assert result["success"] is True
+        assert result["file_saved"] is True
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_execute_success_with_output_file_raw(self):
+        tool = ReadPartialTool()
+        test_content = "hello\nworld\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(
+                tool.file_output_manager, "save_to_file", return_value="/out/r.md"
+            ),
+        ):
+            result = await tool.execute(
+                {
+                    "file_path": "t.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "output_file": "res",
+                    "format": "raw",
+                }
+            )
+        assert result["success"] is True
+        assert result["file_saved"] is True
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_execute_output_file_toon_format(self):
+        tool = ReadPartialTool()
+        test_content = "hello\nworld\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(
+                tool.file_output_manager, "save_to_file", return_value="/out/t.md"
+            ),
+        ):
+            result = await tool.execute(
+                {
+                    "file_path": "t.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "output_file": "res",
+                    "format": "json",
+                    "output_format": "toon",
+                }
+            )
+        assert result["success"] is True
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_execute_output_file_save_error(self):
+        tool = ReadPartialTool()
+        test_content = "hello\nworld\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(
+                tool.file_output_manager,
+                "save_to_file",
+                side_effect=PermissionError("no write"),
+            ),
+        ):
+            result = await tool.execute(
+                {
+                    "file_path": "t.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "output_file": "res",
+                }
+            )
+        assert result["success"] is True
+        assert result["file_saved"] is False
+        assert "file_save_error" in result
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_execute_suppress_output_with_output_file(self):
+        tool = ReadPartialTool()
+        test_content = "hello\nworld\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(
+                tool.file_output_manager, "save_to_file", return_value="/out/s.md"
+            ),
+        ):
+            result = await tool.execute(
+                {
+                    "file_path": "t.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "suppress_output": True,
+                    "output_file": "res",
+                }
+            )
+        assert result["success"] is True
+        assert "partial_content_result" not in result
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_execute_output_format_json(self):
+        tool = ReadPartialTool()
+        test_content = "hello\nworld\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value=str(test_file)
+        ):
+            result = await tool.execute(
+                {
+                    "file_path": "t.py",
+                    "start_line": 1,
+                    "end_line": 2,
+                    "output_format": "json",
+                }
+            )
+        assert result["success"] is True
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_execute_general_exception(self):
+        tool = ReadPartialTool()
+        test_content = "hello\nworld\n"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        try:
+            with (
+                patch.object(
+                    tool,
+                    "resolve_and_validate_file_path",
+                    return_value=str(test_file),
+                ),
+                patch.object(
+                    tool,
+                    "_read_file_partial",
+                    side_effect=RuntimeError("unexpected"),
+                ),
+            ):
+                result = await tool.execute({"file_path": "t.py", "start_line": 1})
+            assert result["success"] is False
+            assert "unexpected" in result["error"]
+        finally:
+            if test_file.exists():
+                test_file.unlink()
+
+
+class TestReadPartialToolBatchExtra:
+    """Additional tests for uncovered _execute_batch() paths."""
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_resolve_error(self):
+        tool = ReadPartialTool()
+        with patch.object(
+            tool,
+            "resolve_and_validate_file_path",
+            side_effect=ValueError("no access"),
+        ):
+            with pytest.raises(ValueError, match="no access"):
+                await tool._execute_batch(
+                    {
+                        "requests": [
+                            {"file_path": "x.py", "sections": [{"start_line": 1}]}
+                        ],
+                        "fail_fast": True,
+                    }
+                )
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_file_not_exist(self):
+        tool = ReadPartialTool()
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/x.py"),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            with pytest.raises(ValueError, match="file does not exist"):
+                await tool._execute_batch(
+                    {
+                        "requests": [
+                            {"file_path": "x.py", "sections": [{"start_line": 1}]}
+                        ],
+                        "fail_fast": True,
+                    }
+                )
+
+    @pytest.mark.asyncio
+    async def test_batch_file_too_large_fail_fast(self):
+        tool = ReadPartialTool()
+        test_content = "x"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(Path, "stat") as mock_stat,
+        ):
+            mock_stat.return_value.st_size = 10 * 1024 * 1024  # 10 MiB
+            with pytest.raises(ValueError, match="File too large"):
+                await tool._execute_batch(
+                    {
+                        "requests": [
+                            {"file_path": "x.py", "sections": [{"start_line": 1}]}
+                        ],
+                        "fail_fast": True,
+                    }
+                )
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_batch_file_too_large_no_fail_fast(self):
+        tool = ReadPartialTool()
+        test_content = "x"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(Path, "stat") as mock_stat,
+        ):
+            mock_stat.return_value.st_size = 10 * 1024 * 1024
+            result = await tool._execute_batch(
+                {
+                    "requests": [
+                        {"file_path": "x.py", "sections": [{"start_line": 1}]}
+                    ],
+                    "fail_fast": False,
+                }
+            )
+        if "results" in result:
+            assert any(
+                "Too large" in e["error"] for e in result["results"][0]["errors"]
+            )
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_batch_stat_oserror_fail_fast(self):
+        tool = ReadPartialTool()
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/x.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat", side_effect=OSError("io error")),
+        ):
+            with pytest.raises(ValueError, match="Could not stat"):
+                await tool._execute_batch(
+                    {
+                        "requests": [
+                            {"file_path": "x.py", "sections": [{"start_line": 1}]}
+                        ],
+                        "fail_fast": True,
+                    }
+                )
+
+    @pytest.mark.asyncio
+    async def test_batch_stat_oserror_no_fail_fast(self):
+        tool = ReadPartialTool()
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/x.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat", side_effect=OSError("io error")),
+        ):
+            result = await tool._execute_batch(
+                {
+                    "requests": [
+                        {"file_path": "x.py", "sections": [{"start_line": 1}]}
+                    ],
+                    "fail_fast": False,
+                }
+            )
+        if "results" in result:
+            assert any("stat" in e["error"] for e in result["results"][0]["errors"])
+
+    @pytest.mark.asyncio
+    async def test_batch_sections_total_limit_no_truncate(self):
+        tool = ReadPartialTool()
+        requests = []
+        for i in range(20):
+            sections = [
+                {"start_line": j, "end_line": j, "label": f"s{j}"} for j in range(1, 12)
+            ]
+            requests.append({"file_path": f"t{i}.py", "sections": sections})
+        # 20 files * 11 sections = 220 > max_sections_total=200
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat") as mock_stat,
+        ):
+            mock_stat.return_value.st_size = 100
+            with pytest.raises(ValueError, match="Too many sections"):
+                await tool._execute_batch({"requests": requests})
+
+    @pytest.mark.asyncio
+    async def test_batch_sections_total_limit_with_truncate(self):
+        tool = ReadPartialTool()
+        requests = []
+        for i in range(20):
+            sections = [
+                {"start_line": j, "end_line": j, "label": f"s{j}"} for j in range(1, 12)
+            ]
+            requests.append({"file_path": f"t{i}.py", "sections": sections})
+        # 20 * 11 = 220 > 200
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat") as mock_stat,
+        ):
+            mock_stat.return_value.st_size = 100
+            result = await tool._execute_batch(
+                {"requests": requests, "allow_truncate": True}
+            )
+        assert result["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_batch_total_bytes_limit_no_truncate(self):
+        tool = ReadPartialTool()
+        big = "x" * 600000
+
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat") as mock_stat,
+            patch.object(tool, "_read_file_partial", return_value=big),
+        ):
+            mock_stat.return_value.st_size = 100
+            with pytest.raises(ValueError, match="exceeds limits"):
+                await tool._execute_batch(
+                    {
+                        "requests": [
+                            {
+                                "file_path": "t.py",
+                                "sections": [
+                                    {"start_line": 1, "end_line": 1},
+                                    {"start_line": 1, "end_line": 1},
+                                ],
+                            }
+                        ]
+                    }
+                )
+
+    @pytest.mark.asyncio
+    async def test_batch_total_bytes_limit_with_truncate(self):
+        tool = ReadPartialTool()
+        big = "x" * 600000
+
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat") as mock_stat,
+            patch.object(tool, "_read_file_partial", return_value=big),
+        ):
+            mock_stat.return_value.st_size = 100
+            result = await tool._execute_batch(
+                {
+                    "requests": [
+                        {
+                            "file_path": "t.py",
+                            "sections": [
+                                {"start_line": 1, "end_line": 1},
+                                {"start_line": 1, "end_line": 1},
+                            ],
+                        }
+                    ],
+                    "allow_truncate": True,
+                }
+            )
+        assert result["truncated"] is True
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_invalid_request_entry(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="must be an object"):
+            await tool._execute_batch({"requests": ["bad"], "fail_fast": True})
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_empty_file_path(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="non-empty string"):
+            await tool._execute_batch(
+                {
+                    "requests": [{"file_path": "", "sections": [{"start_line": 1}]}],
+                    "fail_fast": True,
+                }
+            )
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_invalid_sections_type(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="sections must be a list"):
+            await tool._execute_batch(
+                {
+                    "requests": [{"file_path": "t.py", "sections": "bad"}],
+                    "fail_fast": True,
+                }
+            )
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_invalid_section_entry(self):
+        tool = ReadPartialTool()
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat") as mock_stat,
+        ):
+            mock_stat.return_value.st_size = 100
+            result = await tool._execute_batch(
+                {
+                    "requests": [{"file_path": "t.py", "sections": ["bad"]}],
+                    "fail_fast": True,
+                }
+            )
+        if "results" in result:
+            assert any(
+                "Invalid section" in e["error"] for e in result["results"][0]["errors"]
+            )
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_invalid_start_line(self):
+        tool = ReadPartialTool()
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat") as mock_stat,
+        ):
+            mock_stat.return_value.st_size = 100
+            result = await tool._execute_batch(
+                {
+                    "requests": [
+                        {"file_path": "t.py", "sections": [{"start_line": 0}]}
+                    ],
+                    "fail_fast": True,
+                }
+            )
+        if "results" in result:
+            assert any(
+                "start_line" in e["error"] for e in result["results"][0]["errors"]
+            )
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_invalid_end_line(self):
+        tool = ReadPartialTool()
+        with (
+            patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(Path, "stat") as mock_stat,
+        ):
+            mock_stat.return_value.st_size = 100
+            result = await tool._execute_batch(
+                {
+                    "requests": [
+                        {
+                            "file_path": "t.py",
+                            "sections": [{"start_line": 10, "end_line": 5}],
+                        }
+                    ],
+                    "fail_fast": True,
+                }
+            )
+        if "results" in result:
+            assert any("end_line" in e["error"] for e in result["results"][0]["errors"])
+
+    @pytest.mark.asyncio
+    async def test_batch_fail_fast_empty_content(self):
+        tool = ReadPartialTool()
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("")
+            f.flush()
+            test_file = Path(f.name)
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value=str(test_file)
+            ),
+            patch.object(Path, "stat") as mock_stat,
+        ):
+            mock_stat.return_value.st_size = 100
+            result = await tool._execute_batch(
+                {
+                    "requests": [
+                        {"file_path": "t.py", "sections": [{"start_line": 1}]}
+                    ],
+                    "fail_fast": True,
+                }
+            )
+        if "results" in result:
+            assert any(
+                "empty" in e["error"].lower() for e in result["results"][0]["errors"]
+            )
+        test_file.unlink()
+
+    @pytest.mark.asyncio
+    async def test_batch_too_many_sections_per_file_no_fail_fast(self):
+        tool = ReadPartialTool()
+        sections = [{"start_line": i} for i in range(60)]
+        with patch.object(tool, "resolve_and_validate_file_path", return_value="/t.py"):
+            result = await tool._execute_batch(
+                {
+                    "requests": [{"file_path": "t.py", "sections": sections}],
+                    "fail_fast": False,
+                }
+            )
+        if "results" in result:
+            assert any("Too many" in e["error"] for e in result["results"][0]["errors"])
+
+
+class TestReadPartialToolValidateExtra:
+    """Additional tests for uncovered validate_arguments paths."""
+
+    def test_validate_end_column_below_zero(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="end_column must be >= 0"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "start_line": 1, "end_column": -1}
+            )
+
+    def test_validate_format_not_string(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="format must be a string"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "start_line": 1, "format": 123}
+            )
+
+    def test_validate_output_file_not_string(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="output_file must be a string"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "start_line": 1, "output_file": 42}
+            )
+
+    def test_validate_output_file_empty(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="output_file cannot be empty"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "start_line": 1, "output_file": "  "}
+            )
+
+    def test_validate_suppress_output_not_bool(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="suppress_output must be a boolean"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "start_line": 1, "suppress_output": "yes"}
+            )
+
+    def test_validate_end_line_below_one(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="end_line must be >= 1"):
+            tool.validate_arguments(
+                {"file_path": "t.py", "start_line": 1, "end_line": 0}
+            )
+
+    def test_validate_requests_not_list(self):
+        tool = ReadPartialTool()
+        with pytest.raises(ValueError, match="requests must be a list"):
+            tool.validate_arguments({"requests": "not_list"})
+
+    def test_validate_valid_with_all_optional_fields(self):
+        tool = ReadPartialTool()
+        args = {
+            "file_path": "t.py",
+            "start_line": 1,
+            "end_line": 10,
+            "start_column": 0,
+            "end_column": 5,
+            "format": "raw",
+            "output_file": "out.md",
+            "suppress_output": True,
+        }
+        assert tool.validate_arguments(args) is True

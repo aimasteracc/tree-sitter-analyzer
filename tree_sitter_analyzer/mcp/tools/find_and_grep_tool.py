@@ -639,6 +639,32 @@ class FindAndGrepTool(BaseMCPTool):
                 if not (suppress_output and output_file):
                     result["results"] = matches
 
+                    # Add next_steps for non-suppressed results with matches
+                    if matches and not arguments.get("suppress_output", False):
+                        files_with_matches = set()
+                        for m in matches:
+                            fp = m.get("path", {})
+                            if isinstance(fp, dict):
+                                fp = fp.get("text", "")
+                            if fp:
+                                files_with_matches.add(fp)
+                        steps = []
+                        if len(files_with_matches) == 1:
+                            fp = next(iter(files_with_matches))
+                            steps.append(
+                                f"analyze_code_structure(file_path='{fp}') to see full structure"
+                            )
+                        elif len(files_with_matches) <= 3:
+                            steps.append(
+                                "check_code_scale on matching files to prioritize analysis"
+                            )
+                        if len(matches) > 5:
+                            steps.append(
+                                "Use group_by_file=true for a clearer overview"
+                            )
+                        if steps:
+                            result["next_steps"] = steps
+
                 # Handle file output if requested
                 if output_file:
                     try:

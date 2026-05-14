@@ -858,6 +858,30 @@ Choose output format parameters based on your needs to minimize token usage and 
         # Always add results to the base result for caching
         result["results"] = matches
 
+        # Add actionable next steps for non-suppressed full results
+        if matches and not arguments.get("suppress_output", False):
+            files_with_matches = set()
+            for m in matches:
+                fp = m.get("path", {})
+                if isinstance(fp, dict):
+                    fp = fp.get("text", "")
+                if fp:
+                    files_with_matches.add(fp)
+            steps = []
+            if len(files_with_matches) == 1:
+                fp = next(iter(files_with_matches))
+                steps.append(
+                    f"check_code_scale(file_path='{fp}') to understand file complexity"
+                )
+            elif len(files_with_matches) <= 3:
+                steps.append(
+                    "analyze_code_structure on matching files to understand context"
+                )
+            if len(matches) > 5:
+                steps.append("Add query filters or narrower patterns to reduce matches")
+            if steps:
+                result["next_steps"] = steps
+
         # Handle file output if requested
         if output_file:
             try:

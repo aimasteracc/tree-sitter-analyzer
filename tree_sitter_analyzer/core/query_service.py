@@ -150,9 +150,7 @@ class QueryService:
         # Use safe text extraction with source code
         content = get_node_text_safe(node, source_code)
 
-        start_line = (
-            node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-        )
+        start_line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
         end_line = node.end_point[0] + 1 if hasattr(node, "end_point") else 0
 
         result = {
@@ -168,6 +166,11 @@ class QueryService:
         if name:
             result["name"] = name
 
+        # Add enclosing context (parent class/module name)
+        parent_name = self._extract_parent_context(node)
+        if parent_name:
+            result["parent"] = parent_name
+
         return result
 
     def _extract_node_name(self, node: Any) -> str | None:
@@ -182,10 +185,62 @@ class QueryService:
                 if text and len(text) < 200:
                     # For declarators, dig deeper to get the actual identifier
                     if name_node.type.endswith("_declarator"):
-                        inner = name_node.child_by_field_name("declarator") or name_node.child_by_field_name("name")
+                        inner = name_node.child_by_field_name(
+                            "declarator"
+                        ) or name_node.child_by_field_name("name")
                         if inner is not None:
                             return get_node_text_safe(inner, "")
                     return text
+
+        return None
+
+    # Node types that represent enclosing containers
+    _CONTAINER_TYPES = frozenset(
+        {
+            "class_declaration",
+            "class_definition",
+            "class",
+            "interface_declaration",
+            "interface_definition",
+            "interface",
+            "struct_declaration",
+            "struct_definition",
+            "struct",
+            "enum_declaration",
+            "enum_definition",
+            "enum",
+            "trait_declaration",
+            "trait",
+            "module_declaration",
+            "module_definition",
+            "module",
+            "namespace_definition",
+            "namespace",
+            "object_declaration",  # Kotlin
+        }
+    )
+
+    def _extract_parent_context(self, node: Any) -> str | None:
+        """Walk up the tree to find the enclosing class/struct/module name."""
+        if not hasattr(node, "parent"):
+            return None
+
+        current = node.parent
+        while current is not None:
+            if not hasattr(current, "type"):
+                current = getattr(current, "parent", None)
+                continue
+
+            if current.type in self._CONTAINER_TYPES:
+                name_node = None
+                if hasattr(current, "child_by_field_name"):
+                    name_node = current.child_by_field_name("name")
+                if name_node is not None:
+                    text = get_node_text_safe(name_node, "")
+                    if text and len(text) < 200:
+                        return text
+
+            current = getattr(current, "parent", None)
 
         return None
 
