@@ -16,6 +16,7 @@ from ..models import AnalysisResult
 from .engine_manager import EngineManager
 from .performance import PerformanceContext, PerformanceMonitor
 from .request import AnalysisRequest
+from .request_builder import build_request_from_params, update_request_from_params
 
 
 class UnsupportedLanguageError(Exception):
@@ -189,57 +190,29 @@ class UnifiedAnalysisEngine:
         include_queries: bool | None = None,
         queries: list[str] | None = None,
     ) -> Any:
-        """Compatibility alias for analyze with additional parameters
-
-        Args:
-            file_path: Path to the file to analyze
-            language: Programming language (auto-detected if None)
-            request: Pre-built AnalysisRequest (if provided, other params are ignored)
-            format_type: Output format type ('json' or 'toon')
-            include_details: Whether to include detailed structure info
-            include_complexity: Whether to include complexity metrics
-            include_elements: Whether to extract code elements
-            include_queries: Whether to execute queries
-            queries: List of query names to execute
-
-        Returns:
-            Analysis result
-        """
+        """Compatibility alias for analyze with additional parameters."""
         if request is None:
-            request = AnalysisRequest(
+            request = build_request_from_params(
                 file_path=file_path,
                 language=language,
-                format_type=format_type or "json",
-                include_details=include_details
-                if include_details is not None
-                else False,
-                include_complexity=include_complexity
-                if include_complexity is not None
-                else True,
-                include_elements=include_elements
-                if include_elements is not None
-                else True,
-                include_queries=include_queries
-                if include_queries is not None
-                else True,
+                format_type=format_type,
+                include_details=include_details,
+                include_complexity=include_complexity,
+                include_elements=include_elements,
+                include_queries=include_queries,
                 queries=queries,
             )
         else:
-            # Update request with provided parameters
-            if language:
-                request.language = language
-            if format_type:
-                request.format_type = format_type
-            if include_details is not None:
-                request.include_details = include_details
-            if include_complexity is not None:
-                request.include_complexity = include_complexity
-            if include_elements is not None:
-                request.include_elements = include_elements
-            if include_queries is not None:
-                request.include_queries = include_queries
-            if queries is not None:
-                request.queries = queries
+            update_request_from_params(
+                request,
+                language=language,
+                format_type=format_type,
+                include_details=include_details,
+                include_complexity=include_complexity,
+                include_elements=include_elements,
+                include_queries=include_queries,
+                queries=queries,
+            )
         return await self.analyze(request)
 
     async def analyze_file_async(

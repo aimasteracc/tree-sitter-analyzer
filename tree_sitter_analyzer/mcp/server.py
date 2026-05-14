@@ -87,6 +87,26 @@ except ImportError:
 logger = setup_logger(__name__)
 
 
+def _create_tool_registry(
+    project_root: str | None,
+) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
+    """Create the tool registry with all MCP tools."""
+    tool_instances: list[tuple[str, Any]] = [
+        ("check_code_scale", AnalyzeScaleTool(project_root)),
+        ("analyze_code_structure", AnalyzeCodeStructureTool(project_root)),
+        ("extract_code_section", ReadPartialTool(project_root)),
+        ("query_code", QueryTool(project_root)),
+        ("list_files", ListFilesTool(project_root)),
+        ("search_content", SearchContentTool(project_root)),
+        ("find_and_grep", FindAndGrepTool(project_root)),
+        ("get_project_overview", ProjectOverviewTool(project_root)),
+        ("check_project_health", ProjectHealthTool(project_root)),
+        ("check_file_health", FileHealthTool(project_root)),
+        ("analyze_dependencies", DependencyAnalysisTool(project_root)),
+    ]
+    return tool_instances, dict(tool_instances)
+
+
 class TreeSitterAnalyzerMCPServer:
     """
     MCP Server for Tree-sitter Analyzer
@@ -108,21 +128,7 @@ class TreeSitterAnalyzerMCPServer:
         self.analysis_engine = get_analysis_engine(project_root)
         self.security_validator = SecurityValidator(project_root)
 
-        # Tool registry: ordered list of (name, instance) pairs
-        self._tool_instances: list[tuple[str, Any]] = [
-            ("check_code_scale", AnalyzeScaleTool(project_root)),
-            ("analyze_code_structure", AnalyzeCodeStructureTool(project_root)),
-            ("extract_code_section", ReadPartialTool(project_root)),
-            ("query_code", QueryTool(project_root)),
-            ("list_files", ListFilesTool(project_root)),
-            ("search_content", SearchContentTool(project_root)),
-            ("find_and_grep", FindAndGrepTool(project_root)),
-            ("get_project_overview", ProjectOverviewTool(project_root)),
-            ("check_project_health", ProjectHealthTool(project_root)),
-            ("check_file_health", FileHealthTool(project_root)),
-            ("analyze_dependencies", DependencyAnalysisTool(project_root)),
-        ]
-        self._tools: dict[str, Any] = dict(self._tool_instances)
+        self._tool_instances, self._tools = _create_tool_registry(project_root)
 
         # Backward-compatible aliases for tests that access tools by attribute
         self.analyze_scale_tool = self._tools["check_code_scale"]
@@ -137,26 +143,40 @@ class TreeSitterAnalyzerMCPServer:
         self.file_health_tool = self._tools["check_file_health"]
         self.dependency_analysis_tool = self._tools["analyze_dependencies"]
 
-        if UNIVERSAL_TOOL_AVAILABLE and UniversalAnalyzeTool is not None:
-            try:
-                self.universal_analyze_tool: UniversalAnalyzeTool | None = (
-                    UniversalAnalyzeTool(project_root)
-                )
-            except Exception:
-                self.universal_analyze_tool = None
-        else:
-            self.universal_analyze_tool = None
+        self.universal_analyze_tool = self._init_universal_tool(project_root)
 
         self.code_file_resource = CodeFileResource()
         self.project_stats_resource = ProjectStatsResource()
         self.project_stats_resource.project_root = project_root
 
         self.name = MCP_INFO["name"]
-        self.version = MCP_INFO["version"]
+        self.version = self._detect_version()
 
+        self._initialization_complete = True
+        try:
+            logger.info(
+                f"MCP server initialization complete: {self.name} v{self.version}"
+            )
+        except Exception:  # nosec
+            pass
+
+    @staticmethod
+    def _init_universal_tool(project_root: str | None) -> Any:
+        """Initialize the UniversalAnalyzeTool if available."""
+        if not UNIVERSAL_TOOL_AVAILABLE or UniversalAnalyzeTool is None:
+            return None
+        try:
+            return UniversalAnalyzeTool(project_root)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _detect_version() -> Any:
+        """Detect version including platform info."""
+        version: Any = MCP_INFO["version"]
         try:
             platform_info = PlatformDetector.detect()
-            self.version = f"{self.version} ({platform_info.platform_key})"
+            version = f"{version} ({platform_info.platform_key})"
             try:
                 logger.info(f"Running on platform: {platform_info}")
             except Exception:  # nosec
@@ -166,14 +186,7 @@ class TreeSitterAnalyzerMCPServer:
                 logger.warning(f"Failed to detect platform: {e}")
             except Exception:  # nosec
                 pass
-
-        self._initialization_complete = True
-        try:
-            logger.info(
-                f"MCP server initialization complete: {self.name} v{self.version}"
-            )
-        except Exception:  # nosec
-            pass
+        return version
 
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
