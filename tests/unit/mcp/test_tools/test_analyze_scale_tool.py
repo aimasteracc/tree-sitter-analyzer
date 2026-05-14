@@ -1047,3 +1047,711 @@ class TestAnalyzeScaleToolCreateJsonFileAnalysis:
                 "/test.json", file_metrics, True, "json"
             )
             assert "formatted" in result
+
+
+class TestAnalyzeScaleToolExtractStructuralOverviewUniversal:
+    """Tests for _extract_structural_overview_universal method."""
+
+    def test_extract_universal_none_result(self, tool):
+        """Test with None analysis result."""
+        overview = tool._extract_structural_overview_universal(None)
+        assert overview["classes"] == []
+        assert overview["methods"] == []
+
+    def test_extract_universal_no_elements_attr(self, tool):
+        """Test with result that has no elements attribute."""
+        overview = tool._extract_structural_overview_universal("not_an_object")
+        assert overview["classes"] == []
+
+    def test_extract_universal_with_class(self, tool):
+        """Test extraction of class element."""
+        mock_elem = MagicMock()
+        mock_elem.element_type = "class"
+        mock_elem.name = "MyClass"
+        mock_elem.start_line = 1
+        mock_elem.end_line = 50
+        mock_result = MagicMock()
+        mock_result.elements = [mock_elem]
+        overview = tool._extract_structural_overview_universal(mock_result)
+        assert len(overview["classes"]) == 1
+        assert overview["classes"][0]["name"] == "MyClass"
+        assert overview["classes"][0]["line_span"] == 50
+
+    def test_extract_universal_with_function(self, tool):
+        """Test extraction of function element."""
+        mock_elem = MagicMock()
+        mock_elem.element_type = "function"
+        mock_elem.name = "my_func"
+        mock_elem.start_line = 10
+        mock_elem.end_line = 20
+        mock_elem.complexity_score = 5
+        mock_result = MagicMock()
+        mock_result.elements = [mock_elem]
+        overview = tool._extract_structural_overview_universal(mock_result)
+        assert len(overview["methods"]) == 1
+        assert overview["methods"][0]["name"] == "my_func"
+        assert overview["complexity_hotspots"] == []
+
+    def test_extract_universal_with_method(self, tool):
+        """Test extraction of method element."""
+        mock_elem = MagicMock()
+        mock_elem.element_type = "method"
+        mock_elem.name = "my_method"
+        mock_elem.start_line = 10
+        mock_elem.end_line = 20
+        mock_elem.complexity_score = 5
+        mock_result = MagicMock()
+        mock_result.elements = [mock_elem]
+        overview = tool._extract_structural_overview_universal(mock_result)
+        assert len(overview["methods"]) == 1
+        assert overview["methods"][0]["name"] == "my_method"
+
+    def test_extract_universal_high_complexity_hotspot(self, tool):
+        """Test extraction tracks complexity hotspots for universal."""
+        mock_elem = MagicMock()
+        mock_elem.element_type = "function"
+        mock_elem.name = "complex_func"
+        mock_elem.start_line = 5
+        mock_elem.end_line = 40
+        mock_elem.complexity_score = 15
+        mock_result = MagicMock()
+        mock_result.elements = [mock_elem]
+        overview = tool._extract_structural_overview_universal(mock_result)
+        assert len(overview["complexity_hotspots"]) == 1
+        assert overview["complexity_hotspots"][0]["name"] == "complex_func"
+
+    def test_extract_universal_with_variable(self, tool):
+        """Test extraction of variable element."""
+        mock_elem = MagicMock()
+        mock_elem.element_type = "variable"
+        mock_elem.name = "my_var"
+        mock_elem.start_line = 3
+        mock_elem.end_line = 3
+        mock_result = MagicMock()
+        mock_result.elements = [mock_elem]
+        overview = tool._extract_structural_overview_universal(mock_result)
+        assert len(overview["fields"]) == 1
+        assert overview["fields"][0]["name"] == "my_var"
+
+    def test_extract_universal_with_import(self, tool):
+        """Test extraction of import element."""
+        mock_elem = MagicMock()
+        mock_elem.element_type = "import"
+        mock_elem.name = "os"
+        mock_elem.start_line = 1
+        mock_elem.end_line = 1
+        mock_result = MagicMock()
+        mock_result.elements = [mock_elem]
+        overview = tool._extract_structural_overview_universal(mock_result)
+        assert len(overview["imports"]) == 1
+        assert overview["imports"][0]["name"] == "os"
+
+    def test_extract_universal_unknown_type(self, tool):
+        """Test element with unknown type is ignored."""
+        mock_elem = MagicMock()
+        mock_elem.element_type = "comment"
+        mock_elem.name = "a_comment"
+        mock_elem.start_line = 1
+        mock_elem.end_line = 1
+        mock_result = MagicMock()
+        mock_result.elements = [mock_elem]
+        overview = tool._extract_structural_overview_universal(mock_result)
+        assert overview["classes"] == []
+        assert overview["methods"] == []
+        assert overview["fields"] == []
+        assert overview["imports"] == []
+
+
+class TestAnalyzeScaleToolCountElements:
+    """Tests for _count_elements static method."""
+
+    def test_count_elements_java_style(self, tool):
+        """Test counting Java-style elements."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_CLASS
+
+        mock_elem = MagicMock()
+        mock_elem.element_type = "class"
+        mock_elem.name = "TestClass"
+        count = tool._count_elements([mock_elem], ELEMENT_TYPE_CLASS, "class")
+        assert count == 1
+
+    def test_count_elements_universal_style(self, tool):
+        """Test counting universal-style elements."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_CLASS
+
+        mock_elem = MagicMock(spec=[])
+        mock_elem.element_type = "class"
+        count = tool._count_elements([mock_elem], ELEMENT_TYPE_CLASS, "class")
+        assert count >= 1
+
+    def test_count_elements_no_match(self, tool):
+        """Test counting with no matching elements."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_CLASS
+
+        mock_elem = MagicMock()
+        mock_elem.element_type = "function"
+        count = tool._count_elements([mock_elem], ELEMENT_TYPE_CLASS, "class")
+        assert count == 0
+
+    def test_count_elements_empty_list(self, tool):
+        """Test counting with empty list."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_CLASS
+
+        count = tool._count_elements([], ELEMENT_TYPE_CLASS, "class")
+        assert count == 0
+
+
+class TestAnalyzeScaleToolGenerateLLMGuidanceAdvanced:
+    """Tests for _generate_llm_guidance advanced branches."""
+
+    def test_generate_guidance_recommended_tools_for_large_file(self, tool):
+        """Test recommended tools include extract_code_section for large files."""
+        file_metrics = {"total_lines": 250, "language": "python"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "extract_code_section" in guidance["recommended_tools"]
+        assert "query_code" in guidance["recommended_tools"]
+
+    def test_generate_guidance_language_queries_java(self, tool):
+        """Test language-specific queries for Java."""
+        file_metrics = {"total_lines": 100, "language": "java"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "methods" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_python(self, tool):
+        """Test language-specific queries for Python."""
+        file_metrics = {"total_lines": 100, "language": "python"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "functions" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_javascript(self, tool):
+        """Test language-specific queries for JavaScript."""
+        file_metrics = {"total_lines": 100, "language": "javascript"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "react_component" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_typescript(self, tool):
+        """Test language-specific queries for TypeScript."""
+        file_metrics = {"total_lines": 100, "language": "typescript"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "interfaces" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_go(self, tool):
+        """Test language-specific queries for Go."""
+        file_metrics = {"total_lines": 100, "language": "go"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "struct" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_rust(self, tool):
+        """Test language-specific queries for Rust."""
+        file_metrics = {"total_lines": 100, "language": "rust"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "trait" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_c(self, tool):
+        """Test language-specific queries for C."""
+        file_metrics = {"total_lines": 100, "language": "c"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "function" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_cpp(self, tool):
+        """Test language-specific queries for C++."""
+        file_metrics = {"total_lines": 100, "language": "cpp"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "namespace" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_kotlin(self, tool):
+        """Test language-specific queries for Kotlin."""
+        file_metrics = {"total_lines": 100, "language": "kotlin"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "data_class" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_ruby(self, tool):
+        """Test language-specific queries for Ruby."""
+        file_metrics = {"total_lines": 100, "language": "ruby"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert "methods" in guidance["suggested_queries"]
+
+    def test_generate_guidance_language_queries_unknown(self, tool):
+        """Test no queries for unknown language."""
+        file_metrics = {"total_lines": 100, "language": "cobol"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert guidance["suggested_queries"] == []
+
+    def test_generate_guidance_workflow_small_file(self, tool):
+        """Test workflow steps for small file."""
+        file_metrics = {"total_lines": 50, "language": "python"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert (
+            "analyze_code_structure for full structure table"
+            in guidance["workflow_steps"]
+        )
+
+    def test_generate_guidance_workflow_very_large_file(self, tool):
+        """Test workflow steps for very large file."""
+        file_metrics = {"total_lines": 2000, "language": "python"}
+        structural_overview = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+        guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert (
+            "extract_code_section for targeted line ranges"
+            in guidance["workflow_steps"]
+        )
+
+    def test_generate_guidance_missing_structural_fields(self, tool):
+        """Test guidance adds missing structural overview fields."""
+        file_metrics = {"total_lines": 100, "language": "python"}
+        structural_overview = {}
+        tool._generate_llm_guidance(file_metrics, structural_overview)
+        assert structural_overview["complexity_hotspots"] == []
+        assert structural_overview["classes"] == []
+
+
+class TestAnalyzeScaleToolExecuteJava:
+    """Tests for execute method with Java language path."""
+
+    @pytest.mark.asyncio
+    async def test_execute_java_success(self, tool):
+        """Test execute succeeds for Java file."""
+        mock_class = MagicMock()
+        mock_class.name = "TestClass"
+        mock_class.element_type = "class"
+        mock_class.start_line = 1
+        mock_class.end_line = 10
+        mock_class.visibility = "public"
+        mock_class.extends_class = None
+        mock_class.implements_interfaces = []
+        mock_class.annotations = []
+
+        mock_method = MagicMock()
+        mock_method.name = "doStuff"
+        mock_method.element_type = "function"
+        mock_method.start_line = 3
+        mock_method.end_line = 8
+        mock_method.visibility = "public"
+        mock_method.return_type = "void"
+        mock_method.parameters = []
+        mock_method.complexity_score = 3
+        mock_method.is_constructor = False
+        mock_method.is_static = False
+        mock_method.annotations = []
+
+        mock_field = MagicMock()
+        mock_field.name = "count"
+        mock_field.element_type = "variable"
+        mock_field.start_line = 2
+        mock_field.end_line = 2
+        mock_field.visibility = "private"
+        mock_field.field_type = "int"
+        mock_field.is_static = False
+        mock_field.is_final = False
+        mock_field.annotations = []
+
+        mock_import = MagicMock()
+        mock_import.element_type = "import"
+        mock_import.imported_name = "java.util.List"
+        mock_import.import_statement = "import java.util.List"
+        mock_import.line_number = 1
+        mock_import.is_static = False
+        mock_import.is_wildcard = False
+
+        mock_analysis_result = MagicMock()
+        mock_analysis_result.elements = [
+            mock_class,
+            mock_method,
+            mock_field,
+            mock_import,
+        ]
+        mock_analysis_result.package = None
+        mock_analysis_result.annotations = []
+        mock_analysis_result.get_statistics = MagicMock(return_value={"total": 4})
+
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/Test.java"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(
+                tool,
+                "_calculate_file_metrics",
+                return_value={
+                    "total_lines": 100,
+                    "code_lines": 80,
+                    "comment_lines": 15,
+                    "blank_lines": 5,
+                    "estimated_tokens": 400,
+                    "file_size_bytes": 2048,
+                },
+            ),
+            patch.object(
+                tool.analysis_engine,
+                "analyze",
+                new_callable=AsyncMock,
+                return_value=mock_analysis_result,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+                side_effect=lambda r, f: r,
+            ),
+        ):
+            arguments = {
+                "file_path": "Test.java",
+                "language": "java",
+                "include_details": True,
+                "include_guidance": True,
+            }
+            result = await tool.execute(arguments)
+            assert result["success"] is True
+            assert result["language"] == "java"
+            assert len(result["structural_overview"]["classes"]) == 1
+            assert len(result["structural_overview"]["methods"]) == 1
+            assert len(result["structural_overview"]["fields"]) == 1
+            assert len(result["structural_overview"]["imports"]) == 1
+            assert "detailed_analysis" in result
+            assert "llm_guidance" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_java_analysis_none(self, tool):
+        """Test execute handles None result from Java analysis."""
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/Test.java"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(
+                tool,
+                "_calculate_file_metrics",
+                return_value={
+                    "total_lines": 100,
+                    "code_lines": 80,
+                    "comment_lines": 15,
+                    "blank_lines": 5,
+                    "estimated_tokens": 400,
+                    "file_size_bytes": 2048,
+                },
+            ),
+            patch.object(
+                tool.analysis_engine,
+                "analyze",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            arguments = {"file_path": "Test.java", "language": "java"}
+            with pytest.raises(RuntimeError, match="Failed to analyze file"):
+                await tool.execute(arguments)
+
+    @pytest.mark.asyncio
+    async def test_execute_non_java_universal_failure(self, tool):
+        """Test execute handles universal engine failure."""
+        mock_result = MagicMock()
+        mock_result.success = False
+        mock_result.error_message = "Parse error"
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/test.py"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch.object(
+                tool,
+                "_calculate_file_metrics",
+                return_value={
+                    "total_lines": 100,
+                    "code_lines": 80,
+                    "comment_lines": 15,
+                    "blank_lines": 5,
+                    "estimated_tokens": 400,
+                    "file_size_bytes": 2048,
+                },
+            ),
+            patch.object(
+                tool.analysis_engine,
+                "analyze",
+                new_callable=AsyncMock,
+                return_value=mock_result,
+            ),
+        ):
+            arguments = {"file_path": "test.py"}
+            with pytest.raises(RuntimeError, match="Failed to analyze file"):
+                await tool.execute(arguments)
+
+
+class TestAnalyzeScaleToolExecuteBatchAdvanced:
+    """Advanced tests for _execute_metrics_batch method."""
+
+    @pytest.mark.asyncio
+    async def test_execute_batch_with_invalid_path_entries(self, tool):
+        """Test batch mode with invalid file path strings."""
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/test.py"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.detect_language_from_file",
+                return_value="python",
+            ),
+            patch.object(
+                tool,
+                "_calculate_file_metrics",
+                return_value={
+                    "total_lines": 100,
+                    "code_lines": 80,
+                    "comment_lines": 15,
+                    "blank_lines": 5,
+                    "estimated_tokens": 400,
+                    "file_size_bytes": 2048,
+                },
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+                side_effect=lambda r, f: r,
+            ),
+        ):
+            arguments = {"file_paths": [123], "metrics_only": True}
+            result = await tool._execute_metrics_batch(arguments)
+            assert result["count_errors"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_execute_batch_with_resolve_error(self, tool):
+        """Test batch mode handles resolve error."""
+        with (
+            patch.object(
+                tool,
+                "resolve_and_validate_file_path",
+                side_effect=ValueError("Path traversal detected"),
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+                side_effect=lambda r, f: r,
+            ),
+        ):
+            arguments = {"file_paths": ["../etc/passwd"], "metrics_only": True}
+            result = await tool._execute_metrics_batch(arguments)
+            assert result["count_errors"] == 1
+            assert result["count_ok"] == 0
+
+    @pytest.mark.asyncio
+    async def test_execute_batch_unknown_language(self, tool):
+        """Test batch mode handles unknown language detection."""
+        with (
+            patch.object(
+                tool, "resolve_and_validate_file_path", return_value="/test.xyz"
+            ),
+            patch("pathlib.Path.exists", return_value=True),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.detect_language_from_file",
+                return_value="unknown",
+            ),
+            patch.object(
+                tool,
+                "_calculate_file_metrics",
+                return_value={
+                    "total_lines": 50,
+                    "code_lines": 50,
+                    "comment_lines": 0,
+                    "blank_lines": 0,
+                    "estimated_tokens": 200,
+                    "file_size_bytes": 1024,
+                },
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+                side_effect=lambda r, f: r,
+            ),
+        ):
+            arguments = {"file_paths": ["test.xyz"], "metrics_only": True}
+            result = await tool._execute_metrics_batch(arguments)
+            assert result["count_ok"] == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_batch_all_errors(self, tool):
+        """Test batch mode where all files fail."""
+        with (
+            patch.object(
+                tool,
+                "resolve_and_validate_file_path",
+                side_effect=ValueError("Invalid"),
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+                side_effect=lambda r, f: r,
+            ),
+        ):
+            arguments = {"file_paths": ["a.py", "b.py"], "metrics_only": True}
+            result = await tool._execute_metrics_batch(arguments)
+            assert result["success"] is False
+            assert result["count_errors"] == 2
+
+
+class TestAnalyzeScaleToolCreateJsonFileAnalysisAdvanced:
+    """Advanced tests for _create_json_file_analysis method."""
+
+    def test_create_json_file_analysis_without_toon_mock(self, tool):
+        """Test JSON file analysis returns actual structure without mock."""
+        file_metrics = {
+            "total_lines": 50,
+            "code_lines": 50,
+            "comment_lines": 0,
+            "blank_lines": 5,
+            "estimated_tokens": 200,
+            "file_size_bytes": 1000,
+        }
+        result = tool._create_json_file_analysis(
+            "/test.json", file_metrics, True, "json"
+        )
+        assert result["success"] is True
+        assert result["language"] == "json"
+        assert result["total_lines"] == 50
+        assert result["non_empty_lines"] == 45
+        assert result["scale_category"] == "small"
+        assert "llm_analysis_guidance" in result
+
+    def test_create_json_file_analysis_medium_without_mock(self, tool):
+        """Test JSON file analysis for medium file without mock."""
+        file_metrics = {
+            "total_lines": 500,
+            "code_lines": 500,
+            "comment_lines": 0,
+            "blank_lines": 10,
+            "estimated_tokens": 2000,
+            "file_size_bytes": 10000,
+        }
+        result = tool._create_json_file_analysis(
+            "/test.json", file_metrics, False, "json"
+        )
+        assert result["scale_category"] == "medium"
+        assert "llm_analysis_guidance" not in result
+
+    def test_create_json_file_analysis_large_without_mock(self, tool):
+        """Test JSON file analysis for large file without mock."""
+        file_metrics = {
+            "total_lines": 1500,
+            "code_lines": 1500,
+            "comment_lines": 0,
+            "blank_lines": 20,
+            "estimated_tokens": 6000,
+            "file_size_bytes": 30000,
+        }
+        result = tool._create_json_file_analysis(
+            "/test.json", file_metrics, True, "json"
+        )
+        assert result["scale_category"] == "large"
+        assert result["analysis_recommendations"]["suitable_for_full_analysis"] is False
+
+
+class TestAnalyzeScaleToolValidateArgumentsAdvanced:
+    """Additional validation tests for edge cases."""
+
+    def test_validate_arguments_minimal_single(self, tool):
+        """Test validation with minimal valid arguments."""
+        assert tool.validate_arguments({"file_path": "test.py"}) is True
+
+    def test_validate_arguments_whitespace_file_path(self, tool):
+        """Test validation fails for whitespace-only file_path."""
+        with pytest.raises(ValueError, match="file_path cannot be empty"):
+            tool.validate_arguments({"file_path": "   "})
+
+    def test_validate_arguments_valid_batch_with_all_fields(self, tool):
+        """Test valid batch mode with all optional fields."""
+        arguments = {
+            "file_paths": ["a.py", "b.py"],
+            "metrics_only": True,
+            "output_format": "json",
+        }
+        assert tool.validate_arguments(arguments) is True
