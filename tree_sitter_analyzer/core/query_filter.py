@@ -86,6 +86,8 @@ class QueryFilter:
             return self._match_name(result, filter_type, filter_value)
         elif filter_key == "params":
             return self._match_params(result, filter_type, filter_value)
+        elif filter_key == "visibility":
+            return self._match_visibility(result, filter_value)
         elif filter_key == "static":
             return self._match_modifier(result, "static", filter_value)
         elif filter_key == "public":
@@ -134,6 +136,14 @@ class QueryFilter:
         has_modifier = modifier in content
 
         return (value.lower() == "true") == has_modifier
+
+    def _match_visibility(self, result: dict[str, Any], value: str) -> bool:
+        """Match visibility modifier in content"""
+        content = result.get("content", "")
+        vis = value.lower()
+        if vis in ("public", "private", "protected"):
+            return vis in content
+        return True
 
     def _extract_method_name(self, content: str) -> str:
         """Extract method name from content"""
@@ -186,6 +196,9 @@ Supported filter keys:
 
   static     - Whether it is a static method
              e.g.: static=true, static=false
+
+  visibility - Visibility modifier (checks content for the keyword)
+             e.g.: visibility=private, visibility=public, visibility=protected
 
   public     - Whether it is a public method
              e.g.: public=true, public=false
