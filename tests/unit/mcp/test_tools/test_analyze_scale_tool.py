@@ -484,7 +484,7 @@ class TestAnalyzeScaleToolGenerateLLMGuidance:
         }
         guidance = tool._generate_llm_guidance(file_metrics, structural_overview)
         assert "complexity hotspots" in guidance["complexity_assessment"].lower()
-        assert "format_table" in guidance["recommended_tools"]
+        assert "analyze_code_structure" in guidance["recommended_tools"]
 
     def test_generate_llm_guidance_without_complexity_hotspots(self, tool):
         """Test LLM guidance without complexity hotspots."""

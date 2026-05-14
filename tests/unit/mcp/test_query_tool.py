@@ -376,6 +376,29 @@ class TestValidateArguments:
         with pytest.raises(ValueError, match="suppress_output must be a boolean"):
             tool.validate_arguments(arguments)
 
+    def test_validate_all_optional_fields_valid(self, tool):
+        """Test validation passes with all optional fields set."""
+        arguments = {
+            "file_path": "test.py",
+            "query_key": "methods",
+            "language": "python",
+            "filter": "name=main",
+            "result_format": "summary",
+            "output_format": "json",
+            "output_file": "output.json",
+            "suppress_output": True,
+        }
+        assert tool.validate_arguments(arguments) is True
+
+    def test_validate_suppress_output_valid(self, tool):
+        """Test validation passes with valid suppress_output."""
+        arguments = {
+            "file_path": "test.py",
+            "query_key": "methods",
+            "suppress_output": False,
+        }
+        assert tool.validate_arguments(arguments) is True
+
 
 class TestExecute:
     """Tests for execute method."""
@@ -670,6 +693,83 @@ class TestExecute:
                 assert result["success"] is True
                 assert result["language"] == "python"
 
+    @pytest.mark.asyncio
+    async def test_execute_suppress_output_with_file_save_error(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test suppress_output when file save also failed."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.side_effect = Exception("Disk full")
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_key": "methods",
+                    "language": "python",
+                    "output_file": "results.json",
+                    "suppress_output": True,
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["file_saved"] is False
+                assert "file_save_error" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_with_empty_output_file_string(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test execution with empty string output_file generates base name."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.return_value = "/output/sample_query_methods.json"
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_key": "methods",
+                    "language": "python",
+                    "output_file": "",
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["file_saved"] is True
+
+    @pytest.mark.asyncio
+    async def test_execute_with_query_string_and_file_output(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test execution with query_string and file output."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.return_value = "/output/custom_query.json"
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_string": "(function_definition) @func",
+                    "language": "python",
+                    "output_file": "",
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["file_saved"] is True
+
 
 class TestFormatSummary:
     """Tests for _format_summary method."""
@@ -736,6 +836,29 @@ class TestExtractNameFromContent:
         """Test extraction with empty content."""
         name = tool._extract_name_from_content("")
         assert name == "unnamed"
+
+    def test_extract_whitespace_only_content(self, tool):
+        """Test extraction with whitespace-only content."""
+        name = tool._extract_name_from_content("   \n   \n   ")
+        assert name == "unnamed"
+
+    def test_extract_private_method(self, tool):
+        """Test extracting private method name."""
+        content = "private static void doSomething(int x) {"
+        name = tool._extract_name_from_content(content)
+        assert name == "doSomething"
+
+    def test_extract_protected_method(self, tool):
+        """Test extracting protected method name."""
+        content = "protected String getName() {"
+        name = tool._extract_name_from_content(content)
+        assert name == "getName"
+
+    def test_extract_subheading(self, tool):
+        """Test extracting subheading."""
+        content = "## Sub Heading\nMore content"
+        name = tool._extract_name_from_content(content)
+        assert name == "Sub Heading"
 
 
 class TestGetAvailableQueries:
