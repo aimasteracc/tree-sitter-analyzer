@@ -318,7 +318,7 @@ class QueryTool(BaseMCPTool):
                 "count": len(items),
                 "items": [
                     {
-                        "name": self._extract_name_from_content(item["content"]),
+                        "name": item.get("name") or self._extract_name_from_content(item["content"]),
                         "line_range": f"{item['start_line']}-{item['end_line']}",
                         "node_type": item["node_type"],
                     }

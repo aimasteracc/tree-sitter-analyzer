@@ -112,8 +112,10 @@ class QueryCommand(BaseCommand):
                 print(formatter.format(results))
             else:
                 for i, query_result in enumerate(results, 1):
+                    name = query_result.get("name")
+                    name_suffix = f": {name}" if name else ""
                     output_data(
-                        f"\n{i}. {query_result['capture_name']} ({query_result['node_type']})"
+                        f"\n{i}. {query_result['capture_name']}{name_suffix} ({query_result['node_type']})"
                     )
                     output_data(
                         f"   Position: Line {query_result['start_line']}-{query_result['end_line']}"
