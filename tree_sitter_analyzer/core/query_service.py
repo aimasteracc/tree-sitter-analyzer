@@ -13,8 +13,9 @@ from typing import Any
 from ..encoding_utils import read_file_safe
 from ..plugins.manager import PluginManager
 from ..query_loader import query_loader
-from ..utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
+from ..utils.tree_sitter_compat import get_node_text_safe
 from .parser import Parser
+from .query_executor import execute_ts_query, process_captures, resolve_query_string
 from .query_filter import QueryFilter
 
 logger = logging.getLogger(__name__)
@@ -39,35 +40,12 @@ class QueryService:
         query_string: str | None = None,
         filter_expression: str | None = None,
     ) -> list[dict[str, Any]] | None:
-        """
-        Execute a query
-
-        Args:
-            file_path: Path to the file to analyze
-            language: Programming language
-            query_key: Predefined query key (e.g., 'methods', 'class')
-            query_string: Custom query string (e.g., '(method_declaration) @method')
-            filter_expression: Filter expression (e.g., 'name=main', 'name=~get*,public=true')
-
-        Returns:
-            List of query results, each containing capture_name, node_type, start_line, end_line, content
-
-        Raises:
-            ValueError: If neither query_key nor query_string is provided
-            FileNotFoundError: If file doesn't exist
-            Exception: If query execution fails
-        """
-        if not query_key and not query_string:
-            raise ValueError("Must provide either query_key or query_string")
-
-        if query_key and query_string:
-            raise ValueError("Cannot provide both query_key and query_string")
+        """Execute a query against a file."""
+        qs = resolve_query_string(language, query_key, query_string)
 
         try:
-            # Read file content
-            content, encoding = await self._read_file_async(file_path)
+            content, _encoding = await self._read_file_async(file_path)
 
-            # Parse file
             parse_result = self.parser.parse_code(content, language, file_path)
             if not parse_result or not parse_result.tree:
                 raise Exception("Failed to parse file")
@@ -77,53 +55,19 @@ class QueryService:
             if not language_obj:
                 raise Exception(f"Language object not available for {language}")
 
-            # Get query string
-            if query_key:
-                query_string = query_loader.get_query(language, query_key)
-                if not query_string:
-                    raise ValueError(
-                        f"Query '{query_key}' not found for language '{language}'"
-                    )
+            captures = execute_ts_query(
+                tree,
+                language_obj,
+                qs,
+                tree.root_node,
+                self._execute_plugin_query,
+                query_key,
+                language,
+                content,
+            )
 
-            # Execute tree-sitter query using modern API
-            try:
-                captures = TreeSitterQueryCompat.safe_execute_query(
-                    language_obj, query_string or "", tree.root_node, fallback_result=[]
-                )
+            results = process_captures(captures, content, self._create_result_dict)
 
-                # If captures is empty, use plugin fallback
-                if not captures:
-                    captures = self._execute_plugin_query(
-                        tree.root_node, query_key, language, content
-                    )
-
-            except Exception as e:
-                logger.debug(
-                    f"Tree-sitter query execution failed, using plugin fallback: {e}"
-                )
-                # If query creation or execution fails, use plugin fallback
-                captures = self._execute_plugin_query(
-                    tree.root_node, query_key, language, content
-                )
-
-            # Process capture results
-            results = []
-            if isinstance(captures, list):
-                # Handle list of tuples from modern API and plugin execution
-                for capture in captures:
-                    if isinstance(capture, tuple) and len(capture) == 2:
-                        node, name = capture
-                        results.append(self._create_result_dict(node, name, content))
-            # Note: This else block is unreachable due to the logic above, but kept for safety
-            # else:
-            #     # If captures is not in expected format, use plugin fallback
-            #     plugin_captures = self._execute_plugin_query(tree.root_node, query_key, language, content)
-            #     for capture in plugin_captures:
-            #         if isinstance(capture, tuple) and len(capture) == 2:
-            #             node, name = capture
-            #             results.append(self._create_result_dict(node, name, content))
-
-            # Apply filters
             if filter_expression and results:
                 results = self.filter.filter_results(results, filter_expression)
 
