@@ -359,16 +359,17 @@ class TestYAMLQueryProperties:
         Validates: Requirements 5.1, 5.2, 5.3, 5.4
         """
         # Property: All interfaces must return the same set of query names
+        # ALL_QUERIES may contain cross-language aliases in addition to base queries
         yaml_queries_keys = set(YAML_QUERIES.keys())
         all_queries_keys = set(ALL_QUERIES.keys())
         list_queries_result = set(list_queries())
         available_queries_result = set(get_available_yaml_queries())
 
-        assert yaml_queries_keys == all_queries_keys, (
-            "YAML_QUERIES and ALL_QUERIES must have the same keys"
+        assert yaml_queries_keys.issubset(all_queries_keys), (
+            "YAML_QUERIES keys must be a subset of ALL_QUERIES keys"
         )
-        assert yaml_queries_keys == list_queries_result, (
-            "YAML_QUERIES and list_queries() must return the same keys"
+        assert all_queries_keys == list_queries_result, (
+            "ALL_QUERIES and list_queries() must return the same keys"
         )
         assert yaml_queries_keys == available_queries_result, (
             "YAML_QUERIES and get_available_yaml_queries() must return the same keys"
