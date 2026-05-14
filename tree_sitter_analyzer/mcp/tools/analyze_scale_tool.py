@@ -397,6 +397,13 @@ class AnalyzeScaleTool(BaseMCPTool):
             "cpp": ["class", "function", "namespace", "template", "include"],
             "kotlin": ["function", "class", "data_class", "object", "annotation"],
             "csharp": ["class", "method", "property", "interface", "attribute"],
+            "ruby": ["methods", "classes", "imports", "attr"],
+            "php": ["methods", "classes", "imports", "namespace"],
+            "sql": ["functions", "table", "view", "trigger"],
+            "html": ["element", "attribute", "form"],
+            "css": ["selector", "property", "at_rule"],
+            "yaml": ["key", "document", "anchor"],
+            "markdown": ["headers", "code_blocks", "tables"],
         }
         if language in lang_queries:
             guidance["suggested_queries"] = lang_queries[language]
