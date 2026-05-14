@@ -12,7 +12,7 @@ import json
 import os
 import sys
 from pathlib import Path as PathClass
-from typing import Any, cast
+from typing import Any
 
 try:
     from mcp.server import Server
@@ -50,14 +50,6 @@ except ImportError:
 
 import contextlib
 
-from ..constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_VARIABLE,
-    is_element_of_type,
-)
 from ..core.analysis_engine import get_analysis_engine
 from ..platform_compat.detector import PlatformDetector
 from ..project_detector import detect_project_root
@@ -65,6 +57,12 @@ from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
+from .server_utils.code_scale_handler import analyze_code_scale
+from .server_utils.error_recovery import build_agent_friendly_error
+from .server_utils.smart_prompts import (
+    build_smart_analyze_response,
+    build_smart_explore_response,
+)
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.dependency_analysis_tool import DependencyAnalysisTool
@@ -90,143 +88,6 @@ except ImportError:
 
 # Set up logging
 logger = setup_logger(__name__)
-
-
-# Map common error patterns to actionable recovery hints for AI agents
-_ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
-    # (substring_match, error_category, recovery_hint, suggested_tool)
-    (
-        "not found",
-        "file_not_found",
-        "The file does not exist at the given path. Verify the path or use list_files to discover files.",
-        "list_files",
-    ),
-    (
-        "unsupported language",
-        "language_unsupported",
-        "The file extension is not recognized. Check supported languages with --show-supported-languages.",
-        "",
-    ),
-    (
-        "project root",
-        "project_not_set",
-        "Project root has not been set. Call set_project_path first.",
-        "set_project_path",
-    ),
-    (
-        "outside project boundary",
-        "security_violation",
-        "The file is outside the project boundary. Use a path relative to the project root.",
-        "",
-    ),
-    (
-        "required",
-        "missing_parameter",
-        "A required parameter is missing. Check the tool schema and provide all required fields.",
-        "",
-    ),
-    (
-        "must be",
-        "validation_error",
-        "A parameter has an invalid value. Check the tool schema for valid options.",
-        "",
-    ),
-    (
-        "memory",
-        "resource_exhausted",
-        "The operation ran out of memory. Try analyzing a smaller scope or use suppress_output=true.",
-        "",
-    ),
-    (
-        "timed out",
-        "timeout",
-        "The operation timed out. Try reducing the scope (limit, max_count) or targeting a specific file.",
-        "",
-    ),
-]
-
-
-def _build_agent_friendly_error(tool_name: str, error: Exception) -> dict[str, Any]:
-    """Build an error response that tells the AI agent exactly what to do next."""
-    msg = str(error).lower()
-    error_type = type(error).__name__
-
-    category = "unknown"
-    recovery_hint = "Review the error message and adjust your request."
-    suggested_tool = ""
-
-    for pattern, cat, hint, tool in _ERROR_RECOVERY_HINTS:
-        if pattern in msg:
-            category = cat
-            recovery_hint = hint
-            suggested_tool = tool
-            break
-
-    body: dict[str, Any] = {
-        "success": False,
-        "error": str(error),
-        "error_type": error_type,
-        "error_category": category,
-        "recovery_hint": recovery_hint,
-    }
-    if suggested_tool:
-        body["suggested_tool"] = suggested_tool
-    return body
-
-
-def _build_smart_analyze_response(file_path: str, question: str) -> dict[str, Any]:
-    """Build the SMART analyze prompt response for AI agents."""
-    return {
-        "description": "SMART Workflow: Systematic code analysis",
-        "messages": [
-            {
-                "role": "user",
-                "content": {
-                    "type": "text",
-                    "text": (
-                        f"I want to analyze {file_path}. {question}\n\n"
-                        "Follow the SMART workflow:\n"
-                        "1. S - Call check_code_scale to understand file size and complexity\n"
-                        "2. M - Already done (file located)\n"
-                        "3. A - Call analyze_code_structure for a detailed table\n"
-                        "4. R - Call extract_code_section or query_code for specific parts\n"
-                        "   If you see a class/function name and want to find where it's defined "
-                        "or used elsewhere, call query_code(symbol='ClassName') for cross-file search\n"
-                        "5. T - Call analyze_dependencies mode=blast_radius to see impact\n"
-                        "   Call check_file_health to see if refactoring is needed\n\n"
-                        "Start with step 1 and follow the guidance in each response."
-                    ),
-                },
-            },
-        ],
-    }
-
-
-def _build_smart_explore_response(project_root: str) -> dict[str, Any]:
-    """Build the SMART explore prompt response for AI agents."""
-    return {
-        "description": "SMART Workflow: Explore a new project",
-        "messages": [
-            {
-                "role": "user",
-                "content": {
-                    "type": "text",
-                    "text": (
-                        f"I want to understand the project at {project_root}.\n\n"
-                        "Follow the SMART workflow:\n"
-                        "1. S - Call set_project_path with the project root\n"
-                        "2. M - Call get_project_overview to see language distribution, largest files, and directory structure\n"
-                        "3. A - Call check_code_scale on the most interesting files\n"
-                        "4. R - Call analyze_code_structure or query_code for detailed analysis\n"
-                        "   When you encounter a class/function name you want to trace, "
-                        "call query_code(symbol='TheName') to find all definitions across the project\n"
-                        "5. T - Call analyze_dependencies mode=summary to see the dependency graph\n\n"
-                        "Start with step 1 and follow the guidance in each response."
-                    ),
-                },
-            },
-        ],
-    }
 
 
 class TreeSitterAnalyzerMCPServer:
@@ -329,170 +190,14 @@ class TreeSitterAnalyzerMCPServer:
             )
 
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Legacy method for analyzing code scale.
-        Used by existing tests that mock server internals.
-        """
-        # For initialization-specific tests, we should raise MCPError instead of RuntimeError
-        if not self._initialization_complete:
-            from .utils.error_handler import MCPError
-
-            raise MCPError("Server is still initializing")
-
-        # For specific initialization tests we allow delegating to universal tool
-        if "file_path" not in arguments:
-            universal_tool = getattr(self, "universal_analyze_tool", None)
-            if universal_tool is not None:
-                try:
-                    result = await universal_tool.execute(arguments)
-                    return dict(result)  # Ensure proper type casting
-                except ValueError:
-                    # Re-raise ValueError as-is for test compatibility
-                    raise
-            else:
-                raise ValueError("file_path is required")
-
-        file_path = arguments["file_path"]
-        language = arguments.get("language")
-        include_complexity = arguments.get("include_complexity", True)
-        include_details = arguments.get("include_details", False)
-
-        # Use PathClass which is mocked in some tests
-        base_root = getattr(
-            getattr(self.security_validator, "boundary_manager", None),
-            "project_root",
-            None,
+        """Legacy method for analyzing code scale. Delegates to code_scale_handler."""
+        return await analyze_code_scale(
+            arguments,
+            analysis_engine=self.analysis_engine,
+            security_validator=self.security_validator,
+            universal_analyze_tool=getattr(self, "universal_analyze_tool", None),
+            initialization_complete=self._initialization_complete,
         )
-        if not PathClass(file_path).is_absolute() and base_root:
-            resolved_path = str((PathClass(base_root) / file_path).resolve())
-        else:
-            resolved_path = file_path
-
-        # Security validation
-        shared_cache = get_shared_cache()
-        cached = shared_cache.get_security_validation(
-            resolved_path, project_root=base_root
-        )
-        if cached is None:
-            cached = self.security_validator.validate_file_path(resolved_path)
-            shared_cache.set_security_validation(
-                resolved_path, cached, project_root=base_root
-            )
-        is_valid, error_msg = cached
-        if not is_valid:
-            raise ValueError(f"Invalid file path: {error_msg}")
-
-        # Use PathClass for existence check to respect mocks
-        if not PathClass(resolved_path).exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-
-        # Detect language if not specified
-        from ..language_detector import detect_language_from_file
-
-        if not language:
-            language = detect_language_from_file(resolved_path, project_root=base_root)
-
-        # Create analysis request
-        from ..core.analysis_engine import AnalysisRequest
-
-        request = AnalysisRequest(
-            file_path=resolved_path,
-            language=language,
-            include_complexity=include_complexity,
-            include_details=include_details,
-        )
-
-        # Perform analysis
-        analysis_result = await self.analysis_engine.analyze(request)
-
-        if analysis_result is None or not analysis_result.success:
-            error_msg = (
-                analysis_result.error_message or "Unknown error"
-                if analysis_result
-                else "Unknown error"
-            )
-            raise RuntimeError(f"Failed to analyze file: {file_path} - {error_msg}")
-
-        # Get element counts from the unified elements list
-        elements = analysis_result.elements or []
-
-        # Count elements by type using the new unified system
-        classes_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
-        )
-        methods_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
-        )
-        fields_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
-        )
-        imports_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
-        )
-        packages_count = len(
-            [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)]
-        )
-        total_elements = (
-            classes_count
-            + methods_count
-            + fields_count
-            + imports_count
-            + packages_count
-        )
-
-        # Calculate unified file metrics (cached by content hash)
-        file_metrics = compute_file_metrics(
-            resolved_path, language=language, project_root=base_root
-        )
-        lines_code = file_metrics["code_lines"]
-        lines_comment = file_metrics["comment_lines"]
-        lines_blank = file_metrics["blank_lines"]
-
-        result = {
-            "file_path": file_path,
-            "language": language,
-            "metrics": {
-                "lines_total": analysis_result.line_count,
-                "lines_code": lines_code,
-                "lines_comment": lines_comment,
-                "lines_blank": lines_blank,
-                "elements": {
-                    "classes": classes_count,
-                    "methods": methods_count,
-                    "fields": fields_count,
-                    "imports": imports_count,
-                    "packages": packages_count,
-                    "total": total_elements,
-                },
-            },
-        }
-
-        if include_complexity:
-            # Add complexity metrics if available
-            methods = [
-                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
-            ]
-            if methods:
-                complexities = [getattr(m, "complexity_score", 0) for m in methods]
-                result["metrics"]["complexity"] = {
-                    "total": sum(complexities),
-                    "average": round(
-                        sum(complexities) / len(complexities) if complexities else 0, 2
-                    ),
-                    "max": max(complexities) if complexities else 0,
-                }
-
-        if include_details:
-            # Convert elements to serializable format
-            detailed_elements = []
-            for elem in elements:
-                if hasattr(elem, "__dict__"):
-                    detailed_elements.append(elem.__dict__)
-                else:
-                    detailed_elements.append({"element": str(elem)})
-            result["detailed_elements"] = detailed_elements
-
-        return cast(dict[str, Any], result)
 
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""
@@ -606,7 +311,7 @@ class TreeSitterAnalyzerMCPServer:
                     logger.error(f"Tool call error for {name}: {e}")
                 except (ValueError, OSError):
                     pass
-                error_body = _build_agent_friendly_error(name, e)
+                error_body = build_agent_friendly_error(name, e)
                 return [
                     TextContent(
                         type="text",
@@ -708,10 +413,10 @@ class TreeSitterAnalyzerMCPServer:
                     question = args.get(
                         "question", "understand the structure and key logic"
                     )
-                    return _build_smart_analyze_response(file_path, question)
+                    return build_smart_analyze_response(file_path, question)
                 elif name == "smart_explore":
                     project_root = args.get("project_root", "<project_root>")
-                    return _build_smart_explore_response(project_root)
+                    return build_smart_explore_response(project_root)
                 raise ValueError(f"Unknown prompt: {name}")
 
         except ImportError:
