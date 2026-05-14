@@ -13,8 +13,6 @@ from typing import Any
 from ...constants import (
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
@@ -23,6 +21,8 @@ from ...utils import setup_logger
 from ..utils.file_metrics import compute_file_metrics
 from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_scale_helpers import (
+    build_analysis_result,
+    build_detailed_analysis,
     extract_structural_overview,
     extract_structural_overview_universal,
     generate_llm_guidance,
@@ -296,120 +296,23 @@ class AnalyzeScaleTool(BaseMCPTool):
                     )
 
                 # Build enhanced result structure
-                elements = analysis_result.elements if analysis_result else []
-                result = {
-                    "success": True,
-                    "file_path": file_path,
-                    "language": language,
-                    "file_metrics": file_metrics,
-                    "summary": {
-                        "classes": self._count_elements(
-                            elements, ELEMENT_TYPE_CLASS, "class"
-                        ),
-                        "methods": self._count_elements(
-                            elements, ELEMENT_TYPE_FUNCTION, "function"
-                        ),
-                        "fields": self._count_elements(
-                            elements, ELEMENT_TYPE_VARIABLE, "variable"
-                        ),
-                        "imports": self._count_elements(
-                            elements, ELEMENT_TYPE_IMPORT, "import"
-                        ),
-                        "annotations": len(
-                            getattr(analysis_result, "annotations", [])
-                            if analysis_result
-                            else []
-                        ),
-                        "package": (
-                            analysis_result.package.name
-                            if analysis_result and analysis_result.package
-                            else None
-                        ),
-                    },
-                    "structural_overview": structural_overview,
-                }
+                result = build_analysis_result(
+                    file_path,
+                    language,
+                    file_metrics,
+                    analysis_result,
+                    structural_overview,
+                    self._count_elements,
+                )
 
                 if include_guidance:
                     result["llm_guidance"] = llm_guidance
 
                 # Add detailed information if requested (backward compatibility)
                 if include_details:
-                    result["detailed_analysis"] = {
-                        "statistics": (
-                            analysis_result.get_statistics() if analysis_result else {}
-                        ),
-                        "classes": [
-                            {
-                                "name": cls.name,
-                                "type": getattr(cls, "class_type", "unknown"),
-                                "visibility": getattr(cls, "visibility", "unknown"),
-                                "extends": getattr(cls, "extends_class", None),
-                                "implements": getattr(cls, "implements_interfaces", []),
-                                "annotations": [
-                                    getattr(ann, "name", str(ann))
-                                    for ann in getattr(cls, "annotations", [])
-                                ],
-                                "lines": f"{cls.start_line}-{cls.end_line}",
-                            }
-                            for cls in [
-                                e
-                                for e in (
-                                    analysis_result.elements if analysis_result else []
-                                )
-                                if is_element_of_type(e, ELEMENT_TYPE_CLASS)
-                            ]
-                        ],
-                        "methods": [
-                            {
-                                "name": method.name,
-                                "file_path": getattr(method, "file_path", file_path),
-                                "visibility": getattr(method, "visibility", "unknown"),
-                                "return_type": getattr(
-                                    method, "return_type", "unknown"
-                                ),
-                                "parameters": len(getattr(method, "parameters", [])),
-                                "annotations": [
-                                    getattr(ann, "name", str(ann))
-                                    for ann in getattr(method, "annotations", [])
-                                ],
-                                "is_constructor": getattr(
-                                    method, "is_constructor", False
-                                ),
-                                "is_static": getattr(method, "is_static", False),
-                                "complexity": getattr(method, "complexity_score", 0),
-                                "lines": f"{method.start_line}-{method.end_line}",
-                            }
-                            for method in [
-                                e
-                                for e in (
-                                    analysis_result.elements if analysis_result else []
-                                )
-                                if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
-                            ]
-                        ],
-                        "fields": [
-                            {
-                                "name": field.name,
-                                "type": getattr(field, "field_type", "unknown"),
-                                "file_path": getattr(field, "file_path", file_path),
-                                "visibility": getattr(field, "visibility", "unknown"),
-                                "is_static": getattr(field, "is_static", False),
-                                "is_final": getattr(field, "is_final", False),
-                                "annotations": [
-                                    getattr(ann, "name", str(ann))
-                                    for ann in getattr(field, "annotations", [])
-                                ],
-                                "lines": f"{field.start_line}-{field.end_line}",
-                            }
-                            for field in [
-                                e
-                                for e in (
-                                    analysis_result.elements if analysis_result else []
-                                )
-                                if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
-                            ]
-                        ],
-                    }
+                    result["detailed_analysis"] = build_detailed_analysis(
+                        analysis_result, file_path
+                    )
 
                 # Count elements by type
                 classes_count = len(

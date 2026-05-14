@@ -382,3 +382,99 @@ def generate_llm_guidance(
         guidance["available_queries"] = sorted(all_queries)
 
     return guidance
+
+
+def build_analysis_result(
+    file_path: str,
+    language: str,
+    file_metrics: dict[str, Any],
+    analysis_result: Any,
+    structural_overview: dict[str, Any],
+    count_elements_fn: Any,
+) -> dict[str, Any]:
+    """Build the main analysis result dict."""
+    elements = analysis_result.elements if analysis_result else []
+    return {
+        "success": True,
+        "file_path": file_path,
+        "language": language,
+        "file_metrics": file_metrics,
+        "summary": {
+            "classes": count_elements_fn(elements, ELEMENT_TYPE_CLASS, "class"),
+            "methods": count_elements_fn(elements, ELEMENT_TYPE_FUNCTION, "function"),
+            "fields": count_elements_fn(elements, ELEMENT_TYPE_VARIABLE, "variable"),
+            "imports": count_elements_fn(elements, ELEMENT_TYPE_IMPORT, "import"),
+            "annotations": len(
+                getattr(analysis_result, "annotations", []) if analysis_result else []
+            ),
+            "package": (
+                analysis_result.package.name
+                if analysis_result and analysis_result.package
+                else None
+            ),
+        },
+        "structural_overview": structural_overview,
+    }
+
+
+def build_detailed_analysis(analysis_result: Any, file_path: str) -> dict[str, Any]:
+    """Build the detailed_analysis dict for include_details=True."""
+    elements = analysis_result.elements if analysis_result else []
+    return {
+        "statistics": (analysis_result.get_statistics() if analysis_result else {}),
+        "classes": [
+            {
+                "name": cls.name,
+                "type": getattr(cls, "class_type", "unknown"),
+                "visibility": getattr(cls, "visibility", "unknown"),
+                "extends": getattr(cls, "extends_class", None),
+                "implements": getattr(cls, "implements_interfaces", []),
+                "annotations": [
+                    getattr(ann, "name", str(ann))
+                    for ann in getattr(cls, "annotations", [])
+                ],
+                "lines": f"{cls.start_line}-{cls.end_line}",
+            }
+            for cls in [
+                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+            ]
+        ],
+        "methods": [
+            {
+                "name": method.name,
+                "file_path": getattr(method, "file_path", file_path),
+                "visibility": getattr(method, "visibility", "unknown"),
+                "return_type": getattr(method, "return_type", "unknown"),
+                "parameters": len(getattr(method, "parameters", [])),
+                "annotations": [
+                    getattr(ann, "name", str(ann))
+                    for ann in getattr(method, "annotations", [])
+                ],
+                "is_constructor": getattr(method, "is_constructor", False),
+                "is_static": getattr(method, "is_static", False),
+                "complexity": getattr(method, "complexity_score", 0),
+                "lines": f"{method.start_line}-{method.end_line}",
+            }
+            for method in [
+                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+            ]
+        ],
+        "fields": [
+            {
+                "name": field.name,
+                "type": getattr(field, "field_type", "unknown"),
+                "file_path": getattr(field, "file_path", file_path),
+                "visibility": getattr(field, "visibility", "unknown"),
+                "is_static": getattr(field, "is_static", False),
+                "is_final": getattr(field, "is_final", False),
+                "annotations": [
+                    getattr(ann, "name", str(ann))
+                    for ann in getattr(field, "annotations", [])
+                ],
+                "lines": f"{field.start_line}-{field.end_line}",
+            }
+            for field in [
+                e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+            ]
+        ],
+    }
