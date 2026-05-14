@@ -179,6 +179,23 @@ class QueryTool(BaseMCPTool):
                         "error": f"Could not detect language for file: {file_path}",
                     }
 
+            # Validate query_key if provided — return helpful list on invalid key
+            if query_key:
+                available = self.query_service.get_available_queries(language)
+                if query_key not in available:
+                    # Build categorized suggestions for the agent
+                    categorized = _categorize_queries(available, language)
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Query key '{query_key}' not found for {language}. "
+                            f"Available: {sorted(available)}"
+                        ),
+                        "available_queries": categorized,
+                        "language": language,
+                        "hint": "Use one of the available query keys, or provide query_string for a custom tree-sitter query.",
+                    }
+
             # Execute query
             results = await self.query_service.execute_query(
                 resolved_file_path, language, query_key, query_string, filter_expression
@@ -318,7 +335,8 @@ class QueryTool(BaseMCPTool):
                 "count": len(items),
                 "items": [
                     {
-                        "name": item.get("name") or self._extract_name_from_content(item["content"]),
+                        "name": item.get("name")
+                        or self._extract_name_from_content(item["content"]),
                         "line_range": f"{item['start_line']}-{item['end_line']}",
                         "node_type": item["node_type"],
                     }
@@ -453,3 +471,62 @@ class QueryTool(BaseMCPTool):
                 raise ValueError("suppress_output must be a boolean")
 
         return True
+
+
+def _categorize_queries(query_names: list[str], language: str) -> dict[str, list[str]]:
+    """Group query names into categories for better AI agent discoverability."""
+    categories: dict[str, list[str]] = {
+        "common": [],
+        "declarations": [],
+        "control_flow": [],
+        "framework": [],
+        "other": [],
+    }
+    common_keys = {"classes", "methods", "functions", "imports", "variables"}
+    decl_keywords = {
+        "class",
+        "struct",
+        "enum",
+        "interface",
+        "trait",
+        "record",
+        "type",
+        "module",
+        "namespace",
+        "field",
+        "property",
+        "method",
+        "function",
+        "fn",
+        "constructor",
+    }
+    flow_keywords = {"if", "for", "while", "switch", "try", "catch", "loop", "match"}
+    framework_keywords = {
+        "spring",
+        "react",
+        "jpa",
+        "http",
+        "authorize",
+        "decorator",
+        "annotation",
+        "attribute",
+        "async",
+        "goroutine",
+        "channel",
+        "linq",
+        "lambda",
+    }
+
+    for name in query_names:
+        if name in common_keys:
+            categories["common"].append(name)
+        elif any(kw in name.lower() for kw in decl_keywords):
+            categories["declarations"].append(name)
+        elif any(kw in name.lower() for kw in flow_keywords):
+            categories["control_flow"].append(name)
+        elif any(kw in name.lower() for kw in framework_keywords):
+            categories["framework"].append(name)
+        else:
+            categories["other"].append(name)
+
+    return {k: v for k, v in categories.items() if v}

@@ -374,7 +374,7 @@ if (typeof module !== 'undefined') {
 
             arguments = {
                 "file_path": str(python_file),
-                "query_key": "nonexistent",
+                "query_key": "functions",
                 "output_file": "query_no_results",
                 "suppress_output": False,
             }
