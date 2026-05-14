@@ -384,7 +384,7 @@ if (typeof module !== 'undefined') {
             # Check no results structure
             assert result["success"] is True
             assert "message" in result
-            assert "No results found" in result["message"]
+            assert "No results" in result["message"]
             assert result["results"] == []
             assert result["count"] == 0
 

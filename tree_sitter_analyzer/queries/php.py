@@ -124,6 +124,7 @@ ALL_QUERIES["classes"] = ALL_QUERIES["class"]
 ALL_QUERIES["functions"] = ALL_QUERIES["function"]
 ALL_QUERIES["methods"] = ALL_QUERIES["method"]
 ALL_QUERIES["imports"] = ALL_QUERIES["use"]
+ALL_QUERIES["variables"] = ALL_QUERIES["property"]
 
 
 def get_all_queries() -> dict:

@@ -193,6 +193,11 @@ ALL_QUERIES["classes"] = {
     "description": "Search all struct definitions (alias for struct)",
 }
 
+ALL_QUERIES["functions"] = ALL_QUERIES["fn"]
+ALL_QUERIES["methods"] = ALL_QUERIES["fn"]
+ALL_QUERIES["variables"] = ALL_QUERIES["const"]
+ALL_QUERIES["imports"] = ALL_QUERIES["mod"]
+
 
 def get_query(name: str) -> str:
     """Get a specific query by name."""

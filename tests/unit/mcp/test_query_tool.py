@@ -516,7 +516,7 @@ class TestExecute:
 
             assert result["success"] is True
             assert result["count"] == 0
-            assert "No results found" in result["message"]
+            assert "No results" in result["message"]
 
     @pytest.mark.asyncio
     async def test_execute_with_summary_format(
@@ -1436,3 +1436,215 @@ class TestValidateArgumentsCoverageBoost:
             "suppress_output": True,
         }
         assert tool.validate_arguments(arguments) is True
+
+
+class TestCategorizeQueries:
+    """Tests for _categorize_queries helper function."""
+
+    def test_common_keys_categorized(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(
+            ["classes", "methods", "functions", "imports", "variables"], "python"
+        )
+        assert "common" in result
+        assert result["common"] == [
+            "classes",
+            "methods",
+            "functions",
+            "imports",
+            "variables",
+        ]
+
+    def test_declaration_keys_categorized(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(
+            ["struct_definitions", "enum_members", "interface_declarations"],
+            "typescript",
+        )
+        assert "declarations" in result
+        assert "struct_definitions" in result["declarations"]
+
+    def test_control_flow_keys_categorized(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(
+            ["for_loops", "while_loops", "switch_statements"], "java"
+        )
+        assert "control_flow" in result
+        assert "for_loops" in result["control_flow"]
+
+    def test_framework_keys_categorized(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(
+            ["spring_controller", "react_component", "goroutine_definitions"], "go"
+        )
+        assert "framework" in result
+        assert "spring_controller" in result["framework"]
+
+    def test_other_keys_categorized(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["comments", "strings", "misc_stuff"], "python")
+        assert "other" in result
+        assert "comments" in result["other"]
+
+    def test_empty_categories_removed(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(["classes"], "python")
+        assert "common" in result
+        # Categories with no items should not appear
+        assert "control_flow" not in result
+        assert "framework" not in result
+
+    def test_mixed_categorization(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries(
+            ["classes", "for_loops", "spring_service", "struct_defs", "random_thing"],
+            "java",
+        )
+        assert result["common"] == ["classes"]
+        assert "for_loops" in result["control_flow"]
+        assert "spring_service" in result["framework"]
+        assert "struct_defs" in result["declarations"]
+        assert "random_thing" in result["other"]
+
+    def test_empty_query_list(self):
+        from tree_sitter_analyzer.mcp.tools.query_tool import _categorize_queries
+
+        result = _categorize_queries([], "python")
+        assert result == {}
+
+
+class TestExecuteInvalidQueryKey:
+    """Tests for execute with invalid query_key."""
+
+    @pytest.mark.asyncio
+    async def test_execute_invalid_query_key_returns_suggestions(
+        self, tool, sample_python_file
+    ):
+        with patch.object(
+            tool.query_service,
+            "get_available_queries",
+            return_value=["methods", "classes"],
+        ):
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_key": "nonexistent",
+                "language": "python",
+            }
+            result = await tool.execute(arguments)
+            assert result["success"] is False
+            assert "not found" in result["error"]
+            assert "available_queries" in result
+            assert result["language"] == "python"
+            assert "hint" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_no_results_with_productive_queries(
+        self, tool, sample_python_file
+    ):
+        """Test no-results path that discovers productive queries via common keys."""
+        call_count = 0
+
+        async def mock_execute_query(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            query_key = args[3] if len(args) > 3 else kwargs.get("query_key")
+            if query_key == "classes":
+                return [
+                    {
+                        "capture_name": "class",
+                        "content": "class Foo",
+                        "start_line": 1,
+                        "end_line": 1,
+                        "node_type": "class",
+                    }
+                ]
+            return []
+
+        with patch.object(
+            tool.query_service, "execute_query", side_effect=mock_execute_query
+        ):
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_key": "methods",
+                "language": "python",
+            }
+            result = await tool.execute(arguments)
+            assert result["success"] is True
+            assert result["count"] == 0
+            assert "productive_queries" in result
+            assert "classes" in result["productive_queries"]
+
+    @pytest.mark.asyncio
+    async def test_execute_no_results_productive_queries_exception(
+        self, tool, sample_python_file
+    ):
+        """Test no-results path where productive query probing raises exception."""
+        call_count = 0
+
+        async def mock_execute_query(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return []
+            raise RuntimeError("probe failed")
+
+        with patch.object(
+            tool.query_service, "execute_query", side_effect=mock_execute_query
+        ):
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_key": "methods",
+                "language": "python",
+            }
+            result = await tool.execute(arguments)
+            assert result["success"] is True
+            assert result["count"] == 0
+            # productive_queries should be empty since probing failed
+            assert "productive_queries" not in result
+
+    @pytest.mark.asyncio
+    async def test_execute_no_results_with_query_string(self, tool, sample_python_file):
+        """Test no-results path uses query_string in hint when provided."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = []
+
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_string": "(method_declaration) @m",
+                "language": "python",
+            }
+            result = await tool.execute(arguments)
+            assert result["success"] is True
+            assert result["count"] == 0
+            assert "custom" in result.get(
+                "message", ""
+            ) or "(method_declaration) @m" in result.get("message", "")
+
+    @pytest.mark.asyncio
+    async def test_execute_suppress_output_without_output_file(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test suppress_output=True without output_file skips minimal result path."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_key": "methods",
+                "language": "python",
+                "suppress_output": True,
+            }
+            result = await tool.execute(arguments)
+            # suppress_output without output_file falls through to else branch
+            assert result["success"] is True

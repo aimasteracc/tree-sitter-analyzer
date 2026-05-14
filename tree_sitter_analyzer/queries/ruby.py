@@ -136,6 +136,7 @@ ALL_QUERIES["classes"] = ALL_QUERIES["class"]
 ALL_QUERIES["functions"] = ALL_QUERIES["method"]
 ALL_QUERIES["methods"] = ALL_QUERIES["method"]
 ALL_QUERIES["imports"] = ALL_QUERIES["require"]
+ALL_QUERIES["variables"] = ALL_QUERIES["instance_variable"]
 
 
 def get_all_queries() -> dict:

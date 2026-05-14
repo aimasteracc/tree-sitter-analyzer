@@ -371,6 +371,10 @@ ALL_QUERIES["classes"] = {
     "query": JAVA_QUERIES["class"],
     "description": "Search all class declarations (alias for class)",
 }
+ALL_QUERIES["functions"] = ALL_QUERIES["method"]
+ALL_QUERIES["methods"] = ALL_QUERIES["method"]
+ALL_QUERIES["imports"] = ALL_QUERIES["import"]
+ALL_QUERIES["variables"] = ALL_QUERIES["field"]
 
 
 def get_query(name: str) -> str:

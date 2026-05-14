@@ -202,12 +202,42 @@ class QueryTool(BaseMCPTool):
             )
 
             if not results:
-                return {
+                # Provide helpful context so agents can self-correct
+                productive_queries = []
+                try:
+                    common_keys = [
+                        "classes",
+                        "methods",
+                        "functions",
+                        "imports",
+                        "variables",
+                    ]
+                    for qk in common_keys:
+                        qk_results = await self.query_service.execute_query(
+                            resolved_file_path, language, query_key=qk
+                        )
+                        if qk_results:
+                            productive_queries.append(qk)
+                except Exception:
+                    logger.debug(
+                        "Failed to scan productive queries for empty result context"
+                    )
+
+                response = {
                     "success": True,
-                    "message": "No results found matching the query",
+                    "message": f"No results for query '{query_key or query_string}' in this {language} file",
                     "results": [],
                     "count": 0,
+                    "file_path": file_path,
+                    "language": language,
                 }
+                if productive_queries:
+                    response["productive_queries"] = productive_queries
+                    response["hint"] = (
+                        f"This file has no '{query_key or query_string}' elements. "
+                        f"Queries with results: {productive_queries}"
+                    )
+                return response
 
             # Format output
             if result_format == "summary":

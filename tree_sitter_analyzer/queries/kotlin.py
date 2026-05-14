@@ -163,6 +163,11 @@ ALL_QUERIES["classes"] = {
     "description": "Search all class declarations (alias for class)",
 }
 
+ALL_QUERIES["functions"] = ALL_QUERIES["function"]
+ALL_QUERIES["methods"] = ALL_QUERIES["function"]
+ALL_QUERIES["variables"] = ALL_QUERIES["var"]
+ALL_QUERIES["imports"] = ALL_QUERIES["package"]
+
 
 def get_query(name: str) -> str:
     """Get a specific query by name."""
