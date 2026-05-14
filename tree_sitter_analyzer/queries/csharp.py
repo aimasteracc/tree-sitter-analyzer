@@ -127,12 +127,12 @@ CSHARP_QUERIES: dict[str, str] = {
     "generic_class": """
     (class_declaration
         name: (identifier) @class_name
-        type_parameters: (type_parameter_list)) @generic_class
+        (type_parameter_list)) @generic_class
     """,
     "generic_method": """
     (method_declaration
         name: (identifier) @method_name
-        type_parameters: (type_parameter_list)) @generic_method
+        (type_parameter_list)) @generic_method
     """,
     # --- LINQ Queries ---
     "linq_query": """
@@ -197,8 +197,8 @@ CSHARP_QUERIES: dict[str, str] = {
     (comment) @comment
     """,
     "xml_documentation": """
-    (comment
-        (#match? @comment "^///")) @xml_documentation
+    (comment) @xml_documentation
+    (#match? @xml_documentation "^///")
     """,
     # --- All Declarations ---
     "all_declarations": """

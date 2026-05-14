@@ -92,14 +92,9 @@ METHODS = """
 EXCEPTIONS = """
 (try_statement
     body: (block) @try.body
-    (except_clause
-        type: (_)? @except.type
-        name: (identifier)? @except.name
-        body: (block) @except.body)*
-    (else_clause
-        body: (block) @else.body)?
-    (finally_clause
-        body: (block) @finally.body)?) @try.statement
+    (except_clause)* @except_clauses
+    (else_clause)? @else_clause
+    (finally_clause)? @finally_clause) @try.statement
 
 (raise_statement
     (call
@@ -168,7 +163,7 @@ ASYNC_PATTERNS = """
 
 # F-strings and string formatting
 STRING_FORMATTING = """
-(formatted_string
+(string
     (interpolation) @string.interpolation) @string.fstring
 
 (call
@@ -341,7 +336,7 @@ PYTHON_QUERIES: dict[str, str] = {
     "import_star": """
     (import_from_statement
         module_name: (dotted_name) @module_name
-        name: (wildcard_import) @star_import) @import_star
+        (wildcard_import) @star_import) @import_star
     """,
     # --- Decorators ---
     "decorator": """
@@ -401,17 +396,19 @@ PYTHON_QUERIES: dict[str, str] = {
         body: (block) @body) @with_statement
     """,
     "async_with": """
-    (async_with_statement
+    (with_statement
+        "async" @async_keyword
         (with_clause
             (with_item
                 value: (_) @context_manager)) @with_clause
-        body: (block) @body) @async_with_statement
+        body: (block) @body) @async_with
     """,
     "async_for": """
-    (async_for_statement
+    (for_statement
+        "async" @async_keyword
         left: (_) @loop_var
         right: (_) @async_iterable
-        body: (block) @body) @async_for_statement
+        body: (block) @body) @async_for
     """,
     # --- Exception Handling ---
     "try_statement": """
@@ -422,10 +419,7 @@ PYTHON_QUERIES: dict[str, str] = {
         (finally_clause)? @finally_clause) @try_statement
     """,
     "except_clause": """
-    (except_clause
-        type: (_)? @exception_type
-        name: (identifier)? @exception_name
-        body: (block) @except_body) @except_clause
+    (except_clause) @except_clause
     """,
     "raise_statement": """
     (raise_statement
@@ -483,21 +477,14 @@ PYTHON_QUERIES: dict[str, str] = {
         type: (_) @variable_type) @annotated_assignment
     """,
     "type_alias": """
-    (type_alias_statement
-        name: (identifier) @alias_name
-        value: (_) @alias_type) @type_alias
+    (type_alias_statement) @type_alias
     """,
     # --- Modern Python Features ---
     "match_statement": """
-    (match_statement
-        subject: (_) @match_subject
-        body: (case_clause)+ @match_cases) @match_statement
+    (match_statement) @match_statement
     """,
     "case_clause": """
-    (case_clause
-        pattern: (_) @case_pattern
-        guard: (_)? @case_guard
-        consequence: (block) @case_body) @case_clause
+    (case_clause) @case_clause
     """,
     "walrus_operator": """
     (named_expression
@@ -505,7 +492,7 @@ PYTHON_QUERIES: dict[str, str] = {
         value: (_) @walrus_value) @walrus_operator
     """,
     "f_string": """
-    (formatted_string
+    (string
         (interpolation) @f_string_interpolation) @f_string
     """,
     "yield_expression": """

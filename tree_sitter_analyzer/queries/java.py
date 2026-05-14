@@ -220,7 +220,7 @@ JAVA_QUERIES: dict[str, str] = {
       (superclass
         (type_identifier) @extends_class)?
       (super_interfaces
-        (interface_type_list
+        (type_list
           (type_identifier) @implements_interface)*)?
       body: (class_body) @class_body) @class_inheritance_detailed
     """,
