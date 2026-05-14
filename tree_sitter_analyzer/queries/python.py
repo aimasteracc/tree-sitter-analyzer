@@ -155,16 +155,15 @@ TYPE_HINTS = """
 # Async/await patterns
 ASYNC_PATTERNS = """
 (function_definition
-  (async) @async.keyword) @async.function
+    "async" @async_keyword) @async.function
 
-(await
-    (call) @async.await_call) @async.await
+(await) @async.await
 
 (for_statement
-  (async) @async.keyword) @async.for
+    "async" @async_keyword) @async.for
 
 (with_statement
-  (async) @async.keyword) @async.with
+    "async" @async_keyword) @async.with
 """
 
 # F-strings and string formatting
@@ -186,7 +185,7 @@ CONTEXT_MANAGERS = """
             value: (_) @context.manager)) @context.clause) @context.with
 
 (with_statement
-    (async) @context.async_keyword
+    "async" @context.async_keyword
     (with_clause
         (with_item
             value: (_) @context.manager)) @context.clause) @context.async_with
