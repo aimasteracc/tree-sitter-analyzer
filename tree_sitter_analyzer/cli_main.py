@@ -8,6 +8,7 @@ import os
 import sys
 from typing import Any
 
+from . import __version__
 from .cli.argument_validator import CLIArgumentValidator
 
 # Import command classes
@@ -27,7 +28,6 @@ from .cli.info_commands import (
     ShowLanguagesCommand,
 )
 from .output_manager import output_error, output_info, output_list
-from . import __version__
 from .query_loader import query_loader
 
 
@@ -114,7 +114,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
             "  tree-sitter-analyzer --show-supported-languages      List supported languages\n"
         ),
     )
-    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
 
     # File path
     parser.add_argument("file_path", nargs="?", help="Path to the file to analyze")
@@ -295,6 +297,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     # Batch metrics options (spec unification with MCP tool arguments)
     parser.add_argument(
+        "--health-check",
+        action="store_true",
+        help="Project health: score all source files and report grade distribution, worst files, and refactoring targets",
+    )
+    parser.add_argument(
         "--metrics-only",
         action="store_true",
         help="Batch metrics: compute file metrics only (no structural analysis). Requires --file-paths or --files-from.",
@@ -402,6 +409,35 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             return 0 if result.get("success", False) else 1
         except Exception as e:
             output_error(f"Batch partial read failed: {e}")
+            return 1
+
+    # Project health check (bulk scoring)
+    if getattr(args, "health_check", False):
+        try:
+            from tree_sitter_analyzer.mcp.tools.project_health_tool import (
+                ProjectHealthTool,
+            )
+
+            project_root = getattr(args, "project_root", None) or os.getcwd()
+            health_tool = ProjectHealthTool(project_root=project_root)
+            min_grade = getattr(args, "min_grade", "D")
+            tool_args = {
+                "min_grade": min_grade,
+                "max_files": 30,
+                "output_format": _tool_output_format(),
+            }
+            result = asyncio.run(health_tool.execute(tool_args))
+
+            fmt = _effective_output_format()
+            if fmt == "toon":
+                print(result.get("toon_content", ""))
+            else:
+                from tree_sitter_analyzer.output_manager import output_json
+
+                output_json(result)
+            return 0 if result.get("success", False) else 1
+        except Exception as e:
+            output_error(f"Health check failed: {e}")
             return 1
 
     # Batch metrics (unified with MCP tool arguments)
@@ -664,7 +700,9 @@ if __name__ == "__main__":
             output_info("Check the file path and try again.")
         elif "unsupported language" in msg.lower():
             output_error(f"Unsupported language: {msg}")
-            output_info("Run with --show-supported-languages to see available languages.")
+            output_info(
+                "Run with --show-supported-languages to see available languages."
+            )
         elif "invalid file path" in msg.lower():
             output_error(f"Invalid path: {msg}")
             output_info("Use --project-root to set the project root directory.")

@@ -152,13 +152,10 @@ class PluginManager:
             languages_package = "tree_sitter_analyzer.languages"
             languages_module = importlib.import_module(languages_package)
 
-            for _finder, name, ispkg in pkgutil.iter_modules(
+            for _finder, name, _ispkg in pkgutil.iter_modules(
                 languages_module.__path__, languages_module.__name__ + "."
             ):
-                if ispkg:
-                    continue
-
-                # Derive language name from filename (e.g., python_plugin -> python)
+                # Support both single-file plugins and package plugins
                 base_name = name.split(".")[-1]
                 if base_name.endswith("_plugin"):
                     lang_hint = base_name[: -len("_plugin")]
@@ -324,12 +321,9 @@ class PluginManager:
                 return plugins
 
             # Discover plugin modules in the languages directory
-            for _finder, name, ispkg in pkgutil.iter_modules(
+            for _finder, name, _ispkg in pkgutil.iter_modules(
                 languages_module.__path__, languages_module.__name__ + "."
             ):
-                if ispkg:
-                    continue
-
                 try:
                     # Import the module
                     module = importlib.import_module(name)

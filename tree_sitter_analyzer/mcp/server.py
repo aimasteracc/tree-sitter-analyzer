@@ -71,6 +71,7 @@ from .tools.dependency_analysis_tool import DependencyAnalysisTool
 from .tools.file_health_tool import FileHealthTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.list_files_tool import ListFilesTool
+from .tools.project_health_tool import ProjectHealthTool
 from .tools.project_overview_tool import ProjectOverviewTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
@@ -259,6 +260,7 @@ class TreeSitterAnalyzerMCPServer:
             ("search_content", SearchContentTool(project_root)),
             ("find_and_grep", FindAndGrepTool(project_root)),
             ("get_project_overview", ProjectOverviewTool(project_root)),
+            ("check_project_health", ProjectHealthTool(project_root)),
             ("check_file_health", FileHealthTool(project_root)),
             ("analyze_dependencies", DependencyAnalysisTool(project_root)),
         ]
