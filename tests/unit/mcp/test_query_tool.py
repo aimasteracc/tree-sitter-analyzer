@@ -899,3 +899,289 @@ class TestGetAvailableQueries:
         ):
             queries = tool.get_available_queries("python")
             assert queries == ["methods", "classes"]
+
+
+class TestExecuteAdditionalCoverage:
+    """Additional tests targeting uncovered branches in execute."""
+
+    @pytest.mark.asyncio
+    async def test_execute_none_arguments(self, tool):
+        """Test execute with None as arguments."""
+        with pytest.raises(Exception, match="file_path is required"):
+            await tool.execute(None)
+
+    @pytest.mark.asyncio
+    async def test_execute_summary_format_with_file_output(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test execute with summary format and file output combined."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.return_value = "/output/summary_results.json"
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_key": "methods",
+                    "language": "python",
+                    "result_format": "summary",
+                    "output_file": "summary_results.json",
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["output_file_path"] == "/output/summary_results.json"
+                assert result["file_saved"] is True
+
+    @pytest.mark.asyncio
+    async def test_execute_summary_format_file_save_error(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test execute with summary format when file save fails."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.side_effect = OSError("Permission denied")
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_key": "methods",
+                    "language": "python",
+                    "result_format": "summary",
+                    "output_file": "results.json",
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["file_saved"] is False
+                assert "file_save_error" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_suppress_output_with_file_save_info(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test suppress_output preserves file output info in minimal result."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.return_value = "/output/suppressed_results.json"
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_key": "methods",
+                    "language": "python",
+                    "output_file": "results.json",
+                    "suppress_output": True,
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["output_file_path"] == "/output/suppressed_results.json"
+                assert result["file_saved"] is True
+                assert "results" not in result
+
+    @pytest.mark.asyncio
+    async def test_execute_suppress_output_with_save_error_info(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test suppress_output preserves file save error info."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            with patch.object(tool.file_output_manager, "save_to_file") as mock_save:
+                mock_save.side_effect = Exception("No space left")
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_key": "methods",
+                    "language": "python",
+                    "output_file": "results.json",
+                    "suppress_output": True,
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["file_saved"] is False
+                assert "file_save_error" in result
+                assert "No space left" in result["file_save_error"]
+
+    @pytest.mark.asyncio
+    async def test_execute_analysis_error_reraise(self, tool, sample_python_file):
+        """Test that AnalysisError is re-raised, not caught as generic."""
+        from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
+
+        with patch.object(
+            tool,
+            "resolve_and_validate_file_path",
+            side_effect=AnalysisError("bad file", operation="query_code"),
+        ):
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_key": "methods",
+            }
+            with pytest.raises(AnalysisError, match="bad file"):
+                await tool.execute(arguments)
+
+    @pytest.mark.asyncio
+    async def test_execute_with_output_format_json(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test execute with output_format json (no toon transform)."""
+        with patch.object(
+            tool.query_service, "execute_query", new_callable=AsyncMock
+        ) as mock_query:
+            mock_query.return_value = mock_query_results
+
+            arguments = {
+                "file_path": str(sample_python_file),
+                "query_key": "methods",
+                "language": "python",
+                "output_format": "json",
+            }
+
+            result = await tool.execute(arguments)
+
+            assert result["success"] is True
+            assert result["count"] == len(mock_query_results)
+            assert "results" in result
+
+    @pytest.mark.asyncio
+    async def test_execute_no_language_provided_auto_detect(
+        self, tool, sample_python_file, mock_query_results
+    ):
+        """Test execute without explicit language triggers auto-detection."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.query_tool.detect_language_from_file",
+            return_value="python",
+        ):
+            with patch.object(
+                tool.query_service, "execute_query", new_callable=AsyncMock
+            ) as mock_query:
+                mock_query.return_value = mock_query_results
+
+                arguments = {
+                    "file_path": str(sample_python_file),
+                    "query_key": "methods",
+                    "output_format": "json",
+                }
+
+                result = await tool.execute(arguments)
+
+                assert result["success"] is True
+                assert result["language"] == "python"
+
+
+class TestFormatSummaryAdditional:
+    """Additional tests for _format_summary."""
+
+    def test_format_summary_empty_results(self, tool):
+        """Test summary formatting with empty results list."""
+        summary = tool._format_summary([], "methods", "python")
+        assert summary["success"] is True
+        assert summary["total_count"] == 0
+        assert summary["captures"] == {}
+
+    def test_format_summary_single_result(self, tool):
+        """Test summary formatting with a single result."""
+        results = [
+            {
+                "capture_name": "class",
+                "content": "class MyClass:\n    pass",
+                "start_line": 1,
+                "end_line": 2,
+                "node_type": "class_definition",
+            },
+        ]
+        summary = tool._format_summary(results, "class", "java")
+        assert summary["total_count"] == 1
+        assert "class" in summary["captures"]
+        assert summary["captures"]["class"]["count"] == 1
+        item = summary["captures"]["class"]["items"][0]
+        assert "name" in item
+        assert item["line_range"] == "1-2"
+        assert item["node_type"] == "class_definition"
+
+
+class TestExtractNameAdditional:
+    """Additional tests for _extract_name_from_content."""
+
+    def test_extract_interface_name(self, tool):
+        """Test extracting interface name."""
+        content = "public interface MyService {\n    void process();\n}"
+        name = tool._extract_name_from_content(content)
+        assert name == "MyService"
+
+    def test_extract_static_method_name(self, tool):
+        """Test extracting static method name."""
+        content = "public static void main(String[] args) {"
+        name = tool._extract_name_from_content(content)
+        assert name == "main"
+
+    def test_extract_deep_subheading(self, tool):
+        """Test extracting deep markdown subheading."""
+        content = "### Deep Section Title\nSome details"
+        name = tool._extract_name_from_content(content)
+        assert name == "Deep Section Title"
+
+
+class TestValidateArgumentsAdditional:
+    """Additional tests targeting uncovered validation branches."""
+
+    def test_validate_query_key_empty_string(self, tool):
+        """Test validation with empty string query_key (falsy)."""
+        arguments = {"file_path": "test.py", "query_key": ""}
+        with pytest.raises(
+            ValueError, match="Either query_key or query_string must be provided"
+        ):
+            tool.validate_arguments(arguments)
+
+    def test_validate_query_string_empty_string(self, tool):
+        """Test validation with empty string query_string (falsy)."""
+        arguments = {"file_path": "test.py", "query_string": ""}
+        with pytest.raises(
+            ValueError, match="Either query_key or query_string must be provided"
+        ):
+            tool.validate_arguments(arguments)
+
+    def test_validate_output_file_whitespace_only(self, tool):
+        """Test validation with whitespace-only output_file."""
+        arguments = {
+            "file_path": "test.py",
+            "query_key": "methods",
+            "output_file": "   ",
+        }
+        with pytest.raises(ValueError, match="output_file cannot be empty"):
+            tool.validate_arguments(arguments)
+
+    def test_validate_result_format_summary_valid(self, tool):
+        """Test validation passes with result_format='summary'."""
+        arguments = {
+            "file_path": "test.py",
+            "query_key": "methods",
+            "result_format": "summary",
+        }
+        assert tool.validate_arguments(arguments) is True
+
+    def test_validate_output_format_toon_valid(self, tool):
+        """Test validation passes with output_format='toon'."""
+        arguments = {
+            "file_path": "test.py",
+            "query_key": "methods",
+            "output_format": "toon",
+        }
+        assert tool.validate_arguments(arguments) is True
