@@ -173,6 +173,10 @@ for query_name, query_string in YAML_QUERIES.items():
     description = YAML_QUERY_DESCRIPTIONS.get(query_name, "No description")
     ALL_QUERIES[query_name] = {"query": query_string, "description": description}
 
+# Cross-language aliases
+ALL_QUERIES["classes"] = ALL_QUERIES["document"]
+ALL_QUERIES["imports"] = ALL_QUERIES["anchor"]
+
 
 def get_yaml_query(name: str) -> str:
     """
