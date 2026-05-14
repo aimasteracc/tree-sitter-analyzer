@@ -43,8 +43,16 @@ class TableCommand(BaseCommand):
 
             table_type = getattr(self.args, "table", "full")
 
-            # Handle TOON format separately
-            if table_type == "toon":
+            if table_type == "json":
+                formatted_data = self._convert_to_structure_format(
+                    analysis_result, language
+                )
+                import json
+
+                formatted_output = json.dumps(
+                    formatted_data, indent=2, ensure_ascii=False
+                )
+            elif table_type == "toon":
                 formatted_output = self._format_as_toon(analysis_result)
             else:
                 # Get appropriate formatter using unified FormatterRegistry
