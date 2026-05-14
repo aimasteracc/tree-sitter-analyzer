@@ -474,8 +474,10 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             "name": "analyze_code_structure",
             "description": (
                 "SMART Workflow 'Analyze' step: Generate detailed structure tables "
-                "(classes, methods, fields with line positions) for code files. "
-                "Use this AFTER check_code_scale to understand file organization. "
+                "(classes, methods, fields with line positions) for 17 languages "
+                "(Java, Python, JS/TS, Go, Rust, C/C++, Kotlin, C#, Ruby, PHP, etc). "
+                "Use AFTER check_code_scale to understand file organization, THEN use "
+                "extract_code_section with the line positions to read specific code. "
                 "Supports full/compact/csv table formats, optional file output, "
                 "and toon format for 50-70% token reduction."
             ),

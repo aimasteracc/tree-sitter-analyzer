@@ -1755,3 +1755,33 @@ class TestAnalyzeScaleToolValidateArgumentsAdvanced:
             "output_format": "json",
         }
         assert tool.validate_arguments(arguments) is True
+
+
+class TestCoverageBoost:
+    """Tests targeting the last uncovered lines."""
+
+    def test_count_elements_universal_string_fallback(self, tool):
+        """Test _count_elements falls back to string match when is_element_of_type fails."""
+        from tree_sitter_analyzer.constants import ELEMENT_TYPE_CLASS
+
+        class _FakeElem:
+            pass
+
+        elem = _FakeElem()
+        elem.element_type = "class"
+        count = tool._count_elements([elem], ELEMENT_TYPE_CLASS, "class")
+        assert count == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_dispatches_to_batch(self, tool):
+        """Test execute() dispatches to _execute_metrics_batch when file_paths given."""
+        with patch.object(
+            tool,
+            "_execute_metrics_batch",
+            new_callable=AsyncMock,
+            return_value={"success": True, "count_files": 1},
+        ):
+            result = await tool.execute(
+                {"file_paths": ["test.py"], "metrics_only": True}
+            )
+            assert result["success"] is True
