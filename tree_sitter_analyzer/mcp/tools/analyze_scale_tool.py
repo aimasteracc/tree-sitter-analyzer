@@ -413,14 +413,20 @@ class AnalyzeScaleTool(BaseMCPTool):
         steps = ["check_code_scale (done)"]
         if guidance["size_category"] in ("large", "very_large"):
             steps.append("analyze_code_structure with format=compact for overview")
-            steps.append(
-                "query_code with specific query keys to find target elements"
-            )
+            steps.append("query_code with specific query keys to find target elements")
             steps.append("extract_code_section for targeted line ranges")
         else:
             steps.append("analyze_code_structure for full structure table")
             steps.append("query_code for specific elements if needed")
         guidance["workflow_steps"] = steps
+
+        # Include full list of available queries for this language
+        from ...query_loader import get_query_loader
+
+        loader = get_query_loader()
+        all_queries = loader.list_queries_for_language(language)
+        if all_queries:
+            guidance["available_queries"] = sorted(all_queries)
 
         return guidance
 
