@@ -368,6 +368,9 @@ class QueryTool(BaseMCPTool):
                         "name": item.get("name")
                         or self._extract_name_from_content(item["content"]),
                         "line_range": f"{item['start_line']}-{item['end_line']}",
+                        "lines": item.get(
+                            "line_span", item["end_line"] - item["start_line"] + 1
+                        ),
                         "node_type": item["node_type"],
                     }
                     for item in items
