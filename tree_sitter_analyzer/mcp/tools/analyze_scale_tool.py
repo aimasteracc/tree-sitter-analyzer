@@ -197,6 +197,88 @@ class AnalyzeScaleTool(BaseMCPTool):
 
         return overview
 
+    def _extract_structural_overview_universal(
+        self, analysis_result: Any
+    ) -> dict[str, Any]:
+        """Extract structural overview from universal analysis result (non-Java languages)."""
+        overview: dict[str, Any] = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "complexity_hotspots": [],
+        }
+
+        if not analysis_result or not hasattr(analysis_result, "elements"):
+            return overview
+
+        for e in analysis_result.elements:
+            etype = getattr(e, "element_type", "")
+            name = getattr(e, "name", "unnamed")
+            start_line = getattr(e, "start_line", 0)
+            end_line = getattr(e, "end_line", 0)
+
+            if etype == "class":
+                overview["classes"].append(
+                    {
+                        "name": name,
+                        "type": etype,
+                        "start_line": start_line,
+                        "end_line": end_line,
+                        "line_span": end_line - start_line + 1,
+                    }
+                )
+            elif etype in ("function", "method"):
+                method_info = {
+                    "name": name,
+                    "start_line": start_line,
+                    "end_line": end_line,
+                    "line_span": end_line - start_line + 1,
+                    "complexity": getattr(e, "complexity_score", 0),
+                }
+                overview["methods"].append(method_info)
+                complexity = getattr(e, "complexity_score", 0)
+                if complexity and complexity > 10:
+                    overview["complexity_hotspots"].append(
+                        {
+                            "type": "method",
+                            "name": name,
+                            "complexity": complexity,
+                            "start_line": start_line,
+                            "end_line": end_line,
+                        }
+                    )
+            elif etype == "variable":
+                overview["fields"].append(
+                    {
+                        "name": name,
+                        "start_line": start_line,
+                        "end_line": end_line,
+                    }
+                )
+            elif etype == "import":
+                overview["imports"].append(
+                    {
+                        "name": name,
+                        "line": start_line,
+                    }
+                )
+
+        return overview
+
+    @staticmethod
+    def _count_elements(
+        elements: list, element_type_const: str, element_type_str: str
+    ) -> int:
+        """Count elements matching either Java-style or universal element type."""
+        count = 0
+        for e in elements:
+            if is_element_of_type(e, element_type_const):
+                count += 1
+            elif getattr(e, "element_type", "") == element_type_str:
+                count += 1
+        return count
+
     def _generate_llm_guidance(
         self, file_metrics: dict[str, Any], structural_overview: dict[str, Any]
     ) -> dict[str, Any]:
@@ -486,59 +568,38 @@ class AnalyzeScaleTool(BaseMCPTool):
                         )
 
                     # Adapt the result to a compatible structure for report generation
-                    # This part needs careful implementation based on universal_result structure
-                    analysis_result = None  # Placeholder
-                    structural_overview = {}  # Placeholder
+                    analysis_result = universal_result
+                    structural_overview = self._extract_structural_overview_universal(
+                        universal_result
+                    )
 
                 # Generate LLM guidance
                 llm_guidance = None
                 if include_guidance:
+                    guidance_metrics = {**file_metrics, "language": language}
                     llm_guidance = self._generate_llm_guidance(
-                        file_metrics, structural_overview
+                        guidance_metrics, structural_overview
                     )
 
                 # Build enhanced result structure
+                elements = analysis_result.elements if analysis_result else []
                 result = {
                     "success": True,
                     "file_path": file_path,
                     "language": language,
                     "file_metrics": file_metrics,
                     "summary": {
-                        "classes": len(
-                            [
-                                e
-                                for e in (
-                                    analysis_result.elements if analysis_result else []
-                                )
-                                if is_element_of_type(e, ELEMENT_TYPE_CLASS)
-                            ]
+                        "classes": self._count_elements(
+                            elements, ELEMENT_TYPE_CLASS, "class"
                         ),
-                        "methods": len(
-                            [
-                                e
-                                for e in (
-                                    analysis_result.elements if analysis_result else []
-                                )
-                                if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
-                            ]
+                        "methods": self._count_elements(
+                            elements, ELEMENT_TYPE_FUNCTION, "function"
                         ),
-                        "fields": len(
-                            [
-                                e
-                                for e in (
-                                    analysis_result.elements if analysis_result else []
-                                )
-                                if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
-                            ]
+                        "fields": self._count_elements(
+                            elements, ELEMENT_TYPE_VARIABLE, "variable"
                         ),
-                        "imports": len(
-                            [
-                                e
-                                for e in (
-                                    analysis_result.elements if analysis_result else []
-                                )
-                                if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
-                            ]
+                        "imports": self._count_elements(
+                            elements, ELEMENT_TYPE_IMPORT, "import"
                         ),
                         "annotations": len(
                             getattr(analysis_result, "annotations", [])
