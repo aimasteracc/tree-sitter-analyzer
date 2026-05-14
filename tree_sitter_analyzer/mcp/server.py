@@ -59,10 +59,8 @@ from . import MCP_INFO
 from .resources import CodeFileResource, ProjectStatsResource
 from .server_utils.code_scale_handler import analyze_code_scale
 from .server_utils.error_recovery import build_agent_friendly_error
-from .server_utils.smart_prompts import (
-    build_smart_analyze_response,
-    build_smart_explore_response,
-)
+from .server_utils.prompt_registration import register_prompts
+from .server_utils.resource_registration import register_resources
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.dependency_analysis_tool import DependencyAnalysisTool
@@ -320,114 +318,10 @@ class TreeSitterAnalyzerMCPServer:
                 ]
 
         # Register resources
-        @server.list_resources()  # type: ignore
-        async def handle_list_resources() -> list[Resource]:
-            """List available resources."""
-            return [
-                Resource(
-                    uri=self.code_file_resource.get_resource_info()["uri_template"],
-                    name=self.code_file_resource.get_resource_info()["name"],
-                    description=self.code_file_resource.get_resource_info()[
-                        "description"
-                    ],
-                    mimeType=self.code_file_resource.get_resource_info()["mime_type"],
-                ),
-                Resource(
-                    uri=self.project_stats_resource.get_resource_info()["uri_template"],
-                    name=self.project_stats_resource.get_resource_info()["name"],
-                    description=self.project_stats_resource.get_resource_info()[
-                        "description"
-                    ],
-                    mimeType=self.project_stats_resource.get_resource_info()[
-                        "mime_type"
-                    ],
-                ),
-            ]
-
-        @server.read_resource()  # type: ignore
-        async def handle_read_resource(uri: str) -> str:
-            """Read resource content."""
-            try:
-                # Check which resource matches the URI
-                if self.code_file_resource.matches_uri(uri):
-                    return await self.code_file_resource.read_resource(uri)
-                elif self.project_stats_resource.matches_uri(uri):
-                    return await self.project_stats_resource.read_resource(uri)
-                else:
-                    raise ValueError(f"Resource not found: {uri}")
-
-            except Exception as e:
-                try:
-                    logger.error(f"Resource read error for {uri}: {e}")
-                except (ValueError, OSError):
-                    pass  # Silently ignore logging errors during shutdown
-                raise
+        register_resources(server, self)
 
         # Register SMART workflow prompts so AI agents can self-discover usage patterns
-        try:
-            from mcp.types import Prompt, PromptArgument
-
-            _smart_prompt_args = [
-                PromptArgument(
-                    name="file_path",
-                    description="Path to the source file to analyze",
-                    required=True,
-                ),
-                PromptArgument(
-                    name="question",
-                    description="What you want to understand about the code",
-                    required=False,
-                ),
-            ]
-
-            _project_prompt_args = [
-                PromptArgument(
-                    name="project_root",
-                    description="Absolute path to the project root directory",
-                    required=True,
-                ),
-            ]
-
-            @server.list_prompts()  # type: ignore
-            async def handle_list_prompts() -> list[Prompt]:
-                return [
-                    Prompt(
-                        name="smart_analyze",
-                        description="SMART Workflow: Systematic code analysis for a single file. Recommended for files you haven't seen before.",
-                        arguments=_smart_prompt_args,
-                    ),
-                    Prompt(
-                        name="smart_explore",
-                        description="SMART Workflow: Explore a new project. Get the full picture before diving into code.",
-                        arguments=_project_prompt_args,
-                    ),
-                ]
-
-            @server.get_prompt()  # type: ignore
-            async def handle_get_prompt(
-                name: str, arguments: dict[str, str] | None
-            ) -> Any:
-                args = arguments or {}
-                if name == "smart_analyze":
-                    file_path = args.get("file_path", "<file_path>")
-                    question = args.get(
-                        "question", "understand the structure and key logic"
-                    )
-                    return build_smart_analyze_response(file_path, question)
-                elif name == "smart_explore":
-                    project_root = args.get("project_root", "<project_root>")
-                    return build_smart_explore_response(project_root)
-                raise ValueError(f"Unknown prompt: {name}")
-
-        except ImportError:
-            # Prompt type unavailable in older MCP versions
-            with contextlib.suppress(ValueError, OSError):
-                logger.debug(
-                    "Prompts API unavailable, skipping SMART prompt registration"
-                )
-        except Exception as e:
-            with contextlib.suppress(ValueError, OSError):
-                logger.debug(f"Prompts registration failed: {e}")
+        register_prompts(server)
 
         self.server = server
         try:
