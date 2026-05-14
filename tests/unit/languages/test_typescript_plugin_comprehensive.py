@@ -62,7 +62,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         # Mock encoding error to trigger fallback
         with patch(
-            "tree_sitter_analyzer.languages.typescript_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.typescript_plugin.extractor.extract_text_slice",
             side_effect=Exception("Encoding error"),
         ):
             text = extractor._get_node_text_optimized(mock_node)
@@ -74,7 +74,7 @@ class TestTypeScriptElementExtractorComprehensive:
 
         # Mock both primary and fallback methods to fail
         with patch(
-            "tree_sitter_analyzer.languages.typescript_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.typescript_plugin.extractor.extract_text_slice",
             side_effect=Exception("Primary error"),
         ):
             mock_node.start_point = (10, 0)  # Out of bounds
@@ -661,9 +661,12 @@ class TestTypeScriptPluginComprehensive:
         return TypeScriptPlugin()
 
     @patch(
-        "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE", True
+        "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
     )
-    @patch("tree_sitter_analyzer.languages.typescript_plugin.loader.load_language")
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language"
+    )
     @pytest.mark.asyncio
     async def test_analyze_file_success(self, mock_load_language, plugin):
         """Test successful file analysis"""
@@ -701,7 +704,7 @@ const person = new Person("World");
             mock_tree.root_node = mock_root
 
             with patch(
-                "tree_sitter_analyzer.languages.typescript_plugin.tree_sitter.Parser"
+                "tree_sitter_analyzer.languages.typescript_plugin.extractor.tree_sitter.Parser"
             ) as mock_parser_class:
                 mock_parser_class.return_value = mock_parser
                 mock_parser.parse.return_value = mock_tree
@@ -717,9 +720,12 @@ const person = new Person("World");
             os.unlink(temp_file)
 
     @patch(
-        "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE", True
+        "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
     )
-    @patch("tree_sitter_analyzer.languages.typescript_plugin.loader.load_language")
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language"
+    )
     @pytest.mark.asyncio
     async def test_analyze_file_with_parsing_error(self, mock_load_language, plugin):
         """Test file analysis with parsing error"""
@@ -734,7 +740,7 @@ const person = new Person("World");
         try:
             # Mock parser to raise exception
             with patch(
-                "tree_sitter_analyzer.languages.typescript_plugin.tree_sitter.Parser"
+                "tree_sitter_analyzer.languages.typescript_plugin.extractor.tree_sitter.Parser"
             ) as mock_parser_class:
                 mock_parser = Mock()
                 mock_parser_class.return_value = mock_parser
@@ -750,9 +756,12 @@ const person = new Person("World");
             os.unlink(temp_file)
 
     @patch(
-        "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE", True
+        "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
     )
-    @patch("tree_sitter_analyzer.languages.typescript_plugin.loader.load_language")
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language"
+    )
     @pytest.mark.asyncio
     async def test_analyze_file_with_extraction_error(self, mock_load_language, plugin):
         """Test file analysis with extraction error"""
@@ -772,7 +781,7 @@ const person = new Person("World");
             mock_tree.root_node = mock_root
 
             with patch(
-                "tree_sitter_analyzer.languages.typescript_plugin.tree_sitter.Parser"
+                "tree_sitter_analyzer.languages.typescript_plugin.extractor.tree_sitter.Parser"
             ) as mock_parser_class:
                 mock_parser_class.return_value = mock_parser
                 mock_parser.parse.return_value = mock_tree
@@ -797,7 +806,7 @@ const person = new Person("World");
     def test_get_tree_sitter_language_no_tree_sitter(self, plugin):
         """Test tree-sitter language getter when tree-sitter is not available"""
         with patch(
-            "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE",
+            "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
             False,
         ):
             result = plugin.get_tree_sitter_language()
@@ -806,20 +815,23 @@ const person = new Person("World");
     def test_get_tree_sitter_language_load_failure(self, plugin):
         """Test tree-sitter language getter when language loading fails"""
         with patch(
-            "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE",
+            "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
             True,
         ):
             with patch(
-                "tree_sitter_analyzer.languages.typescript_plugin.loader.load_language",
+                "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language",
                 return_value=None,
             ):
                 result = plugin.get_tree_sitter_language()
                 assert result is None
 
     @patch(
-        "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE", True
+        "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
     )
-    @patch("tree_sitter_analyzer.languages.typescript_plugin.loader.load_language")
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language"
+    )
     @pytest.mark.asyncio
     async def test_analyze_file_with_node_counting(self, mock_load_language, plugin):
         """Test file analysis with node counting"""
@@ -858,7 +870,7 @@ const person = new Person("World");
             mock_tree.root_node = root
 
             with patch(
-                "tree_sitter_analyzer.languages.typescript_plugin.tree_sitter.Parser"
+                "tree_sitter_analyzer.languages.typescript_plugin.extractor.tree_sitter.Parser"
             ) as mock_parser_class:
                 mock_parser_class.return_value = mock_parser
                 mock_parser.parse.return_value = mock_tree

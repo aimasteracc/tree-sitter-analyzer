@@ -154,7 +154,7 @@ class TestSQLPlugin:
         # Save original value
         original_value = getattr(
             __import__(
-                "tree_sitter_analyzer.languages.sql_plugin",
+                "tree_sitter_analyzer.languages.sql_plugin.plugin",
                 fromlist=["TREE_SITTER_AVAILABLE"],
             ),
             "TREE_SITTER_AVAILABLE",
@@ -163,7 +163,7 @@ class TestSQLPlugin:
 
         # Patch both sql_plugin and language_loader
         import tree_sitter_analyzer.language_loader as language_loader_module
-        import tree_sitter_analyzer.languages.sql_plugin as sql_plugin_module
+        import tree_sitter_analyzer.languages.sql_plugin.plugin as sql_plugin_module
 
         with (
             patch.object(sql_plugin_module, "TREE_SITTER_AVAILABLE", False),
@@ -204,7 +204,8 @@ class TestSQLPlugin:
     async def test_analyze_file_missing_language(self, plugin: SQLPlugin) -> None:
         """Test analyze_file when tree-sitter-sql is not available"""
         with patch(
-            "tree_sitter_analyzer.languages.sql_plugin.TREE_SITTER_AVAILABLE", True
+            "tree_sitter_analyzer.languages.sql_plugin.plugin.TREE_SITTER_AVAILABLE",
+            True,
         ):
             # Patch LanguageLoader to simulate missing language
             with patch(

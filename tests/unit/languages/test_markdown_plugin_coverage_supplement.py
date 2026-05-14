@@ -122,7 +122,7 @@ class TestMarkdownSetextHeaders:
         """Test setext heading extraction for H1 (===)"""
         from unittest.mock import Mock, patch
 
-        content = "Heading 1\n======="
+        _content = "Heading 1\n======="
         mock_root = Mock()
 
         # Create setext heading node
@@ -135,7 +135,9 @@ class TestMarkdownSetextHeaders:
         mock_root.children = [setext_node]
 
         with patch.object(
-            self.extractor, "_get_node_text_optimized", return_value="Heading 1\n======="
+            self.extractor,
+            "_get_node_text_optimized",
+            return_value="Heading 1\n=======",
         ):
             headers = []
             self.extractor._extract_setext_headers(mock_root, headers)
@@ -149,7 +151,7 @@ class TestMarkdownSetextHeaders:
         """Test setext heading extraction for H2 (---)"""
         from unittest.mock import Mock, patch
 
-        content = "Heading 2\n-------"
+        _content = "Heading 2\n-------"
         mock_root = Mock()
 
         setext_node = Mock()
@@ -161,7 +163,9 @@ class TestMarkdownSetextHeaders:
         mock_root.children = [setext_node]
 
         with patch.object(
-            self.extractor, "_get_node_text_optimized", return_value="Heading 2\n-------"
+            self.extractor,
+            "_get_node_text_optimized",
+            return_value="Heading 2\n-------",
         ):
             headers = []
             self.extractor._extract_setext_headers(mock_root, headers)
@@ -256,7 +260,9 @@ class TestMarkdownSetextHeaders:
 
         # Make _get_node_text_optimized raise an exception
         with patch.object(
-            self.extractor, "_get_node_text_optimized", side_effect=RuntimeError("test error")
+            self.extractor,
+            "_get_node_text_optimized",
+            side_effect=RuntimeError("test error"),
         ):
             headers = []
             # Should not raise, just log debug
@@ -312,7 +318,9 @@ class TestMarkdownExceptionHandlers:
 
         # Make _traverse_nodes raise an exception
         with patch.object(
-            self.extractor, "_traverse_nodes", side_effect=RuntimeError("traverse error")
+            self.extractor,
+            "_traverse_nodes",
+            side_effect=RuntimeError("traverse error"),
         ):
             result = self.extractor.extract_code_blocks(mock_tree, "# test")
             assert result == []
@@ -511,7 +519,7 @@ class TestMarkdownGetNodeTextOptimized:
 
         # Make the optimized path fail to reach fallback bounds check
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
             side_effect=RuntimeError("slice error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -533,7 +541,7 @@ class TestMarkdownGetNodeTextOptimized:
 
         # Mock safe_encode to raise an exception, forcing fallback path
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.safe_encode",
+            "tree_sitter_analyzer.languages.markdown_plugin.extractor.safe_encode",
             side_effect=RuntimeError("encode error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -594,8 +602,9 @@ class TestMarkdownIndentedCodeBlocks:
         mock_root.children = [code_node]
 
         with patch.object(
-            self.extractor, "_get_node_text_optimized",
-            side_effect=RuntimeError("test error")
+            self.extractor,
+            "_get_node_text_optimized",
+            side_effect=RuntimeError("test error"),
         ):
             code_blocks = []
             self.extractor._extract_indented_code_blocks(mock_root, code_blocks)
@@ -727,17 +736,19 @@ class TestMarkdownAllElementsExtract:
         source = "# Test"
 
         # Patch all internal extraction methods to return known items
-        with patch.object(self.extractor, "extract_headers", return_value=[]), \
-             patch.object(self.extractor, "extract_code_blocks", return_value=[]), \
-             patch.object(self.extractor, "extract_links", return_value=[]), \
-             patch.object(self.extractor, "extract_images", return_value=[]), \
-             patch.object(self.extractor, "extract_references", return_value=[]), \
-             patch.object(self.extractor, "extract_lists", return_value=[]), \
-             patch.object(self.extractor, "extract_tables", return_value=[]), \
-             patch.object(self.extractor, "extract_blockquotes", return_value=[]), \
-             patch.object(self.extractor, "extract_horizontal_rules", return_value=[]), \
-             patch.object(self.extractor, "extract_html_elements", return_value=[]), \
-             patch.object(self.extractor, "extract_text_formatting", return_value=[]), \
-             patch.object(self.extractor, "extract_footnotes", return_value=[]):
+        with (
+            patch.object(self.extractor, "extract_headers", return_value=[]),
+            patch.object(self.extractor, "extract_code_blocks", return_value=[]),
+            patch.object(self.extractor, "extract_links", return_value=[]),
+            patch.object(self.extractor, "extract_images", return_value=[]),
+            patch.object(self.extractor, "extract_references", return_value=[]),
+            patch.object(self.extractor, "extract_lists", return_value=[]),
+            patch.object(self.extractor, "extract_tables", return_value=[]),
+            patch.object(self.extractor, "extract_blockquotes", return_value=[]),
+            patch.object(self.extractor, "extract_horizontal_rules", return_value=[]),
+            patch.object(self.extractor, "extract_html_elements", return_value=[]),
+            patch.object(self.extractor, "extract_text_formatting", return_value=[]),
+            patch.object(self.extractor, "extract_footnotes", return_value=[]),
+        ):
             elements = self.extractor.extract_all_elements(mock_tree, source)
             assert isinstance(elements, list)

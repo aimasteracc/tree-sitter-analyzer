@@ -7,13 +7,11 @@ Supports extraction of tables, views, stored procedures, functions, triggers, an
 """
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import tree_sitter
 
-    from ..core.analysis_engine import AnalysisRequest
-    from ..models import AnalysisResult
 
 try:
     import tree_sitter
@@ -23,8 +21,8 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 
-from ..encoding_utils import extract_text_slice, safe_encode
-from ..models import (
+from ...encoding_utils import extract_text_slice, safe_encode
+from ...models import (
     Class,
     Function,
     Import,
@@ -40,11 +38,9 @@ from ..models import (
     SQLView,
     Variable,
 )
-from ..platform_compat.adapter import CompatibilityAdapter
-from ..platform_compat.detector import PlatformDetector
-from ..platform_compat.profiles import BehaviorProfile
-from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error
+from ...platform_compat.adapter import CompatibilityAdapter
+from ...plugins.base import ElementExtractor
+from ...utils import log_debug, log_error
 
 
 class SQLElementExtractor(ElementExtractor):
@@ -1211,7 +1207,7 @@ class SQLElementExtractor(ElementExtractor):
         for node in self._traverse_nodes(root_node):
             if node.type == "create_table":
                 table_name = None
-                from ..models import SQLColumn, SQLConstraint
+                from ...models import SQLColumn, SQLConstraint
 
                 columns: list[SQLColumn] = []
                 constraints: list[SQLConstraint] = []
@@ -1588,7 +1584,7 @@ class SQLElementExtractor(ElementExtractor):
                     proc_lines = lines[i:end_line]
                     raw_text = "\n".join(proc_lines)
 
-                    from ..models import SQLParameter
+                    from ...models import SQLParameter
 
                     proc_parameters: list[SQLParameter] = []
                     proc_dependencies: list[str] = []
@@ -1856,7 +1852,7 @@ class SQLElementExtractor(ElementExtractor):
                 func_lines = lines[i:end_line]
                 raw_text = "\n".join(func_lines)
 
-                from ..models import SQLParameter
+                from ...models import SQLParameter
 
                 parameters: list[SQLParameter] = []
                 dependencies: list[str] = []
@@ -2246,217 +2242,3 @@ class SQLElementExtractor(ElementExtractor):
                     log_debug(
                         f"Failed to create regex-extracted index {index_name}: {e}"
                     )
-
-
-class SQLPlugin(LanguagePlugin):
-    """
-    SQL language plugin implementation.
-
-    Provides SQL language support for tree-sitter-analyzer, enabling analysis
-    of SQL files including database schema definitions, stored procedures,
-    functions, triggers, and indexes.
-
-    The plugin follows the standard LanguagePlugin interface and integrates
-    with the plugin manager for automatic discovery. It requires the
-    tree-sitter-sql package to be installed (available as optional dependency).
-    """
-
-    def __init__(self, diagnostic_mode: bool = False) -> None:
-        """
-        Initialize the SQL language plugin.
-
-        Sets up the extractor instance and caches for tree-sitter language
-        loading. The plugin supports .sql file extensions.
-        """
-        super().__init__()
-        self.diagnostic_mode = diagnostic_mode
-        self.extractor = SQLElementExtractor(diagnostic_mode=diagnostic_mode)
-        self.language = "sql"  # Add language property for test compatibility
-        self.supported_extensions = self.get_file_extensions()
-        self._cached_language: Any | None = None  # Cache for tree-sitter language
-
-        # Platform compatibility initialization
-        self.platform_info = None
-        try:
-            self.platform_info = PlatformDetector.detect()
-            from ..plugins.base import ElementExtractor
-
-            if isinstance(self.extractor, ElementExtractor):
-                self.extractor.platform_info = self.platform_info
-
-            platform_info = self.platform_info
-            profile = BehaviorProfile.load(platform_info.platform_key)
-
-            if self.diagnostic_mode:
-                log_debug(f"Diagnostic: Platform detected: {platform_info}")
-                if profile:
-                    log_debug(
-                        f"Diagnostic: Loaded SQL behavior profile for {platform_info.platform_key}"
-                    )
-                    log_debug(f"Diagnostic: Profile rules: {profile.adaptation_rules}")
-                else:
-                    log_debug(
-                        f"Diagnostic: No SQL behavior profile found for {platform_info.platform_key}"
-                    )
-            elif profile:
-                log_debug(
-                    f"Loaded SQL behavior profile for {platform_info.platform_key}"
-                )
-            else:
-                log_debug(
-                    f"No SQL behavior profile found for {platform_info.platform_key}, using defaults"
-                )
-
-            self.adapter = CompatibilityAdapter(profile)
-            self.extractor.set_adapter(self.adapter)
-        except Exception as e:
-            log_error(f"Failed to initialize SQL platform compatibility: {e}")
-            self.adapter = CompatibilityAdapter(None)  # Use default adapter
-            self.extractor.set_adapter(self.adapter)
-
-    def get_tree_sitter_language(self) -> Any:
-        """
-        Get the tree-sitter language object for SQL.
-
-        Returns:
-            The tree-sitter language object.
-
-        Raises:
-            RuntimeError: If tree-sitter-sql is not installed.
-        """
-        if self._cached_language:
-            return self._cached_language
-
-        try:
-            import tree_sitter
-            import tree_sitter_sql
-
-            self._cached_language = tree_sitter.Language(tree_sitter_sql.language())
-            return self._cached_language
-        except ImportError as e:
-            raise RuntimeError(
-                "tree-sitter-sql is required for SQL analysis but not installed."
-            ) from e
-
-    def get_language_name(self) -> str:
-        """Get the language name."""
-        return "sql"
-
-    def get_file_extensions(self) -> list[str]:
-        """Get supported file extensions."""
-        return [".sql"]
-
-    def create_extractor(self) -> ElementExtractor:
-        """Create a new element extractor instance."""
-        return SQLElementExtractor()
-
-    def extract_elements(self, tree: Any, source_code: str) -> dict[str, list[Any]]:
-        """
-        Legacy method for extracting elements.
-        Maintained for backward compatibility and testing.
-
-        Args:
-            tree: Tree-sitter AST tree
-            source_code: Source code string
-
-        Returns:
-            Dictionary with keys 'functions', 'classes', 'variables', 'imports'
-        """
-        elements = self.extractor.extract_sql_elements(tree, source_code)
-
-        result: dict[str, Any] = {
-            "functions": [],
-            "classes": [],
-            "variables": [],
-            "imports": [],
-        }
-
-        for element in elements:
-            if element.element_type in ["function", "procedure", "trigger"]:
-                result["functions"].append(element)
-            elif element.element_type in ["class", "table", "view"]:
-                result["classes"].append(element)
-            elif element.element_type in ["variable", "index"]:
-                result["variables"].append(element)
-            elif element.element_type == "import":
-                result["imports"].append(element)
-
-        return result
-
-    async def analyze_file(
-        self, file_path: str, request: "AnalysisRequest"
-    ) -> "AnalysisResult":
-        """
-        Analyze SQL file and return structured results.
-
-        Parses the SQL file using tree-sitter-sql, extracts database elements
-        (tables, views, procedures, functions, triggers, indexes), and returns
-        an AnalysisResult with all extracted information.
-
-        Args:
-            file_path: Path to the file to analyze
-            request: Analysis request object
-
-        Returns:
-            AnalysisResult object containing extracted elements
-        """
-        from ..core.parser import Parser
-        from ..models import AnalysisResult
-
-        try:
-            # Read file content
-            with open(file_path, encoding="utf-8") as f:
-                source_code = f.read()
-
-            # Parse using core parser
-            parser = Parser()
-            parse_result = parser.parse_code(source_code, "sql", file_path)
-
-            if not parse_result.success:
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="sql",
-                    line_count=len(source_code.splitlines()),
-                    elements=[],
-                    node_count=0,
-                    query_results={},
-                    source_code=source_code,
-                    success=False,
-                    error_message=parse_result.error_message,
-                )
-
-            # Extract elements
-            elements = []
-            if parse_result.tree:
-                elements = self.extractor.extract_sql_elements(
-                    parse_result.tree, source_code
-                )
-
-            # Create result
-            return AnalysisResult(
-                file_path=file_path,
-                language="sql",
-                line_count=len(source_code.splitlines()),
-                elements=elements,
-                node_count=(
-                    parse_result.tree.root_node.end_byte if parse_result.tree else 0
-                ),
-                query_results={},
-                source_code=source_code,
-                success=True,
-                error_message=None,
-            )
-
-        except Exception as e:
-            log_error(f"Failed to analyze SQL file {file_path}: {e}")
-            return AnalysisResult(
-                file_path=file_path,
-                language=self.get_language_name(),
-                line_count=0,
-                elements=[],
-                node_count=0,
-                query_results={},
-                source_code="",
-                success=False,
-                error_message=str(e),
-            )

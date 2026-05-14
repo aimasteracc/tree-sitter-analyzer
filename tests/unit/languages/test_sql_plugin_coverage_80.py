@@ -179,7 +179,7 @@ AFTER UPDATE ON users FOR EACH ROW BEGIN END;"""
         root.children = []
         sql_elements = []
         with patch(
-            "tree_sitter_analyzer.languages.sql_plugin.SQLTrigger",
+            "tree_sitter_analyzer.languages.sql_plugin.extractor.SQLTrigger",
             side_effect=ValueError("test error"),
         ):
             extractor._extract_sql_triggers(root, sql_elements)
@@ -204,7 +204,7 @@ class TestIndexRegexExceptionPath:
         root.children = []
         sql_elements = []
         with patch(
-            "tree_sitter_analyzer.languages.sql_plugin.SQLIndex",
+            "tree_sitter_analyzer.languages.sql_plugin.extractor.SQLIndex",
             side_effect=ValueError("test error"),
         ):
             extractor._extract_indexes_with_regex(sql_elements, set())
@@ -328,7 +328,7 @@ class TestPluginPlatformInitFailure:
     def test_plugin_init_platform_failure(self):
         """Plugin init handles platform detection failure gracefully."""
         with patch(
-            "tree_sitter_analyzer.languages.sql_plugin.PlatformDetector"
+            "tree_sitter_analyzer.languages.sql_plugin.extractor.PlatformDetector"
         ) as mock_pd:
             mock_pd.detect.side_effect = Exception("platform error")
             p = SQLPlugin()
@@ -389,7 +389,7 @@ class TestSQLPluginAnalyzeFileError:
     @pytest.fixture
     def plugin(self):
         with patch(
-            "tree_sitter_analyzer.languages.sql_plugin.PlatformDetector"
+            "tree_sitter_analyzer.languages.sql_plugin.extractor.PlatformDetector"
         ) as mock_pd:
             mock_pd.detect.side_effect = Exception("no platform")
             return SQLPlugin()

@@ -115,7 +115,7 @@ class TestMarkdownElementExtractor:
         result = self.extractor.extract_imports(None, "[ref]: url")
         assert result == []
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.log_debug")
+    @patch("tree_sitter_analyzer.languages.markdown_plugin.extractor.log_debug")
     def test_extract_headers_with_exception(self, mock_log):
         """Test header extraction with exception handling"""
         self.mock_root_node.children = [Mock()]
@@ -160,7 +160,7 @@ class TestMarkdownElementExtractor:
 
         # Mock byte extraction to fail
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -177,7 +177,7 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Line 1", "Line 2", "Line 3"]
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -197,7 +197,7 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Hello"]
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -358,7 +358,8 @@ class TestMarkdownPlugin:
         assert "supported_queries" in info
 
     @patch(
-        "tree_sitter_analyzer.languages.markdown_plugin.TREE_SITTER_AVAILABLE", False
+        "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",
+        False,
     )
     @pytest.mark.asyncio
     async def test_analyze_file_no_tree_sitter(self):
@@ -370,7 +371,10 @@ class TestMarkdownPlugin:
         assert result.success is False
         assert "Tree-sitter library not available" in result.error_message
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.TREE_SITTER_AVAILABLE", True)
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
+    )
     def test_get_tree_sitter_language_import_error(self):
         """Test get_tree_sitter_language with import error"""
         # Clear cache first
@@ -383,7 +387,10 @@ class TestMarkdownPlugin:
             language = self.plugin.get_tree_sitter_language()
             assert language is None
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.TREE_SITTER_AVAILABLE", True)
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
+    )
     def test_get_tree_sitter_language_general_error(self):
         """Test get_tree_sitter_language with general error"""
         # Clear cache first
@@ -402,7 +409,10 @@ class TestMarkdownPlugin:
             language = self.plugin.get_tree_sitter_language()
             assert language is None
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.TREE_SITTER_AVAILABLE", True)
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
+    )
     def test_get_tree_sitter_language_success(self):
         """Test successful get_tree_sitter_language"""
         # Clear cache first
@@ -468,7 +478,7 @@ class TestMarkdownPlugin:
                 return_value="test query",
             ):
                 with patch(
-                    "tree_sitter_analyzer.languages.markdown_plugin.tree_sitter.Query"
+                    "tree_sitter_analyzer.languages.markdown_plugin.extractor.tree_sitter.Query"
                 ) as mock_query_class:
                     mock_query_instance = Mock()
                     mock_query_class.return_value = mock_query_instance
@@ -588,8 +598,11 @@ class TestMarkdownPluginIntegration:
 
     @pytest.mark.asyncio
     @patch("tree_sitter_analyzer.encoding_utils.read_file_safe")
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.tree_sitter")
-    async def test_analyze_file_success(self, mock_ts, mock_read_file_safe):
+    @patch("tree_sitter_analyzer.languages.markdown_plugin.plugin.tree_sitter")
+    @patch("tree_sitter_analyzer.languages.markdown_plugin.extractor.tree_sitter")
+    async def test_analyze_file_success(
+        self, mock_ts, mock_ts_plugin, mock_read_file_safe
+    ):
         """Test successful analyze_file"""
         # Setup mocks
         mock_read_file_safe.return_value = ("# Test Header\n\nContent", "utf-8")
@@ -689,7 +702,7 @@ class TestMarkdownPluginEdgeCases:
         mock_node.end_byte = 50000
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
             side_effect=Exception("Too long"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -707,7 +720,7 @@ class TestMarkdownPluginEdgeCases:
         mock_node.end_point = (0, 6)
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
             side_effect=Exception("Unicode error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
