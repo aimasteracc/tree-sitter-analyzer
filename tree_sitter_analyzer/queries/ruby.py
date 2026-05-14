@@ -90,3 +90,64 @@ RUBY_ALL_ELEMENTS_QUERY = f"""
 
 {RUBY_ATTR_QUERY}
 """
+
+# Structured query registry for dynamic loader compatibility
+ALL_QUERIES = {
+    "class": {
+        "query": RUBY_CLASS_QUERY,
+        "description": "Extract Ruby classes and modules",
+    },
+    "method": {
+        "query": RUBY_METHOD_QUERY,
+        "description": "Extract Ruby methods and singleton methods",
+    },
+    "constant": {
+        "query": RUBY_CONSTANT_QUERY,
+        "description": "Extract Ruby constant assignments",
+    },
+    "instance_variable": {
+        "query": RUBY_INSTANCE_VAR_QUERY,
+        "description": "Extract Ruby instance variable assignments",
+    },
+    "class_variable": {
+        "query": RUBY_CLASS_VAR_QUERY,
+        "description": "Extract Ruby class variable assignments",
+    },
+    "require": {
+        "query": RUBY_REQUIRE_QUERY,
+        "description": "Extract Ruby require/load statements",
+    },
+    "attr": {
+        "query": RUBY_ATTR_QUERY,
+        "description": "Extract Ruby attr_accessor/attr_reader/attr_writer",
+    },
+    "block": {
+        "query": RUBY_BLOCK_QUERY,
+        "description": "Extract Ruby blocks (block and do_block)",
+    },
+    "proc_lambda": {
+        "query": RUBY_PROC_LAMBDA_QUERY,
+        "description": "Extract Ruby proc and lambda calls",
+    },
+}
+
+# Cross-language aliases
+ALL_QUERIES["classes"] = ALL_QUERIES["class"]
+ALL_QUERIES["functions"] = ALL_QUERIES["method"]
+ALL_QUERIES["methods"] = ALL_QUERIES["method"]
+ALL_QUERIES["imports"] = ALL_QUERIES["require"]
+
+
+def get_all_queries() -> dict:
+    return ALL_QUERIES
+
+
+def get_query(name: str) -> str:
+    if name in ALL_QUERIES:
+        q = ALL_QUERIES[name]
+        return q["query"] if isinstance(q, dict) else q
+    raise ValueError(f"Query '{name}' not found. Available: {list(ALL_QUERIES.keys())}")
+
+
+def list_queries() -> list:
+    return list(ALL_QUERIES.keys())

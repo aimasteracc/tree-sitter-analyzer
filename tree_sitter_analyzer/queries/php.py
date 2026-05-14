@@ -93,3 +93,49 @@ PHP_ALL_ELEMENTS_QUERY = f"""
 
 {PHP_ATTRIBUTE_QUERY}
 """
+
+# Structured query registry for dynamic loader compatibility
+ALL_QUERIES = {
+    "class": {
+        "query": PHP_CLASS_QUERY,
+        "description": "Extract PHP classes, interfaces, traits, and enums",
+    },
+    "method": {"query": PHP_METHOD_QUERY, "description": "Extract PHP methods"},
+    "function": {"query": PHP_FUNCTION_QUERY, "description": "Extract PHP functions"},
+    "property": {"query": PHP_PROPERTY_QUERY, "description": "Extract PHP properties"},
+    "constant": {"query": PHP_CONSTANT_QUERY, "description": "Extract PHP constants"},
+    "use": {"query": PHP_USE_QUERY, "description": "Extract PHP use/import statements"},
+    "namespace": {
+        "query": PHP_NAMESPACE_QUERY,
+        "description": "Extract PHP namespace declarations",
+    },
+    "attribute": {
+        "query": PHP_ATTRIBUTE_QUERY,
+        "description": "Extract PHP 8+ attributes",
+    },
+    "magic_method": {
+        "query": PHP_MAGIC_METHOD_QUERY,
+        "description": "Extract PHP magic methods (__construct, etc.)",
+    },
+}
+
+# Cross-language aliases
+ALL_QUERIES["classes"] = ALL_QUERIES["class"]
+ALL_QUERIES["functions"] = ALL_QUERIES["function"]
+ALL_QUERIES["methods"] = ALL_QUERIES["method"]
+ALL_QUERIES["imports"] = ALL_QUERIES["use"]
+
+
+def get_all_queries() -> dict:
+    return ALL_QUERIES
+
+
+def get_query(name: str) -> str:
+    if name in ALL_QUERIES:
+        q = ALL_QUERIES[name]
+        return q["query"] if isinstance(q, dict) else q
+    raise ValueError(f"Query '{name}' not found. Available: {list(ALL_QUERIES.keys())}")
+
+
+def list_queries() -> list:
+    return list(ALL_QUERIES.keys())
