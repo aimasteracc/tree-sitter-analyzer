@@ -150,13 +150,17 @@ class QueryService:
         # Use safe text extraction with source code
         content = get_node_text_safe(node, source_code)
 
+        start_line = (
+            node.start_point[0] + 1 if hasattr(node, "start_point") else 0
+        )
+        end_line = node.end_point[0] + 1 if hasattr(node, "end_point") else 0
+
         result = {
             "capture_name": capture_name,
             "node_type": node.type if hasattr(node, "type") else "unknown",
-            "start_line": (
-                node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-            ),
-            "end_line": node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
+            "start_line": start_line,
+            "end_line": end_line,
+            "line_span": end_line - start_line + 1,
             "content": content,
         }
 
