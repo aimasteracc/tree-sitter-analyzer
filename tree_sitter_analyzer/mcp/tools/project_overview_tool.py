@@ -64,6 +64,29 @@ _EXCLUDE_DIRS = {
     ".autonomous-runtime",
 }
 
+TOOL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "include_health": {
+            "type": "boolean",
+            "description": "Include health grades for top-10 largest source files (slower)",
+            "default": False,
+        },
+        "max_depth": {
+            "type": "integer",
+            "description": "Max directory depth to scan (default: 5)",
+            "default": 5,
+        },
+        "output_format": {
+            "type": "string",
+            "enum": ["json", "toon"],
+            "description": "Output format",
+            "default": "toon",
+        },
+    },
+    "additionalProperties": False,
+}
+
 
 class ProjectOverviewTool(BaseMCPTool):
     """MCP Tool that gives AI agents a complete project portrait in one call."""
@@ -76,32 +99,11 @@ class ProjectOverviewTool(BaseMCPTool):
                 "language distribution, file counts, largest files, and directory structure. "
                 "Replaces multiple list_files + search_content calls with a single overview."
             ),
-            "inputSchema": self.get_tool_schema(),
+            "inputSchema": TOOL_SCHEMA,
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "include_health": {
-                    "type": "boolean",
-                    "description": "Include health grades for top-10 largest source files (slower)",
-                    "default": False,
-                },
-                "max_depth": {
-                    "type": "integer",
-                    "description": "Max directory depth to scan (default: 5)",
-                    "default": 5,
-                },
-                "output_format": {
-                    "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
-                },
-            },
-            "additionalProperties": False,
-        }
+        return TOOL_SCHEMA
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         max_depth = arguments.get("max_depth", 5)
@@ -122,16 +124,23 @@ class ProjectOverviewTool(BaseMCPTool):
         if not root.is_dir():
             raise ValueError(f"Project root is not a directory: {root}")
 
+        scan = self._scan_project(root, max_depth)
+        result = self._build_result(root, scan, include_health)
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(result, output_format)
+
+    def _scan_project(self, root: Path, max_depth: int) -> dict[str, Any]:
+        """Walk the project tree and collect file/directory stats."""
         lang_dist: dict[str, int] = {}
         ext_dist: dict[str, int] = {}
         all_source_files: list[dict[str, Any]] = []
         dir_tree: dict[str, int] = {}
 
         for f in root.rglob("*"):
-            # Skip excluded dirs
             if any(part in _EXCLUDE_DIRS for part in f.parts):
                 continue
-            # Depth check
             try:
                 depth = len(f.relative_to(root).parts)
             except ValueError:
@@ -142,7 +151,6 @@ class ProjectOverviewTool(BaseMCPTool):
             if f.is_file():
                 ext = f.suffix.lower()
                 ext_dist[ext] = ext_dist.get(ext, 0) + 1
-
                 lang = _SUPPORTED_EXTS.get(ext)
                 if lang:
                     lang_dist[lang] = lang_dist.get(lang, 0) + 1
@@ -159,34 +167,45 @@ class ProjectOverviewTool(BaseMCPTool):
                         )
                     except (OSError, UnicodeDecodeError):
                         continue
-
             elif f.is_dir():
-                dir_name = f.name
-                dir_tree[dir_name] = dir_tree.get(dir_name, 0) + 1
+                dir_tree[f.name] = dir_tree.get(f.name, 0) + 1
 
-        # Sort source files by line count descending, take top 15
         all_source_files.sort(key=lambda x: x["lines"], reverse=True)
-        largest_files = all_source_files[:15]
+        return {
+            "lang_dist": lang_dist,
+            "ext_dist": ext_dist,
+            "source_files": all_source_files,
+            "dir_tree": dir_tree,
+        }
+
+    def _build_result(
+        self, root: Path, scan: dict[str, Any], include_health: bool
+    ) -> dict[str, Any]:
+        """Build the result dict from scan data."""
+        lang_dist = scan["lang_dist"]
+        source_files = scan["source_files"]
+        ext_dist = scan["ext_dist"]
 
         total_files = sum(ext_dist.values())
-        total_source = sum(lang_dist.values())
-        total_lines = sum(f["lines"] for f in all_source_files)
+        total_lines = sum(f["lines"] for f in source_files)
 
         result: dict[str, Any] = {
             "success": True,
             "project_root": str(root),
             "summary": {
                 "total_files": total_files,
-                "source_files": total_source,
-                "non_source_files": total_files - total_source,
+                "source_files": sum(lang_dist.values()),
+                "non_source_files": total_files - sum(lang_dist.values()),
                 "total_lines": total_lines,
                 "languages_count": len(lang_dist),
             },
             "language_distribution": dict(
                 sorted(lang_dist.items(), key=lambda x: -x[1])
             ),
-            "largest_source_files": largest_files,
-            "top_directories": dict(sorted(dir_tree.items(), key=lambda x: -x[1])[:20]),
+            "largest_source_files": source_files[:15],
+            "top_directories": dict(
+                sorted(scan["dir_tree"].items(), key=lambda x: -x[1])[:20]
+            ),
         }
 
         if not include_health:
@@ -195,6 +214,7 @@ class ProjectOverviewTool(BaseMCPTool):
                 "or check_code_scale on any file for a quick assessment."
             )
         else:
+            self._add_health_data(result, source_files, root)
             result["smart_workflow_hint"] = _build_smart_hint(result)
 
         result["tool_routing"] = {
@@ -207,42 +227,41 @@ class ProjectOverviewTool(BaseMCPTool):
             "find_files": "list_files(roots=['.'], extensions=['py'])",
             "refactor_targets": "check_file_health(file_path=...)  # returns code_smells + next_action",
         }
+        return result
 
-        if include_health and all_source_files:
-            from ...health_scorer import HealthScorer
+    def _add_health_data(
+        self, result: dict[str, Any], source_files: list[dict[str, Any]], root: Path
+    ) -> None:
+        """Add health grades for top source files."""
+        from ...health_scorer import HealthScorer
 
-            scorer = HealthScorer()
-            health_files = all_source_files[:10]
-            health_results = []
-            for sf in health_files:
-                abs_path = str(root / sf["path"])
-                try:
-                    h = scorer.score_file(abs_path)
-                    health_entry: dict[str, Any] = {
-                        "file": sf["path"],
-                        "grade": h.grade,
-                        "score": h.total,
-                    }
-                    # Add actionable refactoring suggestion for unhealthy files
-                    if h.grade in ("D", "F"):
-                        lines = sf.get("lines", 0)
-                        suggestion = _suggest_refactor_action(sf["path"], lines, h)
-                        if suggestion:
-                            health_entry["suggestion"] = suggestion
-                    health_results.append(health_entry)
-                except Exception:  # nosec B112
-                    continue
-            result["health_summary"] = health_results
-            unhealthy = [h for h in health_results if h["grade"] in ("D", "F")]
-            if unhealthy:
-                result["health_alert"] = (
-                    f"{len(unhealthy)} file(s) scored D or F — prioritize refactoring: "
-                    + ", ".join(h["file"] for h in unhealthy[:5])
-                )
+        scorer = HealthScorer()
+        health_results = []
+        for sf in source_files[:10]:
+            try:
+                h = scorer.score_file(str(root / sf["path"]))
+                entry: dict[str, Any] = {
+                    "file": sf["path"],
+                    "grade": h.grade,
+                    "score": h.total,
+                }
+                if h.grade in ("D", "F"):
+                    suggestion = _suggest_refactor_action(
+                        sf["path"], sf.get("lines", 0), h
+                    )
+                    if suggestion:
+                        entry["suggestion"] = suggestion
+                health_results.append(entry)
+            except Exception:  # nosec B112
+                continue
 
-        from ..utils.format_helper import apply_toon_format_to_response
-
-        return apply_toon_format_to_response(result, output_format)
+        result["health_summary"] = health_results
+        unhealthy = [h for h in health_results if h["grade"] in ("D", "F")]
+        if unhealthy:
+            result["health_alert"] = (
+                f"{len(unhealthy)} file(s) scored D or F — prioritize refactoring: "
+                + ", ".join(h["file"] for h in unhealthy[:5])
+            )
 
 
 def _count_lines(path: Path) -> int:
@@ -255,28 +274,20 @@ def _count_lines(path: Path) -> int:
 def _suggest_refactor_action(
     file_path: str, line_count: int, health: Any
 ) -> str | None:
-    """Generate a one-line refactoring suggestion for an unhealthy file."""
     ext = Path(file_path).suffix.lower()
     is_test = "test" in file_path.lower()
     is_prod = not is_test and ext == ".py"
 
     if line_count > 500 and is_prod:
-        return (
-            f"check_file_health(file_path='{file_path}') for extraction targets, "
-            f"then extract the longest methods into a new module"
-        )
+        return f"check_file_health(file_path='{file_path}') for extraction targets, then extract longest methods into a new module"
     if is_test:
-        return (
-            f"Split test file by test class into separate files "
-            f"(current: {line_count} lines)"
-        )
+        return f"Split test file by test class into separate files (current: {line_count} lines)"
     if ext == ".md":
         return f"Archive old entries to reduce size ({line_count} lines)"
     return None
 
 
 def _build_smart_hint(result: dict[str, Any]) -> str:
-    """Build a context-aware SMART workflow hint based on project analysis."""
     parts: list[str] = []
     health_summary = result.get("health_summary", [])
     unhealthy = [h for h in health_summary if h.get("grade") in ("D", "F")]
@@ -284,9 +295,8 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
     top_lang = max(lang_dist, key=lambda k: lang_dist[k]) if lang_dist else ""
 
     if unhealthy:
-        # Point to the worst production file
-        prod_unhealthy = [h for h in unhealthy if "test" not in h["file"].lower()]
-        target = prod_unhealthy[0] if prod_unhealthy else unhealthy[0]
+        prod = [h for h in unhealthy if "test" not in h["file"].lower()]
+        target = prod[0] if prod else unhealthy[0]
         action = target.get("suggestion", "check_file_health for details")
         parts.append(
             f"REFACTOR: {target['file']} ({target['grade']} {target['score']:.0f}) — {action}"
@@ -294,19 +304,16 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
     else:
         parts.append("Project health is good — all top files are A/B/C grade")
 
-    # Language-specific suggestion
     if top_lang:
         parts.append(
             f"SMART 'Analyze': analyze_code_structure on any .{top_lang} file for detailed table"
         )
 
-    # Scale suggestion
     largest = result.get("largest_source_files", [])
     if largest:
         biggest = largest[0]
         parts.append(
-            f"SMART 'Retrieve': extract_code_section on {biggest['path']} "
-            f"({biggest['lines']} lines) for focused reading"
+            f"SMART 'Retrieve': extract_code_section on {biggest['path']} ({biggest['lines']} lines)"
         )
 
     return " | ".join(parts[:3])
