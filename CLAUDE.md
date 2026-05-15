@@ -98,3 +98,16 @@ DS TUI has its own skill system at `~/.deepseek/skills/`. Use `/skill-creator` t
 - `/automation-list` — see all registered automations
 - `/automation-run ts-analyzer-autonomous-loop` — trigger autonomous dev loop manually
 - Read `.autonomous-runtime/ds-automation.yaml` for the full 8-step loop specification
+## MCP tool usage (self-hosted)
+
+This project uses its own MCP server for code analysis. The SMART workflow is:
+
+1. **Map**: `get_project_overview` → understand project structure and health
+2. **Analyze**: `check_code_scale` → file size/complexity, then `analyze_code_structure` → detailed elements
+3. **Retrieve**: `extract_code_section` → read specific code by line range, or `query_code(symbol='...')` → cross-file search
+4. **Trace**: `analyze_dependencies mode=blast_radius` → impact analysis, `check_file_health` → refactoring targets
+
+Key efficiency tips:
+- Always use `output_format: toon` (default) for ~60% token reduction
+- Use `total_only: true` on `search_content` for existence checks (~10 tokens)
+- D/F grade files get `extraction_plan` with specific method names and line numbers
