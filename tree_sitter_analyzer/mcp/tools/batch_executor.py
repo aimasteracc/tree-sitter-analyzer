@@ -7,7 +7,7 @@ from typing import Any
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
-_BATCH_LIMITS = {
+BATCH_LIMITS = {
     "max_files": 20,
     "max_sections_per_file": 50,
     "max_sections_total": 200,
@@ -15,6 +15,131 @@ _BATCH_LIMITS = {
     "max_total_lines": 5000,
     "max_file_size_bytes": 5 * 1024 * 1024,
 }
+
+
+def _validate_batch_top_level(arguments: dict[str, Any]) -> list[Any]:
+    requests = arguments.get("requests")
+    single_keys = {"file_path", "start_line", "end_line", "start_column", "end_column"}
+    if any(k in arguments for k in single_keys):
+        raise ValueError(
+            "requests is mutually exclusive with file_path/start_line/end_line/start_column/end_column"
+        )
+    if "output_file" in arguments or "suppress_output" in arguments:
+        raise ValueError(
+            "output_file/suppress_output are not supported with requests batch mode"
+        )
+    if not isinstance(requests, list):
+        raise ValueError("requests must be a list")
+    return requests
+
+
+def _clamp_requests(
+    requests: list[Any], allow_truncate: bool
+) -> tuple[list[Any], bool]:
+    truncated = False
+    if len(requests) > BATCH_LIMITS["max_files"]:
+        if not allow_truncate:
+            raise ValueError(
+                f"Too many files in requests: {len(requests)} > max_files={BATCH_LIMITS['max_files']}"
+            )
+        requests = requests[: BATCH_LIMITS["max_files"]]
+        truncated = True
+    return requests, truncated
+
+
+def _make_error_result(
+    file_path: str, resolved_path: str, error: str
+) -> dict[str, Any]:
+    return {
+        "file_path": file_path,
+        "resolved_path": resolved_path,
+        "sections": [],
+        "errors": [{"error": error}],
+    }
+
+
+def _validate_file_request(
+    file_req: Any, fail_fast: bool, allow_truncate: bool
+) -> tuple[str, list[Any], dict[str, Any] | None, bool]:
+    """Validate a single file request. Returns (file_path, sections, error_result, truncated)."""
+    if not isinstance(file_req, dict):
+        if fail_fast:
+            raise ValueError("Each requests[] entry must be an object")
+        return "", [], _make_error_result("", "", "Invalid request entry"), False
+
+    file_path = file_req.get("file_path")
+    sections = file_req.get("sections")
+
+    if not isinstance(file_path, str) or not file_path.strip():
+        if fail_fast:
+            raise ValueError("requests[].file_path must be a non-empty string")
+        return (
+            file_path or "",
+            [],
+            _make_error_result(file_path or "", "", "Invalid file_path"),
+            False,
+        )
+
+    if not isinstance(sections, list):
+        if fail_fast:
+            raise ValueError("requests[].sections must be a list")
+        return (
+            file_path,
+            [],
+            _make_error_result(file_path, "", "Invalid sections"),
+            False,
+        )
+
+    truncated = False
+    if len(sections) > BATCH_LIMITS["max_sections_per_file"]:
+        if not allow_truncate:
+            if fail_fast:
+                raise ValueError(
+                    f"Too many sections for file {file_path}: {len(sections)} > max_sections_per_file={BATCH_LIMITS['max_sections_per_file']}"
+                )
+            return (
+                file_path,
+                [],
+                _make_error_result(file_path, "", "Too many sections for file"),
+                False,
+            )
+        sections = sections[: BATCH_LIMITS["max_sections_per_file"]]
+        truncated = True
+
+    return file_path, sections, None, truncated
+
+
+def _resolve_file(
+    tool: BaseMCPTool, file_path: str, fail_fast: bool
+) -> tuple[str | None, dict[str, Any] | None]:
+    """Resolve file path. Returns (resolved_path, error_result)."""
+    try:
+        resolved = tool.resolve_and_validate_file_path(file_path)
+    except ValueError as e:
+        if fail_fast:
+            raise
+        return None, _make_error_result(file_path, "", str(e))
+
+    p = Path(resolved)
+    if not p.exists():
+        msg = "Invalid file path: file does not exist"
+        if fail_fast:
+            raise ValueError(msg)
+        return None, _make_error_result(file_path, resolved, msg)
+
+    try:
+        if p.stat().st_size > BATCH_LIMITS["max_file_size_bytes"]:
+            msg = f"File too large: {p.stat().st_size} > max_file_size_bytes={BATCH_LIMITS['max_file_size_bytes']}"
+            if fail_fast:
+                raise ValueError(msg)
+            return None, _make_error_result(file_path, resolved, msg)
+    except OSError as e:
+        msg = f"Could not stat file: {e}"
+        if fail_fast:
+            raise ValueError(msg) from e
+        return None, _make_error_result(file_path, resolved, msg)
+
+    return resolved, None
 
 
 async def execute_batch(
@@ -27,36 +152,9 @@ async def execute_batch(
     content_format = arguments.get("format", "text")
     allow_truncate = bool(arguments.get("allow_truncate", False))
     fail_fast = bool(arguments.get("fail_fast", False))
-    requests = arguments.get("requests")
 
-    single_keys = {
-        "file_path",
-        "start_line",
-        "end_line",
-        "start_column",
-        "end_column",
-    }
-    if any(k in arguments for k in single_keys):
-        raise ValueError(
-            "requests is mutually exclusive with file_path/start_line/end_line/start_column/end_column"
-        )
-
-    if "output_file" in arguments or "suppress_output" in arguments:
-        raise ValueError(
-            "output_file/suppress_output are not supported with requests batch mode"
-        )
-
-    if not isinstance(requests, list):
-        raise ValueError("requests must be a list")
-
-    truncated = False
-    if len(requests) > _BATCH_LIMITS["max_files"]:
-        if not allow_truncate:
-            raise ValueError(
-                f"Too many files in requests: {len(requests)} > max_files={_BATCH_LIMITS['max_files']}"
-            )
-        requests = requests[: _BATCH_LIMITS["max_files"]]
-        truncated = True
+    requests = _validate_batch_top_level(arguments)
+    requests, truncated = _clamp_requests(requests, allow_truncate)
 
     results: list[dict[str, Any]] = []
     total_bytes = 0
@@ -66,127 +164,19 @@ async def execute_batch(
     error_count = 0
 
     for file_req in requests:
-        if not isinstance(file_req, dict):
-            if fail_fast:
-                raise ValueError("Each requests[] entry must be an object")
-            results.append(
-                {
-                    "file_path": "",
-                    "resolved_path": "",
-                    "sections": [],
-                    "errors": [{"error": "Invalid request entry"}],
-                }
-            )
-            error_count += 1
-            continue
-
-        file_path = file_req.get("file_path")
-        sections = file_req.get("sections")
-        if not isinstance(file_path, str) or not file_path.strip():
-            if fail_fast:
-                raise ValueError("requests[].file_path must be a non-empty string")
-            results.append(
-                {
-                    "file_path": file_path or "",
-                    "resolved_path": "",
-                    "sections": [],
-                    "errors": [{"error": "Invalid file_path"}],
-                }
-            )
-            error_count += 1
-            continue
-        if not isinstance(sections, list):
-            if fail_fast:
-                raise ValueError("requests[].sections must be a list")
-            results.append(
-                {
-                    "file_path": file_path,
-                    "resolved_path": "",
-                    "sections": [],
-                    "errors": [{"error": "Invalid sections"}],
-                }
-            )
-            error_count += 1
-            continue
-
-        if len(sections) > _BATCH_LIMITS["max_sections_per_file"]:
-            if not allow_truncate:
-                if fail_fast:
-                    raise ValueError(
-                        f"Too many sections for file {file_path}: {len(sections)} > max_sections_per_file={_BATCH_LIMITS['max_sections_per_file']}"
-                    )
-                results.append(
-                    {
-                        "file_path": file_path,
-                        "resolved_path": "",
-                        "sections": [],
-                        "errors": [{"error": "Too many sections for file"}],
-                    }
-                )
-                error_count += 1
-                continue
-            sections = sections[: _BATCH_LIMITS["max_sections_per_file"]]
+        file_path, sections, err_result, req_truncated = _validate_file_request(
+            file_req, fail_fast, allow_truncate
+        )
+        if req_truncated:
             truncated = True
-
-        try:
-            resolved = tool.resolve_and_validate_file_path(file_path)
-        except ValueError as e:
-            if fail_fast:
-                raise
-            results.append(
-                {
-                    "file_path": file_path,
-                    "resolved_path": "",
-                    "sections": [],
-                    "errors": [{"error": str(e)}],
-                }
-            )
+        if err_result:
+            results.append(err_result)
             error_count += 1
             continue
 
-        p = Path(resolved)
-        if not p.exists():
-            msg = "Invalid file path: file does not exist"
-            if fail_fast:
-                raise ValueError(msg)
-            results.append(
-                {
-                    "file_path": file_path,
-                    "resolved_path": resolved,
-                    "sections": [],
-                    "errors": [{"error": msg}],
-                }
-            )
-            error_count += 1
-            continue
-
-        try:
-            if p.stat().st_size > _BATCH_LIMITS["max_file_size_bytes"]:
-                msg = f"File too large: {p.stat().st_size} > max_file_size_bytes={_BATCH_LIMITS['max_file_size_bytes']}"
-                if fail_fast:
-                    raise ValueError(msg)
-                results.append(
-                    {
-                        "file_path": file_path,
-                        "resolved_path": resolved,
-                        "sections": [],
-                        "errors": [{"error": msg}],
-                    }
-                )
-                error_count += 1
-                continue
-        except OSError as e:
-            msg = f"Could not stat file: {e}"
-            if fail_fast:
-                raise ValueError(msg) from e
-            results.append(
-                {
-                    "file_path": file_path,
-                    "resolved_path": resolved,
-                    "sections": [],
-                    "errors": [{"error": msg}],
-                }
-            )
+        resolved, err_result = _resolve_file(tool, file_path, fail_fast)
+        if err_result:
+            results.append(err_result)
             error_count += 1
             continue
 
@@ -231,10 +221,10 @@ async def execute_batch(
                 continue
 
             sections_seen_total += 1
-            if sections_seen_total > _BATCH_LIMITS["max_sections_total"]:
+            if sections_seen_total > BATCH_LIMITS["max_sections_total"]:
                 if not allow_truncate:
                     raise ValueError(
-                        f"Too many sections in requests: > max_sections_total={_BATCH_LIMITS['max_sections_total']}"
+                        f"Too many sections in requests: > max_sections_total={BATCH_LIMITS['max_sections_total']}"
                     )
                 truncated = True
                 break
@@ -260,13 +250,13 @@ async def execute_batch(
             would_bytes = total_bytes + content_bytes
             would_lines = total_lines + content_lines
             if (
-                would_bytes > _BATCH_LIMITS["max_total_bytes"]
-                or would_lines > _BATCH_LIMITS["max_total_lines"]
+                would_bytes > BATCH_LIMITS["max_total_bytes"]
+                or would_lines > BATCH_LIMITS["max_total_lines"]
             ):
                 if not allow_truncate:
                     raise ValueError(
                         "Batch extract exceeds limits: "
-                        f"max_total_bytes={_BATCH_LIMITS['max_total_bytes']}, max_total_lines={_BATCH_LIMITS['max_total_lines']}"
+                        f"max_total_bytes={BATCH_LIMITS['max_total_bytes']}, max_total_lines={BATCH_LIMITS['max_total_lines']}"
                     )
                 truncated = True
                 break
@@ -294,14 +284,7 @@ async def execute_batch(
         "count_files": len(results),
         "count_sections": ok_sections,
         "truncated": truncated,
-        "limits": {
-            "max_files": _BATCH_LIMITS["max_files"],
-            "max_sections_per_file": _BATCH_LIMITS["max_sections_per_file"],
-            "max_sections_total": _BATCH_LIMITS["max_sections_total"],
-            "max_total_bytes": _BATCH_LIMITS["max_total_bytes"],
-            "max_total_lines": _BATCH_LIMITS["max_total_lines"],
-            "max_file_size_bytes": _BATCH_LIMITS["max_file_size_bytes"],
-        },
+        "limits": dict(BATCH_LIMITS),
         "errors_summary": {"errors": error_count},
         "results": results,
     }
