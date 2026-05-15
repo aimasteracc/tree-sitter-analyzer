@@ -7,7 +7,6 @@ Supports standard C constructs including functions, structs, unions,
 enums, and preprocessor directives.
 """
 
-import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -20,6 +19,27 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
+from .c_helpers import (
+    calculate_complexity as _calc_complexity_standalone,
+)
+from .c_helpers import (
+    extract_c_imports as _extract_imports_standalone,
+)
+from .c_helpers import (
+    extract_comment_for_line as _extract_comment_standalone,
+)
+from .c_helpers import (
+    extract_macro_definition as _extract_macro_def_standalone,
+)
+from .c_helpers import (
+    extract_macro_function as _extract_macro_func_standalone,
+)
+from .c_helpers import (
+    extract_parameters as _extract_params_standalone,
+)
+from .c_helpers import (
+    parse_function_signature as _parse_sig_standalone,
+)
 
 
 class CElementExtractor(ElementExtractor):
@@ -117,24 +137,9 @@ class CElementExtractor(ElementExtractor):
         """Extract C include directives"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
-
-        imports: list[Import] = []
-
-        # Extract preprocessor includes
-        for child in tree.root_node.children:
-            if child.type == "preproc_include":
-                import_info = self._extract_include_info(child, source_code)
-                if import_info:
-                    imports.append(import_info)
-
-        # Fallback: use regex if tree-sitter doesn't catch all includes
-        if not imports and "#include" in source_code:
-            log_debug("No includes found via tree-sitter, trying regex fallback")
-            fallback_imports = self._extract_includes_fallback(source_code)
-            imports.extend(fallback_imports)
-
-        log_debug(f"Extracted {len(imports)} C includes")
-        return imports
+        return _extract_imports_standalone(
+            tree, source_code, self._get_node_text_optimized
+        )
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
@@ -318,72 +323,13 @@ class CElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node"
     ) -> tuple[str, str, list[str], list[str]] | None:
         """Parse C function signature"""
-        try:
-            name = None
-            return_type = "int"
-            parameters: list[str] = []
-            modifiers: list[str] = []
-
-            def find_function_declarator(n: "tree_sitter.Node") -> None:
-                """Recursively find function_declarator in pointer_declarator"""
-                nonlocal name, parameters
-                for child in n.children:
-                    if child.type == "function_declarator":
-                        for grandchild in child.children:
-                            if grandchild.type == "identifier":
-                                name = self._get_node_text_optimized(grandchild)
-                            elif grandchild.type == "parameter_list":
-                                parameters = self._extract_parameters(grandchild)
-                    elif child.type == "pointer_declarator":
-                        find_function_declarator(child)
-
-            for child in node.children:
-                if child.type == "function_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            name = self._get_node_text_optimized(grandchild)
-                        elif grandchild.type == "parameter_list":
-                            parameters = self._extract_parameters(grandchild)
-                elif child.type == "pointer_declarator":
-                    # Handle pointer return types (e.g., int* func())
-                    find_function_declarator(child)
-                    # Mark return type as pointer
-                    if return_type and "*" not in return_type:
-                        return_type = return_type + "*"
-                elif child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "sized_type_specifier",
-                ]:
-                    return_type = self._get_node_text_optimized(child)
-                elif child.type == "storage_class_specifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-
-            if not name:
-                return None
-
-            return name, return_type, parameters, modifiers
-        except Exception:
-            return None
+        return _parse_sig_standalone(
+            node, self._get_node_text_optimized, self._extract_parameters
+        )
 
     def _extract_parameters(self, params_node: "tree_sitter.Node") -> list[str]:
         """Extract function parameters"""
-        parameters: list[str] = []
-
-        for child in params_node.children:
-            if child.type == "parameter_declaration":
-                param_text = self._get_node_text_optimized(child)
-                parameters.append(param_text)
-            elif child.type == "variadic_parameter":
-                parameters.append("...")
-
-        return parameters
+        return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
     def _extract_struct_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract struct information optimized"""
@@ -670,208 +616,31 @@ class CElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node", source_code: str
     ) -> Import | None:
         """Extract include directive information"""
-        try:
-            include_text = self._get_node_text_optimized(node)
-            line_num = node.start_point[0] + 1
+        from .c_helpers import _extract_include_info as _impl
 
-            # Determine if it's a system include (<...>) or local include ("...")
-            is_system = "<" in include_text
-
-            # Extract the included file path
-            if is_system:
-                match = re.search(r"<([^>]+)>", include_text)
-            else:
-                match = re.search(r'"([^"]+)"', include_text)
-
-            if match:
-                include_path = match.group(1)
-
-                return Import(
-                    name=include_path,
-                    start_line=line_num,
-                    end_line=line_num,
-                    raw_text=include_text,
-                    language="c",
-                    module_name=include_path,
-                    import_statement=include_text,
-                )
-
-        except Exception as e:
-            log_debug(f"Failed to extract include info: {e}")
-
-        return None
+        return _impl(node, self._get_node_text_optimized)
 
     def _extract_includes_fallback(self, source_code: str) -> list[Import]:
         """Fallback include extraction using regex"""
-        imports: list[Import] = []
-        lines = source_code.split("\n")
+        from .c_helpers import _extract_includes_fallback
 
-        for line_num, line in enumerate(lines, 1):
-            line = line.strip()
-            if line.startswith("#include"):
-                # System include
-                system_match = re.search(r"#include\s*<([^>]+)>", line)
-                if system_match:
-                    include_path = system_match.group(1)
-                    imports.append(
-                        Import(
-                            name=include_path,
-                            start_line=line_num,
-                            end_line=line_num,
-                            raw_text=line,
-                            language="c",
-                            module_name=include_path,
-                            import_statement=line,
-                        )
-                    )
-                else:
-                    # Local include
-                    local_match = re.search(r'#include\s*"([^"]+)"', line)
-                    if local_match:
-                        include_path = local_match.group(1)
-                        imports.append(
-                            Import(
-                                name=include_path,
-                                start_line=line_num,
-                                end_line=line_num,
-                                raw_text=line,
-                                language="c",
-                                module_name=include_path,
-                                import_statement=line,
-                            )
-                        )
-
-        return imports
+        return _extract_includes_fallback(source_code)
 
     def _extract_macro_definition(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract macro definitions as constants"""
-        variables: list[Variable] = []
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            name = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    name = self._get_node_text_optimized(child)
-                    break
-
-            if name:
-                raw_text = self._get_node_text_optimized(node)
-                var = Variable(
-                    name=name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="c",
-                    variable_type="macro",
-                    modifiers=["const", "macro"],
-                    is_constant=True,
-                    visibility="public",
-                )
-                variables.append(var)
-        except Exception as e:
-            log_debug(f"Failed to extract macro: {e}")
-
-        return variables
+        return _extract_macro_def_standalone(node, self._get_node_text_optimized)
 
     def _extract_macro_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract macro function definition"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            name = None
-            params: list[str] = []
-
-            for child in node.children:
-                if child.type == "identifier":
-                    name = self._get_node_text_optimized(child)
-                elif child.type == "preproc_params":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            params.append(self._get_node_text_optimized(grandchild))
-                        elif grandchild.type == "variadic_parameter":  # Handle ...
-                            params.append("...")
-
-            if name:
-                return Function(
-                    name=name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=self._get_node_text_optimized(node),
-                    language="c",
-                    parameters=params,
-                    return_type="macro",
-                    modifiers=["macro"],
-                    visibility="public",
-                    complexity_score=1,
-                )
-        except Exception as e:
-            log_debug(f"Failed to extract macro function: {e}")
-            return None
-        return None
+        return _extract_macro_func_standalone(node, self._get_node_text_optimized)
 
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity"""
-        complexity = 1  # Base complexity
-
-        decision_nodes = [
-            "if_statement",
-            "while_statement",
-            "for_statement",
-            "switch_statement",
-            "case_statement",
-            "conditional_expression",
-            "do_statement",
-        ]
-
-        def count_decisions(n: "tree_sitter.Node") -> int:
-            count = 0
-            if hasattr(n, "type") and n.type in decision_nodes:
-                count += 1
-            if hasattr(n, "children"):
-                try:
-                    for child in n.children:
-                        count += count_decisions(child)
-                except (TypeError, AttributeError):
-                    pass
-            return count
-
-        complexity += count_decisions(node)
-        return complexity
+        return _calc_complexity_standalone(node)
 
     def _extract_comment_for_line(self, line: int) -> str | None:
         """Extract comment (documentation) for a specific line"""
-        try:
-            # Look for comment immediately before the line
-            for i in range(max(0, line - 5), line):
-                if i < len(self.content_lines):
-                    line_content = self.content_lines[i].strip()
-                    # Check for Doxygen-style comments
-                    if line_content.startswith("/**"):
-                        comment_lines = []
-                        for j in range(i, min(len(self.content_lines), line)):
-                            doc_line = self.content_lines[j].strip()
-                            comment_lines.append(doc_line)
-                            if doc_line.endswith("*/"):
-                                break
-                        return "\n".join(comment_lines)
-                    # Check for /* ... */ style comments
-                    elif line_content.startswith("/*"):
-                        comment_lines = []
-                        for j in range(i, min(len(self.content_lines), line)):
-                            doc_line = self.content_lines[j].strip()
-                            comment_lines.append(doc_line)
-                            if doc_line.endswith("*/"):
-                                break
-                        return "\n".join(comment_lines)
-
-        except Exception as e:
-            log_debug(f"Failed to extract comment: {e}")
-
-        return None
+        return _extract_comment_standalone(line, self.content_lines)
 
 
 class CPlugin(LanguagePlugin):
