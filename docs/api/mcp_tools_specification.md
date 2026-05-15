@@ -1364,6 +1364,35 @@ mcp_servers:
 
 **SMART Workflow**: Use in the **Trace (T)** step to understand change impact.
 
+### 12. analyze_change_impact
+
+**Purpose**: Git-aware change impact analysis combining git diff with dependency graph.
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": ["diff", "staged", "branch"],
+      "default": "diff",
+      "description": "diff=unstaged, staged=staged, branch=vs main"
+    },
+    "include_tests": {
+      "type": "boolean",
+      "default": true,
+      "description": "Find related test files"
+    },
+    "output_format": {"type": "string", "enum": ["json", "toon"], "default": "toon"}
+  }
+}
+```
+
+**Output**: changed files, affected downstream files (via blast radius), related test files to run, risk level (low/medium/high), diff stat.
+
+**SMART Workflow**: Call AFTER editing code to understand what's affected and what tests to run.
+
 ---
 
 ## MCP Prompts (v1.11.0)
