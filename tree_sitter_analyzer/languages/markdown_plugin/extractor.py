@@ -27,6 +27,15 @@ from ...models import Import as ModelImport
 from ...models import Variable as ModelVariable
 from ...plugins.base import ElementExtractor
 from ...utils import log_debug, log_error
+from .link_image_extractor import (
+    extract_md_images as _extract_md_images_standalone,
+)
+from .link_image_extractor import (
+    extract_md_link_reference_definitions as _extract_md_link_refs_standalone,
+)
+from .link_image_extractor import (
+    extract_md_links as _extract_md_links_standalone,
+)
 
 
 class MarkdownElement(CodeElement):
@@ -220,29 +229,27 @@ class MarkdownElementExtractor(ElementExtractor):
 
         if tree is not None and tree.root_node is not None:
             try:
-                # ONLY extract from tree-sitter nodes, NO regex patterns
-                # This ensures deterministic extraction
-                self._extract_inline_links(tree.root_node, links)
-                # Disable regex-based extraction that causes instability
-                # self._extract_reference_links(tree.root_node, links)
-                # self._extract_autolinks(tree.root_node, links)
-
+                all_links = _extract_md_links_standalone(
+                    tree.root_node,
+                    self._get_node_text_optimized,
+                    self._traverse_nodes,
+                    getattr(self, "_extracted_links", None),
+                )
+                links.extend(all_links)
             except Exception as e:
                 log_debug(f"Error during link extraction: {e}")
 
-        # 重複除去: 同じtextとurlを持つ要素を除去
-        seen = set()
-        unique_links = []
+        # Deduplicate
+        seen: set[tuple[str, str]] = set()
+        unique_links: list[MarkdownElement] = []
         for link in links:
             key = (getattr(link, "text", "") or "", getattr(link, "url", "") or "")
             if key not in seen:
                 seen.add(key)
                 unique_links.append(link)
 
-        links = unique_links
-
-        log_debug(f"Extracted {len(links)} Markdown links")
-        return links
+        log_debug(f"Extracted {len(unique_links)} Markdown links")
+        return unique_links
 
     def extract_images(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -256,26 +263,26 @@ class MarkdownElementExtractor(ElementExtractor):
 
         if tree is not None and tree.root_node is not None:
             try:
-                self._extract_inline_images(tree.root_node, images)
-                # Disable regex-based extraction that causes instability
-                # self._extract_reference_images(tree.root_node, images)
-                self._extract_image_reference_definitions(tree.root_node, images)
+                all_images = _extract_md_images_standalone(
+                    tree.root_node,
+                    self._get_node_text_optimized,
+                    self._traverse_nodes,
+                )
+                images.extend(all_images)
             except Exception as e:
                 log_debug(f"Error during image extraction: {e}")
 
-        # 重複除去: 同じalt_textとurlを持つ要素を除去
-        seen = set()
-        unique_images = []
+        # Deduplicate
+        seen: set[tuple[str, str]] = set()
+        unique_images: list[MarkdownElement] = []
         for img in images:
             key = (img.alt_text or "", img.url or "")
             if key not in seen:
                 seen.add(key)
                 unique_images.append(img)
 
-        images = unique_images
-
-        log_debug(f"Extracted {len(images)} Markdown images")
-        return images
+        log_debug(f"Extracted {len(unique_images)} Markdown images")
+        return unique_images
 
     def extract_references(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -289,7 +296,12 @@ class MarkdownElementExtractor(ElementExtractor):
 
         if tree is not None and tree.root_node is not None:
             try:
-                self._extract_link_reference_definitions(tree.root_node, references)
+                refs = _extract_md_link_refs_standalone(
+                    tree.root_node,
+                    self._get_node_text_optimized,
+                    self._traverse_nodes,
+                )
+                references.extend(refs)
             except Exception as e:
                 log_debug(f"Error during reference extraction: {e}")
 
@@ -665,362 +677,64 @@ class MarkdownElementExtractor(ElementExtractor):
     def _extract_inline_links(
         self, root_node: "tree_sitter.Node", links: list[MarkdownElement]
     ) -> None:
-        """Extract inline links"""
-        import re
+        from .link_image_extractor import _extract_inline_links as _impl
 
-        # Extract links from text within inline nodes using regular expressions
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Inline link pattern: [text](url "title") (excluding images)
-                    inline_pattern = r'(?<!\!)\[([^\]]*)\]\(([^)]*?)(?:\s+"([^"]*)")?\)'
-                    matches = re.finditer(inline_pattern, raw_text)
-
-                    for match in matches:
-                        text = match.group(1) or ""
-                        url = match.group(2) or ""
-                        title = match.group(3) or ""
-
-                        # Global duplicate check: process same text and URL combination only once
-                        link_signature = f"{text}|{url}"
-                        if (
-                            hasattr(self, "_extracted_links")
-                            and link_signature in self._extracted_links
-                        ):
-                            continue
-
-                        if hasattr(self, "_extracted_links"):
-                            self._extracted_links.add(link_signature)
-
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        link = MarkdownElement(
-                            name=text or "Link",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="link",
-                            url=url,
-                            title=title,
-                        )
-                        # Add additional attributes for formatter
-                        link.text = text or "Link"
-                        link.type = "link"
-                        links.append(link)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract inline link: {e}")
+        _impl(
+            root_node,
+            links,
+            self._get_node_text_optimized,
+            self._traverse_nodes,
+            getattr(self, "_extracted_links", None),
+        )
 
     def _extract_reference_links(
         self, root_node: "tree_sitter.Node", links: list[MarkdownElement]
     ) -> None:
-        """Extract reference links"""
-        import re
+        from .link_image_extractor import _extract_reference_links as _impl
 
-        # Reference links also need to be extracted from inline nodes
-        # Track already processed reference links to avoid duplicates
-        processed_ref_links = set()
-
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Reference link pattern: [text][ref]
-                    ref_pattern = r"\[([^\]]*)\]\[([^\]]*)\]"
-                    matches = re.finditer(ref_pattern, raw_text)
-
-                    for match in matches:
-                        text = match.group(1) or ""
-                        ref = match.group(2) or ""
-
-                        # Skip image references (starting with !)
-                        if match.start() > 0 and raw_text[match.start() - 1] == "!":
-                            continue
-
-                        # Calculate accurate line number based on match position
-                        text_before_match = raw_text[: match.start()]
-                        newlines_before = text_before_match.count("\n")
-                        start_line = node.start_point[0] + 1 + newlines_before
-
-                        # Duplicate check: process same text and reference combination only once
-                        ref_link_key = (text, ref, start_line)
-
-                        if ref_link_key in processed_ref_links:
-                            continue
-                        processed_ref_links.add(ref_link_key)
-
-                        end_line = start_line
-
-                        link = MarkdownElement(
-                            name=text or "Reference Link",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="reference_link",
-                        )
-                        # Add additional attributes for formatter
-                        link.text = text or "Reference Link"
-                        link.type = "reference_link"
-                        links.append(link)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract reference link: {e}")
+        _impl(root_node, links, self._get_node_text_optimized, self._traverse_nodes)
 
     def _extract_autolinks(
         self, root_node: "tree_sitter.Node", links: list[MarkdownElement]
     ) -> None:
-        """Extract autolinks"""
-        import re
+        from .link_image_extractor import _extract_autolinks as _impl
 
-        # Extract autolinks from text within inline nodes using regular expressions
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Autolink pattern: <url> or <email>
-                    autolink_pattern = (
-                        r"<(https?://[^>]+|mailto:[^>]+|[^@\s]+@[^@\s]+\.[^@\s]+)>"
-                    )
-                    matches = re.finditer(autolink_pattern, raw_text)
-
-                    for match in matches:
-                        url = match.group(1) or ""
-                        full_match = match.group(0)
-
-                        # Global duplicate check: process same URL for autolinks only once
-                        autolink_signature = f"autolink|{url}"
-                        if (
-                            hasattr(self, "_extracted_links")
-                            and autolink_signature in self._extracted_links
-                        ):
-                            continue
-
-                        if hasattr(self, "_extracted_links"):
-                            self._extracted_links.add(autolink_signature)
-
-                        # Calculate accurate line number based on match position within the text
-                        text_before_match = raw_text[: match.start()]
-                        newlines_before = text_before_match.count("\n")
-                        start_line = node.start_point[0] + 1 + newlines_before
-                        end_line = start_line
-
-                        link = MarkdownElement(
-                            name=url or "Autolink",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=full_match,
-                            element_type="autolink",
-                            url=url,
-                        )
-                        # Add additional attributes for formatter
-                        link.text = url or "Autolink"
-                        link.type = "autolink"
-                        links.append(link)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract autolink: {e}")
+        _impl(
+            root_node,
+            links,
+            self._get_node_text_optimized,
+            self._traverse_nodes,
+            getattr(self, "_extracted_links", None),
+        )
 
     def _extract_inline_images(
         self, root_node: "tree_sitter.Node", images: list[MarkdownElement]
     ) -> None:
-        """Extract inline images"""
-        import re
+        from .link_image_extractor import _extract_inline_images as _impl
 
-        # Extract images from text within inline nodes using regular expressions
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Inline image pattern: ![alt](url "title")
-                    image_pattern = r'!\[([^\]]*)\]\(([^)]*?)(?:\s+"([^"]*)")?\)'
-                    matches = re.finditer(image_pattern, raw_text)
-
-                    for match in matches:
-                        alt_text = match.group(1) or ""
-                        url = match.group(2) or ""
-                        title = match.group(3) or ""
-
-                        # Calculate line number from matched position
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        image = MarkdownElement(
-                            name=alt_text or "Image",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="image",
-                            url=url,
-                            alt_text=alt_text,
-                            title=title,
-                        )
-                        # Add additional attributes for formatter
-                        image.alt = alt_text or ""
-                        image.type = "image"
-                        images.append(image)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract inline image: {e}")
+        _impl(root_node, images, self._get_node_text_optimized, self._traverse_nodes)
 
     def _extract_reference_images(
         self, root_node: "tree_sitter.Node", images: list[MarkdownElement]
     ) -> None:
-        """Extract reference images"""
-        import re
+        from .link_image_extractor import _extract_reference_images as _impl
 
-        # Reference images also need to be extracted from inline nodes
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Reference image pattern: ![alt][ref]
-                    ref_image_pattern = r"!\[([^\]]*)\]\[([^\]]*)\]"
-                    matches = re.finditer(ref_image_pattern, raw_text)
-
-                    for match in matches:
-                        alt_text = match.group(1) or ""
-
-                        # Calculate accurate line number based on match position
-                        text_before_match = raw_text[: match.start()]
-                        newlines_before = text_before_match.count("\n")
-                        start_line = node.start_point[0] + 1 + newlines_before
-                        end_line = start_line
-
-                        image = MarkdownElement(
-                            name=alt_text or "Reference Image",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="reference_image",
-                        )
-                        # Add additional attributes for formatter
-                        image.alt = alt_text or ""
-                        image.type = "reference_image"
-                        images.append(image)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract reference image: {e}")
+        _impl(root_node, images, self._get_node_text_optimized, self._traverse_nodes)
 
     def _extract_image_reference_definitions(
         self, root_node: "tree_sitter.Node", images: list[MarkdownElement]
     ) -> None:
-        """Extract image reference definitions"""
-        import re
+        from .link_image_extractor import _extract_image_reference_definitions as _impl
 
-        # Extract all reference definitions that could be used for images
-        # We check if the URL points to an image file or if it's used by an image reference
-        # First, collect all image references used in the document
-        image_refs_used = set()
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Find image references: ![alt][ref]
-                    ref_image_pattern = r"!\[([^\]]*)\]\[([^\]]*)\]"
-                    matches = re.finditer(ref_image_pattern, raw_text)
-
-                    for match in matches:
-                        ref = match.group(2) or ""
-                        if ref:
-                            image_refs_used.add(ref.lower())
-
-                except Exception as e:
-                    log_debug(f"Failed to scan for image references: {e}")
-
-        # Now extract reference definitions that are used by images OR point to image files
-        for node in self._traverse_nodes(root_node):
-            if node.type == "link_reference_definition":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text_optimized(node)
-
-                    # Pattern: [label]: url "title"
-                    ref_pattern = r'^\[([^\]]+)\]:\s*([^\s]+)(?:\s+"([^"]*)")?'
-                    ref_match: re.Match[str] | None = re.match(
-                        ref_pattern, raw_text.strip()
-                    )
-
-                    if ref_match:
-                        label = ref_match.group(1) or ""
-                        url = ref_match.group(2) or ""
-                        title = ref_match.group(3) or ""
-
-                        # Include if this reference is used by an image OR if URL looks like an image
-                        is_used_by_image = label.lower() in image_refs_used
-                        is_image_url = any(
-                            url.lower().endswith(ext)
-                            for ext in [
-                                ".png",
-                                ".jpg",
-                                ".jpeg",
-                                ".gif",
-                                ".svg",
-                                ".webp",
-                                ".bmp",
-                            ]
-                        )
-
-                        if is_used_by_image or is_image_url:
-                            image_ref = MarkdownElement(
-                                name=f"Image Reference Definition: {label}",
-                                start_line=start_line,
-                                end_line=end_line,
-                                raw_text=raw_text,
-                                element_type="image_reference_definition",
-                                url=url,
-                                alt_text=label,
-                                title=title,
-                            )
-                            # Add additional attributes for formatter
-                            image_ref.alt = label
-                            image_ref.type = "image_reference_definition"
-                            images.append(image_ref)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract image reference definition: {e}")
+        _impl(root_node, images, self._get_node_text_optimized, self._traverse_nodes)
 
     def _extract_link_reference_definitions(
         self, root_node: "tree_sitter.Node", references: list[MarkdownElement]
     ) -> None:
-        """Extract link reference definitions"""
-        for node in self._traverse_nodes(root_node):
-            if node.type == "link_reference_definition":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text_optimized(node)
-
-                    reference = MarkdownElement(
-                        name=raw_text or "Reference Definition",
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        element_type="reference_definition",
-                    )
-                    references.append(reference)
-                except Exception as e:
-                    log_debug(f"Failed to extract reference definition: {e}")
+        refs = _extract_md_link_refs_standalone(
+            root_node, self._get_node_text_optimized, self._traverse_nodes
+        )
+        references.extend(refs)
 
     def _extract_list_items(
         self, root_node: "tree_sitter.Node", lists: list[MarkdownElement]
