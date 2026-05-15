@@ -107,7 +107,11 @@ This project uses its own MCP server for code analysis. The SMART workflow is:
 3. **Retrieve**: `extract_code_section` → read specific code by line range, or `query_code(symbol='...')` → cross-file search
 4. **Trace**: `analyze_dependencies mode=blast_radius` → impact analysis, `check_file_health` → refactoring targets
 
+AI agent power tools:
+- **`safe_to_edit`** → call BEFORE editing any file to get risk_level (safe/caution/dangerous), blast radius, and a pre-edit checklist
+- **`refactoring_suggestions`** → get exact line ranges, extraction targets, and priority-scored suggestions before refactoring
+- **`check_file_health`** → D/F grade files get `extraction_plan` with AST-based method names and line numbers
+
 Key efficiency tips:
 - Always use `output_format: toon` (default) for ~60% token reduction
 - Use `total_only: true` on `search_content` for existence checks (~10 tokens)
-- D/F grade files get `extraction_plan` with specific method names and line numbers

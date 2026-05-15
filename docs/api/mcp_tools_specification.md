@@ -1,23 +1,25 @@
 # Tree-sitter Analyzer MCP Tools API Specification
 
-**Version**: 1.12.0
+**Version**: 1.13.0
 **Date**: 2026-05-15
 **Protocol**: Model Context Protocol (MCP) v1.0
 
 ## Overview
 
-Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための11の専門ツール、2つのリソース、および2つのSMART workflowプロンプトを提供します。すべてのツールはMCP v1.0仕様に準拠し、統一されたエラーハンドリングとセキュリティ機能を実装しています。
+Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための14の専門ツール、2つのリソース、および2つのSMART workflowプロンプトを提供します。すべてのツールはMCP v1.0仕様に準拠し、統一されたエラーハンドリングとセキュリティ機能を実装しています。
 
-### v1.12.0 Changes
+### v1.13.0 Changes
+- **safe_to_edit tool**: Pre-edit risk assessment — risk_level (safe/caution/dangerous), blast radius, test proximity, pre-edit checklist
+- **refactoring_suggestions tool**: AST-based refactoring suggestions with exact line ranges, extraction targets, and priority scoring
+- **Extraction plans**: `check_file_health` D/F grade files get structured extraction_plan with AST-based line numbers
 - **36% schema compression**: tool descriptions reduced from 6858→4385 tokens (2.2% of 200K context)
 - **Tool routing guide**: `get_project_overview` now returns `tool_routing` decision table for AI agents
 - **Response optimization**: `check_code_scale` caps `available_queries` at 15 (was 80+)
-- **Health actionability**: `check_file_health` returns `next_action` with concrete extraction targets
 
 ## Server Information
 
 - **Name**: `tree-sitter-analyzer`
-- **Version**: `1.12.0`
+- **Version**: `1.13.0`
 - **Protocol Version**: `2024-11-05`
 - **Capabilities**: `tools`, `resources`, `logging`, `prompts`
 
