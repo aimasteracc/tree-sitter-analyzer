@@ -191,11 +191,22 @@ class ProjectOverviewTool(BaseMCPTool):
 
         if not include_health:
             result["smart_workflow_hint"] = (
-                "Call get_project_overview(include_health=true) to discover refactoring targets, "
+                "Call get_project_overview(include_health=true) for health grades, "
                 "or check_code_scale on any file for a quick assessment."
             )
         else:
             result["smart_workflow_hint"] = _build_smart_hint(result)
+
+        result["tool_routing"] = {
+            "file_health": "check_file_health(file_path=...)",
+            "file_scale": "check_code_scale(file_path=...)",
+            "structure_table": "analyze_code_structure(file_path=..., format_type=compact)",
+            "read_lines": "extract_code_section(file_path=..., start_line=..., end_line=...)",
+            "find_symbol": "query_code(symbol='...')  # cross-file search",
+            "search_text": "search_content(query='...', roots=['src/'])",
+            "find_files": "list_files(roots=['.'], extensions=['py'])",
+            "refactor_targets": "check_file_health(file_path=...)  # returns code_smells + next_action",
+        }
 
         if include_health and all_source_files:
             from ...health_scorer import HealthScorer
