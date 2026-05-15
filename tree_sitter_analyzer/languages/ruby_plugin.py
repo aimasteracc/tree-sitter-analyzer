@@ -24,6 +24,12 @@ except ImportError:
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_error
+from .ruby_helpers import (
+    extract_attr_methods as _extract_attrs_standalone,
+)
+from .ruby_helpers import (
+    extract_require_statement as _extract_require_standalone,
+)
 
 
 class RubyElementExtractor(ElementExtractor):
@@ -355,73 +361,10 @@ class RubyElementExtractor(ElementExtractor):
     def _extract_attr_methods(
         self, node: "tree_sitter.Node", parent_class: str
     ) -> list[Function]:
-        """
-        Extract attr_accessor, attr_reader, attr_writer methods.
-
-        Args:
-            node: Call node
-            parent_class: Name of the parent class
-
-        Returns:
-            List of Function elements
-        """
-        functions: list[Function] = []
-
-        try:
-            # Check if this is an attr_* call
-            method_node = node.child_by_field_name("method")
-            if not method_node:
-                return functions
-
-            method_name = self._get_node_text_optimized(method_node)
-            if method_name not in ("attr_accessor", "attr_reader", "attr_writer"):
-                return functions
-
-            # Extract attribute names
-            args_node = node.child_by_field_name("arguments")
-            if not args_node:
-                return functions
-
-            for arg in args_node.children:
-                if arg.type == "simple_symbol":
-                    attr_name = self._get_node_text_optimized(arg).lstrip(":")
-
-                    # Determine read/write permissions
-                    is_reader = method_name in ("attr_accessor", "attr_reader")
-                    is_writer = method_name in ("attr_accessor", "attr_writer")
-
-                    # metadata = {  # Reserved for future use
-                    #     "parent_class": parent_class,
-                    #     "attr_type": method_name,
-                    #     "is_reader": is_reader,
-                    #     "is_writer": is_writer,
-                    # }
-                    _ = (is_reader, is_writer)  # Mark as used
-
-                    functions.append(
-                        Function(
-                            name=(
-                                f"{parent_class}#{attr_name}"
-                                if parent_class
-                                else attr_name
-                            ),
-                            start_line=node.start_point[0] + 1,
-                            end_line=node.end_point[0] + 1,
-                            visibility="public",
-                            is_static=False,
-                            is_async=False,
-                            is_abstract=False,
-                            parameters=[],
-                            return_type="",
-                            modifiers=[],
-                            annotations=[],
-                            is_property=True,
-                        )
-                    )
-        except Exception as e:
-            log_error(f"Error extracting attr methods: {e}")
-
-        return functions
+        """Extract attr_accessor, attr_reader, attr_writer methods."""
+        return _extract_attrs_standalone(
+            node, parent_class, self._get_node_text_optimized
+        )
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -550,47 +493,8 @@ class RubyElementExtractor(ElementExtractor):
         return imports
 
     def _extract_require_statement(self, node: "tree_sitter.Node") -> Import | None:
-        """
-        Extract require statement.
-
-        Args:
-            node: Call node
-
-        Returns:
-            Import element or None if not a require statement
-        """
-        try:
-            # Check if this is a require call
-            method_node = node.child_by_field_name("method")
-            if not method_node:
-                return None
-
-            method_name = self._get_node_text_optimized(method_node)
-            if method_name not in ("require", "require_relative", "load"):
-                return None
-
-            # Extract required module name
-            args_node = node.child_by_field_name("arguments")
-            if not args_node or not args_node.children:
-                return None
-
-            # Get first argument (the module name)
-            first_arg = args_node.children[0]
-            if first_arg.type == "string":
-                # Extract string content
-                import_name = self._get_node_text_optimized(first_arg).strip("\"'")
-
-                return Import(
-                    name=import_name,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    alias=None,
-                    is_wildcard=False,
-                )
-        except Exception as e:
-            log_error(f"Error extracting require statement: {e}")
-
-        return None
+        """Extract require statement."""
+        return _extract_require_standalone(node, self._get_node_text_optimized)
 
 
 class RubyPlugin(LanguagePlugin):
