@@ -21,6 +21,30 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
+from .java_helpers import (
+    calculate_complexity as _calc_complexity_standalone,
+)
+from .java_helpers import (
+    determine_visibility as _determine_vis_standalone,
+)
+from .java_helpers import (
+    extract_class_name as _extract_class_name_standalone,
+)
+from .java_helpers import (
+    extract_java_imports as _extract_imports_standalone,
+)
+from .java_helpers import (
+    extract_java_packages as _extract_packages_standalone,
+)
+from .java_helpers import (
+    extract_javadoc_for_line as _extract_javadoc_standalone,
+)
+from .java_helpers import (
+    find_parent_class as _find_parent_class_standalone,
+)
+from .java_helpers import (
+    is_nested_class as _is_nested_standalone,
+)
 
 
 class JavaElementExtractor(ElementExtractor):
@@ -156,99 +180,18 @@ class JavaElementExtractor(ElementExtractor):
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
-        imports: list[Import] = []
-
-        # Extract package and imports efficiently (from AdvancedAnalyzer)
-        for child in tree.root_node.children:
-            if child.type == "package_declaration":
-                self._extract_package_info(child)
-            elif child.type == "import_declaration":
-                import_info = self._extract_import_info(child, source_code)
-                if import_info:
-                    imports.append(import_info)
-            elif child.type in [
-                "class_declaration",
-                "interface_declaration",
-                "enum_declaration",
-            ]:
-                # After package and imports come class declarations, so stop
-                break
-
-        # Fallback: if no imports found via tree-sitter, try regex-based extraction
-        if not imports and "import" in source_code:
-            log_debug("No imports found via tree-sitter, trying regex fallback")
-            fallback_imports = self._extract_imports_fallback(source_code)
-            imports.extend(fallback_imports)
-
-        log_debug(f"Extracted {len(imports)} imports")
-        return imports
+        return _extract_imports_standalone(
+            tree,
+            source_code,
+            self._get_node_text_optimized,
+            lambda pkg: setattr(self, "current_package", pkg),
+        )
 
     def _extract_imports_fallback(self, source_code: str) -> list[Import]:
         """Fallback import extraction using regex when tree-sitter fails"""
-        imports = []
-        lines = source_code.split("\n")
+        from .java_helpers import _extract_imports_fallback as _impl
 
-        for line_num, line in enumerate(lines, 1):
-            line = line.strip()
-            if line.startswith("import ") and line.endswith(";"):
-                # Extract import statement
-                import_content = line[:-1]  # Remove semicolon
-
-                if "static" in import_content:
-                    # Static import
-                    static_match = re.search(
-                        r"import\s+static\s+([\w.]+)", import_content
-                    )
-                    if static_match:
-                        import_name = static_match.group(1)
-                        if import_content.endswith(".*"):
-                            import_name = import_name.replace(".*", "")
-
-                        # For static imports, extract the class name (remove method/field name)
-                        parts = import_name.split(".")
-                        if len(parts) > 1:
-                            # Remove the last part (method/field name) to get class name
-                            import_name = ".".join(parts[:-1])
-
-                        imports.append(
-                            Import(
-                                name=import_name,
-                                start_line=line_num,
-                                end_line=line_num,
-                                raw_text=line,
-                                language="java",
-                                module_name=import_name,
-                                is_static=True,
-                                is_wildcard=import_content.endswith(".*"),
-                                import_statement=import_content,
-                            )
-                        )
-                else:
-                    # Normal import
-                    normal_match = re.search(r"import\s+([\w.]+)", import_content)
-                    if normal_match:
-                        import_name = normal_match.group(1)
-                        if import_content.endswith(".*"):
-                            if import_name.endswith(".*"):
-                                import_name = import_name[:-2]
-                            elif import_name.endswith("."):
-                                import_name = import_name[:-1]
-
-                        imports.append(
-                            Import(
-                                name=import_name,
-                                start_line=line_num,
-                                end_line=line_num,
-                                raw_text=line,
-                                language="java",
-                                module_name=import_name,
-                                is_static=False,
-                                is_wildcard=import_content.endswith(".*"),
-                                import_statement=import_content,
-                            )
-                        )
-
-        return imports
+        return _impl(source_code)
 
     def extract_packages(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -256,44 +199,9 @@ class JavaElementExtractor(ElementExtractor):
         """Extract Java package declarations"""
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
-
-        packages: list[Package] = []
-
-        # Extract package declaration from AST
-        if tree and tree.root_node:
-            for child in tree.root_node.children:
-                if child.type == "package_declaration":
-                    package_info = self._extract_package_element(child)
-                    if package_info:
-                        packages.append(package_info)
-                        # Also set current_package for use by other extractors
-                        self.current_package = package_info.name
-                    break  # Only one package declaration per file
-
-        # Fallback: Parse package from source code if AST parsing failed
-        if not packages:
-            import re
-
-            # Find package declaration with line number
-            lines = source_code.split("\n")
-            for line_num, line in enumerate(lines, start=1):
-                match = re.search(r"^\s*package\s+([\w.]+)\s*;", line)
-                if match:
-                    package_name = match.group(1).strip()
-                    packages.append(
-                        Package(
-                            name=package_name,
-                            start_line=line_num,
-                            end_line=line_num,
-                            raw_text=line.strip(),
-                            language="java",
-                        )
-                    )
-                    self.current_package = package_name
-                    log_debug(f"Package extracted via fallback: {package_name}")
-                    break
-
-        log_debug(f"Extracted {len(packages)} packages")
+        packages = _extract_packages_standalone(tree, self._get_node_text_optimized)
+        if packages and packages[0].name:
+            self.current_package = packages[0].name
         return packages
 
     def _reset_caches(self) -> None:
@@ -839,37 +747,18 @@ class JavaElementExtractor(ElementExtractor):
         return modifiers
 
     def _extract_package_info(self, node: "tree_sitter.Node") -> None:
-        """Extract package information (from AdvancedAnalyzer)"""
-        try:
-            package_text = self._get_node_text_optimized(node)
-            match = re.search(r"package\s+([\w.]+)", package_text)
-            if match:
-                self.current_package = match.group(1)
-        except (AttributeError, ValueError, IndexError) as e:
-            log_debug(f"Failed to extract package info: {e}")
-        except Exception as e:
-            log_error(f"Unexpected error in package extraction: {e}")
+        """Extract package information"""
+        from .java_helpers import _extract_package_name
+
+        pkg = _extract_package_name(node, self._get_node_text_optimized)
+        if pkg:
+            self.current_package = pkg
 
     def _extract_package_element(self, node: "tree_sitter.Node") -> Package | None:
         """Extract package element for inclusion in results"""
-        try:
-            package_text = self._get_node_text_optimized(node)
-            match = re.search(r"package\s+([\w.]+)", package_text)
-            if match:
-                package_name = match.group(1)
-                return Package(
-                    name=package_name,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    raw_text=package_text,
-                    language="java",
-                )
-        except (AttributeError, ValueError, IndexError) as e:
-            log_debug(f"Failed to extract package element: {e}")
-        except Exception as e:
-            log_error(f"Unexpected error in package element extraction: {e}")
+        from .java_helpers import _extract_package_element as _standalone
 
-        return None
+        return _standalone(node, self._get_node_text_optimized)
 
     def _extract_package_from_tree(self, tree: "tree_sitter.Tree") -> None:
         """Extract package information from tree when needed"""
@@ -883,61 +772,9 @@ class JavaElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node", source_code: str
     ) -> Import | None:
         """Extract import information from import declaration node"""
-        try:
-            import_text = self._get_node_text_optimized(node)
-            line_num = node.start_point[0] + 1
+        from .java_helpers import _extract_import_info as _standalone
 
-            # Parse import statement
-            if "static" in import_text:
-                # Static import
-                static_match = re.search(r"import\s+static\s+([\w.]+)", import_text)
-                if static_match:
-                    import_name = static_match.group(1)
-                    if import_text.endswith(".*"):
-                        import_name = import_name.replace(".*", "")
-
-                    # For static imports, extract the class name
-                    parts = import_name.split(".")
-                    if len(parts) > 1:
-                        import_name = ".".join(parts[:-1])
-
-                    return Import(
-                        name=import_name,
-                        start_line=line_num,
-                        end_line=line_num,
-                        raw_text=import_text,
-                        language="java",
-                        module_name=import_name,
-                        is_static=True,
-                        is_wildcard=import_text.endswith(".*"),
-                        import_statement=import_text,
-                    )
-            else:
-                # Normal import
-                normal_match = re.search(r"import\s+([\w.]+)", import_text)
-                if normal_match:
-                    import_name = normal_match.group(1)
-                    if import_text.endswith(".*"):
-                        if import_name.endswith(".*"):
-                            import_name = import_name[:-2]
-                        elif import_name.endswith("."):
-                            import_name = import_name[:-1]
-
-                    return Import(
-                        name=import_name,
-                        start_line=line_num,
-                        end_line=line_num,
-                        raw_text=import_text,
-                        language="java",
-                        module_name=import_name,
-                        is_static=False,
-                        is_wildcard=import_text.endswith(".*"),
-                        import_statement=import_text,
-                    )
-        except Exception as e:
-            log_debug(f"Failed to extract import info: {e}")
-
-        return None
+        return _standalone(node, self._get_node_text_optimized)
 
     def _extract_annotation_optimized(
         self, node: "tree_sitter.Node"
@@ -974,14 +811,7 @@ class JavaElementExtractor(ElementExtractor):
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
         """Determine visibility from modifiers"""
-        if "public" in modifiers:
-            return "public"
-        elif "private" in modifiers:
-            return "private"
-        elif "protected" in modifiers:
-            return "protected"
-        else:
-            return "package"
+        return _determine_vis_standalone(modifiers)
 
     def _find_annotations_for_line_cached(self, line: int) -> list[dict[str, Any]]:
         """Find annotations for a specific line with caching"""
@@ -999,94 +829,23 @@ class JavaElementExtractor(ElementExtractor):
 
     def _is_nested_class(self, node: "tree_sitter.Node") -> bool:
         """Check if this is a nested class"""
-        parent = node.parent
-        while parent:
-            if parent.type in [
-                "class_declaration",
-                "interface_declaration",
-                "enum_declaration",
-            ]:
-                return True
-            parent = parent.parent
-        return False
+        return _is_nested_standalone(node)
 
     def _find_parent_class(self, node: "tree_sitter.Node") -> str | None:
         """Find parent class name for nested classes"""
-        parent = node.parent
-        while parent:
-            if parent.type in [
-                "class_declaration",
-                "interface_declaration",
-                "enum_declaration",
-            ]:
-                for child in parent.children:
-                    if child.type == "identifier":
-                        return self._get_node_text_optimized(child)
-            parent = parent.parent
-        return None
+        return _find_parent_class_standalone(node, self._get_node_text_optimized)
 
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity optimized"""
-        complexity = 1  # Base complexity
-
-        # Count decision points
-        decision_nodes = [
-            "if_statement",
-            "while_statement",
-            "for_statement",
-            "switch_statement",
-            "catch_clause",
-            "conditional_expression",
-            "enhanced_for_statement",
-        ]
-
-        def count_decisions(n: "tree_sitter.Node") -> int:
-            count = 0
-            if hasattr(n, "type") and n.type in decision_nodes:
-                count += 1
-            if hasattr(n, "children"):
-                try:
-                    for child in n.children:
-                        count += count_decisions(child)
-                except (TypeError, AttributeError):
-                    # Handle Mock objects or other non-iterable children
-                    pass
-            return count
-
-        complexity += count_decisions(node)
-        return complexity
+        return _calc_complexity_standalone(node)
 
     def _extract_javadoc_for_line(self, line: int) -> str | None:
         """Extract JavaDoc comment for a specific line"""
-        try:
-            # Look for JavaDoc comment before the line
-            for i in range(max(0, line - 10), line):
-                if i < len(self.content_lines):
-                    line_content = self.content_lines[i].strip()
-                    if line_content.startswith("/**"):
-                        # Found start of JavaDoc, collect until */
-                        javadoc_lines = []
-                        for j in range(i, min(len(self.content_lines), line)):
-                            doc_line = self.content_lines[j].strip()
-                            javadoc_lines.append(doc_line)
-                            if doc_line.endswith("*/"):
-                                break
-                        return "\n".join(javadoc_lines)
-        except Exception as e:
-            log_debug(f"Failed to extract JavaDoc: {e}")
-
-        return None
+        return _extract_javadoc_standalone(line, self.content_lines)
 
     def _extract_class_name(self, node: "tree_sitter.Node") -> str | None:
         """Extract class name from a class declaration node."""
-        try:
-            for child in node.children:
-                if child.type == "identifier":
-                    return self._get_node_text_optimized(child)
-            return None
-        except Exception as e:
-            log_debug(f"Failed to extract class name: {e}")
-            return None
+        return _extract_class_name_standalone(node, self._get_node_text_optimized)
 
 
 class JavaPlugin(LanguagePlugin):
