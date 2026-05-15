@@ -139,19 +139,14 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         except Exception as e:
             return self._error_response(file_path, f"Cannot read file: {e}")
 
-        # Primary: tree-sitter based analysis (cross-language)
         analysis = extract_elements(resolved, self.project_root)
-
         suggestions = self._analyze_via_treesitter(
             resolved, source, analysis, max_suggestions, include_extractions
         )
 
-        # Bonus: Python-AST enhanced analysis for deeper insights
         ext = Path(resolved).suffix.lower()
         if ext == ".py" and analysis:
-            self._python_bonus_analysis(
-                resolved, source, suggestions, include_extractions, max_suggestions
-            )
+            self._python_bonus_analysis(source, suggestions, include_extractions)
 
         suggestions.sort(key=lambda s: s.get("priority_score", 0), reverse=True)
         suggestions = suggestions[:max_suggestions]
@@ -171,12 +166,9 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         max_suggestions: int,
         include_extractions: bool,
     ) -> list[dict[str, Any]]:
-        """Cross-language analysis using tree-sitter extracted elements."""
         suggestions: list[dict[str, Any]] = []
-        lines = source.splitlines()
-        line_count = len(lines)
+        line_count = len(source.splitlines())
 
-        # P001: God file
         if line_count > _PATTERN_RULES[0]["threshold"]:
             suggestions.append(
                 self._make_pattern(
@@ -189,14 +181,11 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         if not analysis:
             return suggestions
 
-        # P002: Long functions — from tree-sitter elements
-        functions = get_functions(analysis)
-        rule = _PATTERN_RULES[1]
-        for func in functions:
-            if func["lines"] > rule["threshold"]:
+        for func in get_functions(analysis):
+            if func["lines"] > _PATTERN_RULES[1]["threshold"]:
                 suggestions.append(
                     self._make_pattern(
-                        rule,
+                        _PATTERN_RULES[1],
                         name=func["name"],
                         actual=func["lines"],
                         line_range=(func["line"], func["end_line"]),
@@ -204,124 +193,111 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                     )
                 )
 
-        # Extraction patterns from tree-sitter class data
         if include_extractions:
-            classes = get_classes(analysis)
-            for cls in classes:
-                method_count = cls["method_count"]
-                method_names = cls["method_names"]
-
-                # E004: Large class
-                rule_e4 = _EXTRACTABLE_PATTERNS[3]
-                threshold = rule_e4["threshold"]
-                if method_count > threshold:
-                    suggestions.append(
-                        self._make_extraction(
-                            rule_e4,
-                            name=cls["name"],
-                            actual=method_count,
-                            threshold=threshold,
-                            line_range=(cls["line"], cls["end_line"]),
-                            priority_score=50,
-                        )
-                    )
-
-                # E002: Methods with common prefix
-                if len(method_names) >= 3:
-                    prefixes: dict[str, list[str]] = {}
-                    for m in method_names:
-                        if "_" in m and not m.startswith("_"):
-                            prefix = m.split("_")[0]
-                            prefixes.setdefault(prefix, []).append(m)
-
-                    for prefix, group in prefixes.items():
-                        if len(group) >= 3:
-                            suggestions.append(
-                                self._make_extraction(
-                                    _EXTRACTABLE_PATTERNS[1],
-                                    methods=group[:5],
-                                    class_name=cls["name"],
-                                    prefix=prefix,
-                                    line_range=(cls["line"], cls["end_line"]),
-                                    priority_score=35,
-                                )
-                            )
+            self._find_class_extractions(analysis, suggestions)
 
         return suggestions
 
-    def _python_bonus_analysis(
-        self,
-        file_path: str,
-        source: str,
-        suggestions: list[dict[str, Any]],
-        include_extractions: bool,
-        max_suggestions: int,
+    def _find_class_extractions(
+        self, analysis: Any, suggestions: list[dict[str, Any]]
     ) -> None:
-        """Python-AST enhanced analysis for nesting, params, static detection."""
+        rule_e4 = _EXTRACTABLE_PATTERNS[3]
+        for cls in get_classes(analysis):
+            if cls["method_count"] > rule_e4["threshold"]:
+                suggestions.append(
+                    self._make_extraction(
+                        rule_e4,
+                        name=cls["name"],
+                        actual=cls["method_count"],
+                        threshold=rule_e4["threshold"],
+                        line_range=(cls["line"], cls["end_line"]),
+                        priority_score=50,
+                    )
+                )
+            if len(cls["method_names"]) >= 3:
+                self._find_prefix_groups(cls, suggestions)
+
+    def _find_prefix_groups(
+        self, cls: dict[str, Any], suggestions: list[dict[str, Any]]
+    ) -> None:
+        prefixes: dict[str, list[str]] = {}
+        for m in cls["method_names"]:
+            if "_" in m and not m.startswith("_"):
+                prefixes.setdefault(m.split("_")[0], []).append(m)
+        for prefix, group in prefixes.items():
+            if len(group) >= 3:
+                suggestions.append(
+                    self._make_extraction(
+                        _EXTRACTABLE_PATTERNS[1],
+                        methods=group[:5],
+                        class_name=cls["name"],
+                        prefix=prefix,
+                        line_range=(cls["line"], cls["end_line"]),
+                        priority_score=35,
+                    )
+                )
+
+    def _python_bonus_analysis(
+        self, source: str, suggestions: list[dict[str, Any]], include_extractions: bool
+    ) -> None:
         try:
             tree = ast.parse(source)
         except SyntaxError:
             return
 
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                name = node.name
-                start_line = node.lineno
-                end_line = node.end_lineno or start_line
-
-                # P003: Deep nesting
-                max_depth = self._get_nesting_depth(node)
-                rule = _PATTERN_RULES[2]
-                if max_depth > rule["threshold"]:
-                    suggestions.append(
-                        self._make_pattern(
-                            rule,
-                            name=name,
-                            actual=max_depth,
-                            line_range=(start_line, end_line),
-                            priority_score=40 + max_depth * 5,
-                        )
-                    )
-
-                # P004: Too many parameters
-                param_count = len(node.args.args)
-                if node.args.kwonlyargs:
-                    param_count += len(node.args.kwonlyargs)
-                if node.args.vararg:
-                    param_count += 1
-                if node.args.kwarg:
-                    param_count += 1
-                rule = _PATTERN_RULES[3]
-                if param_count > rule["threshold"]:
-                    suggestions.append(
-                        self._make_pattern(
-                            rule,
-                            name=name,
-                            actual=param_count,
-                            line_range=(start_line, start_line),
-                            priority_score=30,
-                        )
-                    )
-
-                # E003: Method doesn't use self
-                if include_extractions and isinstance(node, ast.FunctionDef):
-                    parent = getattr(node, "parent", None)
-                    if isinstance(parent, ast.ClassDef) and not name.startswith("__"):
-                        if self._is_static_method(node):
-                            suggestions.append(
-                                self._make_extraction(
-                                    _EXTRACTABLE_PATTERNS[2],
-                                    method=name,
-                                    class_name=parent.name,
-                                    line_range=(start_line, end_line),
-                                    priority_score=25,
-                                )
-                            )
-
-            # Mark parent class for method detection
             if isinstance(node, ast.ClassDef):
                 for child in node.body:
                     child.parent = node  # type: ignore
+
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+
+            name = node.name
+            start, end = node.lineno, node.end_lineno or node.lineno
+
+            depth = self._get_nesting_depth(node)
+            if depth > _PATTERN_RULES[2]["threshold"]:
+                suggestions.append(
+                    self._make_pattern(
+                        _PATTERN_RULES[2],
+                        name=name,
+                        actual=depth,
+                        line_range=(start, end),
+                        priority_score=40 + depth * 5,
+                    )
+                )
+
+            params = (
+                len(node.args.args)
+                + len(node.args.kwonlyargs)
+                + (1 if node.args.vararg else 0)
+                + (1 if node.args.kwarg else 0)
+            )
+            if params > _PATTERN_RULES[3]["threshold"]:
+                suggestions.append(
+                    self._make_pattern(
+                        _PATTERN_RULES[3],
+                        name=name,
+                        actual=params,
+                        line_range=(start, start),
+                        priority_score=30,
+                    )
+                )
+
+            if include_extractions and isinstance(node, ast.FunctionDef):
+                parent = getattr(node, "parent", None)
+                if isinstance(parent, ast.ClassDef) and not name.startswith("__"):
+                    if self._is_static_method(node):
+                        suggestions.append(
+                            self._make_extraction(
+                                _EXTRACTABLE_PATTERNS[2],
+                                method=name,
+                                class_name=parent.name,
+                                line_range=(start, end),
+                                priority_score=25,
+                            )
+                        )
 
     def _get_nesting_depth(self, node: ast.AST) -> int:
         max_depth = 0
@@ -329,8 +305,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         def walk(n: ast.AST, depth: int) -> None:
             nonlocal max_depth
             is_control = isinstance(
-                n,
-                (ast.If, ast.For, ast.While, ast.With, ast.Try, ast.ExceptHandler),
+                n, (ast.If, ast.For, ast.While, ast.With, ast.Try, ast.ExceptHandler)
             )
             current = depth + (1 if is_control else 0)
             max_depth = max(max_depth, current)
@@ -411,8 +386,4 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         return True
 
     def _error_response(self, file_path: str, error: str) -> dict[str, Any]:
-        return {
-            "file": file_path,
-            "error": error,
-            "suggestions": [],
-        }
+        return {"file": file_path, "error": error, "suggestions": []}

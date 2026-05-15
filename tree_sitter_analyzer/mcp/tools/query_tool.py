@@ -15,6 +15,8 @@ from ...language_detector import detect_language_from_file
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
 from .base_tool import BaseMCPTool
+from .query_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
+from .query_helpers import build_next_steps, format_summary
 from .query_symbol_search import categorize_queries, execute_symbol_search
 
 logger = logging.getLogger(__name__)
@@ -24,30 +26,16 @@ class QueryTool(BaseMCPTool):
     """MCP query tool providing tree-sitter query functionality"""
 
     def __init__(self, project_root: str | None = None) -> None:
-        """Initialize query tool"""
         super().__init__(project_root)
         self.query_service = QueryService(project_root)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
     def set_project_path(self, project_path: str) -> None:
-        """
-        Update the project path for all components.
-
-        Args:
-            project_path: New project root directory
-        """
         super().set_project_path(project_path)
         self.query_service = QueryService(project_path)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
-        logger.info(f"QueryTool project path updated to: {project_path}")
 
     def get_tool_definition(self) -> dict[str, Any]:
-        """
-        Get MCP tool definition
-
-        Returns:
-            Tool definition dictionary
-        """
         return {
             "name": "query_code",
             "description": (
@@ -56,294 +44,26 @@ class QueryTool(BaseMCPTool):
                 "Mode 2: symbol only (cross-file search, returns definitions project-wide). "
                 "Keys: methods, classes, functions, imports, variables + language-specific."
             ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "File to query. Omit for cross-file symbol search.",
-                    },
-                    "symbol": {
-                        "type": "string",
-                        "description": "Symbol name to find project-wide. E.g. 'UserService'. Omit file_path.",
-                    },
-                    "language": {
-                        "type": "string",
-                        "description": "Language (optional, auto-detected)",
-                    },
-                    "query_key": {
-                        "type": "string",
-                        "description": (
-                            "Query: methods|classes|functions|imports|variables, "
-                            "or language-specific (spring_service, decorator, goroutine, etc.). "
-                            "Invalid key returns available queries."
-                        ),
-                    },
-                    "query_string": {
-                        "type": "string",
-                        "description": "Custom tree-sitter query. E.g. '(method_declaration) @m'",
-                    },
-                    "filter": {
-                        "type": "string",
-                        "description": "Filter. E.g. 'name=main', 'name=~get*,public=true'",
-                    },
-                    "result_format": {
-                        "type": "string",
-                        "enum": ["json", "summary"],
-                        "default": "json",
-                        "description": "Query result format",
-                    },
-                    "output_format": {
-                        "type": "string",
-                        "enum": ["json", "toon"],
-                        "default": "toon",
-                        "description": "'toon' (default, ~60% smaller) or 'json'",
-                    },
-                    "output_file": {
-                        "type": "string",
-                        "description": "Save output to file",
-                    },
-                    "suppress_output": {
-                        "type": "boolean",
-                        "default": False,
-                        "description": "Suppress response when output_file set",
-                    },
-                },
-            },
+            "inputSchema": _TOOL_SCHEMA,
         }
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Execute query tool
-
-        Args:
-            arguments: Tool arguments
-
-        Returns:
-            Query results
-        """
         try:
-            # Handle None arguments
             if not arguments:
-                from ..utils.error_handler import AnalysisError
+                raise _analysis_error("file_path or symbol is required")
 
-                raise AnalysisError(
-                    "file_path or symbol is required", operation="query_code"
-                )
-
-            # Cross-file symbol search mode
+            # Cross-file symbol search
             symbol = arguments.get("symbol")
             if symbol and not arguments.get("file_path"):
                 return await self._execute_symbol_search(arguments)
 
-            # Validate input parameters - check for empty arguments first
-            if not arguments:
-                from ..utils.error_handler import AnalysisError
-
-                raise AnalysisError(
-                    "file_path or symbol is required", operation="query_code"
-                )
-
-            file_path = arguments.get("file_path")
-            if not file_path:
-                from ..utils.error_handler import AnalysisError
-
-                raise AnalysisError(
-                    "file_path or symbol is required", operation="query_code"
-                )
-
-            # Check that either query_key or query_string is provided early
-            query_key = arguments.get("query_key")
-            query_string = arguments.get("query_string")
-
-            if not query_key and not query_string:
-                from ..utils.error_handler import AnalysisError
-
-                raise AnalysisError(
-                    "Either query_key or query_string must be provided",
-                    operation="query_code",
-                )
-
-            # Resolve and validate file path using unified logic with caching
-            resolved_file_path = self.resolve_and_validate_file_path(file_path)
-            logger.info(
-                f"Querying file: {file_path} (resolved to: {resolved_file_path})"
-            )
-
-            # Get query parameters (already validated above)
-            filter_expression = arguments.get("filter")
-            result_format = arguments.get("result_format", "json")
-            output_file = arguments.get("output_file")
-            suppress_output = arguments.get("suppress_output", False)
-            output_format = arguments.get("output_format", "toon")
-
-            if query_key and query_string:
-                return {
-                    "success": False,
-                    "error": "Cannot provide both query_key and query_string",
-                }
-
-            # Detect language
-            language = arguments.get("language")
-            if not language:
-                language = detect_language_from_file(
-                    resolved_file_path, project_root=self.project_root
-                )
-                if not language:
-                    return {
-                        "success": False,
-                        "error": f"Could not detect language for file: {file_path}",
-                    }
-
-            # Validate query_key if provided — return helpful list on invalid key
-            if query_key:
-                available = self.query_service.get_available_queries(language)
-                if query_key not in available:
-                    # Build categorized suggestions for the agent
-                    categorized = categorize_queries(available, language)
-                    return {
-                        "success": False,
-                        "error": (
-                            f"Query key '{query_key}' not found for {language}. "
-                            f"Available: {sorted(available)}"
-                        ),
-                        "available_queries": categorized,
-                        "language": language,
-                        "hint": "Use one of the available query keys, or provide query_string for a custom tree-sitter query.",
-                    }
-
-            # Execute query
-            results = await self.query_service.execute_query(
-                resolved_file_path, language, query_key, query_string, filter_expression
-            )
-
-            if not results:
-                # Provide helpful context so agents can self-correct
-                productive_queries = []
-                try:
-                    common_keys = [
-                        "classes",
-                        "methods",
-                        "functions",
-                        "imports",
-                        "variables",
-                    ]
-                    for qk in common_keys:
-                        qk_results = await self.query_service.execute_query(
-                            resolved_file_path, language, query_key=qk
-                        )
-                        if qk_results:
-                            productive_queries.append(qk)
-                except Exception:
-                    logger.debug(
-                        "Failed to scan productive queries for empty result context"
-                    )
-
-                response = {
-                    "success": True,
-                    "message": f"No results for query '{query_key or query_string}' in this {language} file",
-                    "results": [],
-                    "count": 0,
-                    "file_path": file_path,
-                    "language": language,
-                }
-                if productive_queries:
-                    response["productive_queries"] = productive_queries
-                    response["hint"] = (
-                        f"This file has no '{query_key or query_string}' elements. "
-                        f"Queries with results: {productive_queries}"
-                    )
-                return response
-
-            # Format output
-            if result_format == "summary":
-                formatted_result = self._format_summary(
-                    results, query_key or "custom", language
-                )
-            else:
-                formatted_result = {
-                    "success": True,
-                    "results": results,
-                    "count": len(results),
-                    "file_path": file_path,
-                    "language": language,
-                    "query": query_key or query_string,
-                }
-
-            # Add actionable next steps based on results
-            next_steps = self._build_next_steps(
-                results, file_path, query_key or query_string or ""
-            )
-            if next_steps:
-                formatted_result["next_steps"] = next_steps
-
-            # Handle file output if requested
-            if output_file:
-                try:
-                    # Generate base name from original file path if not provided
-                    if not output_file or output_file.strip() == "":
-                        base_name = (
-                            f"{Path(file_path).stem}_query_{query_key or 'custom'}"
-                        )
-                    else:
-                        base_name = output_file
-
-                    # Format content based on output_format
-                    formatted_content, _ = format_for_file_output(
-                        formatted_result, output_format
-                    )
-
-                    # Save to file with automatic extension detection
-                    saved_file_path = self.file_output_manager.save_to_file(
-                        content=formatted_content, base_name=base_name
-                    )
-
-                    # Add file output info to result
-                    formatted_result["output_file_path"] = saved_file_path
-                    formatted_result["file_saved"] = True
-
-                    logger.info(f"Query output saved to: {saved_file_path}")
-
-                except Exception as e:
-                    logger.error(f"Failed to save output to file: {e}")
-                    formatted_result["file_save_error"] = str(e)
-                    formatted_result["file_saved"] = False
-
-            # Apply suppress_output logic
-            if suppress_output and output_file:
-                # Create minimal result when output is suppressed
-                minimal_result = {
-                    "success": formatted_result.get("success", True),
-                    "count": formatted_result.get("count", len(results)),
-                    "file_path": file_path,
-                    "language": language,
-                    "query": query_key or query_string,
-                }
-
-                # Include file output info if present
-                if "output_file_path" in formatted_result:
-                    minimal_result["output_file_path"] = formatted_result[
-                        "output_file_path"
-                    ]
-                    minimal_result["file_saved"] = formatted_result["file_saved"]
-                if "file_save_error" in formatted_result:
-                    minimal_result["file_save_error"] = formatted_result[
-                        "file_save_error"
-                    ]
-                    minimal_result["file_saved"] = formatted_result["file_saved"]
-
-                return minimal_result
-            else:
-                # Apply TOON format to direct output if requested
-                return apply_toon_format_to_response(formatted_result, output_format)
+            return await self._execute_file_query(arguments)
 
         except Exception as e:
             from ..utils.error_handler import AnalysisError
 
-            # Re-raise AnalysisError to maintain proper error handling
             if isinstance(e, AnalysisError):
                 raise
-
             logger.error(f"Query execution failed: {e}")
             return {
                 "success": False,
@@ -352,229 +72,242 @@ class QueryTool(BaseMCPTool):
                 "language": arguments.get("language", "unknown"),
             }
 
+    async def _execute_file_query(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute a single-file query."""
+        file_path = arguments.get("file_path")
+        if not file_path:
+            raise _analysis_error("file_path or symbol is required")
+
+        query_key = arguments.get("query_key")
+        query_string = arguments.get("query_string")
+        if not query_key and not query_string:
+            raise _analysis_error("Either query_key or query_string must be provided")
+
+        if query_key and query_string:
+            return {
+                "success": False,
+                "error": "Cannot provide both query_key and query_string",
+            }
+
+        resolved = self.resolve_and_validate_file_path(file_path)
+        logger.info(f"Querying file: {file_path} (resolved to: {resolved})")
+
+        language = self._detect_language(resolved, arguments)
+        if not language:
+            return {
+                "success": False,
+                "error": f"Could not detect language for file: {file_path}",
+            }
+
+        # Validate query_key
+        if query_key:
+            available = self.query_service.get_available_queries(language)
+            if query_key not in available:
+                return {
+                    "success": False,
+                    "error": f"Query key '{query_key}' not found for {language}. Available: {sorted(available)}",
+                    "available_queries": categorize_queries(available, language),
+                    "language": language,
+                    "hint": "Use one of the available query keys, or provide query_string for a custom tree-sitter query.",
+                }
+
+        # Execute query
+        results = await self.query_service.execute_query(
+            resolved, language, query_key, query_string, arguments.get("filter")
+        )
+
+        if not results:
+            return await self._empty_result(
+                file_path, language, query_key, query_string, resolved
+            )
+
+        # Format results
+        result_format = arguments.get("result_format", "json")
+        if result_format == "summary":
+            formatted = format_summary(results, query_key or "custom", language)
+        else:
+            formatted = {
+                "success": True,
+                "results": results,
+                "count": len(results),
+                "file_path": file_path,
+                "language": language,
+                "query": query_key or query_string,
+            }
+
+        steps = build_next_steps(results, file_path, query_key or query_string or "")
+        if steps:
+            formatted["next_steps"] = steps
+
+        return self._handle_output(
+            formatted, arguments, file_path, language, query_key or query_string
+        )
+
+    def _detect_language(self, resolved: str, arguments: dict[str, Any]) -> str | None:
+        language = arguments.get("language")
+        if not language:
+            language = detect_language_from_file(
+                resolved, project_root=self.project_root
+            )
+        return language
+
+    async def _empty_result(
+        self,
+        file_path: str,
+        language: str,
+        query_key: str | None,
+        query_string: str | None,
+        resolved: str,
+    ) -> dict[str, Any]:
+        """Build helpful response for empty query results."""
+        productive = await self._find_productive_queries(resolved, language)
+        response: dict[str, Any] = {
+            "success": True,
+            "message": f"No results for query '{query_key or query_string}' in this {language} file",
+            "results": [],
+            "count": 0,
+            "file_path": file_path,
+            "language": language,
+        }
+        if productive:
+            response["productive_queries"] = productive
+            response["hint"] = (
+                f"This file has no '{query_key or query_string}' elements. Queries with results: {productive}"
+            )
+        return response
+
+    async def _find_productive_queries(self, resolved: str, language: str) -> list[str]:
+        """Find which common queries produce results for a file."""
+        productive = []
+        try:
+            for qk in ["classes", "methods", "functions", "imports", "variables"]:
+                results = await self.query_service.execute_query(
+                    resolved, language, query_key=qk
+                )
+                if results:
+                    productive.append(qk)
+        except Exception:
+            logger.debug("Failed to scan productive queries for empty result context")
+        return productive
+
+    def _handle_output(
+        self,
+        formatted: dict[str, Any],
+        arguments: dict[str, Any],
+        file_path: str,
+        language: str,
+        query: str | None,
+    ) -> dict[str, Any]:
+        """Handle file output and suppress logic."""
+        output_file = arguments.get("output_file")
+        suppress_output = arguments.get("suppress_output", False)
+        output_format = arguments.get("output_format", "toon")
+
+        if output_file:
+            try:
+                base_name = (
+                    output_file
+                    if output_file.strip()
+                    else f"{Path(file_path).stem}_query_{query or 'custom'}"
+                )
+                content, _ = format_for_file_output(formatted, output_format)
+                saved = self.file_output_manager.save_to_file(
+                    content=content, base_name=base_name
+                )
+                formatted["output_file_path"] = saved
+                formatted["file_saved"] = True
+                logger.info(f"Query output saved to: {saved}")
+            except Exception as e:
+                logger.error(f"Failed to save output to file: {e}")
+                formatted["file_save_error"] = str(e)
+                formatted["file_saved"] = False
+
+        if suppress_output and output_file:
+            minimal: dict[str, Any] = {
+                "success": formatted.get("success", True),
+                "count": formatted.get("count", 0),
+                "file_path": file_path,
+                "language": language,
+                "query": query,
+            }
+            if "output_file_path" in formatted:
+                minimal["output_file_path"] = formatted["output_file_path"]
+            if "file_saved" in formatted:
+                minimal["file_saved"] = formatted["file_saved"]
+            if "file_save_error" in formatted:
+                minimal["file_save_error"] = formatted["file_save_error"]
+            return minimal
+
+        return apply_toon_format_to_response(formatted, output_format)
+
+    # Delegates to helpers for backward-compatible test access
     def _format_summary(
         self, results: list[dict[str, Any]], query_type: str, language: str
     ) -> dict[str, Any]:
-        """
-        Format summary output
-
-        Args:
-            results: Query results
-            query_type: Query type
-            language: Programming language
-
-        Returns:
-            Summary formatted results
-        """
-        # Group by capture name
-        by_capture: dict[str, list[dict[str, Any]]] = {}
-        for result in results:
-            capture_name = result["capture_name"]
-            if capture_name not in by_capture:
-                by_capture[capture_name] = []
-            by_capture[capture_name].append(result)
-
-        # Create summary
-        summary: dict[str, Any] = {
-            "success": True,
-            "query_type": query_type,
-            "language": language,
-            "total_count": len(results),
-            "captures": {},
-        }
-
-        for capture_name, items in by_capture.items():
-            summary["captures"][capture_name] = {
-                "count": len(items),
-                "items": [
-                    {
-                        "name": item.get("name")
-                        or self._extract_name_from_content(item["content"]),
-                        "line_range": f"{item['start_line']}-{item['end_line']}",
-                        "lines": item.get(
-                            "line_span", item["end_line"] - item["start_line"] + 1
-                        ),
-                        "node_type": item["node_type"],
-                    }
-                    for item in items
-                ],
-            }
-
-        return summary
+        return format_summary(results, query_type, language)
 
     def _extract_name_from_content(self, content: str) -> str:
-        """
-        Extract name from content (simple heuristic method)
+        from .query_helpers import extract_name_from_content
 
-        Args:
-            content: Code content
-
-        Returns:
-            Extracted name
-        """
-        # Simple name extraction logic, can be improved as needed
-        lines = content.strip().split("\n")
-        if lines:
-            first_line = lines[0].strip()
-            # Extract method names, class names, etc.
-            import re
-
-            # Match common declaration patterns
-            patterns = [
-                # Markdown headers
-                r"^#{1,6}\s+(.+)$",  # Markdown headers (# Title, ## Subtitle, etc.)
-                # Programming language patterns
-                r"(?:public|private|protected)?\s*(?:static)?\s*(?:class|interface)\s+(\w+)",  # class/interface
-                r"(?:public|private|protected)?\s*(?:static)?\s*\w+\s+(\w+)\s*\(",  # method
-                r"(\w+)\s*\(",  # simple function call
-            ]
-
-            for pattern in patterns:
-                match = re.search(pattern, first_line)
-                if match:
-                    return match.group(1).strip()
-
-        return "unnamed"
+        return extract_name_from_content(content)
 
     def _build_next_steps(
-        self,
-        results: list[dict[str, Any]],
-        file_path: str,
-        query_used: str,
+        self, results: list[dict[str, Any]], file_path: str, query_used: str
     ) -> list[str]:
-        """Build actionable next-step suggestions based on query results."""
-        if not results:
-            return []
-
-        steps: list[str] = []
-
-        # Suggest extracting code for the first few results with line ranges
-        extractable = [
-            r
-            for r in results
-            if "start_line" in r and "end_line" in r and r["end_line"] > r["start_line"]
-        ]
-        if extractable:
-            first = extractable[0]
-            name = first.get("name", first.get("capture_name", "element"))
-            steps.append(
-                f"extract_code_section(file_path='{file_path}', "
-                f"start_line={first['start_line']}, end_line={first['end_line']}) "
-                f"to read '{name}'"
-            )
-
-        # For single results, suggest the broader query set
-        if len(results) == 1:
-            steps.append("Try other query keys to discover more elements in this file")
-        elif len(results) > 3:
-            # Suggest using filter to narrow down
-            steps.append("Add filter (e.g., 'name=~pattern') to narrow results")
-
-        # If results have names, suggest searching for callers
-        named = [r for r in results if r.get("name")]
-        if named and query_used in ("methods", "functions", "method", "function"):
-            names = [r["name"] for r in named[:3]]
-            steps.append(
-                f"search_content(query='{'|'.join(names)}') "
-                f"to find callers of these elements"
-            )
-
-        return steps[:3]  # Keep concise
+        return build_next_steps(results, file_path, query_used)
 
     def get_available_queries(self, language: str) -> list[str]:
-        """
-        Get available query keys
-
-        Args:
-            language: Programming language
-
-        Returns:
-            List of available query keys
-        """
         return self.query_service.get_available_queries(language)
-
-    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """
-        Validate tool arguments.
-
-        Args:
-            arguments: Arguments to validate
-
-        Returns:
-            True if arguments are valid
-
-        Raises:
-            ValueError: If arguments are invalid
-        """
-        # Check required fields: file_path for single-file mode, symbol for cross-file
-        if "file_path" not in arguments and "symbol" not in arguments:
-            raise ValueError("file_path or symbol is required")
-
-        if "file_path" in arguments:
-            file_path = arguments["file_path"]
-            if not isinstance(file_path, str):
-                raise ValueError("file_path must be a string")
-            if not file_path.strip():
-                raise ValueError("file_path cannot be empty")
-
-        # Check that either query_key or query_string is provided
-        query_key = arguments.get("query_key")
-        query_string = arguments.get("query_string")
-
-        if not query_key and not query_string:
-            raise ValueError("Either query_key or query_string must be provided")
-
-        # Validate query_key if provided
-        if query_key and not isinstance(query_key, str):
-            raise ValueError("query_key must be a string")
-
-        # Validate query_string if provided
-        if query_string and not isinstance(query_string, str):
-            raise ValueError("query_string must be a string")
-
-        # Validate optional fields
-        if "language" in arguments:
-            language = arguments["language"]
-            if not isinstance(language, str):
-                raise ValueError("language must be a string")
-
-        if "filter" in arguments:
-            filter_expr = arguments["filter"]
-            if not isinstance(filter_expr, str):
-                raise ValueError("filter must be a string")
-
-        if "result_format" in arguments:
-            result_format = arguments["result_format"]
-            if not isinstance(result_format, str):
-                raise ValueError("result_format must be a string")
-            if result_format not in ["json", "summary"]:
-                raise ValueError("result_format must be one of: json, summary")
-
-        if "output_format" in arguments:
-            output_format = arguments["output_format"]
-            if not isinstance(output_format, str):
-                raise ValueError("output_format must be a string")
-            if output_format not in ["json", "toon"]:
-                raise ValueError("output_format must be one of: json, toon")
-
-        # Validate output_file if provided
-        if "output_file" in arguments:
-            output_file = arguments["output_file"]
-            if not isinstance(output_file, str):
-                raise ValueError("output_file must be a string")
-            if not output_file.strip():
-                raise ValueError("output_file cannot be empty")
-
-        # Validate suppress_output if provided
-        if "suppress_output" in arguments:
-            suppress_output = arguments["suppress_output"]
-            if not isinstance(suppress_output, bool):
-                raise ValueError("suppress_output must be a boolean")
-
-        return True
 
     async def _execute_symbol_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
         return await execute_symbol_search(self.project_root, arguments)
+
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        if "file_path" not in arguments and "symbol" not in arguments:
+            raise ValueError("file_path or symbol is required")
+        if "file_path" in arguments:
+            fp = arguments["file_path"]
+            if not isinstance(fp, str):
+                raise ValueError("file_path must be a string")
+            if not fp.strip():
+                raise ValueError("file_path cannot be empty")
+        if not arguments.get("query_key") and not arguments.get("query_string"):
+            raise ValueError("Either query_key or query_string must be provided")
+        if "query_key" in arguments and not isinstance(arguments["query_key"], str):
+            raise ValueError("query_key must be a string")
+        if "query_string" in arguments and not isinstance(
+            arguments["query_string"], str
+        ):
+            raise ValueError("query_string must be a string")
+        for key in ["language", "filter"]:
+            if key in arguments and not isinstance(arguments[key], str):
+                raise ValueError(f"{key} must be a string")
+        if "result_format" in arguments:
+            if not isinstance(arguments["result_format"], str):
+                raise ValueError("result_format must be a string")
+            if arguments["result_format"] not in ["json", "summary"]:
+                raise ValueError("result_format must be one of: json, summary")
+        if "output_format" in arguments:
+            if not isinstance(arguments["output_format"], str):
+                raise ValueError("output_format must be a string")
+            if arguments["output_format"] not in ["json", "toon"]:
+                raise ValueError("output_format must be one of: json, toon")
+        if "output_file" in arguments:
+            if not isinstance(arguments["output_file"], str):
+                raise ValueError("output_file must be a string")
+            if not arguments["output_file"].strip():
+                raise ValueError("output_file cannot be empty")
+        if "suppress_output" in arguments and not isinstance(
+            arguments["suppress_output"], bool
+        ):
+            raise ValueError("suppress_output must be a boolean")
+        return True
+
+
+def _analysis_error(msg: str) -> Exception:
+    from ..utils.error_handler import AnalysisError
+
+    return AnalysisError(msg, operation="query_code")
 
 
 # Backward-compatible re-export for tests
