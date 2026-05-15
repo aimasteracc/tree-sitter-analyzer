@@ -111,6 +111,8 @@ class FindAndGrepTool(BaseMCPTool):
             return rg_result
 
         rg_rc, rg_out, rg_elapsed_ms = rg_result
+        if not isinstance(rg_out, bytes):  # nosec B101
+            rg_out = rg_out.encode("utf-8") if isinstance(rg_out, str) else b""
 
         # total_only mode
         if arguments.get("total_only", False):
