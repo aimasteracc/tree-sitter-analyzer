@@ -7,7 +7,6 @@ Supports packages, functions, methods, structs, interfaces, type aliases,
 const/var declarations, goroutines, and channels.
 """
 
-import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -20,6 +19,30 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from .go_helpers import (
+    extract_docstring as _extract_docstring_standalone,
+)
+from .go_helpers import (
+    extract_embedded_types as _extract_embedded_standalone,
+)
+from .go_helpers import (
+    extract_import_spec as _extract_import_spec_standalone,
+)
+from .go_helpers import (
+    extract_imports_from_tree as _extract_imports_standalone,
+)
+from .go_helpers import (
+    extract_method_receiver as _extract_receiver_standalone,
+)
+from .go_helpers import (
+    extract_parameters as _extract_params_standalone,
+)
+from .go_helpers import (
+    extract_return_type as _extract_return_type_standalone,
+)
+from .go_helpers import (
+    extract_var_spec as _extract_var_spec_standalone,
+)
 
 
 class GoElementExtractor(ElementExtractor):
@@ -100,15 +123,7 @@ class GoElementExtractor(ElementExtractor):
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
         self._reset_caches()
-
-        imports: list[Import] = []
-
-        extractors = {
-            "import_declaration": self._extract_import_declaration,
-        }
-
-        self._traverse_and_extract(tree.root_node, extractors, imports)
-
+        imports = _extract_imports_standalone(tree, source_code, self._get_node_text)
         log_debug(f"Extracted {len(imports)} Go imports")
         return imports
 
@@ -200,64 +215,14 @@ class GoElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node"
     ) -> list[Import] | None:
         """Extract import declaration (may contain multiple imports)"""
-        imports: list[Import] = []
-        try:
-            # Find import_spec_list or single import_spec
-            for child in node.children:
-                if child.type == "import_spec_list":
-                    for spec in child.children:
-                        if spec.type == "import_spec":
-                            imp = self._extract_import_spec(spec)
-                            if imp:
-                                imports.append(imp)
-                elif child.type == "import_spec":
-                    imp = self._extract_import_spec(child)
-                    if imp:
-                        imports.append(imp)
+        from .go_helpers import _extract_import_declaration as _impl
 
-            return imports if imports else None
-        except Exception as e:
-            log_error(f"Error extracting Go import: {e}")
-            return None
+        imports = _impl(node, self._get_node_text)
+        return imports if imports else None
 
     def _extract_import_spec(self, node: "tree_sitter.Node") -> Import | None:
         """Extract single import spec"""
-        try:
-            raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Extract path and optional alias
-            alias = None
-            path = None
-
-            for child in node.children:
-                if child.type == "package_identifier":
-                    alias = self._get_node_text(child)
-                elif child.type == "blank_identifier":
-                    alias = "_"
-                elif child.type == "dot":
-                    alias = "."
-                elif child.type == "interpreted_string_literal":
-                    path = self._get_node_text(child).strip('"')
-
-            if path:
-                # Extract package name from path
-                name = path.split("/")[-1] if "/" in path else path
-                return Import(
-                    name=name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="go",
-                    module_name=path,
-                    import_statement=raw_text,
-                    alias=alias,
-                )
-            return None
-        except Exception as e:
-            log_error(f"Error extracting Go import spec: {e}")
-            return None
+        return _extract_import_spec_standalone(node, self._get_node_text)
 
     def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function declaration"""
@@ -317,30 +282,14 @@ class GoElementExtractor(ElementExtractor):
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
 
-            # Receiver
-            receiver = None
-            receiver_type = None
-            receiver_node = node.child_by_field_name("receiver")
-            if receiver_node:
-                receiver_text = self._get_node_text(receiver_node)
-                # Parse receiver: (r *ReceiverType) or (r ReceiverType)
-                match = re.search(r"\(\s*(\w+)\s+(\*?\w+)\s*\)", receiver_text)
-                if match:
-                    receiver = match.group(1)
-                    receiver_type = match.group(2)
+            receiver, receiver_type = _extract_receiver_standalone(
+                node, self._get_node_text
+            )
 
-            # Parameters
             parameters = self._extract_parameters(node)
-
-            # Return type
             return_type = self._extract_return_type(node)
-
-            # Visibility
             visibility = "public" if name[0].isupper() else "private"
-
-            # Docstring
             docstring = self._extract_docstring(node)
-
             raw_text = self._get_node_text(node)
 
             func = Function(
@@ -355,7 +304,6 @@ class GoElementExtractor(ElementExtractor):
                 docstring=docstring,
                 is_public=visibility == "public",
             )
-            # Attach Go-specific method attributes
             func.receiver = receiver
             func.receiver_type = receiver_type
             func.is_method = True
@@ -367,21 +315,11 @@ class GoElementExtractor(ElementExtractor):
 
     def _extract_parameters(self, node: "tree_sitter.Node") -> list[str]:
         """Extract function/method parameters"""
-        parameters = []
-        params_node = node.child_by_field_name("parameters")
-        if params_node:
-            for child in params_node.children:
-                if child.type == "parameter_declaration":
-                    param_text = self._get_node_text(child)
-                    parameters.append(param_text)
-        return parameters
+        return _extract_params_standalone(node, self._get_node_text)
 
     def _extract_return_type(self, node: "tree_sitter.Node") -> str:
         """Extract function/method return type"""
-        result_node = node.child_by_field_name("result")
-        if result_node:
-            return self._get_node_text(result_node)
-        return ""
+        return _extract_return_type_standalone(node, self._get_node_text)
 
     def _extract_type_declaration(self, node: "tree_sitter.Node") -> list[Class]:
         """Extract type declaration (struct, interface, type alias)"""
@@ -452,22 +390,7 @@ class GoElementExtractor(ElementExtractor):
 
     def _extract_embedded_types(self, struct_node: "tree_sitter.Node") -> list[str]:
         """Extract embedded types from struct"""
-        embedded: list[str] = []
-        for child in struct_node.children:
-            if child.type == "field_declaration_list":
-                for field in child.children:
-                    if field.type == "field_declaration":
-                        # Check if it's an embedded field (no name, just type)
-                        has_name = False
-                        type_text = None
-                        for fc in field.children:
-                            if fc.type == "field_identifier":
-                                has_name = True
-                            elif fc.type in ["type_identifier", "qualified_type"]:
-                                type_text = self._get_node_text(fc)
-                        if not has_name and type_text:
-                            embedded.append(type_text)
-        return embedded
+        return _extract_embedded_standalone(struct_node, self._get_node_text)
 
     def _extract_const_declaration(
         self, node: "tree_sitter.Node"
@@ -500,47 +423,7 @@ class GoElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node", is_const: bool
     ) -> list[Variable]:
         """Extract single var/const spec"""
-        variables: list[Variable] = []
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-            raw_text = self._get_node_text(node)
-
-            # Extract names and type
-            names: list[str] = []
-            var_type = ""
-
-            for child in node.children:
-                if child.type == "identifier":
-                    names.append(self._get_node_text(child))
-                elif child.type in [
-                    "type_identifier",
-                    "pointer_type",
-                    "array_type",
-                    "slice_type",
-                    "map_type",
-                    "channel_type",
-                    "qualified_type",
-                ]:
-                    var_type = self._get_node_text(child)
-
-            for name in names:
-                visibility = "public" if name[0].isupper() else "private"
-                variables.append(
-                    Variable(
-                        name=name,
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        language="go",
-                        variable_type=var_type,
-                        visibility=visibility,
-                        is_constant=is_const,
-                    )
-                )
-        except Exception as e:
-            log_error(f"Error extracting Go var spec: {e}")
-        return variables
+        return _extract_var_spec_standalone(node, is_const, self._get_node_text)
 
     def _extract_goroutine(self, node: "tree_sitter.Node") -> None:
         """Extract goroutine invocation"""
@@ -583,29 +466,7 @@ class GoElementExtractor(ElementExtractor):
 
     def _extract_docstring(self, node: "tree_sitter.Node") -> str | None:
         """Extract doc comments preceding the node"""
-        # In Go, doc comments are // comments immediately before the declaration
-        start_line = node.start_point[0]
-        if start_line == 0:
-            return None
-
-        docs: list[str] = []
-        line_idx = start_line - 1
-
-        # Ensure line_idx is within valid range
-        if line_idx >= len(self.content_lines):
-            line_idx = len(self.content_lines) - 1
-
-        while line_idx >= 0:
-            line = self.content_lines[line_idx].strip()
-            if line.startswith("//"):
-                docs.insert(0, line[2:].strip())
-                line_idx -= 1
-            elif line == "":
-                line_idx -= 1
-            else:
-                break
-
-        return "\n".join(docs) if docs else None
+        return _extract_docstring_standalone(node, self.content_lines)
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get node text with caching using position-based keys"""
