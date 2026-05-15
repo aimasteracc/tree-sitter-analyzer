@@ -978,7 +978,7 @@ class TestSummaryOutputPaths:
                     b"",
                 )
                 with patch(
-                    "tree_sitter_analyzer.mcp.tools.search_content_tool.format_for_file_output",
+                    "tree_sitter_analyzer.mcp.tools.search_content_helpers.format_for_file_output",
                     side_effect=Exception("disk full"),
                 ):
                     arguments = {

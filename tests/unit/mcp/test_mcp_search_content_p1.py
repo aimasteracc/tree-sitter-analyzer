@@ -23,6 +23,8 @@ def test_search_content_validation_requires_query():
     tool = SearchContentTool(str(Path.cwd()))
     with pytest.raises(ValueError):
         tool.validate_arguments({"roots": [str(Path.cwd())]})
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_exec_files_list(monkeypatch, tmp_path):
@@ -58,6 +60,8 @@ async def test_search_content_exec_files_list(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["line"] == 1  # Updated field name
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_globs(monkeypatch, tmp_path):
@@ -98,6 +102,8 @@ async def test_search_content_globs(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["file"] == str(f1)
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_count_only_matches(monkeypatch, tmp_path):
@@ -130,6 +136,8 @@ file4.py:12
     assert result["file_counts"]["file2.py"] == 3
     assert result["file_counts"]["file4.py"] == 12
     assert "elapsed_ms" in result
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_summary_only(monkeypatch, tmp_path):
@@ -180,6 +188,8 @@ async def test_search_content_summary_only(monkeypatch, tmp_path):
     assert result["summary"]["top_files"][0]["file"] == "file1.py"
     assert result["summary"]["top_files"][0]["match_count"] == 2
     assert "elapsed_ms" in result
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_error_handling(monkeypatch, tmp_path):
@@ -200,6 +210,8 @@ async def test_search_content_error_handling(monkeypatch, tmp_path):
     assert result["success"] is False
     assert result["error"] == "rg: invalid regex"
     assert result["returncode"] == 2
+
+
 @pytest.mark.unit
 def test_search_content_validation_invalid_types(tmp_path):
     """Test SearchContentTool validation with invalid parameter types."""
@@ -220,6 +232,8 @@ def test_search_content_validation_invalid_types(tmp_path):
         tool.validate_arguments(
             {"roots": [str(tmp_path)], "query": "test", "max_count": "10"}
         )
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_optimize_paths(monkeypatch, tmp_path):
@@ -261,8 +275,10 @@ async def test_search_content_optimize_paths(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
 
-    # Results should contain the matches
-    assert "results" in result or "matches" in result
+    # Results are embedded in toon_content or available as 'results' key
+    assert "results" in result or "toon_content" in result
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_group_by_file(monkeypatch, tmp_path):
@@ -338,6 +354,8 @@ async def test_search_content_group_by_file(monkeypatch, tmp_path):
         assert match["line"] == i
         assert "hello" in match["text"]
         assert match["positions"] == [[0, 5]]
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_total_only(monkeypatch, tmp_path):
@@ -368,6 +386,8 @@ async def test_search_content_total_only(monkeypatch, tmp_path):
     # Should return just the number
     assert result == 3
     assert isinstance(result, int)
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_with_files_parameter(monkeypatch, tmp_path):
@@ -403,6 +423,8 @@ async def test_search_content_with_files_parameter(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["file"] == str(test_file)
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_with_context_lines(monkeypatch, tmp_path):
@@ -433,6 +455,8 @@ async def test_search_content_with_context_lines(monkeypatch, tmp_path):
     )
 
     assert result["success"] is True
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_with_encoding_and_filesize(monkeypatch, tmp_path):
@@ -463,6 +487,8 @@ async def test_search_content_with_encoding_and_filesize(monkeypatch, tmp_path):
     )
 
     assert result["success"] is True
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_with_word_and_fixed_strings(monkeypatch, tmp_path):
@@ -488,6 +514,8 @@ async def test_search_content_with_word_and_fixed_strings(monkeypatch, tmp_path)
     )
 
     assert result["success"] is True
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_case_sensitivity_modes(monkeypatch, tmp_path):
@@ -527,6 +555,8 @@ async def test_search_content_case_sensitivity_modes(monkeypatch, tmp_path):
         for flag in expected_flags:
             assert flag in captured_cmd
         captured_cmd.clear()
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_search_content_with_timeout_and_max_count(monkeypatch, tmp_path):
@@ -557,6 +587,8 @@ async def test_search_content_with_timeout_and_max_count(monkeypatch, tmp_path):
     assert result["success"] is True
     # Verify timeout was passed correctly
     assert captured_timeout == 3000
+
+
 @pytest.mark.unit
 def test_search_content_validation_comprehensive(tmp_path):
     """Test comprehensive parameter validation for SearchContentTool."""
@@ -620,6 +652,8 @@ def test_search_content_validation_comprehensive(tmp_path):
     for invalid_args, expected_error in invalid_cases:
         with pytest.raises(ValueError, match=expected_error):
             tool.validate_arguments(invalid_args)
+
+
 @pytest.mark.asyncio
 async def test_fd_01_simple_search(tmp_path, monkeypatch):
     """Test simple search functionality - corresponds to fd's test_simple."""
@@ -695,6 +729,8 @@ async def test_fd_01_simple_search(tmp_path, monkeypatch):
     )
     assert result3["success"] is True
     assert result3["count"] >= 0  # Allow zero results
+
+
 @pytest.mark.asyncio
 async def test_fd_16_empty_pattern(tmp_path, monkeypatch):
     """Test empty pattern handling - corresponds to fd's test_empty_pattern."""
@@ -721,6 +757,8 @@ async def test_fd_16_empty_pattern(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_17_regex_searches(tmp_path, monkeypatch):
     """Test regex searches - corresponds to fd's test_regex_searches."""
@@ -762,6 +800,8 @@ async def test_fd_17_regex_searches(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_18_smart_case_search(tmp_path, monkeypatch):
     """Test smart case search - corresponds to fd's test_smart_case."""
