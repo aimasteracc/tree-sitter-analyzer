@@ -343,28 +343,29 @@ def generate_llm_guidance(
     if guidance["size_category"] in ("large", "very_large"):
         steps.append("analyze_code_structure with format=compact for overview")
         steps.append("query_code with specific query keys to find target elements")
-        # Add specific hotspot extraction hints
         hotspots = structural_overview.get("complexity_hotspots", [])
         if hotspots:
             top = hotspots[0]
             name = top.get("name", "hotspot")
-            lines = top.get("lines", "")
+            start = top.get("start_line", "")
+            end = top.get("end_line", "")
             steps.append(
-                f"extract_code_section for '{name}' (lines {lines}) - complexity hotspot"
+                f"extract_code_section for '{name}' (L{start}-{end}) - complexity hotspot"
             )
         else:
             steps.append("extract_code_section for targeted line ranges")
     else:
         steps.append("analyze_code_structure for full structure table")
         steps.append("query_code for specific elements if needed")
-        # Suggest extraction for notable methods even in small files
         notable = structural_overview.get("methods", [])
         long_methods = [m for m in notable if m.get("complexity", 0) >= 8]
         if long_methods:
             top = long_methods[0]
+            start = top.get("start_line", "")
+            end = top.get("end_line", "")
             steps.append(
                 f"extract_code_section for '{top.get('name', 'method')}' "
-                f"(lines {top.get('lines', '')}) - high complexity"
+                f"(L{start}-{end}) - high complexity"
             )
     guidance["workflow_steps"] = steps
 
@@ -396,7 +397,7 @@ def generate_llm_guidance(
             )
         ]
         rest = sorted(q for q in all_queries if q not in priority)[: 15 - len(priority)]
-        guidance["available_queries"] = priority + rest
+        guidance["available_queries"] = sorted(priority) + rest
 
     return guidance
 
