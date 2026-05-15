@@ -27,6 +27,7 @@ from ...models import Import as ModelImport
 from ...models import Variable as ModelVariable
 from ...plugins.base import ElementExtractor
 from ...utils import log_debug, log_error
+from . import misc_extractor as _misc
 from .link_image_extractor import (
     extract_md_images as _extract_md_images_standalone,
 )
@@ -844,345 +845,76 @@ class MarkdownElementExtractor(ElementExtractor):
     def _extract_block_quotes(
         self, root_node: "tree_sitter.Node", blockquotes: list[MarkdownElement]
     ) -> None:
-        """Extract blockquotes"""
-        import re
-
-        # Blockquotes are often represented as paragraphs starting with >
-        for node in self._traverse_nodes(root_node):
-            if node.type == "block_quote":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text_optimized(node)
-
-                    # Extract content without > markers
-                    lines = raw_text.strip().split("\n")
-                    content_lines = []
-                    for line in lines:
-                        # Remove > marker and optional space
-                        cleaned = re.sub(r"^>\s?", "", line)
-                        content_lines.append(cleaned)
-                    content = "\n".join(content_lines).strip()
-
-                    blockquote = MarkdownElement(
-                        name=(
-                            f"Blockquote: {content[:50]}..."
-                            if len(content) > 50
-                            else f"Blockquote: {content}"
-                        ),
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        element_type="blockquote",
-                    )
-                    blockquote.type = "blockquote"
-                    blockquote.text = content
-                    blockquotes.append(blockquote)
-                except Exception as e:
-                    log_debug(f"Failed to extract blockquote: {e}")
+        _misc.extract_block_quotes(
+            root_node, blockquotes, self._get_node_text_optimized, self._traverse_nodes
+        )
 
     def _extract_thematic_breaks(
         self, root_node: "tree_sitter.Node", horizontal_rules: list[MarkdownElement]
     ) -> None:
-        """Extract thematic breaks (horizontal rules)"""
-        for node in self._traverse_nodes(root_node):
-            if node.type == "thematic_break":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text_optimized(node)
-
-                    hr = MarkdownElement(
-                        name="Horizontal Rule",
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        element_type="horizontal_rule",
-                    )
-                    hr.type = "horizontal_rule"
-                    horizontal_rules.append(hr)
-                except Exception as e:
-                    log_debug(f"Failed to extract horizontal rule: {e}")
+        _misc.extract_thematic_breaks(
+            root_node,
+            horizontal_rules,
+            self._get_node_text_optimized,
+            self._traverse_nodes,
+        )
 
     def _extract_html_blocks(
         self, root_node: "tree_sitter.Node", html_elements: list[MarkdownElement]
     ) -> None:
-        """Extract HTML block elements"""
-        for node in self._traverse_nodes(root_node):
-            if node.type == "html_block":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text_optimized(node)
-
-                    # Extract tag name if possible
-                    import re
-
-                    tag_match = re.search(r"<(\w+)", raw_text)
-                    tag_name = tag_match.group(1) if tag_match else "HTML"
-
-                    html_element = MarkdownElement(
-                        name=f"HTML Block: {tag_name}",
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        element_type="html_block",
-                    )
-                    html_element.type = "html_block"
-                    html_elements.append(html_element)
-                except Exception as e:
-                    log_debug(f"Failed to extract HTML block: {e}")
+        _misc.extract_html_blocks(
+            root_node,
+            html_elements,
+            self._get_node_text_optimized,
+            self._traverse_nodes,
+        )
 
     def _extract_inline_html(
         self, root_node: "tree_sitter.Node", html_elements: list[MarkdownElement]
     ) -> None:
-        """Extract inline HTML elements"""
-        import re
-
-        # Look for HTML tags in inline content
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Pattern for HTML tags (excluding autolinks)
-                    # Exclude autolink patterns: <url> or <email>
-                    html_pattern = r"<(?!(?:https?://|mailto:|[^@\s]+@[^@\s]+\.[^@\s]+)[^>]*>)[^>]+>"
-                    matches = re.finditer(html_pattern, raw_text)
-
-                    for match in matches:
-                        tag_text = match.group(0)
-
-                        # Extract tag name
-                        tag_match = re.search(r"<(\w+)", tag_text)
-                        tag_name = tag_match.group(1) if tag_match else "HTML"
-
-                        # Calculate accurate line number based on match position
-                        text_before_match = raw_text[: match.start()]
-                        newlines_before = text_before_match.count("\n")
-                        start_line = node.start_point[0] + 1 + newlines_before
-                        end_line = start_line
-
-                        html_element = MarkdownElement(
-                            name=f"HTML Tag: {tag_name}",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=tag_text,
-                            element_type="html_inline",
-                        )
-                        html_element.type = "html_inline"
-                        html_element.name = tag_name  # Set name attribute for formatter
-                        html_elements.append(html_element)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract inline HTML: {e}")
+        _misc.extract_inline_html(
+            root_node,
+            html_elements,
+            self._get_node_text_optimized,
+            self._traverse_nodes,
+        )
 
     def _extract_emphasis_elements(
         self, root_node: "tree_sitter.Node", formatting_elements: list[MarkdownElement]
     ) -> None:
-        """Extract emphasis and strong emphasis elements"""
-        import re
-
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Pattern for bold text: **text** or __text__
-                    bold_pattern = r"\*\*([^*]+)\*\*|__([^_]+)__"
-                    bold_matches = re.finditer(bold_pattern, raw_text)
-
-                    for match in bold_matches:
-                        content = match.group(1) or match.group(2) or ""
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        bold_element = MarkdownElement(
-                            name=f"Bold: {content}",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="strong_emphasis",
-                        )
-                        bold_element.type = "strong_emphasis"
-                        bold_element.text = content
-                        formatting_elements.append(bold_element)
-
-                    # Pattern for italic text: *text* or _text_ (but not **text** or __text__)
-                    italic_pattern = r"(?<!\*)\*([^*]+)\*(?!\*)|(?<!_)_([^_]+)_(?!_)"
-                    italic_matches = re.finditer(italic_pattern, raw_text)
-
-                    for match in italic_matches:
-                        content = match.group(1) or match.group(2) or ""
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        italic_element = MarkdownElement(
-                            name=f"Italic: {content}",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="emphasis",
-                        )
-                        italic_element.type = "emphasis"
-                        italic_element.text = content
-                        formatting_elements.append(italic_element)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract emphasis elements: {e}")
+        _misc.extract_emphasis_elements(
+            root_node,
+            formatting_elements,
+            self._get_node_text_optimized,
+            self._traverse_nodes,
+        )
 
     def _extract_inline_code_spans(
         self, root_node: "tree_sitter.Node", formatting_elements: list[MarkdownElement]
     ) -> None:
-        """Extract inline code spans"""
-        import re
-
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Pattern for inline code: `code`
-                    code_pattern = r"`([^`]+)`"
-                    matches = re.finditer(code_pattern, raw_text)
-
-                    for match in matches:
-                        content = match.group(1) or ""
-
-                        # Calculate accurate line number based on match position
-                        text_before_match = raw_text[: match.start()]
-                        newlines_before = text_before_match.count("\n")
-                        start_line = node.start_point[0] + 1 + newlines_before
-                        end_line = start_line
-
-                        code_element = MarkdownElement(
-                            name=f"Inline Code: {content}",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="inline_code",
-                        )
-                        code_element.type = "inline_code"
-                        code_element.text = content
-                        formatting_elements.append(code_element)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract inline code: {e}")
+        _misc.extract_inline_code_spans(
+            root_node,
+            formatting_elements,
+            self._get_node_text_optimized,
+            self._traverse_nodes,
+        )
 
     def _extract_strikethrough_elements(
         self, root_node: "tree_sitter.Node", formatting_elements: list[MarkdownElement]
     ) -> None:
-        """Extract strikethrough elements"""
-        import re
-
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Pattern for strikethrough: ~~text~~
-                    strike_pattern = r"~~([^~]+)~~"
-                    matches = re.finditer(strike_pattern, raw_text)
-
-                    for match in matches:
-                        content = match.group(1) or ""
-
-                        # Calculate accurate line number based on match position
-                        text_before_match = raw_text[: match.start()]
-                        newlines_before = text_before_match.count("\n")
-                        start_line = node.start_point[0] + 1 + newlines_before
-                        end_line = start_line
-
-                        strike_element = MarkdownElement(
-                            name=f"Strikethrough: {content}",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="strikethrough",
-                        )
-                        strike_element.type = "strikethrough"
-                        strike_element.text = content
-                        formatting_elements.append(strike_element)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract strikethrough: {e}")
+        _misc.extract_strikethrough_elements(
+            root_node,
+            formatting_elements,
+            self._get_node_text_optimized,
+            self._traverse_nodes,
+        )
 
     def _extract_footnote_elements(
         self, root_node: "tree_sitter.Node", footnotes: list[MarkdownElement]
     ) -> None:
-        """Extract footnote elements"""
-        import re
-
-        for node in self._traverse_nodes(root_node):
-            if node.type == "inline":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Pattern for footnote references: [^1]
-                    footnote_ref_pattern = r"\[\^([^\]]+)\]"
-                    matches = re.finditer(footnote_ref_pattern, raw_text)
-
-                    for match in matches:
-                        ref_id = match.group(1) or ""
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        footnote_element = MarkdownElement(
-                            name=f"Footnote Reference: {ref_id}",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=match.group(0),
-                            element_type="footnote_reference",
-                        )
-                        footnote_element.type = "footnote_reference"
-                        footnote_element.text = ref_id
-                        footnotes.append(footnote_element)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract footnote reference: {e}")
-
-            # Look for footnote definitions
-            elif node.type == "paragraph":
-                try:
-                    raw_text = self._get_node_text_optimized(node)
-                    if not raw_text:
-                        continue
-
-                    # Pattern for footnote definitions: [^1]: content
-                    footnote_def_pattern = r"^\[\^([^\]]+)\]:\s*(.+)$"
-                    footnote_match: re.Match[str] | None = re.match(
-                        footnote_def_pattern, raw_text.strip(), re.MULTILINE
-                    )
-
-                    if footnote_match:
-                        ref_id = footnote_match.group(1) or ""
-                        content = footnote_match.group(2) or ""
-                        start_line = node.start_point[0] + 1
-                        end_line = node.end_point[0] + 1
-
-                        footnote_element = MarkdownElement(
-                            name=f"Footnote Definition: {ref_id}",
-                            start_line=start_line,
-                            end_line=end_line,
-                            raw_text=raw_text,
-                            element_type="footnote_definition",
-                        )
-                        footnote_element.type = "footnote_definition"
-                        footnote_element.text = content
-                        footnotes.append(footnote_element)
-
-                except Exception as e:
-                    log_debug(f"Failed to extract footnote definition: {e}")
+        _misc.extract_footnote_elements(
+            root_node, footnotes, self._get_node_text_optimized, self._traverse_nodes
+        )
 
     def _traverse_nodes(self, node: "tree_sitter.Node") -> Any:
         """Traverse all nodes in the tree"""
