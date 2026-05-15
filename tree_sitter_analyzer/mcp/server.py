@@ -71,6 +71,7 @@ from .tools.project_overview_tool import ProjectOverviewTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
+from .tools.safe_to_edit_tool import SafeToEditTool
 from .tools.search_content_tool import SearchContentTool
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
@@ -105,6 +106,7 @@ def _create_tool_registry(
         ("check_file_health", FileHealthTool(project_root)),
         ("analyze_dependencies", DependencyAnalysisTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
+        ("safe_to_edit", SafeToEditTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 
