@@ -25,6 +25,27 @@ except ImportError:
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from .csharp_helpers import (
+    calculate_complexity as _calc_complexity_standalone,
+)
+from .csharp_helpers import (
+    determine_visibility as _determine_vis_standalone,
+)
+from .csharp_helpers import (
+    extract_attributes as _extract_attrs_standalone,
+)
+from .csharp_helpers import (
+    extract_modifiers as _extract_mods_standalone,
+)
+from .csharp_helpers import (
+    extract_parameters as _extract_params_standalone,
+)
+from .csharp_helpers import (
+    extract_type_name as _extract_type_standalone,
+)
+from .csharp_helpers import (
+    extract_using_directive as _extract_using_standalone,
+)
 
 
 class CSharpElementExtractor(ElementExtractor):
@@ -117,117 +138,28 @@ class CSharpElementExtractor(ElementExtractor):
                 self._extract_namespace(child)
 
     def _extract_modifiers(self, node: "tree_sitter.Node") -> list[str]:
-        """
-        Extract modifiers from a declaration node.
-
-        Args:
-            node: Declaration node (class, method, field, etc.)
-
-        Returns:
-            List of modifier strings (e.g., ["public", "static", "async"])
-        """
-        modifiers: list[str] = []
-        for child in node.children:
-            if child.type == "modifier":
-                modifier_text = self._get_node_text_optimized(child)
-                modifiers.append(modifier_text)
-        return modifiers
+        """Extract modifiers from a declaration node."""
+        return _extract_mods_standalone(node, self._get_node_text_optimized)
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
-        """
-        Determine visibility from modifiers.
-
-        Args:
-            modifiers: List of modifier strings
-
-        Returns:
-            Visibility string ("public", "private", "protected", "internal")
-        """
-        if "public" in modifiers:
-            return "public"
-        elif "private" in modifiers:
-            return "private"
-        elif "protected" in modifiers:
-            return "protected"
-        elif "internal" in modifiers:
-            return "internal"
-        else:
-            return "private"  # Default to private in C#
+        """Determine visibility from modifiers."""
+        return _determine_vis_standalone(modifiers)
 
     def _extract_attributes(self, node: "tree_sitter.Node") -> list[dict[str, Any]]:
-        """
-        Extract attributes (annotations) from a node.
-
-        Args:
-            node: Node that may have attributes
-
-        Returns:
-            List of attribute dictionaries with name, line, and text
-        """
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._attribute_cache:
-            return self._attribute_cache[cache_key]
-
-        attributes: list[dict[str, Any]] = []
-
-        # Look for attribute_list nodes before the declaration
-        prev_sibling = node.prev_sibling
-        while prev_sibling:
-            if prev_sibling.type == "attribute_list":
-                attr_text = self._get_node_text_optimized(prev_sibling)
-                attributes.append(
-                    {
-                        "name": attr_text.strip("[]"),
-                        "line": prev_sibling.start_point[0] + 1,
-                        "text": attr_text,
-                    }
-                )
-            elif prev_sibling.type not in ["comment", "line_comment", "block_comment"]:
-                break
-            prev_sibling = prev_sibling.prev_sibling
-
-        attributes.reverse()  # Restore original order
-        self._attribute_cache[cache_key] = attributes
-        return attributes
+        """Extract attributes (annotations) from a node."""
+        return _extract_attrs_standalone(
+            node, self._get_node_text_optimized, self._attribute_cache
+        )
 
     def _extract_type_name(self, type_node: Optional["tree_sitter.Node"]) -> str:
-        """
-        Extract type name from a type node, handling generic types and nullable types.
-
-        Args:
-            type_node: Type node from the AST
-
-        Returns:
-            Type name as string (e.g., "int", "List<string>", "string?")
-        """
-        if not type_node:
-            return "void"
-
-        return self._get_node_text_optimized(type_node)
+        """Extract type name from a type node."""
+        return _extract_type_standalone(type_node, self._get_node_text_optimized)
 
     def _extract_parameters(
         self, params_node: Optional["tree_sitter.Node"]
     ) -> list[str]:
-        """
-        Extract method parameters.
-
-        Args:
-            params_node: Parameter list node
-
-        Returns:
-            List of parameter strings (e.g., ["int id", "string name"])
-        """
-        if not params_node:
-            return []
-
-        parameters: list[str] = []
-        for child in params_node.children:
-            if child.type == "parameter":
-                param_text = self._get_node_text_optimized(child)
-                parameters.append(param_text)
-
-        return parameters
+        """Extract method parameters."""
+        return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
     def _traverse_iterative(
         self, root_node: "tree_sitter.Node"
@@ -590,32 +522,8 @@ class CSharpElementExtractor(ElementExtractor):
             return None
 
     def _calculate_complexity(self, node: "tree_sitter.Node") -> int:
-        """
-        Calculate cyclomatic complexity of a method.
-
-        Args:
-            node: Method node
-
-        Returns:
-            Complexity score (1 + number of decision points)
-        """
-        complexity = 1
-        decision_keywords = {
-            "if_statement",
-            "switch_statement",
-            "for_statement",
-            "foreach_statement",
-            "while_statement",
-            "do_statement",
-            "catch_clause",
-            "conditional_expression",  # ternary operator
-        }
-
-        for child in self._traverse_iterative(node):
-            if child.type in decision_keywords:
-                complexity += 1
-
-        return complexity
+        """Calculate cyclomatic complexity of a method."""
+        return _calc_complexity_standalone(node, self._traverse_iterative)
 
     def extract_variables(
         self, tree: "tree_sitter.Tree | None", source_code: str
@@ -807,55 +715,8 @@ class CSharpElementExtractor(ElementExtractor):
         return imports
 
     def _extract_using_directive(self, node: "tree_sitter.Node") -> Import | None:
-        """
-        Extract a using directive.
-
-        Args:
-            node: Using directive node
-
-        Returns:
-            Import object or None if extraction fails
-        """
-        try:
-            # Get the namespace or type being imported
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                # Try to find qualified_name or identifier
-                for child in node.children:
-                    if child.type in ["qualified_name", "identifier", "name_equals"]:
-                        name_node = child
-                        break
-
-            if not name_node:
-                return None
-
-            import_name = self._get_node_text_optimized(name_node)
-
-            # Check if it's a static using
-            is_static = False
-            for child in node.children:
-                if (
-                    child.type == "static"
-                    or self._get_node_text_optimized(child) == "static"
-                ):
-                    is_static = True
-                    break
-
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
-            return Import(
-                name=import_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
-                module_name=import_name,
-                is_static=is_static,
-            )
-
-        except Exception as e:
-            log_error(f"Error extracting using directive: {e}")
-            return None
+        """Extract a using directive."""
+        return _extract_using_standalone(node, self._get_node_text_optimized)
 
 
 class CSharpPlugin(LanguagePlugin):
