@@ -373,13 +373,30 @@ def generate_llm_guidance(
         steps.append("analyze_dependencies mode=blast_radius to assess change impact")
     steps.append("check_file_health to see if this file needs refactoring")
 
-    # Include full list of available queries for this language
+    # Include available queries for this language (capped at 15 to save tokens)
     from ...query_loader import get_query_loader
 
     loader = get_query_loader()
     all_queries = loader.list_queries_for_language(language)
     if all_queries:
-        guidance["available_queries"] = sorted(all_queries)
+        priority = [
+            q
+            for q in all_queries
+            if q
+            in (
+                "classes",
+                "methods",
+                "functions",
+                "imports",
+                "variables",
+                "interface",
+                "trait",
+                "namespace",
+                "decorator",
+            )
+        ]
+        rest = sorted(q for q in all_queries if q not in priority)[: 15 - len(priority)]
+        guidance["available_queries"] = priority + rest
 
     return guidance
 
