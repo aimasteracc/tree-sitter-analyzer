@@ -1,0 +1,328 @@
+#!/usr/bin/env python3
+"""
+Smart Context MCP Tool
+
+Provides a single-call "file profile" that combines health, dependencies,
+exports, and test proximity into one compact response. This is the tool AI
+agents should call FIRST when approaching an unfamiliar file.
+
+Replaces 4-5 separate tool calls with one atomic query.
+"""
+
+import ast
+from pathlib import Path
+from typing import Any
+
+from ...health_scorer import HealthScorer
+from ...project_graph import DependencyGraph
+from ...utils import setup_logger
+from .base_tool import BaseMCPTool
+
+logger = setup_logger(__name__)
+
+
+class SmartContextTool(BaseMCPTool):
+    """MCP Tool that provides a compact file profile combining multiple analyses."""
+
+    def __init__(self, project_root: str | None = None) -> None:
+        super().__init__(project_root)
+        self._graph: DependencyGraph | None = None
+        self._scorer: HealthScorer | None = None
+
+    def set_project_path(self, project_path: str) -> None:
+        super().set_project_path(project_path)
+        self._graph = None
+        self._scorer = None
+
+    def _get_graph(self) -> DependencyGraph:
+        if self._graph is None:
+            if not self.project_root:
+                raise ValueError("Project root not set.")
+            self._graph = DependencyGraph(self.project_root)
+        return self._graph
+
+    def _get_scorer(self) -> HealthScorer:
+        if self._scorer is None:
+            self._scorer = HealthScorer()
+        return self._scorer
+
+    def get_tool_definition(self) -> dict[str, Any]:
+        return {
+            "name": "smart_context",
+            "description": (
+                "Get a complete file profile in one call. Combines health grade, "
+                "exports (classes/functions), dependencies, test files, and edit risk "
+                "into a single compact response. Call this when approaching an "
+                "unfamiliar file to get oriented before editing."
+            ),
+            "inputSchema": self.get_tool_schema(),
+        }
+
+    def get_tool_schema(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "file_path": {
+                    "type": "string",
+                    "description": "Path to the source file",
+                },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "toon"],
+                    "description": "Output format: 'toon' (default) or 'json'",
+                    "default": "toon",
+                },
+            },
+            "required": ["file_path"],
+            "additionalProperties": False,
+        }
+
+    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        if "file_path" not in arguments:
+            raise ValueError("file_path is required")
+        fp = arguments["file_path"]
+        if not isinstance(fp, str) or not fp.strip():
+            raise ValueError("file_path must be a non-empty string")
+        return True
+
+    async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        self.validate_arguments(arguments)
+
+        file_path = arguments["file_path"]
+        output_format = arguments.get("output_format", "toon")
+
+        resolved = self.resolve_and_validate_file_path(file_path)
+        if not Path(resolved).exists():
+            raise ValueError(f"File not found: {file_path}")
+
+        graph = self._get_graph()
+        scorer = self._get_scorer()
+        rel_path = _to_relative(resolved, self.project_root or ".")
+
+        source = Path(resolved).read_text(encoding="utf-8", errors="replace")
+        lines = source.splitlines()
+
+        # 1. Health
+        health = scorer.score_file(resolved)
+
+        # 2. Exports (AST-based for Python)
+        ext = Path(resolved).suffix.lower()
+        exports = _extract_exports(source, ext)
+
+        # 3. Dependencies
+        dependents = _safe_query(graph, rel_path, "dependents")
+        dependencies = _safe_query(graph, rel_path, "dependencies")
+
+        # 4. Tests
+        test_files = _find_test_files(resolved, self.project_root or ".")
+
+        # 5. Quick risk assessment
+        risk = _quick_risk(len(dependents), health.grade, len(test_files) > 0)
+
+        # 6. File structure summary (top-level definitions)
+        structure = _extract_structure(source, ext)
+
+        result = {
+            "success": True,
+            "file_path": file_path,
+            "line_count": len(lines),
+            "language": ext.lstrip("."),
+            "health": {
+                "grade": health.grade,
+                "score": round(health.total, 1),
+                "weakest_dimension": _weakest_dimension(health.dimensions),
+            },
+            "exports": exports,
+            "structure": structure,
+            "dependencies": {
+                "imports_count": len(dependencies),
+                "imported_by_count": len(dependents),
+                "imports_sample": dependencies[:5],
+                "imported_by_sample": dependents[:5],
+            },
+            "tests": test_files,
+            "edit_risk": risk,
+            "recommendation": _build_summary(
+                health.grade, risk, len(exports), len(dependents)
+            ),
+        }
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(result, output_format)
+
+
+def _to_relative(abs_path: str, project_root: str) -> str:
+    try:
+        return str(Path(abs_path).relative_to(project_root))
+    except ValueError:
+        return abs_path
+
+
+def _safe_query(graph: DependencyGraph, rel_path: str, method: str) -> list[str]:
+    try:
+        target = rel_path
+        if target not in graph._nodes:
+            for node in graph._nodes:
+                if node.endswith(rel_path):
+                    target = node
+                    break
+        if method == "dependents":
+            return graph.dependents_of(target)
+        return graph.dependencies_of(target)
+    except Exception:  # nosec B110
+        return []
+
+
+def _extract_exports(source: str, ext: str) -> list[dict[str, Any]]:
+    """Extract exported symbols (classes, functions, constants)."""
+    exports: list[dict[str, Any]] = []
+
+    if ext == ".py":
+        try:
+            tree = ast.parse(source)
+            for node in ast.iter_child_nodes(tree):
+                if isinstance(node, ast.ClassDef):
+                    methods = [
+                        n.name
+                        for n in node.body
+                        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    ]
+                    exports.append(
+                        {
+                            "name": node.name,
+                            "kind": "class",
+                            "line": node.lineno,
+                            "methods": len(methods),
+                        }
+                    )
+                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if not node.name.startswith("_"):
+                        exports.append(
+                            {
+                                "name": node.name,
+                                "kind": "function",
+                                "line": node.lineno,
+                            }
+                        )
+                elif isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id.isupper():
+                            exports.append(
+                                {
+                                    "name": target.id,
+                                    "kind": "constant",
+                                    "line": node.lineno,
+                                }
+                            )
+        except SyntaxError:
+            pass
+
+    return exports
+
+
+def _extract_structure(source: str, ext: str) -> list[dict[str, str]]:
+    """Extract a lightweight structure outline (top-level items only)."""
+    structure: list[dict[str, str]] = []
+
+    if ext == ".py":
+        try:
+            tree = ast.parse(source)
+            for node in ast.iter_child_nodes(tree):
+                if isinstance(
+                    node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+                ):
+                    kind = "class" if isinstance(node, ast.ClassDef) else "function"
+                    end = node.end_lineno or node.lineno
+                    structure.append(
+                        {
+                            "name": node.name,
+                            "kind": kind,
+                            "lines": f"{node.lineno}-{end}",
+                        }
+                    )
+                elif isinstance(node, ast.Import):
+                    names = ", ".join(a.name for a in node.names)
+                    structure.append(
+                        {"name": names, "kind": "import", "lines": str(node.lineno)}
+                    )
+                elif isinstance(node, ast.ImportFrom):
+                    module = node.module or ""
+                    names = ", ".join(a.name for a in node.names)
+                    structure.append(
+                        {
+                            "name": f"{module}.{names}",
+                            "kind": "from_import",
+                            "lines": str(node.lineno),
+                        }
+                    )
+        except SyntaxError:
+            pass
+
+    return structure[:30]
+
+
+def _find_test_files(file_path: str, project_root: str) -> list[str]:
+    """Find test files for the given source file."""
+    p = Path(file_path)
+    stem = p.stem
+    root = Path(project_root)
+    results: list[str] = []
+
+    candidates = [
+        root / "tests" / "unit" / p.parent.name / f"test_{stem}.py",
+        root / "tests" / p.parent.name / f"test_{stem}.py",
+        root / "tests" / "unit" / f"test_{stem}.py",
+        root / "tests" / f"test_{stem}.py",
+        root / "tests" / "integration" / f"test_{stem}.py",
+    ]
+
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                results.append(str(candidate.relative_to(root)))
+        except ValueError:
+            pass
+
+    return results[:5]
+
+
+def _quick_risk(downstream: int, grade: str, has_tests: bool) -> str:
+    score = 0
+    if downstream > 20:
+        score += 3
+    elif downstream > 5:
+        score += 2
+    elif downstream > 0:
+        score += 1
+    if grade in ("D", "F"):
+        score += 2
+    elif grade == "C":
+        score += 1
+    if not has_tests:
+        score += 1
+    if score >= 5:
+        return "dangerous"
+    if score >= 3:
+        return "caution"
+    return "safe"
+
+
+def _weakest_dimension(dimensions: dict[str, float]) -> str:
+    if not dimensions:
+        return "unknown"
+    return min(dimensions, key=lambda k: dimensions[k])
+
+
+def _build_summary(
+    grade: str, risk: str, export_count: int, downstream_count: int
+) -> str:
+    parts = [f"Grade {grade}, risk: {risk}"]
+    parts.append(f"{export_count} export(s)")
+    if downstream_count > 0:
+        parts.append(f"{downstream_count} downstream file(s)")
+    if risk == "dangerous":
+        parts.append("call safe_to_edit for a detailed pre-edit checklist")
+    elif risk == "caution":
+        parts.append("proceed with caution — run tests after editing")
+    return ". ".join(parts)
