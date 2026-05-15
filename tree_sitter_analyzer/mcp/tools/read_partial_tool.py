@@ -56,7 +56,7 @@ class ReadPartialTool(BaseMCPTool):
             "properties": {
                 "requests": {
                     "type": "array",
-                    "description": "Batch mode: extract multiple ranges from multiple files in one call (mutually exclusive with file_path/start_line/...)",
+                    "description": "Batch: multiple ranges/files (exclusive with file_path/start_line)",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -81,58 +81,58 @@ class ReadPartialTool(BaseMCPTool):
                 },
                 "file_path": {
                     "type": "string",
-                    "description": "Path to the code file to read",
+                    "description": "File to read",
                 },
                 "start_line": {
                     "type": "integer",
-                    "description": "Starting line number (1-based)",
+                    "description": "Start line (1-based)",
                     "minimum": 1,
                 },
                 "end_line": {
                     "type": "integer",
-                    "description": "Ending line number (1-based, optional - reads to end if not specified)",
+                    "description": "End line (1-based, optional)",
                     "minimum": 1,
                 },
                 "start_column": {
                     "type": "integer",
-                    "description": "Starting column number (0-based, optional)",
+                    "description": "Start column (0-based)",
                     "minimum": 0,
                 },
                 "end_column": {
                     "type": "integer",
-                    "description": "Ending column number (0-based, optional)",
+                    "description": "End column (0-based)",
                     "minimum": 0,
                 },
                 "format": {
                     "type": "string",
-                    "description": "Output format for the content",
                     "enum": ["text", "json", "raw"],
                     "default": "text",
+                    "description": "Content format: text|json|raw",
                 },
                 "output_file": {
                     "type": "string",
-                    "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                    "description": "Save output to file",
                 },
                 "suppress_output": {
                     "type": "boolean",
-                    "description": "When true and output_file is specified, suppress partial_content_result in response to save tokens",
                     "default": False,
+                    "description": "Suppress response when output_file set",
                 },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
                     "default": "toon",
+                    "description": "'toon' (default, ~60% smaller) or 'json'",
                 },
                 "allow_truncate": {
                     "type": "boolean",
-                    "description": "Batch mode only: allow truncating results to fit limits (default: false, default behavior is fail on limit exceed)",
                     "default": False,
+                    "description": "Batch: truncate on limit (default: fail)",
                 },
                 "fail_fast": {
                     "type": "boolean",
-                    "description": "Batch mode only: stop on first error (default: false, partial success)",
                     "default": False,
+                    "description": "Batch: stop on first error",
                 },
             },
             "additionalProperties": False,
@@ -520,10 +520,9 @@ class ReadPartialTool(BaseMCPTool):
         return {
             "name": "extract_code_section",
             "description": (
-                "SMART Workflow 'Retrieve' step: Extract specific code sections by "
-                "line/column range. Use AFTER analyze_code_structure to identify target lines. "
-                "Supports text/json/raw formats, batch mode for multiple ranges/files, "
-                "and toon format for token reduction."
+                "SMART 'Retrieve': Extract code sections by line/column range. "
+                "Batch mode: multiple ranges/files in one call. "
+                "Use after analyze_code_structure to target specific lines."
             ),
             "inputSchema": self.get_tool_schema(),
         }

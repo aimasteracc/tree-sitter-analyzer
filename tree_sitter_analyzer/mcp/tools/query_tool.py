@@ -51,69 +51,62 @@ class QueryTool(BaseMCPTool):
         return {
             "name": "query_code",
             "description": (
-                "SMART Workflow 'Retrieve' step: Extract specific code elements. "
-                "TWO MODES — choose based on what you need:\n"
-                "Mode 1 - Single file: provide file_path + query_key (e.g. 'classes', 'functions'). "
-                "Use when you already know which file to analyze.\n"
-                "Mode 2 - Cross-file symbol search: provide symbol (no file_path). "
-                "Use when user asks 'where is X defined?', 'find class Y', "
-                "'who implements Z?', or you see a symbol name but don't know which file it's in. "
-                "Returns all definitions across the project with file, line, and type.\n"
-                "Supports filtering and toon format for token reduction."
+                "SMART 'Retrieve': Extract code elements via tree-sitter queries. "
+                "Mode 1: file_path + query_key (single file). "
+                "Mode 2: symbol only (cross-file search, returns definitions project-wide). "
+                "Keys: methods, classes, functions, imports, variables + language-specific."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "Path to the code file to query. Omit when using 'symbol' for cross-file search.",
+                        "description": "File to query. Omit for cross-file symbol search.",
                     },
                     "symbol": {
                         "type": "string",
-                        "description": "Symbol name to search across the entire project (e.g., 'UserService', 'authenticate'). Returns definitions with file, line, and type. Omit file_path when using this.",
+                        "description": "Symbol name to find project-wide. E.g. 'UserService'. Omit file_path.",
                     },
                     "language": {
                         "type": "string",
-                        "description": "Programming language (optional, auto-detected if not provided)",
+                        "description": "Language (optional, auto-detected)",
                     },
                     "query_key": {
                         "type": "string",
                         "description": (
-                            "Predefined query key. Common: 'methods', 'classes', 'functions', 'imports', "
-                            "'variables'. Language-specific examples: 'spring_service' (Java), "
-                            "'decorator' (Python), 'goroutine' (Go), 'trait' (Rust), "
-                            "'namespace' (C++/C#), 'interface' (TS/Kotlin). "
-                            "Invalid keys return the full list of available queries for that language."
+                            "Query: methods|classes|functions|imports|variables, "
+                            "or language-specific (spring_service, decorator, goroutine, etc.). "
+                            "Invalid key returns available queries."
                         ),
                     },
                     "query_string": {
                         "type": "string",
-                        "description": "Custom tree-sitter query string (e.g., '(method_declaration) @method')",
+                        "description": "Custom tree-sitter query. E.g. '(method_declaration) @m'",
                     },
                     "filter": {
                         "type": "string",
-                        "description": "Filter expression to refine results (e.g., 'name=main', 'name=~get*,public=true')",
+                        "description": "Filter. E.g. 'name=main', 'name=~get*,public=true'",
                     },
                     "result_format": {
                         "type": "string",
                         "enum": ["json", "summary"],
                         "default": "json",
-                        "description": "Result format for query results",
+                        "description": "Query result format",
                     },
                     "output_format": {
                         "type": "string",
                         "enum": ["json", "toon"],
-                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
                         "default": "toon",
+                        "description": "'toon' (default, ~60% smaller) or 'json'",
                     },
                     "output_file": {
                         "type": "string",
-                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                        "description": "Save output to file",
                     },
                     "suppress_output": {
                         "type": "boolean",
-                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
                         "default": False,
+                        "description": "Suppress response when output_file set",
                     },
                 },
             },

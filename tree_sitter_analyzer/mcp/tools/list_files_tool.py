@@ -54,104 +54,107 @@ class ListFilesTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "list_files",
-            "description": "SMART Workflow 'Map' step: List files and directories using fd with advanced filtering. Use to discover project structure and locate target files before analysis. Supports glob patterns, file types, size filters, and toon format for token reduction.",
+            "description": (
+                "SMART 'Map': fd-based file listing with filtering. "
+                "Discover structure, locate targets before analysis."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "roots": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Directory paths to search in. Must be within project boundaries for security. Example: ['.', 'src/', '/path/to/dir']",
+                        "description": "Dirs to search. E.g. ['src/', 'tests/']",
                     },
                     "pattern": {
                         "type": "string",
-                        "description": "Search pattern for file/directory names. Use with 'glob' for shell patterns or regex. Example: '*.py', 'test_*', 'main.js'",
+                        "description": "Filename pattern. E.g. '*.py', 'test_*'",
                     },
                     "glob": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Treat pattern as glob (shell wildcard) instead of regex. True for '*.py', False for '.*\\.py$'",
+                        "description": "Treat pattern as glob, not regex",
                     },
                     "types": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "File types to include. Values: 'f'=files, 'd'=directories, 'l'=symlinks, 'x'=executable, 'e'=empty. Example: ['f'] for files only",
+                        "description": "Types: f=files, d=dirs, l=symlinks, x=exec",
                     },
                     "extensions": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "File extensions to include (without dots). Example: ['py', 'js', 'md'] for Python, JavaScript, and Markdown files",
+                        "description": "Extensions (no dots). E.g. ['py', 'js']",
                     },
                     "exclude": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Patterns to exclude from results. Example: ['*.tmp', '__pycache__', 'node_modules'] to skip temporary and cache files",
+                        "description": "Exclude patterns",
                     },
                     "depth": {
                         "type": "integer",
-                        "description": "Maximum directory depth to search. 1=current level only, 2=one level deep, etc. Useful to avoid deep recursion",
+                        "description": "Max depth. 1=current only",
                     },
                     "follow_symlinks": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Follow symbolic links during search. False=skip symlinks (safer), True=follow them (may cause loops)",
+                        "description": "Follow symlinks",
                     },
                     "hidden": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Include hidden files/directories (starting with dot). False=skip .git, .env, True=include all",
+                        "description": "Include hidden files",
                     },
                     "no_ignore": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Ignore .gitignore and similar files. False=respect ignore files, True=search everything",
+                        "description": "Ignore .gitignore",
                     },
                     "size": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "File size filters. Format: '+10M'=larger than 10MB, '-1K'=smaller than 1KB, '100B'=exactly 100 bytes. Units: B, K, M, G",
+                        "description": "Size filter. E.g. '+10M', '-1K'",
                     },
                     "changed_within": {
                         "type": "string",
-                        "description": "Files modified within timeframe. Format: '1d'=1 day, '2h'=2 hours, '30m'=30 minutes, '1w'=1 week",
+                        "description": "Modified within. E.g. '1d', '2h'",
                     },
                     "changed_before": {
                         "type": "string",
-                        "description": "Files modified before timeframe. Same format as changed_within. Useful for finding old files",
+                        "description": "Modified before. Same format",
                     },
                     "full_path_match": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Match pattern against full path instead of just filename. True for 'src/main.py', False for 'main.py'",
+                        "description": "Match full path, not just filename",
                     },
                     "absolute": {
                         "type": "boolean",
                         "default": True,
-                        "description": "Return absolute paths. True='/full/path/file.py', False='./file.py'. Absolute paths are more reliable",
+                        "description": "Return absolute paths",
                     },
                     "limit": {
                         "type": "integer",
-                        "description": "Maximum number of results to return. Default 2000, max 10000. Use to prevent overwhelming output",
+                        "description": "Max results (def 2000, max 10000)",
                     },
                     "count_only": {
                         "type": "boolean",
                         "default": False,
-                        "description": "Return only the total count of matching files instead of file details. Useful for quick statistics",
+                        "description": "Return only count, not file details",
                     },
                     "output_file": {
                         "type": "string",
-                        "description": "Optional filename to save output to file (extension auto-detected based on content)",
+                        "description": "Save output to file",
                     },
                     "suppress_output": {
                         "type": "boolean",
-                        "description": "When true and output_file is specified, suppress detailed output in response to save tokens",
                         "default": False,
+                        "description": "Suppress response when output_file set",
                     },
                     "output_format": {
                         "type": "string",
                         "enum": ["json", "toon"],
-                        "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
                         "default": "toon",
+                        "description": "'toon' (default, ~60% smaller) or 'json'",
                     },
                 },
                 "required": ["roots"],

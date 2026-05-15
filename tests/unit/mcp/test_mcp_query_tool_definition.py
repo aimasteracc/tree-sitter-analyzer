@@ -46,7 +46,7 @@ class TestMCPQueryToolDefinition:
         assert "filter" in properties
         filter_def = properties["filter"]
         assert filter_def["type"] == "string"
-        assert "filter expression" in filter_def["description"].lower()
+        assert "filter" in filter_def["description"].lower()
 
     def test_tool_definition_required_fields(self):
         """Test that key fields are defined (file_path or symbol required at runtime)"""

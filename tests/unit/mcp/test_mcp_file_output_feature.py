@@ -464,8 +464,8 @@ public class Test {
             assert "output_file" in properties
             assert properties["output_file"]["type"] == "string"
             assert (
-                "Optional filename to save output to file"
-                in properties["output_file"]["description"]
+                "save output to file"
+                in properties["output_file"]["description"].lower()
             )
 
             # Check that suppress_output parameter exists

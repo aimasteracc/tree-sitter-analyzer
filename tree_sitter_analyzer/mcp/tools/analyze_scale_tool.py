@@ -130,41 +130,41 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "file_paths": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Batch mode: list of file paths to compute metrics for (requires metrics_only=true)",
+                    "description": "Batch: file paths (requires metrics_only=true)",
                 },
                 "metrics_only": {
                     "type": "boolean",
-                    "description": "Batch mode: when true, compute file metrics only (no structural analysis)",
                     "default": False,
+                    "description": "Batch: metrics only, no structural analysis",
                 },
                 "file_path": {
                     "type": "string",
-                    "description": "Path to the code file to analyze",
+                    "description": "File to analyze",
                 },
                 "language": {
                     "type": "string",
-                    "description": "Programming language (optional, auto-detected if not specified)",
+                    "description": "Language (optional, auto-detected)",
                 },
                 "include_complexity": {
                     "type": "boolean",
-                    "description": "Include complexity metrics in the analysis",
                     "default": True,
+                    "description": "Include complexity metrics",
                 },
                 "include_details": {
                     "type": "boolean",
-                    "description": "Include detailed element information",
                     "default": False,
+                    "description": "Include detailed elements",
                 },
                 "include_guidance": {
                     "type": "boolean",
-                    "description": "Include LLM analysis guidance",
                     "default": True,
+                    "description": "Include LLM guidance",
                 },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, 50-70% token reduction) or 'json'",
                     "default": "toon",
+                    "description": "'toon' (default, ~60% smaller) or 'json'",
                 },
             },
             "additionalProperties": False,
@@ -559,11 +559,8 @@ class AnalyzeScaleTool(BaseMCPTool):
         return {
             "name": "check_code_scale",
             "description": (
-                "SMART Workflow 'Analyze' step (use FIRST for any file): "
-                "Get file size, element counts (classes/methods/fields/imports), "
-                "complexity metrics, and LLM-optimized analysis guidance. "
-                "Use this BEFORE analyze_code_structure to decide the right strategy. "
-                "Supports batch mode for multiple files and token-aware recommendations."
+                "SMART 'Analyze' (use FIRST): File size, element counts, complexity, "
+                "LLM guidance. Use before analyze_code_structure. Batch supported."
             ),
             "inputSchema": self.get_tool_schema(),
         }

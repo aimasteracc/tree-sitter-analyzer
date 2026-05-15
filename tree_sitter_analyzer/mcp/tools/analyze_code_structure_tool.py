@@ -69,34 +69,32 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Path to the code file to analyze and format",
+                    "description": "File to analyze",
                 },
                 "format_type": {
                     "type": "string",
-                    "description": "Table format type",
                     "enum": ["full", "compact", "csv"],
                     "default": "full",
+                    "description": "Table format: full|compact|csv",
                 },
                 "language": {
                     "type": "string",
-                    "description": "Programming language (optional, auto-detected if not specified)",
+                    "description": "Language (optional, auto-detected)",
                 },
                 "output_file": {
                     "type": "string",
-                    "description": "Optional filename to save output to file "
-                    "(extension auto-detected based on content)",
+                    "description": "Save output to file",
                 },
                 "suppress_output": {
                     "type": "boolean",
-                    "description": "When true and output_file is specified, "
-                    "suppress table_output in response to save tokens",
                     "default": False,
+                    "description": "Suppress response when output_file set",
                 },
                 "output_format": {
                     "type": "string",
                     "enum": ["json", "toon"],
-                    "description": "Output format for metadata: 'toon' (default, 50-70% token reduction) or 'json'",
                     "default": "toon",
+                    "description": "'toon' (default, ~60% smaller) or 'json'",
                 },
             },
             "required": ["file_path"],
@@ -528,13 +526,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return {
             "name": "analyze_code_structure",
             "description": (
-                "SMART Workflow 'Analyze' step: Generate detailed structure tables "
-                "(classes, methods, fields with line positions) for 17 languages "
-                "(Java, Python, JS/TS, Go, Rust, C/C++, Kotlin, C#, Ruby, PHP, etc). "
-                "Use AFTER check_code_scale to understand file organization, THEN use "
-                "extract_code_section with the line positions to read specific code. "
-                "Supports full/compact/csv table formats, optional file output, "
-                "and toon format for 50-70% token reduction."
+                "SMART 'Analyze': Structure tables (classes, methods, fields, line positions) "
+                "for 17 langs. Use after check_code_scale, before extract_code_section. "
+                "Formats: full|compact|csv."
             ),
             "inputSchema": self.get_tool_schema(),
         }
