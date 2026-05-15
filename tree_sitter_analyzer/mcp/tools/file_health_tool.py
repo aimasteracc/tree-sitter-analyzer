@@ -108,7 +108,7 @@ class FileHealthTool(BaseMCPTool):
             result["next_action"] = _suggest_next_action(
                 file_path, health.grade, smells
             )
-            plan = _build_extraction_plan(file_path, smells)
+            plan = _build_extraction_plan(file_path, smells, resolved)
             if plan:
                 result["extraction_plan"] = plan
 
@@ -374,6 +374,7 @@ def _suggest_next_action(
 def _build_extraction_plan(
     file_path: str,
     smells: list[dict[str, Any]],
+    resolved_path: str,
 ) -> dict[str, Any] | None:
     """Build a structured extraction plan for D/F grade files."""
     long_methods = [s for s in smells if s["smell"] == "long_method"]
@@ -386,10 +387,12 @@ def _build_extraction_plan(
         name = detail.split("'")[1] if "'" in detail else "unknown"
         line_match = re.search(r"\(L(\d+)\)", detail)
         start_line = int(line_match.group(1)) if line_match else 0
+        end_line = _find_function_end_line(resolved_path, start_line)
         targets.append(
             {
                 "method": name,
                 "start_line": start_line,
+                "end_line": end_line,
                 "priority": "critical" if s.get("severity") == "critical" else "normal",
             }
         )
@@ -410,3 +413,38 @@ def _build_extraction_plan(
             f"5. Re-run check_file_health(file_path='{file_path}')",
         ],
     }
+
+
+def _find_function_end_line(file_path: str, start_line: int) -> int:
+    """Find the end line of a function using AST or indentation heuristics."""
+    try:
+        import ast
+
+        source = Path(file_path).read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.lineno == start_line:
+                    return node.end_lineno or start_line
+    except Exception:  # nosec B110 — AST parse failure is non-critical, fallback follows
+        pass
+
+    # Fallback: find end by indentation
+    try:
+        lines = (
+            Path(file_path).read_text(encoding="utf-8", errors="replace").splitlines()
+        )
+        if start_line - 1 >= len(lines):
+            return start_line
+
+        base_indent = len(lines[start_line - 1]) - len(lines[start_line - 1].lstrip())
+        for i in range(start_line, len(lines)):
+            stripped = lines[i].strip()
+            if not stripped:
+                continue
+            current_indent = len(lines[i]) - len(lines[i].lstrip())
+            if current_indent <= base_indent and stripped:
+                return i
+        return len(lines)
+    except Exception:
+        return start_line
