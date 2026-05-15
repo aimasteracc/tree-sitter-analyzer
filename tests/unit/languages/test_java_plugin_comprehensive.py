@@ -1010,14 +1010,12 @@ class UserConfig {
         extractors = {"field_declaration": mock_field_extractor}
         results = []
 
-        # Mock the batch processing method
-        with patch.object(extractor, "_process_field_batch") as mock_batch_process:
-            extractor._traverse_and_extract_iterative(
-                mock_root, extractors, results, "field"
-            )
+        extractor._traverse_and_extract_iterative(
+            mock_root, extractors, results, "field"
+        )
 
-            # Should call batch processing twice (10 + 5 fields)
-            assert mock_batch_process.call_count == 2
+        # All 15 fields should be extracted
+        assert len(results) == 15
 
     def test_process_field_batch(self, extractor):
         """Test field batch processing"""
@@ -1109,7 +1107,7 @@ class UserConfig {
 
         # Should not process deeply nested nodes
         with patch(
-            "tree_sitter_analyzer.languages.java_plugin.log_warning"
+            "tree_sitter_analyzer.languages.java_helpers.log_warning"
         ) as mock_log:
             extractor._traverse_and_extract_iterative(
                 root_node, extractors, results, "method"
