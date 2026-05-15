@@ -187,11 +187,15 @@ class ProjectOverviewTool(BaseMCPTool):
             ),
             "largest_source_files": largest_files,
             "top_directories": dict(sorted(dir_tree.items(), key=lambda x: -x[1])[:20]),
-            "smart_workflow_hint": (
-                "Next: call check_code_scale on any interesting file, "
-                "or analyze_code_structure for a detailed table."
-            ),
         }
+
+        if not include_health:
+            result["smart_workflow_hint"] = (
+                "Call get_project_overview(include_health=true) to discover refactoring targets, "
+                "or check_code_scale on any file for a quick assessment."
+            )
+        else:
+            result["smart_workflow_hint"] = _build_smart_hint(result)
 
         if include_health and all_source_files:
             from ...health_scorer import HealthScorer
@@ -203,13 +207,18 @@ class ProjectOverviewTool(BaseMCPTool):
                 abs_path = str(root / sf["path"])
                 try:
                     h = scorer.score_file(abs_path)
-                    health_results.append(
-                        {
-                            "file": sf["path"],
-                            "grade": h.grade,
-                            "score": h.total,
-                        }
-                    )
+                    health_entry: dict[str, Any] = {
+                        "file": sf["path"],
+                        "grade": h.grade,
+                        "score": h.total,
+                    }
+                    # Add actionable refactoring suggestion for unhealthy files
+                    if h.grade in ("D", "F"):
+                        lines = sf.get("lines", 0)
+                        suggestion = _suggest_refactor_action(sf["path"], lines, h)
+                        if suggestion:
+                            health_entry["suggestion"] = suggestion
+                    health_results.append(health_entry)
                 except Exception:  # nosec B112
                     continue
             result["health_summary"] = health_results
@@ -230,3 +239,63 @@ def _count_lines(path: Path) -> int:
         return sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
     except Exception:
         return 0
+
+
+def _suggest_refactor_action(
+    file_path: str, line_count: int, health: Any
+) -> str | None:
+    """Generate a one-line refactoring suggestion for an unhealthy file."""
+    ext = Path(file_path).suffix.lower()
+    is_test = "test" in file_path.lower()
+    is_prod = not is_test and ext == ".py"
+
+    if line_count > 500 and is_prod:
+        return (
+            f"check_file_health(file_path='{file_path}') for extraction targets, "
+            f"then extract the longest methods into a new module"
+        )
+    if is_test:
+        return (
+            f"Split test file by test class into separate files "
+            f"(current: {line_count} lines)"
+        )
+    if ext == ".md":
+        return f"Archive old entries to reduce size ({line_count} lines)"
+    return None
+
+
+def _build_smart_hint(result: dict[str, Any]) -> str:
+    """Build a context-aware SMART workflow hint based on project analysis."""
+    parts: list[str] = []
+    health_summary = result.get("health_summary", [])
+    unhealthy = [h for h in health_summary if h.get("grade") in ("D", "F")]
+    lang_dist = result.get("language_distribution", {})
+    top_lang = max(lang_dist, key=lambda k: lang_dist[k]) if lang_dist else ""
+
+    if unhealthy:
+        # Point to the worst production file
+        prod_unhealthy = [h for h in unhealthy if "test" not in h["file"].lower()]
+        target = prod_unhealthy[0] if prod_unhealthy else unhealthy[0]
+        action = target.get("suggestion", "check_file_health for details")
+        parts.append(
+            f"REFACTOR: {target['file']} ({target['grade']} {target['score']:.0f}) — {action}"
+        )
+    else:
+        parts.append("Project health is good — all top files are A/B/C grade")
+
+    # Language-specific suggestion
+    if top_lang:
+        parts.append(
+            f"SMART 'Analyze': analyze_code_structure on any .{top_lang} file for detailed table"
+        )
+
+    # Scale suggestion
+    largest = result.get("largest_source_files", [])
+    if largest:
+        biggest = largest[0]
+        parts.append(
+            f"SMART 'Retrieve': extract_code_section on {biggest['path']} "
+            f"({biggest['lines']} lines) for focused reading"
+        )
+
+    return " | ".join(parts[:3])

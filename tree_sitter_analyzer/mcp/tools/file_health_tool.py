@@ -102,6 +102,12 @@ class FileHealthTool(BaseMCPTool):
             ),
         }
 
+        # Provide a concrete next action for AI agents
+        if health.grade in ("D", "F"):
+            result["next_action"] = _suggest_next_action(
+                file_path, health.grade, smells
+            )
+
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
@@ -299,7 +305,9 @@ def _find_long_blocks(
 
 
 def _build_recommendation(
-    grade: str, dimensions: dict[str, float], smells: list[dict[str, Any]]
+    grade: str,
+    dimensions: dict[str, float],
+    smells: list[dict[str, Any]],
 ) -> str:
     if grade in ("A", "B") and not smells:
         return "File is in good shape. No immediate action needed."
@@ -318,4 +326,42 @@ def _build_recommendation(
         parts.append(
             f"{len(warnings)} warning(s): {', '.join(s['smell'] for s in warnings)}"
         )
+
+    # Add extraction suggestion for long methods
+    long_methods = [s for s in smells if s["smell"] == "long_method"]
+    if long_methods:
+        names = [s["detail"].split("'")[1] for s in long_methods if "'" in s["detail"]]
+        if names:
+            parts.append(
+                f"Extract: {', '.join(names[:3])} into standalone functions in a new module"
+            )
+
     return ". ".join(parts) + ". Focus on critical items first."
+
+
+def _suggest_next_action(
+    file_path: str,
+    grade: str,
+    smells: list[dict[str, Any]],
+) -> str:
+    """Suggest a concrete next action for an AI agent to take."""
+    long_methods = [s for s in smells if s["smell"] == "long_method"]
+    if long_methods:
+        names = [s["detail"].split("'")[1] for s in long_methods if "'" in s["detail"]]
+        if names:
+            return (
+                f"Extract {', '.join(names[:2])} into a new module, "
+                f"then call check_file_health(file_path='{file_path}') to verify improvement"
+            )
+
+    oversized = any(s["smell"] == "oversized_file" for s in smells)
+    if oversized:
+        return (
+            f"Call analyze_code_structure(file_path='{file_path}', format='table') "
+            f"to identify extraction targets, then split into focused modules"
+        )
+
+    return (
+        "Review code_smells above and apply suggested fixes, "
+        "then re-run check_file_health to track improvement"
+    )
