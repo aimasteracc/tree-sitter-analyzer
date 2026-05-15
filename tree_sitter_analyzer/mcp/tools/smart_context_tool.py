@@ -22,6 +22,7 @@ from .utils.element_extractor import (
     get_all_exports,
     get_structure,
 )
+from .utils.test_discovery import find_test_files
 
 logger = setup_logger(__name__)
 
@@ -122,8 +123,8 @@ class SmartContextTool(BaseMCPTool):
         dependents = _safe_query(graph, rel_path, "dependents")
         dependencies = _safe_query(graph, rel_path, "dependencies")
 
-        # 4. Tests
-        test_files = _find_test_files(resolved, self.project_root or ".")
+        # 4. Tests (language-aware discovery)
+        test_files = find_test_files(resolved, self.project_root or ".")
 
         # 5. Quick risk assessment
         risk = _quick_risk(len(dependents), health.grade, len(test_files) > 0)
@@ -178,31 +179,6 @@ def _safe_query(graph: DependencyGraph, rel_path: str, method: str) -> list[str]
         return graph.dependencies_of(target)
     except Exception:  # nosec B110
         return []
-
-
-def _find_test_files(file_path: str, project_root: str) -> list[str]:
-    """Find test files for the given source file."""
-    p = Path(file_path)
-    stem = p.stem
-    root = Path(project_root)
-    results: list[str] = []
-
-    candidates = [
-        root / "tests" / "unit" / p.parent.name / f"test_{stem}.py",
-        root / "tests" / p.parent.name / f"test_{stem}.py",
-        root / "tests" / "unit" / f"test_{stem}.py",
-        root / "tests" / f"test_{stem}.py",
-        root / "tests" / "integration" / f"test_{stem}.py",
-    ]
-
-    for candidate in candidates:
-        try:
-            if candidate.exists():
-                results.append(str(candidate.relative_to(root)))
-        except ValueError:
-            pass
-
-    return results[:5]
 
 
 def _quick_risk(downstream: int, grade: str, has_tests: bool) -> str:

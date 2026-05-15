@@ -8,9 +8,9 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
     SafeToEditTool,
     _compute_risk,
-    _find_nearby_tests,
     _is_init_file,
 )
+from tree_sitter_analyzer.mcp.tools.utils.test_discovery import find_test_files
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 SAMPLE_PYTHON = str(
@@ -236,8 +236,8 @@ class TestHelperFunctions:
     def test_is_init_file_false(self):
         assert not _is_init_file("src/main.py")
 
-    def test_find_nearby_tests_for_known_file(self):
-        tests = _find_nearby_tests(
+    def test_find_test_files_for_known_file(self):
+        tests = find_test_files(
             str(PROJECT_ROOT / "tree_sitter_analyzer" / "health_scorer.py"),
             str(PROJECT_ROOT),
         )

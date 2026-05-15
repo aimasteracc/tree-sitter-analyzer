@@ -15,6 +15,7 @@ from ...health_scorer import HealthScorer
 from ...project_graph import DependencyGraph
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .utils.test_discovery import find_test_files
 
 logger = setup_logger(__name__)
 
@@ -116,7 +117,7 @@ class SafeToEditTool(BaseMCPTool):
         health = scorer.score_file(resolved)
 
         # 4. Test proximity — are there co-located tests?
-        test_files = _find_nearby_tests(resolved, self.project_root or ".")
+        test_files = find_test_files(resolved, self.project_root or ".")
         has_tests = len(test_files) > 0
 
         # 5. Compute risk
@@ -181,71 +182,6 @@ def _safe_dependencies(graph: DependencyGraph, rel_path: str) -> list[str]:
     except Exception:  # nosec B110 — graph lookup failure returns empty list
         pass
     return []
-
-
-def _find_nearby_tests(file_path: str, project_root: str) -> list[str]:
-    """Find test files that likely test this source file."""
-    p = Path(file_path)
-    stem = p.stem
-    parent = p.parent
-    results: list[str] = []
-
-    # Pattern 1: tests/unit/<module>/test_<name>.py
-    root = Path(project_root)
-    candidates = [
-        root / "tests" / "unit" / parent.name / f"test_{stem}.py",
-        root / "tests" / parent.name / f"test_{stem}.py",
-        root / "tests" / f"test_{stem}.py",
-        root / "tests" / "unit" / f"test_{stem}.py",
-        root / "tests" / "integration" / f"test_{stem}.py",
-    ]
-
-    # Pattern 2: co-located test file (some JS/TS projects)
-    candidates.append(parent / f"{stem}.test.py")
-    candidates.append(parent / f"test_{stem}.py")
-
-    for candidate in candidates:
-        try:
-            if candidate.exists():
-                results.append(str(candidate.relative_to(root)))
-        except ValueError:
-            pass
-
-    # Also search by import pattern for a few known test patterns
-    tests_dir = root / "tests"
-    if tests_dir.exists():
-        _search_test_imports(tests_dir, stem, parent.name, root, results)
-
-    return results[:10]
-
-
-def _search_test_imports(
-    tests_dir: Path,
-    module_stem: str,
-    module_dir: str,
-    root: Path,
-    results: list[str],
-) -> None:
-    """Quick scan of test files for imports matching the module."""
-    # Only scan top-level and one level deep to keep it fast
-    for test_file in tests_dir.rglob("test_*.py"):
-        if len(results) >= 10:
-            return
-        try:
-            content = test_file.read_text(encoding="utf-8", errors="replace")
-            # Check if the test imports from the module
-            if module_stem in content and (
-                f"import {module_stem}" in content
-                or f"from {module_dir}" in content
-                or f"from .{module_stem}" in content
-                or f"from ..{module_stem}" in content
-                or f"from ...{module_stem}" in content
-            ):
-                rel = str(test_file.relative_to(root))
-                if rel not in results:
-                    results.append(rel)
-        except Exception:  # nosec B110
-            pass
 
 
 def _is_init_file(file_path: str) -> bool:
