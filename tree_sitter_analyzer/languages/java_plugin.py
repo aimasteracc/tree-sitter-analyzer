@@ -6,7 +6,6 @@ Provides Java-specific parsing and element extraction functionality.
 Migrated from AdvancedAnalyzer implementation for future independence.
 """
 
-import re
 from typing import TYPE_CHECKING, Any
 
 import anyio
@@ -20,7 +19,7 @@ if TYPE_CHECKING:
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_warning
+from ..utils import log_debug, log_error
 from .java_helpers import (
     calculate_complexity as _calc_complexity_standalone,
 )
@@ -34,7 +33,16 @@ from .java_helpers import (
     extract_class_name as _extract_class_name_standalone,
 )
 from .java_helpers import (
+    extract_java_class as _extract_class_standalone,
+)
+from .java_helpers import (
+    extract_java_field as _extract_field_standalone,
+)
+from .java_helpers import (
     extract_java_imports as _extract_imports_standalone,
+)
+from .java_helpers import (
+    extract_java_method as _extract_method_standalone,
 )
 from .java_helpers import (
     extract_java_packages as _extract_packages_standalone,
@@ -50,6 +58,9 @@ from .java_helpers import (
 )
 from .java_helpers import (
     is_nested_class as _is_nested_standalone,
+)
+from .java_helpers import (
+    java_traverse_and_extract as _traverse_standalone,
 )
 from .java_helpers import (
     parse_field_declaration as _parse_field_standalone,
@@ -235,147 +246,25 @@ class JavaElementExtractor(ElementExtractor):
         results: list[Any],
         element_type: str,
     ) -> None:
-        """
-        Iterative node traversal and extraction (from AdvancedAnalyzer)
-        Uses batch processing for optimal performance
-        """
-        if not root_node:
-            return
-
-        # Target node types for extraction
-        target_node_types = set(extractors.keys())
-
-        # Container node types that may contain target nodes (from AdvancedAnalyzer)
-        container_node_types = {
-            "program",
-            "class_body",
-            "interface_body",
-            "enum_body",
-            "enum_body_declarations",  # Required for enum methods/fields/constructors
-            "class_declaration",
-            "interface_declaration",
-            "enum_declaration",
-            "method_declaration",
-            "constructor_declaration",
-            "block",
-            "modifiers",  # Annotation nodes can appear inside modifiers
-        }
-
-        # Iterative DFS stack: (node, depth)
-        node_stack = [(root_node, 0)]
-        processed_nodes = 0
-        max_depth = 50  # Prevent infinite loops
-
-        # Batch processing containers (from AdvancedAnalyzer)
-        field_batch = []
-
-        while node_stack:
-            current_node, depth = node_stack.pop()
-
-            # Safety check for maximum depth
-            if depth > max_depth:
-                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
-                continue
-
-            processed_nodes += 1
-            node_type = current_node.type
-
-            # Early termination: skip nodes that don't contain target elements
-            if (
-                depth > 0
-                and node_type not in target_node_types
-                and node_type not in container_node_types
-            ):
-                continue
-
-            # Collect target nodes for batch processing (from AdvancedAnalyzer)
-            if node_type in target_node_types:
-                if element_type == "field" and node_type == "field_declaration":
-                    field_batch.append(current_node)
-                else:
-                    # Process non-field elements immediately
-                    node_id = id(current_node)
-
-                    # Skip if already processed
-                    if node_id in self._processed_nodes:
-                        continue
-
-                    # Check element cache first
-                    cache_key = (node_id, element_type)
-                    if cache_key in self._element_cache:
-                        element = self._element_cache[cache_key]
-                        if element:
-                            if isinstance(element, list):
-                                results.extend(element)
-                            else:
-                                results.append(element)
-                        self._processed_nodes.add(node_id)
-                        continue
-
-                    # Extract and cache
-                    extractor = extractors.get(node_type)
-                    if extractor:
-                        element = extractor(current_node)
-                        self._element_cache[cache_key] = element
-                        if element:
-                            if isinstance(element, list):
-                                results.extend(element)
-                            else:
-                                results.append(element)
-                        self._processed_nodes.add(node_id)
-
-            # Add children to stack (reversed for correct DFS traversal)
-            if current_node.children:
-                for child in reversed(current_node.children):
-                    node_stack.append((child, depth + 1))
-
-            # Process field batch when it reaches optimal size (from AdvancedAnalyzer)
-            if len(field_batch) >= 10:
-                self._process_field_batch(field_batch, extractors, results)
-                field_batch.clear()
-
-        # Process remaining field batch (from AdvancedAnalyzer)
-        if field_batch:
-            self._process_field_batch(field_batch, extractors, results)
-
-        log_debug(f"Iterative traversal processed {processed_nodes} nodes")
+        """Iterative node traversal and extraction with batch processing"""
+        _traverse_standalone(
+            root_node,
+            extractors,
+            results,
+            element_type,
+            self._processed_nodes,
+            self._element_cache,
+        )
 
     def _process_field_batch(
         self, batch: list["tree_sitter.Node"], extractors: dict, results: list[Any]
     ) -> None:
-        """Process field nodes with caching using position-based keys"""
-        for node in batch:
-            # Use stable node identifier
-            node_id = id(node)
-            node_key = node_id  # Maintain variable name for minimal changes
+        """Process field nodes with caching — delegated to helper."""
+        from .java_helpers import _process_field_batch
 
-            # Skip if already processed
-            if node_id in self._processed_nodes:
-                continue
-
-            # Check element cache first
-            cache_key = (node_id, "field")
-            if cache_key in self._element_cache:
-                elements = self._element_cache[cache_key]
-                if elements:
-                    if isinstance(elements, list):
-                        results.extend(elements)
-                    else:
-                        results.append(elements)
-                self._processed_nodes.add(node_key)
-                continue
-
-            # Extract and cache
-            extractor = extractors.get(node.type)
-            if extractor:
-                elements = extractor(node)
-                self._element_cache[cache_key] = elements
-                if elements:
-                    if isinstance(elements, list):
-                        results.extend(elements)
-                    else:
-                        results.append(elements)
-                self._processed_nodes.add(node_id)
+        _process_field_batch(
+            batch, extractors, results, self._processed_nodes, self._element_cache
+        )
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
@@ -427,202 +316,43 @@ class JavaElementExtractor(ElementExtractor):
                 return ""
 
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
-        """Extract class information optimized (from AdvancedAnalyzer)"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Extract class name efficiently
-            class_name = None
-            for child in node.children:
-                if child.type == "identifier":
-                    class_name = self._get_node_text_optimized(child)
-                    break
-
-            if not class_name:
-                return None
-
-            # Determine package name
-            package_name = self.current_package
-            full_qualified_name = (
-                f"{package_name}.{class_name}" if package_name else class_name
-            )
-
-            # Determine class type (optimized: dictionary lookup)
-            class_type_map = {
-                "class_declaration": "class",
-                "interface_declaration": "interface",
-                "enum_declaration": "enum",
-            }
-            class_type = class_type_map.get(node.type, "class")
-
-            # Extract modifiers efficiently
-            modifiers = self._extract_modifiers_optimized(node)
-            visibility = self._determine_visibility(modifiers)
-
-            # Extract superclass and interfaces (optimized: single pass)
-            extends_class = None
-            implements_interfaces = []
-
-            for child in node.children:
-                if child.type == "superclass":
-                    extends_text = self._get_node_text_optimized(child)
-                    match = re.search(r"\b[A-Z]\w*", extends_text)
-                    if match:
-                        extends_class = match.group(0)
-                elif child.type == "super_interfaces":
-                    implements_text = self._get_node_text_optimized(child)
-                    implements_interfaces = re.findall(r"\b[A-Z]\w*", implements_text)
-
-            # Extract annotations for this class
-            class_annotations = self._find_annotations_for_line_cached(start_line)
-
-            # Check if this is a nested class
-            is_nested = self._is_nested_class(node)
-            parent_class = self._find_parent_class(node) if is_nested else None
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            return Class(
-                name=class_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="java",
-                class_type=class_type,
-                full_qualified_name=full_qualified_name,
-                package_name=package_name,
-                superclass=extends_class,
-                interfaces=implements_interfaces,
-                modifiers=modifiers,
-                visibility=visibility,
-                # Java-specific detailed information
-                annotations=class_annotations,
-                is_nested=is_nested,
-                parent_class=parent_class,
-                extends_class=extends_class,  # Alias for superclass
-                implements_interfaces=implements_interfaces,  # Alias for interfaces
-            )
-        except (AttributeError, ValueError, TypeError) as e:
-            log_debug(f"Failed to extract class info: {e}")
-            return None
-        except Exception as e:
-            log_error(f"Unexpected error in class extraction: {e}")
-            return None
+        """Extract class information optimized"""
+        return _extract_class_standalone(
+            node,
+            self._get_node_text_optimized,
+            self.content_lines,
+            self.current_package,
+            self._extract_modifiers_optimized,
+            self._determine_visibility,
+            self._find_annotations_for_line_cached,
+            self._is_nested_class,
+            self._find_parent_class,
+        )
 
     def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
-        """Extract method information optimized (from AdvancedAnalyzer)"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Extract method information efficiently
-            method_info = self._parse_method_signature_optimized(node)
-            if not method_info:
-                return None
-
-            method_name, return_type, parameters, modifiers, throws = method_info
-            is_constructor = node.type == "constructor_declaration"
-            visibility = self._determine_visibility(modifiers)
-
-            # Extract annotations for this method
-            method_annotations = self._find_annotations_for_line_cached(start_line)
-
-            # Calculate complexity score
-            complexity_score = self._calculate_complexity_optimized(node)
-
-            # Extract JavaDoc
-            javadoc = self._extract_javadoc_for_line(start_line)
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            return Function(
-                name=method_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="java",
-                parameters=parameters,
-                return_type=return_type if not is_constructor else "void",
-                modifiers=modifiers,
-                is_static="static" in modifiers,
-                is_private="private" in modifiers,
-                is_public="public" in modifiers,
-                is_constructor=is_constructor,
-                visibility=visibility,
-                docstring=javadoc,
-                # Java-specific detailed information
-                annotations=method_annotations,
-                throws=throws,
-                complexity_score=complexity_score,
-                is_abstract="abstract" in modifiers,
-                is_final="final" in modifiers,
-            )
-        except (AttributeError, ValueError, TypeError) as e:
-            log_debug(f"Failed to extract method info: {e}")
-            return None
-        except Exception as e:
-            log_error(f"Unexpected error in method extraction: {e}")
-            return None
+        """Extract method information optimized"""
+        return _extract_method_standalone(
+            node,
+            self._get_node_text_optimized,
+            self.content_lines,
+            self._parse_method_signature_optimized,
+            self._determine_visibility,
+            self._find_annotations_for_line_cached,
+            self._calculate_complexity_optimized,
+            self._extract_javadoc_for_line,
+        )
 
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
-        """Extract field information optimized (from AdvancedAnalyzer)"""
-        fields: list[Variable] = []
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Parse field declaration using AdvancedAnalyzer method
-            field_info = self._parse_field_declaration_optimized(node)
-            if not field_info:
-                return fields
-
-            field_type, variable_names, modifiers = field_info
-            visibility = self._determine_visibility(modifiers)
-
-            # Extract annotations for this field
-            field_annotations = self._find_annotations_for_line_cached(start_line)
-
-            # Extract JavaDoc for this field
-            field_javadoc = self._extract_javadoc_for_line(start_line)
-
-            # Create Variable object for each variable (matching AdvancedAnalyzer structure)
-            for var_name in variable_names:
-                # Extract raw text
-                start_line_idx = max(0, start_line - 1)
-                end_line_idx = min(len(self.content_lines), end_line)
-                raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-                field = Variable(
-                    name=var_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="java",
-                    variable_type=field_type,
-                    modifiers=modifiers,
-                    is_static="static" in modifiers,
-                    is_constant="final" in modifiers,
-                    visibility=visibility,
-                    docstring=field_javadoc,
-                    # Java-specific detailed information
-                    annotations=field_annotations,
-                    is_final="final" in modifiers,
-                    field_type=field_type,  # Alias for variable_type
-                )
-                fields.append(field)
-        except (AttributeError, ValueError, TypeError) as e:
-            log_debug(f"Failed to extract field info: {e}")
-        except Exception as e:
-            log_error(f"Unexpected error in field extraction: {e}")
-
-        return fields
+        """Extract field information optimized"""
+        return _extract_field_standalone(
+            node,
+            self._get_node_text_optimized,
+            self.content_lines,
+            self._parse_field_declaration_optimized,
+            self._determine_visibility,
+            self._find_annotations_for_line_cached,
+            self._extract_javadoc_for_line,
+        )
 
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
