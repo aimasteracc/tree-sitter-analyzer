@@ -17,146 +17,111 @@ from ..utils.format_helper import apply_toon_format_to_response, format_for_file
 from .base_tool import BaseMCPTool
 from .batch_executor import execute_batch
 
-# Set up logging
 logger = setup_logger(__name__)
 
-_BATCH_LIMITS = {
-    "max_files": 20,
-    "max_sections_per_file": 50,
-    "max_sections_total": 200,
-    "max_total_bytes": 1024 * 1024,  # 1 MiB
-    "max_total_lines": 5000,
-    "max_file_size_bytes": 5 * 1024 * 1024,  # 5 MiB
+TOOL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "requests": {
+            "type": "array",
+            "description": "Batch: multiple ranges/files (exclusive with file_path/start_line)",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "sections": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "start_line": {"type": "integer", "minimum": 1},
+                                "end_line": {"type": "integer", "minimum": 1},
+                                "label": {"type": "string"},
+                            },
+                            "required": ["start_line"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["file_path", "sections"],
+                "additionalProperties": False,
+            },
+        },
+        "file_path": {
+            "type": "string",
+            "description": "File to read",
+        },
+        "start_line": {
+            "type": "integer",
+            "description": "Start line (1-based)",
+            "minimum": 1,
+        },
+        "end_line": {
+            "type": "integer",
+            "description": "End line (1-based, optional)",
+            "minimum": 1,
+        },
+        "start_column": {
+            "type": "integer",
+            "description": "Start column (0-based)",
+            "minimum": 0,
+        },
+        "end_column": {
+            "type": "integer",
+            "description": "End column (0-based)",
+            "minimum": 0,
+        },
+        "format": {
+            "type": "string",
+            "enum": ["text", "json", "raw"],
+            "default": "text",
+            "description": "Content format: text|json|raw",
+        },
+        "output_file": {
+            "type": "string",
+            "description": "Save output to file",
+        },
+        "suppress_output": {
+            "type": "boolean",
+            "default": False,
+            "description": "Suppress response when output_file set",
+        },
+        "output_format": {
+            "type": "string",
+            "enum": ["json", "toon"],
+            "default": "toon",
+            "description": "'toon' (default, ~60% smaller) or 'json'",
+        },
+        "allow_truncate": {
+            "type": "boolean",
+            "default": False,
+            "description": "Batch: truncate on limit (default: fail)",
+        },
+        "fail_fast": {
+            "type": "boolean",
+            "default": False,
+            "description": "Batch: stop on first error",
+        },
+    },
+    "additionalProperties": False,
 }
 
 
 class ReadPartialTool(BaseMCPTool):
-    """
-    MCP Tool for reading partial content from code files.
-
-    This tool integrates with existing file_handler functionality to provide
-    selective file content reading through the MCP protocol.
-    """
+    """MCP Tool for reading partial content from code files."""
 
     def __init__(self, project_root: str | None = None) -> None:
-        """Initialize the read partial tool."""
         super().__init__(project_root)
         self.file_output_manager = FileOutputManager(project_root)
         logger.info("ReadPartialTool initialized with security validation")
 
     def get_tool_schema(self) -> dict[str, Any]:
-        """
-        Get the MCP tool schema for read_code_partial.
-
-        Returns:
-            Dictionary containing the tool schema
-        """
-        return {
-            "type": "object",
-            "properties": {
-                "requests": {
-                    "type": "array",
-                    "description": "Batch: multiple ranges/files (exclusive with file_path/start_line)",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "file_path": {"type": "string"},
-                            "sections": {
-                                "type": "array",
-                                "items": {
-                                    "type": "object",
-                                    "properties": {
-                                        "start_line": {"type": "integer", "minimum": 1},
-                                        "end_line": {"type": "integer", "minimum": 1},
-                                        "label": {"type": "string"},
-                                    },
-                                    "required": ["start_line"],
-                                    "additionalProperties": False,
-                                },
-                            },
-                        },
-                        "required": ["file_path", "sections"],
-                        "additionalProperties": False,
-                    },
-                },
-                "file_path": {
-                    "type": "string",
-                    "description": "File to read",
-                },
-                "start_line": {
-                    "type": "integer",
-                    "description": "Start line (1-based)",
-                    "minimum": 1,
-                },
-                "end_line": {
-                    "type": "integer",
-                    "description": "End line (1-based, optional)",
-                    "minimum": 1,
-                },
-                "start_column": {
-                    "type": "integer",
-                    "description": "Start column (0-based)",
-                    "minimum": 0,
-                },
-                "end_column": {
-                    "type": "integer",
-                    "description": "End column (0-based)",
-                    "minimum": 0,
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["text", "json", "raw"],
-                    "default": "text",
-                    "description": "Content format: text|json|raw",
-                },
-                "output_file": {
-                    "type": "string",
-                    "description": "Save output to file",
-                },
-                "suppress_output": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Suppress response when output_file set",
-                },
-                "output_format": {
-                    "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "'toon' (default, ~60% smaller) or 'json'",
-                },
-                "allow_truncate": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Batch: truncate on limit (default: fail)",
-                },
-                "fail_fast": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Batch: stop on first error",
-                },
-            },
-            "additionalProperties": False,
-        }
+        return TOOL_SCHEMA
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Execute the read_code_partial tool.
-
-        Args:
-            arguments: Tool arguments containing file_path, line/column ranges, and format
-
-        Returns:
-            Dictionary containing the partial file content and metadata (CLI --partial-read compatible format)
-
-        Raises:
-            ValueError: If required arguments are missing or invalid
-            FileNotFoundError: If the specified file doesn't exist
-        """
-        # Batch mode: requests[]
         if "requests" in arguments and arguments["requests"] is not None:
             return await self._execute_batch(arguments)
 
-        # Single mode: file_path + start_line
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
         if "start_line" not in arguments:
@@ -172,57 +137,18 @@ class ReadPartialTool(BaseMCPTool):
         content_format = arguments.get("format", "text")
         output_format = arguments.get("output_format", "toon")
 
-        # Resolve + security validation with shared caching to avoid redundant checks
-        try:
-            resolved_path = self.resolve_and_validate_file_path(file_path)
-        except ValueError as e:
-            return {"success": False, "error": str(e), "file_path": file_path}
+        err = self._validate_resolve(
+            file_path, start_line, end_line, start_column, end_column
+        )
+        if err:
+            return err
 
-        # Validate file exists
-        if not Path(resolved_path).exists():
-            return {
-                "success": False,
-                "error": "Invalid file path: file does not exist",
-                "file_path": file_path,
-            }
-
-        # Validate line numbers
-        if start_line < 1:
-            return {
-                "success": False,
-                "error": "start_line must be >= 1",
-                "file_path": file_path,
-            }
-
-        if end_line is not None and end_line < start_line:
-            return {
-                "success": False,
-                "error": "end_line must be >= start_line",
-                "file_path": file_path,
-            }
-
-        # Validate column numbers
-        if start_column is not None and start_column < 0:
-            return {
-                "success": False,
-                "error": "start_column must be >= 0",
-                "file_path": file_path,
-            }
-
-        if end_column is not None and end_column < 0:
-            return {
-                "success": False,
-                "error": "end_column must be >= 0",
-                "file_path": file_path,
-            }
-
+        resolved_path = self.resolve_and_validate_file_path(file_path)
         logger.info(
             f"Reading partial content from {file_path}: lines {start_line}-{end_line or 'end'}"
         )
 
         try:
-            # Use existing file_handler functionality
-            # Use performance monitoring with proper context manager
             from ...mcp.utils import get_performance_monitor
 
             with get_performance_monitor().measure_operation("read_code_partial"):
@@ -237,7 +163,6 @@ class ReadPartialTool(BaseMCPTool):
                         "file_path": file_path,
                     }
 
-                # Check if content is empty or invalid range
                 if not content or content.strip() == "":
                     return {
                         "success": False,
@@ -245,143 +170,239 @@ class ReadPartialTool(BaseMCPTool):
                         "file_path": file_path,
                     }
 
-                # Build result structure compatible with CLI --partial-read format
-                result_data = {
-                    "file_path": file_path,
-                    "range": {
-                        "start_line": start_line,
-                        "end_line": end_line,
-                        "start_column": start_column,
-                        "end_column": end_column,
-                    },
-                    "content": content,
-                    "content_length": len(content),
-                }
-
-                # Format as JSON string like CLI does
-                json_output = json.dumps(result_data, indent=2, ensure_ascii=False)
-
-                # Build range info for header
-                range_info = f"Line {start_line}"
-                if end_line:
-                    range_info += f"-{end_line}"
-
-                # Build CLI-compatible output with header and JSON (without log message)
-                cli_output = (
-                    f"--- Partial Read Result ---\n"
-                    f"File: {file_path}\n"
-                    f"Range: {range_info}\n"
-                    f"Characters read: {len(content)}\n"
-                    f"{json_output}"
-                )
-
                 logger.info(
                     f"Successfully read {len(content)} characters from {file_path}"
                 )
 
-                # Calculate lines extracted
-                lines_extracted = len(content.split("\n")) if content else 0
-                if end_line:
-                    lines_extracted = end_line - start_line + 1
+                lines_extracted = (
+                    end_line - start_line + 1 if end_line else len(content.split("\n"))
+                )
 
-                # Build result - conditionally include partial_content_result based on suppress_output
-                result = {
-                    "success": True,
-                    "file_path": file_path,
-                    "range": {
-                        "start_line": start_line,
-                        "end_line": end_line,
-                        "start_column": start_column,
-                        "end_column": end_column,
-                    },
-                    "content_length": len(content),
-                    "lines_extracted": lines_extracted,
-                }
+                result = self._build_result(
+                    file_path,
+                    start_line,
+                    end_line,
+                    start_column,
+                    end_column,
+                    content,
+                    lines_extracted,
+                    content_format,
+                    suppress_output,
+                    output_file,
+                )
 
-                # Add next_steps if there are likely more lines to read
-                if end_line and end_line > start_line:
-                    result["next_steps"] = [
-                        "query_code to find related elements in this file",
-                        "search_content to find callers or usages of this code",
-                    ]
+                self._apply_file_output(
+                    result,
+                    file_path,
+                    content,
+                    content_format,
+                    output_format,
+                    output_file,
+                )
 
-                # Only include partial_content_result if not suppressed or no output file specified
-                if not suppress_output or not output_file:
-                    if content_format == "json":
-                        # For JSON format, return structured data with exact line count
-                        lines = content.split("\n") if content else []
-
-                        # If end_line is specified, ensure we return exactly the requested number of lines
-                        if end_line and len(lines) > lines_extracted:
-                            lines = lines[:lines_extracted]
-                        elif end_line and len(lines) < lines_extracted:
-                            # Pad with empty lines if needed (shouldn't normally happen)
-                            lines.extend([""] * (lines_extracted - len(lines)))
-
-                        result["partial_content_result"] = {
-                            "lines": lines,
-                            "metadata": {
-                                "file_path": file_path,
-                                "range": {
-                                    "start_line": start_line,
-                                    "end_line": end_line,
-                                    "start_column": start_column,
-                                    "end_column": end_column,
-                                },
-                                "content_length": len(content),
-                                "lines_count": len(lines),
-                            },
-                        }
-                    else:
-                        # For text/raw format, return CLI-compatible string
-                        result["partial_content_result"] = cli_output
-
-                # Handle file output if requested
-                if output_file:
-                    try:
-                        # Generate base name from original file path if not provided
-                        if not output_file or output_file.strip() == "":
-                            base_name = Path(file_path).stem + "_extract"
-                        else:
-                            base_name = output_file
-
-                        # Determine what content to save based on format preference
-                        if content_format == "raw":
-                            # Save only the extracted code content (no metadata)
-                            content_to_save = content
-                        elif content_format == "json":
-                            # Save structured JSON data (optionally in TOON format)
-                            if output_format == "toon":
-                                content_to_save, _ = format_for_file_output(
-                                    result_data, "toon"
-                                )
-                            else:
-                                content_to_save = json_output
-                        else:  # format == "text" (default)
-                            # Save CLI-compatible format with headers
-                            content_to_save = cli_output
-
-                        # Save to file with automatic extension detection
-                        saved_file_path = self.file_output_manager.save_to_file(
-                            content=content_to_save, base_name=base_name
-                        )
-
-                        result["output_file_path"] = saved_file_path
-                        result["file_saved"] = True
-
-                        logger.info(f"Extract output saved to: {saved_file_path}")
-
-                    except Exception as e:
-                        logger.error(f"Failed to save output to file: {e}")
-                        result["file_save_error"] = str(e)
-                        result["file_saved"] = False
-
-                # Apply TOON format to direct output if requested
                 return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
             logger.error(f"Error reading partial content from {file_path}: {e}")
             return {"success": False, "error": str(e), "file_path": file_path}
+
+    def _validate_resolve(
+        self,
+        file_path: str,
+        start_line: int,
+        end_line: int | None,
+        start_column: int | None,
+        end_column: int | None,
+    ) -> dict[str, Any] | None:
+        try:
+            self.resolve_and_validate_file_path(file_path)
+        except ValueError as e:
+            return {"success": False, "error": str(e), "file_path": file_path}
+
+        resolved = self.resolve_and_validate_file_path(file_path)
+        if not Path(resolved).exists():
+            return {
+                "success": False,
+                "error": "Invalid file path: file does not exist",
+                "file_path": file_path,
+            }
+        if start_line < 1:
+            return {
+                "success": False,
+                "error": "start_line must be >= 1",
+                "file_path": file_path,
+            }
+        if end_line is not None and end_line < start_line:
+            return {
+                "success": False,
+                "error": "end_line must be >= start_line",
+                "file_path": file_path,
+            }
+        if start_column is not None and start_column < 0:
+            return {
+                "success": False,
+                "error": "start_column must be >= 0",
+                "file_path": file_path,
+            }
+        if end_column is not None and end_column < 0:
+            return {
+                "success": False,
+                "error": "end_column must be >= 0",
+                "file_path": file_path,
+            }
+        return None
+
+    def _build_result(
+        self,
+        file_path: str,
+        start_line: int,
+        end_line: int | None,
+        start_column: int | None,
+        end_column: int | None,
+        content: str,
+        lines_extracted: int,
+        content_format: str,
+        suppress_output: bool,
+        output_file: str | None,
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "success": True,
+            "file_path": file_path,
+            "range": {
+                "start_line": start_line,
+                "end_line": end_line,
+                "start_column": start_column,
+                "end_column": end_column,
+            },
+            "content_length": len(content),
+            "lines_extracted": lines_extracted,
+        }
+
+        if end_line and end_line > start_line:
+            result["next_steps"] = [
+                "query_code to find related elements in this file",
+                "search_content to find callers or usages of this code",
+            ]
+
+        if not suppress_output or not output_file:
+            result["partial_content_result"] = self._format_content(
+                content,
+                content_format,
+                file_path,
+                start_line,
+                end_line,
+                start_column,
+                end_column,
+                lines_extracted,
+            )
+
+        return result
+
+    def _format_content(
+        self,
+        content: str,
+        content_format: str,
+        file_path: str,
+        start_line: int,
+        end_line: int | None,
+        start_column: int | None,
+        end_column: int | None,
+        lines_extracted: int,
+    ) -> Any:
+        range_info = f"Line {start_line}"
+        if end_line:
+            range_info += f"-{end_line}"
+
+        result_data = {
+            "file_path": file_path,
+            "range": {
+                "start_line": start_line,
+                "end_line": end_line,
+                "start_column": start_column,
+                "end_column": end_column,
+            },
+            "content": content,
+            "content_length": len(content),
+        }
+
+        if content_format == "json":
+            lines = content.split("\n")
+            if end_line and len(lines) > lines_extracted:
+                lines = lines[:lines_extracted]
+            elif end_line and len(lines) < lines_extracted:
+                lines.extend([""] * (lines_extracted - len(lines)))
+            return {
+                "lines": lines,
+                "metadata": {
+                    "file_path": file_path,
+                    "range": {
+                        "start_line": start_line,
+                        "end_line": end_line,
+                        "start_column": start_column,
+                        "end_column": end_column,
+                    },
+                    "content_length": len(content),
+                    "lines_count": len(lines),
+                },
+            }
+
+        json_output = json.dumps(result_data, indent=2, ensure_ascii=False)
+        return (
+            f"--- Partial Read Result ---\n"
+            f"File: {file_path}\n"
+            f"Range: {range_info}\n"
+            f"Characters read: {len(content)}\n"
+            f"{json_output}"
+        )
+
+    def _apply_file_output(
+        self,
+        result: dict[str, Any],
+        file_path: str,
+        content: str,
+        content_format: str,
+        output_format: str,
+        output_file: str | None,
+    ) -> None:
+        if not output_file:
+            return
+
+        try:
+            base_name = (
+                output_file
+                if output_file.strip()
+                else Path(file_path).stem + "_extract"
+            )
+
+            if content_format == "raw":
+                content_to_save = content
+            elif content_format == "json":
+                result_data = {
+                    "file_path": file_path,
+                    "range": result["range"],
+                    "content": content,
+                    "content_length": len(content),
+                }
+                if output_format == "toon":
+                    content_to_save, _ = format_for_file_output(result_data, "toon")
+                else:
+                    content_to_save = json.dumps(
+                        result_data, indent=2, ensure_ascii=False
+                    )
+            else:
+                content_to_save = result.get("partial_content_result", content)
+
+            saved_file_path = self.file_output_manager.save_to_file(
+                content=content_to_save, base_name=base_name
+            )
+            result["output_file_path"] = saved_file_path
+            result["file_saved"] = True
+            logger.info(f"Extract output saved to: {saved_file_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to save output to file: {e}")
+            result["file_save_error"] = str(e)
+            result["file_saved"] = False
 
     async def _execute_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Batch mode for extracting multiple ranges from multiple files."""
@@ -395,39 +416,11 @@ class ReadPartialTool(BaseMCPTool):
         start_column: int | None = None,
         end_column: int | None = None,
     ) -> str | None:
-        """
-        Internal method to read partial file content.
-
-        This method wraps the existing read_file_partial function from file_handler.
-
-        Args:
-            file_path: Path to the file to read
-            start_line: Starting line number (1-based)
-            end_line: Ending line number (1-based, optional)
-            start_column: Starting column number (0-based, optional)
-            end_column: Ending column number (0-based, optional)
-
-        Returns:
-            Partial file content as string, or None if error
-        """
         return read_file_partial(
             file_path, start_line, end_line, start_column, end_column
         )
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """
-        Validate tool arguments against the schema.
-
-        Args:
-            arguments: Arguments to validate
-
-        Returns:
-            True if arguments are valid
-
-        Raises:
-            ValueError: If arguments are invalid
-        """
-        # Batch mode validation
         if "requests" in arguments and arguments["requests"] is not None:
             if any(
                 k in arguments
@@ -446,12 +439,10 @@ class ReadPartialTool(BaseMCPTool):
                 raise ValueError("requests must be a list")
             return True
 
-        # Single mode requires file_path + start_line
         for field in ["file_path", "start_line"]:
             if field not in arguments:
                 raise ValueError(f"Required field '{field}' is missing")
 
-        # Validate file_path
         if "file_path" in arguments:
             file_path = arguments["file_path"]
             if not isinstance(file_path, str):
@@ -459,7 +450,6 @@ class ReadPartialTool(BaseMCPTool):
             if not file_path.strip():
                 raise ValueError("file_path cannot be empty")
 
-        # Validate start_line
         if "start_line" in arguments:
             start_line = arguments["start_line"]
             if not isinstance(start_line, int):
@@ -467,7 +457,6 @@ class ReadPartialTool(BaseMCPTool):
             if start_line < 1:
                 raise ValueError("start_line must be >= 1")
 
-        # Validate end_line
         if "end_line" in arguments:
             end_line = arguments["end_line"]
             if not isinstance(end_line, int):
@@ -477,7 +466,6 @@ class ReadPartialTool(BaseMCPTool):
             if "start_line" in arguments and end_line < arguments["start_line"]:
                 raise ValueError("end_line must be >= start_line")
 
-        # Validate column numbers
         for col_field in ["start_column", "end_column"]:
             if col_field in arguments:
                 col_value = arguments[col_field]
@@ -486,7 +474,6 @@ class ReadPartialTool(BaseMCPTool):
                 if col_value < 0:
                     raise ValueError(f"{col_field} must be >= 0")
 
-        # Validate format
         if "format" in arguments:
             format_value = arguments["format"]
             if not isinstance(format_value, str):
@@ -494,7 +481,6 @@ class ReadPartialTool(BaseMCPTool):
             if format_value not in ["text", "json", "raw"]:
                 raise ValueError("format must be 'text', 'json', or 'raw'")
 
-        # Validate output_file if provided
         if "output_file" in arguments:
             output_file = arguments["output_file"]
             if not isinstance(output_file, str):
@@ -502,7 +488,6 @@ class ReadPartialTool(BaseMCPTool):
             if not output_file.strip():
                 raise ValueError("output_file cannot be empty")
 
-        # Validate suppress_output if provided
         if "suppress_output" in arguments:
             suppress_output = arguments["suppress_output"]
             if not isinstance(suppress_output, bool):
@@ -511,12 +496,6 @@ class ReadPartialTool(BaseMCPTool):
         return True
 
     def get_tool_definition(self) -> dict[str, Any]:
-        """
-        Get the MCP tool definition for read_code_partial.
-
-        Returns:
-            Tool definition dictionary compatible with MCP server
-        """
         return {
             "name": "extract_code_section",
             "description": (
