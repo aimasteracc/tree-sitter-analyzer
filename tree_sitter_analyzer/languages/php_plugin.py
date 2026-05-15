@@ -34,6 +34,21 @@ from .php_helpers import (
     extract_modifiers as _extract_mods_standalone,
 )
 from .php_helpers import (
+    extract_php_class_element as _extract_class_standalone,
+)
+from .php_helpers import (
+    extract_php_constant_elements as _extract_const_standalone,
+)
+from .php_helpers import (
+    extract_php_function_element as _extract_func_standalone,
+)
+from .php_helpers import (
+    extract_php_method_element as _extract_method_standalone,
+)
+from .php_helpers import (
+    extract_php_property_elements as _extract_prop_standalone,
+)
+from .php_helpers import (
     extract_use_statement as _extract_use_standalone,
 )
 
@@ -184,76 +199,14 @@ class PHPElementExtractor(ElementExtractor):
         return classes
 
     def _extract_class_element(self, node: "tree_sitter.Node") -> Class | None:
-        """
-        Extract a single class, interface, trait, or enum element.
-
-        Args:
-            node: Class/interface/trait/enum declaration node
-
-        Returns:
-            Class element or None if extraction fails
-        """
-        try:
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                return None
-
-            name = self._get_node_text_optimized(name_node)
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-            attributes = self._extract_attributes(node)
-
-            # Determine type
-            is_interface = node.type == "interface_declaration"
-            is_trait = node.type == "trait_declaration"
-            is_enum = node.type == "enum_declaration"
-
-            # Extract base class and interfaces
-            base_classes: list[str] = []
-            interfaces: list[str] = []
-
-            for child in node.children:
-                if child.type == "base_clause":
-                    base_node = child.child_by_field_name("type")
-                    if base_node:
-                        base_classes.append(self._get_node_text_optimized(base_node))
-                elif child.type == "class_interface_clause":
-                    for interface_node in child.children:
-                        if interface_node.type == "name":
-                            interfaces.append(
-                                self._get_node_text_optimized(interface_node)
-                            )
-
-            # Build fully qualified name
-            full_name = (
-                f"{self.current_namespace}\\{name}" if self.current_namespace else name
-            )
-
-            # Determine class type
-            class_type = "class"
-            if is_interface:
-                class_type = "interface"
-            elif is_trait:
-                class_type = "trait"
-            elif is_enum:
-                class_type = "enum"
-
-            return Class(
-                name=full_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                visibility=visibility,
-                is_abstract="abstract" in modifiers,
-                full_qualified_name=full_name,
-                superclass=base_classes[0] if base_classes else None,
-                interfaces=interfaces,
-                modifiers=modifiers,
-                annotations=[{"name": attr["name"]} for attr in attributes],
-                class_type=class_type,
-            )
-        except Exception as e:
-            log_error(f"Error extracting class element: {e}")
-            return None
+        """Extract a single class, interface, trait, or enum element."""
+        return _extract_class_standalone(
+            node,
+            self.current_namespace,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+            self._extract_attributes,
+        )
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -308,117 +261,22 @@ class PHPElementExtractor(ElementExtractor):
     def _extract_method_element(
         self, node: "tree_sitter.Node", parent_class: str
     ) -> Function | None:
-        """
-        Extract a method element.
-
-        Args:
-            node: Method declaration node
-            parent_class: Name of the parent class
-
-        Returns:
-            Function element or None if extraction fails
-        """
-        try:
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                return None
-
-            name = self._get_node_text_optimized(name_node)
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-            attributes = self._extract_attributes(node)
-
-            # Extract parameters
-            parameters: list[str] = []
-            params_node = node.child_by_field_name("parameters")
-            if params_node:
-                for param in params_node.children:
-                    if (
-                        param.type == "simple_parameter"
-                        or param.type == "property_promotion_parameter"
-                    ):
-                        param_text = self._get_node_text_optimized(param)
-                        parameters.append(param_text)
-
-            # Extract return type
-            return_type = "void"
-            return_type_node = node.child_by_field_name("return_type")
-            if return_type_node:
-                return_type = self._get_node_text_optimized(return_type_node)
-
-            # Check if magic method
-            # is_magic = name.startswith("__")  # Reserved for future use
-
-            return Function(
-                name=f"{parent_class}::{name}" if parent_class else name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                visibility=visibility,
-                is_static="static" in modifiers,
-                is_async=False,  # PHP doesn't have async/await like C#
-                is_abstract="abstract" in modifiers,
-                parameters=parameters,
-                return_type=return_type,
-                modifiers=modifiers,
-                annotations=[{"name": attr["name"]} for attr in attributes],
-            )
-        except Exception as e:
-            log_error(f"Error extracting method element: {e}")
-            return None
+        """Extract a method element."""
+        return _extract_method_standalone(
+            node,
+            parent_class,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+            self._extract_attributes,
+        )
 
     def _extract_function_element(self, node: "tree_sitter.Node") -> Function | None:
-        """
-        Extract a function element.
-
-        Args:
-            node: Function definition node
-
-        Returns:
-            Function element or None if extraction fails
-        """
-        try:
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                return None
-
-            name = self._get_node_text_optimized(name_node)
-
-            # Extract parameters
-            parameters: list[str] = []
-            params_node = node.child_by_field_name("parameters")
-            if params_node:
-                for param in params_node.children:
-                    if param.type == "simple_parameter":
-                        param_text = self._get_node_text_optimized(param)
-                        parameters.append(param_text)
-
-            # Extract return type
-            return_type = "void"
-            return_type_node = node.child_by_field_name("return_type")
-            if return_type_node:
-                return_type = self._get_node_text_optimized(return_type_node)
-
-            # Build fully qualified name
-            full_name = (
-                f"{self.current_namespace}\\{name}" if self.current_namespace else name
-            )
-
-            return Function(
-                name=full_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                visibility="public",
-                is_static=False,
-                is_async=False,
-                is_abstract=False,
-                parameters=parameters,
-                return_type=return_type,
-                modifiers=[],
-                annotations=[],
-            )
-        except Exception as e:
-            log_error(f"Error extracting function element: {e}")
-            return None
+        """Extract a function element."""
+        return _extract_func_standalone(
+            node,
+            self.current_namespace,
+            self._get_node_text_optimized,
+        )
 
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -471,99 +329,24 @@ class PHPElementExtractor(ElementExtractor):
     def _extract_property_elements(
         self, node: "tree_sitter.Node", parent_class: str
     ) -> list[Variable]:
-        """
-        Extract property elements from a property declaration.
-
-        Args:
-            node: Property declaration node
-            parent_class: Name of the parent class
-
-        Returns:
-            List of Variable elements
-        """
-        variables: list[Variable] = []
-
-        try:
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-
-            # Extract type
-            var_type = "mixed"
-            type_node = node.child_by_field_name("type")
-            if type_node:
-                var_type = self._get_node_text_optimized(type_node)
-
-            # Extract property names
-            for child in node.children:
-                if child.type == "property_element":
-                    name_node = child.child_by_field_name("name")
-                    if name_node:
-                        name = self._get_node_text_optimized(name_node).lstrip("$")
-                        full_name = f"{parent_class}::{name}" if parent_class else name
-
-                        variables.append(
-                            Variable(
-                                name=full_name,
-                                start_line=node.start_point[0] + 1,
-                                end_line=node.end_point[0] + 1,
-                                visibility=visibility,
-                                is_static="static" in modifiers,
-                                is_constant=False,
-                                is_final=False,
-                                is_readonly="readonly" in modifiers,
-                                variable_type=var_type,
-                                modifiers=modifiers,
-                            )
-                        )
-        except Exception as e:
-            log_error(f"Error extracting property elements: {e}")
-
-        return variables
+        """Extract property elements from a property declaration."""
+        return _extract_prop_standalone(
+            node,
+            parent_class,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+        )
 
     def _extract_constant_elements(
         self, node: "tree_sitter.Node", parent_class: str
     ) -> list[Variable]:
-        """
-        Extract constant elements from a const declaration.
-
-        Args:
-            node: Const declaration node
-            parent_class: Name of the parent class
-
-        Returns:
-            List of Variable elements
-        """
-        variables: list[Variable] = []
-
-        try:
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-
-            # Extract constant names
-            for child in node.children:
-                if child.type == "const_element":
-                    name_node = child.child_by_field_name("name")
-                    if name_node:
-                        name = self._get_node_text_optimized(name_node)
-                        full_name = f"{parent_class}::{name}" if parent_class else name
-
-                        variables.append(
-                            Variable(
-                                name=full_name,
-                                start_line=node.start_point[0] + 1,
-                                end_line=node.end_point[0] + 1,
-                                visibility=visibility,
-                                is_static=True,
-                                is_constant=True,
-                                is_final=True,
-                                variable_type="const",
-                                modifiers=modifiers,
-                            )
-                        )
-        except Exception as e:
-            log_error(f"Error extracting constant elements: {e}")
-
-        return variables
+        """Extract constant elements from a const declaration."""
+        return _extract_const_standalone(
+            node,
+            parent_class,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+        )
 
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str

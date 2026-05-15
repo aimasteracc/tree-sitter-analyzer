@@ -18,13 +18,16 @@ from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 from .kotlin_helpers import (
-    determine_visibility as _determine_vis_standalone,
-)
-from .kotlin_helpers import (
     extract_import as _extract_import_standalone,
 )
 from .kotlin_helpers import (
-    extract_kotlin_parameters as _extract_params_standalone,
+    extract_kotlin_class_or_object as _extract_class_standalone,
+)
+from .kotlin_helpers import (
+    extract_kotlin_function as _extract_func_standalone,
+)
+from .kotlin_helpers import (
+    extract_kotlin_property as _extract_prop_standalone,
 )
 
 
@@ -202,72 +205,7 @@ class KotlinElementExtractor(ElementExtractor):
 
     def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information"""
-        try:
-            # name: simple_identifier
-            name = "anonymous"
-            # Try getting by field name first
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                # Fallback to simple_identifier search
-                for child in node.children:
-                    if child.type == "simple_identifier":
-                        name = self._get_node_text(child)
-                        break
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Parameters
-            parameters = _extract_params_standalone(node, self._get_node_text)
-
-            # Return type
-            return_type = "Unit"
-            # search for return type, usually after :
-            # function_declaration -> ... (type)? ...
-            # Hard to find specific field without query, iterating children
-            # If we find a colon, next child might be type?
-            # Tree-sitter-kotlin structure: function_declaration can have children: modifiers, fun, simple_identifier, function_value_parameters, type (return type), function_body
-
-            for i, child in enumerate(node.children):
-                if child.type == ":":
-                    # Next sibling should be return type
-                    if i + 1 < len(node.children):
-                        return_type = self._get_node_text(node.children[i + 1])
-                    break
-
-            # Visibility and modifiers
-            visibility = "public"
-            is_suspend = False
-            modifiers_node = node.child_by_field_name("modifiers")
-            if modifiers_node:
-                mods = self._get_node_text(modifiers_node)
-                visibility = _determine_vis_standalone(mods)
-                is_suspend = "suspend" in mods
-
-            # Docstring
-            docstring = self._extract_docstring(node)
-
-            raw_text = self._get_node_text(node)
-
-            func = Function(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                parameters=parameters,
-                return_type=return_type,
-                visibility=visibility,
-                docstring=docstring,
-            )
-            func.is_suspend = is_suspend
-            return func
-
-        except Exception as e:
-            log_error(f"Error extracting Kotlin function: {e}")
-            return None
+        return _extract_func_standalone(node, self._get_node_text, self.current_package)
 
     def _extract_class(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class declaration"""
@@ -281,124 +219,13 @@ class KotlinElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node", kind: str
     ) -> Class | None:
         """Generic extraction for class/object/interface"""
-        try:
-            name = "anonymous"
-            # Try getting by field name first
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                for child in node.children:
-                    if child.type == "simple_identifier":
-                        name = self._get_node_text(child)
-                        break
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            visibility = "public"
-            modifiers_node = node.child_by_field_name("modifiers")
-            if modifiers_node:
-                visibility = _determine_vis_standalone(
-                    self._get_node_text(modifiers_node)
-                )
-
-            # Detect interface by checking for 'interface' keyword child node
-            # tree-sitter-kotlin parses both class and interface as class_declaration
-            # but includes 'interface' or 'class' keyword as a child node
-            if kind == "class":
-                for child in node.children:
-                    if child.type == "interface":
-                        kind = "interface"
-                        break
-                    elif child.type == "class":
-                        # Explicitly a class, not interface
-                        break
-
-            raw_text = self._get_node_text(node)
-
-            return Class(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                class_type=kind,
-                visibility=visibility,
-                package_name=self.current_package,
-            )
-
-        except Exception as e:
-            log_error(f"Error extracting Kotlin class: {e}")
-            return None
+        return _extract_class_standalone(
+            node, kind, self._get_node_text, self.current_package
+        )
 
     def _extract_property(self, node: "tree_sitter.Node") -> Variable | None:
         """Extract property declaration"""
-        try:
-            # var declaration or val declaration
-            is_val = False
-            is_var = False
-            text = self._get_node_text(node)
-            if text.startswith("val "):
-                is_val = True
-            elif text.startswith("var "):
-                is_var = True
-
-            # variable_declaration -> (modifiers)? (val/var) ...
-            # Need to find name
-            name = "unknown"
-
-            # Try getting by field name 'name' directly on property_declaration (might work in newer grammars)
-            name_node = node.child_by_field_name("name")
-            if name_node:
-                name = self._get_node_text(name_node)
-            else:
-                # Fallback: Iterate children
-                for child in node.children:
-                    if child.type == "variable_declaration":
-                        for grandchild in child.children:
-                            if grandchild.type == "simple_identifier":
-                                name = self._get_node_text(grandchild)
-                                break
-                    elif child.type == "simple_identifier":
-                        name = self._get_node_text(child)
-                        break
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Type?
-            prop_type = "Inferred"
-            # Look for : type
-
-            visibility = "public"
-            modifiers_node = node.child_by_field_name("modifiers")
-            if modifiers_node:
-                visibility = _determine_vis_standalone(
-                    self._get_node_text(modifiers_node)
-                )
-
-            docstring = self._extract_docstring(node)
-            raw_text = self._get_node_text(node)
-
-            var = Variable(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                variable_type=prop_type,
-                visibility=visibility,
-                docstring=docstring,
-            )
-            var.is_val = is_val
-            var.is_var = is_var
-
-            return var
-
-        except Exception as e:
-            log_error(f"Error extracting Kotlin property: {e}")
-            return None
+        return _extract_prop_standalone(node, self._get_node_text)
 
     def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
         """Extract import header"""
