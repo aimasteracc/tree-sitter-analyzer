@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from typing import Any
 
+from ..models import StyleElement
 from ..utils import log_debug
 
 
@@ -89,3 +90,88 @@ def classify_rule(
 
     best_category = max(category_scores, key=lambda k: category_scores[k])
     return best_category if category_scores[best_category] > 0 else "other"
+
+
+def extract_css_selector(node: Any, get_node_text: Callable[..., str]) -> str:
+    """Extract selector from CSS rule_set node."""
+    try:
+        if hasattr(node, "children"):
+            for child in node.children:
+                if hasattr(child, "type") and child.type == "selectors":
+                    return get_node_text(child).strip()
+
+        node_text = get_node_text(node)
+        if "{" in node_text:
+            return node_text.split("{")[0].strip()
+        return "unknown"
+    except Exception:
+        return "unknown"
+
+
+def extract_css_properties(
+    node: Any, get_node_text: Callable[..., str]
+) -> dict[str, str]:
+    """Extract properties from CSS rule_set node."""
+    properties: dict[str, str] = {}
+    try:
+        if hasattr(node, "children"):
+            for child in node.children:
+                if hasattr(child, "type") and child.type == "block":
+                    for grandchild in child.children:
+                        if (
+                            hasattr(grandchild, "type")
+                            and grandchild.type == "declaration"
+                        ):
+                            prop_name, prop_value = parse_declaration(
+                                grandchild, get_node_text
+                            )
+                            if prop_name:
+                                properties[prop_name] = prop_value
+    except Exception as e:
+        log_debug(f"Failed to extract properties: {e}")
+    return properties
+
+
+def create_style_element(
+    node: Any,
+    get_node_text: Callable[..., str],
+    property_categories: dict[str, list[str]],
+) -> StyleElement | None:
+    """Create StyleElement from tree-sitter node."""
+    try:
+        if node.type == "rule_set":
+            selector = extract_css_selector(node, get_node_text)
+            properties = extract_css_properties(node, get_node_text)
+            element_class = classify_rule(properties, property_categories)
+            name = selector or "unknown_rule"
+        elif node.type in (
+            "at_rule",
+            "media_statement",
+            "import_statement",
+            "keyframes_statement",
+        ):
+            selector = extract_at_rule_name(node, get_node_text)
+            properties = {}
+            element_class = "at_rule"
+            name = selector or "unknown_at_rule"
+        else:
+            selector = get_node_text(node)[:50]
+            properties = {}
+            element_class = "other"
+            name = selector or "unknown"
+
+        raw_text = get_node_text(node)
+
+        return StyleElement(
+            name=name,
+            start_line=node.start_point[0] + 1 if hasattr(node, "start_point") else 0,
+            end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
+            raw_text=raw_text,
+            language="css",
+            selector=selector,
+            properties=properties,
+            element_class=element_class,
+        )
+    except Exception as e:
+        log_debug(f"Failed to create StyleElement: {e}")
+        return None

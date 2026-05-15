@@ -17,7 +17,7 @@ from .html_helpers import (
     classify_element as _classify_standalone,
 )
 from .html_helpers import (
-    parse_attribute as _parse_attr_standalone,
+    create_markup_element as _create_markup_standalone,
 )
 
 if TYPE_CHECKING:
@@ -191,124 +191,44 @@ class HtmlElementExtractor(ElementExtractor):
         parent: MarkupElement | None,
     ) -> MarkupElement | None:
         """Create MarkupElement from tree-sitter node using tree-sitter-html grammar"""
-        try:
-            # Extract tag name using tree-sitter-html structure
-            tag_name = self._extract_tag_name(node, source_code)
-            if not tag_name:
-                return None
-
-            # Extract attributes using tree-sitter-html structure
-            attributes = self._extract_attributes(node, source_code)
-
-            # Determine element class based on tag name
-            element_class = self._classify_element(tag_name)
-
-            # Extract text content
-            raw_text = self._extract_node_text(node, source_code)
-
-            # Create MarkupElement
-            element = MarkupElement(
-                name=tag_name,
-                start_line=(
-                    node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                ),
-                end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
-                raw_text=raw_text,
-                language="html",
-                tag_name=tag_name,
-                attributes=attributes,
-                parent=parent,
-                children=[],
-                element_class=element_class,
-            )
-
-            # Add to parent's children if parent exists
-            if parent:
-                parent.children.append(element)
-
-            return element
-
-        except Exception as e:
-            log_debug(f"Failed to create MarkupElement: {e}")
-            return None
-
-    def _extract_tag_name(self, node: "tree_sitter.Node", source_code: str) -> str:
-        """Extract tag name from HTML element node using tree-sitter-html grammar"""
-        try:
-            # For tree-sitter-html, tag names are in specific child nodes
-            if hasattr(node, "children"):
-                for child in node.children:
-                    if hasattr(child, "type"):
-                        # Handle different node types in tree-sitter-html
-                        if child.type == "tag_name":
-                            return self._extract_node_text(child, source_code).strip()
-                        elif child.type in ["start_tag", "self_closing_tag"]:
-                            # Look for tag_name within start_tag or self_closing_tag
-                            for grandchild in child.children:
-                                if (
-                                    hasattr(grandchild, "type")
-                                    and grandchild.type == "tag_name"
-                                ):
-                                    return self._extract_node_text(
-                                        grandchild, source_code
-                                    ).strip()
-
-            # Fallback: try to extract from node text
-            node_text = self._extract_node_text(node, source_code)
-            if node_text.startswith("<"):
-                # Extract tag name from <tagname ...> pattern
-                tag_part = node_text.split(">")[0].split()[0]
-                return tag_part.lstrip("<").rstrip(">")
-
-            return "unknown"
-        except Exception:
-            return "unknown"
-
-    def _extract_attributes(
-        self, node: "tree_sitter.Node", source_code: str
-    ) -> dict[str, str]:
-        """Extract attributes from HTML element node using tree-sitter-html grammar"""
-        attributes = {}
-
-        try:
-            if hasattr(node, "children"):
-                for child in node.children:
-                    if hasattr(child, "type"):
-                        # Handle attribute nodes in tree-sitter-html
-                        if child.type == "attribute":
-                            attr_name, attr_value = self._parse_attribute(
-                                child, source_code
-                            )
-                            if attr_name:
-                                attributes[attr_name] = attr_value
-                        elif child.type in ["start_tag", "self_closing_tag"]:
-                            # Look for attributes within start_tag or self_closing_tag
-                            for grandchild in child.children:
-                                if (
-                                    hasattr(grandchild, "type")
-                                    and grandchild.type == "attribute"
-                                ):
-                                    attr_name, attr_value = self._parse_attribute(
-                                        grandchild, source_code
-                                    )
-                                    if attr_name:
-                                        attributes[attr_name] = attr_value
-        except Exception as e:
-            log_debug(f"Failed to extract attributes: {e}")
-
-        return attributes
-
-    def _parse_attribute(
-        self, attr_node: "tree_sitter.Node", source_code: str
-    ) -> tuple[str, str]:
-        """Parse individual attribute node"""
-        return _parse_attr_standalone(
-            attr_node, lambda n: self._extract_node_text(n, source_code)
+        return _create_markup_standalone(
+            node,
+            lambda n: self._extract_node_text(n, source_code),
+            self.element_categories,
+            parent,
         )
 
     def _classify_element(self, tag_name: str) -> str:
         """Classify HTML element based on tag name"""
         return _classify_standalone(tag_name, self.element_categories)
+
+    def _extract_tag_name(self, node: "tree_sitter.Node", source_code: str) -> str:
+        """Extract tag name from HTML element node"""
+        from .html_helpers import extract_html_tag_name
+
+        return extract_html_tag_name(
+            node, lambda n: self._extract_node_text(n, source_code)
+        )
+
+    def _extract_attributes(
+        self, node: "tree_sitter.Node", source_code: str
+    ) -> dict[str, str]:
+        """Extract attributes from HTML element node"""
+        from .html_helpers import extract_html_attributes
+
+        return extract_html_attributes(
+            node, lambda n: self._extract_node_text(n, source_code)
+        )
+
+    def _parse_attribute(
+        self, attr_node: "tree_sitter.Node", source_code: str
+    ) -> tuple[str, str]:
+        """Parse individual attribute node"""
+        from .html_helpers import parse_attribute
+
+        return parse_attribute(
+            attr_node, lambda n: self._extract_node_text(n, source_code)
+        )
 
     def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract text content from a tree-sitter node"""
