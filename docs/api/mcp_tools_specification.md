@@ -6,9 +6,10 @@
 
 ## Overview
 
-Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための14の専門ツール、2つのリソース、および2つのSMART workflowプロンプトを提供します。すべてのツールはMCP v1.0仕様に準拠し、統一されたエラーハンドリングとセキュリティ機能を実装しています。
+Tree-sitter Analyzer MCPサーバーは、AI統合コード解析のための15の専門ツール、2つのリソース、および2つのSMART workflowプロンプトを提供します。すべてのツールはMCP v1.0仕様に準拠し、統一されたエラーハンドリングとセキュリティ機能を実装しています。
 
 ### v1.13.0 Changes
+- **smart_context tool**: Single-call file profile combining health, exports, structure, dependencies, tests, and edit risk
 - **safe_to_edit tool**: Pre-edit risk assessment — risk_level (safe/caution/dangerous), blast radius, test proximity, pre-edit checklist
 - **refactoring_suggestions tool**: AST-based refactoring suggestions with exact line ranges, extraction targets, and priority scoring
 - **Extraction plans**: `check_file_health` D/F grade files get structured extraction_plan with AST-based line numbers
