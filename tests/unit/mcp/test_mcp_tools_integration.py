@@ -722,7 +722,7 @@ class CoreClass:
             assert "llm_guidance" in analysis
 
     def test_tool_schema_consistency(self, all_tools):
-        """Test that tool schemas are consistent for file output parameters"""
+        """output_file/suppress_output removed from schemas for token efficiency."""
         tools_with_file_output = [
             "search_content",
             "find_and_grep",
@@ -736,41 +736,12 @@ class CoreClass:
             schema = definition["inputSchema"]
             properties = schema["properties"]
 
-            # All tools should have output_file parameter
-            assert "output_file" in properties, (
-                f"{tool_name} missing output_file parameter"
+            assert "output_file" not in properties, (
+                f"{tool_name} should not have output_file in schema (token efficiency)"
             )
-            assert properties["output_file"]["type"] == "string", (
-                f"{tool_name} output_file wrong type"
+            assert "suppress_output" not in properties, (
+                f"{tool_name} should not have suppress_output in schema (token efficiency)"
             )
-
-            # All tools should have suppress_output parameter
-            assert "suppress_output" in properties, (
-                f"{tool_name} missing suppress_output parameter"
-            )
-            assert properties["suppress_output"]["type"] == "boolean", (
-                f"{tool_name} suppress_output wrong type"
-            )
-            assert properties["suppress_output"]["default"] is False, (
-                f"{tool_name} suppress_output wrong default"
-            )
-
-            # Descriptions should mention file output and token optimization
-            output_file_desc = properties["output_file"]["description"].lower()
-            assert "file" in output_file_desc, (
-                f"{tool_name} output_file description missing 'file'"
-            )
-            assert "save" in output_file_desc or "output" in output_file_desc, (
-                f"{tool_name} output_file description unclear"
-            )
-
-            suppress_output_desc = properties["suppress_output"]["description"].lower()
-            assert "suppress" in suppress_output_desc, (
-                f"{tool_name} suppress_output description missing 'suppress'"
-            )
-            assert (
-                "token" in suppress_output_desc or "output" in suppress_output_desc
-            ), f"{tool_name} suppress_output description unclear"
 
     @pytest.mark.asyncio
     async def test_performance_with_file_output(self, all_tools, comprehensive_project):

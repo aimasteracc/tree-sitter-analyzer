@@ -52,9 +52,8 @@ class SearchContentTool(BaseMCPTool):
         return {
             "name": "search_content",
             "description": (
-                "SMART 'Trace': ripgrep content search. Find callers, deps, patterns. "
-                "Efficiency: total_only(~10t) > count_only(~200t) > summary(~2Kt) > full. "
-                "Format params are mutually exclusive."
+                "Trace: ripgrep content search. Find callers, deps, patterns. "
+                "Prefer total_only > count_only > summary > full."
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

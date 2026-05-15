@@ -17,45 +17,33 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "symbol": {
             "type": "string",
-            "description": "Symbol name to find project-wide. E.g. 'UserService'. Omit file_path.",
+            "description": "Symbol to find project-wide. Omit file_path.",
         },
-        "language": {
-            "type": "string",
-            "description": "Language (optional, auto-detected)",
-        },
+        "language": {"type": "string"},
         "query_key": {
             "type": "string",
             "description": (
                 "Query: methods|classes|functions|imports|variables, "
-                "or language-specific (spring_service, decorator, goroutine, etc.). "
-                "Invalid key returns available queries."
+                "or language-specific keys. Invalid key lists available."
             ),
         },
         "query_string": {
             "type": "string",
-            "description": "Custom tree-sitter query. E.g. '(method_declaration) @m'",
+            "description": "Custom tree-sitter query",
         },
         "filter": {
             "type": "string",
-            "description": "Filter. E.g. 'name=main', 'name=~get*,public=true'",
+            "description": "Filter: 'name=main', 'name=~get*'",
         },
         "result_format": {
             "type": "string",
             "enum": ["json", "summary"],
             "default": "json",
-            "description": "Query result format",
         },
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
             "default": "toon",
-            "description": "'toon' (default, ~60% smaller) or 'json'",
-        },
-        "output_file": {"type": "string", "description": "Save output to file"},
-        "suppress_output": {
-            "type": "boolean",
-            "default": False,
-            "description": "Suppress response when output_file set",
         },
     },
 }

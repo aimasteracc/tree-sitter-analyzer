@@ -41,8 +41,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return {
             "name": "analyze_code_structure",
             "description": (
-                "SMART 'Analyze': Structure tables (classes, methods, fields, line positions) "
-                "for 17 langs. Use after check_code_scale, before extract_code_section. "
+                "Analyze: structure tables (classes, methods, fields, line positions). "
                 "Formats: full|compact|csv."
             ),
             "inputSchema": _TOOL_SCHEMA,

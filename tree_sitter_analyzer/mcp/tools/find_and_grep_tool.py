@@ -41,9 +41,8 @@ class FindAndGrepTool(BaseMCPTool):
         return {
             "name": "find_and_grep",
             "description": (
-                "SMART 'Map+Trace': fd (find files) + ripgrep (search content) in one call. "
-                "Find files by name/pattern then search inside them. "
-                "Efficiency: total_only > count_only > summary > full."
+                "Map+Trace: find files by name then grep inside them. "
+                "Prefer total_only/count_only/summary over full results."
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

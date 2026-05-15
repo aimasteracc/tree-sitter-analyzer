@@ -39,10 +39,10 @@ class QueryTool(BaseMCPTool):
         return {
             "name": "query_code",
             "description": (
-                "SMART 'Retrieve': Extract code elements via tree-sitter queries. "
-                "Mode 1: file_path + query_key (single file). "
-                "Mode 2: symbol only (cross-file search, returns definitions project-wide). "
-                "Keys: methods, classes, functions, imports, variables + language-specific."
+                "Retrieve: tree-sitter queries. "
+                "Mode 1: file_path+query_key (single file). "
+                "Mode 2: symbol only (cross-file search). "
+                "Keys: methods, classes, functions, imports, variables."
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

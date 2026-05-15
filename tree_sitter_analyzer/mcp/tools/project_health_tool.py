@@ -73,10 +73,8 @@ class ProjectHealthTool(BaseMCPTool):
         return {
             "name": "check_project_health",
             "description": (
-                "SMART Workflow 'Analyze' step: Score ALL source files in one call. "
-                "Returns grade distribution (A-F), lists the worst files with specific "
-                "code smells and recommendations, and identifies top refactoring targets. "
-                "Use this BEFORE check_file_health to prioritize which files to fix first."
+                "Score ALL files: grade distribution (A-F), worst files, code smells, "
+                "top refactoring targets. Use before check_file_health."
             ),
             "inputSchema": self.get_tool_schema(),
         }

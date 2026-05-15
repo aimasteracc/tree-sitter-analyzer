@@ -38,11 +38,8 @@ class DependencyAnalysisTool(BaseMCPTool):
         return {
             "name": "analyze_dependencies",
             "description": (
-                "SMART Workflow 'Trace' step: Analyze project-level dependencies. "
-                "Supports 4 modes: (1) blast_radius — impact analysis for a changed file, "
-                "(2) file_deps — direct dependencies/dependents of a file, "
-                "(3) cycles — detect circular dependencies, "
-                "(4) summary — project-wide dependency stats."
+                "Trace: project dependencies. Modes: blast_radius (impact analysis), "
+                "file_deps (direct deps), cycles (circular deps), summary (stats)."
             ),
             "inputSchema": self.get_tool_schema(),
         }

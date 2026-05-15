@@ -19,28 +19,17 @@ from ...constants import (
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "file_path": {"type": "string", "description": "File to analyze"},
+        "file_path": {"type": "string"},
         "format_type": {
             "type": "string",
             "enum": ["full", "compact", "csv"],
             "default": "full",
-            "description": "Table format: full|compact|csv",
         },
-        "language": {
-            "type": "string",
-            "description": "Language (optional, auto-detected)",
-        },
-        "output_file": {"type": "string", "description": "Save output to file"},
-        "suppress_output": {
-            "type": "boolean",
-            "default": False,
-            "description": "Suppress response when output_file set",
-        },
+        "language": {"type": "string"},
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
             "default": "toon",
-            "description": "'toon' (default, ~60% smaller) or 'json'",
         },
     },
     "required": ["file_path"],

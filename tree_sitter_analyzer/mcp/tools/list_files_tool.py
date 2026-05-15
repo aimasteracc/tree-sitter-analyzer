@@ -31,8 +31,7 @@ class ListFilesTool(BaseMCPTool):
         return {
             "name": "list_files",
             "description": (
-                "SMART 'Map': fd-based file listing with filtering. "
-                "Discover structure, locate targets before analysis."
+                "Map: fd-based file listing. Discover structure before deeper analysis."
             ),
             "inputSchema": TOOL_SCHEMA,
         }

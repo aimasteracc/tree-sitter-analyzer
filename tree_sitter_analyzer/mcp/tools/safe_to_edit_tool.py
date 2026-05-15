@@ -49,10 +49,8 @@ class SafeToEditTool(BaseMCPTool):
         return {
             "name": "safe_to_edit",
             "description": (
-                "SMART Workflow 'Trace' step: Assess how risky it is to edit a file. "
-                "Returns risk_level (safe/caution/dangerous), affected downstream files, "
-                "test coverage hints, and a pre-edit checklist. "
-                "Call this BEFORE modifying any file to avoid regressions."
+                "Call BEFORE editing: returns risk_level (safe/caution/dangerous), "
+                "affected files, test coverage hints, pre-edit checklist."
             ),
             "inputSchema": self.get_tool_schema(),
         }

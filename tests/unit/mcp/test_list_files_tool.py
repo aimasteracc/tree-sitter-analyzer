@@ -240,21 +240,18 @@ class TestGetToolDefinition:
         assert properties["count_only"]["default"] is False
 
     def test_output_file_property(self, tool):
-        """Test that output_file property is correctly defined."""
+        """output_file removed from schema for token efficiency."""
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
         properties = schema.get("properties", {})
-        assert "output_file" in properties
-        assert properties["output_file"]["type"] == "string"
+        assert "output_file" not in properties
 
     def test_suppress_output_property(self, tool):
-        """Test that suppress_output property is correctly defined."""
+        """suppress_output removed from schema for token efficiency."""
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
         properties = schema.get("properties", {})
-        assert "suppress_output" in properties
-        assert properties["suppress_output"]["type"] == "boolean"
-        assert properties["suppress_output"]["default"] is False
+        assert "suppress_output" not in properties
 
     def test_output_format_property(self, tool):
         """Test that output_format property is correctly defined."""

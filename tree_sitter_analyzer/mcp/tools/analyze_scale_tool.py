@@ -35,41 +35,18 @@ TOOL_SCHEMA: dict[str, Any] = {
         "file_paths": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "Batch: file paths (requires metrics_only=true)",
+            "description": "Batch mode (requires metrics_only=true)",
         },
-        "metrics_only": {
-            "type": "boolean",
-            "default": False,
-            "description": "Batch: metrics only, no structural analysis",
-        },
-        "file_path": {
-            "type": "string",
-            "description": "File to analyze",
-        },
-        "language": {
-            "type": "string",
-            "description": "Language (optional, auto-detected)",
-        },
-        "include_complexity": {
-            "type": "boolean",
-            "default": True,
-            "description": "Include complexity metrics",
-        },
-        "include_details": {
-            "type": "boolean",
-            "default": False,
-            "description": "Include detailed elements",
-        },
-        "include_guidance": {
-            "type": "boolean",
-            "default": True,
-            "description": "Include LLM guidance",
-        },
+        "metrics_only": {"type": "boolean", "default": False},
+        "file_path": {"type": "string"},
+        "language": {"type": "string"},
+        "include_complexity": {"type": "boolean", "default": True},
+        "include_details": {"type": "boolean", "default": False},
+        "include_guidance": {"type": "boolean", "default": True},
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
             "default": "toon",
-            "description": "'toon' (default, ~60% smaller) or 'json'",
         },
     },
     "additionalProperties": False,
@@ -452,8 +429,8 @@ class AnalyzeScaleTool(BaseMCPTool):
         return {
             "name": "check_code_scale",
             "description": (
-                "SMART 'Analyze' (use FIRST): File size, element counts, complexity, "
-                "LLM guidance. Use before analyze_code_structure. Batch supported."
+                "Analyze (use FIRST): file size, element counts, complexity. "
+                "Batch supported. Use before analyze_code_structure."
             ),
             "inputSchema": self.get_tool_schema(),
         }

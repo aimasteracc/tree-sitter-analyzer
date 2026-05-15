@@ -90,9 +90,8 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         return {
             "name": "refactoring_suggestions",
             "description": (
-                "Analyze a file and return concrete, actionable refactoring suggestions "
-                "with exact function names, line ranges, and extraction targets. "
-                "Use this BEFORE editing to plan your refactoring, or AFTER editing to find remaining issues."
+                "Refactoring plan: exact function names, line ranges, extraction targets. "
+                "Use BEFORE editing to plan, or AFTER to find remaining issues."
             ),
             "inputSchema": self.get_tool_schema(),
         }

@@ -62,10 +62,8 @@ class FileHealthTool(BaseMCPTool):
         return {
             "name": "check_file_health",
             "description": (
-                "SMART Workflow 'Analyze' step: Score code health (A-F grade) for a single file. "
-                "Returns weighted scores across 5 dimensions AND specific code smells detected "
-                "(God Class, Long Method, Deep Nesting, High Coupling, Missing Docs). "
-                "Use to quickly identify files needing refactoring and what exactly to fix."
+                "Analyze: score file health (A-F). Returns 5 dimension scores, "
+                "code smells (God Class, Long Method, Deep Nesting), and fix suggestions."
             ),
             "inputSchema": self.get_tool_schema(),
         }

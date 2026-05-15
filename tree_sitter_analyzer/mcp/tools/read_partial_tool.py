@@ -24,7 +24,7 @@ TOOL_SCHEMA: dict[str, Any] = {
     "properties": {
         "requests": {
             "type": "array",
-            "description": "Batch: multiple ranges/files (exclusive with file_path/start_line)",
+            "description": "Batch: multiple ranges/files (exclusive with file_path)",
             "items": {
                 "type": "object",
                 "properties": {
@@ -47,61 +47,23 @@ TOOL_SCHEMA: dict[str, Any] = {
                 "additionalProperties": False,
             },
         },
-        "file_path": {
-            "type": "string",
-            "description": "File to read",
-        },
-        "start_line": {
-            "type": "integer",
-            "description": "Start line (1-based)",
-            "minimum": 1,
-        },
-        "end_line": {
-            "type": "integer",
-            "description": "End line (1-based, optional)",
-            "minimum": 1,
-        },
-        "start_column": {
-            "type": "integer",
-            "description": "Start column (0-based)",
-            "minimum": 0,
-        },
-        "end_column": {
-            "type": "integer",
-            "description": "End column (0-based)",
-            "minimum": 0,
-        },
+        "file_path": {"type": "string"},
+        "start_line": {"type": "integer", "minimum": 1},
+        "end_line": {"type": "integer", "minimum": 1},
+        "start_column": {"type": "integer", "minimum": 0},
+        "end_column": {"type": "integer", "minimum": 0},
         "format": {
             "type": "string",
             "enum": ["text", "json", "raw"],
             "default": "text",
-            "description": "Content format: text|json|raw",
-        },
-        "output_file": {
-            "type": "string",
-            "description": "Save output to file",
-        },
-        "suppress_output": {
-            "type": "boolean",
-            "default": False,
-            "description": "Suppress response when output_file set",
         },
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
             "default": "toon",
-            "description": "'toon' (default, ~60% smaller) or 'json'",
         },
-        "allow_truncate": {
-            "type": "boolean",
-            "default": False,
-            "description": "Batch: truncate on limit (default: fail)",
-        },
-        "fail_fast": {
-            "type": "boolean",
-            "default": False,
-            "description": "Batch: stop on first error",
-        },
+        "allow_truncate": {"type": "boolean", "default": False},
+        "fail_fast": {"type": "boolean", "default": False},
     },
     "additionalProperties": False,
 }
@@ -499,9 +461,8 @@ class ReadPartialTool(BaseMCPTool):
         return {
             "name": "extract_code_section",
             "description": (
-                "SMART 'Retrieve': Extract code sections by line/column range. "
-                "Batch mode: multiple ranges/files in one call. "
-                "Use after analyze_code_structure to target specific lines."
+                "Retrieve: extract code by line/column range. "
+                "Batch: multiple ranges/files in one call."
             ),
             "inputSchema": self.get_tool_schema(),
         }

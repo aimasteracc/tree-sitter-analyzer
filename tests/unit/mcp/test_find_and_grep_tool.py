@@ -156,7 +156,7 @@ class TestGetToolDefinition:
         assert "max_filesize" in properties
         assert "context_before" in properties
         assert "context_after" in properties
-        assert "encoding" in properties
+        assert "encoding" not in properties  # removed for token efficiency
         assert "max_count" in properties
         assert "timeout_ms" in properties
 
@@ -172,8 +172,8 @@ class TestGetToolDefinition:
         assert "optimize_paths" in properties
         assert "group_by_file" in properties
         assert "total_only" in properties
-        assert "output_file" in properties
-        assert "suppress_output" in properties
+        assert "output_file" not in properties  # removed for token efficiency
+        assert "suppress_output" not in properties
         assert "output_format" in properties
 
     def test_sort_enum_values(self, tool):

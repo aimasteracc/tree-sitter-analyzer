@@ -95,9 +95,8 @@ class ProjectOverviewTool(BaseMCPTool):
         return {
             "name": "get_project_overview",
             "description": (
-                "SMART Workflow 'Map' step (use as FIRST call): Get a complete project portrait — "
-                "language distribution, file counts, largest files, and directory structure. "
-                "Replaces multiple list_files + search_content calls with a single overview."
+                "Map (use FIRST): project portrait — languages, file counts, "
+                "largest files, directory structure. Replaces multiple list_files calls."
             ),
             "inputSchema": TOOL_SCHEMA,
         }
