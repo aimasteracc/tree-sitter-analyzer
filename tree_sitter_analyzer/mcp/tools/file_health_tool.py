@@ -6,6 +6,7 @@ Exposes health_scorer.py to AI agents via MCP protocol.
 Returns A-F grades, dimension scores, and specific code smells for single files.
 """
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -107,6 +108,9 @@ class FileHealthTool(BaseMCPTool):
             result["next_action"] = _suggest_next_action(
                 file_path, health.grade, smells
             )
+            plan = _build_extraction_plan(file_path, smells)
+            if plan:
+                result["extraction_plan"] = plan
 
         from ..utils.format_helper import apply_toon_format_to_response
 
@@ -365,3 +369,44 @@ def _suggest_next_action(
         "Review code_smells above and apply suggested fixes, "
         "then re-run check_file_health to track improvement"
     )
+
+
+def _build_extraction_plan(
+    file_path: str,
+    smells: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Build a structured extraction plan for D/F grade files."""
+    long_methods = [s for s in smells if s["smell"] == "long_method"]
+    if not long_methods:
+        return None
+
+    targets = []
+    for s in long_methods[:3]:
+        detail = s.get("detail", "")
+        name = detail.split("'")[1] if "'" in detail else "unknown"
+        line_match = re.search(r"\(L(\d+)\)", detail)
+        start_line = int(line_match.group(1)) if line_match else 0
+        targets.append(
+            {
+                "method": name,
+                "start_line": start_line,
+                "priority": "critical" if s.get("severity") == "critical" else "normal",
+            }
+        )
+
+    stem = Path(file_path).stem
+    parent = str(Path(file_path).parent)
+    new_module = f"{parent}/_{stem}_helpers.py" if parent else f"_{stem}_helpers.py"
+
+    return {
+        "target_file": file_path,
+        "new_module": new_module,
+        "methods_to_extract": targets,
+        "steps": [
+            f"1. Read {file_path} with extract_code_section",
+            f"2. Create {new_module} with extracted methods as standalone functions",
+            f"3. Add delegates in {file_path} calling the new module",
+            "4. Run tests to verify zero regressions",
+            f"5. Re-run check_file_health(file_path='{file_path}')",
+        ],
+    }
