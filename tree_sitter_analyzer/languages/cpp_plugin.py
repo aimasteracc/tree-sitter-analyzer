@@ -26,13 +26,22 @@ from .cpp_helpers import (
     determine_visibility as _determine_vis_standalone,
 )
 from .cpp_helpers import (
+    extract_base_classes as _extract_base_standalone,
+)
+from .cpp_helpers import (
     extract_comment_for_line as _extract_comment_standalone,
+)
+from .cpp_helpers import (
+    extract_cpp_field_declaration as _extract_cpp_field_standalone,
 )
 from .cpp_helpers import (
     extract_cpp_imports as _extract_imports_standalone,
 )
 from .cpp_helpers import (
     extract_cpp_namespaces as _extract_namespaces_standalone,
+)
+from .cpp_helpers import (
+    extract_cpp_variable_declaration as _extract_cpp_var_standalone,
 )
 from .cpp_helpers import (
     extract_function_declaration as _extract_func_decl_standalone,
@@ -517,159 +526,25 @@ class CppElementExtractor(ElementExtractor):
 
     def _extract_base_classes(self, node: "tree_sitter.Node") -> list[str]:
         """Extract base class names from base_class_clause"""
-        base_classes: list[str] = []
-
-        for child in node.children:
-            if child.type == "base_specifier":
-                for grandchild in child.children:
-                    if grandchild.type == "type_identifier":
-                        base_classes.append(self._get_node_text_optimized(grandchild))
-                    elif grandchild.type == "template_type":
-                        base_classes.append(self._get_node_text_optimized(grandchild))
-
-        return base_classes
+        return _extract_base_standalone(node, self._get_node_text_optimized)
 
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract field declaration"""
-        fields: list[Variable] = []
-
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            field_type = None
-            field_names: list[str] = []
-            modifiers: list[str] = []
-
-            for child in node.children:
-                if child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "qualified_identifier",
-                    "template_type",
-                ]:
-                    field_type = self._get_node_text_optimized(child)
-                elif child.type == "storage_class_specifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "field_identifier":
-                    field_names.append(self._get_node_text_optimized(child))
-                elif child.type == "init_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "field_identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                        elif grandchild.type == "identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-
-            if not field_type or not field_names:
-                return fields
-
-            raw_text = self._get_node_text_optimized(node)
-
-            # Determine visibility (check if field/variable is global or class member)
-            is_global = self._is_global_scope(node)
-            visibility = self._determine_visibility(
-                modifiers, is_global=is_global, node=node
-            )
-
-            for field_name in field_names:
-                field = Variable(
-                    name=field_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="cpp",
-                    variable_type=field_type,
-                    modifiers=modifiers,
-                    is_static="static" in modifiers,
-                    is_constant="const" in modifiers,
-                    visibility=visibility,
-                )
-                fields.append(field)
-
-        except Exception as e:
-            log_debug(f"Failed to extract field info: {e}")
-
-        return fields
+        return _extract_cpp_field_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._is_global_scope,
+            self._determine_visibility,
+        )
 
     def _extract_variable_declaration(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract variable declarations (not class members)"""
-        # Skip if parent is a class/struct body
-        if node.parent and node.parent.type == "field_declaration_list":
-            return []
-
-        variables: list[Variable] = []
-
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            var_type = None
-            var_names: list[str] = []
-            modifiers: list[str] = []
-
-            for child in node.children:
-                if child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "qualified_identifier",
-                    "template_type",
-                ]:
-                    var_type = self._get_node_text_optimized(child)
-                elif child.type == "storage_class_specifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "identifier":
-                    var_names.append(self._get_node_text_optimized(child))
-                elif child.type == "init_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            var_names.append(self._get_node_text_optimized(grandchild))
-
-            if not var_type or not var_names:
-                return variables
-
-            raw_text = self._get_node_text_optimized(node)
-
-            # Determine visibility (check if variable is global or local)
-            is_global = self._is_global_scope(node)
-            visibility = self._determine_visibility(
-                modifiers, is_global=is_global, node=node
-            )
-
-            for var_name in var_names:
-                variable = Variable(
-                    name=var_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="cpp",
-                    variable_type=var_type,
-                    modifiers=modifiers,
-                    is_static="static" in modifiers,
-                    is_constant="const" in modifiers,
-                    visibility=visibility,
-                )
-                variables.append(variable)
-
-        except Exception as e:
-            log_debug(f"Failed to extract variable declaration: {e}")
-
-        return variables
+        return _extract_cpp_var_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._is_global_scope,
+            self._determine_visibility,
+        )
 
     def _extract_include_info(
         self, node: "tree_sitter.Node", source_code: str

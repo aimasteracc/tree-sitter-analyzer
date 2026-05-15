@@ -273,6 +273,168 @@ def extract_class_name(
     return None
 
 
+_MODIFIER_KEYWORDS = frozenset(
+    {
+        "public",
+        "private",
+        "protected",
+        "static",
+        "final",
+        "abstract",
+        "synchronized",
+        "volatile",
+        "transient",
+    }
+)
+
+_RETURN_TYPE_NODES = frozenset(
+    {
+        "type_identifier",
+        "void_type",
+        "primitive_type",
+        "integral_type",
+        "boolean_type",
+        "floating_point_type",
+        "array_type",
+        "generic_type",
+    }
+)
+
+_FIELD_TYPE_NODES = frozenset(
+    {
+        "type_identifier",
+        "primitive_type",
+        "integral_type",
+        "generic_type",
+        "boolean_type",
+        "floating_point_type",
+        "array_type",
+    }
+)
+
+
+def extract_modifiers(node: Any, get_node_text: Callable[..., str]) -> list[str]:
+    """Extract modifiers from a declaration node."""
+    modifiers: list[str] = []
+    for child in node.children:
+        if child.type == "modifiers":
+            for mod_child in child.children:
+                if mod_child.type in _MODIFIER_KEYWORDS:
+                    modifiers.append(mod_child.type)
+                elif mod_child.type != "marker_annotation":
+                    mod_text = get_node_text(mod_child)
+                    if mod_text in _MODIFIER_KEYWORDS:
+                        modifiers.append(mod_text)
+    return modifiers
+
+
+def parse_method_signature(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> tuple[str, str, list[str], list[str], list[str]] | None:
+    """Parse method signature into (name, return_type, parameters, modifiers, throws)."""
+    try:
+        method_name = None
+        for child in node.children:
+            if child.type == "identifier":
+                method_name = get_node_text(child)
+                break
+
+        if not method_name:
+            return None
+
+        return_type = "void"
+        for child in node.children:
+            if child.type in _RETURN_TYPE_NODES:
+                return_type = get_node_text(child)
+                break
+
+        parameters: list[str] = []
+        for child in node.children:
+            if child.type == "formal_parameters":
+                for param in child.children:
+                    if param.type == "formal_parameter":
+                        parameters.append(get_node_text(param))
+
+        modifiers = extract_modifiers(node, get_node_text)
+
+        throws: list[str] = []
+        for child in node.children:
+            if child.type == "throws":
+                throws_text = get_node_text(child)
+                exceptions = re.findall(r"\b[A-Z]\w*Exception\b", throws_text)
+                throws.extend(exceptions)
+
+        return method_name, return_type, parameters, modifiers, throws
+    except Exception:
+        return None
+
+
+def parse_field_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> tuple[str, list[str], list[str]] | None:
+    """Parse field declaration into (type, variable_names, modifiers)."""
+    try:
+        field_type = None
+        for child in node.children:
+            if child.type in _FIELD_TYPE_NODES:
+                field_type = get_node_text(child)
+                break
+
+        if not field_type:
+            return None
+
+        variable_names: list[str] = []
+        for child in node.children:
+            if child.type == "variable_declarator":
+                for grandchild in child.children:
+                    if grandchild.type == "identifier":
+                        variable_names.append(get_node_text(grandchild))
+
+        if not variable_names:
+            return None
+
+        modifiers = extract_modifiers(node, get_node_text)
+
+        return field_type, variable_names, modifiers
+    except Exception:
+        return None
+
+
+def extract_annotation(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> dict[str, Any] | None:
+    """Extract annotation information from annotation node."""
+    try:
+        annotation_text = get_node_text(node)
+        start_line = node.start_point[0] + 1
+
+        annotation_name = None
+        for child in node.children:
+            if child.type == "identifier":
+                annotation_name = get_node_text(child)
+                break
+
+        if not annotation_name:
+            match = re.search(r"@(\w+)", annotation_text)
+            if match:
+                annotation_name = match.group(1)
+
+        if annotation_name:
+            return {
+                "name": annotation_name,
+                "line": start_line,
+                "text": annotation_text,
+                "type": "annotation",
+            }
+    except Exception as e:
+        log_debug(f"Failed to extract annotation: {e}")
+
+    return None
+
+
 def calculate_complexity(node: Any) -> int:
     """Calculate cyclomatic complexity."""
     decision_nodes = {

@@ -29,6 +29,12 @@ from .c_helpers import (
     extract_comment_for_line as _extract_comment_standalone,
 )
 from .c_helpers import (
+    extract_enum_definition as _extract_enum_standalone,
+)
+from .c_helpers import (
+    extract_field_declaration as _extract_field_standalone,
+)
+from .c_helpers import (
     extract_macro_definition as _extract_macro_def_standalone,
 )
 from .c_helpers import (
@@ -36,6 +42,12 @@ from .c_helpers import (
 )
 from .c_helpers import (
     extract_parameters as _extract_params_standalone,
+)
+from .c_helpers import (
+    extract_struct_definition as _extract_struct_standalone,
+)
+from .c_helpers import (
+    extract_variable_declaration as _extract_var_decl_standalone,
 )
 from .c_helpers import (
     parse_function_signature as _parse_sig_standalone,
@@ -333,284 +345,35 @@ class CElementExtractor(ElementExtractor):
 
     def _extract_struct_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract struct information optimized"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            struct_name = None
-
-            # Look for name in struct_specifier children first (named struct)
-            for child in node.children:
-                if child.type == "type_identifier":
-                    struct_name = self._get_node_text_optimized(child)
-
-            # If anonymous, check if parent is type_definition for typedef name
-            if (
-                not struct_name
-                and node.parent
-                and node.parent.type == "type_definition"
-            ):
-                for sibling in node.parent.children:
-                    if sibling.type == "type_identifier":
-                        struct_name = self._get_node_text_optimized(sibling)
-                        # Use the typedef position for the start/end lines
-                        start_line = node.parent.start_point[0] + 1
-                        end_line = node.parent.end_point[0] + 1
-                        break
-
-            if not struct_name:
-                # Truly anonymous struct
-                struct_name = f"anonymous_struct_{start_line}"
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
-            return Class(
-                name=struct_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                class_type="struct",
-                full_qualified_name=struct_name,
-                docstring=docstring,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract struct info: {e}")
-            return None
+        return _extract_struct_standalone(
+            node, self._get_node_text_optimized, self.content_lines
+        )
 
     def _extract_union_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract union information optimized"""
-        try:
-            result = self._extract_struct_optimized(node)
-            if result:
-                result.class_type = "union"
-                if result.name.startswith("anonymous_struct_"):
-                    result.name = result.name.replace(
-                        "anonymous_struct_", "anonymous_union_"
-                    )
-                    result.full_qualified_name = result.name
-            return result
-        except Exception as e:
-            log_debug(f"Failed to extract union info: {e}")
-            return None
+        result = self._extract_struct_optimized(node)
+        if result:
+            result.class_type = "union"
+            if result.name.startswith("anonymous_struct_"):
+                result.name = result.name.replace(
+                    "anonymous_struct_", "anonymous_union_"
+                )
+                result.full_qualified_name = result.name
+        return result
 
     def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract enum information optimized"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            enum_name = None
-
-            # Look for name in enum_specifier children first (named enum)
-            for child in node.children:
-                if child.type == "type_identifier":
-                    enum_name = self._get_node_text_optimized(child)
-
-            # If anonymous, check if parent is type_definition for typedef name
-            if not enum_name and node.parent and node.parent.type == "type_definition":
-                for sibling in node.parent.children:
-                    if sibling.type == "type_identifier":
-                        enum_name = self._get_node_text_optimized(sibling)
-                        # Use the typedef position for the start/end lines
-                        start_line = node.parent.start_point[0] + 1
-                        end_line = node.parent.end_point[0] + 1
-                        break
-
-            if not enum_name:
-                # Truly anonymous enum
-                enum_name = f"anonymous_enum_{start_line}"
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
-            return Class(
-                name=enum_name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                class_type="enum",
-                full_qualified_name=enum_name,
-                docstring=docstring,
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract enum info: {e}")
-            return None
+        return _extract_enum_standalone(
+            node, self._get_node_text_optimized, self.content_lines
+        )
 
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract field declaration"""
-        fields: list[Variable] = []
-
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            field_type = None
-            field_names: list[str] = []
-            modifiers: list[str] = []
-
-            for child in node.children:
-                if child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "sized_type_specifier",
-                    "struct_specifier",
-                    "union_specifier",
-                    "enum_specifier",
-                ]:
-                    field_type = self._get_node_text_optimized(child)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "field_identifier":
-                    field_names.append(self._get_node_text_optimized(child))
-                elif child.type == "array_declarator":
-                    # Handle array fields (e.g. char name[50])
-                    for grandchild in child.children:
-                        if grandchild.type == "field_identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                    # Append [] to type to indicate array
-                    field_type = field_type + "[]" if field_type else "[]"
-                elif child.type == "field_declaration_list":
-                    # Nested struct/union, skip
-                    pass
-                elif child.type == "init_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "field_identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                        elif grandchild.type == "identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                elif child.type == "pointer_declarator":
-                    # Handle pointer fields
-                    for grandchild in child.children:
-                        if grandchild.type == "field_identifier":
-                            field_names.append(
-                                self._get_node_text_optimized(grandchild)
-                            )
-                            field_type = field_type + "*" if field_type else "*"
-
-            if not field_type or not field_names:
-                return fields
-
-            raw_text = self._get_node_text_optimized(node)
-
-            # In C, struct/union fields are always public (no access control)
-            visibility = "public"
-
-            for field_name in field_names:
-                field = Variable(
-                    name=field_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="c",
-                    variable_type=field_type,
-                    modifiers=modifiers,
-                    is_constant="const" in modifiers,
-                    visibility=visibility,
-                )
-                fields.append(field)
-
-        except Exception as e:
-            log_debug(f"Failed to extract field info: {e}")
-
-        return fields
+        return _extract_field_standalone(node, self._get_node_text_optimized)
 
     def _extract_variable_declaration(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract variable declarations (not struct members)"""
-        # Skip if parent is a struct/union body
-        if node.parent and node.parent.type == "field_declaration_list":
-            return []
-
-        variables: list[Variable] = []
-
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            var_type = None
-            var_names: list[str] = []
-            modifiers: list[str] = []
-
-            for child in node.children:
-                if child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "sized_type_specifier",
-                    "struct_specifier",
-                    "union_specifier",
-                    "enum_specifier",
-                ]:
-                    var_type = self._get_node_text_optimized(child)
-                elif child.type == "storage_class_specifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "identifier":
-                    var_names.append(self._get_node_text_optimized(child))
-                elif child.type == "init_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            var_names.append(self._get_node_text_optimized(grandchild))
-                elif child.type == "pointer_declarator":
-                    # Handle pointer declarations
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            var_names.append(self._get_node_text_optimized(grandchild))
-                            var_type = var_type + "*" if var_type else "*"
-
-            if not var_type or not var_names:
-                return variables
-
-            raw_text = self._get_node_text_optimized(node)
-
-            # C global variables visibility:
-            # - static = private (internal linkage)
-            # - non-static = public (external linkage)
-            visibility = "private" if "static" in modifiers else "public"
-
-            for var_name in var_names:
-                variable = Variable(
-                    name=var_name,
-                    start_line=start_line,
-                    end_line=end_line,
-                    raw_text=raw_text,
-                    language="c",
-                    variable_type=var_type,
-                    modifiers=modifiers,
-                    is_static="static" in modifiers,
-                    is_constant="const" in modifiers,
-                    visibility=visibility,
-                )
-                variables.append(variable)
-
-        except Exception as e:
-            log_debug(f"Failed to extract variable declaration: {e}")
-
-        return variables
+        return _extract_var_decl_standalone(node, self._get_node_text_optimized)
 
     def _extract_include_info(
         self, node: "tree_sitter.Node", source_code: str

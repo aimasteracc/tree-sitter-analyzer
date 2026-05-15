@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from ..models import Function, Import, Variable
+from ..models import Class, Function, Import, Variable
 from ..utils import log_debug
 
 
@@ -204,6 +204,257 @@ def calculate_complexity(node: Any) -> int:
         return count
 
     return 1 + count_decisions(node)
+
+
+_TYPE_NODES_FIELD = frozenset(
+    {
+        "primitive_type",
+        "type_identifier",
+        "sized_type_specifier",
+        "struct_specifier",
+        "union_specifier",
+        "enum_specifier",
+    }
+)
+
+_TYPE_NODES_VAR = frozenset(
+    {
+        "primitive_type",
+        "type_identifier",
+        "sized_type_specifier",
+        "struct_specifier",
+        "union_specifier",
+        "enum_specifier",
+    }
+)
+
+
+def extract_field_declaration(
+    node: Any, get_node_text: Callable[..., str]
+) -> list[Variable]:
+    """Extract struct/union field declarations."""
+    fields: list[Variable] = []
+
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        field_type = None
+        field_names: list[str] = []
+        modifiers: list[str] = []
+
+        for child in node.children:
+            if child.type in _TYPE_NODES_FIELD:
+                field_type = get_node_text(child)
+            elif child.type == "type_qualifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "field_identifier":
+                field_names.append(get_node_text(child))
+            elif child.type == "array_declarator":
+                for grandchild in child.children:
+                    if grandchild.type == "field_identifier":
+                        field_names.append(get_node_text(grandchild))
+                field_type = field_type + "[]" if field_type else "[]"
+            elif child.type == "field_declaration_list":
+                pass
+            elif child.type == "init_declarator":
+                for grandchild in child.children:
+                    if grandchild.type == "field_identifier":
+                        field_names.append(get_node_text(grandchild))
+                    elif grandchild.type == "identifier":
+                        field_names.append(get_node_text(grandchild))
+            elif child.type == "pointer_declarator":
+                for grandchild in child.children:
+                    if grandchild.type == "field_identifier":
+                        field_names.append(get_node_text(grandchild))
+                        field_type = field_type + "*" if field_type else "*"
+
+        if not field_type or not field_names:
+            return fields
+
+        raw_text = get_node_text(node)
+
+        for field_name in field_names:
+            fields.append(
+                Variable(
+                    name=field_name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=raw_text,
+                    language="c",
+                    variable_type=field_type,
+                    modifiers=modifiers,
+                    is_constant="const" in modifiers,
+                    visibility="public",
+                )
+            )
+    except Exception as e:
+        log_debug(f"Failed to extract field info: {e}")
+
+    return fields
+
+
+def extract_variable_declaration(
+    node: Any, get_node_text: Callable[..., str]
+) -> list[Variable]:
+    """Extract C variable declarations (not struct members)."""
+    if node.parent and node.parent.type == "field_declaration_list":
+        return []
+
+    variables: list[Variable] = []
+
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        var_type = None
+        var_names: list[str] = []
+        modifiers: list[str] = []
+
+        for child in node.children:
+            if child.type in _TYPE_NODES_VAR:
+                var_type = get_node_text(child)
+            elif child.type == "storage_class_specifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "type_qualifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "identifier":
+                var_names.append(get_node_text(child))
+            elif child.type == "init_declarator":
+                for grandchild in child.children:
+                    if grandchild.type == "identifier":
+                        var_names.append(get_node_text(grandchild))
+            elif child.type == "pointer_declarator":
+                for grandchild in child.children:
+                    if grandchild.type == "identifier":
+                        var_names.append(get_node_text(grandchild))
+                        var_type = var_type + "*" if var_type else "*"
+
+        if not var_type or not var_names:
+            return variables
+
+        raw_text = get_node_text(node)
+        visibility = "private" if "static" in modifiers else "public"
+
+        for var_name in var_names:
+            variables.append(
+                Variable(
+                    name=var_name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=raw_text,
+                    language="c",
+                    variable_type=var_type,
+                    modifiers=modifiers,
+                    is_static="static" in modifiers,
+                    is_constant="const" in modifiers,
+                    visibility=visibility,
+                )
+            )
+    except Exception as e:
+        log_debug(f"Failed to extract variable declaration: {e}")
+
+    return variables
+
+
+def extract_struct_definition(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+) -> Class | None:
+    """Extract struct definition."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        struct_name = None
+        for child in node.children:
+            if child.type == "type_identifier":
+                struct_name = get_node_text(child)
+
+        if not struct_name and node.parent and node.parent.type == "type_definition":
+            for sibling in node.parent.children:
+                if sibling.type == "type_identifier":
+                    struct_name = get_node_text(sibling)
+                    start_line = node.parent.start_point[0] + 1
+                    end_line = node.parent.end_point[0] + 1
+                    break
+
+        if not struct_name:
+            struct_name = f"anonymous_struct_{start_line}"
+
+        start_line_idx = max(0, start_line - 1)
+        end_line_idx = min(len(content_lines), end_line)
+        raw_text = "\n".join(content_lines[start_line_idx:end_line_idx])
+
+        docstring = extract_comment_for_line(start_line, content_lines)
+
+        return Class(
+            name=struct_name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="c",
+            class_type="struct",
+            full_qualified_name=struct_name,
+            docstring=docstring,
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract struct info: {e}")
+        return None
+
+
+def extract_enum_definition(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+) -> Class | None:
+    """Extract enum definition."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        enum_name = None
+        for child in node.children:
+            if child.type == "type_identifier":
+                enum_name = get_node_text(child)
+
+        if not enum_name and node.parent and node.parent.type == "type_definition":
+            for sibling in node.parent.children:
+                if sibling.type == "type_identifier":
+                    enum_name = get_node_text(sibling)
+                    start_line = node.parent.start_point[0] + 1
+                    end_line = node.parent.end_point[0] + 1
+                    break
+
+        if not enum_name:
+            enum_name = f"anonymous_enum_{start_line}"
+
+        start_line_idx = max(0, start_line - 1)
+        end_line_idx = min(len(content_lines), end_line)
+        raw_text = "\n".join(content_lines[start_line_idx:end_line_idx])
+
+        docstring = extract_comment_for_line(start_line, content_lines)
+
+        return Class(
+            name=enum_name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="c",
+            class_type="enum",
+            full_qualified_name=enum_name,
+            docstring=docstring,
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract enum info: {e}")
+        return None
 
 
 def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:

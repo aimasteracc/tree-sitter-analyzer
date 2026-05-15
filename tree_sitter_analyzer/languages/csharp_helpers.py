@@ -3,7 +3,7 @@
 from collections.abc import Callable, Iterator
 from typing import Any
 
-from ..models import Import
+from ..models import Class, Function, Import, Variable
 from ..utils import log_error
 
 
@@ -145,3 +145,305 @@ def extract_using_directive(
     except Exception as e:
         log_error(f"Error extracting using directive: {e}")
         return None
+
+
+_CLASS_TYPE_MAP = {
+    "class_declaration": "class",
+    "interface_declaration": "interface",
+    "record_declaration": "record",
+    "enum_declaration": "enum",
+    "struct_declaration": "struct",
+}
+
+_BASE_TYPE_NODES = frozenset(["type_identifier", "generic_name", "qualified_name"])
+
+
+def extract_class_declaration(
+    node: Any,
+    current_namespace: str,
+    get_node_text: Callable[..., str],
+    extract_modifiers_fn: Callable[[Any], list[str]],
+    extract_attributes_fn: Callable[[Any], list[dict[str, Any]]],
+) -> Class | None:
+    """Extract a single class declaration."""
+    try:
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            return None
+
+        class_name = get_node_text(name_node)
+        modifiers = extract_modifiers_fn(node)
+        visibility = determine_visibility(modifiers)
+        attributes = extract_attributes_fn(node)
+
+        base_list_node = node.child_by_field_name("bases")
+        superclass = None
+        interfaces: list[str] = []
+
+        if base_list_node:
+            base_items = [
+                get_node_text(child)
+                for child in base_list_node.children
+                if child.type in _BASE_TYPE_NODES
+            ]
+            if base_items:
+                if node.type == "interface_declaration":
+                    interfaces = base_items
+                else:
+                    superclass = base_items[0]
+                    interfaces = base_items[1:] if len(base_items) > 1 else []
+
+        full_name = (
+            f"{current_namespace}.{class_name}" if current_namespace else class_name
+        )
+
+        raw_text = get_node_text(node)
+        class_type = _CLASS_TYPE_MAP.get(node.type, "class")
+
+        return Class(
+            name=class_name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            raw_text=raw_text,
+            full_qualified_name=full_name,
+            superclass=superclass,
+            interfaces=interfaces,
+            modifiers=modifiers,
+            visibility=visibility,
+            annotations=attributes,
+            class_type=class_type,
+        )
+    except Exception as e:
+        log_error(f"Error extracting class declaration: {e}")
+        return None
+
+
+def extract_method_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_modifiers_fn: Callable[[Any], list[str]],
+    extract_attributes_fn: Callable[[Any], list[dict[str, Any]]],
+    extract_type_fn: Callable[[Any], str],
+    extract_params_fn: Callable[[Any], list[str]],
+    calc_complexity_fn: Callable[[Any], int],
+) -> Function | None:
+    """Extract a method declaration."""
+    try:
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            return None
+
+        method_name = get_node_text(name_node)
+        modifiers = extract_modifiers_fn(node)
+        visibility = determine_visibility(modifiers)
+        is_async = "async" in modifiers
+        attributes = extract_attributes_fn(node)
+
+        type_node = node.child_by_field_name("type")
+        return_type = extract_type_fn(type_node)
+
+        params_node = node.child_by_field_name("parameters")
+        parameters = extract_params_fn(params_node)
+
+        raw_text = get_node_text(node)
+        complexity_score = calc_complexity_fn(node)
+
+        return Function(
+            name=method_name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            raw_text=raw_text,
+            parameters=parameters,
+            return_type=return_type,
+            modifiers=modifiers,
+            visibility=visibility,
+            is_async=is_async,
+            annotations=attributes,
+            complexity_score=complexity_score,
+        )
+    except Exception as e:
+        log_error(f"Error extracting method: {e}")
+        return None
+
+
+def extract_constructor_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_modifiers_fn: Callable[[Any], list[str]],
+    extract_attributes_fn: Callable[[Any], list[dict[str, Any]]],
+    extract_params_fn: Callable[[Any], list[str]],
+) -> Function | None:
+    """Extract a constructor declaration."""
+    try:
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            return None
+
+        constructor_name = get_node_text(name_node)
+        modifiers = extract_modifiers_fn(node)
+        visibility = determine_visibility(modifiers)
+        attributes = extract_attributes_fn(node)
+
+        params_node = node.child_by_field_name("parameters")
+        parameters = extract_params_fn(params_node)
+
+        raw_text = get_node_text(node)
+
+        return Function(
+            name=constructor_name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            raw_text=raw_text,
+            parameters=parameters,
+            return_type="void",
+            modifiers=modifiers,
+            visibility=visibility,
+            is_constructor=True,
+            annotations=attributes,
+        )
+    except Exception as e:
+        log_error(f"Error extracting constructor: {e}")
+        return None
+
+
+def extract_property_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_modifiers_fn: Callable[[Any], list[str]],
+    extract_attributes_fn: Callable[[Any], list[dict[str, Any]]],
+    extract_type_fn: Callable[[Any], str],
+) -> Function | None:
+    """Extract a property declaration."""
+    try:
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            return None
+
+        property_name = get_node_text(name_node)
+        modifiers = extract_modifiers_fn(node)
+        visibility = determine_visibility(modifiers)
+        attributes = extract_attributes_fn(node)
+
+        type_node = node.child_by_field_name("type")
+        property_type = extract_type_fn(type_node)
+
+        raw_text = get_node_text(node)
+
+        return Function(
+            name=property_name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            raw_text=raw_text,
+            parameters=[],
+            return_type=property_type,
+            modifiers=modifiers,
+            visibility=visibility,
+            is_property=True,
+            annotations=attributes,
+        )
+    except Exception as e:
+        log_error(f"Error extracting property: {e}")
+        return None
+
+
+def extract_field_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_modifiers_fn: Callable[[Any], list[str]],
+    extract_attributes_fn: Callable[[Any], list[dict[str, Any]]],
+    extract_type_fn: Callable[[Any], str],
+) -> list[Variable]:
+    """Extract field declarations."""
+    variables: list[Variable] = []
+
+    try:
+        modifiers = extract_modifiers_fn(node)
+        visibility = determine_visibility(modifiers)
+        is_constant = "const" in modifiers
+        attributes = extract_attributes_fn(node)
+
+        type_node = None
+        for child in node.children:
+            if child.type == "variable_declaration":
+                type_node = child.child_by_field_name("type")
+                break
+
+        field_type = extract_type_fn(type_node)
+
+        for child in node.children:
+            if child.type == "variable_declaration":
+                for declarator in child.children:
+                    if declarator.type == "variable_declarator":
+                        name_node = declarator.child_by_field_name("name")
+                        if name_node:
+                            field_name = get_node_text(name_node)
+                            raw_text = get_node_text(node)
+
+                            variables.append(
+                                Variable(
+                                    name=field_name,
+                                    start_line=node.start_point[0] + 1,
+                                    end_line=node.end_point[0] + 1,
+                                    raw_text=raw_text,
+                                    variable_type=field_type,
+                                    modifiers=modifiers,
+                                    visibility=visibility,
+                                    is_constant=is_constant,
+                                    annotations=attributes,
+                                )
+                            )
+    except Exception as e:
+        log_error(f"Error extracting field: {e}")
+
+    return variables
+
+
+def extract_event_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_modifiers_fn: Callable[[Any], list[str]],
+    extract_attributes_fn: Callable[[Any], list[dict[str, Any]]],
+    extract_type_fn: Callable[[Any], str],
+) -> list[Variable]:
+    """Extract event field declarations."""
+    variables: list[Variable] = []
+
+    try:
+        modifiers = extract_modifiers_fn(node)
+        modifiers.append("event")
+        visibility = determine_visibility(modifiers)
+        attributes = extract_attributes_fn(node)
+
+        type_node = None
+        for child in node.children:
+            if child.type == "variable_declaration":
+                type_node = child.child_by_field_name("type")
+                break
+
+        event_type = extract_type_fn(type_node)
+
+        for child in node.children:
+            if child.type == "variable_declaration":
+                for declarator in child.children:
+                    if declarator.type == "variable_declarator":
+                        name_node = declarator.child_by_field_name("name")
+                        if name_node:
+                            event_name = get_node_text(name_node)
+                            raw_text = get_node_text(node)
+
+                            variables.append(
+                                Variable(
+                                    name=event_name,
+                                    start_line=node.start_point[0] + 1,
+                                    end_line=node.end_point[0] + 1,
+                                    raw_text=raw_text,
+                                    variable_type=event_type,
+                                    modifiers=modifiers,
+                                    visibility=visibility,
+                                    annotations=attributes,
+                                )
+                            )
+    except Exception as e:
+        log_error(f"Error extracting event: {e}")
+
+    return variables

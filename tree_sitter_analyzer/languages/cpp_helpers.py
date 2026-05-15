@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from ..models import Function, Import
+from ..models import Function, Import, Variable
 from ..utils import log_debug
 
 
@@ -533,3 +533,153 @@ def extract_function_declaration(
     except Exception as e:
         log_debug(f"Failed to extract function declaration: {e}")
         return None
+
+
+def extract_base_classes(node: Any, get_node_text: Callable[..., str]) -> list[str]:
+    """Extract base class names from base_class_clause."""
+    base_classes: list[str] = []
+    for child in node.children:
+        if child.type == "base_specifier":
+            for grandchild in child.children:
+                if grandchild.type in ("type_identifier", "template_type"):
+                    base_classes.append(get_node_text(grandchild))
+    return base_classes
+
+
+_TYPE_NODES_CPP = frozenset(
+    {
+        "primitive_type",
+        "type_identifier",
+        "qualified_identifier",
+        "template_type",
+    }
+)
+
+
+def extract_cpp_field_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    is_global_fn: Callable[[Any], bool],
+    determine_vis_fn: Callable[..., str],
+) -> list[Variable]:
+    """Extract C++ field declarations."""
+    fields: list[Variable] = []
+
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        field_type = None
+        field_names: list[str] = []
+        modifiers: list[str] = []
+
+        for child in node.children:
+            if child.type in _TYPE_NODES_CPP:
+                field_type = get_node_text(child)
+            elif child.type == "storage_class_specifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "type_qualifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "field_identifier":
+                field_names.append(get_node_text(child))
+            elif child.type == "init_declarator":
+                for grandchild in child.children:
+                    if grandchild.type in ("field_identifier", "identifier"):
+                        field_names.append(get_node_text(grandchild))
+
+        if not field_type or not field_names:
+            return fields
+
+        raw_text = get_node_text(node)
+        is_global = is_global_fn(node)
+        visibility = determine_vis_fn(modifiers, is_global=is_global, node=node)
+
+        for field_name in field_names:
+            fields.append(
+                Variable(
+                    name=field_name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=raw_text,
+                    language="cpp",
+                    variable_type=field_type,
+                    modifiers=modifiers,
+                    is_static="static" in modifiers,
+                    is_constant="const" in modifiers,
+                    visibility=visibility,
+                )
+            )
+    except Exception as e:
+        log_debug(f"Failed to extract field info: {e}")
+
+    return fields
+
+
+def extract_cpp_variable_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    is_global_fn: Callable[[Any], bool],
+    determine_vis_fn: Callable[..., str],
+) -> list[Variable]:
+    """Extract C++ variable declarations (not class members)."""
+    if node.parent and node.parent.type == "field_declaration_list":
+        return []
+
+    variables: list[Variable] = []
+
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        var_type = None
+        var_names: list[str] = []
+        modifiers: list[str] = []
+
+        for child in node.children:
+            if child.type in _TYPE_NODES_CPP:
+                var_type = get_node_text(child)
+            elif child.type == "storage_class_specifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "type_qualifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "identifier":
+                var_names.append(get_node_text(child))
+            elif child.type == "init_declarator":
+                for grandchild in child.children:
+                    if grandchild.type == "identifier":
+                        var_names.append(get_node_text(grandchild))
+
+        if not var_type or not var_names:
+            return variables
+
+        raw_text = get_node_text(node)
+        is_global = is_global_fn(node)
+        visibility = determine_vis_fn(modifiers, is_global=is_global, node=node)
+
+        for var_name in var_names:
+            variables.append(
+                Variable(
+                    name=var_name,
+                    start_line=start_line,
+                    end_line=end_line,
+                    raw_text=raw_text,
+                    language="cpp",
+                    variable_type=var_type,
+                    modifiers=modifiers,
+                    is_static="static" in modifiers,
+                    is_constant="const" in modifiers,
+                    visibility=visibility,
+                )
+            )
+    except Exception as e:
+        log_debug(f"Failed to extract variable declaration: {e}")
+
+    return variables

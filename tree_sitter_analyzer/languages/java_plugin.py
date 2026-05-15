@@ -28,6 +28,9 @@ from .java_helpers import (
     determine_visibility as _determine_vis_standalone,
 )
 from .java_helpers import (
+    extract_annotation as _extract_annotation_standalone,
+)
+from .java_helpers import (
     extract_class_name as _extract_class_name_standalone,
 )
 from .java_helpers import (
@@ -40,10 +43,19 @@ from .java_helpers import (
     extract_javadoc_for_line as _extract_javadoc_standalone,
 )
 from .java_helpers import (
+    extract_modifiers as _extract_mods_standalone,
+)
+from .java_helpers import (
     find_parent_class as _find_parent_class_standalone,
 )
 from .java_helpers import (
     is_nested_class as _is_nested_standalone,
+)
+from .java_helpers import (
+    parse_field_declaration as _parse_field_standalone,
+)
+from .java_helpers import (
+    parse_method_signature as _parse_method_sig_standalone,
 )
 
 
@@ -616,135 +628,17 @@ class JavaElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node"
     ) -> tuple[str, str, list[str], list[str], list[str]] | None:
         """Parse method signature optimized (from AdvancedAnalyzer)"""
-        try:
-            # Extract method name
-            method_name = None
-            for child in node.children:
-                if child.type == "identifier":
-                    method_name = self._get_node_text_optimized(child)
-                    break
-
-            if not method_name:
-                return None
-
-            # Extract return type
-            return_type = "void"
-            for child in node.children:
-                if (
-                    child.type
-                    in [
-                        "type_identifier",
-                        "void_type",
-                        "primitive_type",
-                        "integral_type",
-                        "boolean_type",
-                        "floating_point_type",
-                        "array_type",
-                    ]
-                    or child.type == "generic_type"
-                ):
-                    return_type = self._get_node_text_optimized(child)
-                    break
-
-            # Extract parameters
-            parameters = []
-            for child in node.children:
-                if child.type == "formal_parameters":
-                    for param in child.children:
-                        if param.type == "formal_parameter":
-                            param_text = self._get_node_text_optimized(param)
-                            parameters.append(param_text)
-
-            # Extract modifiers
-            modifiers = self._extract_modifiers_optimized(node)
-
-            # Extract throws clause
-            throws = []
-            for child in node.children:
-                if child.type == "throws":
-                    throws_text = self._get_node_text_optimized(child)
-                    exceptions = re.findall(r"\b[A-Z]\w*Exception\b", throws_text)
-                    throws.extend(exceptions)
-
-            return method_name, return_type, parameters, modifiers, throws
-        except Exception:
-            return None
+        return _parse_method_sig_standalone(node, self._get_node_text_optimized)
 
     def _parse_field_declaration_optimized(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, list[str], list[str]] | None:
         """Parse field declaration optimized (from AdvancedAnalyzer)"""
-        try:
-            # Extract type (exactly as in AdvancedAnalyzer)
-            field_type = None
-            for child in node.children:
-                if child.type in [
-                    "type_identifier",
-                    "primitive_type",
-                    "integral_type",
-                    "generic_type",
-                    "boolean_type",
-                    "floating_point_type",
-                    "array_type",
-                ]:
-                    field_type = self._get_node_text_optimized(child)
-                    break
-
-            if not field_type:
-                return None
-
-            # Extract variable names (exactly as in AdvancedAnalyzer)
-            variable_names = []
-            for child in node.children:
-                if child.type == "variable_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            var_name = self._get_node_text_optimized(grandchild)
-                            variable_names.append(var_name)
-
-            if not variable_names:
-                return None
-
-            # Extract modifiers (exactly as in AdvancedAnalyzer)
-            modifiers = self._extract_modifiers_optimized(node)
-
-            return field_type, variable_names, modifiers
-        except Exception:
-            return None
+        return _parse_field_standalone(node, self._get_node_text_optimized)
 
     def _extract_modifiers_optimized(self, node: "tree_sitter.Node") -> list[str]:
         """Extract modifiers efficiently (from AdvancedAnalyzer)"""
-        modifiers = []
-        for child in node.children:
-            if child.type == "modifiers":
-                for mod_child in child.children:
-                    if mod_child.type in [
-                        "public",
-                        "private",
-                        "protected",
-                        "static",
-                        "final",
-                        "abstract",
-                        "synchronized",
-                        "volatile",
-                        "transient",
-                    ]:
-                        modifiers.append(mod_child.type)
-                    elif mod_child.type not in ["marker_annotation"]:
-                        mod_text = self._get_node_text_optimized(mod_child)
-                        if mod_text in [
-                            "public",
-                            "private",
-                            "protected",
-                            "static",
-                            "final",
-                            "abstract",
-                            "synchronized",
-                            "volatile",
-                            "transient",
-                        ]:
-                            modifiers.append(mod_text)
-        return modifiers
+        return _extract_mods_standalone(node, self._get_node_text_optimized)
 
     def _extract_package_info(self, node: "tree_sitter.Node") -> None:
         """Extract package information"""
@@ -780,34 +674,7 @@ class JavaElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node"
     ) -> dict[str, Any] | None:
         """Extract annotation information optimized"""
-        try:
-            annotation_text = self._get_node_text_optimized(node)
-            start_line = node.start_point[0] + 1
-
-            # Extract annotation name
-            annotation_name = None
-            for child in node.children:
-                if child.type == "identifier":
-                    annotation_name = self._get_node_text_optimized(child)
-                    break
-
-            if not annotation_name:
-                # Try to extract from text
-                match = re.search(r"@(\w+)", annotation_text)
-                if match:
-                    annotation_name = match.group(1)
-
-            if annotation_name:
-                return {
-                    "name": annotation_name,
-                    "line": start_line,
-                    "text": annotation_text,
-                    "type": "annotation",
-                }
-        except Exception as e:
-            log_debug(f"Failed to extract annotation: {e}")
-
-        return None
+        return _extract_annotation_standalone(node, self._get_node_text_optimized)
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
         """Determine visibility from modifiers"""
