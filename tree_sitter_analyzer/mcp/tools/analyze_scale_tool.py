@@ -11,8 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
     is_element_of_type,
 )
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
@@ -29,8 +27,53 @@ from .analyze_scale_helpers import (
 )
 from .base_tool import BaseMCPTool
 
-# Set up logging
 logger = setup_logger(__name__)
+
+TOOL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "file_paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Batch: file paths (requires metrics_only=true)",
+        },
+        "metrics_only": {
+            "type": "boolean",
+            "default": False,
+            "description": "Batch: metrics only, no structural analysis",
+        },
+        "file_path": {
+            "type": "string",
+            "description": "File to analyze",
+        },
+        "language": {
+            "type": "string",
+            "description": "Language (optional, auto-detected)",
+        },
+        "include_complexity": {
+            "type": "boolean",
+            "default": True,
+            "description": "Include complexity metrics",
+        },
+        "include_details": {
+            "type": "boolean",
+            "default": False,
+            "description": "Include detailed elements",
+        },
+        "include_guidance": {
+            "type": "boolean",
+            "default": True,
+            "description": "Include LLM guidance",
+        },
+        "output_format": {
+            "type": "string",
+            "enum": ["json", "toon"],
+            "default": "toon",
+            "description": "'toon' (default, ~60% smaller) or 'json'",
+        },
+    },
+    "additionalProperties": False,
+}
 
 
 class AnalyzeScaleTool(BaseMCPTool):
@@ -50,12 +93,6 @@ class AnalyzeScaleTool(BaseMCPTool):
         logger.info("AnalyzeScaleTool initialized with security validation")
 
     def set_project_path(self, project_path: str) -> None:
-        """
-        Update the project path for all components.
-
-        Args:
-            project_path: New project root directory
-        """
         super().set_project_path(project_path)
         self.analysis_engine = get_analysis_engine(project_path)
         logger.info(f"AnalyzeScaleTool project path updated to: {project_path}")
@@ -63,12 +100,6 @@ class AnalyzeScaleTool(BaseMCPTool):
     def _calculate_file_metrics(
         self, file_path: str, language: str | None = None
     ) -> dict[str, Any]:
-        """
-        Calculate file metrics using the unified implementation.
-
-        Note: This retains the method name for backward compatibility within the tool,
-        but delegates the computation to the shared module.
-        """
         try:
             metrics = compute_file_metrics(
                 file_path, language=language, project_root=self.project_root
@@ -103,7 +134,6 @@ class AnalyzeScaleTool(BaseMCPTool):
     def _count_elements(
         elements: list, element_type_const: str, element_type_str: str
     ) -> int:
-        """Count elements matching either Java-style or universal element type."""
         count = 0
         for e in elements:
             if is_element_of_type(e, element_type_const):
@@ -118,239 +148,153 @@ class AnalyzeScaleTool(BaseMCPTool):
         return generate_llm_guidance(file_metrics, structural_overview)
 
     def get_tool_schema(self) -> dict[str, Any]:
-        """
-        Get the MCP tool schema for analyze_code_scale.
-
-        Returns:
-            Dictionary containing the tool schema
-        """
-        return {
-            "type": "object",
-            "properties": {
-                "file_paths": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Batch: file paths (requires metrics_only=true)",
-                },
-                "metrics_only": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Batch: metrics only, no structural analysis",
-                },
-                "file_path": {
-                    "type": "string",
-                    "description": "File to analyze",
-                },
-                "language": {
-                    "type": "string",
-                    "description": "Language (optional, auto-detected)",
-                },
-                "include_complexity": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Include complexity metrics",
-                },
-                "include_details": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Include detailed elements",
-                },
-                "include_guidance": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Include LLM guidance",
-                },
-                "output_format": {
-                    "type": "string",
-                    "enum": ["json", "toon"],
-                    "default": "toon",
-                    "description": "'toon' (default, ~60% smaller) or 'json'",
-                },
-            },
-            "additionalProperties": False,
-        }
+        return TOOL_SCHEMA
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Execute the analyze_code_scale tool.
-
-        Args:
-            arguments: Tool arguments containing file_path and optional parameters
-
-        Returns:
-            Dictionary containing enhanced analysis results optimized for LLM workflow
-
-        Raises:
-            ValueError: If required arguments are missing or invalid
-            FileNotFoundError: If the specified file doesn't exist
-        """
-        # Batch metrics mode
         if "file_paths" in arguments and arguments["file_paths"] is not None:
             return await self._execute_metrics_batch(arguments)
 
-        # Single mode: Validate required arguments
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
 
         file_path = arguments["file_path"]
         language = arguments.get("language")
-        # include_complexity = arguments.get("include_complexity", True)  # Not used currently
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)
         output_format = arguments.get("output_format", "toon")
 
-        # Resolve + security validation with shared caching to avoid redundant checks
-        resolved_file_path = self.resolve_and_validate_file_path(file_path)
-        logger.info(f"Analyzing file: {file_path} (resolved to: {resolved_file_path})")
+        resolved = self.resolve_and_validate_file_path(file_path)
+        logger.info(f"Analyzing file: {file_path} (resolved to: {resolved})")
 
-        # Sanitize inputs
         if language:
             language = self.security_validator.sanitize_input(language, max_length=50)
 
-        # Validate file exists
-        if not Path(resolved_file_path).exists():
+        if not Path(resolved).exists():
             raise ValueError(f"Invalid file path: File not found: {file_path}")
 
-        # Detect language if not specified
-        if not language:
-            language = detect_language_from_file(
-                resolved_file_path, project_root=self.project_root
-            )
-            if language == "unknown":
-                raise ValueError(
-                    f"Invalid file path: Unsupported language for file: {resolved_file_path}"
-                )
-
-        logger.info(
-            f"Analyzing code scale for {resolved_file_path} (language: {language})"
-        )
+        language = self._resolve_language(resolved, language)
+        logger.info(f"Analyzing code scale for {resolved} (language: {language})")
 
         try:
-            # Use performance monitoring with proper context manager
             from ...mcp.utils import get_performance_monitor
 
             with get_performance_monitor().measure_operation(
                 "analyze_code_scale_enhanced"
             ):
-                # Calculate basic file metrics
-                file_metrics = self._calculate_file_metrics(
-                    resolved_file_path, language
-                )
+                file_metrics = self._calculate_file_metrics(resolved, language)
 
-                # Handle JSON files specially - they don't need structural analysis
                 if language == "json":
                     return self._create_json_file_analysis(
-                        resolved_file_path,
-                        file_metrics,
-                        include_guidance,
-                        output_format,
+                        resolved, file_metrics, include_guidance, output_format
                     )
 
-                # Use appropriate analyzer based on language
-                if language == "java":
-                    # Use AdvancedAnalyzer for comprehensive analysis
-                    # Use unified analysis engine instead of deprecated advanced_analyzer
-                    request = AnalysisRequest(
-                        file_path=resolved_file_path,
-                        language=language,
-                        include_complexity=True,
-                        include_details=True,
-                    )
-                    analysis_result = await self.analysis_engine.analyze(request)
-                    if analysis_result is None:
-                        raise RuntimeError(f"Failed to analyze file: {file_path}")
-                    # Extract structural overview
-                    structural_overview = self._extract_structural_overview(
-                        analysis_result
-                    )
-                else:
-                    # Use universal analysis_engine for other languages
-                    request = AnalysisRequest(
-                        file_path=resolved_file_path,
-                        language=language,
-                        include_details=include_details,
-                    )
-                    universal_result = await self.analysis_engine.analyze(request)
-                    if not universal_result or not universal_result.success:
-                        error_msg = (
-                            universal_result.error_message or "Unknown error"
-                            if universal_result
-                            else "Unknown error"
-                        )
-                        raise RuntimeError(
-                            f"Failed to analyze file with universal engine: {error_msg}"
-                        )
+                (
+                    analysis_result,
+                    structural_overview,
+                ) = await self._run_structural_analysis(
+                    resolved, language, include_details
+                )
 
-                    # Adapt the result to a compatible structure for report generation
-                    analysis_result = universal_result
-                    structural_overview = self._extract_structural_overview_universal(
-                        universal_result
-                    )
-
-                # Generate LLM guidance
-                llm_guidance = None
-                if include_guidance:
-                    guidance_metrics = {**file_metrics, "language": language}
-                    llm_guidance = self._generate_llm_guidance(
-                        guidance_metrics, structural_overview
-                    )
-
-                # Build enhanced result structure
-                result = build_analysis_result(
+                result = self._build_enhanced_result(
                     file_path,
                     language,
                     file_metrics,
                     analysis_result,
                     structural_overview,
-                    self._count_elements,
-                )
-
-                if include_guidance:
-                    result["llm_guidance"] = llm_guidance
-
-                # Add detailed information if requested (backward compatibility)
-                if include_details:
-                    result["detailed_analysis"] = build_detailed_analysis(
-                        analysis_result, file_path
-                    )
-
-                # Count elements by type
-                classes_count = len(
-                    [
-                        e
-                        for e in (analysis_result.elements if analysis_result else [])
-                        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
-                    ]
-                )
-                methods_count = len(
-                    [
-                        e
-                        for e in (analysis_result.elements if analysis_result else [])
-                        if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
-                    ]
+                    include_guidance,
+                    include_details,
                 )
 
                 logger.info(
-                    f"Successfully analyzed {file_path}: {classes_count} classes, "
-                    f"{methods_count} methods, {file_metrics['total_lines']} lines, "
+                    f"Successfully analyzed {file_path}: "
+                    f"{file_metrics['total_lines']} lines, "
                     f"~{file_metrics['estimated_tokens']} tokens"
                 )
 
-                # Apply TOON format to direct output if requested
                 return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
             logger.error(f"Error analyzing {file_path}: {e}")
             raise
 
-    async def _execute_metrics_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Batch metrics mode (no structural analysis).
+    def _resolve_language(self, resolved: str, language: str | None) -> str:
+        if language:
+            return language
+        detected = detect_language_from_file(resolved, project_root=self.project_root)
+        if detected == "unknown":
+            raise ValueError(
+                f"Invalid file path: Unsupported language for file: {resolved}"
+            )
+        return detected
 
-        Contract:
-        - Default output_format is TOON.
-        - When output_format='toon', response MUST NOT include detailed JSON fields like results.
-        """
+    async def _run_structural_analysis(
+        self, resolved: str, language: str, include_details: bool
+    ) -> tuple[Any, dict[str, Any]]:
+        if language == "java":
+            request = AnalysisRequest(
+                file_path=resolved,
+                language=language,
+                include_complexity=True,
+                include_details=True,
+            )
+            result = await self.analysis_engine.analyze(request)
+            if result is None:
+                raise RuntimeError(f"Failed to analyze file: {resolved}")
+            return result, self._extract_structural_overview(result)
+
+        request = AnalysisRequest(
+            file_path=resolved,
+            language=language,
+            include_details=include_details,
+        )
+        universal_result = await self.analysis_engine.analyze(request)
+        if not universal_result or not universal_result.success:
+            error_msg = (
+                universal_result.error_message or "Unknown error"
+                if universal_result
+                else "Unknown error"
+            )
+            raise RuntimeError(
+                f"Failed to analyze file with universal engine: {error_msg}"
+            )
+
+        return universal_result, self._extract_structural_overview_universal(
+            universal_result
+        )
+
+    def _build_enhanced_result(
+        self,
+        file_path: str,
+        language: str,
+        file_metrics: dict[str, Any],
+        analysis_result: Any,
+        structural_overview: dict[str, Any],
+        include_guidance: bool,
+        include_details: bool,
+    ) -> dict[str, Any]:
+        result = build_analysis_result(
+            file_path,
+            language,
+            file_metrics,
+            analysis_result,
+            structural_overview,
+            self._count_elements,
+        )
+
+        if include_guidance:
+            guidance_metrics = {**file_metrics, "language": language}
+            result["llm_guidance"] = self._generate_llm_guidance(
+                guidance_metrics, structural_overview
+            )
+
+        if include_details:
+            result["detailed_analysis"] = build_detailed_analysis(
+                analysis_result, file_path
+            )
+
+        return result
+
+    async def _execute_metrics_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
         output_format = arguments.get("output_format", "toon")
         metrics_only = bool(arguments.get("metrics_only", False))
         file_paths = arguments.get("file_paths")
@@ -420,19 +364,6 @@ class AnalyzeScaleTool(BaseMCPTool):
         return apply_toon_format_to_response(response, output_format)
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """
-        Validate tool arguments against the schema.
-
-        Args:
-            arguments: Arguments to validate
-
-        Returns:
-            True if arguments are valid
-
-        Raises:
-            ValueError: If arguments are invalid
-        """
-        # Batch mode validation
         if "file_paths" in arguments and arguments["file_paths"] is not None:
             if "file_path" in arguments:
                 raise ValueError("file_paths is mutually exclusive with file_path")
@@ -447,38 +378,27 @@ class AnalyzeScaleTool(BaseMCPTool):
                 )
             return True
 
-        # Single mode requires file_path
         if "file_path" not in arguments:
             raise ValueError("Required field 'file_path' is missing")
 
-        # Validate file_path
         if "file_path" in arguments:
-            file_path = arguments["file_path"]
-            if not isinstance(file_path, str):
+            fp = arguments["file_path"]
+            if not isinstance(fp, str):
                 raise ValueError("file_path must be a string")
-            if not file_path.strip():
+            if not fp.strip():
                 raise ValueError("file_path cannot be empty")
 
-        # Validate optional fields
-        if "language" in arguments:
-            language = arguments["language"]
-            if not isinstance(language, str):
-                raise ValueError("language must be a string")
+        for key in ("language",):
+            if key in arguments and not isinstance(arguments[key], str):
+                raise ValueError(f"{key} must be a string")
 
-        if "include_complexity" in arguments:
-            include_complexity = arguments["include_complexity"]
-            if not isinstance(include_complexity, bool):
-                raise ValueError("include_complexity must be a boolean")
-
-        if "include_details" in arguments:
-            include_details = arguments["include_details"]
-            if not isinstance(include_details, bool):
-                raise ValueError("include_details must be a boolean")
-
-        if "include_guidance" in arguments:
-            include_guidance = arguments["include_guidance"]
-            if not isinstance(include_guidance, bool):
-                raise ValueError("include_guidance must be a boolean")
+        for key in (
+            "include_complexity",
+            "include_details",
+            "include_guidance",
+        ):
+            if key in arguments and not isinstance(arguments[key], bool):
+                raise ValueError(f"{key} must be a boolean")
 
         return True
 
@@ -489,50 +409,32 @@ class AnalyzeScaleTool(BaseMCPTool):
         include_guidance: bool,
         output_format: str = "toon",
     ) -> dict[str, Any]:
-        """
-        Create analysis result for JSON files.
-
-        Args:
-            file_path: Path to the JSON file
-            file_metrics: Basic file metrics
-            include_guidance: Whether to include guidance
-            output_format: Output format ('json' or 'toon')
-
-        Returns:
-            Analysis result for JSON file
-        """
-        result = {
+        total_lines = file_metrics["total_lines"]
+        result: dict[str, Any] = {
             "success": True,
             "file_path": file_path,
             "language": "json",
             "file_size_bytes": file_metrics["file_size_bytes"],
-            "total_lines": file_metrics["total_lines"],
-            "non_empty_lines": file_metrics["total_lines"]
-            - file_metrics["blank_lines"],
+            "total_lines": total_lines,
+            "non_empty_lines": total_lines - file_metrics["blank_lines"],
             "estimated_tokens": file_metrics["estimated_tokens"],
             "complexity_metrics": {
                 "total_elements": 0,
                 "max_depth": 0,
                 "avg_complexity": 0.0,
             },
-            "structural_overview": {
-                "classes": [],
-                "methods": [],
-                "fields": [],
-            },
+            "structural_overview": {"classes": [], "methods": [], "fields": []},
             "scale_category": (
                 "small"
-                if file_metrics["total_lines"] < 100
+                if total_lines < 100
                 else "medium"
-                if file_metrics["total_lines"] < 1000
+                if total_lines < 1000
                 else "large"
             ),
             "analysis_recommendations": {
-                "suitable_for_full_analysis": file_metrics["total_lines"] < 1000,
+                "suitable_for_full_analysis": total_lines < 1000,
                 "recommended_approach": "JSON files are configuration/data files - structural analysis not applicable",
-                "token_efficiency_notes": (  # nosec B105
-                    "JSON files can be read directly without tree-sitter parsing"
-                ),
+                "token_efficiency_notes": "JSON files can be read directly without tree-sitter parsing",  # nosec B105
             },
         }
 
@@ -540,22 +442,13 @@ class AnalyzeScaleTool(BaseMCPTool):
             result["llm_analysis_guidance"] = {
                 "file_characteristics": "JSON configuration/data file",
                 "recommended_workflow": "Direct file reading for content analysis",
-                "token_optimization": (  # nosec B105
-                    "Use simple file reading tools for JSON content"
-                ),
+                "token_optimization": "Use simple file reading tools for JSON content",  # nosec B105
                 "analysis_focus": "Data structure and configuration values",
             }
 
-        # Apply TOON format to direct output if requested
         return apply_toon_format_to_response(result, output_format)
 
     def get_tool_definition(self) -> dict[str, Any]:
-        """
-        Get the MCP tool definition for check_code_scale.
-
-        Returns:
-            Tool definition dictionary compatible with MCP server
-        """
         return {
             "name": "check_code_scale",
             "description": (
