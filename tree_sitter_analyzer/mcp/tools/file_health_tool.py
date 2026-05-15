@@ -19,6 +19,28 @@ from .utils.element_extractor import extract_elements, get_classes, get_function
 
 logger = setup_logger(__name__)
 
+TOOL_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "file_path": {
+            "type": "string",
+            "description": "Path to the source file to score",
+        },
+        "language": {
+            "type": "string",
+            "description": "Programming language (optional, auto-detected)",
+        },
+        "output_format": {
+            "type": "string",
+            "enum": ["json", "toon"],
+            "description": "Output format: 'toon' (default, token-efficient) or 'json'",
+            "default": "toon",
+        },
+    },
+    "required": ["file_path"],
+    "additionalProperties": False,
+}
+
 
 class FileHealthTool(BaseMCPTool):
     """MCP Tool for file-level code health scoring with code smell detection."""
@@ -49,27 +71,7 @@ class FileHealthTool(BaseMCPTool):
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "file_path": {
-                    "type": "string",
-                    "description": "Path to the source file to score",
-                },
-                "language": {
-                    "type": "string",
-                    "description": "Programming language (optional, auto-detected)",
-                },
-                "output_format": {
-                    "type": "string",
-                    "enum": ["json", "toon"],
-                    "description": "Output format: 'toon' (default, token-efficient) or 'json'",
-                    "default": "toon",
-                },
-            },
-            "required": ["file_path"],
-            "additionalProperties": False,
-        }
+        return TOOL_SCHEMA
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         if "file_path" not in arguments:
@@ -129,17 +131,25 @@ def _detect_code_smells(
     analysis: Any,
 ) -> list[dict[str, Any]]:
     """Detect specific code smells using tree-sitter elements."""
-    smells: list[dict[str, Any]] = []
-
     try:
         source = Path(file_path).read_text(encoding="utf-8", errors="replace")
     except Exception:
-        return smells
+        return []
 
     lines = source.splitlines()
     line_count = len(lines)
+    smells: list[dict[str, Any]] = []
 
-    # 1. Oversized file
+    _check_oversized_file(smells, line_count)
+    _check_deep_nesting(smells, lines)
+    _check_dimension_smells(smells, dimensions)
+    _check_element_smells(smells, lines, line_count, analysis)
+    _check_technical_debt(smells, lines)
+
+    return smells
+
+
+def _check_oversized_file(smells: list[dict[str, Any]], line_count: int) -> None:
     if line_count > 500:
         severity = "critical" if line_count > 1000 else "warning"
         smells.append(
@@ -151,7 +161,8 @@ def _detect_code_smells(
             }
         )
 
-    # 2. Deep nesting detection (language-agnostic indentation check)
+
+def _check_deep_nesting(smells: list[dict[str, Any]], lines: list[str]) -> None:
     max_indent = 0
     for line in lines:
         stripped = line.rstrip()
@@ -171,7 +182,10 @@ def _detect_code_smells(
             }
         )
 
-    # 3. Missing docstrings
+
+def _check_dimension_smells(
+    smells: list[dict[str, Any]], dimensions: dict[str, float]
+) -> None:
     if dimensions.get("comments", 100) < 20:
         smells.append(
             {
@@ -182,36 +196,39 @@ def _detect_code_smells(
             }
         )
 
-    # 4. High complexity
-    if dimensions.get("complexity", 100) < 30:
+    complexity = dimensions.get("complexity", 100)
+    if complexity < 30:
         smells.append(
             {
                 "smell": "high_complexity",
-                "detail": f"Complexity score: {dimensions.get('complexity', 0):.0f}/100",
-                "severity": "critical"
-                if dimensions.get("complexity", 0) < 10
-                else "warning",
+                "detail": f"Complexity score: {complexity:.0f}/100",
+                "severity": "critical" if complexity < 10 else "warning",
                 "fix": "Break complex functions into smaller, focused ones",
             }
         )
 
-    # 5. Many dependencies (high coupling)
-    if dimensions.get("dependencies", 100) < 30:
+    deps = dimensions.get("dependencies", 100)
+    if deps < 30:
         smells.append(
             {
                 "smell": "high_coupling",
-                "detail": f"Dependency score: {dimensions.get('dependencies', 0):.0f}/100",
+                "detail": f"Dependency score: {deps:.0f}/100",
                 "severity": "warning",
                 "fix": "Reduce imports — consider dependency injection or facade pattern",
             }
         )
 
-    # Tree-sitter based smells (cross-language)
+
+def _check_element_smells(
+    smells: list[dict[str, Any]],
+    lines: list[str],
+    line_count: int,
+    analysis: Any,
+) -> None:
     if analysis:
         classes = get_classes(analysis)
         functions = get_functions(analysis)
 
-        # 6. God Class — single class spanning too many lines
         if line_count > 300 and len(classes) <= 1:
             smells.append(
                 {
@@ -222,7 +239,6 @@ def _detect_code_smells(
                 }
             )
 
-        # 7. Long methods — from tree-sitter elements (exact line ranges)
         for func in functions:
             if func["lines"] > 50:
                 smells.append(
@@ -234,7 +250,6 @@ def _detect_code_smells(
                     }
                 )
     else:
-        # Fallback: indentation-based long block detection for unsupported languages
         long_methods = _find_long_blocks_heuristic(lines, threshold=50)
         for method_name, start, length in long_methods[:3]:
             smells.append(
@@ -246,7 +261,8 @@ def _detect_code_smells(
                 }
             )
 
-    # 8. Too many TODO/FIXME/HACK
+
+def _check_technical_debt(smells: list[dict[str, Any]], lines: list[str]) -> None:
     todo_count = sum(
         1
         for line in lines
@@ -263,8 +279,6 @@ def _detect_code_smells(
                 "fix": "Resolve or create issues for outstanding TODOs",
             }
         )
-
-    return smells
 
 
 def _find_long_blocks_heuristic(
