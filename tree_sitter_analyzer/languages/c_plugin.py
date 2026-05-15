@@ -18,9 +18,15 @@ if TYPE_CHECKING:
 from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_warning
+from ..utils import log_debug, log_error
+from .c_helpers import (
+    c_traverse_and_extract as _traverse_standalone,
+)
 from .c_helpers import (
     calculate_complexity as _calc_complexity_standalone,
+)
+from .c_helpers import (
+    extract_c_function as _extract_func_standalone,
 )
 from .c_helpers import (
     extract_c_imports as _extract_imports_standalone,
@@ -169,77 +175,14 @@ class CElementExtractor(ElementExtractor):
         element_type: str,
     ) -> None:
         """Iterative node traversal and extraction with caching"""
-        if root_node is None:
-            return
-
-        target_node_types = set(extractors.keys())
-        container_node_types = {
-            "translation_unit",
-            "compound_statement",
-            "struct_specifier",
-            "union_specifier",
-            "field_declaration_list",
-            "declaration_list",
-            "type_definition",  # For typedef structs
-        }
-
-        node_stack = [(root_node, 0)]
-        processed_nodes = 0
-        max_depth = 50
-
-        while node_stack:
-            current_node, depth = node_stack.pop()
-
-            if depth > max_depth:
-                log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
-                continue
-
-            processed_nodes += 1
-            node_type = current_node.type
-
-            # Early termination for irrelevant nodes
-            if (
-                depth > 0
-                and node_type not in target_node_types
-                and node_type not in container_node_types
-            ):
-                continue
-
-            # Process target nodes
-            if node_type in target_node_types:
-                node_id = id(current_node)
-
-                if node_id in self._processed_nodes:
-                    continue
-
-                cache_key = (node_id, element_type)
-                if cache_key in self._element_cache:
-                    element = self._element_cache[cache_key]
-                    if element:
-                        if isinstance(element, list):
-                            results.extend(element)
-                        else:
-                            results.append(element)
-                    self._processed_nodes.add(node_id)
-                    continue
-
-                # Extract and cache
-                extractor = extractors[node_type]
-                element = extractor(current_node)
-                self._element_cache[cache_key] = element
-                if element:
-                    if isinstance(element, list):
-                        results.extend(element)
-                    else:
-                        results.append(element)
-                self._processed_nodes.add(node_id)
-
-            # Add children to stack (reversed for correct DFS traversal)
-            if current_node.children:
-                for child in reversed(current_node.children):
-                    node_stack.append((child, depth + 1))
-
-        log_debug(f"Iterative traversal processed {processed_nodes} nodes")
+        _traverse_standalone(
+            root_node,
+            extractors,
+            results,
+            element_type,
+            self._processed_nodes,
+            self._element_cache,
+        )
 
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
@@ -288,48 +231,14 @@ class CElementExtractor(ElementExtractor):
 
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Extract function details
-            function_info = self._parse_function_signature(node)
-            if not function_info:
-                return None
-
-            name, return_type, parameters, modifiers = function_info
-
-            # Extract raw text
-            start_line_idx = max(0, start_line - 1)
-            end_line_idx = min(len(self.content_lines), end_line)
-            raw_text = "\n".join(self.content_lines[start_line_idx:end_line_idx])
-
-            # Calculate complexity
-            complexity_score = self._calculate_complexity_optimized(node)
-
-            # Extract comments/documentation
-            docstring = self._extract_comment_for_line(start_line)
-
-            return Function(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="c",
-                parameters=parameters,
-                return_type=return_type or "int",
-                modifiers=modifiers,
-                is_static="static" in modifiers,
-                visibility="public",  # C functions are effectively public
-                docstring=docstring,
-                complexity_score=complexity_score,
-            )
-        except (AttributeError, ValueError, TypeError) as e:
-            log_debug(f"Failed to extract function info: {e}")
-            return None
-        except Exception as e:
-            log_error(f"Unexpected error in function extraction: {e}")
-            return None
+        return _extract_func_standalone(
+            node,
+            self._get_node_text_optimized,
+            self.content_lines,
+            self._parse_function_signature,
+            self._calculate_complexity_optimized,
+            self._extract_comment_for_line,
+        )
 
     def _parse_function_signature(
         self, node: "tree_sitter.Node"

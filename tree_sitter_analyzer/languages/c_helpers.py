@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..models import Class, Function, Import, Variable
-from ..utils import log_debug
+from ..utils import log_debug, log_error, log_warning
 
 
 def extract_c_imports(
@@ -557,3 +557,133 @@ def _extract_includes_fallback(source_code: str) -> list[Import]:
                     )
 
     return imports
+
+
+_C_CONTAINER_NODE_TYPES = frozenset(
+    {
+        "translation_unit",
+        "compound_statement",
+        "struct_specifier",
+        "union_specifier",
+        "field_declaration_list",
+        "declaration_list",
+        "type_definition",
+    }
+)
+
+
+def c_traverse_and_extract(
+    root_node: Any,
+    extractors: dict[str, Any],
+    results: list[Any],
+    element_type: str,
+    processed_nodes: set[int],
+    element_cache: dict[tuple[int, str], Any],
+) -> None:
+    """Iterative node traversal and extraction with caching for C."""
+    if root_node is None:
+        return
+
+    target_node_types = set(extractors.keys())
+
+    node_stack = [(root_node, 0)]
+    processed_count = 0
+    max_depth = 50
+
+    while node_stack:
+        current_node, depth = node_stack.pop()
+
+        if depth > max_depth:
+            log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
+            continue
+
+        processed_count += 1
+        node_type = current_node.type
+
+        if (
+            depth > 0
+            and node_type not in target_node_types
+            and node_type not in _C_CONTAINER_NODE_TYPES
+        ):
+            continue
+
+        if node_type in target_node_types:
+            node_id = id(current_node)
+
+            if node_id in processed_nodes:
+                continue
+
+            cache_key = (node_id, element_type)
+            if cache_key in element_cache:
+                element = element_cache[cache_key]
+                if element:
+                    if isinstance(element, list):
+                        results.extend(element)
+                    else:
+                        results.append(element)
+                processed_nodes.add(node_id)
+                continue
+
+            extractor = extractors[node_type]
+            element = extractor(current_node)
+            element_cache[cache_key] = element
+            if element:
+                if isinstance(element, list):
+                    results.extend(element)
+                else:
+                    results.append(element)
+            processed_nodes.add(node_id)
+
+        if current_node.children:
+            for child in reversed(current_node.children):
+                node_stack.append((child, depth + 1))
+
+    log_debug(f"Iterative traversal processed {processed_count} nodes")
+
+
+def extract_c_function(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+    parse_function_signature: Callable,
+    calculate_complexity: Callable,
+    extract_comment_for_line: Callable,
+) -> Function | None:
+    """Extract C function definition."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        function_info = parse_function_signature(node)
+        if not function_info:
+            return None
+
+        name, return_type, parameters, modifiers = function_info
+
+        start_line_idx = max(0, start_line - 1)
+        end_line_idx = min(len(content_lines), end_line)
+        raw_text = "\n".join(content_lines[start_line_idx:end_line_idx])
+
+        complexity_score = calculate_complexity(node)
+        docstring = extract_comment_for_line(start_line)
+
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="c",
+            parameters=parameters,
+            return_type=return_type or "int",
+            modifiers=modifiers,
+            is_static="static" in modifiers,
+            visibility="public",
+            docstring=docstring,
+            complexity_score=complexity_score,
+        )
+    except (AttributeError, ValueError, TypeError) as e:
+        log_debug(f"Failed to extract function info: {e}")
+        return None
+    except Exception as e:
+        log_error(f"Unexpected error in function extraction: {e}")
+        return None
