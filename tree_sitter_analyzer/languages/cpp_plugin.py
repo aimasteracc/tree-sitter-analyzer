@@ -35,10 +35,22 @@ from .cpp_helpers import (
     extract_cpp_namespaces as _extract_namespaces_standalone,
 )
 from .cpp_helpers import (
+    extract_function_declaration as _extract_func_decl_standalone,
+)
+from .cpp_helpers import (
+    extract_function_from_field_declaration as _extract_func_field_standalone,
+)
+from .cpp_helpers import (
+    extract_parameters as _extract_params_standalone,
+)
+from .cpp_helpers import (
     get_access_specifier as _get_access_standalone,
 )
 from .cpp_helpers import (
     is_global_scope as _is_global_standalone,
+)
+from .cpp_helpers import (
+    parse_function_signature as _parse_sig_standalone,
 )
 
 
@@ -345,143 +357,25 @@ class CppElementExtractor(ElementExtractor):
     def _extract_function_from_field_declaration(
         self, node: "tree_sitter.Node"
     ) -> Function | None:
-        """
-        Extract function declaration from field_declaration (pure virtual functions, etc).
-
-        Example: virtual double area() const = 0;
-        """
-        try:
-            # Check if this field_declaration contains a function_declarator
-            has_function_declarator = False
-            for child in node.children:
-                if child.type == "function_declarator":
-                    has_function_declarator = True
-                    break
-
-            if not has_function_declarator:
-                return None
-
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            name = None
-            return_type = "void"
-            parameters: list[str] = []
-            modifiers: list[str] = []
-
-            # Check for pure virtual (= 0) or deleted/defaulted
-
-            for child in node.children:
-                if child.type == "virtual":
-                    modifiers.append("virtual")
-                elif child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "qualified_identifier",
-                    "template_type",
-                ]:
-                    return_type = self._get_node_text_optimized(child)
-                elif child.type == "function_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type in [
-                            "field_identifier",
-                            "identifier",
-                            "destructor_name",
-                            "operator_name",
-                        ]:
-                            name = self._get_node_text_optimized(grandchild)
-                        elif grandchild.type == "parameter_list":
-                            parameters = self._extract_parameters(grandchild)
-                        elif grandchild.type == "type_qualifier":
-                            mod = self._get_node_text_optimized(grandchild)
-                            if mod:
-                                modifiers.append(mod)
-                elif (
-                    child.type == "number_literal"
-                    and self._get_node_text_optimized(child) == "0"
-                ):
-                    # Check if previous sibling is '=' to confirm pure virtual
-                    if "pure_virtual" not in modifiers:
-                        modifiers.append("pure_virtual")
-                elif child.type == "delete_method_clause":
-                    if "deleted" not in modifiers:
-                        modifiers.append("deleted")
-                elif child.type == "default_method_clause":
-                    if "default" not in modifiers:
-                        modifiers.append("default")
-
-            if not name:
-                return None
-
-            raw_text = self._get_node_text_optimized(node)
-
-            # Determine visibility
-            is_global = self._is_global_scope(node)
-            visibility = self._determine_visibility(
-                modifiers, is_global=is_global, node=node
-            )
-
-            # Extract comments
-            docstring = self._extract_comment_for_line(start_line)
-
-            return Function(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="cpp",
-                parameters=parameters,
-                return_type=return_type,
-                modifiers=modifiers,
-                visibility=visibility,
-                docstring=docstring,
-                complexity_score=1,  # Declarations have minimal complexity
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract function from field declaration: {e}")
-            return None
+        """Extract function from field_declaration (pure virtual, deleted, etc)."""
+        return _extract_func_field_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._extract_parameters,
+            self._is_global_scope,
+            self._determine_visibility,
+            self._extract_comment_for_line,
+        )
 
     def _extract_function_declaration(
         self, node: "tree_sitter.Node"
     ) -> Function | None:
         """Extract function declaration (prototype)"""
-        # Only extract if parent is not a function_definition
-        if node.parent and node.parent.type == "function_definition":
-            return None  # Already handled by _extract_function_optimized
-
-        try:
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            name = None
-            parameters: list[str] = []
-
-            for child in node.children:
-                if child.type == "identifier":
-                    name = self._get_node_text_optimized(child)
-                elif child.type == "qualified_identifier":
-                    name = self._get_node_text_optimized(child)
-                elif child.type == "parameter_list":
-                    parameters = self._extract_parameters(child)
-
-            if not name:
-                return None
-
-            raw_text = self._get_node_text_optimized(node)
-
-            return Function(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="cpp",
-                parameters=parameters,
-                return_type="void",
-                modifiers=[],
-            )
-        except Exception as e:
-            log_debug(f"Failed to extract function declaration: {e}")
-            return None
+        return _extract_func_decl_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._extract_parameters,
+        )
 
     def _extract_template_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract template function definition"""
@@ -508,102 +402,13 @@ class CppElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node"
     ) -> tuple[str, str, list[str], list[str]] | None:
         """Parse C++ function signature"""
-        try:
-            name = None
-            return_type = "void"
-            parameters: list[str] = []
-            modifiers: list[str] = []
-
-            for child in node.children:
-                if child.type == "function_declarator":
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            name = self._get_node_text_optimized(grandchild)
-                        elif grandchild.type == "qualified_identifier":
-                            name = self._get_node_text_optimized(grandchild)
-                        elif grandchild.type == "field_identifier":
-                            name = self._get_node_text_optimized(grandchild)
-                        elif grandchild.type == "operator_name":
-                            name = self._get_node_text_optimized(grandchild)
-                        elif grandchild.type == "destructor_name":
-                            name = self._get_node_text_optimized(grandchild)
-                        elif grandchild.type == "parameter_list":
-                            parameters = self._extract_parameters(grandchild)
-                elif child.type == "reference_declarator":
-                    # Handle reference return types (e.g., ostream& operator<<)
-                    return_type = return_type + "&" if return_type else "&"
-                    for grandchild in child.children:
-                        if grandchild.type == "function_declarator":
-                            for ggchild in grandchild.children:
-                                if ggchild.type in [
-                                    "identifier",
-                                    "field_identifier",
-                                    "operator_name",
-                                    "destructor_name",
-                                ]:
-                                    name = self._get_node_text_optimized(ggchild)
-                                elif ggchild.type == "parameter_list":
-                                    parameters = self._extract_parameters(ggchild)
-                elif child.type == "pointer_declarator":
-                    # Handle pointer return types
-                    return_type = return_type + "*" if return_type else "*"
-                    for grandchild in child.children:
-                        if grandchild.type == "function_declarator":
-                            for ggchild in grandchild.children:
-                                if ggchild.type in [
-                                    "identifier",
-                                    "field_identifier",
-                                    "operator_name",
-                                ]:
-                                    name = self._get_node_text_optimized(ggchild)
-                                elif ggchild.type == "parameter_list":
-                                    parameters = self._extract_parameters(ggchild)
-                elif child.type in [
-                    "primitive_type",
-                    "type_identifier",
-                    "qualified_identifier",
-                    "template_type",
-                ]:
-                    return_type = self._get_node_text_optimized(child)
-                elif child.type == "storage_class_specifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "type_qualifier":
-                    mod = self._get_node_text_optimized(child)
-                    if mod:
-                        modifiers.append(mod)
-                elif child.type == "virtual":
-                    modifiers.append("virtual")
-                elif child.type == "delete_method_clause":
-                    if "deleted" not in modifiers:
-                        modifiers.append("deleted")
-                elif child.type == "default_method_clause":
-                    if "default" not in modifiers:
-                        modifiers.append("default")
-
-            if not name:
-                return None
-
-            return name, return_type, parameters, modifiers
-        except Exception:
-            return None
+        return _parse_sig_standalone(
+            node, self._get_node_text_optimized, self._extract_parameters
+        )
 
     def _extract_parameters(self, params_node: "tree_sitter.Node") -> list[str]:
         """Extract function parameters"""
-        parameters: list[str] = []
-
-        for child in params_node.children:
-            if child.type == "parameter_declaration":
-                param_text = self._get_node_text_optimized(child)
-                parameters.append(param_text)
-            elif child.type == "optional_parameter_declaration":
-                param_text = self._get_node_text_optimized(child)
-                parameters.append(param_text)
-            elif child.type == "variadic_parameter_declaration":
-                parameters.append("...")
-
-        return parameters
+        return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information optimized"""

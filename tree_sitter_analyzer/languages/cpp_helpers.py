@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from ..models import Import
+from ..models import Function, Import
 from ..utils import log_debug
 
 
@@ -302,3 +302,234 @@ def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
         log_debug(f"Failed to extract comment: {e}")
 
     return None
+
+
+def extract_parameters(
+    params_node: Any,
+    get_node_text: Callable[..., str],
+) -> list[str]:
+    """Extract function parameters."""
+    parameters: list[str] = []
+    for child in params_node.children:
+        if child.type in (
+            "parameter_declaration",
+            "optional_parameter_declaration",
+        ):
+            parameters.append(get_node_text(child))
+        elif child.type == "variadic_parameter_declaration":
+            parameters.append("...")
+    return parameters
+
+
+def parse_function_signature(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_params_fn: Callable[[Any], list[str]],
+) -> tuple[str, str, list[str], list[str]] | None:
+    """Parse C++ function signature."""
+    try:
+        name = None
+        return_type = "void"
+        parameters: list[str] = []
+        modifiers: list[str] = []
+
+        for child in node.children:
+            if child.type == "function_declarator":
+                for grandchild in child.children:
+                    if grandchild.type in (
+                        "identifier",
+                        "qualified_identifier",
+                        "field_identifier",
+                        "operator_name",
+                        "destructor_name",
+                    ):
+                        name = get_node_text(grandchild)
+                    elif grandchild.type == "parameter_list":
+                        parameters = extract_params_fn(grandchild)
+            elif child.type == "reference_declarator":
+                return_type = return_type + "&" if return_type else "&"
+                for grandchild in child.children:
+                    if grandchild.type == "function_declarator":
+                        for ggchild in grandchild.children:
+                            if ggchild.type in (
+                                "identifier",
+                                "field_identifier",
+                                "operator_name",
+                                "destructor_name",
+                            ):
+                                name = get_node_text(ggchild)
+                            elif ggchild.type == "parameter_list":
+                                parameters = extract_params_fn(ggchild)
+            elif child.type == "pointer_declarator":
+                return_type = return_type + "*" if return_type else "*"
+                for grandchild in child.children:
+                    if grandchild.type == "function_declarator":
+                        for ggchild in grandchild.children:
+                            if ggchild.type in (
+                                "identifier",
+                                "field_identifier",
+                                "operator_name",
+                            ):
+                                name = get_node_text(ggchild)
+                            elif ggchild.type == "parameter_list":
+                                parameters = extract_params_fn(ggchild)
+            elif child.type in (
+                "primitive_type",
+                "type_identifier",
+                "qualified_identifier",
+                "template_type",
+            ):
+                return_type = get_node_text(child)
+            elif child.type == "storage_class_specifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "type_qualifier":
+                mod = get_node_text(child)
+                if mod:
+                    modifiers.append(mod)
+            elif child.type == "virtual":
+                modifiers.append("virtual")
+            elif child.type == "delete_method_clause":
+                if "deleted" not in modifiers:
+                    modifiers.append("deleted")
+            elif child.type == "default_method_clause":
+                if "default" not in modifiers:
+                    modifiers.append("default")
+
+        if not name:
+            return None
+
+        return name, return_type, parameters, modifiers
+    except Exception:
+        return None
+
+
+def extract_function_from_field_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_params_fn: Callable[[Any], list[str]],
+    is_global_fn: Callable[[Any], bool],
+    determine_vis_fn: Callable[..., str],
+    extract_comment_fn: Callable[[int], str | None],
+) -> Function | None:
+    """Extract function from field_declaration (pure virtual, deleted, etc)."""
+    try:
+        has_function_declarator = False
+        for child in node.children:
+            if child.type == "function_declarator":
+                has_function_declarator = True
+                break
+
+        if not has_function_declarator:
+            return None
+
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        name = None
+        return_type = "void"
+        parameters: list[str] = []
+        modifiers: list[str] = []
+
+        for child in node.children:
+            if child.type == "virtual":
+                modifiers.append("virtual")
+            elif child.type in (
+                "primitive_type",
+                "type_identifier",
+                "qualified_identifier",
+                "template_type",
+            ):
+                return_type = get_node_text(child)
+            elif child.type == "function_declarator":
+                for grandchild in child.children:
+                    if grandchild.type in (
+                        "field_identifier",
+                        "identifier",
+                        "destructor_name",
+                        "operator_name",
+                    ):
+                        name = get_node_text(grandchild)
+                    elif grandchild.type == "parameter_list":
+                        parameters = extract_params_fn(grandchild)
+                    elif grandchild.type == "type_qualifier":
+                        mod = get_node_text(grandchild)
+                        if mod:
+                            modifiers.append(mod)
+            elif child.type == "number_literal" and get_node_text(child) == "0":
+                if "pure_virtual" not in modifiers:
+                    modifiers.append("pure_virtual")
+            elif child.type == "delete_method_clause":
+                if "deleted" not in modifiers:
+                    modifiers.append("deleted")
+            elif child.type == "default_method_clause":
+                if "default" not in modifiers:
+                    modifiers.append("default")
+
+        if not name:
+            return None
+
+        raw_text = get_node_text(node)
+        is_global = is_global_fn(node)
+        visibility = determine_vis_fn(modifiers, is_global=is_global, node=node)
+        docstring = extract_comment_fn(start_line)
+
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="cpp",
+            parameters=parameters,
+            return_type=return_type,
+            modifiers=modifiers,
+            visibility=visibility,
+            docstring=docstring,
+            complexity_score=1,
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract function from field declaration: {e}")
+        return None
+
+
+def extract_function_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    extract_params_fn: Callable[[Any], list[str]],
+) -> Function | None:
+    """Extract function declaration (prototype)."""
+    if node.parent and node.parent.type == "function_definition":
+        return None
+
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        name = None
+        parameters: list[str] = []
+
+        for child in node.children:
+            if child.type in ("identifier", "qualified_identifier"):
+                name = get_node_text(child)
+            elif child.type == "parameter_list":
+                parameters = extract_params_fn(child)
+
+        if not name:
+            return None
+
+        raw_text = get_node_text(node)
+
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="cpp",
+            parameters=parameters,
+            return_type="void",
+            modifiers=[],
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract function declaration: {e}")
+        return None
