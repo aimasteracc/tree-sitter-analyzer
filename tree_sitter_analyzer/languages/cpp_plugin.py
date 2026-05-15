@@ -7,7 +7,6 @@ Supports modern C++ features including classes, templates, namespaces,
 and advanced constructs.
 """
 
-import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -20,6 +19,27 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
+from .cpp_helpers import (
+    calculate_complexity as _calc_complexity_standalone,
+)
+from .cpp_helpers import (
+    determine_visibility as _determine_vis_standalone,
+)
+from .cpp_helpers import (
+    extract_comment_for_line as _extract_comment_standalone,
+)
+from .cpp_helpers import (
+    extract_cpp_imports as _extract_imports_standalone,
+)
+from .cpp_helpers import (
+    extract_cpp_namespaces as _extract_namespaces_standalone,
+)
+from .cpp_helpers import (
+    get_access_specifier as _get_access_standalone,
+)
+from .cpp_helpers import (
+    is_global_scope as _is_global_standalone,
+)
 
 
 class CppElementExtractor(ElementExtractor):
@@ -121,78 +141,16 @@ class CppElementExtractor(ElementExtractor):
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
-        imports: list[Import] = []
-
-        # Extract preprocessor includes and using declarations
-        for child in tree.root_node.children:
-            if child.type == "preproc_include":
-                import_info = self._extract_include_info(child, source_code)
-                if import_info:
-                    imports.append(import_info)
-            elif child.type == "using_declaration":
-                using_text = self._get_node_text_optimized(child)
-                line_num = child.start_point[0] + 1
-                imports.append(
-                    Import(
-                        name=using_text,
-                        start_line=line_num,
-                        end_line=line_num,
-                        raw_text=using_text,
-                        language="cpp",
-                        module_name="",
-                        import_statement=using_text,
-                    )
-                )
-            elif child.type == "alias_declaration":
-                # Handle 'using StringList = vector<string>;'
-                # Treat as import/declaration? Or Variable?
-                # Usually considered type definition.
-                # Let's add to imports for now as it's a 'using' statement
-                alias_text = self._get_node_text_optimized(child)
-                line_num = child.start_point[0] + 1
-                imports.append(
-                    Import(
-                        name=alias_text,
-                        start_line=line_num,
-                        end_line=line_num,
-                        raw_text=alias_text,
-                        language="cpp",
-                        module_name="",
-                        import_statement=alias_text,
-                    )
-                )
-
-        # Fallback: use regex if tree-sitter doesn't catch all includes
-        if not imports and "#include" in source_code:
-            log_debug("No includes found via tree-sitter, trying regex fallback")
-            fallback_imports = self._extract_includes_fallback(source_code)
-            imports.extend(fallback_imports)
-
-        log_debug(f"Extracted {len(imports)} C++ includes")
-        return imports
+        return _extract_imports_standalone(
+            tree, source_code, self._get_node_text_optimized
+        )
 
     def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """Extract C++ namespace declarations"""
-        from ..models import Package
-
         self.source_code = source_code
         self.content_lines = source_code.split("\n")
 
-        packages: list[Package] = []
-
-        def find_namespaces(node: "tree_sitter.Node") -> None:
-            if node.type == "namespace_definition":
-                namespace_info = self._extract_namespace_info(node)
-                if namespace_info:
-                    packages.append(namespace_info)
-
-            for child in node.children:
-                find_namespaces(child)
-
-        find_namespaces(tree.root_node)
-
-        log_debug(f"Extracted {len(packages)} C++ namespaces")
-        return packages
+        return _extract_namespaces_standalone(tree, self._get_node_text_optimized)
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
@@ -911,172 +869,28 @@ class CppElementExtractor(ElementExtractor):
     def _extract_include_info(
         self, node: "tree_sitter.Node", source_code: str
     ) -> Import | None:
-        """Extract include directive information"""
-        try:
-            include_text = self._get_node_text_optimized(node)
-            line_num = node.start_point[0] + 1
+        from .cpp_helpers import _extract_include_info as _impl
 
-            # Determine if it's a system include (<...>) or local include ("...")
-            is_system = "<" in include_text
-
-            # Extract the included file path
-            if is_system:
-                match = re.search(r"<([^>]+)>", include_text)
-            else:
-                match = re.search(r'"([^"]+)"', include_text)
-
-            if match:
-                include_path = match.group(1)
-
-                return Import(
-                    name=include_path,
-                    start_line=line_num,
-                    end_line=line_num,
-                    raw_text=include_text,
-                    language="cpp",
-                    module_name=include_path,
-                    import_statement=include_text,
-                )
-
-        except Exception as e:
-            log_debug(f"Failed to extract include info: {e}")
-
-        return None
+        return _impl(node, source_code, self._get_node_text_optimized)
 
     def _extract_includes_fallback(self, source_code: str) -> list[Import]:
-        """Fallback include extraction using regex"""
-        imports: list[Import] = []
-        lines = source_code.split("\n")
+        from .cpp_helpers import _extract_includes_fallback
 
-        for line_num, line in enumerate(lines, 1):
-            line = line.strip()
-            if line.startswith("#include"):
-                # System include
-                system_match = re.search(r"#include\s*<([^>]+)>", line)
-                if system_match:
-                    include_path = system_match.group(1)
-                    imports.append(
-                        Import(
-                            name=include_path,
-                            start_line=line_num,
-                            end_line=line_num,
-                            raw_text=line,
-                            language="cpp",
-                            module_name=include_path,
-                            import_statement=line,
-                        )
-                    )
-                else:
-                    # Local include
-                    local_match = re.search(r'#include\s*"([^"]+)"', line)
-                    if local_match:
-                        include_path = local_match.group(1)
-                        imports.append(
-                            Import(
-                                name=include_path,
-                                start_line=line_num,
-                                end_line=line_num,
-                                raw_text=line,
-                                language="cpp",
-                                module_name=include_path,
-                                import_statement=line,
-                            )
-                        )
-
-        return imports
+        return _extract_includes_fallback(source_code)
 
     def _extract_namespace_info(self, node: "tree_sitter.Node") -> Any:
-        """Extract namespace information"""
-        from ..models import Package
+        from .cpp_helpers import _extract_namespace_info as _impl
 
-        try:
-            namespace_name = None
-
-            for child in node.children:
-                if child.type == "identifier":
-                    namespace_name = self._get_node_text_optimized(child)
-                elif child.type == "namespace_identifier":
-                    namespace_name = self._get_node_text_optimized(child)
-
-            if namespace_name:
-                self.current_namespace = namespace_name
-                return Package(
-                    name=namespace_name,
-                    start_line=node.start_point[0] + 1,
-                    end_line=node.end_point[0] + 1,
-                    raw_text=self._get_node_text_optimized(node),
-                    language="cpp",
-                )
-
-        except Exception as e:
-            log_debug(f"Failed to extract namespace info: {e}")
-
-        return None
+        result = _impl(node, self._get_node_text_optimized)
+        if result:
+            self.current_namespace = result.name
+        return result
 
     def _is_global_scope(self, node: "tree_sitter.Node") -> bool:
-        """
-        Check if a node is in global scope (not inside a class/struct/union).
-
-        Args:
-            node: The tree-sitter node to check
-
-        Returns:
-            True if the node is in global scope, False if inside a class/struct/union
-        """
-        current = node.parent
-        while current is not None:
-            if current.type in (
-                "class_specifier",
-                "struct_specifier",
-                "union_specifier",
-            ):
-                return False
-            current = current.parent
-        return True
+        return _is_global_standalone(node)
 
     def _get_access_specifier(self, node: "tree_sitter.Node") -> str | None:
-        """
-        Get the current access specifier for a class member.
-
-        Searches backwards through siblings to find the most recent access_specifier.
-        Returns None if not in a class context or no specifier found.
-
-        Args:
-            node: The tree-sitter node (function/field definition)
-
-        Returns:
-            "public", "private", "protected", or None
-        """
-        # Check if we're in a field_declaration_list (class body)
-        parent = node.parent
-        if not parent or parent.type != "field_declaration_list":
-            return None
-
-        # Find which child we are
-        siblings = list(parent.children)
-        try:
-            node_index = siblings.index(node)
-        except ValueError:
-            return None
-
-        # Search backwards for access_specifier
-        for i in range(node_index - 1, -1, -1):
-            sibling = siblings[i]
-            if sibling.type == "access_specifier":
-                spec_text = self._get_node_text_optimized(sibling).strip().rstrip(":")
-                if spec_text in ("public", "private", "protected"):
-                    return spec_text
-
-        # No explicit specifier found, determine default based on parent class type
-        # Need to find if parent is class (default private) or struct (default public)
-        class_node = parent.parent
-        if class_node:
-            if class_node.type == "class_specifier":
-                return "private"  # C++ class default
-            elif class_node.type in ("struct_specifier", "union_specifier"):
-                return "public"  # C++ struct/union default
-
-        return None  # Fallback
+        return _get_access_standalone(node, self._get_node_text_optimized)
 
     def _determine_visibility(
         self,
@@ -1084,99 +898,15 @@ class CppElementExtractor(ElementExtractor):
         is_global: bool = False,
         node: "tree_sitter.Node | None" = None,
     ) -> str:
-        """
-        Determine visibility from modifiers and context.
-
-        Args:
-            modifiers: List of modifier keywords
-            is_global: True if this is a global function/variable (not a class member)
-            node: The tree-sitter node (used to check access specifier in class context)
-
-        Returns:
-            Visibility string: "public", "private", or "protected"
-
-        Note:
-            - Global functions/variables are public by default (external linkage)
-            - Global static functions/variables are private (internal linkage)
-            - Class members follow access specifiers (public:/private:/protected:)
-            - Struct/union members are public by default
-        """
-        # Explicit modifiers take precedence
-        if "public" in modifiers:
-            return "public"
-        elif "private" in modifiers:
-            return "private"
-        elif "protected" in modifiers:
-            return "protected"
-
-        # Check for static global (internal linkage = private)
-        if "static" in modifiers and is_global:
-            return "private"
-
-        # If node provided and in class context, check access specifier
-        if node and not is_global:
-            access_spec = self._get_access_specifier(node)
-            if access_spec:
-                return access_spec
-
-        # Default visibility depends on context
-        return "public" if is_global else "private"
+        return _determine_vis_standalone(
+            modifiers, is_global, node, self._get_node_text_optimized
+        )
 
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
-        """Calculate cyclomatic complexity"""
-        complexity = 1  # Base complexity
-
-        decision_nodes = [
-            "if_statement",
-            "while_statement",
-            "for_statement",
-            "for_range_loop",
-            "switch_statement",
-            "case_statement",
-            "conditional_expression",
-            "catch_clause",
-            "do_statement",
-        ]
-
-        def count_decisions(n: "tree_sitter.Node") -> int:
-            count = 0
-            if hasattr(n, "type") and n.type in decision_nodes:
-                count += 1
-            if hasattr(n, "children"):
-                try:
-                    for child in n.children:
-                        count += count_decisions(child)
-                except (TypeError, AttributeError):
-                    pass
-            return count
-
-        complexity += count_decisions(node)
-        return complexity
+        return _calc_complexity_standalone(node)
 
     def _extract_comment_for_line(self, line: int) -> str | None:
-        """Extract comment (documentation) for a specific line"""
-        try:
-            # Look for comment immediately before the line
-            for i in range(max(0, line - 5), line):
-                if i < len(self.content_lines):
-                    line_content = self.content_lines[i].strip()
-                    # Check for Doxygen-style comments
-                    if line_content.startswith("/**"):
-                        comment_lines = []
-                        for j in range(i, min(len(self.content_lines), line)):
-                            doc_line = self.content_lines[j].strip()
-                            comment_lines.append(doc_line)
-                            if doc_line.endswith("*/"):
-                                break
-                        return "\n".join(comment_lines)
-                    # Check for /// style comments
-                    elif line_content.startswith("///"):
-                        return line_content
-
-        except Exception as e:
-            log_debug(f"Failed to extract comment: {e}")
-
-        return None
+        return _extract_comment_standalone(line, self.content_lines)
 
 
 class CppPlugin(LanguagePlugin):
