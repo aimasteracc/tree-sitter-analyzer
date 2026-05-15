@@ -9,11 +9,29 @@ scalars, anchors, aliases, and comments.
 
 import logging
 import threading
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info, log_warning
+from .yaml_helpers import (
+    calculate_nesting_level as _calc_nesting_standalone,
+)
+from .yaml_helpers import (
+    extract_mapping_key_and_value as _extract_kv_standalone,
+)
+from .yaml_helpers import (
+    extract_sequence_key as _extract_seq_key_standalone,
+)
+from .yaml_helpers import (
+    extract_value_info as _extract_value_standalone,
+)
+from .yaml_helpers import (
+    get_document_index as _get_doc_idx_standalone,
+)
+from .yaml_helpers import (
+    traverse_nodes as _traverse_standalone,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -198,46 +216,15 @@ class YAMLElementExtractor(ElementExtractor):
 
     def _calculate_nesting_level(self, node: "tree_sitter.Node") -> int:
         """Calculate AST-based logical nesting level."""
-        level = 0
-        current = node.parent
-        while current is not None:
-            if current.type in (
-                "block_mapping",
-                "block_sequence",
-                "flow_mapping",
-                "flow_sequence",
-            ):
-                level += 1
-            current = getattr(current, "parent", None)
-            if current is None:
-                break
-        return level
+        return _calc_nesting_standalone(node)
 
     def _get_document_index(self, node: "tree_sitter.Node") -> int:
         """Get document index for a node."""
-        current = node
-        while current is not None:
-            if current.type == "document":
-                # Count preceding document siblings
-                index = 0
-                sibling = current.prev_sibling
-                while sibling is not None:
-                    if sibling.type == "document":
-                        index += 1
-                    sibling = sibling.prev_sibling
-                return index
-            # Use Any type to avoid assignment mismatches on parent
-            current = cast(Any, getattr(current, "parent", None))
-            if current is None:
-                break
-        return 0
+        return _get_doc_idx_standalone(node)
 
     def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
         """Traverse all nodes in the tree."""
-        nodes = [node]
-        for child in node.children:
-            nodes.extend(self._traverse_nodes(child))
-        return nodes
+        return _traverse_standalone(node)
 
     def _count_document_children(self, document_node: "tree_sitter.Node") -> int:
         """Count meaningful children in a document (top-level mappings).
@@ -305,11 +292,7 @@ class YAMLElementExtractor(ElementExtractor):
     def _extract_mappings(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
-        """Extract YAML mappings (key-value pairs).
-
-        Note: Mappings with sequence or mapping values are not extracted here,
-        as the sequence/mapping elements themselves will carry the key.
-        """
+        """Extract YAML mappings (key-value pairs)."""
         for node in self._traverse_nodes(root_node):
             if node.type in ("block_mapping_pair", "flow_pair"):
                 try:
@@ -317,87 +300,9 @@ class YAMLElementExtractor(ElementExtractor):
                     end_line = node.end_point[0] + 1
                     raw_text = self._get_node_text(node)
 
-                    # Extract key and value
-                    key = None
-                    value = None
-                    value_type = None
-                    child_count = None
-                    anchor_name = None
-
-                    # Find key and value nodes
-                    # In tree-sitter-yaml, block_mapping_pair has structure:
-                    # flow_node (key), ':', flow_node (value)
-                    key_node = None
-                    value_node = None
-                    found_colon = False
-
-                    for child in node.children:
-                        if child.type == ":":
-                            found_colon = True
-                        elif child.type in ("flow_node", "block_node"):
-                            if not found_colon:
-                                # This is the key
-                                key_node = child
-                            else:
-                                # This is the value
-                                value_node = child
-                                # Check for anchor in value node
-                                for subchild in child.children:
-                                    if subchild.type == "anchor":
-                                        anchor_text = self._get_node_text(subchild)
-                                        anchor_name = anchor_text.lstrip("&").strip()
-                        elif child.type == "key":
-                            # Key is wrapped in a "key" node
-                            if child.children:
-                                key_node = child.children[0]
-                            else:
-                                key_node = child
-                        elif child.type == "value":
-                            # Value is wrapped in a "value" node
-                            if child.children:
-                                value_node = child.children[0]
-                            else:
-                                value_node = child
-                            # Check for anchor in value
-                            for subchild in child.children:
-                                if subchild.type == "anchor":
-                                    anchor_text = self._get_node_text(subchild)
-                                    anchor_name = anchor_text.lstrip("&").strip()
-                        elif child.type == "anchor":
-                            # Anchor at mapping level
-                            anchor_text = self._get_node_text(child)
-                            anchor_name = anchor_text.lstrip("&").strip()
-
-                    # Extract key text - drill down through flow_node/block_node
-                    if key_node is not None:
-                        # Drill down to get the actual scalar
-                        current = key_node
-                        while (
-                            current
-                            and current.type in ("flow_node", "block_node")
-                            and current.children
-                        ):
-                            current = current.children[0]
-                        if current:
-                            key = self._get_node_text(current).strip()
-
-                    # Extract value info - drill down through flow_node/block_node
-                    if value_node is not None:
-                        # Drill down to get the actual value node
-                        current = value_node
-                        while (
-                            current
-                            and current.type in ("flow_node", "block_node")
-                            and current.children
-                        ):
-                            current = current.children[0]
-                        if current:
-                            value, value_type, child_count = self._extract_value_info(
-                                current
-                            )
-
-                    # Always create mapping element for the key-value pair
-                    # Even if value is sequence or mapping, the key itself is important structural information
+                    key, value, value_type, child_count, anchor_name = (
+                        _extract_kv_standalone(node, self._get_node_text)
+                    )
 
                     nesting_level = self._calculate_nesting_level(node)
                     doc_index = self._get_document_index(node)
@@ -423,59 +328,14 @@ class YAMLElementExtractor(ElementExtractor):
     def _extract_value_info(
         self, node: "tree_sitter.Node | None"
     ) -> tuple[str | None, str | None, int | None]:
-        """Extract value information from a node.
-
-        Returns:
-            Tuple of (value, value_type, child_count)
-        """
-        if node is None:
-            return None, None, None
-
-        node_type = node.type
-        text = self._get_node_text(node).strip()
-
-        # Scalar types
-        if node_type in ("plain_scalar", "double_quote_scalar", "single_quote_scalar"):
-            # Determine scalar type
-            if text.lower() in ("true", "false", "yes", "no", "on", "off"):
-                return text, "boolean", None
-            elif text.lower() in ("null", "~", ""):
-                return text if text else None, "null", None
-            elif self._is_number(text):
-                # Return "number" for both integer and float to match test expectations
-                return text, "number", None
-            else:
-                return text, "string", None
-        elif node_type == "block_scalar":
-            return text, "string", None
-        elif node_type in ("block_mapping", "flow_mapping"):
-            child_count = len(
-                [
-                    c
-                    for c in node.children
-                    if c.type in ("block_mapping_pair", "flow_pair")
-                ]
-            )
-            return None, "mapping", child_count
-        elif node_type in ("block_sequence", "flow_sequence"):
-            child_count = len(
-                [c for c in node.children if c.type in ("block_sequence_item",)]
-                or node.children
-            )
-            return None, "sequence", child_count
-        elif node_type == "alias":
-            alias_name = text.lstrip("*")
-            return f"*{alias_name}", "alias", None
-
-        return text, "unknown", None
+        """Extract value information from a node."""
+        return _extract_value_standalone(node, self._get_node_text)
 
     def _is_number(self, text: str) -> bool:
         """Check if text represents a number."""
-        try:
-            float(text)
-            return True
-        except ValueError:
-            return False
+        from .yaml_helpers import is_number
+
+        return is_number(text)
 
     def _extract_sequences(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
@@ -488,7 +348,6 @@ class YAMLElementExtractor(ElementExtractor):
                     end_line = node.end_point[0] + 1
                     raw_text = self._get_node_text(node)
 
-                    # Count items
                     if node.type == "block_sequence":
                         child_count = len(
                             [
@@ -503,39 +362,7 @@ class YAMLElementExtractor(ElementExtractor):
                     nesting_level = self._calculate_nesting_level(node)
                     doc_index = self._get_document_index(node)
 
-                    # Try to find the key for this sequence by checking parent mapping
-                    key = None
-                    parent = node.parent
-                    while parent is not None:
-                        if parent.type in ("block_mapping_pair", "flow_pair"):
-                            # Find the key node in the parent mapping
-                            for child in parent.children:
-                                if child.type in ("flow_node", "block_node"):
-                                    # Check if this is the key (before colon)
-                                    found_colon = False
-                                    for sibling in parent.children:
-                                        if sibling.type == ":":
-                                            found_colon = True
-                                            break
-                                    if (
-                                        not found_colon
-                                        or child.start_byte
-                                        < parent.children[1].start_byte
-                                    ):
-                                        # This is the key
-                                        current = child
-                                        while (
-                                            current
-                                            and current.type
-                                            in ("flow_node", "block_node")
-                                            and current.children
-                                        ):
-                                            current = current.children[0]
-                                        if current:
-                                            key = self._get_node_text(current).strip()
-                                            break
-                            break
-                        parent = getattr(parent, "parent", None)
+                    key = _extract_seq_key_standalone(node, self._get_node_text)
 
                     element = YAMLElement(
                         name="sequence",

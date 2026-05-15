@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from ..models import Import, Variable
+from ..models import Class, Function, Import, Package, Variable
 from ..utils import log_error
 
 
@@ -214,3 +214,194 @@ def _extract_import_declaration(
     except Exception as e:
         log_error(f"Error extracting Go import: {e}")
     return imports
+
+
+def extract_go_function(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+) -> Function | None:
+    """Extract Go function declaration."""
+    try:
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            return None
+
+        name = get_node_text(name_node)
+        if not name:
+            return None
+
+        parameters = extract_parameters(node, get_node_text)
+        return_type = extract_return_type(node, get_node_text)
+        visibility = "public" if name[0].isupper() else "private"
+        docstring = extract_docstring(node, content_lines)
+        raw_text = get_node_text(node)
+
+        return Function(
+            name=name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            raw_text=raw_text,
+            language="go",
+            parameters=parameters,
+            return_type=return_type,
+            visibility=visibility,
+            docstring=docstring,
+            is_public=visibility == "public",
+        )
+    except Exception as e:
+        log_error(f"Error extracting Go function: {e}")
+        return None
+
+
+def extract_go_method(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+) -> Function | None:
+    """Extract Go method declaration (function with receiver)."""
+    try:
+        name_node = node.child_by_field_name("name")
+        if not name_node:
+            return None
+
+        name = get_node_text(name_node)
+        if not name:
+            return None
+
+        receiver, receiver_type = extract_method_receiver(node, get_node_text)
+        parameters = extract_parameters(node, get_node_text)
+        return_type = extract_return_type(node, get_node_text)
+        visibility = "public" if name[0].isupper() else "private"
+        docstring = extract_docstring(node, content_lines)
+        raw_text = get_node_text(node)
+
+        func = Function(
+            name=name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            raw_text=raw_text,
+            language="go",
+            parameters=parameters,
+            return_type=return_type,
+            visibility=visibility,
+            docstring=docstring,
+            is_public=visibility == "public",
+        )
+        func.receiver = receiver
+        func.receiver_type = receiver_type
+        func.is_method = True
+
+        return func
+    except Exception as e:
+        log_error(f"Error extracting Go method: {e}")
+        return None
+
+
+def extract_go_type_spec(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+) -> Class | None:
+    """Extract single Go type spec (struct, interface, type alias)."""
+    try:
+        name_node = node.child_by_field_name("name")
+        type_node = node.child_by_field_name("type")
+
+        if not name_node:
+            return None
+
+        name = get_node_text(name_node)
+        if not name:
+            return None
+
+        class_type = "type"
+        if type_node:
+            if type_node.type == "struct_type":
+                class_type = "struct"
+            elif type_node.type == "interface_type":
+                class_type = "interface"
+            else:
+                class_type = "type_alias"
+
+        visibility = "public" if name[0].isupper() else "private"
+        docstring = extract_docstring(node, content_lines)
+        raw_text = get_node_text(node)
+
+        interfaces: list[str] = []
+        if type_node and type_node.type == "struct_type":
+            interfaces = extract_embedded_types(type_node, get_node_text)
+
+        return Class(
+            name=name,
+            start_line=node.start_point[0] + 1,
+            end_line=node.end_point[0] + 1,
+            raw_text=raw_text,
+            language="go",
+            class_type=class_type,
+            visibility=visibility,
+            docstring=docstring,
+            interfaces=interfaces,
+        )
+    except Exception as e:
+        log_error(f"Error extracting Go type spec: {e}")
+        return None
+
+
+def extract_go_package(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> Package | None:
+    """Extract Go package declaration."""
+    try:
+        for child in node.children:
+            if child.type == "package_identifier":
+                name = get_node_text(child)
+                return Package(
+                    name=name,
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    raw_text=get_node_text(node),
+                    language="go",
+                )
+        return None
+    except Exception as e:
+        log_error(f"Error extracting Go package: {e}")
+        return None
+
+
+def extract_type_declaration(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+) -> list[Class]:
+    """Extract type declaration (struct, interface, type alias)."""
+    classes: list[Class] = []
+    try:
+        for child in node.children:
+            if child.type == "type_spec":
+                cls = extract_go_type_spec(child, get_node_text, content_lines)
+                if cls:
+                    classes.append(cls)
+    except Exception as e:
+        log_error(f"Error extracting Go type declaration: {e}")
+    return classes
+
+
+def extract_var_or_const(
+    node: Any,
+    is_const: bool,
+    get_node_text: Callable[..., str],
+) -> list[Variable]:
+    """Extract var or const declaration."""
+    variables: list[Variable] = []
+    try:
+        for child in node.children:
+            if child.type in ("const_spec", "var_spec"):
+                vars_from_spec = extract_var_spec(child, is_const, get_node_text)
+                if vars_from_spec:
+                    variables.extend(vars_from_spec)
+    except Exception as e:
+        label = "const" if is_const else "var"
+        log_error(f"Error extracting Go {label}: {e}")
+    return variables
