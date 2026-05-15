@@ -62,6 +62,7 @@ from .server_utils.resource_registration import register_resources
 from .server_utils.tool_registration import register_tools
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
+from .tools.change_impact_tool import ChangeImpactTool
 from .tools.dependency_analysis_tool import DependencyAnalysisTool
 from .tools.file_health_tool import FileHealthTool
 from .tools.find_and_grep_tool import FindAndGrepTool
@@ -106,6 +107,7 @@ def _create_tool_registry(
         ("check_project_health", ProjectHealthTool(project_root)),
         ("check_file_health", FileHealthTool(project_root)),
         ("analyze_dependencies", DependencyAnalysisTool(project_root)),
+        ("analyze_change_impact", ChangeImpactTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
         ("safe_to_edit", SafeToEditTool(project_root)),
         ("smart_context", SmartContextTool(project_root)),

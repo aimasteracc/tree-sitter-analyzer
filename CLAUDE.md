@@ -109,6 +109,7 @@ This project uses its own MCP server for code analysis. The SMART workflow is:
 
 AI agent power tools:
 - **`safe_to_edit`** → call BEFORE editing any file to get risk_level (safe/caution/dangerous), blast radius, and a pre-edit checklist
+- **`analyze_change_impact`** → call AFTER editing: git diff + dependency graph → affected files, tests to run, risk level
 - **`refactoring_suggestions`** → get exact line ranges, extraction targets, and priority-scored suggestions before refactoring
 - **`check_file_health`** → D/F grade files get `extraction_plan` with AST-based method names and line numbers
 
