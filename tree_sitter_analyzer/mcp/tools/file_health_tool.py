@@ -4,6 +4,8 @@ File Health MCP Tool
 
 Exposes health_scorer.py to AI agents via MCP protocol.
 Returns A-F grades, dimension scores, and specific code smells for single files.
+
+Uses tree-sitter for cross-language element extraction (all 15 languages).
 """
 
 import re
@@ -13,6 +15,7 @@ from typing import Any
 from ...health_scorer import HealthScorer
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .utils.element_extractor import extract_elements, get_classes, get_functions
 
 logger = setup_logger(__name__)
 
@@ -88,7 +91,11 @@ class FileHealthTool(BaseMCPTool):
 
         scorer = self._get_scorer()
         health = scorer.score_file(resolved)
-        smells = _detect_code_smells(resolved, health.dimensions)
+
+        # Use tree-sitter for cross-language element extraction
+        analysis = extract_elements(resolved, self.project_root)
+
+        smells = _detect_code_smells(resolved, health.dimensions, analysis)
 
         result = {
             "success": True,
@@ -103,12 +110,11 @@ class FileHealthTool(BaseMCPTool):
             ),
         }
 
-        # Provide a concrete next action for AI agents
         if health.grade in ("D", "F"):
             result["next_action"] = _suggest_next_action(
                 file_path, health.grade, smells
             )
-            plan = _build_extraction_plan(file_path, smells, resolved)
+            plan = _build_extraction_plan(file_path, smells, resolved, analysis)
             if plan:
                 result["extraction_plan"] = plan
 
@@ -118,9 +124,11 @@ class FileHealthTool(BaseMCPTool):
 
 
 def _detect_code_smells(
-    file_path: str, dimensions: dict[str, float]
+    file_path: str,
+    dimensions: dict[str, float],
+    analysis: Any,
 ) -> list[dict[str, Any]]:
-    """Detect specific code smells in a file."""
+    """Detect specific code smells using tree-sitter elements."""
     smells: list[dict[str, Any]] = []
 
     try:
@@ -143,7 +151,7 @@ def _detect_code_smells(
             }
         )
 
-    # 2. Deep nesting detection
+    # 2. Deep nesting detection (language-agnostic indentation check)
     max_indent = 0
     for line in lines:
         stripped = line.rstrip()
@@ -152,7 +160,6 @@ def _detect_code_smells(
         indent = len(line) - len(line.lstrip())
         if indent > max_indent:
             max_indent = indent
-    # Assuming 4-space indentation
     max_nesting = max_indent // 4
     if max_nesting > 4:
         smells.append(
@@ -199,21 +206,36 @@ def _detect_code_smells(
             }
         )
 
-    # 6. Detect potential God Class (many classes or very long class)
-    class_count = _count_keyword(lines, ["class "])
-    if line_count > 300 and class_count <= 1:
-        smells.append(
-            {
-                "smell": "god_class",
-                "detail": f"Single class spanning {line_count} lines",
-                "severity": "critical" if line_count > 500 else "warning",
-                "fix": "Extract responsibilities into separate classes (Single Responsibility Principle)",
-            }
-        )
+    # Tree-sitter based smells (cross-language)
+    if analysis:
+        classes = get_classes(analysis)
+        functions = get_functions(analysis)
 
-    # 7. Long method detection (by counting consecutive non-blank lines at same indent level)
-    long_methods = _find_long_blocks(lines, threshold=50)
-    if long_methods:
+        # 6. God Class — single class spanning too many lines
+        if line_count > 300 and len(classes) <= 1:
+            smells.append(
+                {
+                    "smell": "god_class",
+                    "detail": f"Single class spanning {line_count} lines",
+                    "severity": "critical" if line_count > 500 else "warning",
+                    "fix": "Extract responsibilities into separate classes (Single Responsibility Principle)",
+                }
+            )
+
+        # 7. Long methods — from tree-sitter elements (exact line ranges)
+        for func in functions:
+            if func["lines"] > 50:
+                smells.append(
+                    {
+                        "smell": "long_method",
+                        "detail": f"'{func['name']}' is {func['lines']} lines (L{func['line']})",
+                        "severity": "critical" if func["lines"] > 100 else "warning",
+                        "fix": "Extract logical sections into separate helper methods",
+                    }
+                )
+    else:
+        # Fallback: indentation-based long block detection for unsupported languages
+        long_methods = _find_long_blocks_heuristic(lines, threshold=50)
         for method_name, start, length in long_methods[:3]:
             smells.append(
                 {
@@ -245,14 +267,10 @@ def _detect_code_smells(
     return smells
 
 
-def _count_keyword(lines: list[str], keywords: list[str]) -> int:
-    return sum(1 for line in lines if any(k in line for k in keywords))
-
-
-def _find_long_blocks(
+def _find_long_blocks_heuristic(
     lines: list[str], threshold: int = 50
 ) -> list[tuple[str, int, int]]:
-    """Find long blocks of code (potential long methods/functions)."""
+    """Fallback long block detection using indentation heuristics."""
     results: list[tuple[str, int, int]] = []
     in_def = False
     def_name = ""
@@ -263,14 +281,10 @@ def _find_long_blocks(
     for i, line in enumerate(lines):
         stripped = line.strip()
 
-        # Detect function/method definitions
         if stripped.startswith("def ") or stripped.startswith("async def "):
-            # Save previous block if it was long
             if in_def and block_lines > threshold:
                 results.append((def_name, def_start + 1, block_lines))
-
             in_def = True
-            # Extract function name
             after_def = stripped.split("def ", 1)[-1] if "def " in stripped else ""
             def_name = after_def.split("(")[0].strip() if after_def else f"block_{i}"
             def_start = i
@@ -282,9 +296,7 @@ def _find_long_blocks(
             if not stripped:
                 block_lines += 1
                 continue
-
             current_indent = len(line) - len(line.lstrip())
-            # Same or deeper indent = still in the function
             if current_indent > def_indent:
                 block_lines += 1
             elif current_indent == def_indent and (
@@ -293,14 +305,12 @@ def _find_long_blocks(
                 or stripped.startswith("class ")
                 or stripped.startswith("@")
             ):
-                # Hit a new def/class/decorator at same level — end current block
                 if block_lines > threshold:
                     results.append((def_name, def_start + 1, block_lines))
                 in_def = False
             else:
                 block_lines += 1
 
-    # Don't forget the last block
     if in_def and block_lines > threshold:
         results.append((def_name, def_start + 1, block_lines))
 
@@ -331,7 +341,6 @@ def _build_recommendation(
             f"{len(warnings)} warning(s): {', '.join(s['smell'] for s in warnings)}"
         )
 
-    # Add extraction suggestion for long methods
     long_methods = [s for s in smells if s["smell"] == "long_method"]
     if long_methods:
         names = [s["detail"].split("'")[1] for s in long_methods if "'" in s["detail"]]
@@ -348,7 +357,6 @@ def _suggest_next_action(
     grade: str,
     smells: list[dict[str, Any]],
 ) -> str:
-    """Suggest a concrete next action for an AI agent to take."""
     long_methods = [s for s in smells if s["smell"] == "long_method"]
     if long_methods:
         names = [s["detail"].split("'")[1] for s in long_methods if "'" in s["detail"]]
@@ -375,6 +383,7 @@ def _build_extraction_plan(
     file_path: str,
     smells: list[dict[str, Any]],
     resolved_path: str,
+    analysis: Any,
 ) -> dict[str, Any] | None:
     """Build a structured extraction plan for D/F grade files."""
     long_methods = [s for s in smells if s["smell"] == "long_method"]
@@ -387,7 +396,7 @@ def _build_extraction_plan(
         name = detail.split("'")[1] if "'" in detail else "unknown"
         line_match = re.search(r"\(L(\d+)\)", detail)
         start_line = int(line_match.group(1)) if line_match else 0
-        end_line = _find_function_end_line(resolved_path, start_line)
+        end_line = _find_function_end_line(resolved_path, start_line, analysis)
         targets.append(
             {
                 "method": name,
@@ -415,21 +424,16 @@ def _build_extraction_plan(
     }
 
 
-def _find_function_end_line(file_path: str, start_line: int) -> int:
-    """Find the end line of a function using AST or indentation heuristics."""
-    try:
-        import ast
+def _find_function_end_line(file_path: str, start_line: int, analysis: Any) -> int:
+    """Find the end line of a function using tree-sitter elements, with fallback."""
+    # Primary: use tree-sitter extracted elements
+    if analysis:
+        functions = get_functions(analysis)
+        for func in functions:
+            if func["line"] == start_line:
+                return func["end_line"]  # type: ignore[no-any-return]
 
-        source = Path(file_path).read_text(encoding="utf-8", errors="replace")
-        tree = ast.parse(source)
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if node.lineno == start_line:
-                    return node.end_lineno or start_line
-    except Exception:  # nosec B110 — AST parse failure is non-critical, fallback follows
-        pass
-
-    # Fallback: find end by indentation
+    # Fallback: indentation-based
     try:
         lines = (
             Path(file_path).read_text(encoding="utf-8", errors="replace").splitlines()
@@ -446,5 +450,5 @@ def _find_function_end_line(file_path: str, start_line: int) -> int:
             if current_indent <= base_indent and stripped:
                 return i
         return len(lines)
-    except Exception:
+    except Exception:  # nosec B110
         return start_line

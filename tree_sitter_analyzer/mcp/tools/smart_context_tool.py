@@ -6,17 +6,22 @@ Provides a single-call "file profile" that combines health, dependencies,
 exports, and test proximity into one compact response. This is the tool AI
 agents should call FIRST when approaching an unfamiliar file.
 
-Replaces 4-5 separate tool calls with one atomic query.
+Uses tree-sitter for cross-language element extraction (all 15 languages).
 """
 
-import ast
 from pathlib import Path
 from typing import Any
 
 from ...health_scorer import HealthScorer
+from ...language_detector import detect_language_from_file
 from ...project_graph import DependencyGraph
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .utils.element_extractor import (
+    extract_elements,
+    get_all_exports,
+    get_structure,
+)
 
 logger = setup_logger(__name__)
 
@@ -101,13 +106,17 @@ class SmartContextTool(BaseMCPTool):
 
         source = Path(resolved).read_text(encoding="utf-8", errors="replace")
         lines = source.splitlines()
+        language = detect_language_from_file(resolved) or Path(resolved).suffix.lstrip(
+            "."
+        )
 
         # 1. Health
         health = scorer.score_file(resolved)
 
-        # 2. Exports (AST-based for Python)
-        ext = Path(resolved).suffix.lower()
-        exports = _extract_exports(source, ext)
+        # 2. Exports + structure via tree-sitter (cross-language)
+        analysis = extract_elements(resolved, self.project_root)
+        exports = get_all_exports(analysis) if analysis else []
+        structure = get_structure(analysis) if analysis else []
 
         # 3. Dependencies
         dependents = _safe_query(graph, rel_path, "dependents")
@@ -119,14 +128,11 @@ class SmartContextTool(BaseMCPTool):
         # 5. Quick risk assessment
         risk = _quick_risk(len(dependents), health.grade, len(test_files) > 0)
 
-        # 6. File structure summary (top-level definitions)
-        structure = _extract_structure(source, ext)
-
         result = {
             "success": True,
             "file_path": file_path,
             "line_count": len(lines),
-            "language": ext.lstrip("."),
+            "language": language,
             "health": {
                 "grade": health.grade,
                 "score": round(health.total, 1),
@@ -172,94 +178,6 @@ def _safe_query(graph: DependencyGraph, rel_path: str, method: str) -> list[str]
         return graph.dependencies_of(target)
     except Exception:  # nosec B110
         return []
-
-
-def _extract_exports(source: str, ext: str) -> list[dict[str, Any]]:
-    """Extract exported symbols (classes, functions, constants)."""
-    exports: list[dict[str, Any]] = []
-
-    if ext == ".py":
-        try:
-            tree = ast.parse(source)
-            for node in ast.iter_child_nodes(tree):
-                if isinstance(node, ast.ClassDef):
-                    methods = [
-                        n.name
-                        for n in node.body
-                        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-                    ]
-                    exports.append(
-                        {
-                            "name": node.name,
-                            "kind": "class",
-                            "line": node.lineno,
-                            "methods": len(methods),
-                        }
-                    )
-                elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    if not node.name.startswith("_"):
-                        exports.append(
-                            {
-                                "name": node.name,
-                                "kind": "function",
-                                "line": node.lineno,
-                            }
-                        )
-                elif isinstance(node, ast.Assign):
-                    for target in node.targets:
-                        if isinstance(target, ast.Name) and target.id.isupper():
-                            exports.append(
-                                {
-                                    "name": target.id,
-                                    "kind": "constant",
-                                    "line": node.lineno,
-                                }
-                            )
-        except SyntaxError:
-            pass
-
-    return exports
-
-
-def _extract_structure(source: str, ext: str) -> list[dict[str, str]]:
-    """Extract a lightweight structure outline (top-level items only)."""
-    structure: list[dict[str, str]] = []
-
-    if ext == ".py":
-        try:
-            tree = ast.parse(source)
-            for node in ast.iter_child_nodes(tree):
-                if isinstance(
-                    node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-                ):
-                    kind = "class" if isinstance(node, ast.ClassDef) else "function"
-                    end = node.end_lineno or node.lineno
-                    structure.append(
-                        {
-                            "name": node.name,
-                            "kind": kind,
-                            "lines": f"{node.lineno}-{end}",
-                        }
-                    )
-                elif isinstance(node, ast.Import):
-                    names = ", ".join(a.name for a in node.names)
-                    structure.append(
-                        {"name": names, "kind": "import", "lines": str(node.lineno)}
-                    )
-                elif isinstance(node, ast.ImportFrom):
-                    module = node.module or ""
-                    names = ", ".join(a.name for a in node.names)
-                    structure.append(
-                        {
-                            "name": f"{module}.{names}",
-                            "kind": "from_import",
-                            "lines": str(node.lineno),
-                        }
-                    )
-        except SyntaxError:
-            pass
-
-    return structure[:30]
 
 
 def _find_test_files(file_path: str, project_root: str) -> list[str]:

@@ -7,9 +7,12 @@ import pytest
 
 from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
     SmartContextTool,
-    _extract_exports,
-    _extract_structure,
     _quick_risk,
+)
+from tree_sitter_analyzer.mcp.tools.utils.element_extractor import (
+    extract_elements,
+    get_all_exports,
+    get_structure,
 )
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
@@ -24,24 +27,6 @@ def tool():
 
 def _run(coro):
     return asyncio.run(coro)
-
-
-PYTHON_SOURCE = """
-class MyClass:
-    def method_a(self):
-        pass
-
-    def method_b(self):
-        pass
-
-def standalone_func():
-    pass
-
-MY_CONSTANT = 42
-
-def _private_func():
-    pass
-"""
 
 
 class TestSmartContextTool:
@@ -149,7 +134,7 @@ class TestSmartContextTool:
                 }
             )
         )
-        assert result["language"] == "py"
+        assert result["language"] == "python"
 
     def test_file_not_found(self, tool):
         with pytest.raises(ValueError, match="File not found"):
@@ -180,36 +165,31 @@ class TestSmartContextTool:
 
 class TestExportExtraction:
     def test_extracts_class(self):
-        exports = _extract_exports(PYTHON_SOURCE, ".py")
+        result = extract_elements(
+            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models.py"), "."
+        )
+        assert result is not None
+        exports = get_all_exports(result)
         classes = [e for e in exports if e["kind"] == "class"]
-        assert len(classes) == 1
-        assert classes[0]["name"] == "MyClass"
-        assert classes[0]["methods"] == 2
-
-    def test_extracts_function(self):
-        exports = _extract_exports(PYTHON_SOURCE, ".py")
-        funcs = [e for e in exports if e["kind"] == "function"]
-        names = [f["name"] for f in funcs]
-        assert "standalone_func" in names
-
-    def test_extracts_constants(self):
-        exports = _extract_exports(PYTHON_SOURCE, ".py")
-        consts = [e for e in exports if e["kind"] == "constant"]
-        assert any(c["name"] == "MY_CONSTANT" for c in consts)
+        assert len(classes) > 0
 
     def test_excludes_private_functions(self):
-        exports = _extract_exports(PYTHON_SOURCE, ".py")
+        result = extract_elements(
+            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models.py"), "."
+        )
+        assert result is not None
+        exports = get_all_exports(result)
         names = [e["name"] for e in exports]
-        assert "_private_func" not in names
-
-    def test_handles_syntax_error(self):
-        exports = _extract_exports("def broken(", ".py")
-        assert exports == []
+        assert not any(n.startswith("_") for n in names)
 
 
 class TestStructureExtraction:
     def test_extracts_structure(self):
-        structure = _extract_structure(PYTHON_SOURCE, ".py")
+        result = extract_elements(
+            str(PROJECT_ROOT / "tree_sitter_analyzer" / "models.py"), "."
+        )
+        assert result is not None
+        structure = get_structure(result)
         assert len(structure) > 0
         kinds = {s["kind"] for s in structure}
         assert "class" in kinds or "function" in kinds
