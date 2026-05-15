@@ -248,6 +248,44 @@ def _make_minimal(result: dict[str, Any]) -> dict[str, Any]:
     return minimal
 
 
+def save_enriched_output(
+    result: dict[str, Any],
+    matches: list[dict[str, Any]],
+    arguments: dict[str, Any],
+    output_format: str,
+    file_output_manager: Any,
+    fd_rg_utils: Any,
+) -> None:
+    """Save enriched search results to file, mutating result with status."""
+    output_file = arguments.get("output_file")
+    if not output_file:
+        return
+    try:
+        file_content = {
+            "success": True,
+            "count": len(matches),
+            "truncated": result.get("truncated", False),
+            "elapsed_ms": result.get("elapsed_ms", 0),
+            "results": matches,
+            "summary": fd_rg_utils.summarize_search_results(matches),
+            "grouped_by_file": (
+                fd_rg_utils.group_matches_by_file(matches)["files"] if matches else []
+            ),
+        }
+        formatted_content, _ = format_for_file_output(file_content, output_format)
+        saved_path = file_output_manager.save_to_file(
+            content=formatted_content, base_name=output_file
+        )
+        result["output_file"] = output_file
+        result["output_file_path"] = saved_path
+        result["file_saved"] = True
+        logger.info(f"Search results saved to: {saved_path}")
+    except Exception as e:
+        logger.error(f"Failed to save output to file: {e}")
+        result["file_save_error"] = str(e)
+        result["file_saved"] = False
+
+
 def build_next_steps(matches: list[dict[str, Any]]) -> list[str]:
     """Build next_steps suggestions for AI agents."""
     files_with_matches: set[str] = set()

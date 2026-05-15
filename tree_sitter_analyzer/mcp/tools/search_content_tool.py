@@ -24,7 +24,11 @@ from . import fd_rg_utils
 from .base_tool import BaseMCPTool
 from .output_format_validator import get_default_validator
 from .search_content_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
-from .search_content_helpers import build_next_steps, handle_output_and_cache
+from .search_content_helpers import (
+    build_next_steps,
+    handle_output_and_cache,
+    save_enriched_output,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -519,38 +523,14 @@ class SearchContentTool(BaseMCPTool):
             if steps:
                 result["next_steps"] = steps
 
-        # File output gets enriched content
-        if arguments.get("output_file"):
-            try:
-                from ..utils.format_helper import format_for_file_output
-
-                file_content = {
-                    "success": True,
-                    "count": len(matches),
-                    "truncated": truncated,
-                    "elapsed_ms": elapsed_ms,
-                    "results": matches,
-                    "summary": fd_rg_utils.summarize_search_results(matches),
-                    "grouped_by_file": (
-                        fd_rg_utils.group_matches_by_file(matches)["files"]
-                        if matches
-                        else []
-                    ),
-                }
-                formatted_content, _ = format_for_file_output(
-                    file_content, output_format
-                )
-                saved_path = self.file_output_manager.save_to_file(
-                    content=formatted_content, base_name=arguments["output_file"]
-                )
-                result["output_file"] = arguments["output_file"]
-                result["output_file_path"] = saved_path
-                result["file_saved"] = True
-                logger.info(f"Search results saved to: {saved_path}")
-            except Exception as e:
-                logger.error(f"Failed to save output to file: {e}")
-                result["file_save_error"] = str(e)
-                result["file_saved"] = False
+        save_enriched_output(
+            result,
+            matches,
+            arguments,
+            output_format,
+            self.file_output_manager,
+            fd_rg_utils,
+        )
 
         suppressed = handle_output_and_cache(
             result,
