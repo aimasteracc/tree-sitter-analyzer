@@ -4,8 +4,8 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from ..models import Function, Import, Variable
-from ..utils import log_debug
+from ..models import Class, Function, Import, Variable
+from ..utils import log_debug, log_error, log_warning
 
 
 def extract_cpp_imports(
@@ -683,3 +683,200 @@ def extract_cpp_variable_declaration(
         log_debug(f"Failed to extract variable declaration: {e}")
 
     return variables
+
+
+_CONTAINER_NODE_TYPES = frozenset(
+    {
+        "translation_unit",
+        "namespace_definition",
+        "class_specifier",
+        "struct_specifier",
+        "union_specifier",
+        "declaration_list",
+        "field_declaration_list",
+        "compound_statement",
+        "template_declaration",
+        "declaration",
+    }
+)
+
+
+def traverse_and_extract_iterative(
+    root_node: Any,
+    extractors: dict[str, Any],
+    results: list[Any],
+    element_type: str,
+    processed_nodes: set[int],
+    element_cache: dict[tuple[int, str], Any],
+) -> None:
+    """Iterative node traversal and extraction with caching."""
+    if root_node is None:
+        return
+
+    target_node_types = set(extractors.keys())
+
+    node_stack = [(root_node, 0)]
+    processed_count = 0
+    max_depth = 50
+
+    while node_stack:
+        current_node, depth = node_stack.pop()
+
+        if depth > max_depth:
+            log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
+            continue
+
+        processed_count += 1
+        node_type = current_node.type
+
+        if (
+            depth > 0
+            and node_type not in target_node_types
+            and node_type not in _CONTAINER_NODE_TYPES
+        ):
+            continue
+
+        if node_type in target_node_types:
+            node_id = id(current_node)
+
+            if node_id in processed_nodes:
+                continue
+
+            cache_key = (node_id, element_type)
+            if cache_key in element_cache:
+                element = element_cache[cache_key]
+                if element:
+                    if isinstance(element, list):
+                        results.extend(element)
+                    else:
+                        results.append(element)
+                processed_nodes.add(node_id)
+                continue
+
+            extractor = extractors[node_type]
+            element = extractor(current_node)
+            element_cache[cache_key] = element
+            if element:
+                if isinstance(element, list):
+                    results.extend(element)
+                else:
+                    results.append(element)
+            processed_nodes.add(node_id)
+
+        if current_node.children:
+            for child in reversed(current_node.children):
+                node_stack.append((child, depth + 1))
+
+    log_debug(f"Iterative traversal processed {processed_count} nodes")
+
+
+def extract_cpp_function(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+    current_namespace: str,
+    parse_function_signature: Callable,
+    calculate_complexity: Callable,
+    is_global_scope: Callable,
+    determine_visibility: Callable,
+    extract_comment_for_line: Callable,
+) -> Function | None:
+    """Extract C++ function definition."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        function_info = parse_function_signature(node)
+        if not function_info:
+            return None
+
+        name, return_type, parameters, modifiers = function_info
+
+        start_line_idx = max(0, start_line - 1)
+        end_line_idx = min(len(content_lines), end_line)
+        raw_text = "\n".join(content_lines[start_line_idx:end_line_idx])
+
+        complexity_score = calculate_complexity(node)
+
+        is_global = is_global_scope(node)
+        visibility = determine_visibility(modifiers, is_global=is_global, node=node)
+
+        docstring = extract_comment_for_line(start_line)
+
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="cpp",
+            parameters=parameters,
+            return_type=return_type or "void",
+            modifiers=modifiers,
+            is_static="static" in modifiers,
+            is_private="private" in modifiers,
+            is_public="public" in modifiers,
+            visibility=visibility,
+            docstring=docstring,
+            complexity_score=complexity_score,
+        )
+    except (AttributeError, ValueError, TypeError) as e:
+        log_debug(f"Failed to extract function info: {e}")
+        return None
+    except Exception as e:
+        log_error(f"Unexpected error in function extraction: {e}")
+        return None
+
+
+def extract_cpp_class(
+    node: Any,
+    get_node_text: Callable[..., str],
+    content_lines: list[str],
+    current_namespace: str,
+    extract_base_classes: Callable,
+    extract_comment_for_line: Callable,
+) -> Class | None:
+    """Extract C++ class/struct/union information."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        class_name = None
+        superclasses: list[str] = []
+        modifiers: list[str] = []
+
+        for child in node.children:
+            if child.type == "type_identifier":
+                class_name = get_node_text(child)
+            elif child.type == "base_class_clause":
+                superclasses = extract_base_classes(child)
+
+        if not class_name:
+            return None
+
+        start_line_idx = max(0, start_line - 1)
+        end_line_idx = min(len(content_lines), end_line)
+        raw_text = "\n".join(content_lines[start_line_idx:end_line_idx])
+
+        docstring = extract_comment_for_line(start_line)
+
+        full_qualified_name = (
+            f"{current_namespace}::{class_name}" if current_namespace else class_name
+        )
+
+        return Class(
+            name=class_name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language="cpp",
+            class_type="class",
+            full_qualified_name=full_qualified_name,
+            package_name=current_namespace,
+            superclass=superclasses[0] if superclasses else None,
+            interfaces=superclasses[1:] if len(superclasses) > 1 else [],
+            modifiers=modifiers,
+            docstring=docstring,
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract class info: {e}")
+        return None
