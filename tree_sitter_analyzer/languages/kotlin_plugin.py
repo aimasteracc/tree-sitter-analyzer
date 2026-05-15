@@ -17,6 +17,15 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from .kotlin_helpers import (
+    determine_visibility as _determine_vis_standalone,
+)
+from .kotlin_helpers import (
+    extract_import as _extract_import_standalone,
+)
+from .kotlin_helpers import (
+    extract_kotlin_parameters as _extract_params_standalone,
+)
 
 
 class KotlinElementExtractor(ElementExtractor):
@@ -211,27 +220,7 @@ class KotlinElementExtractor(ElementExtractor):
             end_line = node.end_point[0] + 1
 
             # Parameters
-            parameters = []
-            params_node = node.child_by_field_name(
-                "parameters"
-            )  # function_value_parameters
-            if params_node:
-                for child in params_node.children:
-                    if child.type == "parameter":
-                        # parameter -> simple_identifier: type
-                        param_name = ""
-                        param_type = ""
-                        for grandchild in child.children:
-                            if grandchild.type == "simple_identifier":
-                                param_name = self._get_node_text(grandchild)
-                            elif (
-                                "type" in grandchild.type
-                                or grandchild.type == "user_type"
-                            ):
-                                param_type = self._get_node_text(grandchild)
-
-                        if param_name:
-                            parameters.append(f"{param_name}: {param_type or 'Any'}")
+            parameters = _extract_params_standalone(node, self._get_node_text)
 
             # Return type
             return_type = "Unit"
@@ -254,15 +243,8 @@ class KotlinElementExtractor(ElementExtractor):
             modifiers_node = node.child_by_field_name("modifiers")
             if modifiers_node:
                 mods = self._get_node_text(modifiers_node)
-                if "private" in mods:
-                    visibility = "private"
-                elif "protected" in mods:
-                    visibility = "protected"
-                elif "internal" in mods:
-                    visibility = "internal"
-
-                if "suspend" in mods:
-                    is_suspend = True
+                visibility = _determine_vis_standalone(mods)
+                is_suspend = "suspend" in mods
 
             # Docstring
             docstring = self._extract_docstring(node)
@@ -317,13 +299,9 @@ class KotlinElementExtractor(ElementExtractor):
             visibility = "public"
             modifiers_node = node.child_by_field_name("modifiers")
             if modifiers_node:
-                mods = self._get_node_text(modifiers_node)
-                if "private" in mods:
-                    visibility = "private"
-                elif "protected" in mods:
-                    visibility = "protected"
-                elif "internal" in mods:
-                    visibility = "internal"
+                visibility = _determine_vis_standalone(
+                    self._get_node_text(modifiers_node)
+                )
 
             # Detect interface by checking for 'interface' keyword child node
             # tree-sitter-kotlin parses both class and interface as class_declaration
@@ -396,9 +374,9 @@ class KotlinElementExtractor(ElementExtractor):
             visibility = "public"
             modifiers_node = node.child_by_field_name("modifiers")
             if modifiers_node:
-                mods = self._get_node_text(modifiers_node)
-                if "private" in mods:
-                    visibility = "private"
+                visibility = _determine_vis_standalone(
+                    self._get_node_text(modifiers_node)
+                )
 
             docstring = self._extract_docstring(node)
             raw_text = self._get_node_text(node)
@@ -424,30 +402,7 @@ class KotlinElementExtractor(ElementExtractor):
 
     def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
         """Extract import header"""
-        try:
-            # import_header -> 'import' identifier .*
-            raw_text = self._get_node_text(node)
-            start_line = node.start_point[0] + 1
-            end_line = node.end_point[0] + 1
-
-            # Parse name
-            parts = raw_text.split()
-            if len(parts) > 1:
-                name = parts[1]
-            else:
-                name = "unknown"
-
-            return Import(
-                name=name,
-                start_line=start_line,
-                end_line=end_line,
-                raw_text=raw_text,
-                language="kotlin",
-                import_statement=raw_text,
-            )
-        except Exception as e:
-            log_error(f"Error extracting Kotlin import: {e}")
-            return None
+        return _extract_import_standalone(node, self._get_node_text)
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get node text with caching using position-based keys"""

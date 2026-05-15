@@ -13,6 +13,15 @@ from typing import TYPE_CHECKING, Any
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info
+from .css_helpers import (
+    classify_rule as _classify_rule_standalone,
+)
+from .css_helpers import (
+    extract_at_rule_name as _extract_at_rule_standalone,
+)
+from .css_helpers import (
+    parse_declaration as _parse_decl_standalone,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -239,77 +248,20 @@ class CssElementExtractor(ElementExtractor):
     def _parse_declaration(
         self, decl_node: "tree_sitter.Node", source_code: str
     ) -> tuple[str, str]:
-        """Parse individual CSS declaration using tree-sitter-css grammar"""
-        try:
-            prop_name = ""
-            prop_value = ""
-
-            if hasattr(decl_node, "children"):
-                for child in decl_node.children:
-                    if hasattr(child, "type"):
-                        if child.type == "property_name":
-                            prop_name = self._extract_node_text(
-                                child, source_code
-                            ).strip()
-                        elif child.type in ["value", "values"]:
-                            prop_value = self._extract_node_text(
-                                child, source_code
-                            ).strip()
-
-            # Fallback to simple parsing
-            if not prop_name:
-                decl_text = self._extract_node_text(decl_node, source_code)
-                if ":" in decl_text:
-                    parts = decl_text.split(":", 1)
-                    prop_name = parts[0].strip()
-                    prop_value = parts[1].strip().rstrip(";")
-
-            return prop_name, prop_value
-        except Exception:
-            return "", ""
+        """Parse individual CSS declaration"""
+        return _parse_decl_standalone(
+            decl_node, lambda n: self._extract_node_text(n, source_code)
+        )
 
     def _extract_at_rule_name(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract at-rule name from CSS at-rule node"""
-        try:
-            node_text = self._extract_node_text(node, source_code)
-            if node_text.startswith("@"):
-                # For @media, @keyframes, etc., extract the full declaration line
-                # Split by { to get the rule declaration
-                if "{" in node_text:
-                    declaration = node_text.split("{")[0].strip()
-                    return declaration
-                # Fallback: extract @rule-name part
-                parts = node_text.split()
-                if parts:
-                    # For @media and @keyframes, include parameters
-                    if parts[0] in ("@media", "@keyframes", "@supports"):
-                        # Return first line or up to first {
-                        first_line = node_text.split("\n")[0].strip()
-                        if "{" in first_line:
-                            return first_line.split("{")[0].strip()
-                        return first_line
-                    return parts[0]
-            return node_text[:50]  # Truncate for readability
-        except Exception:
-            return "unknown"
+        return _extract_at_rule_standalone(
+            node, lambda n: self._extract_node_text(n, source_code)
+        )
 
     def _classify_rule(self, properties: dict[str, str]) -> str:
         """Classify CSS rule based on properties"""
-        if not properties:
-            return "other"
-
-        # Count properties in each category
-        category_scores = dict.fromkeys(self.property_categories, 0)
-
-        for prop_name in properties.keys():
-            prop_name_lower = prop_name.lower()
-            for category, props in self.property_categories.items():
-                if any(prop in prop_name_lower for prop in props):
-                    category_scores[category] += 1
-
-        # Return category with highest score
-        best_category = max(category_scores, key=lambda k: category_scores[k])
-        return best_category if category_scores[best_category] > 0 else "other"
+        return _classify_rule_standalone(properties, self.property_categories)
 
     def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract text content from a tree-sitter node"""

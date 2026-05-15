@@ -13,6 +13,12 @@ from typing import TYPE_CHECKING, Any
 from ..models import AnalysisResult, MarkupElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_info
+from .html_helpers import (
+    classify_element as _classify_standalone,
+)
+from .html_helpers import (
+    parse_attribute as _parse_attr_standalone,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -295,56 +301,14 @@ class HtmlElementExtractor(ElementExtractor):
     def _parse_attribute(
         self, attr_node: "tree_sitter.Node", source_code: str
     ) -> tuple[str, str]:
-        """Parse individual attribute node using tree-sitter-html grammar"""
-        try:
-            # In tree-sitter-html, attributes have specific structure
-            attr_name = ""
-            attr_value = ""
-
-            if hasattr(attr_node, "children"):
-                for child in attr_node.children:
-                    if hasattr(child, "type"):
-                        if child.type == "attribute_name":
-                            attr_name = self._extract_node_text(
-                                child, source_code
-                            ).strip()
-                        elif child.type == "quoted_attribute_value":
-                            attr_value = (
-                                self._extract_node_text(child, source_code)
-                                .strip()
-                                .strip('"')
-                                .strip("'")
-                            )
-                        elif child.type == "attribute_value":
-                            attr_value = self._extract_node_text(
-                                child, source_code
-                            ).strip()
-
-            # Fallback to simple parsing
-            if not attr_name:
-                attr_text = self._extract_node_text(attr_node, source_code)
-                if "=" in attr_text:
-                    name, value = attr_text.split("=", 1)
-                    attr_name = name.strip()
-                    attr_value = value.strip().strip('"').strip("'")
-                else:
-                    # Boolean attribute
-                    attr_name = attr_text.strip()
-                    attr_value = ""
-
-            return attr_name, attr_value
-        except Exception:
-            return "", ""
+        """Parse individual attribute node"""
+        return _parse_attr_standalone(
+            attr_node, lambda n: self._extract_node_text(n, source_code)
+        )
 
     def _classify_element(self, tag_name: str) -> str:
         """Classify HTML element based on tag name"""
-        tag_name_lower = tag_name.lower()
-
-        for category, tags in self.element_categories.items():
-            if tag_name_lower in tags:
-                return category
-
-        return "unknown"
+        return _classify_standalone(tag_name, self.element_categories)
 
     def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract text content from a tree-sitter node"""
