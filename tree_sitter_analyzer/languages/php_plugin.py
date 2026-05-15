@@ -24,6 +24,18 @@ except ImportError:
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_error
+from .php_helpers import (
+    determine_visibility as _determine_vis_standalone,
+)
+from .php_helpers import (
+    extract_attributes as _extract_attrs_standalone,
+)
+from .php_helpers import (
+    extract_modifiers as _extract_mods_standalone,
+)
+from .php_helpers import (
+    extract_use_statement as _extract_use_standalone,
+)
 
 
 class PHPElementExtractor(ElementExtractor):
@@ -116,80 +128,18 @@ class PHPElementExtractor(ElementExtractor):
                 self._extract_namespace(child)
 
     def _extract_modifiers(self, node: "tree_sitter.Node") -> list[str]:
-        """
-        Extract modifiers from a declaration node.
-
-        Args:
-            node: Declaration node (class, method, property, etc.)
-
-        Returns:
-            List of modifier strings (e.g., ["public", "static", "final"])
-        """
-        modifiers: list[str] = []
-        for child in node.children:
-            if child.type in (
-                "visibility_modifier",
-                "static_modifier",
-                "final_modifier",
-                "abstract_modifier",
-                "readonly_modifier",
-            ):
-                modifier_text = self._get_node_text_optimized(child)
-                modifiers.append(modifier_text)
-        return modifiers
+        """Extract modifiers from a declaration node."""
+        return _extract_mods_standalone(node, self._get_node_text_optimized)
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
-        """
-        Determine visibility from modifiers.
-
-        Args:
-            modifiers: List of modifier strings
-
-        Returns:
-            Visibility string ("public", "private", "protected")
-        """
-        if "public" in modifiers:
-            return "public"
-        elif "private" in modifiers:
-            return "private"
-        elif "protected" in modifiers:
-            return "protected"
-        else:
-            return "public"  # PHP default visibility
+        """Determine visibility from modifiers."""
+        return _determine_vis_standalone(modifiers)
 
     def _extract_attributes(self, node: "tree_sitter.Node") -> list[dict[str, Any]]:
-        """
-        Extract PHP 8+ attributes from a node.
-
-        Args:
-            node: Node to extract attributes from
-
-        Returns:
-            List of attribute dictionaries with name and arguments
-        """
-        # Check cache first - use position-based key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._attribute_cache:
-            return self._attribute_cache[cache_key]
-
-        attributes: list[dict[str, Any]] = []
-
-        # Look for attribute_list nodes before the declaration
-        for child in node.children:
-            if child.type == "attribute_list":
-                for attr_group in child.children:
-                    if attr_group.type == "attribute_group":
-                        for attr in attr_group.children:
-                            if attr.type == "attribute":
-                                name_node = attr.child_by_field_name("name")
-                                if name_node:
-                                    attr_name = self._get_node_text_optimized(name_node)
-                                    attributes.append(
-                                        {"name": attr_name, "arguments": []}
-                                    )
-
-        self._attribute_cache[cache_key] = attributes
-        return attributes
+        """Extract PHP 8+ attributes from a node."""
+        return _extract_attrs_standalone(
+            node, self._get_node_text_optimized, self._attribute_cache
+        )
 
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
@@ -650,53 +600,8 @@ class PHPElementExtractor(ElementExtractor):
         return imports
 
     def _extract_use_statement(self, node: "tree_sitter.Node") -> list[Import]:
-        """
-        Extract use statement elements.
-
-        Args:
-            node: Namespace use declaration node
-
-        Returns:
-            List of Import elements
-        """
-        imports: list[Import] = []
-
-        try:
-            # Check for use type (function, const, or class)
-            # use_type = "class"  # Reserved for future use
-            for child in node.children:
-                if child.type == "use":
-                    use_text = self._get_node_text_optimized(child)
-                    if "function" in use_text:
-                        pass  # use_type = "function"  # Reserved for future use
-                    elif "const" in use_text:
-                        pass  # use_type = "const"  # Reserved for future use
-
-            # Extract use clauses
-            for child in node.children:
-                if child.type == "namespace_use_clause":
-                    name_node = child.child_by_field_name("name")
-                    alias_node = child.child_by_field_name("alias")
-
-                    if name_node:
-                        import_name = self._get_node_text_optimized(name_node)
-                        alias = None
-                        if alias_node:
-                            alias = self._get_node_text_optimized(alias_node)
-
-                        imports.append(
-                            Import(
-                                name=import_name,
-                                start_line=node.start_point[0] + 1,
-                                end_line=node.end_point[0] + 1,
-                                alias=alias,
-                                is_wildcard=False,
-                            )
-                        )
-        except Exception as e:
-            log_error(f"Error extracting use statement: {e}")
-
-        return imports
+        """Extract use statement elements."""
+        return _extract_use_standalone(node, self._get_node_text_optimized)
 
 
 class PHPPlugin(LanguagePlugin):
