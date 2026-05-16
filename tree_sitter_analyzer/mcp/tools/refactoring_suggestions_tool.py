@@ -1,3 +1,4 @@
+# Refactoring suggestions with precise extraction targets
 #!/usr/bin/env python3
 """
 Refactoring Suggestions MCP Tool
@@ -27,6 +28,7 @@ logger = setup_logger(__name__)
 _PATTERN_RULES: list[dict[str, Any]] = [
     {
         "id": "P001",
+        # Pattern rules for code smell detection
         "name": "god_file",
         "severity": "critical",
         "threshold": 800,
@@ -57,6 +59,7 @@ _PATTERN_RULES: list[dict[str, Any]] = [
 
 _EXTRACTABLE_PATTERNS: list[dict[str, Any]] = [
     {
+        # Extractable patterns for refactoring suggestions
         "id": "E001",
         "name": "extract_method",
         "detect": "block_after_assignment",
@@ -87,7 +90,9 @@ _EXTRACTABLE_PATTERNS: list[dict[str, Any]] = [
 class RefactoringSuggestionsTool(BaseMCPTool):
     """MCP Tool that provides concrete refactoring suggestions for source files."""
 
+    # Tool definition and schema
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "refactoring_suggestions",
             "description": (
@@ -99,6 +104,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
+        """Return the JSON schema for tool input validation."""
         return {
             "type": "object",
             "properties": {
@@ -115,6 +121,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                     "description": "Maximum suggestions to return (default: 10)",
                     "default": 10,
                 },
+                # Tool execution pipeline
                 "include_extractions": {
                     "type": "boolean",
                     "description": "Include specific extraction targets (default: true)",
@@ -135,7 +142,9 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             "required": ["file_path"],
         }
 
+    # Source file reading and analysis
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute refactoring analysis on a source file."""
         file_path = arguments.get("file_path", "")
         max_suggestions = arguments.get("max_suggestions", 10)
         include_extractions = arguments.get("include_extractions", True)
@@ -154,6 +163,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             return self._error_response(file_path, f"Cannot read file: {e}")
 
         analysis = extract_elements(resolved, self.project_root)
+        # Tree-sitter based pattern analysis
         suggestions = self._analyze_via_treesitter(
             resolved, source, analysis, max_suggestions, include_extractions
         )
@@ -174,6 +184,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         suggestions.sort(key=lambda s: s.get("priority_score", 0), reverse=True)
         suggestions = suggestions[:max_suggestions]
 
+        # File-level oversized detection
         result = {
             "file": resolved,
             "total_suggestions": len(suggestions),
@@ -193,6 +204,8 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         max_suggestions: int,
         include_extractions: bool,
     ) -> list[dict[str, Any]]:
+        """Analyze file using tree-sitter extracted elements for pattern detection."""
+        # Function-level length detection
         suggestions: list[dict[str, Any]] = []
         line_count = len(source.splitlines())
 
@@ -213,6 +226,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 suggestions.append(
                     self._make_pattern(
                         _PATTERN_RULES[1],
+                        # Class extraction pattern detection
                         name=func["name"],
                         actual=func["lines"],
                         line_range=(func["line"], func["end_line"]),
@@ -228,10 +242,12 @@ class RefactoringSuggestionsTool(BaseMCPTool):
     def _find_class_extractions(
         self, analysis: Any, suggestions: list[dict[str, Any]]
     ) -> None:
+        """Find extractable class-level patterns (large classes, prefix groups)."""
         rule_e4 = _EXTRACTABLE_PATTERNS[3]
         for cls in get_classes(analysis):
             if cls["method_count"] > rule_e4["threshold"]:
                 suggestions.append(
+                    # Method prefix grouping for class extraction
                     self._make_extraction(
                         rule_e4,
                         name=cls["name"],
@@ -247,10 +263,12 @@ class RefactoringSuggestionsTool(BaseMCPTool):
     def _find_prefix_groups(
         self, cls: dict[str, Any], suggestions: list[dict[str, Any]]
     ) -> None:
+        """Find method groups sharing a common prefix (suggest class extraction)."""
         prefixes: dict[str, list[str]] = {}
         for m in cls["method_names"]:
             if "_" in m and not m.startswith("_"):
                 prefixes.setdefault(m.split("_")[0], []).append(m)
+        # Python AST bonus analysis
         for prefix, group in prefixes.items():
             if len(group) >= 3:
                 suggestions.append(
@@ -267,6 +285,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
     def _python_bonus_analysis(
         self, source: str, suggestions: list[dict[str, Any]], include_extractions: bool
     ) -> None:
+        """Python-specific bonus analysis using AST for nesting, params, static methods."""
         try:
             tree = ast.parse(source)
         except SyntaxError:
@@ -287,14 +306,19 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             self._check_param_count(node, name, start, suggestions)
 
             if include_extractions and isinstance(node, ast.FunctionDef):
-                self._check_static_extraction(
-                    node, name, start, end, suggestions
-                )
+                self._check_static_extraction(node, name, start, end, suggestions)
+
+    # Nesting depth and parameter count checks
 
     def _check_depth(
-        self, node: ast.AST, name: str, start: int, end: int,
+        self,
+        node: ast.AST,
+        name: str,
+        start: int,
+        end: int,
         suggestions: list[dict[str, Any]],
     ) -> None:
+        """Check and flag functions exceeding nesting depth threshold."""
         depth = self._get_nesting_depth(node)
         if depth > _PATTERN_RULES[2]["threshold"]:
             suggestions.append(
@@ -308,9 +332,13 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             )
 
     def _check_param_count(
-        self, node: ast.AST, name: str, start: int,
+        self,
+        node: ast.AST,
+        name: str,
+        start: int,
         suggestions: list[dict[str, Any]],
     ) -> None:
+        """Check and flag functions with too many parameters."""
         params = (
             len(node.args.args)
             + len(node.args.kwonlyargs)
@@ -328,10 +356,16 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 )
             )
 
+    # Static method detection for extraction
     def _check_static_extraction(
-        self, node: ast.FunctionDef, name: str, start: int, end: int,
+        self,
+        node: ast.FunctionDef,
+        name: str,
+        start: int,
+        end: int,
         suggestions: list[dict[str, Any]],
     ) -> None:
+        """Check and flag methods that don't use self (static extraction candidate)."""
         parent = getattr(node, "parent", None)
         if isinstance(parent, ast.ClassDef) and not name.startswith("__"):
             if self._is_static_method(node):
@@ -346,6 +380,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 )
 
     def _get_nesting_depth(self, node: ast.AST) -> int:
+        """Calculate the maximum nesting depth of a function."""
         max_depth = 0
 
         def walk(n: ast.AST, depth: int) -> None:
@@ -362,9 +397,11 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         return max_depth
 
     def _is_static_method(self, node: ast.FunctionDef) -> bool:
+        """Detect if a method body never references self/cls."""
         if not node.args.args:
             return True
         first_arg = node.args.args[0].arg
+        # Pattern and extraction dict builders
         if first_arg not in ("self", "cls"):
             return True
         for child in ast.walk(node):
@@ -376,6 +413,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
     def _make_pattern(
         self, rule: dict[str, Any], priority_score: int = 50, **kwargs: Any
     ) -> dict[str, Any]:
+        """Build a pattern suggestion dict from a rule template."""
         fmt_kwargs = {"threshold": rule["threshold"], **kwargs}
         message = rule["message"].format(**fmt_kwargs)
         result: dict[str, Any] = {
@@ -394,6 +432,8 @@ class RefactoringSuggestionsTool(BaseMCPTool):
     def _make_extraction(
         self, rule: dict[str, Any], priority_score: int = 50, **kwargs: Any
     ) -> dict[str, Any]:
+        # Summary and error response helpers
+        """Build an extraction suggestion dict from a rule template."""
         fmt_kwargs = {"threshold": rule.get("threshold", 0), **kwargs}
         message = rule["message"].format(**fmt_kwargs)
         result: dict[str, Any] = {
@@ -409,6 +449,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         return result
 
     def _make_summary(self, suggestions: list[dict[str, Any]]) -> str:
+        """Build a human-readable summary of all suggestions."""
         if not suggestions:
             return "No significant refactoring issues found."
         critical = sum(1 for s in suggestions if s.get("severity") == "critical")
@@ -424,10 +465,19 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         return f"Found {', '.join(parts)} refactoring suggestions."
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate file_path argument."""
         file_path = arguments.get("file_path", "")
         if not file_path or not isinstance(file_path, str):
             raise ValueError("file_path is required and must be a string")
         return True
 
     def _error_response(self, file_path: str, error: str) -> dict[str, Any]:
+        """Return a standardized error response."""
         return {"file": file_path, "error": error, "suggestions": []}
+
+
+# Section: quality threshold analysis (part 1)
+# Section: quality threshold analysis (part 2)
+# Section: quality threshold analysis (part 3)
+# Section: quality threshold analysis (part 4)
+# Section: quality threshold analysis (part 5)

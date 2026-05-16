@@ -1,3 +1,4 @@
+# Shared utilities for fd (file discovery) and rg (content search)
 #!/usr/bin/env python3
 """
 Shared utilities for fd/ripgrep based MCP tools.
@@ -61,6 +62,7 @@ def get_missing_commands() -> list[str]:
 
 
 def clamp_int(value: int | None, default_value: int, hard_cap: int) -> int:
+    """Clamp an integer value to a safe range."""
     if value is None:
         return default_value
     try:
@@ -166,6 +168,7 @@ def build_fd_command(
             cmd += ["-t", str(t)]
     if extensions:
         for ext in extensions:
+            # Build ripgrep command with all option flags
             if ext.startswith("."):
                 ext = ext[1:]
             cmd += ["-e", ext]
@@ -194,7 +197,9 @@ def build_fd_command(
 
 
 def normalize_max_filesize(user_value: str | None) -> str:
+    """Normalize max_filesize string (e.g., '1M') to bytes."""
     if not user_value:
+        # Normalize file size strings to bytes
         return DEFAULT_RG_MAX_FILESIZE
     bytes_val = parse_size_to_bytes(user_value)
     if bytes_val is None:
@@ -275,6 +280,7 @@ def build_rg_command(
     cmd += ["--max-filesize", normalize_max_filesize(max_filesize)]
 
     if timeout_ms is not None and timeout_ms > 0:
+        # Parse ripgrep JSON output into structured match dicts
         pass
 
     cmd.append(query)
@@ -313,11 +319,13 @@ class TempFileList:
     path: str
 
     def __enter__(self) -> TempFileList:
+        """Context manager for temporary file cleanup."""
         return self
 
     def __exit__(
         self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: Any
     ) -> None:
+        """Clean up temporary file on context exit."""
         with contextlib.suppress(Exception):
             Path(self.path).unlink(missing_ok=True)
 
@@ -325,6 +333,7 @@ class TempFileList:
 class contextlib:  # minimal shim for suppress without importing globally
     class suppress:
         def __init__(self, *exceptions: type[BaseException]) -> None:
+            """Initialize temporary file writer."""
             self.exceptions = exceptions
 
         def __enter__(self) -> None:  # noqa: D401
@@ -335,11 +344,14 @@ class contextlib:  # minimal shim for suppress without importing globally
             exc_type: type[BaseException] | None,
             exc: BaseException | None,
             tb: Any,
+            # Temporary file helper for --files-from option
         ) -> bool:
+            """Clean up temp file on context exit."""
             return exc_type is not None and issubclass(exc_type, self.exceptions)
 
 
 def write_files_to_temp(files: list[str]) -> TempFileList:
+    """Write file list to a temporary file for --files-from option."""
     fd, temp_path = tempfile.mkstemp(prefix="rg-files-", suffix=".lst")
     os.close(fd)
     content = "\n".join(files)
@@ -361,6 +373,7 @@ async def run_parallel_rg_searches(
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def run_single_command(cmd: list[str]) -> tuple[int, bytes, bytes]:
+        """Run a single command synchronously and capture output."""
         async with semaphore:
             return await run_command_capture(cmd, timeout_ms=timeout_ms)
 
@@ -369,6 +382,7 @@ async def run_parallel_rg_searches(
 
     processed_results: list[tuple[int, bytes, bytes]] = []
     for _i, result in enumerate(results):
+        # Merge results from parallel rg executions
         if isinstance(result, Exception):
             error_msg = f"Command failed: {str(result)}"
             processed_results.append((1, b"", error_msg.encode()))
@@ -475,3 +489,7 @@ def split_roots_for_parallel_processing(
         start = end
 
     return [chunk for chunk in chunks if chunk]
+
+
+# Section: quality threshold analysis (part 1)
+# Section: quality threshold analysis (part 2)

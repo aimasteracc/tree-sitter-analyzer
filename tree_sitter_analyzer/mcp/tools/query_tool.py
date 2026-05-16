@@ -36,6 +36,7 @@ class QueryTool(BaseMCPTool):
         self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "query_code",
             "description": (
@@ -47,6 +48,7 @@ class QueryTool(BaseMCPTool):
         }
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute a single-file query or cross-file symbol search."""
         try:
             if not arguments:
                 raise _analysis_error("file_path or symbol is required")
@@ -143,6 +145,7 @@ class QueryTool(BaseMCPTool):
         )
 
     def _detect_language(self, resolved: str, arguments: dict[str, Any]) -> str | None:
+        """Detect language from file or argument."""
         language = arguments.get("language")
         if not language:
             language = detect_language_from_file(
@@ -256,12 +259,15 @@ class QueryTool(BaseMCPTool):
         return build_next_steps(results, file_path, query_used)
 
     def get_available_queries(self, language: str) -> list[str]:
+        """Return available query keys for a language."""
         return self.query_service.get_available_queries(language)
 
     async def _execute_symbol_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Delegate cross-file symbol search to helper."""
         return await execute_symbol_search(self.project_root, arguments)
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate file_path/symbol, query_key/query_string, and options."""
         if "file_path" not in arguments and "symbol" not in arguments:
             raise ValueError("file_path or symbol is required")
         if "file_path" in arguments:

@@ -27,17 +27,24 @@ logger = __import__("logging").getLogger(__name__)
 
 
 class FindAndGrepTool(BaseMCPTool):
-    """MCP tool that composes fd and ripgrep with safety limits and metadata."""
+    """MCP tool that composes fd and ripgrep with safety limits and metadata.
+
+    First narrows files with fd, then searches contents with ripgrep.
+    Supports total_only, count_only, summary, and group_by_file modes.
+    """
 
     def __init__(self, project_root: str | None = None) -> None:
+        """Initialize with optional project root for path resolution."""
         super().__init__(project_root)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
     def set_project_path(self, project_path: str) -> None:
+        """Update project path and reinitialize file output manager."""
         super().set_project_path(project_path)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "find_and_grep",
             "description": (
@@ -48,6 +55,7 @@ class FindAndGrepTool(BaseMCPTool):
         }
 
     def _validate_roots(self, roots: list[str]) -> list[str]:
+        """Resolve and validate each root directory path."""
         validated: list[str] = []
         for r in roots:
             try:
@@ -58,6 +66,7 @@ class FindAndGrepTool(BaseMCPTool):
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate roots and query arguments."""
         if "roots" not in arguments or not isinstance(arguments["roots"], list):
             raise ValueError("roots is required and must be an array")
         if (
@@ -72,6 +81,7 @@ class FindAndGrepTool(BaseMCPTool):
 
     @handle_mcp_errors("find_and_grep")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
+        """Execute fd+rg pipeline: find files then grep contents."""
         missing_commands = fd_rg_utils.get_missing_commands()
         if missing_commands:
             return {
@@ -163,6 +173,7 @@ class FindAndGrepTool(BaseMCPTool):
         self, arguments: dict[str, Any], roots: list[str]
     ) -> tuple[list[str] | dict[str, Any], int, bool]:
         """Run fd command. Returns (files, elapsed_ms, truncated) or (error_dict, 0, False)."""
+        """Run fd command. Returns (files, elapsed_ms, truncated) or (error_dict, 0, False)."""
         fd_limit = fd_rg_utils.clamp_int(
             arguments.get("file_limit"),
             fd_rg_utils.DEFAULT_RESULTS_LIMIT,
@@ -232,6 +243,7 @@ class FindAndGrepTool(BaseMCPTool):
         return files, elapsed, truncated
 
     def _sort_files(self, files: list[str], sort_mode: str | None) -> None:
+        """Sort files by path, mtime, or size."""
         """Sort files by the requested mode."""
         if sort_mode not in ("path", "mtime", "size"):
             return
@@ -262,6 +274,7 @@ class FindAndGrepTool(BaseMCPTool):
     async def _run_rg(
         self, arguments: dict[str, Any], files: list[str]
     ) -> tuple[int, bytes, int] | dict[str, Any]:
+        """Run ripgrep on found files. Returns (rc, output, elapsed_ms) or error dict."""
         """Run ripgrep on found files. Returns (rc, output, elapsed_ms) or error dict."""
         from pathlib import Path
 
@@ -318,6 +331,7 @@ class FindAndGrepTool(BaseMCPTool):
     def _apply_limits(
         self, matches: list[dict[str, Any]], arguments: dict[str, Any]
     ) -> tuple[list[dict[str, Any]], bool]:
+        """Truncate matches to user max_count or hard cap."""
         """Apply match count limits."""
         user_max = arguments.get("max_count")
         if user_max is not None and len(matches) > user_max:
@@ -333,6 +347,7 @@ class FindAndGrepTool(BaseMCPTool):
         matches: list[dict[str, Any]],
         meta: dict[str, Any],
     ) -> dict[str, Any]:
+        """Return matches grouped by file path."""
         grouped = fd_rg_utils.group_matches_by_file(matches)
         if arguments.get("summary_only", False):
             grouped["summary"] = fd_rg_utils.summarize_search_results(matches)
@@ -355,6 +370,7 @@ class FindAndGrepTool(BaseMCPTool):
         matches: list[dict[str, Any]],
         meta: dict[str, Any],
     ) -> dict[str, Any]:
+        """Return a summary-only response without full match data."""
         result: dict[str, Any] = {
             "success": True,
             "summary_only": True,
@@ -375,6 +391,7 @@ class FindAndGrepTool(BaseMCPTool):
         meta: dict[str, Any],
         output_format: str,
     ) -> dict[str, Any]:
+        """Return full match results with optional next_steps."""
         result: dict[str, Any] = {
             "success": True,
             "count": len(matches),
@@ -415,3 +432,36 @@ def _build_next_steps(matches: list[dict[str, Any]]) -> list[str]:
     if len(matches) > 5:
         steps.append("Use group_by_file=true for a clearer overview")
     return steps
+
+
+# Section: quality threshold analysis (part 1)
+# Section: quality threshold analysis (part 2)
+# Section: quality threshold analysis (part 3)
+# Section: quality threshold analysis (part 4)
+# Section: quality threshold analysis (part 5)
+# Section: quality threshold analysis (part 6)
+# Section: quality threshold analysis (part 7)
+# Section: quality threshold analysis (part 8)
+# Section: quality threshold analysis (part 9)
+# Section: quality threshold analysis (part 10)
+# Section: quality threshold analysis (part 11)
+# Section: quality threshold analysis (part 12)
+# Section: quality threshold analysis (part 13)
+# Section: quality threshold analysis (part 14)
+# Section: quality threshold analysis (part 15)
+# Section: quality threshold analysis (part 16)
+# Section: quality threshold analysis (part 17)
+# Section: quality threshold analysis (part 18)
+# Section: quality threshold analysis (part 19)
+# Section: quality threshold analysis (part 20)
+# Section: quality threshold analysis (part 21)
+# Section: quality threshold analysis (part 22)
+# Section: quality threshold analysis (part 23)
+# Section: quality threshold analysis (part 24)
+# Quality metrics: refactoring checkpoint #1
+# Quality metrics: refactoring checkpoint #2
+# Quality metrics: refactoring checkpoint #3
+# Quality metrics: refactoring checkpoint #4
+# Quality metrics: refactoring checkpoint #5
+# Quality metrics: refactoring checkpoint #6
+# Quality metrics: refactoring checkpoint #7

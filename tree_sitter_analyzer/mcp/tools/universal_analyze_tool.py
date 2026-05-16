@@ -43,10 +43,12 @@ class UniversalAnalyzeTool(BaseMCPTool):
         self.analysis_engine = get_analysis_engine(project_root)
 
     def set_project_path(self, project_path: str) -> None:
+        """Reset analysis engine when project path changes."""
         super().set_project_path(project_path)
         self.analysis_engine = get_analysis_engine(project_path)
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "analyze_code_universal",
             "description": (
@@ -57,6 +59,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate file_path, language, and output arguments."""
         if "file_path" not in arguments:
             raise ValueError("Required field 'file_path' is missing")
         file_path = arguments["file_path"]
@@ -84,6 +87,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
 
     @handle_mcp_errors("universal_analyze")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute universal analysis using the analysis engine."""
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
 
@@ -228,6 +232,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
     # -- Advanced analyzer extractors --
 
     def _extract_basic_metrics(self, result: Any) -> dict[str, Any]:
+        """Extract basic file metrics (lines, functions, classes)."""
         stats = result.get_statistics()
         counts = count_elements_by_type(result.elements)
         return {
@@ -241,6 +246,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         }
 
     def _extract_detailed_metrics(self, result: Any) -> dict[str, Any]:
+        """Extract detailed metrics with complexity and dependencies."""
         data = self._extract_basic_metrics(result)
         methods = [
             e for e in result.elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
@@ -256,6 +262,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         return data
 
     def _extract_structure_info(self, result: Any) -> dict[str, Any]:
+        """Extract structure information from analysis result."""
         return {
             "structure": {
                 "package": result.package.name if result.package else None,
@@ -275,6 +282,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         }
 
     def _extract_comprehensive_metrics(self, result: Any) -> dict[str, Any]:
+        """Extract comprehensive metrics combining all dimensions."""
         data = self._extract_detailed_metrics(result)
         data.update(self._extract_structure_info(result))
         return data
@@ -284,6 +292,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
     def _extract_universal_basic_metrics(
         self, analysis_dict: dict[str, Any]
     ) -> dict[str, Any]:
+        """Extract basic metrics using universal tree-sitter path."""
         elements = analysis_dict.get("elements", [])
         counts = count_dict_elements_by_type(elements)
         return {
@@ -299,6 +308,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
     def _extract_universal_detailed_metrics(
         self, analysis_dict: dict[str, Any]
     ) -> dict[str, Any]:
+        """Extract detailed metrics using universal tree-sitter path."""
         data = self._extract_universal_basic_metrics(analysis_dict)
         if "query_results" in analysis_dict:
             data["query_results"] = analysis_dict["query_results"]
@@ -307,6 +317,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
     def _extract_universal_structure_info(
         self, analysis_dict: dict[str, Any]
     ) -> dict[str, Any]:
+        """Extract structure info using universal tree-sitter path."""
         return {
             "structure": analysis_dict.get("structure", {}),
             "queries_executed": analysis_dict.get("queries_executed", []),
@@ -315,11 +326,13 @@ class UniversalAnalyzeTool(BaseMCPTool):
     def _extract_universal_comprehensive_metrics(
         self, analysis_dict: dict[str, Any]
     ) -> dict[str, Any]:
+        """Extract comprehensive metrics using universal tree-sitter path."""
         data = self._extract_universal_detailed_metrics(analysis_dict)
         data.update(self._extract_universal_structure_info(analysis_dict))
         return data
 
     async def _get_available_queries(self, language: str) -> dict[str, Any]:
+        """Return available query keys for a language."""
         try:
             if language == "java":
                 return {

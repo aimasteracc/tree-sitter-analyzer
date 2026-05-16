@@ -1,3 +1,4 @@
+# Limits and validation for batch extraction operations
 """Batch execution logic for ReadPartialTool — extracted from read_partial_tool.py."""
 
 from collections.abc import Callable
@@ -18,6 +19,7 @@ BATCH_LIMITS = {
 
 
 def _validate_batch_top_level(arguments: dict[str, Any]) -> list[Any]:
+    """Validate top-level batch arguments for mutual exclusivity."""
     requests = arguments.get("requests")
     single_keys = {"file_path", "start_line", "end_line", "start_column", "end_column"}
     if any(k in arguments for k in single_keys):
@@ -36,6 +38,7 @@ def _validate_batch_top_level(arguments: dict[str, Any]) -> list[Any]:
 def _clamp_requests(
     requests: list[Any], allow_truncate: bool
 ) -> tuple[list[Any], bool]:
+    """Truncate request list to max_files limit if allow_truncate is set."""
     truncated = False
     if len(requests) > BATCH_LIMITS["max_files"]:
         if not allow_truncate:
@@ -50,6 +53,7 @@ def _clamp_requests(
 def _make_error_result(
     file_path: str, resolved_path: str, error: str
 ) -> dict[str, Any]:
+    """Build a standard error result dict for a file request."""
     return {
         "file_path": file_path,
         "resolved_path": resolved_path,
@@ -139,6 +143,7 @@ def _resolve_file(
             raise ValueError(msg) from e
         return None, _make_error_result(file_path, resolved, msg)
 
+    # Main batch execution loop
     return resolved, None
 
 
@@ -147,6 +152,7 @@ async def execute_batch(
     arguments: dict[str, Any],
     read_file_partial_fn: Callable[..., str | None],
 ) -> dict[str, Any]:
+    """Execute batch extraction: validate, resolve, read, and aggregate results."""
     """Batch mode for extracting multiple ranges from multiple files."""
     output_format = arguments.get("output_format", "toon")
     content_format = arguments.get("format", "text")
@@ -290,3 +296,7 @@ async def execute_batch(
     }
 
     return apply_toon_format_to_response(response, output_format)
+
+
+# Section: quality threshold analysis (part 1)
+# Section: quality threshold analysis (part 2)

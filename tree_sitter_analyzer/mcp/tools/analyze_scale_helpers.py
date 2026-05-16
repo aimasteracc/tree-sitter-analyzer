@@ -1,3 +1,4 @@
+# Helper functions for code scale analysis
 """Extracted helper functions for AnalyzeScaleTool — keeps the main tool under 800 lines."""
 
 from typing import Any
@@ -26,7 +27,10 @@ def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
 
     # Extract class information with position from unified analysis engine
     classes = [
-        e for e in analysis_result.elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+        e
+        for e in analysis_result.elements
+        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+        # Build main analysis result dict
     ]
     for cls in classes:
         class_info = {
@@ -77,6 +81,7 @@ def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
             )
 
     # Extract field information with position
+    # Build detailed per-element breakdown
     # Extract field information from unified analysis engine
     fields = [
         e
@@ -127,6 +132,7 @@ def extract_structural_overview_universal(
         "imports": [],
         "complexity_hotspots": [],
     }
+    # Extract structural overview from tree-sitter elements
 
     if not analysis_result or not hasattr(analysis_result, "elements"):
         return overview
@@ -177,6 +183,7 @@ def extract_structural_overview_universal(
             )
         elif etype == "import":
             overview["imports"].append(
+                # Extract structural overview for non-Python files
                 {
                     "name": name,
                     "line": start_line,
@@ -227,6 +234,7 @@ def generate_llm_guidance(
 
     # Recommend tools based on file size and complexity
     if total_lines > 200:
+        # Generate LLM-oriented guidance based on analysis
         guidance["recommended_tools"].append("extract_code_section")
         guidance["recommended_tools"].append("query_code")
 
@@ -257,6 +265,7 @@ def generate_llm_guidance(
         guidance["key_areas"].append(
             "Multiple classes - consider analyzing class relationships"
         )
+    # Compute cyclomatic complexity for a function
 
     if len(structural_overview["methods"]) > 20:
         guidance["key_areas"].append(
@@ -297,6 +306,7 @@ def generate_llm_guidance(
         "kotlin": [
             "function",
             "class",
+            # Extract element details with line ranges
             "data_class",
             "object",
             "annotation",
@@ -337,6 +347,7 @@ def generate_llm_guidance(
     }
     if language in lang_queries:
         guidance["suggested_queries"] = lang_queries[language]
+    # Count elements by type from analysis
 
     # Generate SMART workflow steps
     steps = ["check_code_scale (done)"]
@@ -377,6 +388,7 @@ def generate_llm_guidance(
     # Include available queries for this language (capped at 15 to save tokens)
     from ...query_loader import get_query_loader
 
+    # Build summary statistics from element counts
     loader = get_query_loader()
     all_queries = loader.list_queries_for_language(language)
     if all_queries:
@@ -417,6 +429,7 @@ def build_analysis_result(
         "file_path": file_path,
         "language": language,
         "file_metrics": file_metrics,
+        # Determine if file needs structural review
         "summary": {
             "classes": count_elements_fn(elements, ELEMENT_TYPE_CLASS, "class"),
             "methods": count_elements_fn(elements, ELEMENT_TYPE_FUNCTION, "function"),
@@ -457,6 +470,7 @@ def build_detailed_analysis(analysis_result: Any, file_path: str) -> dict[str, A
                 e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)
             ]
         ],
+        # Format scale rating as human-readable label
         "methods": [
             {
                 "name": method.name,
@@ -496,3 +510,8 @@ def build_detailed_analysis(analysis_result: Any, file_path: str) -> dict[str, A
             ]
         ],
     }
+
+
+# Section: quality threshold analysis (part 1)
+# Section: quality threshold analysis (part 2)
+# Section: quality threshold analysis (part 3)

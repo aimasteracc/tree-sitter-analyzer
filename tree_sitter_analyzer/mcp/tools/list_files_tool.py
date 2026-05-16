@@ -28,6 +28,7 @@ class ListFilesTool(BaseMCPTool):
     """MCP tool that wraps fd to list files with safety limits."""
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "list_files",
             "description": (
@@ -37,6 +38,7 @@ class ListFilesTool(BaseMCPTool):
         }
 
     def _validate_roots(self, roots: list[str]) -> list[str]:
+        """Resolve and validate each root directory path."""
         if not roots or not isinstance(roots, list):
             raise ValueError("roots must be a non-empty array of strings")
         validated: list[str] = []
@@ -51,6 +53,7 @@ class ListFilesTool(BaseMCPTool):
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate roots and all option types."""
         if "roots" not in arguments:
             raise ValueError("roots is required")
         roots = arguments["roots"]
@@ -83,6 +86,7 @@ class ListFilesTool(BaseMCPTool):
 
     @handle_mcp_errors("list_files")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute fd-based file listing with safety limits."""
         if not fd_rg_utils.check_external_command("fd"):
             return {
                 "success": False,
@@ -144,12 +148,14 @@ class ListFilesTool(BaseMCPTool):
         )
 
     def _resolve_effective_types(self, arguments: dict[str, Any]) -> list[str] | None:
+        """Determine effective fd type filter from arguments."""
         effective_types = arguments.get("types")
         if effective_types is None and arguments.get("extensions"):
             return ["f"]
         return effective_types
 
     def _resolve_no_ignore(self, arguments: dict[str, Any]) -> bool:
+        """Determine no_ignore flag with smart gitignore detection."""
         no_ignore = bool(arguments.get("no_ignore", False))
         if no_ignore:
             return no_ignore
@@ -174,6 +180,7 @@ class ListFilesTool(BaseMCPTool):
         arguments: dict[str, Any],
         limit: int,
     ) -> dict[str, Any]:
+        """Return count-only response with optional file output."""
         total_count = min(len(lines), fd_rg_utils.MAX_RESULTS_HARD_CAP)
         truncated = len(lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP
 
@@ -225,6 +232,7 @@ class ListFilesTool(BaseMCPTool):
         no_ignore: bool,
         effective_types: list[str] | None,
     ) -> dict[str, Any]:
+        """Return detailed file listing with metadata and optional file output."""
         truncated = len(lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP
         if truncated:
             lines = lines[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
@@ -272,6 +280,7 @@ class ListFilesTool(BaseMCPTool):
     def _parse_fd_output(
         self, lines: list[str], effective_types: list[str] | None
     ) -> list[dict[str, Any]]:
+        """Parse fd output lines into structured results with file metadata."""
         types_only_files = effective_types == ["f"]
         results: list[dict[str, Any]] = []
         for p in lines:
@@ -308,6 +317,7 @@ class ListFilesTool(BaseMCPTool):
         output_file: str,
         output_format: str,
     ) -> str | None:
+        """Save content to output file via FileOutputManager."""
         try:
             formatted, _ = format_for_file_output(content, output_format)
             return file_manager.save_to_file(content=formatted, base_name=output_file)

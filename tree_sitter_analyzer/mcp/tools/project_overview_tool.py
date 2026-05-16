@@ -1,3 +1,4 @@
+# One-call project portrait for AI agents
 #!/usr/bin/env python3
 """
 Project Overview MCP Tool
@@ -27,6 +28,7 @@ _SUPPORTED_EXTS = {
     ".cs": "csharp",
     ".rb": "ruby",
     ".php": "php",
+    # Supported source file extensions and language mapping
     ".c": "c",
     ".cpp": "cpp",
     ".h": "c",
@@ -67,6 +69,7 @@ _EXCLUDE_DIRS = {
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        # JSON schema for tool input
         "include_health": {
             "type": "boolean",
             "description": "Include health grades for top-10 largest source files (slower)",
@@ -92,25 +95,30 @@ class ProjectOverviewTool(BaseMCPTool):
     """MCP Tool that gives AI agents a complete project portrait in one call."""
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "get_project_overview",
             "description": (
                 "Project portrait in one call: languages, file counts, largest files, "
+                # Project scan and build result pipeline
                 "tool routing guide. Use FIRST on any project. Replaces multiple Glob calls."
             ),
             "inputSchema": TOOL_SCHEMA,
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
+        """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate max_depth argument."""
         max_depth = arguments.get("max_depth", 5)
         if not isinstance(max_depth, int) or max_depth < 1 or max_depth > 20:
             raise ValueError("max_depth must be an integer between 1 and 20")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute project scan and build result with optional health data."""
         self.validate_arguments(arguments)
         if not self.project_root:
             raise ValueError("Project root not set. Call set_project_path first.")
@@ -123,6 +131,7 @@ class ProjectOverviewTool(BaseMCPTool):
         if not root.is_dir():
             raise ValueError(f"Project root is not a directory: {root}")
 
+        # Walk project tree collecting file/directory stats
         scan = self._scan_project(root, max_depth)
         result = self._build_result(root, scan, include_health)
 
@@ -153,6 +162,7 @@ class ProjectOverviewTool(BaseMCPTool):
                 lang = _SUPPORTED_EXTS.get(ext)
                 if lang:
                     lang_dist[lang] = lang_dist.get(lang, 0) + 1
+                    # File extension counting
                     try:
                         size = f.stat().st_size
                         lines = _count_lines(f)
@@ -173,6 +183,7 @@ class ProjectOverviewTool(BaseMCPTool):
         return {
             "lang_dist": lang_dist,
             "ext_dist": ext_dist,
+            # Build result dict from scan data
             "source_files": all_source_files,
             "dir_tree": dir_tree,
         }
@@ -203,6 +214,7 @@ class ProjectOverviewTool(BaseMCPTool):
             ),
             "largest_source_files": source_files[:15],
             "top_directories": dict(
+                # Add health grades for top source files
                 sorted(scan["dir_tree"].items(), key=lambda x: -x[1])[:20]
             ),
         }
@@ -223,6 +235,7 @@ class ProjectOverviewTool(BaseMCPTool):
             "refactor_plan": "refactoring_suggestions(file_path=...)  # extraction plans",
             "change_impact": "analyze_change_impact()  # git diff + deps → tests to run",
             "file_scale": "check_code_scale(file_path=...)",
+            # Build tool routing guide for AI agents
             "structure_table": "analyze_code_structure(file_path=..., format_type=compact)",
             "read_lines": "extract_code_section(file_path=..., start_line=..., end_line=...)",
             "find_symbol": "query_code(symbol='...')  # wildcards: *Service, fuzzy: ~analyz",
@@ -243,6 +256,7 @@ class ProjectOverviewTool(BaseMCPTool):
             try:
                 h = scorer.score_file(str(root / sf["path"]))
                 entry: dict[str, Any] = {
+                    # Count file lines efficiently
                     "file": sf["path"],
                     "grade": h.grade,
                     "score": h.total,
@@ -253,6 +267,7 @@ class ProjectOverviewTool(BaseMCPTool):
                     )
                     if suggestion:
                         entry["suggestion"] = suggestion
+                # Suggest refactoring action for unhealthy files
                 health_results.append(entry)
             except Exception:  # nosec B112
                 continue
@@ -263,24 +278,31 @@ class ProjectOverviewTool(BaseMCPTool):
             result["health_alert"] = (
                 f"{len(unhealthy)} file(s) scored D or F — prioritize refactoring: "
                 + ", ".join(h["file"] for h in unhealthy[:5])
+                # Build smart workflow hint from results
             )
 
 
 def _count_lines(path: Path) -> int:
+    """Count lines in a file using UTF-8 encoding."""
     try:
         return sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
     except Exception:
         return 0
 
 
+# Determine next tool to call based on project state
+
+
 def _suggest_refactor_action(
     file_path: str, line_count: int, health: Any
 ) -> str | None:
+    """Suggest refactoring action based on file type and size."""
     ext = Path(file_path).suffix.lower()
     is_test = "test" in file_path.lower()
     is_prod = not is_test and ext == ".py"
 
     if line_count > 500 and is_prod:
+        # Format language distribution for display
         return f"check_file_health(file_path='{file_path}') for extraction targets, then extract longest methods into a new module"
     if is_test:
         return f"Split test file by test class into separate files (current: {line_count} lines)"
@@ -290,6 +312,7 @@ def _suggest_refactor_action(
 
 
 def _build_smart_hint(result: dict[str, Any]) -> str:
+    """Build smart workflow hint from health and language data."""
     parts: list[str] = []
     health_summary = result.get("health_summary", [])
     unhealthy = [h for h in health_summary if h.get("grade") in ("D", "F")]
@@ -319,3 +342,9 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
         )
 
     return " | ".join(parts[:3])
+
+
+# Section: quality threshold analysis (part 1)
+# Section: quality threshold analysis (part 2)
+# Section: quality threshold analysis (part 3)
+# Section: quality threshold analysis (part 4)

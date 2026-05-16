@@ -1,3 +1,4 @@
+# Code scale analysis: metrics, complexity, and structure
 #!/usr/bin/env python3
 """
 Analyze Code Scale MCP Tool
@@ -27,6 +28,7 @@ from .analyze_scale_helpers import (
 )
 from .base_tool import BaseMCPTool
 
+# JSON schema for tool input validation
 logger = setup_logger(__name__)
 
 TOOL_SCHEMA: dict[str, Any] = {
@@ -70,6 +72,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         logger.info("AnalyzeScaleTool initialized with security validation")
 
     def set_project_path(self, project_path: str) -> None:
+        """Reset analysis engine when project path changes."""
         super().set_project_path(project_path)
         self.analysis_engine = get_analysis_engine(project_path)
         logger.info(f"AnalyzeScaleTool project path updated to: {project_path}")
@@ -77,6 +80,7 @@ class AnalyzeScaleTool(BaseMCPTool):
     def _calculate_file_metrics(
         self, file_path: str, language: str | None = None
     ) -> dict[str, Any]:
+        """Compute file-level metrics (lines, complexity, size)."""
         try:
             metrics = compute_file_metrics(
                 file_path, language=language, project_root=self.project_root
@@ -100,17 +104,20 @@ class AnalyzeScaleTool(BaseMCPTool):
             }
 
     def _extract_structural_overview(self, analysis_result: Any) -> dict[str, Any]:
+        """Extract structural overview using Python-specific analysis."""
         return extract_structural_overview(analysis_result)
 
     def _extract_structural_overview_universal(
         self, analysis_result: Any
     ) -> dict[str, Any]:
+        """Extract structural overview using universal tree-sitter analysis."""
         return extract_structural_overview_universal(analysis_result)
 
     @staticmethod
     def _count_elements(
         elements: list, element_type_const: str, element_type_str: str
     ) -> int:
+        """Count elements by type from analysis result."""
         count = 0
         for e in elements:
             if is_element_of_type(e, element_type_const):
@@ -122,12 +129,15 @@ class AnalyzeScaleTool(BaseMCPTool):
     def _generate_llm_guidance(
         self, file_metrics: dict[str, Any], structural_overview: dict[str, Any]
     ) -> dict[str, Any]:
+        """Generate LLM-oriented guidance based on analysis."""
         return generate_llm_guidance(file_metrics, structural_overview)
 
     def get_tool_schema(self) -> dict[str, Any]:
+        """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute code scale analysis for single or batch files."""
         if "file_paths" in arguments and arguments["file_paths"] is not None:
             return await self._execute_metrics_batch(arguments)
 
@@ -189,12 +199,14 @@ class AnalyzeScaleTool(BaseMCPTool):
                 )
 
                 return apply_toon_format_to_response(result, output_format)
+        # Language detection with argument override
 
         except Exception as e:
             logger.error(f"Error analyzing {file_path}: {e}")
             raise
 
     def _resolve_language(self, resolved: str, language: str | None) -> str:
+        """Detect language from file extension or argument override."""
         if language:
             return language
         detected = detect_language_from_file(resolved, project_root=self.project_root)
@@ -207,6 +219,7 @@ class AnalyzeScaleTool(BaseMCPTool):
     async def _run_structural_analysis(
         self, resolved: str, language: str, include_details: bool
     ) -> tuple[Any, dict[str, Any]]:
+        """Run structural analysis using tree-sitter elements."""
         if language == "java":
             request = AnalysisRequest(
                 file_path=resolved,
@@ -249,6 +262,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         include_guidance: bool,
         include_details: bool,
     ) -> dict[str, Any]:
+        """Build enhanced result with metrics, structure, and guidance."""
         result = build_analysis_result(
             file_path,
             language,
@@ -261,7 +275,9 @@ class AnalyzeScaleTool(BaseMCPTool):
         if include_guidance:
             guidance_metrics = {**file_metrics, "language": language}
             result["llm_guidance"] = self._generate_llm_guidance(
-                guidance_metrics, structural_overview
+                guidance_metrics,
+                structural_overview,
+                # Batch metrics computation for multiple files
             )
 
         if include_details:
@@ -272,6 +288,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         return result
 
     async def _execute_metrics_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Execute batch metrics computation for multiple files."""
         output_format = arguments.get("output_format", "toon")
         metrics_only = bool(arguments.get("metrics_only", False))
         file_paths = arguments.get("file_paths")
@@ -294,6 +311,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         sem = asyncio.Semaphore(4)
 
         async def _one(fp: str) -> dict[str, Any]:
+            """Analyze a single file in batch mode."""
             async with sem:
                 if not isinstance(fp, str) or not fp.strip():
                     return {
@@ -341,6 +359,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         return apply_toon_format_to_response(response, output_format)
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate file_path and option arguments."""
         if "file_paths" in arguments and arguments["file_paths"] is not None:
             if "file_path" in arguments:
                 raise ValueError("file_paths is mutually exclusive with file_path")
@@ -386,6 +405,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         include_guidance: bool,
         output_format: str = "toon",
     ) -> dict[str, Any]:
+        """Create analysis for non-source files (JSON, YAML, etc.)."""
         total_lines = file_metrics["total_lines"]
         result: dict[str, Any] = {
             "success": True,
@@ -426,6 +446,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "check_code_scale",
             "description": (
@@ -438,3 +459,5 @@ class AnalyzeScaleTool(BaseMCPTool):
 
 # Tool instance for easy access
 analyze_scale_tool = AnalyzeScaleTool()
+# Section: quality threshold analysis (part 1)
+# Section: quality threshold analysis (part 2)

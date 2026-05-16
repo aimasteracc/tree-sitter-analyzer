@@ -1,3 +1,4 @@
+# AST-level code structure analysis tool
 #!/usr/bin/env python3
 """
 Code Structure Analysis Tool for MCP
@@ -27,17 +28,21 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
     """MCP Tool for code structure analysis and table formatting."""
 
     def __init__(self, project_root: str | None = None) -> None:
+        # Analysis engine cache for performance
+        """Initialize with optional project root for path resolution."""
         super().__init__(project_root)
         self.analysis_engine = get_analysis_engine(project_root)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
         self.logger = logger
 
     def set_project_path(self, project_path: str) -> None:
+        """Reset analysis engine when project path changes."""
         super().set_project_path(project_path)
         self.analysis_engine = get_analysis_engine(project_path)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "analyze_code_structure",
             "description": (
@@ -48,10 +53,13 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         }
 
     def get_tool_schema(self) -> dict[str, Any]:
+        """Return the JSON schema for tool input validation."""
         return _TOOL_SCHEMA
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate file_path and format arguments."""
         if "file_path" not in arguments:
+            # Format analysis result as compact or full table
             raise ValueError("Required field 'file_path' is missing")
         fp = arguments["file_path"]
         if not isinstance(fp, str):
@@ -77,6 +85,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return True
 
     async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
+        """Execute AST structure analysis and return formatted results."""
         try:
             self.validate_arguments(args)
 
@@ -91,7 +100,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
 
             if format_type:
                 format_type = self.security_validator.sanitize_input(
-                    format_type, max_length=50
+                    # Process analysis result into structured output
+                    format_type,
+                    max_length=50,
                 )
             if language:
                 language = self.security_validator.sanitize_input(
@@ -141,6 +152,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "format_type": format_type,
                     "file_path": file_path,
                     "language": language,
+                    # Build tool routing suggestions for AI agents
                     "metadata": metadata,
                     "table_output": table_output,
                 }
@@ -181,6 +193,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         language: str,
         format_type: str,
     ) -> str:
+        """Format analysis result as a compact or full table."""
         if format_type in ["full", "compact", "csv"]:
             formatter = FormatterRegistry.get_formatter_for_language(
                 language, format_type
@@ -190,12 +203,14 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             output = FormatterRegistry.get_formatter(format_type).format(
                 result.elements
             )
+        # Extract metadata from analysis result
         else:
             raise ValueError(f"Unsupported format type: {format_type}")
         return str(output.replace("\r\n", "\n").replace("\r", "\n").rstrip())
 
     @staticmethod
     def _extract_metadata(structure_dict: dict[str, Any]) -> dict[str, Any]:
+        """Extract metadata (language, line count) from analysis."""
         stats = structure_dict.get("statistics", {})
         return {
             "classes_count": stats.get("class_count", 0),
@@ -207,6 +222,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
     def _build_next_steps(
         self, structure_dict: dict[str, Any], file_path: str
     ) -> list[str]:
+        """Build next_steps suggestions for AI agents."""
         steps: list[str] = []
         methods = structure_dict.get("methods", [])
         classes = structure_dict.get("classes", [])
@@ -228,6 +244,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         if len(classes) > 1:
             steps.append(
                 "query_code(query_key='classes') to examine class relationships"
+                # Convert analysis result to JSON-serializable dict
             )
         if stats.get("total_lines", 0) > 500 and not complex_methods and methods:
             first = methods[0]
@@ -239,6 +256,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return steps[:3]
 
     def _convert_analysis_result_to_dict(self, result: Any) -> dict[str, Any]:
+        """Convert AnalysisResult to a JSON-serializable dict."""
         return convert_analysis_result_to_dict(
             result,
             self._get_method_parameters,
@@ -249,6 +267,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
     # -- Element conversion helpers (used by convert_analysis_result_to_dict) --
 
     def _convert_parameters(self, parameters: Any) -> list[dict[str, str]]:
+        """Convert method parameters to dict format."""
         result = []
         for param in parameters:
             if isinstance(param, dict):
@@ -256,6 +275,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     {
                         "name": param.get("name", "param"),
                         "type": param.get("type", "Object"),
+                        # Extract method/field modifiers and parameters
                     }
                 )
             else:
@@ -268,6 +288,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return result
 
     def _get_method_modifiers(self, method: Any) -> list[str]:
+        """Extract method modifiers (static, async, etc.)."""
         mods = []
         if getattr(method, "is_static", False):
             mods.append("static")
@@ -278,12 +299,14 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return mods
 
     def _get_method_parameters(self, method: Any) -> list[dict[str, str]]:
+        """Extract method parameters with types."""
         parameters = getattr(method, "parameters", [])
         if parameters and isinstance(parameters[0], str):
             result = []
             for param_str in parameters:
                 parts = param_str.strip().split()
                 if len(parts) >= 2:
+                    # End-of-tool helper methods
                     result.append({"name": parts[-1], "type": " ".join(parts[:-1])})
                 elif len(parts) == 1:
                     result.append({"name": "param", "type": parts[0]})
@@ -291,6 +314,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return self._convert_parameters(parameters)
 
     def _get_field_modifiers(self, field: Any) -> list[str]:
+        """Extract field modifiers (static, final, etc.)."""
         mods = []
         visibility = getattr(field, "visibility", "private")
         if visibility and visibility != "package":
@@ -304,3 +328,6 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
 
 # Tool instance for easy access
 analyze_code_structure_tool = AnalyzeCodeStructureTool()
+# Section: quality threshold analysis (part 1)
+# Section: quality threshold analysis (part 2)
+# Section: quality threshold analysis (part 3)

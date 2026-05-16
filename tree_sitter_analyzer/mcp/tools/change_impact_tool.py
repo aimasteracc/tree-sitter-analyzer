@@ -41,6 +41,7 @@ TOOL_SCHEMA: dict[str, Any] = {
 
 
 def _run_git(args: list[str], cwd: str | None = None) -> tuple[int, str]:
+    """Run a git subprocess and return (returncode, stdout)."""
     try:
         result = subprocess.run(  # nosec B603
             ["git"] + args,
@@ -55,6 +56,7 @@ def _run_git(args: list[str], cwd: str | None = None) -> tuple[int, str]:
 
 
 def _get_changed_files(mode: str, project_root: str | None) -> list[str]:
+    """Get list of changed file paths from git diff."""
     if mode == "staged":
         rc, out = _run_git(["diff", "--cached", "--name-only"], cwd=project_root)
     elif mode == "branch":
@@ -68,6 +70,7 @@ def _get_changed_files(mode: str, project_root: str | None) -> list[str]:
 
 
 def _get_diff_stat(mode: str, project_root: str | None) -> str:
+    """Get diff stat summary from git."""
     if mode == "staged":
         rc, out = _run_git(["diff", "--cached", "--stat"], cwd=project_root)
     elif mode == "branch":
@@ -81,6 +84,7 @@ def _find_test_files(
     changed_files: list[str],
     graph_nodes: set[str],
 ) -> dict[str, list[str]]:
+    """Map changed files to related test files using stem matching."""
     test_dirs = {"tests/", "test/", "spec/", "__tests__/"}
     test_suffixes = (
         "_test.py",
@@ -122,6 +126,7 @@ def _assess_risk(
     affected: set[str],
     graph: DependencyGraph,
 ) -> str:
+    """Assess change risk level based on blast radius size."""
     if not changed_files:
         return "none"
     total_affected = len(affected)
@@ -136,9 +141,11 @@ class ChangeImpactTool(BaseMCPTool):
     """Analyze the impact of code changes using git diff + dependency graph."""
 
     def get_tool_schema(self) -> dict[str, Any]:
+        """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
 
     def get_tool_definition(self) -> dict[str, Any]:
+        """Return the MCP tool name, description, and input schema."""
         return {
             "name": "analyze_change_impact",
             "description": (
@@ -149,6 +156,7 @@ class ChangeImpactTool(BaseMCPTool):
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        """Validate mode argument."""
         if "mode" in arguments and arguments["mode"] not in (
             "diff",
             "staged",
@@ -158,6 +166,7 @@ class ChangeImpactTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Analyze git diff + dependency graph for change impact."""
         mode = arguments.get("mode", "diff")
         include_tests = arguments.get("include_tests", True)
         output_format = arguments.get("output_format", "toon")
