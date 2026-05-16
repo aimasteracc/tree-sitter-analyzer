@@ -308,50 +308,75 @@ def _find_long_blocks_heuristic(
 ) -> list[tuple[str, int, int]]:
     """Fallback long block detection using indentation heuristics."""
     results: list[tuple[str, int, int]] = []
-    in_def = False
-    def_name = ""
-    def_start = 0
-    def_indent = 0
-    block_lines = 0
+    tracker = _BlockTracker()
 
     for i, line in enumerate(lines):
         stripped = line.strip()
 
         if stripped.startswith("def ") or stripped.startswith("async def "):
-            if in_def and block_lines > threshold:
-                results.append((def_name, def_start + 1, block_lines))
-            in_def = True
+            if tracker.active and tracker.block_lines > threshold:
+                results.append(tracker.snapshot())
             after_def = stripped.split("def ", 1)[-1] if "def " in stripped else ""
-            def_name = after_def.split("(")[0].strip() if after_def else f"block_{i}"
-            def_start = i
-            def_indent = len(line) - len(line.lstrip())
-            block_lines = 1
+            tracker.start(
+                name=after_def.split("(")[0].strip() if after_def else f"block_{i}",
+                start=i,
+                indent=len(line) - len(line.lstrip()),
+            )
             continue
 
-        if in_def:
-            if not stripped:
-                block_lines += 1
-                continue
-            current_indent = len(line) - len(line.lstrip())
-            if current_indent > def_indent:
-                block_lines += 1
-            elif current_indent == def_indent and (
-                stripped.startswith("def ")
-                or stripped.startswith("async def ")
-                or stripped.startswith("class ")
-                or stripped.startswith("@")
-            ):
-                if block_lines > threshold:
-                    results.append((def_name, def_start + 1, block_lines))
-                in_def = False
-            else:
-                block_lines += 1
+        if tracker.active:
+            tracker.process_line(stripped, line, threshold)
+            if tracker.ended_at(stripped, line) and tracker.block_lines > threshold:
+                results.append(tracker.snapshot())
 
-    if in_def and block_lines > threshold:
-        results.append((def_name, def_start + 1, block_lines))
+    if tracker.active and tracker.block_lines > threshold:
+        results.append(tracker.snapshot())
 
     results.sort(key=lambda x: -x[2])
     return results
+
+
+class _BlockTracker:
+    def __init__(self) -> None:
+        self.active = False
+        self.def_name = ""
+        self.def_start = 0
+        self.def_indent = 0
+        self.block_lines = 0
+
+    def start(self, name: str, start: int, indent: int) -> None:
+        self.active = True
+        self.def_name = name
+        self.def_start = start
+        self.def_indent = indent
+        self.block_lines = 1
+
+    def snapshot(self) -> tuple[str, int, int]:
+        return (self.def_name, self.def_start + 1, self.block_lines)
+
+    def process_line(self, stripped: str, line: str, threshold: int) -> None:
+        if not stripped:
+            self.block_lines += 1
+            return
+        current_indent = len(line) - len(line.lstrip())
+        if current_indent > self.def_indent:
+            self.block_lines += 1
+        else:
+            self.block_lines += 1
+
+    def ended_at(self, stripped: str, line: str) -> bool:
+        if not stripped:
+            return False
+        current_indent = len(line) - len(line.lstrip())
+        if current_indent == self.def_indent and (
+            stripped.startswith("def ")
+            or stripped.startswith("async def ")
+            or stripped.startswith("class ")
+            or stripped.startswith("@")
+        ):
+            self.active = False
+            return True
+        return False
 
 
 def _build_recommendation(

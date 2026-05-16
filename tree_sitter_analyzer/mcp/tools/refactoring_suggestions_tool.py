@@ -283,48 +283,67 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             name = node.name
             start, end = node.lineno, node.end_lineno or node.lineno
 
-            depth = self._get_nesting_depth(node)
-            if depth > _PATTERN_RULES[2]["threshold"]:
-                suggestions.append(
-                    self._make_pattern(
-                        _PATTERN_RULES[2],
-                        name=name,
-                        actual=depth,
-                        line_range=(start, end),
-                        priority_score=40 + depth * 5,
-                    )
-                )
-
-            params = (
-                len(node.args.args)
-                + len(node.args.kwonlyargs)
-                + (1 if node.args.vararg else 0)
-                + (1 if node.args.kwarg else 0)
-            )
-            if params > _PATTERN_RULES[3]["threshold"]:
-                suggestions.append(
-                    self._make_pattern(
-                        _PATTERN_RULES[3],
-                        name=name,
-                        actual=params,
-                        line_range=(start, start),
-                        priority_score=30,
-                    )
-                )
+            self._check_depth(node, name, start, end, suggestions)
+            self._check_param_count(node, name, start, suggestions)
 
             if include_extractions and isinstance(node, ast.FunctionDef):
-                parent = getattr(node, "parent", None)
-                if isinstance(parent, ast.ClassDef) and not name.startswith("__"):
-                    if self._is_static_method(node):
-                        suggestions.append(
-                            self._make_extraction(
-                                _EXTRACTABLE_PATTERNS[2],
-                                method=name,
-                                class_name=parent.name,
-                                line_range=(start, end),
-                                priority_score=25,
-                            )
-                        )
+                self._check_static_extraction(
+                    node, name, start, end, suggestions
+                )
+
+    def _check_depth(
+        self, node: ast.AST, name: str, start: int, end: int,
+        suggestions: list[dict[str, Any]],
+    ) -> None:
+        depth = self._get_nesting_depth(node)
+        if depth > _PATTERN_RULES[2]["threshold"]:
+            suggestions.append(
+                self._make_pattern(
+                    _PATTERN_RULES[2],
+                    name=name,
+                    actual=depth,
+                    line_range=(start, end),
+                    priority_score=40 + depth * 5,
+                )
+            )
+
+    def _check_param_count(
+        self, node: ast.AST, name: str, start: int,
+        suggestions: list[dict[str, Any]],
+    ) -> None:
+        params = (
+            len(node.args.args)
+            + len(node.args.kwonlyargs)
+            + (1 if node.args.vararg else 0)
+            + (1 if node.args.kwarg else 0)
+        )
+        if params > _PATTERN_RULES[3]["threshold"]:
+            suggestions.append(
+                self._make_pattern(
+                    _PATTERN_RULES[3],
+                    name=name,
+                    actual=params,
+                    line_range=(start, start),
+                    priority_score=30,
+                )
+            )
+
+    def _check_static_extraction(
+        self, node: ast.FunctionDef, name: str, start: int, end: int,
+        suggestions: list[dict[str, Any]],
+    ) -> None:
+        parent = getattr(node, "parent", None)
+        if isinstance(parent, ast.ClassDef) and not name.startswith("__"):
+            if self._is_static_method(node):
+                suggestions.append(
+                    self._make_extraction(
+                        _EXTRACTABLE_PATTERNS[2],
+                        method=name,
+                        class_name=parent.name,
+                        line_range=(start, end),
+                        priority_score=25,
+                    )
+                )
 
     def _get_nesting_depth(self, node: ast.AST) -> int:
         max_depth = 0
