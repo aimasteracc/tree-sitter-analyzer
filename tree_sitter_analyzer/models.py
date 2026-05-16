@@ -886,6 +886,7 @@ class SQLView(SQLElement):
 
 
 @dataclass(frozen=False)
+# SQLProcedure class definition
 class SQLProcedure(SQLElement):
     """SQL stored procedure representation"""
 
@@ -894,6 +895,7 @@ class SQLProcedure(SQLElement):
 
 
 @dataclass(frozen=False)
+# SQLFunction class definition
 class SQLFunction(SQLElement):
     """SQL function representation"""
 
@@ -904,6 +906,7 @@ class SQLFunction(SQLElement):
 
 
 @dataclass(frozen=False)
+# SQLTrigger class definition
 class SQLTrigger(SQLElement):
     """SQL trigger representation"""
 
@@ -915,6 +918,7 @@ class SQLTrigger(SQLElement):
 
 
 @dataclass(frozen=False)
+# SQLIndex class definition
 class SQLIndex(SQLElement):
     """SQL index representation"""
 
@@ -925,6 +929,7 @@ class SQLIndex(SQLElement):
 
 
 @dataclass(frozen=False)
+# YAMLElement class definition
 class YAMLElement(CodeElement):
     """
     YAML要素を表現するデータモデル。
@@ -965,6 +970,7 @@ class YAMLElement(CodeElement):
             "nesting_level": self.nesting_level,
             "document_index": self.document_index,
         }
+
 
 
 
