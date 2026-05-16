@@ -141,7 +141,8 @@ class SafeToEditTool(BaseMCPTool):
             "dependency_count": len(deps),
             "test_files_nearby": test_files,
             "pre_edit_checklist": _build_checklist(
-                risk, forward_count, has_tests, test_files, edit_type
+                risk, forward_count, has_tests, test_files, edit_type,
+                health_grade=health.grade, file_path=file_path,
             ),
         }
 
@@ -325,6 +326,8 @@ def _build_checklist(
     has_tests: bool,
     test_files: list[str],
     edit_type: str,
+    health_grade: str = "",
+    file_path: str = "",
 ) -> list[str]:
     """Build a pre-edit checklist for the AI agent."""
     items: list[str] = []
@@ -357,5 +360,10 @@ def _build_checklist(
 
     if edit_type == "refactor":
         items.append("5. Keep public API signatures unchanged during refactor")
+
+    if health_grade in ("D", "F") and file_path:
+        items.append(
+            f"6. File is grade {health_grade} — run refactoring_suggestions(file_path='{file_path}') for extraction plans"
+        )
 
     return items
