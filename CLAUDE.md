@@ -100,16 +100,37 @@ DS TUI has its own skill system at `~/.deepseek/skills/`. Use `/skill-creator` t
 - Read `.autonomous-runtime/ds-automation.yaml` for the full 8-step loop specification
 ## MCP tool usage (self-hosted)
 
-This project provides its own MCP server with 15 tools for deep code analysis.
-These tools provide capabilities that Claude Code built-in tools (Read, Grep, Glob) cannot:
-AST structural analysis, code health scoring, dependency graphs, git-aware impact analysis.
+This project provides its own MCP server with 14 tools for deep code analysis.
+These tools provide capabilities that Claude Code built-in tools (Read, Grep, Glob) CANNOT:
+AST structural analysis, health scoring with security scan, dependency graphs,
+git-aware impact analysis, refactoring extraction plans, edit risk assessment.
+
+### Complete workflow (tools call each other)
+
+```
+get_project_overview     → Start here: languages, files, tool routing guide
+        ↓
+check_project_health     → Grade ALL files, top targets with fix actions
+        ↓
+check_file_health        → Single file: A-F grade + smells + security scan
+        ↓ (D/F files auto-suggest ↓)
+refactoring_suggestions  → Precise plans: helper names, line ranges, params, skeletons
+        ↓
+safe_to_edit             → MUST call before editing: risk + deps + test files
+        ↓
+  ... edit code ...
+        ↓
+analyze_change_impact    → git diff + dep graph → affected files, tests, risk
+        ↓
+check_file_health        → Verify improvement
+```
 
 ### Edit workflow (use EVERY time you modify code)
 
 ```
 BEFORE editing:  safe_to_edit → risk_level + blast_radius + checklist
 AFTER editing:   analyze_change_impact → affected files + tests to run
-IF health issue: check_file_health → D/F grade files get extraction_plan
+IF health issue: check_file_health → D/F grade files get next_action
 ```
 
 ### Discovery workflow (when approaching unfamiliar code)
@@ -119,17 +140,20 @@ IF health issue: check_file_health → D/F grade files get extraction_plan
 2. check_code_scale      → file metrics + complexity
 3. analyze_code_structure → AST elements: classes, methods, fields, line positions
 4. extract_code_section  → read specific line ranges (batch supported)
-5. query_code(symbol=)   → cross-file symbol search across project
+5. query_code(symbol=)   → AST symbol search (NOT text grep), wildcards: *Service, fuzzy: ~analyz
 ```
 
 ### Search tools (prefer over built-in Grep for efficiency)
 
 ```
-search_content  → ripgrep with total_only/count_only/summary modes
+search_content  → ripgrep with total_only (~10 tok) / count_only / summary modes
 find_and_grep   → fd + ripgrep combined
 list_files      → fd-based file discovery
+query_code      → AST symbol search with wildcards and type filtering
 ```
 
 ### Efficiency tips
 - Always use `output_format: toon` (default) for ~60% token reduction
 - Use `total_only: true` on `search_content` for existence checks (~10 tokens)
+- Use `include_skeleton: true` on `refactoring_suggestions` only when you need code skeletons (default: off, saves ~50%)
+- Use `symbol_type: class/function` on `query_code` to filter by element type
