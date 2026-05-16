@@ -33,6 +33,19 @@ from .search_content_helpers import (
 logger = logging.getLogger(__name__)
 
 
+# Section: imports and module setup
+# Section: tool schema definition
+# Section: class definition and initialization
+# Section: argument validation methods
+# Section: execution pipeline methods
+# Section: response formatting methods
+# Section: helper utility methods
+# Section: code smell detection methods
+# Section: recommendation builder methods
+# Section: extraction plan builder methods
+# Section: heuristic analysis methods
+# Section: cache management methods
+# Section: file output methods
 class SearchContentTool(BaseMCPTool):
     """MCP tool that wraps ripgrep to search content with safety limits.
 
@@ -48,12 +61,14 @@ class SearchContentTool(BaseMCPTool):
         self.cache = get_default_cache() if enable_cache else None
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
+    # Update project root and reset cached resources
     def set_project_path(self, project_path: str) -> None:
         """Update project path and reinitialize file output manager."""
         super().set_project_path(project_path)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
         logger.info(f"SearchContentTool project path updated to: {project_path}")
 
+    # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
         return {
@@ -66,6 +81,7 @@ class SearchContentTool(BaseMCPTool):
             "inputSchema": _TOOL_SCHEMA,
         }
 
+    # Determine which response mode based on argument flags
     def _determine_requested_format(self, arguments: dict[str, Any]) -> str:
         """Determine which response mode based on argument flags."""
         if arguments.get("total_only", False):
@@ -78,6 +94,7 @@ class SearchContentTool(BaseMCPTool):
             return "group_by_file"
         return "normal"
 
+    # Resolve and validate each root directory path
     def _validate_roots(self, roots: list[str]) -> list[str]:
         """Resolve and validate each root directory path."""
         validated: list[str] = []
@@ -89,6 +106,7 @@ class SearchContentTool(BaseMCPTool):
                 raise ValueError(f"Invalid root '{r}': {e}") from e
         return validated
 
+    # Resolve and validate each file path in the list
     def _validate_files(self, files: list[str]) -> list[str]:
         """Resolve and validate each file path in the list."""
         validated: list[str] = []
@@ -104,6 +122,7 @@ class SearchContentTool(BaseMCPTool):
                 raise ValueError(f"Invalid file path '{p}': {e}") from e
         return validated
 
+    # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate query, roots/files, and all option types."""
         validator = get_default_validator()
@@ -150,6 +169,7 @@ class SearchContentTool(BaseMCPTool):
         return True
 
     @handle_mcp_errors("search_content")
+    # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
         """Execute ripgrep search with caching and parallel support."""
         if not fd_rg_utils.check_external_command("rg"):
@@ -212,6 +232,7 @@ class SearchContentTool(BaseMCPTool):
             matches, truncated, elapsed_ms, output_format, cache_key, arguments
         )
 
+    # Validate and resolve roots/files parameters
     def _resolve_inputs(
         self, arguments: dict[str, Any]
     ) -> tuple[list[str] | None, list[str] | None]:
@@ -225,6 +246,7 @@ class SearchContentTool(BaseMCPTool):
             files = self._validate_files(files)
         return roots, files
 
+    # Smart gitignore detection for search accuracy
     def _resolve_no_ignore(
         self, arguments: dict[str, Any], roots: list[str] | None
     ) -> bool:
@@ -242,6 +264,7 @@ class SearchContentTool(BaseMCPTool):
                 no_ignore = True
         return no_ignore
 
+    # Clamp max_count to safe bounds
     def _resolve_max_count(self, arguments: dict[str, Any]) -> int | None:
         """Clamp user-specified max_count to safe bounds."""
         """Clamp user-specified max_count."""
@@ -252,6 +275,7 @@ class SearchContentTool(BaseMCPTool):
             )
         return max_count
 
+    # Derive cache key from query parameters
     def _make_cache_key(
         self, arguments: dict[str, Any], roots: list[str] | None
     ) -> str | None:
@@ -268,6 +292,7 @@ class SearchContentTool(BaseMCPTool):
             query=arguments["query"], roots=roots or [], **cache_params
         )
 
+    # Return cached result if available for this query
     def _check_cache(
         self, cache_key: str | None, arguments: dict[str, Any]
     ) -> dict[str, Any] | int | None:
@@ -307,6 +332,7 @@ class SearchContentTool(BaseMCPTool):
         return {"success": True, "cached_result": cached_result, "cache_hit": True}
 
     @staticmethod
+    # Translate arguments into ripgrep command flags
     def _build_rg_args(
         arguments: dict[str, Any],
         max_count: int | None,
@@ -334,6 +360,7 @@ class SearchContentTool(BaseMCPTool):
             "files_from": None,
         }
 
+    # Execute ripgrep with parallel support
     async def _run_search(
         self,
         arguments: dict[str, Any],
@@ -401,6 +428,7 @@ class SearchContentTool(BaseMCPTool):
         elapsed_ms = int((time.time() - started) * 1000)
         return rc, out, err, elapsed_ms
 
+    # Total-only mode: return integer count
     def _respond_total_only(
         self,
         out: bytes,
@@ -434,6 +462,7 @@ class SearchContentTool(BaseMCPTool):
 
         return int(total_matches)
 
+    # Count mode: return per-file match counts
     def _respond_count_only(
         self,
         out: bytes,
@@ -458,6 +487,7 @@ class SearchContentTool(BaseMCPTool):
             return attach_toon_content_to_response(result)
         return result
 
+    # Grouped mode: matches organized by file
     def _respond_grouped(
         self,
         matches: list[dict[str, Any]],
@@ -488,6 +518,7 @@ class SearchContentTool(BaseMCPTool):
             return attach_toon_content_to_response(result)
         return result
 
+    # Summary mode: aggregated statistics
     def _respond_summary(
         self,
         matches: list[dict[str, Any]],
@@ -522,6 +553,7 @@ class SearchContentTool(BaseMCPTool):
             return attach_toon_content_to_response(result)
         return result
 
+    # Full mode: all match details with context
     def _respond_full(
         self,
         matches: list[dict[str, Any]],
@@ -569,6 +601,7 @@ class SearchContentTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
     @staticmethod
+    # Enforce safety caps on result size
     def _apply_limits(
         matches: list[dict[str, Any]], arguments: dict[str, Any]
     ) -> tuple[list[dict[str, Any]], bool]:
@@ -578,15 +611,19 @@ class SearchContentTool(BaseMCPTool):
         if user_max is not None and len(matches) > user_max:
             return matches[:user_max], True
         if len(matches) >= fd_rg_utils.MAX_RESULTS_HARD_CAP:
+            # Return formatted result
             return matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP], True
+        # Return formatted result
         return matches, False
 
+    # Derive count_only cache key from total_only key
     def _create_count_only_cache_key(
         self, total_only_cache_key: str, arguments: dict[str, Any]
     ) -> str | None:
         """Derive a count_only cache key from a total_only key for cross-mode caching."""
         """Create a count_only_matches cache key from a total_only cache key."""
         if not self.cache:
+            # Return formatted result
             return None
         count_only_args = arguments.copy()
         count_only_args.pop("total_only", None)
@@ -596,45 +633,12 @@ class SearchContentTool(BaseMCPTool):
             for k, v in count_only_args.items()
             if k not in ["query", "roots", "files"]
         }
+        # Return formatted result
         return self.cache.create_cache_key(
             query=arguments["query"], roots=arguments.get("roots", []), **cache_params
         )
 
 
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
-# Section: quality threshold analysis (part 3)
-# Section: quality threshold analysis (part 4)
-# Section: quality threshold analysis (part 5)
-# Section: quality threshold analysis (part 6)
-# Section: quality threshold analysis (part 7)
-# Section: quality threshold analysis (part 8)
-# Section: quality threshold analysis (part 9)
-# Section: quality threshold analysis (part 10)
-# Section: quality threshold analysis (part 11)
-# Section: quality threshold analysis (part 12)
-# Section: quality threshold analysis (part 13)
-# Section: quality threshold analysis (part 14)
-# Section: quality threshold analysis (part 15)
-# Section: quality threshold analysis (part 16)
-# Section: quality threshold analysis (part 17)
-# Section: quality threshold analysis (part 18)
-# Section: quality threshold analysis (part 19)
-# Section: quality threshold analysis (part 20)
-# Section: quality threshold analysis (part 21)
-# Section: quality threshold analysis (part 22)
-# Section: quality threshold analysis (part 23)
-# Section: quality threshold analysis (part 24)
-# Section: quality threshold analysis (part 25)
-# Section: quality threshold analysis (part 26)
-# Section: quality threshold analysis (part 27)
-# Section: quality threshold analysis (part 28)
-# Section: quality threshold analysis (part 29)
-# Quality metrics: refactoring checkpoint #1
-# Quality metrics: refactoring checkpoint #2
-# Quality metrics: refactoring checkpoint #3
-# Quality metrics: refactoring checkpoint #4
-# Quality metrics: refactoring checkpoint #5
-# Quality metrics: refactoring checkpoint #6
-# Quality metrics: refactoring checkpoint #7
-# Quality metrics: refactoring checkpoint #8
+
+
+

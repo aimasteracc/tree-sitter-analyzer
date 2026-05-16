@@ -15,6 +15,7 @@ from ...utils import setup_logger
 logger = setup_logger(__name__)
 
 
+# Tree-sitter element extraction for structure view
 def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
     """Extract structural overview with position information for LLM guidance."""
     overview: dict[str, Any] = {
@@ -193,6 +194,7 @@ def extract_structural_overview_universal(
     return overview
 
 
+# AI-oriented suggestions based on file analysis
 def generate_llm_guidance(
     file_metrics: dict[str, Any], structural_overview: dict[str, Any]
 ) -> dict[str, Any]:
@@ -414,6 +416,7 @@ def generate_llm_guidance(
     return guidance
 
 
+# Assemble metrics, structure, and guidance into result
 def build_analysis_result(
     file_path: str,
     language: str,
@@ -448,6 +451,7 @@ def build_analysis_result(
     }
 
 
+# Per-element detailed breakdown
 def build_detailed_analysis(analysis_result: Any, file_path: str) -> dict[str, Any]:
     """Build the detailed_analysis dict for include_details=True."""
     elements = analysis_result.elements if analysis_result else []
@@ -512,6 +516,4 @@ def build_detailed_analysis(analysis_result: Any, file_path: str) -> dict[str, A
     }
 
 
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
-# Section: quality threshold analysis (part 3)
+

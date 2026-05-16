@@ -50,6 +50,7 @@ def _clamp_requests(
     return requests, truncated
 
 
+# Build a standard error result dict
 def _make_error_result(
     file_path: str, resolved_path: str, error: str
 ) -> dict[str, Any]:
@@ -62,6 +63,7 @@ def _make_error_result(
     }
 
 
+# Validate a single file request within batch
 def _validate_file_request(
     file_req: Any, fail_fast: bool, allow_truncate: bool
 ) -> tuple[str, list[Any], dict[str, Any] | None, bool]:
@@ -113,6 +115,7 @@ def _validate_file_request(
     return file_path, sections, None, truncated
 
 
+# Resolve file path with security validation
 def _resolve_file(
     tool: BaseMCPTool, file_path: str, fail_fast: bool
 ) -> tuple[str | None, dict[str, Any] | None]:
@@ -298,5 +301,5 @@ async def execute_batch(
     return apply_toon_format_to_response(response, output_format)
 
 
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
+
+

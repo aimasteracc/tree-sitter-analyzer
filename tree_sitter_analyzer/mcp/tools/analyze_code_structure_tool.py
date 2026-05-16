@@ -52,10 +52,12 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             "inputSchema": _TOOL_SCHEMA,
         }
 
+    # JSON schema for input validation
     def get_tool_schema(self) -> dict[str, Any]:
         """Return the JSON schema for tool input validation."""
         return _TOOL_SCHEMA
 
+    # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate file_path and format arguments."""
         if "file_path" not in arguments:
@@ -84,6 +86,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             raise ValueError("suppress_output must be a boolean")
         return True
 
+    # Main entry point - dispatches to mode-specific handler
     async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
         """Execute AST structure analysis and return formatted results."""
         try:
@@ -328,6 +331,4 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
 
 # Tool instance for easy access
 analyze_code_structure_tool = AnalyzeCodeStructureTool()
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
-# Section: quality threshold analysis (part 3)
+

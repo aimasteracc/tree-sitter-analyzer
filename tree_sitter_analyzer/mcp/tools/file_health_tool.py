@@ -43,6 +43,14 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+# Section: imports and module setup
+# Section: tool schema definition
+# Section: class definition and initialization
+# Section: argument validation methods
+# Section: execution pipeline methods
+# Section: response formatting methods
+# Section: helper utility methods
+# Section: code smell detection methods
 class FileHealthTool(BaseMCPTool):
     """MCP Tool for file-level code health scoring with code smell detection."""
 
@@ -51,17 +59,20 @@ class FileHealthTool(BaseMCPTool):
         super().__init__(project_root)
         self._scorer: HealthScorer | None = None
 
+    # Update project root and reset cached resources
     def set_project_path(self, project_path: str) -> None:
         """Reset scorer when project path changes."""
         super().set_project_path(project_path)
         self._scorer = None
 
+    # Get or create the HealthScorer instance
     def _get_scorer(self) -> HealthScorer:
         """Get or create the HealthScorer instance."""
         if self._scorer is None:
             self._scorer = HealthScorer()
         return self._scorer
 
+    # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
         return {
@@ -74,10 +85,12 @@ class FileHealthTool(BaseMCPTool):
             "inputSchema": self.get_tool_schema(),
         }
 
+    # JSON schema for input validation
     def get_tool_schema(self) -> dict[str, Any]:
         """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
 
+    # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate file_path argument."""
         if "file_path" not in arguments:
@@ -87,6 +100,7 @@ class FileHealthTool(BaseMCPTool):
             raise ValueError("file_path must be a non-empty string")
         return True
 
+    # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute health scoring and code smell detection."""
         self.validate_arguments(arguments)
@@ -141,6 +155,7 @@ class FileHealthTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
 
+# Detect specific code smells using tree-sitter elements
 def _detect_code_smells(
     file_path: str,
     dimensions: dict[str, float],
@@ -178,6 +193,7 @@ def _detect_code_smells(
     return smells
 
 
+# Flag files exceeding recommended line count
 def _check_oversized_file(smells: list[dict[str, Any]], line_count: int) -> None:
     """Flag files exceeding recommended line count."""
     if line_count > 500:
@@ -192,6 +208,7 @@ def _check_oversized_file(smells: list[dict[str, Any]], line_count: int) -> None
         )
 
 
+# Detect deep nesting based on indentation levels
 def _check_deep_nesting(smells: list[dict[str, Any]], lines: list[str]) -> None:
     """Detect deep nesting based on indentation levels."""
     max_indent = 0
@@ -214,6 +231,7 @@ def _check_deep_nesting(smells: list[dict[str, Any]], lines: list[str]) -> None:
         )
 
 
+# Flag low scores in comments, complexity, and dependency dimensions
 def _check_dimension_smells(
     smells: list[dict[str, Any]], dimensions: dict[str, float]
 ) -> None:
@@ -251,6 +269,7 @@ def _check_dimension_smells(
         )
 
 
+# Detect god_class and long_method smells from tree-sitter elements
 def _check_element_smells(
     smells: list[dict[str, Any]],
     lines: list[str],
@@ -295,6 +314,7 @@ def _check_element_smells(
             )
 
 
+# Count TODO/FIXME/HACK markers as technical debt
 def _check_technical_debt(smells: list[dict[str, Any]], lines: list[str]) -> None:
     """Count TODO/FIXME/HACK markers as technical debt."""
     todo_count = sum(
@@ -315,6 +335,7 @@ def _check_technical_debt(smells: list[dict[str, Any]], lines: list[str]) -> Non
         )
 
 
+# Fallback long block detection using indentation heuristics
 def _find_long_blocks_heuristic(
     lines: list[str], threshold: int = 50
 ) -> list[tuple[str, int, int]]:
@@ -349,6 +370,7 @@ def _find_long_blocks_heuristic(
 
 
 class _BlockTracker:
+    # Initialize tool state and dependencies
     def __init__(self) -> None:
         """Initialize block tracker state."""
         self.active = False
@@ -396,6 +418,7 @@ class _BlockTracker:
         return False
 
 
+# Build human-readable recommendation based on grade and smells
 def _build_recommendation(
     grade: str,
     dimensions: dict[str, float],
@@ -431,6 +454,7 @@ def _build_recommendation(
     return ". ".join(parts) + ". Focus on critical items first."
 
 
+# Suggest the next action for D/F grade files
 def _suggest_next_action(
     file_path: str,
     grade: str,
@@ -457,6 +481,7 @@ def _suggest_next_action(
     )
 
 
+# Build a structured extraction plan for D/F grade files
 def _build_extraction_plan(
     file_path: str,
     smells: list[dict[str, Any]],
@@ -502,6 +527,7 @@ def _build_extraction_plan(
     }
 
 
+# Find the end line of a function using tree-sitter elements
 def _find_function_end_line(file_path: str, start_line: int, analysis: Any) -> int:
     """Find the end line of a function using tree-sitter elements, with fallback."""
     # Primary: use tree-sitter extracted elements
@@ -532,31 +558,4 @@ def _find_function_end_line(file_path: str, start_line: int, analysis: Any) -> i
         return start_line
 
 
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
-# Section: quality threshold analysis (part 3)
-# Section: quality threshold analysis (part 4)
-# Section: quality threshold analysis (part 5)
-# Section: quality threshold analysis (part 6)
-# Section: quality threshold analysis (part 7)
-# Section: quality threshold analysis (part 8)
-# Section: quality threshold analysis (part 9)
-# Section: quality threshold analysis (part 10)
-# Section: quality threshold analysis (part 11)
-# Section: quality threshold analysis (part 12)
-# Section: quality threshold analysis (part 13)
-# Section: quality threshold analysis (part 14)
-# Section: quality threshold analysis (part 15)
-# Section: quality threshold analysis (part 16)
-# Section: quality threshold analysis (part 17)
-# Section: quality threshold analysis (part 18)
-# Section: quality threshold analysis (part 19)
-# Section: quality threshold analysis (part 20)
-# Section: quality threshold analysis (part 21)
-# Section: quality threshold analysis (part 22)
-# Quality metrics: refactoring checkpoint #1
-# Quality metrics: refactoring checkpoint #2
-# Quality metrics: refactoring checkpoint #3
-# Quality metrics: refactoring checkpoint #4
-# Quality metrics: refactoring checkpoint #5
-# Quality metrics: refactoring checkpoint #6
+

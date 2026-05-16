@@ -282,6 +282,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                     )
                 )
 
+    # Python AST enhanced analysis for nesting and params
     def _python_bonus_analysis(
         self, source: str, suggestions: list[dict[str, Any]], include_extractions: bool
     ) -> None:
@@ -331,6 +332,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 )
             )
 
+    # Flag functions with too many parameters
     def _check_param_count(
         self,
         node: ast.AST,
@@ -410,6 +412,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                     return False
         return True
 
+    # Build pattern suggestion from rule template
     def _make_pattern(
         self, rule: dict[str, Any], priority_score: int = 50, **kwargs: Any
     ) -> dict[str, Any]:
@@ -429,6 +432,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             result["line_range"] = {"start": lr[0], "end": lr[1]}
         return result
 
+    # Build extraction suggestion from rule template
     def _make_extraction(
         self, rule: dict[str, Any], priority_score: int = 50, **kwargs: Any
     ) -> dict[str, Any]:
@@ -448,6 +452,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             result["line_range"] = {"start": lr[0], "end": lr[1]}
         return result
 
+    # Human-readable summary of all suggestions
     def _make_summary(self, suggestions: list[dict[str, Any]]) -> str:
         """Build a human-readable summary of all suggestions."""
         if not suggestions:
@@ -464,6 +469,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             parts.append(f"{minor} minor")
         return f"Found {', '.join(parts)} refactoring suggestions."
 
+    # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate file_path argument."""
         file_path = arguments.get("file_path", "")
@@ -471,13 +477,10 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             raise ValueError("file_path is required and must be a string")
         return True
 
+    # Standardized error response
     def _error_response(self, file_path: str, error: str) -> dict[str, Any]:
         """Return a standardized error response."""
         return {"file": file_path, "error": error, "suggestions": []}
 
 
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
-# Section: quality threshold analysis (part 3)
-# Section: quality threshold analysis (part 4)
-# Section: quality threshold analysis (part 5)
+

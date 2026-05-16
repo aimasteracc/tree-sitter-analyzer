@@ -117,6 +117,7 @@ class ProjectOverviewTool(BaseMCPTool):
             raise ValueError("max_depth must be an integer between 1 and 20")
         return True
 
+    # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute project scan and build result with optional health data."""
         self.validate_arguments(arguments)
@@ -139,6 +140,7 @@ class ProjectOverviewTool(BaseMCPTool):
 
         return apply_toon_format_to_response(result, output_format)
 
+    # Walk project tree collecting file statistics
     def _scan_project(self, root: Path, max_depth: int) -> dict[str, Any]:
         """Walk the project tree and collect file/directory stats."""
         lang_dist: dict[str, int] = {}
@@ -188,6 +190,7 @@ class ProjectOverviewTool(BaseMCPTool):
             "dir_tree": dir_tree,
         }
 
+    # Assemble response dict from analysis data
     def _build_result(
         self, root: Path, scan: dict[str, Any], include_health: bool
     ) -> dict[str, Any]:
@@ -244,6 +247,7 @@ class ProjectOverviewTool(BaseMCPTool):
         }
         return result
 
+    # Score health for top source files
     def _add_health_data(
         self, result: dict[str, Any], source_files: list[dict[str, Any]], root: Path
     ) -> None:
@@ -311,6 +315,7 @@ def _suggest_refactor_action(
     return None
 
 
+# Generate contextual workflow suggestion
 def _build_smart_hint(result: dict[str, Any]) -> str:
     """Build smart workflow hint from health and language data."""
     parts: list[str] = []
@@ -344,7 +349,4 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
     return " | ".join(parts[:3])
 
 
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
-# Section: quality threshold analysis (part 3)
-# Section: quality threshold analysis (part 4)
+

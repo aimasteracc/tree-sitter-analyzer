@@ -332,6 +332,7 @@ class TempFileList:
 
 class contextlib:  # minimal shim for suppress without importing globally
     class suppress:
+        # Initialize tool state and dependencies
         def __init__(self, *exceptions: type[BaseException]) -> None:
             """Initialize temporary file writer."""
             self.exceptions = exceptions
@@ -394,6 +395,7 @@ async def run_parallel_rg_searches(
     return processed_results
 
 
+# Merge parallel rg results
 def merge_rg_results(
     results: list[tuple[int, bytes, bytes]],
     count_only_mode: bool = False,
@@ -463,6 +465,7 @@ def _merge_json_results(
     return (return_code, merged_stdout, b"")
 
 
+# Split roots into chunks for parallel
 def split_roots_for_parallel_processing(
     roots: list[str], max_chunks: int = 4
 ) -> list[list[str]]:
@@ -491,5 +494,5 @@ def split_roots_for_parallel_processing(
     return [chunk for chunk in chunks if chunk]
 
 
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
+
+

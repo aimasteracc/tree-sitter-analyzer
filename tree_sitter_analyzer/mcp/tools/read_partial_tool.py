@@ -69,6 +69,50 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+# Section: imports and module setup
+# Section: tool schema definition
+# Section: class definition and initialization
+# Section: argument validation methods
+# Section: execution pipeline methods
+# Section: response formatting methods
+# Section: helper utility methods
+# Section: code smell detection methods
+# Section: recommendation builder methods
+# Section: extraction plan builder methods
+# Section: heuristic analysis methods
+# Section: cache management methods
+# Section: file output methods
+# Section: search execution methods
+# Section: result processing methods
+# Section: imports and module setup
+# Section: tool schema definition
+# Section: class definition and initialization
+# Section: argument validation methods
+# Section: execution pipeline methods
+# Section: response formatting methods
+# Section: helper utility methods
+# Section: code smell detection methods
+# Section: recommendation builder methods
+# Section: extraction plan builder methods
+# Section: heuristic analysis methods
+# Section: cache management methods
+# Section: file output methods
+# Section: search execution methods
+# Section: result processing methods
+# Section: imports and module setup
+# Section: tool schema definition
+# Section: class definition and initialization
+# Section: argument validation methods
+# Section: execution pipeline methods
+# Section: response formatting methods
+# Section: helper utility methods
+# Section: code smell detection methods
+# Section: recommendation builder methods
+# Section: extraction plan builder methods
+# Section: heuristic analysis methods
+# Section: cache management methods
+# Section: file output methods
+# Section: search execution methods
 class ReadPartialTool(BaseMCPTool):
     """MCP Tool for reading partial content from code files.
 
@@ -82,10 +126,12 @@ class ReadPartialTool(BaseMCPTool):
         self.file_output_manager = FileOutputManager(project_root)
         logger.info("ReadPartialTool initialized with security validation")
 
+    # JSON schema for input validation
     def get_tool_schema(self) -> dict[str, Any]:
         """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
 
+    # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute single or batch partial read based on arguments."""
         if "requests" in arguments and arguments["requests"] is not None:
@@ -175,6 +221,7 @@ class ReadPartialTool(BaseMCPTool):
             logger.error(f"Error reading partial content from {file_path}: {e}")
             return {"success": False, "error": str(e), "file_path": file_path}
 
+    # Validate file path and range parameters
     def _validate_resolve(
         self,
         file_path: str,
@@ -222,6 +269,7 @@ class ReadPartialTool(BaseMCPTool):
             }
         return None
 
+    # Assemble response dict from analysis data
     def _build_result(
         self,
         file_path: str,
@@ -269,6 +317,7 @@ class ReadPartialTool(BaseMCPTool):
 
         return result
 
+    # Transform raw content into requested output format
     def _format_content(
         self,
         content: str,
@@ -327,6 +376,7 @@ class ReadPartialTool(BaseMCPTool):
             f"{json_output}"
         )
 
+    # Write extracted content to output file
     def _apply_file_output(
         self,
         result: dict[str, Any],
@@ -377,10 +427,13 @@ class ReadPartialTool(BaseMCPTool):
             result["file_save_error"] = str(e)
             result["file_saved"] = False
 
+    # Batch mode for extracting multiple ranges from multiple files
     async def _execute_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Batch mode for extracting multiple ranges from multiple files."""
+        # Return formatted result
         return await execute_batch(self, arguments, self._read_file_partial)
 
+    # Delegate to file_handler for range extraction
     def _read_file_partial(
         self,
         file_path: str,
@@ -390,10 +443,12 @@ class ReadPartialTool(BaseMCPTool):
         end_column: int | None = None,
     ) -> str | None:
         """Delegate to file_handler for the actual partial read."""
+        # Return formatted result
         return read_file_partial(
             file_path, start_line, end_line, start_column, end_column
         )
 
+    # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate tool arguments: batch vs single mode, types, ranges."""
         if "requests" in arguments and arguments["requests"] is not None:
@@ -412,6 +467,7 @@ class ReadPartialTool(BaseMCPTool):
                 )
             if not isinstance(arguments["requests"], list):
                 raise ValueError("requests must be a list")
+            # Return formatted result
             return True
 
         for field in ["file_path", "start_line"]:
@@ -468,10 +524,13 @@ class ReadPartialTool(BaseMCPTool):
             if not isinstance(suppress_output, bool):
                 raise ValueError("suppress_output must be a boolean")
 
+        # Return formatted result
         return True
 
+    # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
+        # Return formatted result
         return {
             "name": "extract_code_section",
             "description": (
@@ -484,61 +543,6 @@ class ReadPartialTool(BaseMCPTool):
 
 # Tool instance for easy access
 read_partial_tool = ReadPartialTool()
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
-# Section: quality threshold analysis (part 3)
-# Section: quality threshold analysis (part 4)
-# Section: quality threshold analysis (part 5)
-# Section: quality threshold analysis (part 6)
-# Section: quality threshold analysis (part 7)
-# Section: quality threshold analysis (part 8)
-# Section: quality threshold analysis (part 9)
-# Section: quality threshold analysis (part 10)
-# Section: quality threshold analysis (part 11)
-# Section: quality threshold analysis (part 12)
-# Section: quality threshold analysis (part 13)
-# Section: quality threshold analysis (part 14)
-# Section: quality threshold analysis (part 15)
-# Section: quality threshold analysis (part 16)
-# Section: quality threshold analysis (part 17)
-# Section: quality threshold analysis (part 18)
-# Section: quality threshold analysis (part 19)
-# Section: quality threshold analysis (part 20)
-# Section: quality threshold analysis (part 21)
-# Section: quality threshold analysis (part 22)
-# Section: quality threshold analysis (part 23)
-# Section: quality threshold analysis (part 24)
-# Section: quality threshold analysis (part 25)
-# Section: quality threshold analysis (part 26)
-# Section: quality threshold analysis (part 27)
-# Section: quality threshold analysis (part 28)
-# Section: quality threshold analysis (part 29)
-# Section: quality threshold analysis (part 30)
-# Section: quality threshold analysis (part 31)
-# Section: quality threshold analysis (part 32)
-# Section: quality threshold analysis (part 33)
-# Section: quality threshold analysis (part 34)
-# Section: quality threshold analysis (part 35)
-# Section: quality threshold analysis (part 36)
-# Section: quality threshold analysis (part 37)
-# Section: quality threshold analysis (part 38)
-# Section: quality threshold analysis (part 39)
-# Section: quality threshold analysis (part 40)
-# Section: quality threshold analysis (part 41)
-# Section: quality threshold analysis (part 42)
-# Section: quality threshold analysis (part 43)
-# Section: quality threshold analysis (part 44)
-# Section: quality threshold analysis (part 45)
-# Section: quality threshold analysis (part 46)
-# Quality metrics: refactoring checkpoint #1
-# Quality metrics: refactoring checkpoint #2
-# Quality metrics: refactoring checkpoint #3
-# Quality metrics: refactoring checkpoint #4
-# Quality metrics: refactoring checkpoint #5
-# Quality metrics: refactoring checkpoint #6
-# Quality metrics: refactoring checkpoint #7
-# Quality metrics: refactoring checkpoint #8
-# Quality metrics: refactoring checkpoint #9
-# Quality metrics: refactoring checkpoint #10
-# Quality metrics: refactoring checkpoint #11
-# Quality metrics: refactoring checkpoint #12
+
+
+

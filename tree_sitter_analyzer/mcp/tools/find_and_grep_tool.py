@@ -26,6 +26,23 @@ from .find_and_grep_helpers import handle_output
 logger = __import__("logging").getLogger(__name__)
 
 
+# Section: imports and module setup
+# Section: tool schema definition
+# Section: class definition and initialization
+# Section: argument validation methods
+# Section: execution pipeline methods
+# Section: response formatting methods
+# Section: helper utility methods
+# Section: code smell detection methods
+# Section: recommendation builder methods
+# Section: extraction plan builder methods
+# Section: heuristic analysis methods
+# Section: cache management methods
+# Section: file output methods
+# Section: search execution methods
+# Section: result processing methods
+# Section: imports and module setup
+# Section: tool schema definition
 class FindAndGrepTool(BaseMCPTool):
     """MCP tool that composes fd and ripgrep with safety limits and metadata.
 
@@ -38,11 +55,13 @@ class FindAndGrepTool(BaseMCPTool):
         super().__init__(project_root)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
+    # Update project root and reset cached resources
     def set_project_path(self, project_path: str) -> None:
         """Update project path and reinitialize file output manager."""
         super().set_project_path(project_path)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
 
+    # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
         return {
@@ -54,6 +73,7 @@ class FindAndGrepTool(BaseMCPTool):
             "inputSchema": _TOOL_SCHEMA,
         }
 
+    # Resolve and validate each root directory path
     def _validate_roots(self, roots: list[str]) -> list[str]:
         """Resolve and validate each root directory path."""
         validated: list[str] = []
@@ -65,6 +85,7 @@ class FindAndGrepTool(BaseMCPTool):
                 raise ValueError(f"Invalid root '{r}': {e}") from e
         return validated
 
+    # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate roots and query arguments."""
         if "roots" not in arguments or not isinstance(arguments["roots"], list):
@@ -80,6 +101,7 @@ class FindAndGrepTool(BaseMCPTool):
         return True
 
     @handle_mcp_errors("find_and_grep")
+    # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any] | int:
         """Execute fd+rg pipeline: find files then grep contents."""
         missing_commands = fd_rg_utils.get_missing_commands()
@@ -169,6 +191,7 @@ class FindAndGrepTool(BaseMCPTool):
             return self._respond_summary(arguments, matches, meta)
         return self._respond_full(arguments, matches, meta, output_format)
 
+    # Execute fd command for file discovery
     async def _run_fd(
         self, arguments: dict[str, Any], roots: list[str]
     ) -> tuple[list[str] | dict[str, Any], int, bool]:
@@ -242,6 +265,7 @@ class FindAndGrepTool(BaseMCPTool):
         self._sort_files(files, arguments.get("sort"))
         return files, elapsed, truncated
 
+    # Sort results by path, mtime, or size
     def _sort_files(self, files: list[str], sort_mode: str | None) -> None:
         """Sort files by path, mtime, or size."""
         """Sort files by the requested mode."""
@@ -271,6 +295,7 @@ class FindAndGrepTool(BaseMCPTool):
         except (OSError, ValueError):  # nosec B110
             pass
 
+    # Execute ripgrep on discovered files
     async def _run_rg(
         self, arguments: dict[str, Any], files: list[str]
     ) -> tuple[int, bytes, int] | dict[str, Any]:
@@ -328,6 +353,7 @@ class FindAndGrepTool(BaseMCPTool):
 
         return rc, out, elapsed
 
+    # Enforce safety caps on result size
     def _apply_limits(
         self, matches: list[dict[str, Any]], arguments: dict[str, Any]
     ) -> tuple[list[dict[str, Any]], bool]:
@@ -341,6 +367,7 @@ class FindAndGrepTool(BaseMCPTool):
             return matches[: fd_rg_utils.MAX_RESULTS_HARD_CAP], True
         return matches, False
 
+    # Grouped mode: matches organized by file
     def _respond_grouped(
         self,
         arguments: dict[str, Any],
@@ -364,6 +391,7 @@ class FindAndGrepTool(BaseMCPTool):
             return attach_toon_content_to_response(grouped)
         return grouped
 
+    # Summary mode: aggregated statistics
     def _respond_summary(
         self,
         arguments: dict[str, Any],
@@ -384,6 +412,7 @@ class FindAndGrepTool(BaseMCPTool):
 
         return result
 
+    # Full mode: all match details with context
     def _respond_full(
         self,
         arguments: dict[str, Any],
@@ -434,34 +463,4 @@ def _build_next_steps(matches: list[dict[str, Any]]) -> list[str]:
     return steps
 
 
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
-# Section: quality threshold analysis (part 3)
-# Section: quality threshold analysis (part 4)
-# Section: quality threshold analysis (part 5)
-# Section: quality threshold analysis (part 6)
-# Section: quality threshold analysis (part 7)
-# Section: quality threshold analysis (part 8)
-# Section: quality threshold analysis (part 9)
-# Section: quality threshold analysis (part 10)
-# Section: quality threshold analysis (part 11)
-# Section: quality threshold analysis (part 12)
-# Section: quality threshold analysis (part 13)
-# Section: quality threshold analysis (part 14)
-# Section: quality threshold analysis (part 15)
-# Section: quality threshold analysis (part 16)
-# Section: quality threshold analysis (part 17)
-# Section: quality threshold analysis (part 18)
-# Section: quality threshold analysis (part 19)
-# Section: quality threshold analysis (part 20)
-# Section: quality threshold analysis (part 21)
-# Section: quality threshold analysis (part 22)
-# Section: quality threshold analysis (part 23)
-# Section: quality threshold analysis (part 24)
-# Quality metrics: refactoring checkpoint #1
-# Quality metrics: refactoring checkpoint #2
-# Quality metrics: refactoring checkpoint #3
-# Quality metrics: refactoring checkpoint #4
-# Quality metrics: refactoring checkpoint #5
-# Quality metrics: refactoring checkpoint #6
-# Quality metrics: refactoring checkpoint #7
+

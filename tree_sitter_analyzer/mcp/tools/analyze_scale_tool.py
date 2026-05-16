@@ -136,6 +136,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
 
+    # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute code scale analysis for single or batch files."""
         if "file_paths" in arguments and arguments["file_paths"] is not None:
@@ -358,6 +359,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         }
         return apply_toon_format_to_response(response, output_format)
 
+    # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate file_path and option arguments."""
         if "file_paths" in arguments and arguments["file_paths"] is not None:
@@ -445,6 +447,7 @@ class AnalyzeScaleTool(BaseMCPTool):
 
         return apply_toon_format_to_response(result, output_format)
 
+    # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
         return {
@@ -459,5 +462,4 @@ class AnalyzeScaleTool(BaseMCPTool):
 
 # Tool instance for easy access
 analyze_scale_tool = AnalyzeScaleTool()
-# Section: quality threshold analysis (part 1)
-# Section: quality threshold analysis (part 2)
+
