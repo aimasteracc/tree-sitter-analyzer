@@ -266,3 +266,4 @@ def _extract_commonjs_requires(
 
     return imports
 
+

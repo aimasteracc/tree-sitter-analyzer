@@ -19,6 +19,12 @@ from .sql_formatters import SQLCompactFormatter, SQLCSVFormatter, SQLFullFormatt
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
 class SQLFormatterWrapper(BaseFormatter):
     """
     Wrapper for SQL-specific formatters to conform to BaseFormatter interface.
@@ -711,4 +717,5 @@ class SQLFormatterWrapper(BaseFormatter):
             columns = [col.strip() for col in columns_str.split(",")]
 
         return {"table_name": table_name, "columns": columns, "is_unique": is_unique}
+
 

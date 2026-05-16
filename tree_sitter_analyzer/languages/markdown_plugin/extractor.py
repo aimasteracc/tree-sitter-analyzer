@@ -45,6 +45,13 @@ from .link_image_extractor import (
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class MarkdownElement(CodeElement):
     """Markdown-specific code element"""
 
@@ -1001,4 +1008,5 @@ class MarkdownElementExtractor(ElementExtractor):
             return alt_text, url, title
 
         return "", "", ""
+
 

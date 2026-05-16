@@ -32,6 +32,13 @@ from .base_command import BaseCommand
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class TableCommand(BaseCommand):
     """Command for generating table format output."""
 
@@ -551,4 +558,5 @@ class TableCommand(BaseCommand):
         except (AttributeError, UnicodeEncodeError):
             # Fallback: Normal print
             print(table_output, end="")
+
 

@@ -909,3 +909,4 @@ def extract_cpp_class(
         log_debug(f"Failed to extract class info: {e}")
         return None
 
+

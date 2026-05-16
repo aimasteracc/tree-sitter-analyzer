@@ -711,3 +711,4 @@ def extract_c_function(
         log_error(f"Unexpected error in function extraction: {e}")
         return None
 
+

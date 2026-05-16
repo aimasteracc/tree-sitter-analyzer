@@ -18,6 +18,13 @@ from .base_formatter import BaseTableFormatter
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class PythonTableFormatter(BaseTableFormatter):
     """Table formatter specialized for Python"""
 
@@ -857,4 +864,5 @@ class PythonTableFormatter(BaseTableFormatter):
             return f"({params_str}):{return_type}"
         else:
             return f"({params_str}):Any"
+
 

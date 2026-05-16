@@ -99,12 +99,14 @@ class UnifiedAnalysisEngine:
         self._ensure_initialized()
         self._plugin_manager.register_plugin(plugin)
 
+    # Handler: clear_cache
     def clear_cache(self) -> None:
         """Clear the analysis cache (compatibility method)"""
         self._ensure_initialized()
         if self._cache_service:
             self._cache_service.clear()
 
+    # Handler: _load_plugins
     def _load_plugins(self) -> None:
         """Discover available plugins (fast metadata scan)"""
         from ..utils import log_debug, log_error
@@ -522,4 +524,5 @@ class MockLanguagePlugin:
 def get_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:
     """Get unified analysis engine instance"""
     return UnifiedAnalysisEngine(project_root)
+
 

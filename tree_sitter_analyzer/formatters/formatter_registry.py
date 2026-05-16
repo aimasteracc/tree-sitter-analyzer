@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 # Section: imports and module configuration
 # Section: main class definition
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
 class IFormatter(ABC):
     """
     Interface for code element formatters.
@@ -646,4 +649,5 @@ def _register_language_formatters_safe() -> None:
 
 # Auto-register built-in formatters when module is imported
 register_builtin_formatters()
+
 

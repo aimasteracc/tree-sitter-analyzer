@@ -37,6 +37,13 @@ from .query_loader import query_loader
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class CLICommandFactory:
     """Factory for creating CLI commands based on arguments."""
 
@@ -723,4 +730,5 @@ if __name__ == "__main__":
         else:
             output_error(f"Unexpected error: {msg}")
         sys.exit(1)
+
 

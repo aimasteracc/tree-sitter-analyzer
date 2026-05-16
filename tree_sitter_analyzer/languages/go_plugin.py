@@ -102,6 +102,7 @@ class GoElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(classes)} Go structs/interfaces")
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
@@ -122,6 +123,7 @@ class GoElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} Go const/var declarations")
         return variables
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
@@ -133,6 +135,7 @@ class GoElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(imports)} Go imports")
         return imports
 
+    # Extract elements from AST: extract_packages
     def extract_packages(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Package]:
@@ -579,4 +582,5 @@ class GoPlugin(LanguagePlugin):
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+
 

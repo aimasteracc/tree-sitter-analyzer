@@ -18,6 +18,13 @@ from .markdown_full_formatter import format_full
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class MarkdownFormatter(BaseFormatter):
     """Formatter specialized for Markdown documents"""
 
@@ -650,4 +657,5 @@ class MarkdownFormatter(BaseFormatter):
         csv_content = output.getvalue()
         output.close()
         return csv_content.rstrip("\n")
+
 

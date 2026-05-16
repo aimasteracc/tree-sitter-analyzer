@@ -33,6 +33,13 @@ from ...utils import log_debug, log_error, log_warning
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class JavaScriptElementExtractor(ElementExtractor):
     """Enhanced JavaScript-specific element extractor with comprehensive feature support"""
 
@@ -1385,4 +1392,5 @@ class JavaScriptElementExtractor(ElementExtractor):
 
         self._complexity_cache[node_id] = complexity
         return complexity
+
 

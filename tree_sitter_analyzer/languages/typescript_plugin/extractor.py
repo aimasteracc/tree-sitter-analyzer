@@ -48,6 +48,13 @@ from .import_extractor import (
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class TypeScriptElementExtractor(ElementExtractor):
     """Enhanced TypeScript-specific element extractor with comprehensive feature support"""
 
@@ -1407,4 +1414,5 @@ class TypeScriptElementExtractor(ElementExtractor):
         all_elements.extend(self.extract_imports(tree, source_code))
 
         return all_elements
+
 

@@ -43,6 +43,13 @@ def dataclass_with_slots(*args: Any, **kwargs: Any) -> Any:
 
 
 @dataclass(frozen=False)
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class CodeElement(ABC):
     """Base class for all code elements"""
 
@@ -921,4 +928,5 @@ class YAMLElement(CodeElement):
             "nesting_level": self.nesting_level,
             "document_index": self.document_index,
         }
+
 

@@ -14,6 +14,13 @@ from .base_formatter import BaseTableFormatter
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class JavaTableFormatter(BaseTableFormatter):
     """Table formatter specialized for Java"""
 
@@ -565,4 +572,5 @@ class JavaTableFormatter(BaseTableFormatter):
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             return f"# JSON serialization error: {e}\n"
+
 

@@ -66,6 +66,13 @@ from .c_helpers import (
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class CElementExtractor(ElementExtractor):
     """C specific element extractor with advanced analysis support"""
 
@@ -518,4 +525,5 @@ class CPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
             }
+
 

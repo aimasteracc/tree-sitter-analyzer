@@ -32,6 +32,9 @@ except ImportError:
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
     class Server:  # type: ignore
         pass
 
@@ -550,4 +553,5 @@ def main_sync() -> None:
 
 if __name__ == "__main__":
     main_sync()
+
 

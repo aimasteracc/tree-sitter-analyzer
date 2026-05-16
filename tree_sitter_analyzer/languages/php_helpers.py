@@ -340,3 +340,4 @@ def extract_php_constant_elements(
         log_error(f"Error extracting constant elements: {e}")
     return variables
 
+

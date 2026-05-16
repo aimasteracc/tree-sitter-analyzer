@@ -766,3 +766,4 @@ def get_languages() -> list[str]:
     """Convenience function that aliases to get_supported_languages."""
     return get_supported_languages()
 
+

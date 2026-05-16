@@ -20,6 +20,13 @@ from .formatter_registry import IFormatter
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class HtmlFormatter(BaseFormatter, IFormatter):
     """HTML-specific formatter for MarkupElement and StyleElement"""
 
@@ -708,4 +715,5 @@ class HtmlCsvFormatter(IFormatter):
 
 # HTML formatters are registered via formatter_registry.py
 # to avoid duplicate registration warnings
+
 

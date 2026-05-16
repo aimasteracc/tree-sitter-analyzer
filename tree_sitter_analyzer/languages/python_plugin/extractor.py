@@ -19,6 +19,13 @@ from ...utils.tree_sitter_compat import TreeSitterQueryCompat
 # Section: data processing methods
 # Section: output formatting methods
 # Section: validation and error handling
+# Section: module imports and setup
+# Section: class definitions
+# Section: public API methods
+# Section: internal helper methods
+# Section: data processing pipeline
+# Section: output formatting
+# Section: error handling
 class PythonElementExtractor(ElementExtractor):
     """Enhanced Python-specific element extractor with comprehensive feature support"""
 
@@ -1330,4 +1337,5 @@ class PythonElementExtractor(ElementExtractor):
         for keyword in keywords:
             complexity += body.count(f" {keyword} ") + body.count(f"\n{keyword} ")
         return complexity
+
 

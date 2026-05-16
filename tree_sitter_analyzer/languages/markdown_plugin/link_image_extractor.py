@@ -406,3 +406,4 @@ def _extract_image_reference_definitions(
             except Exception as e:
                 log_debug(f"Failed to extract image reference definition: {e}")
 
+

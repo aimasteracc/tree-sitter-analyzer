@@ -223,3 +223,4 @@ def _extract_procedure_dependencies(
                     if table_name and table_name not in dependencies:
                         dependencies.append(table_name)
 
+
