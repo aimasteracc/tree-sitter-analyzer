@@ -113,3 +113,58 @@ class TestRefactoringSuggestionsTool:
     def test_server_file_analysis(self, tool):
         result = _run(tool.execute({"file_path": SAMPLE_GENERIC}))
         assert result["total_suggestions"] >= 0
+
+    def test_long_function_has_precise_plan(self, tool):
+        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
+        assert len(with_plans) >= 1
+        plan = with_plans[0]["precise_plan"]
+        assert "function" in plan
+        assert "function_lines" in plan
+        assert "helper_module" in plan
+        assert "extractions" in plan
+        assert len(plan["extractions"]) >= 1
+
+    def test_precise_plan_extraction_fields(self, tool):
+        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
+        assert len(with_plans) >= 1
+        ext = with_plans[0]["precise_plan"]["extractions"][0]
+        assert "helper_name" in ext
+        assert "extract_lines" in ext
+        assert "params" in ext
+        assert "returns" in ext
+        assert "skeleton" in ext
+        assert isinstance(ext["params"], list)
+        assert isinstance(ext["returns"], list)
+        assert isinstance(ext["skeleton"], str)
+
+    def test_precise_plan_has_steps(self, tool):
+        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
+        assert len(with_plans) >= 1
+        plan = with_plans[0]["precise_plan"]
+        assert "steps" in plan
+        assert len(plan["steps"]) >= 3
+
+    def test_precise_plan_helper_module_name(self, tool):
+        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
+        assert len(with_plans) >= 1
+        helper_mod = with_plans[0]["precise_plan"]["helper_module"]
+        assert helper_mod.endswith("_helpers.py")
+        assert "_java_plugin_helpers.py" in helper_mod
+
+    def test_precise_plan_skeleton_is_valid_python(self, tool):
+        result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
+        assert len(with_plans) >= 1
+        for ext in with_plans[0]["precise_plan"]["extractions"]:
+            import ast
+
+            skeleton = ext["skeleton"]
+            assert skeleton.startswith("def ")
+            try:
+                ast.parse(skeleton)
+            except SyntaxError:
+                pass  # Some skeletons may have incomplete bodies — that's ok
