@@ -395,23 +395,21 @@ def _suggest_next_action(
 ) -> str:
     long_methods = [s for s in smells if s["smell"] == "long_method"]
     if long_methods:
-        names = [s["detail"].split("'")[1] for s in long_methods if "'" in s["detail"]]
-        if names:
-            return (
-                f"Extract {', '.join(names[:2])} into a new module, "
-                f"then call check_file_health(file_path='{file_path}') to verify improvement"
-            )
+        return (
+            f"Call refactoring_suggestions(file_path='{file_path}') "
+            f"for precise extraction plans with code skeletons"
+        )
 
     oversized = any(s["smell"] == "oversized_file" for s in smells)
     if oversized:
         return (
-            f"Call analyze_code_structure(file_path='{file_path}', format='table') "
+            f"Call refactoring_suggestions(file_path='{file_path}') "
             f"to identify extraction targets, then split into focused modules"
         )
 
     return (
-        "Review code_smells above and apply suggested fixes, "
-        "then re-run check_file_health to track improvement"
+        f"Call refactoring_suggestions(file_path='{file_path}') "
+        f"for specific fixes, then re-run check_file_health to verify"
     )
 
 
