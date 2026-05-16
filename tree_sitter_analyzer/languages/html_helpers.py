@@ -20,6 +20,7 @@ def extract_node_text(node: Any, source_code: str) -> str:
         return ""
 
 
+# Parse input into structured data: parse_attribute
 def parse_attribute(
     attr_node: Any,
     get_node_text: Callable[..., str],
@@ -54,6 +55,7 @@ def parse_attribute(
         return "", ""
 
 
+# Process: classify_element
 def classify_element(
     tag_name: str,
     element_categories: dict[str, list[str]],
@@ -66,6 +68,7 @@ def classify_element(
     return "unknown"
 
 
+# Extract elements from AST: extract_html_tag_name
 def extract_html_tag_name(node: Any, get_node_text: Callable[..., str]) -> str:
     """Extract tag name from HTML element node."""
     try:
@@ -91,6 +94,7 @@ def extract_html_tag_name(node: Any, get_node_text: Callable[..., str]) -> str:
         return "unknown"
 
 
+# Extract elements from AST: extract_html_attributes
 def extract_html_attributes(
     node: Any, get_node_text: Callable[..., str]
 ) -> dict[str, str]:
@@ -120,6 +124,7 @@ def extract_html_attributes(
     return attributes
 
 
+# Process: create_markup_element
 def create_markup_element(
     node: Any,
     get_node_text: Callable[..., str],
@@ -156,3 +161,4 @@ def create_markup_element(
     except Exception as e:
         log_debug(f"Failed to create MarkupElement: {e}")
         return None
+

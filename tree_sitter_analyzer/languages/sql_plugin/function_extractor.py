@@ -13,6 +13,9 @@ from .identifier_validator import is_valid_identifier
 from .procedure_extractor import extract_procedure_parameters
 
 
+# Extract elements from AST: extract_sql_functions_enhanced
+# Section: imports and module configuration
+# Section: main class definition
 def extract_sql_functions_enhanced(
     root_node: "tree_sitter.Node",
     traverse_nodes: Callable[..., Iterator[Any]],
@@ -171,6 +174,7 @@ def extract_sql_functions_enhanced(
                         log_debug(f"Failed to extract enhanced function: {e}")
 
 
+# Extract elements from AST: _extract_function_metadata
 def _extract_function_metadata(
     func_node: "tree_sitter.Node",
     parameters: list[SQLParameter],
@@ -196,9 +200,11 @@ def _extract_function_metadata(
     )
 
 
+# Process: _traverse_nodes_default
 def _traverse_nodes_default(node: Any) -> Iterator[Any]:
     """Default traverse implementation."""
     yield node
     if hasattr(node, "children"):
         for child in node.children:
             yield from _traverse_nodes_default(child)
+

@@ -119,6 +119,7 @@ def extract_kotlin_function(
         return None
 
 
+# Extract elements from AST: extract_kotlin_class_or_object
 def extract_kotlin_class_or_object(
     node: Any,
     kind: str,
@@ -171,6 +172,7 @@ def extract_kotlin_class_or_object(
         return None
 
 
+# Extract elements from AST: extract_kotlin_property
 def extract_kotlin_property(
     node: Any,
     get_node_text: Callable[..., str],
@@ -230,3 +232,4 @@ def extract_kotlin_property(
     except Exception as e:
         log_error(f"Error extracting Kotlin property: {e}")
         return None
+

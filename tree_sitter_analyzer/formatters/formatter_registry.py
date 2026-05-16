@@ -17,6 +17,8 @@ from ..models import CodeElement
 logger = logging.getLogger(__name__)
 
 
+# Section: imports and module configuration
+# Section: main class definition
 class IFormatter(ABC):
     """
     Interface for code element formatters.
@@ -27,6 +29,7 @@ class IFormatter(ABC):
 
     @staticmethod
     @abstractmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         """
         Return the format name this formatter supports.
@@ -37,6 +40,7 @@ class IFormatter(ABC):
         pass
 
     @abstractmethod
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """
         Format a list of CodeElements into a string representation.
@@ -59,6 +63,7 @@ class IStructureFormatter(ABC):
     """
 
     @abstractmethod
+    # Format data for output: format_structure
     def format_structure(self, structure_data: dict[str, Any]) -> str:
         """
         Format structure data dictionary into a string representation.
@@ -89,6 +94,7 @@ class FormatterRegistry:
     _default_language_formatter: type[Any] | None = None
 
     @classmethod
+    # Format data for output: register_formatter
     def register_formatter(cls, formatter_class: type[IFormatter]) -> None:
         """
         Register a formatter class in the registry.
@@ -113,6 +119,7 @@ class FormatterRegistry:
         logger.debug(f"Registered formatter for format: {format_name}")
 
     @classmethod
+    # Format data for output: get_formatter
     def get_formatter(cls, format_name: str) -> IFormatter:
         """
         Get a formatter instance for the specified format.
@@ -137,6 +144,7 @@ class FormatterRegistry:
         return formatter_class()
 
     @classmethod
+    # Format data for output: get_available_formats
     def get_available_formats(cls) -> list[str]:
         """
         Get list of all available format names.
@@ -147,6 +155,7 @@ class FormatterRegistry:
         return list(cls._formatters.keys())
 
     @classmethod
+    # Format data for output: is_format_supported
     def is_format_supported(cls, format_name: str) -> bool:
         """
         Check if a format is supported.
@@ -160,6 +169,7 @@ class FormatterRegistry:
         return format_name in cls._formatters
 
     @classmethod
+    # Format data for output: unregister_formatter
     def unregister_formatter(cls, format_name: str) -> bool:
         """
         Unregister a formatter for the specified format.
@@ -177,6 +187,7 @@ class FormatterRegistry:
         return False
 
     @classmethod
+    # Process: clear_registry
     def clear_registry(cls) -> None:
         """
         Clear all registered formatters.
@@ -189,6 +200,7 @@ class FormatterRegistry:
         logger.debug("Cleared all registered formatters")
 
     @classmethod
+    # Format data for output: register_language_formatter
     def register_language_formatter(
         cls,
         language: str,
@@ -219,6 +231,7 @@ class FormatterRegistry:
         )
 
     @classmethod
+    # Format data for output: set_default_language_formatter
     def set_default_language_formatter(cls, formatter_class: type[Any]) -> None:
         """
         Set the default formatter class for languages without specific formatters.
@@ -230,6 +243,7 @@ class FormatterRegistry:
         logger.debug(f"Set default language formatter: {formatter_class.__name__}")
 
     @classmethod
+    # Format data for output: get_formatter_for_language
     def get_formatter_for_language(
         cls,
         language: str,
@@ -285,6 +299,7 @@ class FormatterRegistry:
         )
 
     @classmethod
+    # Format data for output: _create_formatter_instance
     def _create_formatter_instance(
         cls,
         formatter_class: type[Any],
@@ -314,6 +329,7 @@ class FormatterRegistry:
                 return formatter_class()
 
     @classmethod
+    # Process: get_supported_languages
     def get_supported_languages(cls) -> list[str]:
         """
         Get list of all languages with registered formatters.
@@ -324,6 +340,7 @@ class FormatterRegistry:
         return list(cls._language_formatters.keys())
 
     @classmethod
+    # Process: is_language_supported
     def is_language_supported(cls, language: str) -> bool:
         """
         Check if a language has specific formatters registered.
@@ -344,9 +361,11 @@ class JsonFormatter(IFormatter):
     """JSON formatter for CodeElement lists"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "json"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements as JSON"""
         import json
@@ -386,9 +405,11 @@ class CsvFormatter(IFormatter):
     """CSV formatter for CodeElement lists"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "csv"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements as CSV"""
         import csv
@@ -437,9 +458,11 @@ class FullFormatter(IFormatter):
     """Full table formatter for CodeElement lists"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "full"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements as full table"""
         if not elements:
@@ -495,9 +518,11 @@ class CompactFormatter(IFormatter):
     """Compact formatter for CodeElement lists"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "compact"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format elements in compact format"""
         if not elements:
@@ -520,6 +545,7 @@ class CompactFormatter(IFormatter):
 
         return "\n".join(lines)
 
+    # Process: _get_visibility_symbol
     def _get_visibility_symbol(self, visibility: str) -> str:
         """Get symbol for visibility"""
         mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
@@ -540,6 +566,7 @@ def register_builtin_formatters() -> None:
     _register_language_formatters_safe()
 
 
+# Format data for output: _register_language_formatters_safe
 def _register_language_formatters_safe() -> None:
     """Register language-specific formatters safely to avoid circular imports"""
     try:
@@ -619,3 +646,4 @@ def _register_language_formatters_safe() -> None:
 
 # Auto-register built-in formatters when module is imported
 register_builtin_formatters()
+

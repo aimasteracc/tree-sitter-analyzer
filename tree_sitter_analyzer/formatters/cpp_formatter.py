@@ -9,6 +9,12 @@ from typing import Any
 from .base_formatter import BaseTableFormatter
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class CppTableFormatter(BaseTableFormatter):
     """Table formatter specialized for C and C++"""
 
@@ -158,6 +164,7 @@ class CppTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_class_details
     def _format_class_details(
         self, class_info: dict[str, Any], data: dict[str, Any]
     ) -> list[str]:
@@ -249,6 +256,7 @@ class CppTableFormatter(BaseTableFormatter):
 
         return lines
 
+    # Format data for output: _format_compact_table
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format for C/C++"""
         lines = []
@@ -306,6 +314,7 @@ class CppTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_method_row
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row"""
         name = str(method.get("name", ""))
@@ -321,6 +330,7 @@ class CppTableFormatter(BaseTableFormatter):
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {cols_str} | {complexity} | {doc} |"
 
+    # Process: _create_compact_signature
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Create compact method signature"""
         params = method.get("parameters", [])
@@ -377,6 +387,7 @@ class CppTableFormatter(BaseTableFormatter):
 
         return f"({params_str}):{return_type}"
 
+    # Process: _shorten_type
     def _shorten_type(self, type_name: Any) -> str:
         """Shorten type name for C/C++ compact display"""
         if type_name is None:
@@ -412,6 +423,7 @@ class CppTableFormatter(BaseTableFormatter):
 
         return type_map.get(s, s)  # Return shortened or original
 
+    # Format data for output: format_table
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
@@ -426,10 +438,12 @@ class CppTableFormatter(BaseTableFormatter):
         finally:
             self.format_type = original_format_type
 
+    # Format data for output: format_summary
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output"""
         return self._format_compact_table(analysis_result)
 
+    # Format data for output: format_analysis_result
     def format_analysis_result(self, analysis_result: Any, table_type: str) -> str:
         """
         Format analysis result directly (C++ specific).
@@ -448,6 +462,7 @@ class CppTableFormatter(BaseTableFormatter):
         else:
             return self._format_full_table(formatted_data)
 
+    # Format data for output: _convert_analysis_result_to_format
     def _convert_analysis_result_to_format(
         self, analysis_result: Any
     ) -> dict[str, Any]:
@@ -562,6 +577,7 @@ class CppTableFormatter(BaseTableFormatter):
             },
         }
 
+    # Convert between formats: _convert_class_element
     def _convert_class_element(self, element: Any, index: int) -> dict[str, Any]:
         """Convert class element to table format."""
         element_name = getattr(element, "name", None)
@@ -579,6 +595,7 @@ class CppTableFormatter(BaseTableFormatter):
             },
         }
 
+    # Convert between formats: _convert_function_element
     def _convert_function_element(self, element: Any) -> dict[str, Any]:
         """Convert function element to table format."""
         params = getattr(element, "parameters", [])
@@ -634,6 +651,7 @@ class CppTableFormatter(BaseTableFormatter):
             "javadoc": "",
         }
 
+    # Convert between formats: _convert_variable_element
     def _convert_variable_element(self, element: Any) -> dict[str, Any]:
         """Convert variable element to table format."""
         field_type = getattr(element, "variable_type", "")
@@ -651,6 +669,7 @@ class CppTableFormatter(BaseTableFormatter):
             "javadoc": "",
         }
 
+    # Convert between formats: _convert_import_element
     def _convert_import_element(self, element: Any) -> dict[str, Any]:
         """Convert import element to table format."""
         raw_text = getattr(element, "raw_text", "")
@@ -667,10 +686,12 @@ class CppTableFormatter(BaseTableFormatter):
             "module_name": getattr(element, "module_name", ""),
         }
 
+    # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output"""
         return super().format_structure(analysis_result)
 
+    # Format data for output: format_advanced
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
@@ -682,6 +703,7 @@ class CppTableFormatter(BaseTableFormatter):
         else:
             return self._format_full_table(analysis_result)
 
+    # Format data for output: _format_json
     def _format_json(self, data: dict[str, Any]) -> str:
         import json
 
@@ -689,3 +711,4 @@ class CppTableFormatter(BaseTableFormatter):
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             return f"# JSON serialization error: {e}\\n"
+

@@ -8,6 +8,13 @@ from ..models import Class, Function, Import, Variable
 from ..utils import log_debug, log_error, log_warning
 
 
+# Extract elements from AST: extract_c_imports
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def extract_c_imports(
     tree: Any,
     source_code: str,
@@ -30,6 +37,7 @@ def extract_c_imports(
     return imports
 
 
+# Extract elements from AST: extract_parameters
 def extract_parameters(
     params_node: Any,
     get_node_text: Callable[..., str],
@@ -44,6 +52,7 @@ def extract_parameters(
     return parameters
 
 
+# Parse input into structured data: parse_function_signature
 def parse_function_signature(
     node: Any,
     get_node_text: Callable[..., str],
@@ -56,6 +65,7 @@ def parse_function_signature(
         parameters: list[str] = []
         modifiers: list[str] = []
 
+        # Search for patterns or elements: find_function_declarator
         def find_function_declarator(n: Any) -> None:
             nonlocal name, parameters
             for child in n.children:
@@ -102,6 +112,7 @@ def parse_function_signature(
         return None
 
 
+# Extract elements from AST: extract_macro_definition
 def extract_macro_definition(
     node: Any,
     get_node_text: Callable[..., str],
@@ -139,6 +150,7 @@ def extract_macro_definition(
     return variables
 
 
+# Extract elements from AST: extract_macro_function
 def extract_macro_function(
     node: Any,
     get_node_text: Callable[..., str],
@@ -179,6 +191,7 @@ def extract_macro_function(
     return None
 
 
+# Process: calculate_complexity
 def calculate_complexity(node: Any) -> int:
     """Calculate cyclomatic complexity."""
     decision_nodes = {
@@ -191,6 +204,7 @@ def calculate_complexity(node: Any) -> int:
         "do_statement",
     }
 
+    # Process: count_decisions
     def count_decisions(n: Any) -> int:
         count = 0
         if hasattr(n, "type") and n.type in decision_nodes:
@@ -229,6 +243,7 @@ _TYPE_NODES_VAR = frozenset(
 )
 
 
+# Extract elements from AST: extract_field_declaration
 def extract_field_declaration(
     node: Any, get_node_text: Callable[..., str]
 ) -> list[Variable]:
@@ -296,6 +311,7 @@ def extract_field_declaration(
     return fields
 
 
+# Extract elements from AST: extract_variable_declaration
 def extract_variable_declaration(
     node: Any, get_node_text: Callable[..., str]
 ) -> list[Variable]:
@@ -363,6 +379,7 @@ def extract_variable_declaration(
     return variables
 
 
+# Extract elements from AST: extract_struct_definition
 def extract_struct_definition(
     node: Any,
     get_node_text: Callable[..., str],
@@ -410,6 +427,7 @@ def extract_struct_definition(
         return None
 
 
+# Extract elements from AST: extract_enum_definition
 def extract_enum_definition(
     node: Any,
     get_node_text: Callable[..., str],
@@ -457,6 +475,7 @@ def extract_enum_definition(
         return None
 
 
+# Extract elements from AST: extract_comment_for_line
 def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
     """Extract comment for a specific line."""
     try:
@@ -486,6 +505,7 @@ def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
     return None
 
 
+# Extract elements from AST: _extract_include_info
 def _extract_include_info(
     node: Any,
     get_node_text: Callable[..., str],
@@ -518,6 +538,7 @@ def _extract_include_info(
     return None
 
 
+# Extract elements from AST: _extract_includes_fallback
 def _extract_includes_fallback(source_code: str) -> list[Import]:
     """Fallback include extraction using regex."""
     imports: list[Import] = []
@@ -572,6 +593,7 @@ _C_CONTAINER_NODE_TYPES = frozenset(
 )
 
 
+# Extract elements from AST: c_traverse_and_extract
 def c_traverse_and_extract(
     root_node: Any,
     extractors: dict[str, Any],
@@ -641,6 +663,7 @@ def c_traverse_and_extract(
     log_debug(f"Iterative traversal processed {processed_count} nodes")
 
 
+# Extract elements from AST: extract_c_function
 def extract_c_function(
     node: Any,
     get_node_text: Callable[..., str],
@@ -687,3 +710,4 @@ def extract_c_function(
     except Exception as e:
         log_error(f"Unexpected error in function extraction: {e}")
         return None
+

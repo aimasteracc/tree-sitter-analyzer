@@ -12,6 +12,13 @@ from pathlib import Path
 from typing import Any
 
 
+# Build response or data structure: build_precise_plans
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def build_precise_plans(
     file_path: str,
     source: str,
@@ -41,6 +48,7 @@ def build_precise_plans(
             s["precise_plan"] = plan
 
 
+# Build response or data structure: _build_plan_for_func
 def _build_plan_for_func(
     file_path: str,
     lines: list[str],
@@ -99,6 +107,7 @@ def _build_plan_for_func(
     }
 
 
+# Extract elements from AST: _find_extractable_blocks
 def _find_extractable_blocks(
     func_lines: list[str], abs_start: int
 ) -> list[tuple[int, int, str]]:
@@ -157,6 +166,7 @@ def _find_extractable_blocks(
     return blocks
 
 
+# Process: _body_indent
 def _body_indent(func_lines: list[str]) -> int:
     for line in func_lines[1:]:
         stripped = line.strip()
@@ -166,6 +176,7 @@ def _body_indent(func_lines: list[str]) -> int:
     return 0
 
 
+# Process: _classify_line
 def _classify_line(stripped: str) -> str:
     if stripped.startswith(("if ", "elif ", "else")):
         return "conditional"
@@ -180,6 +191,7 @@ def _classify_line(stripped: str) -> str:
     return "logic"
 
 
+# Process: _is_block_continuation
 def _is_block_continuation(next_stripped: str, hint: str) -> bool:
     if hint == "resource" and next_stripped.startswith(
         ("except", "else:", "finally:")
@@ -192,6 +204,7 @@ def _is_block_continuation(next_stripped: str, hint: str) -> bool:
     return False
 
 
+# Process: _suggest_helper_name
 def _suggest_helper_name(func_name: str, hint: str, index: int) -> str:
     suffix_map = {
         "conditional": "check_conditions",
@@ -207,6 +220,7 @@ def _suggest_helper_name(func_name: str, hint: str, index: int) -> str:
     return f"_{func_name}_{suffix}_{index + 1}"
 
 
+# Process: _collect_assigned_names
 def _collect_assigned_names(source: str) -> set[str]:
     try:
         tree = ast.parse(textwrap.dedent(source))
@@ -231,6 +245,7 @@ _BUILTINS = {
 }
 
 
+# Process: _infer_params_for_block
 def _infer_params_for_block(
     block_src: str,
     func_assigned: set[str],
@@ -255,12 +270,14 @@ def _infer_params_for_block(
     return params[:6]
 
 
+# Process: _infer_returns
 def _infer_returns(block_src: str) -> list[str]:
     try:
         tree = ast.parse(textwrap.dedent(block_src))
     except SyntaxError:
         return []
 
+    # Process: _collect
     def _collect(stmts: list[Any]) -> list[str]:
         assigned: list[str] = []
         for node in stmts:
@@ -297,6 +314,7 @@ def _infer_returns(block_src: str) -> list[str]:
     return unique[:4]
 
 
+# Process: _make_skeleton
 def _make_skeleton(
     name: str,
     params: list[str],
@@ -318,3 +336,4 @@ def _make_skeleton(
         lines.append(f"    return {', '.join(returns)}")
 
     return "\n".join(lines)
+

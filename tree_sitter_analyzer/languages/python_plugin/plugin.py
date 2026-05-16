@@ -161,6 +161,7 @@ class PythonPlugin(LanguagePlugin):
             return "import_statement"
         return "unknown"
 
+    # Process: get_element_categories
     def get_element_categories(self) -> dict[str, list[str]]:
         return {
             "function": ["function_definition"],
@@ -227,6 +228,7 @@ class PythonPlugin(LanguagePlugin):
             ],
         }
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
@@ -252,6 +254,7 @@ class PythonPlugin(LanguagePlugin):
 
             source_code, _ = await read_file_safe_async(file_path)
 
+            # Analyze source code structure: _analyze_sync
             def _analyze_sync() -> tuple[list[CodeElement], int]:
                 parser = tree_sitter.Parser()
                 parser.language = language
@@ -292,6 +295,7 @@ class PythonPlugin(LanguagePlugin):
                 error_message=str(e),
             )
 
+    # Main entry point - dispatches to handler: execute_query
     def execute_query(self, tree: "tree_sitter.Tree", query_name: str) -> dict:
         try:
             language = self.get_tree_sitter_language()
@@ -313,6 +317,7 @@ class PythonPlugin(LanguagePlugin):
             log_error(f"Query execution failed: {e}")
             return {"error": str(e)}
 
+    # Extract elements from AST: extract_elements
     def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
         extractor = self.get_extractor()
         elements: list[CodeElement] = []
@@ -324,3 +329,4 @@ class PythonPlugin(LanguagePlugin):
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
         return elements
+

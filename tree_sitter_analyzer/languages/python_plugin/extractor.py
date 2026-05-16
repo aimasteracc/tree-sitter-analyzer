@@ -13,6 +13,12 @@ from ...utils import log_debug, log_error, log_warning
 from ...utils.tree_sitter_compat import TreeSitterQueryCompat
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class PythonElementExtractor(ElementExtractor):
     """Enhanced Python-specific element extractor with comprehensive feature support"""
 
@@ -38,6 +44,7 @@ class PythonElementExtractor(ElementExtractor):
         self.framework_type: str = ""  # django, flask, fastapi, etc.
         self.python_version: str = "3.8"  # default
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
@@ -66,6 +73,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return functions
 
+    # Extract elements from AST: extract_classes
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
@@ -93,6 +101,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
@@ -134,6 +143,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return variables
 
+    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -142,6 +152,7 @@ class PythonElementExtractor(ElementExtractor):
         self._docstring_cache.clear()
         self._complexity_cache.clear()
 
+    # Detect patterns in source code: _detect_file_characteristics
     def _detect_file_characteristics(self) -> None:
         """Detect Python file characteristics"""
         # Check if it's a module
@@ -158,6 +169,7 @@ class PythonElementExtractor(ElementExtractor):
         elif "fastapi" in self.source_code or "from fastapi" in self.source_code:
             self.framework_type = "fastapi"
 
+    # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
         root_node: Optional["tree_sitter.Node"],
@@ -259,6 +271,7 @@ class PythonElementExtractor(ElementExtractor):
 
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 
+    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
@@ -322,6 +335,7 @@ class PythonElementExtractor(ElementExtractor):
             log_error(f"Fallback text extraction also failed: {fallback_error}")
             return ""
 
+    # Extract elements from AST: _extract_function_optimized
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information with detailed metadata"""
         try:
@@ -382,6 +396,7 @@ class PythonElementExtractor(ElementExtractor):
             traceback.print_exc()
             return None
 
+    # Parse input into structured data: _parse_function_signature_optimized
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, list[str], bool, list[str], str | None] | None:
@@ -450,6 +465,7 @@ class PythonElementExtractor(ElementExtractor):
         except Exception:
             return None
 
+    # Extract elements from AST: _extract_parameters_from_node_optimized
     def _extract_parameters_from_node_optimized(
         self, params_node: "tree_sitter.Node"
     ) -> list[str]:
@@ -479,6 +495,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return parameters
 
+    # Extract elements from AST: _extract_docstring_for_line
     def _extract_docstring_for_line(self, target_line: int) -> str | None:
         """Extract docstring for the specified line"""
         if target_line in self._docstring_cache:
@@ -532,6 +549,7 @@ class PythonElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract docstring: {e}")
             return None
 
+    # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity efficiently"""
         import re
@@ -566,6 +584,7 @@ class PythonElementExtractor(ElementExtractor):
         self._complexity_cache[node_id] = complexity
         return complexity
 
+    # Extract elements from AST: _extract_class_optimized
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information with detailed metadata"""
         try:
@@ -645,6 +664,7 @@ class PythonElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract class info: {e}")
             return None
 
+    # Process: _is_framework_class
     def _is_framework_class(self, node: "tree_sitter.Node", class_name: str) -> bool:
         """Check if class is a framework-specific class"""
         if self.framework_type == "django":
@@ -662,6 +682,7 @@ class PythonElementExtractor(ElementExtractor):
             return "APIRouter" in self.source_code or "BaseModel" in self.source_code
         return False
 
+    # Extract elements from AST: _extract_class_attributes
     def _extract_class_attributes(
         self, class_body_node: "tree_sitter.Node", source_code: str
     ) -> list[Variable]:
@@ -690,6 +711,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return attributes
 
+    # Extract elements from AST: _extract_class_attribute_info
     def _extract_class_attribute_info(
         self, node: "tree_sitter.Node", source_code: str
     ) -> Variable | None:
@@ -725,6 +747,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return None
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
@@ -782,6 +805,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return imports
 
+    # Extract elements from AST: _extract_imports_manual
     def _extract_imports_manual(
         self, root_node: "tree_sitter.Node", source_code: str
     ) -> list[Import]:
@@ -790,6 +814,7 @@ class PythonElementExtractor(ElementExtractor):
         self._walk_import_nodes(root_node, source_code, imports)
         return imports
 
+    # Process: _walk_import_nodes
     def _walk_import_nodes(
         self, node: "tree_sitter.Node", source_code: str, imports: list[Import]
     ) -> None:
@@ -803,6 +828,7 @@ class PythonElementExtractor(ElementExtractor):
         for child in node.children:
             self._walk_import_nodes(child, source_code, imports)
 
+    # Parse input into structured data: _parse_import_node
     def _parse_import_node(
         self, node: "tree_sitter.Node", source_code: str, imports: list[Import]
     ) -> None:
@@ -824,6 +850,7 @@ class PythonElementExtractor(ElementExtractor):
                 node, source_code, start_line, end_line, raw_text, imports
             )
 
+    # Parse input into structured data: _parse_simple_import
     def _parse_simple_import(
         self,
         node: "tree_sitter.Node",
@@ -855,6 +882,7 @@ class PythonElementExtractor(ElementExtractor):
                     )
                 )
 
+    # Parse input into structured data: _parse_from_import
     def _parse_from_import(
         self,
         node: "tree_sitter.Node",
@@ -913,6 +941,7 @@ class PythonElementExtractor(ElementExtractor):
             )
         )
 
+    # Extract elements from AST: extract_packages
     def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list:
         """Extract Python package information from file path"""
         import os
@@ -961,6 +990,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return packages
 
+    # Extract elements from AST: _extract_detailed_function_info
     def _extract_detailed_function_info(
         self, node: "tree_sitter.Node", source_code: str, is_async: bool = False
     ) -> Function | None:
@@ -1023,6 +1053,7 @@ class PythonElementExtractor(ElementExtractor):
             log_warning(f"Could not extract detailed function info: {e}")
             return None
 
+    # Extract elements from AST: _extract_detailed_class_info
     def _extract_detailed_class_info(
         self, node: "tree_sitter.Node", source_code: str
     ) -> Class | None:
@@ -1070,6 +1101,7 @@ class PythonElementExtractor(ElementExtractor):
             log_warning(f"Could not extract detailed class info: {e}")
             return None
 
+    # Extract elements from AST: _extract_variable_info
     def _extract_variable_info(
         self, node: "tree_sitter.Node", source_code: str, assignment_type: str
     ) -> Variable | None:
@@ -1104,6 +1136,7 @@ class PythonElementExtractor(ElementExtractor):
             log_warning(f"Could not extract variable info: {e}")
             return None
 
+    # Extract elements from AST: _extract_import_info
     def _extract_import_info(
         self, node: "tree_sitter.Node", source_code: str, import_type: str
     ) -> Import | None:
@@ -1159,6 +1192,7 @@ class PythonElementExtractor(ElementExtractor):
                 return False
         return True
 
+    # Extract elements from AST: _extract_name_from_node
     def _extract_name_from_node(
         self, node: "tree_sitter.Node", source_code: str
     ) -> str | None:
@@ -1168,6 +1202,7 @@ class PythonElementExtractor(ElementExtractor):
                 return source_code[child.start_byte : child.end_byte]
         return None
 
+    # Extract elements from AST: _extract_parameters_from_node
     def _extract_parameters_from_node(
         self, node: "tree_sitter.Node", source_code: str
     ) -> list[str]:
@@ -1187,6 +1222,7 @@ class PythonElementExtractor(ElementExtractor):
                         parameters.append(param_text)
         return parameters
 
+    # Extract elements from AST: _extract_decorators_from_node
     def _extract_decorators_from_node(
         self, node: "tree_sitter.Node", source_code: str
     ) -> list[str]:
@@ -1208,6 +1244,7 @@ class PythonElementExtractor(ElementExtractor):
 
         return decorators
 
+    # Extract elements from AST: _extract_return_type_from_node
     def _extract_return_type_from_node(
         self, node: "tree_sitter.Node", source_code: str
     ) -> str | None:
@@ -1234,6 +1271,7 @@ class PythonElementExtractor(ElementExtractor):
                     return type_text
         return None
 
+    # Extract elements from AST: _extract_docstring_from_node
     def _extract_docstring_from_node(
         self, node: "tree_sitter.Node", source_code: str
     ) -> str | None:
@@ -1263,6 +1301,7 @@ class PythonElementExtractor(ElementExtractor):
                 break
         return None
 
+    # Extract elements from AST: _extract_function_body
     def _extract_function_body(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract function body"""
         for child in node.children:
@@ -1270,6 +1309,7 @@ class PythonElementExtractor(ElementExtractor):
                 return source_code[child.start_byte : child.end_byte]
         return ""
 
+    # Extract elements from AST: _extract_superclasses_from_node
     def _extract_superclasses_from_node(
         self, node: "tree_sitter.Node", source_code: str
     ) -> list[str]:
@@ -1282,6 +1322,7 @@ class PythonElementExtractor(ElementExtractor):
                         superclasses.append(source_code[arg.start_byte : arg.end_byte])
         return superclasses
 
+    # Process: _calculate_complexity
     def _calculate_complexity(self, body: str) -> int:
         """Calculate cyclomatic complexity (simplified)"""
         complexity = 1  # Base complexity
@@ -1289,3 +1330,4 @@ class PythonElementExtractor(ElementExtractor):
         for keyword in keywords:
             complexity += body.count(f" {keyword} ") + body.count(f"\n{keyword} ")
         return complexity
+

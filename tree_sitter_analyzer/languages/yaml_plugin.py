@@ -57,6 +57,12 @@ except ImportError:
     log_warning("tree-sitter-yaml not installed, YAML support disabled")
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class YAMLElement(CodeElement):
     """YAML-specific code element."""
 
@@ -125,30 +131,35 @@ class YAMLElementExtractor(ElementExtractor):
         self.content_lines: list[str] = []
         self._current_document_index: int = 0
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
         """YAML doesn't have functions, return empty list."""
         return []
 
+    # Extract elements from AST: extract_classes
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
         """YAML doesn't have classes, return empty list."""
         return []
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
         """YAML doesn't have variables, return empty list."""
         return []
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
         """YAML doesn't have imports, return empty list."""
         return []
 
+    # Extract elements from AST: extract_yaml_elements
     def extract_yaml_elements(
         self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[YAMLElement]:
@@ -188,6 +199,7 @@ class YAMLElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(elements)} YAML elements")
         return elements
 
+    # Extract elements from AST: extract_elements
     def extract_elements(
         self, tree: "tree_sitter.Tree | None", source_code: str
     ) -> list[YAMLElement]:
@@ -202,6 +214,7 @@ class YAMLElementExtractor(ElementExtractor):
         """
         return self.extract_yaml_elements(tree, source_code)
 
+    # Process: _get_node_text
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get text content from a tree-sitter node."""
         try:
@@ -214,18 +227,22 @@ class YAMLElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract node text: {e}")
             return ""
 
+    # Process: _calculate_nesting_level
     def _calculate_nesting_level(self, node: "tree_sitter.Node") -> int:
         """Calculate AST-based logical nesting level."""
         return _calc_nesting_standalone(node)
 
+    # Process: _get_document_index
     def _get_document_index(self, node: "tree_sitter.Node") -> int:
         """Get document index for a node."""
         return _get_doc_idx_standalone(node)
 
+    # Process: _traverse_nodes
     def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
         """Traverse all nodes in the tree."""
         return _traverse_standalone(node)
 
+    # Process: _count_document_children
     def _count_document_children(self, document_node: "tree_sitter.Node") -> int:
         """Count meaningful children in a document (top-level mappings).
 
@@ -257,6 +274,7 @@ class YAMLElementExtractor(ElementExtractor):
                 )
         return count
 
+    # Extract elements from AST: _extract_documents
     def _extract_documents(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
@@ -289,6 +307,7 @@ class YAMLElementExtractor(ElementExtractor):
                 except Exception:  # nosec B110
                     pass
 
+    # Extract elements from AST: _extract_mappings
     def _extract_mappings(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
@@ -325,18 +344,21 @@ class YAMLElementExtractor(ElementExtractor):
                 except Exception:  # nosec B110
                     pass
 
+    # Extract elements from AST: _extract_value_info
     def _extract_value_info(
         self, node: "tree_sitter.Node | None"
     ) -> tuple[str | None, str | None, int | None]:
         """Extract value information from a node."""
         return _extract_value_standalone(node, self._get_node_text)
 
+    # Process: _is_number
     def _is_number(self, text: str) -> bool:
         """Check if text represents a number."""
         from .yaml_helpers import is_number
 
         return is_number(text)
 
+    # Extract elements from AST: _extract_sequences
     def _extract_sequences(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
@@ -382,6 +404,7 @@ class YAMLElementExtractor(ElementExtractor):
                 except Exception:  # nosec B110
                     pass
 
+    # Extract elements from AST: _extract_anchors
     def _extract_anchors(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
@@ -411,6 +434,7 @@ class YAMLElementExtractor(ElementExtractor):
                 except Exception:  # nosec B110
                     pass
 
+    # Extract elements from AST: _extract_aliases
     def _extract_aliases(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
@@ -440,6 +464,7 @@ class YAMLElementExtractor(ElementExtractor):
                 except Exception:  # nosec B110
                     pass
 
+    # Extract elements from AST: _extract_comments
     def _extract_comments(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
@@ -480,24 +505,29 @@ class YAMLPlugin(LanguagePlugin):
         super().__init__()
         self.extractor = YAMLElementExtractor()
 
+    # Process: get_language_name
     def get_language_name(self) -> str:
         """Return the language name."""
         return "yaml"
 
+    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Return supported file extensions."""
         return [".yaml", ".yml"]
 
+    # Extract elements from AST: create_extractor
     def create_extractor(self) -> "YAMLElementExtractor":
         """Create and return a YAML element extractor."""
         return YAMLElementExtractor()
 
+    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any:
         """Get tree-sitter language object for YAML."""
         if not YAML_AVAILABLE:
             raise ImportError("tree-sitter-yaml not installed")
         return YAML_LANGUAGE
 
+    # Process: get_supported_element_types
     def get_supported_element_types(self) -> list[str]:
         """Return supported element types."""
         return [
@@ -510,12 +540,14 @@ class YAMLPlugin(LanguagePlugin):
             "document",
         ]
 
+    # Process: get_queries
     def get_queries(self) -> dict[str, str]:
         """Return YAML-specific tree-sitter queries."""
         from ..queries.yaml import YAML_QUERIES
 
         return YAML_QUERIES
 
+    # Main entry point - dispatches to handler: execute_query_strategy
     def execute_query_strategy(
         self, query_key: str | None, language: str
     ) -> str | None:
@@ -526,6 +558,7 @@ class YAMLPlugin(LanguagePlugin):
         queries = self.get_queries()
         return queries.get(query_key) if query_key else None
 
+    # Process: get_element_categories
     def get_element_categories(self) -> dict[str, list[str]]:
         """Return YAML element categories for query execution."""
         return {
@@ -542,6 +575,7 @@ class YAMLPlugin(LanguagePlugin):
             "metadata": ["comment", "tag"],
         }
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
@@ -611,3 +645,4 @@ class YAMLPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+

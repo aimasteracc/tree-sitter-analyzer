@@ -7,6 +7,13 @@ from typing import Any
 from ...utils import log_debug
 
 
+# Extract elements from AST: extract_md_links
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def extract_md_links(
     root_node: Any,
     get_node_text: Callable[..., str],
@@ -26,6 +33,7 @@ def extract_md_links(
     return links
 
 
+# Extract elements from AST: extract_md_images
 def extract_md_images(
     root_node: Any,
     get_node_text: Callable[..., str],
@@ -44,6 +52,7 @@ def extract_md_images(
     return images
 
 
+# Extract elements from AST: extract_md_link_reference_definitions
 def extract_md_link_reference_definitions(
     root_node: Any,
     get_node_text: Callable[..., str],
@@ -75,6 +84,7 @@ def extract_md_link_reference_definitions(
     return references
 
 
+# Extract elements from AST: _extract_inline_links
 def _extract_inline_links(
     root_node: Any,
     links: list[Any],
@@ -126,6 +136,7 @@ def _extract_inline_links(
                 log_debug(f"Failed to extract inline link: {e}")
 
 
+# Extract elements from AST: _extract_reference_links
 def _extract_reference_links(
     root_node: Any,
     links: list[Any],
@@ -181,6 +192,7 @@ def _extract_reference_links(
                 log_debug(f"Failed to extract reference link: {e}")
 
 
+# Extract elements from AST: _extract_autolinks
 def _extract_autolinks(
     root_node: Any,
     links: list[Any],
@@ -234,6 +246,7 @@ def _extract_autolinks(
                 log_debug(f"Failed to extract autolink: {e}")
 
 
+# Extract elements from AST: _extract_inline_images
 def _extract_inline_images(
     root_node: Any,
     images: list[Any],
@@ -279,6 +292,7 @@ def _extract_inline_images(
                 log_debug(f"Failed to extract inline image: {e}")
 
 
+# Extract elements from AST: _extract_reference_images
 def _extract_reference_images(
     root_node: Any,
     images: list[Any],
@@ -321,6 +335,7 @@ def _extract_reference_images(
                 log_debug(f"Failed to extract reference image: {e}")
 
 
+# Extract elements from AST: _extract_image_reference_definitions
 def _extract_image_reference_definitions(
     root_node: Any,
     images: list[Any],
@@ -390,3 +405,4 @@ def _extract_image_reference_definitions(
 
             except Exception as e:
                 log_debug(f"Failed to extract image reference definition: {e}")
+

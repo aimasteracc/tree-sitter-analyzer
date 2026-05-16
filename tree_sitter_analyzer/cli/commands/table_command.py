@@ -26,6 +26,12 @@ from ...output_manager import output_error
 from .base_command import BaseCommand
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class TableCommand(BaseCommand):
     """Command for generating table format output."""
 
@@ -33,6 +39,7 @@ class TableCommand(BaseCommand):
         """Initialize the table command."""
         super().__init__(args)
 
+    # Main entry point - dispatches to handler: execute_async
     async def execute_async(self, language: str) -> int:
         """Execute table format generation."""
         try:
@@ -83,6 +90,7 @@ class TableCommand(BaseCommand):
             output_error(f"An error occurred during table format analysis: {e}")
             return 1
 
+    # Format data for output: _format_as_toon
     def _format_as_toon(self, analysis_result: Any) -> str:
         """Format analysis result as TOON."""
         from ...formatters.toon_formatter import ToonFormatter
@@ -94,6 +102,7 @@ class TableCommand(BaseCommand):
         structure_data = self._convert_to_toon_format(analysis_result)
         return formatter.format(structure_data)
 
+    # Format data for output: _convert_to_toon_format
     def _convert_to_toon_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to TOON-friendly format with position info."""
         classes = []
@@ -185,6 +194,7 @@ class TableCommand(BaseCommand):
             },
         }
 
+    # Format data for output: _convert_to_formatter_format
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to format expected by formatters."""
         return {
@@ -222,6 +232,7 @@ class TableCommand(BaseCommand):
             },
         }
 
+    # Process: _get_default_package_name
     def _get_default_package_name(self, language: str) -> str:
         """
         Get default package name for language.
@@ -243,6 +254,7 @@ class TableCommand(BaseCommand):
 
         return ""  # No package for JS, TS, Python, etc.
 
+    # Format data for output: _convert_to_structure_format
     def _convert_to_structure_format(
         self, analysis_result: Any, language: str
     ) -> dict[str, Any]:
@@ -308,6 +320,7 @@ class TableCommand(BaseCommand):
             },
         }
 
+    # Convert between formats: _convert_class_element
     def _convert_class_element(
         self, element: Any, index: int, language: str
     ) -> dict[str, Any]:
@@ -333,6 +346,7 @@ class TableCommand(BaseCommand):
             },
         }
 
+    # Convert between formats: _convert_function_element
     def _convert_function_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert function element to table format."""
         # Process parameters based on language
@@ -361,6 +375,7 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
 
+    # Convert between formats: _convert_variable_element
     def _convert_variable_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert variable element to table format."""
         # Get field type based on language
@@ -393,6 +408,7 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
 
+    # Convert between formats: _convert_import_element
     def _convert_import_element(self, element: Any) -> dict[str, Any]:
         """Convert import element to table format."""
         # Try to get the full import statement from raw_text
@@ -410,6 +426,7 @@ class TableCommand(BaseCommand):
             "module_name": getattr(element, "module_name", ""),
         }
 
+    # Convert between formats: _convert_sql_element
     def _convert_sql_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert SQL element to table format."""
         element_name = getattr(element, "name", str(element))
@@ -443,6 +460,7 @@ class TableCommand(BaseCommand):
             "source_tables": source_tables,
         }
 
+    # Process data through pipeline: _process_sql_parameters
     def _process_sql_parameters(self, params: Any) -> list[dict[str, str]]:
         """Process SQL parameters."""
         if not params:
@@ -459,6 +477,7 @@ class TableCommand(BaseCommand):
         else:
             return [{"name": str(params), "type": "Any"}]
 
+    # Process data through pipeline: _process_parameters
     def _process_parameters(self, params: Any, language: str) -> list[dict[str, str]]:
         """Process parameters based on language syntax."""
         if isinstance(params, str):
@@ -513,6 +532,7 @@ class TableCommand(BaseCommand):
         else:
             return []
 
+    # Process: _get_element_visibility
     def _get_element_visibility(self, element: Any) -> str:
         """Get element visibility."""
         visibility = getattr(element, "visibility", "public")
@@ -522,6 +542,7 @@ class TableCommand(BaseCommand):
             visibility = "public"
         return visibility
 
+    # Process: _output_table
     def _output_table(self, table_output: str) -> None:
         """Output the table with proper encoding."""
         try:
@@ -530,3 +551,4 @@ class TableCommand(BaseCommand):
         except (AttributeError, UnicodeEncodeError):
             # Fallback: Normal print
             print(table_output, end="")
+

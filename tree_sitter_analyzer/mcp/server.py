@@ -26,10 +26,17 @@ except ImportError:
     MCP_AVAILABLE = False
 
     # Fallback types for development without MCP
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
     class Server:  # type: ignore
         pass
 
     class InitializationOptions:  # type: ignore
+        # Process: __init__
         def __init__(self, **kwargs: Any) -> None:
             pass
 
@@ -41,6 +48,7 @@ except ImportError:
 
     pass
 
+    # Process: _fallback_stdio_server
     def _fallback_stdio_server() -> Any:
         pass
 
@@ -91,6 +99,7 @@ except ImportError:
 logger = setup_logger(__name__)
 
 
+# Process: _create_tool_registry
 def _create_tool_registry(
     project_root: str | None,
 ) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
@@ -169,6 +178,7 @@ class TreeSitterAnalyzerMCPServer:
             pass
 
     @staticmethod
+    # Process: _init_universal_tool
     def _init_universal_tool(project_root: str | None) -> Any:
         """Initialize the UniversalAnalyzeTool if available."""
         if not UNIVERSAL_TOOL_AVAILABLE or UniversalAnalyzeTool is None:
@@ -179,6 +189,7 @@ class TreeSitterAnalyzerMCPServer:
             return None
 
     @staticmethod
+    # Detect patterns in source code: _detect_version
     def _detect_version() -> Any:
         """Detect version including platform info."""
         version: Any = MCP_INFO["version"]
@@ -196,10 +207,12 @@ class TreeSitterAnalyzerMCPServer:
                 pass
         return version
 
+    # Process: is_initialized
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
         return self._initialization_complete
 
+    # Process: _ensure_initialized
     def _ensure_initialized(self) -> None:
         """Ensure the server is initialized before processing requests."""
         if not self._initialization_complete:
@@ -207,6 +220,7 @@ class TreeSitterAnalyzerMCPServer:
                 "Server not fully initialized. Please wait for initialization to complete."
             )
 
+    # Analyze source code structure: _analyze_code_scale
     async def _analyze_code_scale(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Legacy method for analyzing code scale. Delegates to code_scale_handler."""
         return await analyze_code_scale(
@@ -217,6 +231,7 @@ class TreeSitterAnalyzerMCPServer:
             initialization_complete=self._initialization_complete,
         )
 
+    # Process: _calculate_file_metrics
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""
         base_root = getattr(
@@ -228,6 +243,7 @@ class TreeSitterAnalyzerMCPServer:
             file_path, language=language, project_root=base_root
         )
 
+    # Process: _read_resource
     async def _read_resource(self, uri: str) -> dict[str, Any]:
         """
         Read a resource by URI.
@@ -252,6 +268,7 @@ class TreeSitterAnalyzerMCPServer:
         else:
             raise ValueError(f"Unknown resource URI: {uri}")
 
+    # Process: create_server
     def create_server(self) -> Server:
         """
         Create and configure the MCP server.
@@ -280,6 +297,7 @@ class TreeSitterAnalyzerMCPServer:
             pass  # Silently ignore logging errors during shutdown
         return server
 
+    # Process: set_project_path
     def set_project_path(self, project_path: str) -> None:
         """Set the project path for all components."""
         get_shared_cache().clear()
@@ -299,6 +317,7 @@ class TreeSitterAnalyzerMCPServer:
         except (ValueError, OSError):
             pass
 
+    # Process: _validate_file_path_security
     def _validate_file_path_security(self, arguments: dict[str, Any]) -> None:
         """Pre-check file_path arguments for security violations."""
         if "file_path" not in arguments:
@@ -332,6 +351,7 @@ class TreeSitterAnalyzerMCPServer:
                     f"Invalid or unsafe file path: {error_msg or file_path}"
                 )
 
+    # Handle request or event: _handle_set_project_path
     def _handle_set_project_path(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle the set_project_path tool call."""
         project_path = arguments.get("project_path")
@@ -342,6 +362,7 @@ class TreeSitterAnalyzerMCPServer:
         self.set_project_path(project_path)
         return {"status": "success", "project_root": project_path}
 
+    # Extract elements from AST: _handle_extract_code_section
     async def _handle_extract_code_section(
         self, arguments: dict[str, Any]
     ) -> dict[str, Any]:
@@ -369,6 +390,7 @@ class TreeSitterAnalyzerMCPServer:
         result2: dict[str, Any] = await self.read_partial_tool.execute(full_args)
         return result2
 
+    # Execute main logic: run
     async def run(self) -> None:
         """
         Run the MCP server.
@@ -426,6 +448,7 @@ class TreeSitterAnalyzerMCPServer:
                 pass  # Silently ignore logging errors during shutdown
 
 
+# Parse input into structured data: parse_mcp_args
 def parse_mcp_args(args: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments for MCP server."""
     parser = argparse.ArgumentParser(
@@ -449,6 +472,7 @@ Examples:
     return parser.parse_args(args)
 
 
+# Process: main
 async def main() -> None:
     """Main entry point for the MCP server."""
     try:
@@ -518,6 +542,7 @@ async def main() -> None:
             pass  # Silently ignore logging errors during shutdown
 
 
+# Process: main_sync
 def main_sync() -> None:
     """Synchronous entry point for setuptools scripts."""
     asyncio.run(main())
@@ -525,3 +550,4 @@ def main_sync() -> None:
 
 if __name__ == "__main__":
     main_sync()
+

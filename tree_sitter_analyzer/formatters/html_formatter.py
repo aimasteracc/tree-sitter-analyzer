@@ -14,6 +14,12 @@ from .base_formatter import BaseFormatter
 from .formatter_registry import IFormatter
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class HtmlFormatter(BaseFormatter, IFormatter):
     """HTML-specific formatter for MarkupElement and StyleElement"""
 
@@ -22,9 +28,11 @@ class HtmlFormatter(BaseFormatter, IFormatter):
         pass
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "html"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format HTML elements with hierarchy and classification"""
         if not elements:
@@ -70,6 +78,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: format_summary
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for HTML elements"""
         elements = analysis_result.get("elements", [])
@@ -90,11 +99,13 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output"""
         elements = analysis_result.get("elements", [])
         return self.format(elements)
 
+    # Format data for output: format_advanced
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
@@ -107,6 +118,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
         else:
             return self.format(elements)
 
+    # Format data for output: format_analysis_result
     def format_analysis_result(
         self, analysis_result: Any, table_type: str = "full"
     ) -> str:
@@ -130,6 +142,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
             # Default to full format (including "html" and "full")
             return self.format(elements)
 
+    # Format data for output: format_table
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
@@ -147,6 +160,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
             # Default to full format (including "html" and "full")
             return self.format(elements)
 
+    # Format data for output: _format_markup_elements
     def _format_markup_elements(self, elements: list[MarkupElement]) -> list[str]:
         """Format MarkupElement list with hierarchy"""
         lines = []
@@ -207,6 +221,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return lines
 
+    # Format data for output: _format_element_tree
     def _format_element_tree(self, element: MarkupElement, depth: int) -> list[str]:
         """Format element tree hierarchy"""
         lines = []
@@ -234,6 +249,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return lines
 
+    # Format data for output: _format_style_elements
     def _format_style_elements(self, elements: list[StyleElement]) -> list[str]:
         """Format StyleElement list"""
         lines = []
@@ -274,6 +290,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return lines
 
+    # Format data for output: _format_other_elements
     def _format_other_elements(self, elements: list) -> list[str]:
         """Format other code elements"""
         lines = []
@@ -304,11 +321,13 @@ class HtmlFormatter(BaseFormatter, IFormatter):
         lines.append("")
         return lines
 
+    # Process: _dict_to_markup_element
     def _dict_to_markup_element(self, data: dict) -> Any:
         """Convert dictionary to MarkupElement-like object"""
 
         # Create a mock MarkupElement-like object
         class MockMarkupElement:
+            # Process: __init__
             def __init__(self, data: dict[str, Any]) -> None:
                 self.name = data.get("name", "unknown")
                 self.tag_name = data.get("tag_name", data.get("name", "unknown"))
@@ -322,11 +341,13 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return MockMarkupElement(data)
 
+    # Process: _dict_to_style_element
     def _dict_to_style_element(self, data: dict) -> Any:
         """Convert dictionary to StyleElement-like object"""
 
         # Create a mock StyleElement-like object
         class MockStyleElement:
+            # Process: __init__
             def __init__(self, data: dict[str, Any]) -> None:
                 self.name = data.get("name", "unknown")
                 self.selector = data.get("selector", data.get("name", "unknown"))
@@ -338,6 +359,7 @@ class HtmlFormatter(BaseFormatter, IFormatter):
 
         return MockStyleElement(data)
 
+    # Process: _element_to_dict
     def _element_to_dict(self, element: CodeElement) -> dict[str, Any]:
         """Convert generic CodeElement to dictionary"""
         return {
@@ -353,9 +375,11 @@ class HtmlJsonFormatter(IFormatter):
     """JSON formatter specifically for HTML elements"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "html_json"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format HTML elements as JSON with hierarchy"""
         result: dict[str, Any] = {
@@ -398,6 +422,7 @@ class HtmlJsonFormatter(IFormatter):
 
         return json.dumps(result, indent=2, ensure_ascii=False)
 
+    # Process: _markup_to_dict
     def _markup_to_dict(self, element: MarkupElement) -> dict[str, Any]:
         """Convert MarkupElement to dictionary"""
         return {
@@ -412,6 +437,7 @@ class HtmlJsonFormatter(IFormatter):
             "language": element.language,
         }
 
+    # Process: _style_to_dict
     def _style_to_dict(self, element: StyleElement) -> dict[str, Any]:
         """Convert StyleElement to dictionary"""
         return {
@@ -424,6 +450,7 @@ class HtmlJsonFormatter(IFormatter):
             "language": element.language,
         }
 
+    # Process: _element_to_dict
     def _element_to_dict(self, element: CodeElement) -> dict[str, Any]:
         """Convert generic CodeElement to dictionary"""
         return {
@@ -439,9 +466,11 @@ class HtmlCompactFormatter(IFormatter):
     """Compact formatter for HTML elements"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "html_compact"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement], file_path: str = "") -> str:
         """Format HTML elements in compact table format"""
         if not elements:
@@ -578,9 +607,11 @@ class HtmlCsvFormatter(IFormatter):
     """CSV formatter for HTML elements"""
 
     @staticmethod
+    # Format data for output: get_format_name
     def get_format_name() -> str:
         return "html_csv"
 
+    # Format data for output: format
     def format(self, elements: list[CodeElement]) -> str:
         """Format HTML elements as CSV"""
         import csv
@@ -677,3 +708,4 @@ class HtmlCsvFormatter(IFormatter):
 
 # HTML formatters are registered via formatter_registry.py
 # to avoid duplicate registration warnings
+

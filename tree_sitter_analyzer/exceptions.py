@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import Any
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class TreeSitterAnalyzerError(Exception):
     """Base exception for all tree-sitter analyzer errors."""
 
@@ -24,6 +30,7 @@ class TreeSitterAnalyzerError(Exception):
         self.error_code = error_code or self.__class__.__name__
         self.context = context or {}
 
+    # Process: to_dict
     def to_dict(self) -> dict[str, Any]:
         """Convert exception to dictionary format."""
         return {
@@ -230,6 +237,7 @@ def handle_exception(
     raise exception
 
 
+# Main entry point - dispatches to handler: safe_execute
 def safe_execute(
     func: Any,
     *args: Any,
@@ -262,6 +270,7 @@ def safe_execute(
         return default_return
 
 
+# Process: create_error_response
 def create_error_response(
     exception: Exception, include_traceback: bool = False
 ) -> dict[str, Any]:
@@ -315,6 +324,7 @@ def handle_exceptions(
     """
 
     def decorator(func: Any) -> Any:
+        # Process: wrapper
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
@@ -426,6 +436,7 @@ class MCPToolError(MCPError):
         self.execution_stage = execution_stage
 
     @staticmethod
+    # Process: _sanitize_params
     def _sanitize_params(params: dict[str, Any]) -> dict[str, Any]:
         """Sanitize sensitive information from parameters."""
         sanitized = {}
@@ -616,6 +627,7 @@ def create_mcp_error_response(
     return response
 
 
+# Process: _sanitize_error_context
 def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
     """Sanitize sensitive information from error context."""
     sanitized: dict[str, Any] = {}
@@ -683,6 +695,7 @@ async def safe_execute_async(
         return default_return
 
 
+# Handle request or event: mcp_exception_handler
 def mcp_exception_handler(
     tool_name: str,
     include_debug: bool = False,
@@ -698,6 +711,7 @@ def mcp_exception_handler(
     """
 
     def decorator(func: Any) -> Any:
+        # Process: async_wrapper
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
@@ -718,6 +732,7 @@ def mcp_exception_handler(
                     sanitize_sensitive=sanitize_sensitive,
                 )
 
+        # Process: sync_wrapper
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)
@@ -745,3 +760,4 @@ def mcp_exception_handler(
             return sync_wrapper
 
     return decorator
+

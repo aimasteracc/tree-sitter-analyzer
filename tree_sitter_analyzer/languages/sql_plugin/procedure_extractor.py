@@ -11,6 +11,13 @@ from ...models import SQLParameter, SQLProcedure
 from ...utils import log_debug
 
 
+# Extract elements from AST: extract_sql_procedures
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def extract_sql_procedures(
     root_node: "tree_sitter.Node",
     traverse_nodes: Callable[..., Iterator[Any]],
@@ -137,6 +144,7 @@ def extract_sql_procedures(
                             log_debug(f"Failed to extract enhanced procedure: {e}")
 
 
+# Extract elements from AST: extract_procedure_parameters
 def extract_procedure_parameters(
     proc_text: str, parameters: list[SQLParameter]
 ) -> None:
@@ -199,6 +207,7 @@ def extract_procedure_parameters(
         parameters.append(parameter)
 
 
+# Extract elements from AST: _extract_procedure_dependencies
 def _extract_procedure_dependencies(
     proc_node: "tree_sitter.Node",
     dependencies: list[str],
@@ -213,3 +222,4 @@ def _extract_procedure_dependencies(
                     table_name = get_node_text(child).strip()
                     if table_name and table_name not in dependencies:
                         dependencies.append(table_name)
+

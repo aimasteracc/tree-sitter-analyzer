@@ -8,6 +8,13 @@ from ..models import Class, Function, Import, Package, Variable
 from ..utils import log_debug, log_error, log_warning
 
 
+# Extract elements from AST: extract_java_imports
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def extract_java_imports(
     tree: Any,
     source_code: str,
@@ -41,6 +48,7 @@ def extract_java_imports(
     return imports
 
 
+# Extract elements from AST: extract_java_packages
 def extract_java_packages(
     tree: Any,
     get_node_text: Callable[..., str],
@@ -49,6 +57,7 @@ def extract_java_packages(
 
     packages: list[Any] = []
 
+    # Search for patterns or elements: find_packages
     def find_packages(node: Any) -> None:
         if node.type == "package_declaration":
             info = _extract_package_element(node, get_node_text)
@@ -63,6 +72,7 @@ def extract_java_packages(
     return packages
 
 
+# Extract elements from AST: _extract_package_name
 def _extract_package_name(
     node: Any,
     get_node_text: Callable[..., str],
@@ -80,6 +90,7 @@ def _extract_package_name(
     return None
 
 
+# Extract elements from AST: _extract_package_element
 def _extract_package_element(
     node: Any,
     get_node_text: Callable[..., str],
@@ -103,6 +114,7 @@ def _extract_package_element(
     return None
 
 
+# Extract elements from AST: _extract_import_info
 def _extract_import_info(
     node: Any,
     get_node_text: Callable[..., str],
@@ -157,6 +169,7 @@ def _extract_import_info(
     return None
 
 
+# Extract elements from AST: _extract_imports_fallback
 def _extract_imports_fallback(source_code: str) -> list[Import]:
     """Fallback import extraction using regex."""
     imports: list[Import] = []
@@ -215,6 +228,7 @@ def _extract_imports_fallback(source_code: str) -> list[Import]:
     return imports
 
 
+# Process: determine_visibility
 def determine_visibility(modifiers: list[str]) -> str:
     """Determine visibility from Java modifiers."""
     if "public" in modifiers:
@@ -226,6 +240,7 @@ def determine_visibility(modifiers: list[str]) -> str:
     return "package"
 
 
+# Process: is_nested_class
 def is_nested_class(node: Any) -> bool:
     """Check if a node is inside a class/interface/enum declaration."""
     parent = node.parent
@@ -240,6 +255,7 @@ def is_nested_class(node: Any) -> bool:
     return False
 
 
+# Search for patterns or elements: find_parent_class
 def find_parent_class(
     node: Any,
     get_node_text: Callable[..., str],
@@ -259,6 +275,7 @@ def find_parent_class(
     return None
 
 
+# Extract elements from AST: extract_class_name
 def extract_class_name(
     node: Any,
     get_node_text: Callable[..., str],
@@ -313,6 +330,7 @@ _FIELD_TYPE_NODES = frozenset(
 )
 
 
+# Extract elements from AST: extract_modifiers
 def extract_modifiers(node: Any, get_node_text: Callable[..., str]) -> list[str]:
     """Extract modifiers from a declaration node."""
     modifiers: list[str] = []
@@ -328,6 +346,7 @@ def extract_modifiers(node: Any, get_node_text: Callable[..., str]) -> list[str]
     return modifiers
 
 
+# Parse input into structured data: parse_method_signature
 def parse_method_signature(
     node: Any,
     get_node_text: Callable[..., str],
@@ -370,6 +389,7 @@ def parse_method_signature(
         return None
 
 
+# Parse input into structured data: parse_field_declaration
 def parse_field_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -402,6 +422,7 @@ def parse_field_declaration(
         return None
 
 
+# Extract elements from AST: extract_annotation
 def extract_annotation(
     node: Any,
     get_node_text: Callable[..., str],
@@ -435,6 +456,7 @@ def extract_annotation(
     return None
 
 
+# Process: calculate_complexity
 def calculate_complexity(node: Any) -> int:
     """Calculate cyclomatic complexity."""
     decision_nodes = {
@@ -447,6 +469,7 @@ def calculate_complexity(node: Any) -> int:
         "enhanced_for_statement",
     }
 
+    # Process: count_decisions
     def count_decisions(n: Any) -> int:
         count = 0
         if hasattr(n, "type") and n.type in decision_nodes:
@@ -462,6 +485,7 @@ def calculate_complexity(node: Any) -> int:
     return 1 + count_decisions(node)
 
 
+# Extract elements from AST: extract_javadoc_for_line
 def extract_javadoc_for_line(line: int, content_lines: list[str]) -> str | None:
     """Extract JavaDoc comment for a specific line."""
     try:
@@ -503,6 +527,7 @@ _JAVA_CONTAINER_NODES = {
 }
 
 
+# Extract elements from AST: java_traverse_and_extract
 def java_traverse_and_extract(
     root_node: Any,
     extractors: dict[str, Any],
@@ -589,6 +614,7 @@ def java_traverse_and_extract(
     log_debug(f"Iterative traversal processed {processed_count} nodes")
 
 
+# Process data through pipeline: _process_field_batch
 def _process_field_batch(
     batch: list[Any],
     extractors: dict[str, Any],
@@ -626,6 +652,7 @@ def _process_field_batch(
             processed_nodes.add(node_id)
 
 
+# Extract elements from AST: extract_java_class
 def extract_java_class(
     node: Any,
     get_node_text: Callable[..., str],
@@ -710,6 +737,7 @@ def extract_java_class(
         return None
 
 
+# Extract elements from AST: extract_java_method
 def extract_java_method(
     node: Any,
     get_node_text: Callable[..., str],
@@ -770,6 +798,7 @@ def extract_java_method(
         return None
 
 
+# Extract elements from AST: extract_java_field
 def extract_java_field(
     node: Any,
     get_node_text: Callable[..., str],
@@ -823,3 +852,4 @@ def extract_java_field(
         log_error(f"Unexpected error in field extraction: {e}")
 
     return fields
+

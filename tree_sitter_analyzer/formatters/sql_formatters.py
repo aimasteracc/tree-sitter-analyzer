@@ -20,6 +20,10 @@ from ..models import (
 )
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
 class SQLFormatterBase:
     """Base class for SQL-specific formatters"""
 
@@ -34,6 +38,7 @@ class SQLFormatterBase:
         # Format based on specific formatter type
         return self._format_grouped_elements(grouped_elements, file_path)
 
+    # Process: group_elements_by_type
     def group_elements_by_type(
         self, elements: list[SQLElement]
     ) -> dict[SQLElementType, list[SQLElement]]:
@@ -46,11 +51,13 @@ class SQLFormatterBase:
             grouped[element_type].append(element)
         return grouped
 
+    # Format data for output: _format_empty_file
     def _format_empty_file(self, file_path: str) -> str:
         """Format empty SQL file"""
         filename = file_path.split("/")[-1] if file_path else "unknown.sql"
         return f"# {filename}\n\nNo SQL elements found."
 
+    # Format data for output: _format_grouped_elements
     def _format_grouped_elements(
         self, grouped_elements: dict[SQLElementType, list[SQLElement]], file_path: str
     ) -> str:
@@ -80,6 +87,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return self.format_elements(sql_elements, analysis_result.file_path)
 
+    # Format data for output: _format_grouped_elements
     def _format_grouped_elements(
         self, grouped_elements: dict[SQLElementType, list[SQLElement]], file_path: str
     ) -> str:
@@ -112,6 +120,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return "\n".join(output).rstrip() + "\n"
 
+    # Format data for output: _format_overview_table
     def _format_overview_table(
         self, grouped_elements: dict[SQLElementType, list[SQLElement]]
     ) -> list[str]:
@@ -176,6 +185,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return output
 
+    # Format data for output: _format_element_section
     def _format_element_section(
         self, element_type: SQLElementType, elements: list[SQLElement]
     ) -> list[str]:
@@ -192,6 +202,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return output[:-1]  # Remove last empty line
 
+    # Process: _get_section_title
     def _get_section_title(self, element_type: SQLElementType) -> str:
         """Get section title for element type"""
         titles = {
@@ -204,6 +215,7 @@ class SQLFullFormatter(SQLFormatterBase):
         }
         return titles.get(element_type, element_type.value.title() + "s")
 
+    # Format data for output: _format_element_details
     def _format_element_details(self, element: SQLElement) -> list[str]:
         """Format detailed information for a single element"""
         output = [f"### {element.name} ({element.start_line}-{element.end_line})"]
@@ -223,6 +235,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return output
 
+    # Format data for output: _format_table_details
     def _format_table_details(self, table: SQLTable) -> list[str]:
         """Format table-specific details"""
         output = []
@@ -252,6 +265,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return output
 
+    # Format data for output: _format_view_details
     def _format_view_details(self, view: SQLView) -> list[str]:
         """Format view-specific details"""
         output = []
@@ -265,6 +279,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return output
 
+    # Format data for output: _format_procedure_details
     def _format_procedure_details(self, procedure: SQLProcedure) -> list[str]:
         """Format procedure-specific details"""
         output = []
@@ -283,6 +298,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return output
 
+    # Format data for output: _format_function_details
     def _format_function_details(self, function: SQLFunction) -> list[str]:
         """Format function-specific details"""
         output = []
@@ -304,6 +320,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return output
 
+    # Format data for output: _format_trigger_details
     def _format_trigger_details(self, trigger: SQLTrigger) -> list[str]:
         """Format trigger-specific details"""
         output = []
@@ -321,6 +338,7 @@ class SQLFullFormatter(SQLFormatterBase):
 
         return output
 
+    # Format data for output: _format_index_details
     def _format_index_details(self, index: SQLIndex) -> list[str]:
         """Format index-specific details"""
         output = []
@@ -361,6 +379,7 @@ class SQLCompactFormatter(SQLFormatterBase):
 
         return self.format_elements(sql_elements, analysis_result.file_path)
 
+    # Format data for output: _format_grouped_elements
     def _format_grouped_elements(
         self, grouped_elements: dict[SQLElementType, list[SQLElement]], file_path: str
     ) -> str:
@@ -388,6 +407,7 @@ class SQLCompactFormatter(SQLFormatterBase):
 
         return "\n".join(output) + "\n"
 
+    # Format data for output: _format_compact_details
     def _format_compact_details(self, element: SQLElement) -> str:
         """Format compact details for an element"""
         if isinstance(element, SQLTable):
@@ -458,6 +478,7 @@ class SQLCSVFormatter(SQLFormatterBase):
 
         return self.format_elements(sql_elements, analysis_result.file_path)
 
+    # Format data for output: format_elements
     def format_elements(self, elements: list[SQLElement], file_path: str = "") -> str:
         """Format SQL elements as CSV - override to always include header"""
         if not elements:
@@ -470,6 +491,7 @@ class SQLCSVFormatter(SQLFormatterBase):
         # Format based on specific formatter type
         return self._format_grouped_elements(grouped_elements, file_path)
 
+    # Format data for output: _format_grouped_elements
     def _format_grouped_elements(
         self, grouped_elements: dict[SQLElementType, list[SQLElement]], file_path: str
     ) -> str:
@@ -534,3 +556,4 @@ class SQLCSVFormatter(SQLFormatterBase):
             )
 
         return "\n".join(output) + "\n"
+

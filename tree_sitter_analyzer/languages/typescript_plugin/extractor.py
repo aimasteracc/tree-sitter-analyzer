@@ -42,6 +42,12 @@ from .import_extractor import (
 )
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class TypeScriptElementExtractor(ElementExtractor):
     """Enhanced TypeScript-specific element extractor with comprehensive feature support"""
 
@@ -67,6 +73,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self.framework_type: str = ""  # react, angular, vue, etc.
         self.typescript_version: str = "4.0"  # default
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
@@ -95,6 +102,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} TypeScript functions")
         return functions
 
+    # Extract elements from AST: extract_classes
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
@@ -121,6 +129,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(classes)} TypeScript classes/interfaces/types")
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
@@ -146,6 +155,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} TypeScript variables")
         return variables
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
@@ -156,6 +166,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             tree, source_code, self._get_node_text_optimized
         )
 
+    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -164,6 +175,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self._tsdoc_cache.clear()
         self._complexity_cache.clear()
 
+    # Detect patterns in source code: _detect_file_characteristics
     def _detect_file_characteristics(self) -> None:
         """Detect TypeScript file characteristics"""
         # Check if it's a module
@@ -182,6 +194,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         elif "vue" in self.source_code.lower():
             self.framework_type = "vue"
 
+    # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
         root_node: Optional["tree_sitter.Node"],
@@ -272,6 +285,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 
+    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
@@ -316,6 +330,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
+    # Extract elements from AST: _extract_function_optimized
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract regular function information with detailed metadata"""
         try:
@@ -370,6 +385,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             traceback.print_exc()
             return None
 
+    # Extract elements from AST: _extract_arrow_function_optimized
     def _extract_arrow_function_optimized(
         self, node: "tree_sitter.Node"
     ) -> Function | None:
@@ -437,6 +453,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract arrow function info: {e}")
             return None
 
+    # Extract elements from AST: _extract_method_optimized
     def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract method information from class"""
         try:
@@ -497,6 +514,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract method info: {e}")
             return None
 
+    # Extract elements from AST: _extract_method_signature_optimized
     def _extract_method_signature_optimized(
         self, node: "tree_sitter.Node"
     ) -> Function | None:
@@ -554,6 +572,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract method signature info: {e}")
             return None
 
+    # Extract elements from AST: _extract_generator_function_optimized
     def _extract_generator_function_optimized(
         self, node: "tree_sitter.Node"
     ) -> Function | None:
@@ -604,6 +623,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract generator function info: {e}")
             return None
 
+    # Extract elements from AST: _extract_class_optimized
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information with detailed metadata"""
         try:
@@ -670,6 +690,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract class info: {e}")
             return None
 
+    # Extract elements from AST: _extract_interface_optimized
     def _extract_interface_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract interface information"""
         try:
@@ -722,6 +743,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract interface info: {e}")
             return None
 
+    # Extract elements from AST: _extract_type_alias_optimized
     def _extract_type_alias_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract type alias information"""
         try:
@@ -764,6 +786,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract type alias info: {e}")
             return None
 
+    # Extract elements from AST: _extract_enum_optimized
     def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract enum information"""
         try:
@@ -803,10 +826,12 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract enum info: {e}")
             return None
 
+    # Extract elements from AST: _extract_variable_optimized
     def _extract_variable_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract var declaration variables"""
         return self._extract_variables_from_declaration(node, "var")
 
+    # Extract elements from AST: _extract_lexical_variable_optimized
     def _extract_lexical_variable_optimized(
         self, node: "tree_sitter.Node"
     ) -> list[Variable]:
@@ -816,6 +841,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         kind = "let" if node_text.strip().startswith("let") else "const"
         return self._extract_variables_from_declaration(node, kind)
 
+    # Extract elements from AST: _extract_property_optimized
     def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
         """Extract class property definition"""
         try:
@@ -879,6 +905,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract property info: {e}")
             return None
 
+    # Extract elements from AST: _extract_property_signature_optimized
     def _extract_property_signature_optimized(
         self, node: "tree_sitter.Node"
     ) -> Variable | None:
@@ -924,6 +951,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract property signature info: {e}")
             return None
 
+    # Extract elements from AST: _extract_variables_from_declaration
     def _extract_variables_from_declaration(
         self, node: "tree_sitter.Node", kind: str
     ) -> list[Variable]:
@@ -948,6 +976,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         return variables
 
+    # Parse input into structured data: _parse_variable_declarator
     def _parse_variable_declarator(
         self, node: "tree_sitter.Node", kind: str, start_line: int, end_line: int
     ) -> Variable | None:
@@ -1000,6 +1029,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to parse variable declarator: {e}")
             return None
 
+    # Parse input into structured data: _parse_function_signature_optimized
     def _parse_function_signature_optimized(
         self, node: "tree_sitter.Node"
     ) -> tuple[str | None, list[str], bool, bool, str | None, list[str]] | None:
@@ -1031,6 +1061,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         except Exception:
             return None
 
+    # Parse input into structured data: _parse_method_signature_optimized
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
     ) -> (
@@ -1128,6 +1159,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         except Exception:
             return None
 
+    # Extract elements from AST: _extract_parameters_with_types
     def _extract_parameters_with_types(
         self, params_node: "tree_sitter.Node"
     ) -> list[str]:
@@ -1157,6 +1189,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         return parameters
 
+    # Extract elements from AST: _extract_generics
     def _extract_generics(self, type_params_node: "tree_sitter.Node") -> list[str]:
         """Extract generic type parameters"""
         generics = []
@@ -1168,11 +1201,13 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         return generics
 
+    # Extract elements from AST: _extract_import_info_simple
     def _extract_import_info_simple(self, node: "tree_sitter.Node") -> Import | None:
         return _import_info_standalone(
             node, self.source_code, self._get_node_text_optimized
         )
 
+    # Extract elements from AST: _extract_import_names
     def _extract_import_names(
         self, import_clause_node: "tree_sitter.Node", import_text: str = ""
     ) -> list[str]:
@@ -1180,9 +1215,11 @@ class TypeScriptElementExtractor(ElementExtractor):
             import_clause_node, self.source_code, self._get_node_text_optimized
         )
 
+    # Extract elements from AST: _extract_dynamic_import
     def _extract_dynamic_import(self, node: "tree_sitter.Node") -> Import | None:
         return _dynamic_import_standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_commonjs_requires
     def _extract_commonjs_requires(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
@@ -1190,6 +1227,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             tree, source_code, self._get_node_text_optimized
         )
 
+    # Process: _is_framework_component
     def _is_framework_component(
         self, node: "tree_sitter.Node", class_name: str
     ) -> bool:
@@ -1208,6 +1246,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             return "Vue" in self.source_code or "@Component" in self.source_code
         return False
 
+    # Process: _is_exported_class
     def _is_exported_class(self, class_name: str) -> bool:
         """Check if class is exported"""
         # Simple check for export statements
@@ -1216,6 +1255,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             or f"export default {class_name}" in self.source_code
         )
 
+    # Process: _infer_type_from_value
     def _infer_type_from_value(self, value: str | None) -> str:
         """Infer TypeScript type from value"""
         if not value:
@@ -1242,6 +1282,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         else:
             return "any"
 
+    # Extract elements from AST: _extract_tsdoc_for_line
     def _extract_tsdoc_for_line(self, target_line: int) -> str | None:
         """Extract TSDoc comment immediately before the specified line"""
         if target_line in self._tsdoc_cache:
@@ -1298,6 +1339,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract TSDoc: {e}")
             return None
 
+    # Process: _clean_tsdoc
     def _clean_tsdoc(self, tsdoc_text: str) -> str:
         """Clean TSDoc text by removing comment markers"""
         if not tsdoc_text:
@@ -1321,6 +1363,7 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         return " ".join(cleaned_lines) if cleaned_lines else ""
 
+    # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity efficiently"""
         node_id = id(node)
@@ -1350,6 +1393,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         self._complexity_cache[node_id] = complexity
         return complexity
 
+    # Extract elements from AST: extract_elements
     def extract_elements(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[CodeElement]:
@@ -1363,3 +1407,4 @@ class TypeScriptElementExtractor(ElementExtractor):
         all_elements.extend(self.extract_imports(tree, source_code))
 
         return all_elements
+

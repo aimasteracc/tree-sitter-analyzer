@@ -8,6 +8,13 @@ from ...models import Import
 from ...utils import log_debug
 
 
+# Extract elements from AST: extract_ts_imports
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def extract_ts_imports(
     tree: Any,
     source_code: str,
@@ -33,6 +40,7 @@ def extract_ts_imports(
     return imports
 
 
+# Extract elements from AST: _extract_import_info_simple
 def _extract_import_info_simple(
     node: Any,
     source_code: str,
@@ -108,6 +116,7 @@ def _extract_import_info_simple(
         return None
 
 
+# Extract elements from AST: _extract_import_names
 def _extract_import_names(
     import_clause_node: Any,
     source_code: str,
@@ -169,6 +178,7 @@ def _extract_import_names(
     return names
 
 
+# Extract elements from AST: _extract_identifier_text
 def _extract_identifier_text(node: Any, source_bytes: bytes) -> str:
     """Extract text from an identifier node."""
     if hasattr(node, "start_byte") and hasattr(node, "end_byte") and source_bytes:
@@ -181,6 +191,7 @@ def _extract_identifier_text(node: Any, source_bytes: bytes) -> str:
     return ""
 
 
+# Extract elements from AST: _extract_dynamic_import
 def _extract_dynamic_import(
     node: Any,
     get_node_text: Callable[..., str],
@@ -214,6 +225,7 @@ def _extract_dynamic_import(
         return None
 
 
+# Extract elements from AST: _extract_commonjs_requires
 def _extract_commonjs_requires(
     tree: Any,
     source_code: str,
@@ -253,3 +265,4 @@ def _extract_commonjs_requires(
         return []
 
     return imports
+

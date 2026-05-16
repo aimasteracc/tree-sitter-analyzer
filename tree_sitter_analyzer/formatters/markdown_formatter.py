@@ -12,12 +12,19 @@ from .base_formatter import BaseFormatter
 from .markdown_full_formatter import format_full
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class MarkdownFormatter(BaseFormatter):
     """Formatter specialized for Markdown documents"""
 
     def __init__(self) -> None:
         self.language = "markdown"
 
+    # Format data for output: format_summary
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary for Markdown files"""
         file_path = analysis_result.get("file_path", "")
@@ -80,6 +87,7 @@ class MarkdownFormatter(BaseFormatter):
 
         return self._format_json_output("Summary Results", result)
 
+    # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis for Markdown files"""
         file_path = analysis_result.get("file_path", "")
@@ -171,6 +179,7 @@ class MarkdownFormatter(BaseFormatter):
 
         return self._format_json_output("Structure Analysis Results", structure)
 
+    # Format data for output: format_advanced
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
@@ -266,6 +275,7 @@ class MarkdownFormatter(BaseFormatter):
         else:
             return self._format_json_output("Advanced Analysis Results", advanced_data)
 
+    # Format data for output: format_analysis_result
     def format_analysis_result(
         self, analysis_result: Any, table_type: str = "full"
     ) -> str:
@@ -274,6 +284,7 @@ class MarkdownFormatter(BaseFormatter):
         data = self._convert_analysis_result_to_format(analysis_result)
         return self.format_table(data, table_type)
 
+    # Format data for output: _convert_analysis_result_to_format
     def _convert_analysis_result_to_format(
         self, analysis_result: Any
     ) -> dict[str, Any]:
@@ -311,6 +322,7 @@ class MarkdownFormatter(BaseFormatter):
             },
         }
 
+    # Format data for output: format_table
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
@@ -322,10 +334,12 @@ class MarkdownFormatter(BaseFormatter):
         else:
             return self._format_full(analysis_result)
 
+    # Format data for output: _format_full
     def _format_full(self, analysis_result: dict[str, Any]) -> str:
         """Format full table output for Markdown files"""
         return format_full(analysis_result, self._collect_images)
 
+    # Process: _collect_images
     def _collect_images(self, elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Collect images including reference definitions that point to images.
 
@@ -378,6 +392,7 @@ class MarkdownFormatter(BaseFormatter):
 
         return images
 
+    # Format data for output: _format_advanced_text
     def _format_advanced_text(self, data: dict[str, Any]) -> str:
         """Format advanced analysis in text format"""
         output = ["--- Advanced Analysis Results ---"]
@@ -410,6 +425,7 @@ class MarkdownFormatter(BaseFormatter):
 
         return "\n".join(output)
 
+    # Process: _calculate_document_complexity
     def _calculate_document_complexity(
         self,
         headers: list[dict],
@@ -442,6 +458,7 @@ class MarkdownFormatter(BaseFormatter):
         else:
             return "Very Complex"
 
+    # Format data for output: _format_json_output
     def _format_json_output(self, title: str, data: dict[str, Any]) -> str:
         """Format JSON output with title"""
         import json
@@ -450,6 +467,7 @@ class MarkdownFormatter(BaseFormatter):
         output.append(json.dumps(data, indent=2, ensure_ascii=False))
         return "\n".join(output)
 
+    # Process: _compute_robust_counts_from_file
     def _compute_robust_counts_from_file(self, file_path: str) -> dict[str, int]:
         """Compute robust counts for links and images directly from file content.
 
@@ -519,6 +537,7 @@ class MarkdownFormatter(BaseFormatter):
         )
         return counts
 
+    # Format data for output: _format_compact
     def _format_compact(self, analysis_result: dict[str, Any]) -> str:
         """Format compact table output for Markdown files"""
         file_path = analysis_result.get("file_path", "")
@@ -570,6 +589,7 @@ class MarkdownFormatter(BaseFormatter):
 
         return "\n".join(output)
 
+    # Format data for output: _format_csv
     def _format_csv(self, analysis_result: dict[str, Any]) -> str:
         """Format CSV output for Markdown files"""
         import csv
@@ -630,3 +650,4 @@ class MarkdownFormatter(BaseFormatter):
         csv_content = output.getvalue()
         output.close()
         return csv_content.rstrip("\n")
+

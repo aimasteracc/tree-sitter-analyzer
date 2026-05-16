@@ -7,6 +7,13 @@ from typing import Any
 from ...utils import log_debug
 
 
+# Extract elements from AST: extract_block_quotes
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def extract_block_quotes(
     root_node: Any,
     blockquotes: list[Any],
@@ -48,6 +55,7 @@ def extract_block_quotes(
                 log_debug(f"Failed to extract blockquote: {e}")
 
 
+# Extract elements from AST: extract_thematic_breaks
 def extract_thematic_breaks(
     root_node: Any,
     horizontal_rules: list[Any],
@@ -77,6 +85,7 @@ def extract_thematic_breaks(
                 log_debug(f"Failed to extract horizontal rule: {e}")
 
 
+# Extract elements from AST: extract_html_blocks
 def extract_html_blocks(
     root_node: Any,
     html_elements: list[Any],
@@ -109,6 +118,7 @@ def extract_html_blocks(
                 log_debug(f"Failed to extract HTML block: {e}")
 
 
+# Extract elements from AST: extract_inline_html
 def extract_inline_html(
     root_node: Any,
     html_elements: list[Any],
@@ -156,6 +166,7 @@ def extract_inline_html(
                 log_debug(f"Failed to extract inline HTML: {e}")
 
 
+# Extract elements from AST: extract_emphasis_elements
 def extract_emphasis_elements(
     root_node: Any,
     formatting_elements: list[Any],
@@ -214,6 +225,7 @@ def extract_emphasis_elements(
                 log_debug(f"Failed to extract emphasis elements: {e}")
 
 
+# Extract elements from AST: extract_inline_code_spans
 def extract_inline_code_spans(
     root_node: Any,
     formatting_elements: list[Any],
@@ -256,6 +268,7 @@ def extract_inline_code_spans(
                 log_debug(f"Failed to extract inline code: {e}")
 
 
+# Extract elements from AST: extract_strikethrough_elements
 def extract_strikethrough_elements(
     root_node: Any,
     formatting_elements: list[Any],
@@ -298,6 +311,7 @@ def extract_strikethrough_elements(
                 log_debug(f"Failed to extract strikethrough: {e}")
 
 
+# Extract elements from AST: extract_footnote_elements
 def extract_footnote_elements(
     root_node: Any,
     footnotes: list[Any],
@@ -366,3 +380,4 @@ def extract_footnote_elements(
 
             except Exception as e:
                 log_debug(f"Failed to extract footnote definition: {e}")
+

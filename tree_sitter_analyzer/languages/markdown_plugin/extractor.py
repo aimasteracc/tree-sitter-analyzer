@@ -39,6 +39,12 @@ from .link_image_extractor import (
 )
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class MarkdownElement(CodeElement):
     """Markdown-specific code element"""
 
@@ -105,6 +111,7 @@ class MarkdownElementExtractor(ElementExtractor):
         self._extracted_links: set[str] = set()
         self._extracted_images: set[tuple[str, str]] = set()
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[ModelFunction]:
@@ -122,6 +129,7 @@ class MarkdownElementExtractor(ElementExtractor):
             functions.append(func)
         return functions
 
+    # Extract elements from AST: extract_classes
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[ModelClass]:
@@ -139,6 +147,7 @@ class MarkdownElementExtractor(ElementExtractor):
             classes.append(cls)
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[ModelVariable]:
@@ -159,6 +168,7 @@ class MarkdownElementExtractor(ElementExtractor):
             variables.append(var)
         return variables
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[ModelImport]:
@@ -176,6 +186,7 @@ class MarkdownElementExtractor(ElementExtractor):
             imports.append(imp)
         return imports
 
+    # Extract elements from AST: extract_headers
     def extract_headers(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -198,6 +209,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(headers)} Markdown headers")
         return headers
 
+    # Extract elements from AST: extract_code_blocks
     def extract_code_blocks(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -218,6 +230,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(code_blocks)} Markdown code blocks")
         return code_blocks
 
+    # Extract elements from AST: extract_links
     def extract_links(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -252,6 +265,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(unique_links)} Markdown links")
         return unique_links
 
+    # Extract elements from AST: extract_images
     def extract_images(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -285,6 +299,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(unique_images)} Markdown images")
         return unique_images
 
+    # Extract elements from AST: extract_references
     def extract_references(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -309,6 +324,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(references)} Markdown references")
         return references
 
+    # Extract elements from AST: extract_blockquotes
     def extract_blockquotes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -328,6 +344,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(blockquotes)} Markdown blockquotes")
         return blockquotes
 
+    # Extract elements from AST: extract_horizontal_rules
     def extract_horizontal_rules(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -347,6 +364,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(horizontal_rules)} Markdown horizontal rules")
         return horizontal_rules
 
+    # Extract elements from AST: extract_html_elements
     def extract_html_elements(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -368,6 +386,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(html_elements)} HTML elements")
         return html_elements
 
+    # Format data for output: extract_text_formatting
     def extract_text_formatting(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -391,6 +410,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(formatting_elements)} text formatting elements")
         return formatting_elements
 
+    # Extract elements from AST: extract_footnotes
     def extract_footnotes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -410,6 +430,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(footnotes)} footnotes")
         return footnotes
 
+    # Extract elements from AST: extract_lists
     def extract_lists(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -429,6 +450,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(lists)} Markdown list items")
         return lists
 
+    # Extract elements from AST: extract_tables
     def extract_tables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[MarkdownElement]:
@@ -448,6 +470,7 @@ class MarkdownElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(tables)} Markdown tables")
         return tables
 
+    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches AND extraction tracking sets"""
         self._node_text_cache.clear()
@@ -459,6 +482,7 @@ class MarkdownElementExtractor(ElementExtractor):
         if hasattr(self, "_extracted_images"):
             self._extracted_images.clear()
 
+    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
@@ -526,6 +550,7 @@ class MarkdownElementExtractor(ElementExtractor):
             log_error(f"Fallback text extraction also failed: {fallback_error}")
             return ""
 
+    # Extract elements from AST: _extract_atx_headers
     def _extract_atx_headers(
         self, root_node: "tree_sitter.Node", headers: list[MarkdownElement]
     ) -> None:
@@ -561,6 +586,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 except Exception as e:
                     log_debug(f"Failed to extract ATX header: {e}")
 
+    # Extract elements from AST: _extract_setext_headers
     def _extract_setext_headers(
         self, root_node: "tree_sitter.Node", headers: list[MarkdownElement]
     ) -> None:
@@ -600,6 +626,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 except Exception as e:
                     log_debug(f"Failed to extract Setext header: {e}")
 
+    # Extract elements from AST: _extract_fenced_code_blocks
     def _extract_fenced_code_blocks(
         self, root_node: "tree_sitter.Node", code_blocks: list[MarkdownElement]
     ) -> None:
@@ -648,6 +675,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 except Exception as e:
                     log_debug(f"Failed to extract fenced code block: {e}")
 
+    # Extract elements from AST: _extract_indented_code_blocks
     def _extract_indented_code_blocks(
         self, root_node: "tree_sitter.Node", code_blocks: list[MarkdownElement]
     ) -> None:
@@ -675,6 +703,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 except Exception as e:
                     log_debug(f"Failed to extract indented code block: {e}")
 
+    # Extract elements from AST: _extract_inline_links
     def _extract_inline_links(
         self, root_node: "tree_sitter.Node", links: list[MarkdownElement]
     ) -> None:
@@ -688,6 +717,7 @@ class MarkdownElementExtractor(ElementExtractor):
             getattr(self, "_extracted_links", None),
         )
 
+    # Extract elements from AST: _extract_reference_links
     def _extract_reference_links(
         self, root_node: "tree_sitter.Node", links: list[MarkdownElement]
     ) -> None:
@@ -695,6 +725,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         _impl(root_node, links, self._get_node_text_optimized, self._traverse_nodes)
 
+    # Extract elements from AST: _extract_autolinks
     def _extract_autolinks(
         self, root_node: "tree_sitter.Node", links: list[MarkdownElement]
     ) -> None:
@@ -708,6 +739,7 @@ class MarkdownElementExtractor(ElementExtractor):
             getattr(self, "_extracted_links", None),
         )
 
+    # Extract elements from AST: _extract_inline_images
     def _extract_inline_images(
         self, root_node: "tree_sitter.Node", images: list[MarkdownElement]
     ) -> None:
@@ -715,6 +747,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         _impl(root_node, images, self._get_node_text_optimized, self._traverse_nodes)
 
+    # Extract elements from AST: _extract_reference_images
     def _extract_reference_images(
         self, root_node: "tree_sitter.Node", images: list[MarkdownElement]
     ) -> None:
@@ -722,6 +755,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         _impl(root_node, images, self._get_node_text_optimized, self._traverse_nodes)
 
+    # Extract elements from AST: _extract_image_reference_definitions
     def _extract_image_reference_definitions(
         self, root_node: "tree_sitter.Node", images: list[MarkdownElement]
     ) -> None:
@@ -729,6 +763,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         _impl(root_node, images, self._get_node_text_optimized, self._traverse_nodes)
 
+    # Extract elements from AST: _extract_link_reference_definitions
     def _extract_link_reference_definitions(
         self, root_node: "tree_sitter.Node", references: list[MarkdownElement]
     ) -> None:
@@ -737,6 +772,7 @@ class MarkdownElementExtractor(ElementExtractor):
         )
         references.extend(refs)
 
+    # Extract elements from AST: _extract_list_items
     def _extract_list_items(
         self, root_node: "tree_sitter.Node", lists: list[MarkdownElement]
     ) -> None:
@@ -798,6 +834,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 except Exception as e:
                     log_debug(f"Failed to extract list: {e}")
 
+    # Extract elements from AST: _extract_pipe_tables
     def _extract_pipe_tables(
         self, root_node: "tree_sitter.Node", tables: list[MarkdownElement]
     ) -> None:
@@ -842,6 +879,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 except Exception as e:
                     log_debug(f"Failed to extract pipe table: {e}")
 
+    # Extract elements from AST: _extract_block_quotes
     def _extract_block_quotes(
         self, root_node: "tree_sitter.Node", blockquotes: list[MarkdownElement]
     ) -> None:
@@ -849,6 +887,7 @@ class MarkdownElementExtractor(ElementExtractor):
             root_node, blockquotes, self._get_node_text_optimized, self._traverse_nodes
         )
 
+    # Extract elements from AST: _extract_thematic_breaks
     def _extract_thematic_breaks(
         self, root_node: "tree_sitter.Node", horizontal_rules: list[MarkdownElement]
     ) -> None:
@@ -859,6 +898,7 @@ class MarkdownElementExtractor(ElementExtractor):
             self._traverse_nodes,
         )
 
+    # Extract elements from AST: _extract_html_blocks
     def _extract_html_blocks(
         self, root_node: "tree_sitter.Node", html_elements: list[MarkdownElement]
     ) -> None:
@@ -869,6 +909,7 @@ class MarkdownElementExtractor(ElementExtractor):
             self._traverse_nodes,
         )
 
+    # Extract elements from AST: _extract_inline_html
     def _extract_inline_html(
         self, root_node: "tree_sitter.Node", html_elements: list[MarkdownElement]
     ) -> None:
@@ -879,6 +920,7 @@ class MarkdownElementExtractor(ElementExtractor):
             self._traverse_nodes,
         )
 
+    # Extract elements from AST: _extract_emphasis_elements
     def _extract_emphasis_elements(
         self, root_node: "tree_sitter.Node", formatting_elements: list[MarkdownElement]
     ) -> None:
@@ -889,6 +931,7 @@ class MarkdownElementExtractor(ElementExtractor):
             self._traverse_nodes,
         )
 
+    # Extract elements from AST: _extract_inline_code_spans
     def _extract_inline_code_spans(
         self, root_node: "tree_sitter.Node", formatting_elements: list[MarkdownElement]
     ) -> None:
@@ -899,6 +942,7 @@ class MarkdownElementExtractor(ElementExtractor):
             self._traverse_nodes,
         )
 
+    # Extract elements from AST: _extract_strikethrough_elements
     def _extract_strikethrough_elements(
         self, root_node: "tree_sitter.Node", formatting_elements: list[MarkdownElement]
     ) -> None:
@@ -909,6 +953,7 @@ class MarkdownElementExtractor(ElementExtractor):
             self._traverse_nodes,
         )
 
+    # Extract elements from AST: _extract_footnote_elements
     def _extract_footnote_elements(
         self, root_node: "tree_sitter.Node", footnotes: list[MarkdownElement]
     ) -> None:
@@ -916,12 +961,14 @@ class MarkdownElementExtractor(ElementExtractor):
             root_node, footnotes, self._get_node_text_optimized, self._traverse_nodes
         )
 
+    # Process: _traverse_nodes
     def _traverse_nodes(self, node: "tree_sitter.Node") -> Any:
         """Traverse all nodes in the tree"""
         yield node
         for child in node.children:
             yield from self._traverse_nodes(child)
 
+    # Parse input into structured data: _parse_link_components
     def _parse_link_components(self, raw_text: str) -> tuple[str, str, str]:
         """Parse link components from raw text"""
         import re
@@ -938,6 +985,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         return "", "", ""
 
+    # Parse input into structured data: _parse_image_components
     def _parse_image_components(self, raw_text: str) -> tuple[str, str, str]:
         """Parse image components from raw text"""
         import re
@@ -953,3 +1001,4 @@ class MarkdownElementExtractor(ElementExtractor):
             return alt_text, url, title
 
         return "", "", ""
+

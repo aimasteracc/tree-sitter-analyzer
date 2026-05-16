@@ -13,6 +13,12 @@ from .base_formatter import BaseFormatter
 from .sql_formatters import SQLCompactFormatter, SQLCSVFormatter, SQLFullFormatter
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class SQLFormatterWrapper(BaseFormatter):
     """
     Wrapper for SQL-specific formatters to conform to BaseFormatter interface.
@@ -31,6 +37,7 @@ class SQLFormatterWrapper(BaseFormatter):
             "csv": SQLCSVFormatter(),
         }
 
+    # Format data for output: format_table
     def format_table(self, data: dict[str, Any], table_type: str = "full") -> str:
         """
         Format analysis data as table using SQL-specific formatters.
@@ -60,6 +67,7 @@ class SQLFormatterWrapper(BaseFormatter):
         file_path = data.get("file_path", "unknown.sql")
         return formatter.format_elements(sql_elements, file_path)
 
+    # Format data for output: format_analysis_result
     def format_analysis_result(
         self, analysis_result: Any, table_type: str = "full"
     ) -> str:
@@ -74,6 +82,7 @@ class SQLFormatterWrapper(BaseFormatter):
         formatter = self._formatters[table_type]
         return formatter.format_elements(sql_elements, analysis_result.file_path)
 
+    # Convert between formats: _convert_analysis_result_to_sql_elements
     def _convert_analysis_result_to_sql_elements(
         self, analysis_result: Any
     ) -> list[SQLElement]:
@@ -204,6 +213,7 @@ class SQLFormatterWrapper(BaseFormatter):
 
         return sql_elements
 
+    # Convert between formats: _convert_to_sql_elements
     def _convert_to_sql_elements(self, data: dict[str, Any]) -> list[SQLElement]:
         """
         Convert generic analysis data to SQL elements.
@@ -239,6 +249,7 @@ class SQLFormatterWrapper(BaseFormatter):
 
         return sql_elements
 
+    # Process: _element_to_dict
     def _element_to_dict(self, element: Any) -> dict[str, Any]:
         """
         Convert element object to dictionary.
@@ -258,6 +269,7 @@ class SQLFormatterWrapper(BaseFormatter):
             "language": getattr(element, "language", "sql"),
         }
 
+    # Process: _create_sql_element_from_dict
     def _create_sql_element_from_dict(
         self, element_dict: dict[str, Any]
     ) -> SQLElement | None:
@@ -376,6 +388,7 @@ class SQLFormatterWrapper(BaseFormatter):
             logger.warning(f"Failed to create SQL element from dict: {e}")
             return None
 
+    # Format data for output: format_elements
     def format_elements(self, elements: list[Any], format_type: str = "full") -> str:
         """
         Format elements using SQL-specific formatters.
@@ -409,6 +422,7 @@ class SQLFormatterWrapper(BaseFormatter):
         formatter = self._formatters[format_type]
         return formatter.format_elements(sql_elements, "analysis.sql")
 
+    # Process: supports_language
     def supports_language(self, language: str) -> bool:
         """
         Check if this formatter supports the given language.
@@ -421,6 +435,7 @@ class SQLFormatterWrapper(BaseFormatter):
         """
         return language.lower() == "sql"
 
+    # Format data for output: format_summary
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """
         Format summary output for SQL analysis.
@@ -434,6 +449,7 @@ class SQLFormatterWrapper(BaseFormatter):
         # Convert to SQL elements and use compact formatter for summary
         return self.format_table(analysis_result, "compact")
 
+    # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """
         Format structure analysis output for SQL.
@@ -447,6 +463,7 @@ class SQLFormatterWrapper(BaseFormatter):
         # Use full formatter for detailed structure
         return self.format_table(analysis_result, "full")
 
+    # Format data for output: format_advanced
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
@@ -468,6 +485,7 @@ class SQLFormatterWrapper(BaseFormatter):
             # Default to full table format for other formats
             return self.format_table(analysis_result, "full")
 
+    # Extract elements from AST: _extract_table_columns
     def _extract_table_columns(self, raw_text: str, table_name: str) -> dict:
         """Extract column information from CREATE TABLE statement"""
 
@@ -518,6 +536,7 @@ class SQLFormatterWrapper(BaseFormatter):
 
         return {"columns": columns, "constraints": constraints}
 
+    # Extract elements from AST: _extract_view_info
     def _extract_view_info(self, raw_text: str, view_name: str) -> dict:
         """Extract view information from CREATE VIEW statement"""
         import re
@@ -536,6 +555,7 @@ class SQLFormatterWrapper(BaseFormatter):
 
         return {"source_tables": sorted(set(source_tables)), "columns": []}
 
+    # Extract elements from AST: _extract_procedure_info
     def _extract_procedure_info(self, raw_text: str, proc_name: str) -> dict:
         """Extract procedure information from CREATE PROCEDURE statement"""
         import re
@@ -580,6 +600,7 @@ class SQLFormatterWrapper(BaseFormatter):
 
         return {"parameters": parameters, "dependencies": dependencies}
 
+    # Extract elements from AST: _extract_function_info
     def _extract_function_info(self, raw_text: str, func_name: str) -> dict:
         """Extract function information from CREATE FUNCTION statement"""
         import re
@@ -631,6 +652,7 @@ class SQLFormatterWrapper(BaseFormatter):
             "dependencies": sorted(set(dependencies)),
         }
 
+    # Extract elements from AST: _extract_trigger_info
     def _extract_trigger_info(self, raw_text: str, trigger_name: str) -> dict:
         """Extract trigger information from CREATE TRIGGER statement"""
         import re
@@ -666,6 +688,7 @@ class SQLFormatterWrapper(BaseFormatter):
             "dependencies": dependencies,
         }
 
+    # Extract elements from AST: _extract_index_info
     def _extract_index_info(self, raw_text: str, index_name: str) -> dict:
         """Extract index information from CREATE INDEX statement"""
         import re
@@ -688,3 +711,4 @@ class SQLFormatterWrapper(BaseFormatter):
             columns = [col.strip() for col in columns_str.split(",")]
 
         return {"table_name": table_name, "columns": columns, "is_unique": is_unique}
+

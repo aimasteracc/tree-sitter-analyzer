@@ -47,6 +47,12 @@ from .trigger_extractor import extract_sql_triggers
 from .view_extractor import extract_sql_views
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class SQLElementExtractor(ElementExtractor):
     """
     SQL-specific element extractor.
@@ -72,10 +78,12 @@ class SQLElementExtractor(ElementExtractor):
 
         self.adapter: CompatibilityAdapter | None = None
 
+    # Process: set_adapter
     def set_adapter(self, adapter: CompatibilityAdapter) -> None:
         """Set the compatibility adapter."""
         self.adapter = adapter
 
+    # Extract elements from AST: extract_sql_elements
     def extract_sql_elements(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[SQLElement]:
@@ -155,11 +163,13 @@ class SQLElementExtractor(ElementExtractor):
 
         return sql_elements
 
+    # Process: _validate_and_fix_elements
     def _validate_and_fix_elements(
         self, elements: list[SQLElement]
     ) -> list[SQLElement]:
         return validate_and_fix_elements(elements, self.source_code)
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
@@ -183,6 +193,7 @@ class SQLElementExtractor(ElementExtractor):
 
         return functions
 
+    # Extract elements from AST: extract_classes
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
@@ -203,6 +214,7 @@ class SQLElementExtractor(ElementExtractor):
 
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
@@ -222,6 +234,7 @@ class SQLElementExtractor(ElementExtractor):
 
         return variables
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
@@ -249,6 +262,7 @@ class SQLElementExtractor(ElementExtractor):
         self._node_text_cache.clear()
         self._processed_nodes.clear()
 
+    # Process: _get_node_text
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get text content from a tree-sitter node with caching."""
         cache_key = (node.start_byte, node.end_byte)
@@ -313,12 +327,14 @@ class SQLElementExtractor(ElementExtractor):
             log_debug(f"Fallback text extraction also failed: {fallback_error}")
             return ""
 
+    # Process: _traverse_nodes
     def _traverse_nodes(self, node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
         yield node
         if hasattr(node, "children"):
             for child in node.children:
                 yield from self._traverse_nodes(child)
 
+    # Process: _is_valid_identifier
     def _is_valid_identifier(self, name: str) -> bool:
         return _is_valid_identifier_external(name)
 
@@ -362,6 +378,7 @@ class SQLElementExtractor(ElementExtractor):
                     except Exception as e:
                         log_debug(f"Failed to extract table: {e}")
 
+    # Extract elements from AST: _extract_views
     def _extract_views(
         self, root_node: "tree_sitter.Node", classes: list[Class]
     ) -> None:
@@ -460,6 +477,7 @@ class SQLElementExtractor(ElementExtractor):
                     except Exception as e:
                         log_debug(f"Failed to extract view: {e}")
 
+    # Extract elements from AST: _extract_procedures
     def _extract_procedures(
         self, root_node: "tree_sitter.Node", functions: list[Function]
     ) -> None:
@@ -503,6 +521,7 @@ class SQLElementExtractor(ElementExtractor):
                             except Exception as e:
                                 log_debug(f"Failed to extract procedure: {e}")
 
+    # Extract elements from AST: _extract_sql_functions
     def _extract_sql_functions(
         self, root_node: "tree_sitter.Node", functions: list[Function]
     ) -> None:
@@ -547,6 +566,7 @@ class SQLElementExtractor(ElementExtractor):
                     except Exception as e:
                         log_debug(f"Failed to extract function: {e}")
 
+    # Extract elements from AST: _extract_triggers
     def _extract_triggers(
         self, root_node: "tree_sitter.Node", functions: list[Function]
     ) -> None:
@@ -616,6 +636,7 @@ class SQLElementExtractor(ElementExtractor):
                             except Exception as e:
                                 log_debug(f"Failed to extract trigger: {e}")
 
+    # Extract elements from AST: _extract_indexes
     def _extract_indexes(
         self, root_node: "tree_sitter.Node", variables: list[Variable]
     ) -> None:
@@ -645,6 +666,7 @@ class SQLElementExtractor(ElementExtractor):
                     except Exception as e:
                         log_debug(f"Failed to extract index: {e}")
 
+    # Extract elements from AST: _extract_schema_references
     def _extract_schema_references(
         self, root_node: "tree_sitter.Node", imports: list[Import]
     ) -> None:
@@ -672,5 +694,7 @@ class SQLElementExtractor(ElementExtractor):
     def _parse_column_definition(self, col_def: str) -> Any:
         return _parse_column_definition(col_def)
 
+    # Process: _split_column_definitions
     def _split_column_definitions(self, content: str) -> list[str]:
         return _split_column_definitions(content)
+

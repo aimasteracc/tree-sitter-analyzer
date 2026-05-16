@@ -192,6 +192,7 @@ def extract_mapping_key_and_value(
     return key, value, value_type, child_count, anchor_name
 
 
+# Search for patterns or elements: _find_inner_node
 def _find_inner_node(node: Any) -> Any:
     """Find the inner content node by drilling through wrappers."""
     current = node
@@ -200,6 +201,7 @@ def _find_inner_node(node: Any) -> Any:
     return current
 
 
+# Extract elements from AST: extract_sequence_key
 def extract_sequence_key(
     node: Any,
     get_node_text: Callable[..., str],
@@ -225,3 +227,4 @@ def extract_sequence_key(
             break
         parent = getattr(parent, "parent", None)
     return key
+

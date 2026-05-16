@@ -11,6 +11,12 @@ import io
 from typing import Any
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class LegacyTableFormatter:
     """
     Legacy table formatter for code analysis results.
@@ -37,12 +43,14 @@ class LegacyTableFormatter:
         self.language = language
         self.include_javadoc = include_javadoc
 
+    # Process: _get_platform_newline
     def _get_platform_newline(self) -> str:
         """Get platform-specific newline character"""
         import os
 
         return "\r\n" if os.name == "nt" else "\n"  # Windows uses \r\n, others use \n
 
+    # Convert between formats: _convert_to_platform_newlines
     def _convert_to_platform_newlines(self, text: str) -> str:
         """Convert standard \\n to platform-specific newline characters"""
         platform_newline = self._get_platform_newline()
@@ -50,6 +58,7 @@ class LegacyTableFormatter:
             return text.replace("\n", platform_newline)
         return text
 
+    # Format data for output: format_structure
     def format_structure(self, structure_data: dict[str, Any]) -> str:
         """
         Format structure data as table.
@@ -79,6 +88,7 @@ class LegacyTableFormatter:
 
         return self._convert_to_platform_newlines(result)
 
+    # Format data for output: _format_full_table
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format - compliant with format specification"""
         lines = []
@@ -362,6 +372,7 @@ class LegacyTableFormatter:
 
         return "\n".join(lines)
 
+    # Process: _get_class_methods
     def _get_class_methods(
         self, data: dict[str, Any], class_line_range: dict[str, int]
     ) -> list[dict[str, Any]]:
@@ -404,6 +415,7 @@ class LegacyTableFormatter:
 
         return class_methods
 
+    # Process: _get_class_fields
     def _get_class_fields(
         self, data: dict[str, Any], class_line_range: dict[str, int]
     ) -> list[dict[str, Any]]:
@@ -446,6 +458,7 @@ class LegacyTableFormatter:
 
         return class_fields
 
+    # Format data for output: _format_class_details
     def _format_class_details(
         self, class_info: dict[str, Any], data: dict[str, Any]
     ) -> list[str]:
@@ -533,6 +546,7 @@ class LegacyTableFormatter:
 
         return lines
 
+    # Format data for output: _format_method_row_detailed
     def _format_method_row_detailed(self, method: dict[str, Any]) -> str:
         """Format method row for detailed class view."""
         name = str(method.get("name", ""))
@@ -549,6 +563,7 @@ class LegacyTableFormatter:
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
 
+    # Format data for output: _format_compact_method_row
     def _format_compact_method_row(self, method: dict[str, Any]) -> str:
         """Format method row for compact table format."""
         name = str(method.get("name", ""))
@@ -563,6 +578,7 @@ class LegacyTableFormatter:
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
 
+    # Process: _create_compact_signature
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Create compact method signature like (S,S):b"""
         params = method.get("parameters", [])
@@ -579,6 +595,7 @@ class LegacyTableFormatter:
 
         return f"({params_str}):{return_abbrev}"
 
+    # Process: _abbreviate_type
     def _abbreviate_type(self, type_str: str) -> str:
         """Abbreviate type name for compact display."""
         # Common abbreviations
@@ -619,6 +636,7 @@ class LegacyTableFormatter:
 
         return abbrev_map.get(type_str, type_str[0].upper() if type_str else "?")
 
+    # Process: _get_visibility_symbol
     def _get_visibility_symbol(self, visibility: str) -> str:
         """Convert visibility to symbol."""
         symbols = {
@@ -630,6 +648,7 @@ class LegacyTableFormatter:
         }
         return symbols.get(visibility.lower(), "+")
 
+    # Format data for output: _format_compact_table
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format - compliant with format specification"""
         lines = []
@@ -702,6 +721,7 @@ class LegacyTableFormatter:
 
         return "\n".join(lines)
 
+    # Format data for output: _format_csv
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format - compliant with format specification"""
         output = io.StringIO()
@@ -812,6 +832,7 @@ class LegacyTableFormatter:
 
         return csv_content
 
+    # Process: _create_full_signature
     def _create_full_signature(self, method: dict[str, Any]) -> str:
         """Create complete method signature"""
         params = method.get("parameters", [])
@@ -844,6 +865,7 @@ class LegacyTableFormatter:
 
         return signature
 
+    # Process: _shorten_type
     def _shorten_type(self, type_name: Any) -> str:
         """Shorten type name"""
         if type_name is None:
@@ -889,11 +911,13 @@ class LegacyTableFormatter:
 
         return str(type_mapping.get(type_name, type_name))
 
+    # Convert between formats: _convert_visibility
     def _convert_visibility(self, visibility: str) -> str:
         """Convert visibility to symbol"""
         mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
         return mapping.get(visibility, visibility)
 
+    # Extract elements from AST: _extract_doc_summary
     def _extract_doc_summary(self, javadoc: str) -> str:
         """Extract summary from JavaDoc"""
         if not javadoc:
@@ -912,6 +936,7 @@ class LegacyTableFormatter:
 
         return "-"
 
+    # Process: _clean_csv_text
     def _clean_csv_text(self, text: str) -> str:
         """Clean text for CSV output"""
         if not text or text == "-":
@@ -924,3 +949,4 @@ class LegacyTableFormatter:
         cleaned = cleaned.replace('"', '""')
 
         return cleaned
+

@@ -8,6 +8,12 @@ from typing import Any
 from .base_formatter import BaseTableFormatter
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class JavaTableFormatter(BaseTableFormatter):
     """Table formatter specialized for Java"""
 
@@ -147,6 +153,7 @@ class JavaTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_class_section
     def _format_class_section(
         self,
         class_info: dict[str, Any],
@@ -279,6 +286,7 @@ class JavaTableFormatter(BaseTableFormatter):
 
         return lines
 
+    # Format data for output: _format_method_row
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row for Java (golden master format)"""
         name = str(method.get("name", ""))
@@ -296,6 +304,7 @@ class JavaTableFormatter(BaseTableFormatter):
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
 
+    # Process: _get_class_methods
     def _get_class_methods(
         self, methods: list[dict[str, Any]], class_range: dict[str, Any]
     ) -> list[dict[str, Any]]:
@@ -308,6 +317,7 @@ class JavaTableFormatter(BaseTableFormatter):
             if start <= m.get("line_range", {}).get("start", 0) <= end
         ]
 
+    # Process: _get_class_fields
     def _get_class_fields(
         self, fields: list[dict[str, Any]], class_range: dict[str, Any]
     ) -> list[dict[str, Any]]:
@@ -318,6 +328,7 @@ class JavaTableFormatter(BaseTableFormatter):
             f for f in fields if start <= f.get("line_range", {}).get("start", 0) <= end
         ]
 
+    # Process: _get_inner_classes
     def _get_inner_classes(
         self, parent_class: dict[str, Any], all_classes: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -339,6 +350,7 @@ class JavaTableFormatter(BaseTableFormatter):
 
         return inner_classes
 
+    # Process: _is_inner_class
     def _is_inner_class(
         self, class_info: dict[str, Any], all_classes: list[dict[str, Any]]
     ) -> bool:
@@ -359,6 +371,7 @@ class JavaTableFormatter(BaseTableFormatter):
 
         return False
 
+    # Process: _is_in_range
     def _is_in_range(
         self, item_range: dict[str, Any], container_range: dict[str, Any]
     ) -> bool:
@@ -368,6 +381,7 @@ class JavaTableFormatter(BaseTableFormatter):
         container_end = int(container_range.get("end", 0))
         return container_start <= item_start <= container_end
 
+    # Format data for output: _format_compact_table
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format for Java"""
         lines: list[str] = []
@@ -439,6 +453,7 @@ class JavaTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Process: _create_compact_signature
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Create compact method signature for Java"""
         params = method.get("parameters", [])
@@ -451,6 +466,7 @@ class JavaTableFormatter(BaseTableFormatter):
 
         return f"({params_str}):{return_type}"
 
+    # Process: _shorten_type
     def _shorten_type(self, type_name: Any) -> str:
         """Shorten type name for Java tables"""
         if type_name is None:
@@ -499,6 +515,7 @@ class JavaTableFormatter(BaseTableFormatter):
         result = type_mapping.get(type_name, type_name)
         return str(result)
 
+    # Format data for output: format_table
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
@@ -517,14 +534,17 @@ class JavaTableFormatter(BaseTableFormatter):
             # Restore original format type
             self.format_type = original_format_type
 
+    # Format data for output: format_summary
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for Java"""
         return self._format_compact_table(analysis_result)
 
+    # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for Java"""
         return super().format_structure(analysis_result)
 
+    # Format data for output: format_advanced
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
@@ -536,6 +556,7 @@ class JavaTableFormatter(BaseTableFormatter):
         else:
             return self._format_full_table(analysis_result)
 
+    # Format data for output: _format_json
     def _format_json(self, data: dict[str, Any]) -> str:
         """Format data as JSON"""
         import json
@@ -544,3 +565,4 @@ class JavaTableFormatter(BaseTableFormatter):
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             return f"# JSON serialization error: {e}\n"
+

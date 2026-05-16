@@ -92,6 +92,7 @@ class JavaElementExtractor(ElementExtractor):
         # Extracted annotations for cross-referencing
         self.annotations: list[dict[str, Any]] = []
 
+    # Extract elements from AST: extract_annotations
     def extract_annotations(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[dict[str, Any]]:
@@ -118,6 +119,7 @@ class JavaElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(annotations)} annotations")
         return annotations
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
@@ -141,6 +143,7 @@ class JavaElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} methods")
         return functions
 
+    # Extract elements from AST: extract_classes
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
@@ -171,6 +174,7 @@ class JavaElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(classes)} classes")
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
@@ -196,6 +200,7 @@ class JavaElementExtractor(ElementExtractor):
             log_debug(f"Field {i}: {var.name} ({var.variable_type})")
         return variables
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
@@ -210,12 +215,14 @@ class JavaElementExtractor(ElementExtractor):
             lambda pkg: setattr(self, "current_package", pkg),
         )
 
+    # Extract elements from AST: _extract_imports_fallback
     def _extract_imports_fallback(self, source_code: str) -> list[Import]:
         """Fallback import extraction using regex when tree-sitter fails"""
         from .java_helpers import _extract_imports_fallback as _impl
 
         return _impl(source_code)
 
+    # Extract elements from AST: extract_packages
     def extract_packages(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Package]:
@@ -227,6 +234,7 @@ class JavaElementExtractor(ElementExtractor):
             self.current_package = packages[0].name
         return packages
 
+    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -239,6 +247,7 @@ class JavaElementExtractor(ElementExtractor):
             ""  # Reset package state to avoid cross-test contamination
         )
 
+    # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
         root_node: "tree_sitter.Node | None",
@@ -256,6 +265,7 @@ class JavaElementExtractor(ElementExtractor):
             self._element_cache,
         )
 
+    # Process data through pipeline: _process_field_batch
     def _process_field_batch(
         self, batch: list["tree_sitter.Node"], extractors: dict, results: list[Any]
     ) -> None:
@@ -266,6 +276,7 @@ class JavaElementExtractor(ElementExtractor):
             batch, extractors, results, self._processed_nodes, self._element_cache
         )
 
+    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
@@ -315,6 +326,7 @@ class JavaElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
+    # Extract elements from AST: _extract_class_optimized
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information optimized"""
         return _extract_class_standalone(
@@ -329,6 +341,7 @@ class JavaElementExtractor(ElementExtractor):
             self._find_parent_class,
         )
 
+    # Extract elements from AST: _extract_method_optimized
     def _extract_method_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract method information optimized"""
         return _extract_method_standalone(
@@ -342,6 +355,7 @@ class JavaElementExtractor(ElementExtractor):
             self._extract_javadoc_for_line,
         )
 
+    # Extract elements from AST: _extract_field_optimized
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract field information optimized"""
         return _extract_field_standalone(
@@ -354,22 +368,26 @@ class JavaElementExtractor(ElementExtractor):
             self._extract_javadoc_for_line,
         )
 
+    # Parse input into structured data: _parse_method_signature_optimized
     def _parse_method_signature_optimized(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, str, list[str], list[str], list[str]] | None:
         """Parse method signature optimized (from AdvancedAnalyzer)"""
         return _parse_method_sig_standalone(node, self._get_node_text_optimized)
 
+    # Parse input into structured data: _parse_field_declaration_optimized
     def _parse_field_declaration_optimized(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, list[str], list[str]] | None:
         """Parse field declaration optimized (from AdvancedAnalyzer)"""
         return _parse_field_standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_modifiers_optimized
     def _extract_modifiers_optimized(self, node: "tree_sitter.Node") -> list[str]:
         """Extract modifiers efficiently (from AdvancedAnalyzer)"""
         return _extract_mods_standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_package_info
     def _extract_package_info(self, node: "tree_sitter.Node") -> None:
         """Extract package information"""
         from .java_helpers import _extract_package_name
@@ -378,12 +396,14 @@ class JavaElementExtractor(ElementExtractor):
         if pkg:
             self.current_package = pkg
 
+    # Extract elements from AST: _extract_package_element
     def _extract_package_element(self, node: "tree_sitter.Node") -> Package | None:
         """Extract package element for inclusion in results"""
         from .java_helpers import _extract_package_element as _standalone
 
         return _standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_package_from_tree
     def _extract_package_from_tree(self, tree: "tree_sitter.Tree") -> None:
         """Extract package information from tree when needed"""
         if tree and tree.root_node:
@@ -392,6 +412,7 @@ class JavaElementExtractor(ElementExtractor):
                     self._extract_package_info(child)
                     break
 
+    # Extract elements from AST: _extract_import_info
     def _extract_import_info(
         self, node: "tree_sitter.Node", source_code: str
     ) -> Import | None:
@@ -400,16 +421,19 @@ class JavaElementExtractor(ElementExtractor):
 
         return _standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_annotation_optimized
     def _extract_annotation_optimized(
         self, node: "tree_sitter.Node"
     ) -> dict[str, Any] | None:
         """Extract annotation information optimized"""
         return _extract_annotation_standalone(node, self._get_node_text_optimized)
 
+    # Process: _determine_visibility
     def _determine_visibility(self, modifiers: list[str]) -> str:
         """Determine visibility from modifiers"""
         return _determine_vis_standalone(modifiers)
 
+    # Search for patterns or elements: _find_annotations_for_line_cached
     def _find_annotations_for_line_cached(self, line: int) -> list[dict[str, Any]]:
         """Find annotations for a specific line with caching"""
         if line in self._annotation_cache:
@@ -424,22 +448,27 @@ class JavaElementExtractor(ElementExtractor):
         self._annotation_cache[line] = annotations
         return annotations
 
+    # Process: _is_nested_class
     def _is_nested_class(self, node: "tree_sitter.Node") -> bool:
         """Check if this is a nested class"""
         return _is_nested_standalone(node)
 
+    # Search for patterns or elements: _find_parent_class
     def _find_parent_class(self, node: "tree_sitter.Node") -> str | None:
         """Find parent class name for nested classes"""
         return _find_parent_class_standalone(node, self._get_node_text_optimized)
 
+    # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity optimized"""
         return _calc_complexity_standalone(node)
 
+    # Extract elements from AST: _extract_javadoc_for_line
     def _extract_javadoc_for_line(self, line: int) -> str | None:
         """Extract JavaDoc comment for a specific line"""
         return _extract_javadoc_standalone(line, self.content_lines)
 
+    # Extract elements from AST: _extract_class_name
     def _extract_class_name(self, node: "tree_sitter.Node") -> str | None:
         """Extract class name from a class declaration node."""
         return _extract_class_name_standalone(node, self._get_node_text_optimized)
@@ -458,18 +487,22 @@ class JavaPlugin(LanguagePlugin):
         )  # Add for test compatibility
         self._cached_language: Any | None = None  # Cache for tree-sitter language
 
+    # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
         return "java"
 
+    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
         return [".java", ".jsp", ".jspx"]
 
+    # Extract elements from AST: create_extractor
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return JavaElementExtractor()
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
@@ -565,6 +598,7 @@ class JavaPlugin(LanguagePlugin):
                 success=False,
             )
 
+    # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """
         Recursively count nodes in the AST tree (Deprecated: use iterative version).
@@ -573,6 +607,7 @@ class JavaPlugin(LanguagePlugin):
 
         return count_nodes_iterative(node)
 
+    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Java."""
         if self._cached_language is not None:
@@ -608,6 +643,7 @@ class JavaPlugin(LanguagePlugin):
             log_error(f"Failed to load tree-sitter language for Java: {e}")
             return None
 
+    # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from Java code for test compatibility."""
         if tree is None:
@@ -641,8 +677,10 @@ class JavaPlugin(LanguagePlugin):
                 "annotations": [],
             }
 
+    # Process: supports_file
     def supports_file(self, file_path: str) -> bool:
         """Check if this plugin supports the given file."""
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+

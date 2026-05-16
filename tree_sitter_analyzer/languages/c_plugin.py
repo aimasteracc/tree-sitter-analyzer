@@ -60,6 +60,12 @@ from .c_helpers import (
 )
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class CElementExtractor(ElementExtractor):
     """C specific element extractor with advanced analysis support"""
 
@@ -78,6 +84,7 @@ class CElementExtractor(ElementExtractor):
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
@@ -101,6 +108,7 @@ class CElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} C functions")
         return functions
 
+    # Extract elements from AST: extract_classes
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
@@ -125,6 +133,7 @@ class CElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(classes)} C structs/unions/enums")
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
@@ -149,6 +158,7 @@ class CElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} C variables/fields")
         return variables
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
@@ -159,6 +169,7 @@ class CElementExtractor(ElementExtractor):
             tree, source_code, self._get_node_text_optimized
         )
 
+    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -167,6 +178,7 @@ class CElementExtractor(ElementExtractor):
         self._comment_cache.clear()
         self._complexity_cache.clear()
 
+    # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
         root_node: "tree_sitter.Node | None",
@@ -184,6 +196,7 @@ class CElementExtractor(ElementExtractor):
             self._element_cache,
         )
 
+    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
@@ -229,6 +242,7 @@ class CElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
+    # Extract elements from AST: _extract_function_optimized
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         return _extract_func_standalone(
@@ -240,6 +254,7 @@ class CElementExtractor(ElementExtractor):
             self._extract_comment_for_line,
         )
 
+    # Parse input into structured data: _parse_function_signature
     def _parse_function_signature(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, str, list[str], list[str]] | None:
@@ -248,16 +263,19 @@ class CElementExtractor(ElementExtractor):
             node, self._get_node_text_optimized, self._extract_parameters
         )
 
+    # Extract elements from AST: _extract_parameters
     def _extract_parameters(self, params_node: "tree_sitter.Node") -> list[str]:
         """Extract function parameters"""
         return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_struct_optimized
     def _extract_struct_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract struct information optimized"""
         return _extract_struct_standalone(
             node, self._get_node_text_optimized, self.content_lines
         )
 
+    # Extract elements from AST: _extract_union_optimized
     def _extract_union_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract union information optimized"""
         result = self._extract_struct_optimized(node)
@@ -270,20 +288,24 @@ class CElementExtractor(ElementExtractor):
                 result.full_qualified_name = result.name
         return result
 
+    # Extract elements from AST: _extract_enum_optimized
     def _extract_enum_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract enum information optimized"""
         return _extract_enum_standalone(
             node, self._get_node_text_optimized, self.content_lines
         )
 
+    # Extract elements from AST: _extract_field_optimized
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract field declaration"""
         return _extract_field_standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_variable_declaration
     def _extract_variable_declaration(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract variable declarations (not struct members)"""
         return _extract_var_decl_standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_include_info
     def _extract_include_info(
         self, node: "tree_sitter.Node", source_code: str
     ) -> Import | None:
@@ -292,24 +314,29 @@ class CElementExtractor(ElementExtractor):
 
         return _impl(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_includes_fallback
     def _extract_includes_fallback(self, source_code: str) -> list[Import]:
         """Fallback include extraction using regex"""
         from .c_helpers import _extract_includes_fallback
 
         return _extract_includes_fallback(source_code)
 
+    # Extract elements from AST: _extract_macro_definition
     def _extract_macro_definition(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract macro definitions as constants"""
         return _extract_macro_def_standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_macro_function
     def _extract_macro_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract macro function definition"""
         return _extract_macro_func_standalone(node, self._get_node_text_optimized)
 
+    # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity"""
         return _calc_complexity_standalone(node)
 
+    # Extract elements from AST: _extract_comment_for_line
     def _extract_comment_for_line(self, line: int) -> str | None:
         """Extract comment (documentation) for a specific line"""
         return _extract_comment_standalone(line, self.content_lines)
@@ -326,18 +353,22 @@ class CPlugin(LanguagePlugin):
         self.supported_extensions = self.get_file_extensions()
         self._cached_language: Any | None = None
 
+    # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
         return "c"
 
+    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
         return [".c", ".h"]
 
+    # Extract elements from AST: create_extractor
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return CElementExtractor()
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
@@ -417,6 +448,7 @@ class CPlugin(LanguagePlugin):
                 success=False,
             )
 
+    # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """Recursively count nodes in the AST tree."""
         if node is None:
@@ -428,6 +460,7 @@ class CPlugin(LanguagePlugin):
                 count += self._count_tree_nodes(child)
         return count
 
+    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for C."""
         if self._cached_language is not None:
@@ -458,6 +491,7 @@ class CPlugin(LanguagePlugin):
             log_error(f"Failed to load tree-sitter language for C: {e}")
             return None
 
+    # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from C code."""
         if tree is None:
@@ -484,3 +518,4 @@ class CPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
             }
+

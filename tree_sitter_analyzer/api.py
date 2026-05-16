@@ -21,6 +21,13 @@ logger = logging.getLogger(__name__)
 _engine: UnifiedAnalysisEngine | None = None
 
 
+# Process: get_engine
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def get_engine() -> UnifiedAnalysisEngine:
     """
     Get the global analysis engine instance.
@@ -34,6 +41,7 @@ def get_engine() -> UnifiedAnalysisEngine:
     return _engine
 
 
+# Analyze source code structure: analyze_file
 def analyze_file(
     file_path: str | Path,
     language: str | None = None,
@@ -192,6 +200,7 @@ def analyze_file(
         }
 
 
+# Analyze source code structure: analyze_code
 def analyze_code(
     source_code: str,
     language: str,
@@ -329,6 +338,7 @@ def analyze_code(
         }
 
 
+# Process: get_supported_languages
 def get_supported_languages() -> list[str]:
     """
     Get list of all supported programming languages.
@@ -344,6 +354,7 @@ def get_supported_languages() -> list[str]:
         return []
 
 
+# Process: get_available_queries
 def get_available_queries(language: str) -> list[str]:
     """
     Get available queries for a specific language.
@@ -362,6 +373,7 @@ def get_available_queries(language: str) -> list[str]:
         return []
 
 
+# Process: is_language_supported
 def is_language_supported(language: str) -> bool:
     """
     Check if a programming language is supported.
@@ -380,6 +392,7 @@ def is_language_supported(language: str) -> bool:
         return False
 
 
+# Detect patterns in source code: detect_language
 def detect_language(file_path: str | Path) -> str:
     """
     Detect programming language from file path.
@@ -409,6 +422,7 @@ def detect_language(file_path: str | Path) -> str:
         return "unknown"
 
 
+# Process: get_file_extensions
 def get_file_extensions(language: str) -> list[str]:
     """
     Get file extensions for a specific language.
@@ -443,6 +457,7 @@ def get_file_extensions(language: str) -> list[str]:
         return []
 
 
+# Process: validate_file
 def validate_file(file_path: str | Path) -> dict[str, Any]:
     """
     Validate a source code file without full analysis.
@@ -503,6 +518,7 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
     return result
 
 
+# Process: get_framework_info
 def get_framework_info() -> dict[str, Any]:
     """
     Get information about the framework and its capabilities.
@@ -539,6 +555,7 @@ def get_framework_info() -> dict[str, Any]:
         return {"name": "tree-sitter-analyzer", "version": __version__, "error": str(e)}
 
 
+# Process: _group_captures_by_main_node
 def _group_captures_by_main_node(
     captures: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -616,6 +633,7 @@ def _group_captures_by_main_node(
     return results
 
 
+# Main entry point - dispatches to handler: execute_query
 def execute_query(
     file_path: str | Path, query_name: str, language: str | None = None
 ) -> dict[str, Any]:
@@ -681,6 +699,7 @@ def execute_query(
         }
 
 
+# Extract elements from AST: extract_elements
 def extract_elements(
     file_path: str | Path,
     language: str | None = None,
@@ -742,6 +761,8 @@ def analyze(file_path: str | Path, **kwargs: Any) -> dict[str, Any]:
     return analyze_file(file_path, **kwargs)
 
 
+# Process: get_languages
 def get_languages() -> list[str]:
     """Convenience function that aliases to get_supported_languages."""
     return get_supported_languages()
+

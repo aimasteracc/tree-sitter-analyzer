@@ -418,6 +418,7 @@ class QueryExecutor:
         result.update(kwargs)
         return result
 
+    # Process: get_available_queries
     def get_available_queries(self, language: str) -> list[str]:
         """
         Get available queries for a language.
@@ -437,6 +438,7 @@ class QueryExecutor:
             logger.error(f"Error getting available queries for {language}: {e}")
             return []
 
+    # Process: get_query_description
     def get_query_description(self, language: str, query_name: str) -> str | None:
         """
         Get description for a specific query.
@@ -454,6 +456,7 @@ class QueryExecutor:
             logger.error(f"Error getting query description: {e}")
             return None
 
+    # Process: validate_query
     def validate_query(self, language: str, query_string: str) -> bool:
         """
         Validate a query string for a specific language.
@@ -484,6 +487,7 @@ class QueryExecutor:
             logger.error(f"Query validation failed: {e}")
             return False
 
+    # Process: get_query_statistics
     def get_query_statistics(self) -> dict[str, Any]:
         """
         Get query execution statistics.
@@ -504,6 +508,7 @@ class QueryExecutor:
 
         return stats
 
+    # Process: reset_statistics
     def reset_statistics(self) -> None:
         """Reset query execution statistics."""
         self._execution_stats = {
@@ -541,6 +546,7 @@ def get_available_queries(language: str | None = None) -> list[str]:
         return []
 
 
+# Process: get_query_description
 def get_query_description(language: str, query_name: str) -> str | None:
     """
     Get description for a specific query (module-level function).
@@ -569,6 +575,7 @@ except Exception:
     query_loader = None  # type: ignore
 
 
+# Process: get_all_queries_for_language
 def get_all_queries_for_language(language: str) -> list[str]:
     """
     Get all available queries for a specific language.
@@ -601,3 +608,4 @@ try:
     loader = get_loader()
 except Exception:
     loader = None  # type: ignore
+

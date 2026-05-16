@@ -12,6 +12,13 @@ from ...utils import log_debug
 from .identifier_validator import is_valid_identifier
 
 
+# Extract elements from AST: extract_sql_views
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def extract_sql_views(
     root_node: "tree_sitter.Node",
     traverse_nodes: Callable[..., Iterator[Any]],
@@ -144,6 +151,7 @@ def extract_sql_views(
                     log_debug(f"Failed to extract enhanced view: {e}")
 
 
+# Extract elements from AST: _extract_view_sources
 def _extract_view_sources(
     view_node: "tree_sitter.Node",
     source_tables: list[str],
@@ -160,3 +168,4 @@ def _extract_view_sources(
                             table_name = get_node_text(child).strip()
                             if table_name and table_name not in source_tables:
                                 source_tables.append(table_name)
+

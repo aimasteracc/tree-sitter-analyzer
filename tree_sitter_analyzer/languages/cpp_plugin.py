@@ -72,6 +72,12 @@ from .cpp_helpers import (
 )
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class CppElementExtractor(ElementExtractor):
     """C++ specific element extractor with advanced analysis support"""
 
@@ -91,6 +97,7 @@ class CppElementExtractor(ElementExtractor):
         self._comment_cache: dict[int, str] = {}
         self._complexity_cache: dict[int, int] = {}
 
+    # Extract elements from AST: extract_functions
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Function]:
@@ -116,6 +123,7 @@ class CppElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(functions)} C++ functions")
         return functions
 
+    # Extract elements from AST: extract_classes
     def extract_classes(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Class]:
@@ -141,6 +149,7 @@ class CppElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(classes)} C++ classes/structs")
         return classes
 
+    # Extract elements from AST: extract_variables
     def extract_variables(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Variable]:
@@ -164,6 +173,7 @@ class CppElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(variables)} C++ variables/fields")
         return variables
 
+    # Extract elements from AST: extract_imports
     def extract_imports(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
@@ -175,6 +185,7 @@ class CppElementExtractor(ElementExtractor):
             tree, source_code, self._get_node_text_optimized
         )
 
+    # Extract elements from AST: extract_packages
     def extract_packages(self, tree: "tree_sitter.Tree", source_code: str) -> list[Any]:
         """Extract C++ namespace declarations"""
         self.source_code = source_code
@@ -182,6 +193,7 @@ class CppElementExtractor(ElementExtractor):
 
         return _extract_namespaces_standalone(tree, self._get_node_text_optimized)
 
+    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -191,6 +203,7 @@ class CppElementExtractor(ElementExtractor):
         self._complexity_cache.clear()
         self.current_namespace = ""
 
+    # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
         root_node: "tree_sitter.Node | None",
@@ -208,6 +221,7 @@ class CppElementExtractor(ElementExtractor):
             self._element_cache,
         )
 
+    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
@@ -253,6 +267,7 @@ class CppElementExtractor(ElementExtractor):
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""
 
+    # Extract elements from AST: _extract_function_optimized
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         return _extract_func_standalone(
@@ -267,6 +282,7 @@ class CppElementExtractor(ElementExtractor):
             self._extract_comment_for_line,
         )
 
+    # Extract elements from AST: _extract_function_from_field_declaration
     def _extract_function_from_field_declaration(
         self, node: "tree_sitter.Node"
     ) -> Function | None:
@@ -280,6 +296,7 @@ class CppElementExtractor(ElementExtractor):
             self._extract_comment_for_line,
         )
 
+    # Extract elements from AST: _extract_function_declaration
     def _extract_function_declaration(
         self, node: "tree_sitter.Node"
     ) -> Function | None:
@@ -290,6 +307,7 @@ class CppElementExtractor(ElementExtractor):
             self._extract_parameters,
         )
 
+    # Extract elements from AST: _extract_template_function
     def _extract_template_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract template function definition"""
         try:
@@ -311,6 +329,7 @@ class CppElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract template function: {e}")
             return None
 
+    # Parse input into structured data: _parse_function_signature
     def _parse_function_signature(
         self, node: "tree_sitter.Node"
     ) -> tuple[str, str, list[str], list[str]] | None:
@@ -319,10 +338,12 @@ class CppElementExtractor(ElementExtractor):
             node, self._get_node_text_optimized, self._extract_parameters
         )
 
+    # Extract elements from AST: _extract_parameters
     def _extract_parameters(self, params_node: "tree_sitter.Node") -> list[str]:
         """Extract function parameters"""
         return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_class_optimized
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information optimized"""
         return _extract_class_standalone(
@@ -334,6 +355,7 @@ class CppElementExtractor(ElementExtractor):
             self._extract_comment_for_line,
         )
 
+    # Extract elements from AST: _extract_struct_optimized
     def _extract_struct_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract struct information optimized"""
         try:
@@ -345,6 +367,7 @@ class CppElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract struct info: {e}")
             return None
 
+    # Extract elements from AST: _extract_union_optimized
     def _extract_union_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract union information optimized"""
         try:
@@ -356,6 +379,7 @@ class CppElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract union info: {e}")
             return None
 
+    # Extract elements from AST: _extract_template_class
     def _extract_template_class(self, node: "tree_sitter.Node") -> Class | None:
         """Extract template class definition"""
         try:
@@ -387,10 +411,12 @@ class CppElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract template class: {e}")
             return None
 
+    # Extract elements from AST: _extract_base_classes
     def _extract_base_classes(self, node: "tree_sitter.Node") -> list[str]:
         """Extract base class names from base_class_clause"""
         return _extract_base_standalone(node, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_field_optimized
     def _extract_field_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract field declaration"""
         return _extract_cpp_field_standalone(
@@ -400,6 +426,7 @@ class CppElementExtractor(ElementExtractor):
             self._determine_visibility,
         )
 
+    # Extract elements from AST: _extract_variable_declaration
     def _extract_variable_declaration(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract variable declarations (not class members)"""
         return _extract_cpp_var_standalone(
@@ -409,6 +436,7 @@ class CppElementExtractor(ElementExtractor):
             self._determine_visibility,
         )
 
+    # Extract elements from AST: _extract_include_info
     def _extract_include_info(
         self, node: "tree_sitter.Node", source_code: str
     ) -> Import | None:
@@ -416,11 +444,13 @@ class CppElementExtractor(ElementExtractor):
 
         return _impl(node, source_code, self._get_node_text_optimized)
 
+    # Extract elements from AST: _extract_includes_fallback
     def _extract_includes_fallback(self, source_code: str) -> list[Import]:
         from .cpp_helpers import _extract_includes_fallback
 
         return _extract_includes_fallback(source_code)
 
+    # Extract elements from AST: _extract_namespace_info
     def _extract_namespace_info(self, node: "tree_sitter.Node") -> Any:
         from .cpp_helpers import _extract_namespace_info as _impl
 
@@ -429,12 +459,15 @@ class CppElementExtractor(ElementExtractor):
             self.current_namespace = result.name
         return result
 
+    # Process: _is_global_scope
     def _is_global_scope(self, node: "tree_sitter.Node") -> bool:
         return _is_global_standalone(node)
 
+    # Process: _get_access_specifier
     def _get_access_specifier(self, node: "tree_sitter.Node") -> str | None:
         return _get_access_standalone(node, self._get_node_text_optimized)
 
+    # Process: _determine_visibility
     def _determine_visibility(
         self,
         modifiers: list[str],
@@ -445,9 +478,11 @@ class CppElementExtractor(ElementExtractor):
             modifiers, is_global, node, self._get_node_text_optimized
         )
 
+    # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         return _calc_complexity_standalone(node)
 
+    # Extract elements from AST: _extract_comment_for_line
     def _extract_comment_for_line(self, line: int) -> str | None:
         return _extract_comment_standalone(line, self.content_lines)
 
@@ -463,18 +498,22 @@ class CppPlugin(LanguagePlugin):
         self.supported_extensions = self.get_file_extensions()
         self._cached_language: Any | None = None
 
+    # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
         return "cpp"
 
+    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
         return [".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".h++", ".c++"]
 
+    # Extract elements from AST: create_extractor
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return CppElementExtractor()
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
@@ -555,6 +594,7 @@ class CppPlugin(LanguagePlugin):
                 success=False,
             )
 
+    # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """Recursively count nodes in the AST tree."""
         if node is None:
@@ -566,6 +606,7 @@ class CppPlugin(LanguagePlugin):
                 count += self._count_tree_nodes(child)
         return count
 
+    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for C++."""
         if self._cached_language is not None:
@@ -596,6 +637,7 @@ class CppPlugin(LanguagePlugin):
             log_error(f"Failed to load tree-sitter language for C++: {e}")
             return None
 
+    # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from C++ code."""
         if tree is None:
@@ -625,3 +667,4 @@ class CppPlugin(LanguagePlugin):
                 "imports": [],
                 "packages": [],
             }
+

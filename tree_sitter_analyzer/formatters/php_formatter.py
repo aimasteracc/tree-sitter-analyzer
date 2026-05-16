@@ -9,6 +9,7 @@ from typing import Any
 from .base_formatter import BaseTableFormatter
 
 
+# Section: imports and module configuration
 class PHPTableFormatter(BaseTableFormatter):
     """Table formatter specialized for PHP, following Java golden master format."""
 
@@ -21,6 +22,7 @@ class PHPTableFormatter(BaseTableFormatter):
         }
         return visibility_map.get(str(visibility).lower(), "+")
 
+    # Format data for output: _format_signature
     def _format_signature(self, method: dict[str, Any]) -> str:
         """Format method signature like Java: ($param:type):returnType."""
         params = method.get("parameters", [])
@@ -41,6 +43,7 @@ class PHPTableFormatter(BaseTableFormatter):
         return_type = method.get("return_type", "void")
         return f"({', '.join(param_strs)}):{return_type}"
 
+    # Format data for output: _format_compact_signature
     def _format_compact_signature(self, method: dict[str, Any]) -> str:
         """Format compact method signature."""
         params = method.get("parameters", [])
@@ -59,6 +62,7 @@ class PHPTableFormatter(BaseTableFormatter):
             else f"({', '.join(param_strs)}):"
         )
 
+    # Extract elements from AST: _extract_namespace
     def _extract_namespace(self, data: dict[str, Any]) -> str:
         """Extract namespace from data."""
         classes = data.get("classes", [])
@@ -75,6 +79,7 @@ class PHPTableFormatter(BaseTableFormatter):
                     return str(namespace)
         return ""
 
+    # Format data for output: _format_full_table
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for PHP, following Java golden master format."""
         lines = []
@@ -312,6 +317,7 @@ class PHPTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_compact_table
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format for PHP, following Java golden master format."""
         lines = []
@@ -365,6 +371,7 @@ class PHPTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_csv
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format for PHP, following Java golden master format."""
         lines = []
@@ -433,3 +440,4 @@ class PHPCSVFormatter(PHPTableFormatter):
     def format(self, data: dict[str, Any]) -> str:
         """Format data as CSV"""
         return self._format_csv(data)
+

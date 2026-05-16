@@ -8,6 +8,8 @@ from ..models import Class, Function, Import, Package, Variable
 from ..utils import log_error
 
 
+# Extract elements from AST: extract_imports_from_tree
+# Section: imports and module configuration
 def extract_imports_from_tree(
     tree: Any,
     source_code: str,
@@ -25,6 +27,7 @@ def extract_imports_from_tree(
     return imports
 
 
+# Extract elements from AST: extract_import_spec
 def extract_import_spec(
     node: Any,
     get_node_text: Callable[..., str],
@@ -66,6 +69,7 @@ def extract_import_spec(
         return None
 
 
+# Extract elements from AST: extract_parameters
 def extract_parameters(node: Any, get_node_text: Callable[..., str]) -> list[str]:
     """Extract function/method parameters."""
     parameters: list[str] = []
@@ -77,6 +81,7 @@ def extract_parameters(node: Any, get_node_text: Callable[..., str]) -> list[str
     return parameters
 
 
+# Extract elements from AST: extract_return_type
 def extract_return_type(node: Any, get_node_text: Callable[..., str]) -> str:
     """Extract function/method return type."""
     result_node = node.child_by_field_name("result")
@@ -85,6 +90,7 @@ def extract_return_type(node: Any, get_node_text: Callable[..., str]) -> str:
     return ""
 
 
+# Extract elements from AST: extract_var_spec
 def extract_var_spec(
     node: Any,
     is_const: bool,
@@ -133,6 +139,7 @@ def extract_var_spec(
     return variables
 
 
+# Extract elements from AST: extract_embedded_types
 def extract_embedded_types(
     struct_node: Any,
     get_node_text: Callable[..., str],
@@ -155,6 +162,7 @@ def extract_embedded_types(
     return embedded
 
 
+# Extract elements from AST: extract_docstring
 def extract_docstring(node: Any, content_lines: list[str]) -> str | None:
     """Extract doc comments preceding the node."""
     start_line = node.start_point[0]
@@ -180,6 +188,7 @@ def extract_docstring(node: Any, content_lines: list[str]) -> str | None:
     return "\n".join(docs) if docs else None
 
 
+# Extract elements from AST: extract_method_receiver
 def extract_method_receiver(
     node: Any, get_node_text: Callable[..., str]
 ) -> tuple[str | None, str | None]:
@@ -193,6 +202,7 @@ def extract_method_receiver(
     return None, None
 
 
+# Extract elements from AST: _extract_import_declaration
 def _extract_import_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -216,6 +226,7 @@ def _extract_import_declaration(
     return imports
 
 
+# Extract elements from AST: extract_go_function
 def extract_go_function(
     node: Any,
     get_node_text: Callable[..., str],
@@ -254,6 +265,7 @@ def extract_go_function(
         return None
 
 
+# Extract elements from AST: extract_go_method
 def extract_go_method(
     node: Any,
     get_node_text: Callable[..., str],
@@ -298,6 +310,7 @@ def extract_go_method(
         return None
 
 
+# Extract elements from AST: extract_go_type_spec
 def extract_go_type_spec(
     node: Any,
     get_node_text: Callable[..., str],
@@ -348,6 +361,7 @@ def extract_go_type_spec(
         return None
 
 
+# Extract elements from AST: extract_go_package
 def extract_go_package(
     node: Any,
     get_node_text: Callable[..., str],
@@ -370,6 +384,7 @@ def extract_go_package(
         return None
 
 
+# Extract elements from AST: extract_type_declaration
 def extract_type_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -388,6 +403,7 @@ def extract_type_declaration(
     return classes
 
 
+# Extract elements from AST: extract_var_or_const
 def extract_var_or_const(
     node: Any,
     is_const: bool,
@@ -405,3 +421,4 @@ def extract_var_or_const(
         label = "const" if is_const else "var"
         log_error(f"Error extracting Go {label}: {e}")
     return variables
+

@@ -12,6 +12,12 @@ from typing import Any
 from .base_formatter import BaseTableFormatter
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class PythonTableFormatter(BaseTableFormatter):
     """Table formatter specialized for Python"""
 
@@ -27,6 +33,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return self.format_structure(data)
 
+    # Format data for output: format_table
     def format_table(self, data: dict[str, Any], table_type: str = "full") -> str:
         """Format table output for Python files"""
         # Set the format type and delegate to format_structure
@@ -38,14 +45,17 @@ class PythonTableFormatter(BaseTableFormatter):
         finally:
             self.format_type = original_format_type
 
+    # Format data for output: format_summary
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for Python"""
         return self._format_compact_table(analysis_result)
 
+    # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for Python"""
         return super().format_structure(analysis_result)
 
+    # Format data for output: format_advanced
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
@@ -57,6 +67,7 @@ class PythonTableFormatter(BaseTableFormatter):
         else:
             return self._format_full_table(analysis_result)
 
+    # Format data for output: _format_json
     def _format_json(self, data: dict[str, Any]) -> str:
         """Format data as JSON"""
         import json
@@ -66,6 +77,7 @@ class PythonTableFormatter(BaseTableFormatter):
         except (TypeError, ValueError) as e:
             return f"# JSON serialization error: {e}\n"
 
+    # Format data for output: format_analysis_result
     def format_analysis_result(
         self, analysis_result: Any, table_type: str = "full"
     ) -> str:
@@ -74,6 +86,7 @@ class PythonTableFormatter(BaseTableFormatter):
         data = self._convert_analysis_result_to_python_format(analysis_result)
         return self.format_table(data, table_type)
 
+    # Format data for output: _convert_analysis_result_to_python_format
     def _convert_analysis_result_to_python_format(
         self, analysis_result: Any
     ) -> dict[str, Any]:
@@ -126,6 +139,7 @@ class PythonTableFormatter(BaseTableFormatter):
             },
         }
 
+    # Convert between formats: _convert_class_element_for_python
     def _convert_class_element_for_python(self, element: Any) -> dict[str, Any]:
         """Convert class element for Python formatter"""
         element_name = getattr(element, "name", None)
@@ -141,6 +155,7 @@ class PythonTableFormatter(BaseTableFormatter):
             },
         }
 
+    # Convert between formats: _convert_function_element_for_python
     def _convert_function_element_for_python(self, element: Any) -> dict[str, Any]:
         """Convert function element for Python formatter"""
         params = getattr(element, "parameters", [])
@@ -164,6 +179,7 @@ class PythonTableFormatter(BaseTableFormatter):
             "modifiers": getattr(element, "modifiers", []),
         }
 
+    # Convert between formats: _convert_variable_element_for_python
     def _convert_variable_element_for_python(self, element: Any) -> dict[str, Any]:
         """Convert variable element for Python formatter"""
         return {
@@ -179,6 +195,7 @@ class PythonTableFormatter(BaseTableFormatter):
             "javadoc": getattr(element, "docstring", ""),
         }
 
+    # Convert between formats: _convert_import_element_for_python
     def _convert_import_element_for_python(self, element: Any) -> dict[str, Any]:
         """Convert import element for Python formatter"""
         raw_text = getattr(element, "raw_text", "")
@@ -194,6 +211,7 @@ class PythonTableFormatter(BaseTableFormatter):
             "module_name": getattr(element, "module_name", ""),
         }
 
+    # Process data through pipeline: _process_python_parameters
     def _process_python_parameters(self, params: Any) -> list[dict[str, str]]:
         """Process parameters for Python formatter"""
         if isinstance(params, str):
@@ -223,6 +241,7 @@ class PythonTableFormatter(BaseTableFormatter):
         else:
             return []
 
+    # Format data for output: _format_full_table
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for Python"""
         if data is None:
@@ -435,6 +454,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_compact_table
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format for Python"""
         lines = []
@@ -512,6 +532,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_method_row
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row for Python"""
         name = str(method.get("name", ""))
@@ -551,6 +572,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return f"| {name}{async_indicator} | {signature} | {vis_symbol} | {lines_str} | {cols_str} | {complexity} | {decorator_str} | {doc} |"
 
+    # Process: _create_compact_signature
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Create compact method signature for Python"""
         if method is None or not isinstance(method, dict):
@@ -589,6 +611,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return f"({params_str}):{return_type}"
 
+    # Process: _shorten_type
     def _shorten_type(self, type_name: Any) -> str:
         """Shorten type name for Python tables"""
         if type_name is None:
@@ -641,6 +664,7 @@ class PythonTableFormatter(BaseTableFormatter):
         )
         return str(result)
 
+    # Extract elements from AST: _extract_module_docstring
     def _extract_module_docstring(self, data: dict[str, Any]) -> str | None:
         """Extract module-level docstring"""
         # Look for module docstring in the first few lines
@@ -671,6 +695,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return None
 
+    # Format data for output: _format_python_signature
     def _format_python_signature(self, method: dict[str, Any]) -> str:
         """Create Python method signature"""
         params = method.get("parameters", [])
@@ -697,6 +722,7 @@ class PythonTableFormatter(BaseTableFormatter):
         else:
             return f"({params_str})"
 
+    # Process: _get_python_visibility_symbol
     def _get_python_visibility_symbol(self, visibility: str) -> str:
         """Get Python visibility symbol"""
         visibility_map = {
@@ -707,6 +733,7 @@ class PythonTableFormatter(BaseTableFormatter):
         }
         return visibility_map.get(visibility, "🔓")
 
+    # Format data for output: _format_decorators
     def _format_decorators(self, decorators: list[str]) -> str:
         """Format Python decorators"""
         if not decorators:
@@ -733,6 +760,7 @@ class PythonTableFormatter(BaseTableFormatter):
         else:
             return f"@{decorators[0]} (+{len(decorators) - 1})"
 
+    # Format data for output: _format_class_method_row
     def _format_class_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row for class-specific sections"""
         name = str(method.get("name", ""))
@@ -802,6 +830,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         return f"| {name} | {signature}{modifier_str} | {vis_symbol} | {lines_str} | {complexity} | {doc} |"
 
+    # Format data for output: _format_python_signature_compact
     def _format_python_signature_compact(self, method: dict[str, Any]) -> str:
         """Create compact Python method signature for class sections"""
         params = method.get("parameters", [])
@@ -828,3 +857,4 @@ class PythonTableFormatter(BaseTableFormatter):
             return f"({params_str}):{return_type}"
         else:
             return f"({params_str}):Any"
+

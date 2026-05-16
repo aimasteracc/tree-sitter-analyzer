@@ -617,9 +617,11 @@ class DefaultLanguagePlugin(LanguagePlugin):
     def get_file_extensions(self) -> list[str]:
         return [".txt", ".md"]  # Fallback extensions
 
+    # Extract elements from AST: create_extractor
     def create_extractor(self) -> ElementExtractor:
         return DefaultExtractor()
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
@@ -649,3 +651,4 @@ class DefaultLanguagePlugin(LanguagePlugin):
                 error_message=str(e),
                 success=False,
             )
+

@@ -154,6 +154,7 @@ class GoElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(packages)} Go packages")
         return packages
 
+    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -161,6 +162,7 @@ class GoElementExtractor(ElementExtractor):
         self.channels.clear()
         self.defers.clear()
 
+    # Extract elements from AST: _traverse_and_extract
     def _traverse_and_extract(
         self,
         node: "tree_sitter.Node",
@@ -187,6 +189,7 @@ class GoElementExtractor(ElementExtractor):
         for child in node.children:
             self._traverse_and_extract(child, extractors, results)
 
+    # Process: _traverse_for_types
     def _traverse_for_types(
         self, node: "tree_sitter.Node", results: list[Class]
     ) -> None:
@@ -199,12 +202,14 @@ class GoElementExtractor(ElementExtractor):
         for child in node.children:
             self._traverse_for_types(child, results)
 
+    # Extract elements from AST: _extract_package
     def _extract_package(self, node: "tree_sitter.Node") -> Package | None:
         """Extract package declaration"""
         from .go_helpers import extract_go_package
 
         return extract_go_package(node, self._get_node_text)
 
+    # Extract elements from AST: _extract_import_declaration
     def _extract_import_declaration(
         self, node: "tree_sitter.Node"
     ) -> list[Import] | None:
@@ -214,54 +219,65 @@ class GoElementExtractor(ElementExtractor):
         imports = _impl(node, self._get_node_text)
         return imports if imports else None
 
+    # Extract elements from AST: _extract_import_spec
     def _extract_import_spec(self, node: "tree_sitter.Node") -> Import | None:
         """Extract single import spec"""
         return _extract_import_spec_standalone(node, self._get_node_text)
 
+    # Extract elements from AST: _extract_function
     def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function declaration"""
         return _extract_func_standalone(node, self._get_node_text, self.content_lines)
 
+    # Extract elements from AST: _extract_method
     def _extract_method(self, node: "tree_sitter.Node") -> Function | None:
         """Extract method declaration (function with receiver)"""
         return _extract_method_standalone(node, self._get_node_text, self.content_lines)
 
+    # Extract elements from AST: _extract_parameters
     def _extract_parameters(self, node: "tree_sitter.Node") -> list[str]:
         """Extract function/method parameters"""
         return _extract_params_standalone(node, self._get_node_text)
 
+    # Extract elements from AST: _extract_return_type
     def _extract_return_type(self, node: "tree_sitter.Node") -> str:
         """Extract function/method return type"""
         return _extract_return_type_standalone(node, self._get_node_text)
 
+    # Extract elements from AST: _extract_type_declaration
     def _extract_type_declaration(self, node: "tree_sitter.Node") -> list[Class]:
         """Extract type declaration (struct, interface, type alias)"""
         from .go_helpers import extract_type_declaration
 
         return extract_type_declaration(node, self._get_node_text, self.content_lines)
 
+    # Extract elements from AST: _extract_type_spec
     def _extract_type_spec(self, node: "tree_sitter.Node") -> Class | None:
         """Extract single type spec"""
         return _extract_type_spec_standalone(
             node, self._get_node_text, self.content_lines
         )
 
+    # Extract elements from AST: _extract_embedded_types
     def _extract_embedded_types(self, struct_node: "tree_sitter.Node") -> list[str]:
         """Extract embedded types from struct"""
         return _extract_embedded_standalone(struct_node, self._get_node_text)
 
+    # Extract elements from AST: _extract_const_declaration
     def _extract_const_declaration(
         self, node: "tree_sitter.Node"
     ) -> list[Variable] | None:
         """Extract const declaration"""
         return self._extract_var_or_const(node, is_const=True)
 
+    # Extract elements from AST: _extract_var_declaration
     def _extract_var_declaration(
         self, node: "tree_sitter.Node"
     ) -> list[Variable] | None:
         """Extract var declaration"""
         return self._extract_var_or_const(node, is_const=False)
 
+    # Extract elements from AST: _extract_var_or_const
     def _extract_var_or_const(
         self, node: "tree_sitter.Node", is_const: bool
     ) -> list[Variable] | None:
@@ -271,12 +287,14 @@ class GoElementExtractor(ElementExtractor):
         result = extract_var_or_const(node, is_const, self._get_node_text)
         return result if result else None
 
+    # Extract elements from AST: _extract_var_spec
     def _extract_var_spec(
         self, node: "tree_sitter.Node", is_const: bool
     ) -> list[Variable]:
         """Extract single var/const spec"""
         return _extract_var_spec_standalone(node, is_const, self._get_node_text)
 
+    # Extract elements from AST: _extract_goroutine
     def _extract_goroutine(self, node: "tree_sitter.Node") -> None:
         """Extract goroutine invocation"""
         try:
@@ -289,6 +307,7 @@ class GoElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting goroutine: {e}")
 
+    # Extract elements from AST: _extract_channel_operation
     def _extract_channel_operation(
         self, node: "tree_sitter.Node", op_type: str
     ) -> None:
@@ -304,6 +323,7 @@ class GoElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting channel operation: {e}")
 
+    # Extract elements from AST: _extract_defer
     def _extract_defer(self, node: "tree_sitter.Node") -> None:
         """Extract defer statement"""
         try:
@@ -316,10 +336,12 @@ class GoElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting defer: {e}")
 
+    # Extract elements from AST: _extract_docstring
     def _extract_docstring(self, node: "tree_sitter.Node") -> str | None:
         """Extract doc comments preceding the node"""
         return _extract_docstring_standalone(node, self.content_lines)
 
+    # Process: _get_node_text
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get node text with caching using position-based keys"""
         cache_key = (node.start_byte, node.end_byte)
@@ -349,18 +371,22 @@ class GoPlugin(LanguagePlugin):
         self.supported_extensions = self.get_file_extensions()
         self._cached_language: Any | None = None
 
+    # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
         return "go"
 
+    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
         return [".go"]
 
+    # Extract elements from AST: create_extractor
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
         return GoElementExtractor()
 
+    # Process: get_supported_element_types
     def get_supported_element_types(self) -> list[str]:
         """Get supported element types for Go."""
         return [
@@ -377,12 +403,14 @@ class GoPlugin(LanguagePlugin):
             "channel",
         ]
 
+    # Process: get_queries
     def get_queries(self) -> dict[str, str]:
         """Get Go-specific tree-sitter queries."""
         from ..queries.go import GO_QUERIES
 
         return GO_QUERIES
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
@@ -462,6 +490,7 @@ class GoPlugin(LanguagePlugin):
                 success=False,
             )
 
+    # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """Recursively count nodes."""
         if node is None:
@@ -472,6 +501,7 @@ class GoPlugin(LanguagePlugin):
                 count += self._count_tree_nodes(child)
         return count
 
+    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Go."""
         if self._cached_language is not None:
@@ -502,6 +532,7 @@ class GoPlugin(LanguagePlugin):
             log_error(f"Failed to load tree-sitter language for Go: {e}")
             return None
 
+    # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from Go source code."""
         if tree is None:
@@ -542,8 +573,10 @@ class GoPlugin(LanguagePlugin):
                 "variables": [],
             }
 
+    # Process: supports_file
     def supports_file(self, file_path: str) -> bool:
         """Check if this plugin supports the given file."""
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+

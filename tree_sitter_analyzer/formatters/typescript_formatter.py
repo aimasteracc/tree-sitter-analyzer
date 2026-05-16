@@ -12,6 +12,11 @@ from typing import Any
 from .base_formatter import BaseTableFormatter
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
 class TypeScriptTableFormatter(BaseTableFormatter):
     """Table formatter specialized for TypeScript"""
 
@@ -19,6 +24,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         """Format data using the configured format type"""
         return self.format_structure(data)
 
+    # Format data for output: _format_full_table
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for TypeScript - matches golden master format"""
         lines: list[str] = []
@@ -174,6 +180,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_compact_table
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format for TypeScript - matches golden master format"""
         lines: list[str] = []
@@ -241,6 +248,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
         return "\n".join(lines)
 
+    # Format data for output: _format_csv
     def _format_csv(self, data: dict[str, Any]) -> str:
         """CSV format for TypeScript - matches golden master format"""
         lines: list[str] = []
@@ -301,6 +309,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         lines.append("")
         return "\n".join(lines)
 
+    # Process: _get_class_methods
     def _get_class_methods(
         self, methods: list[dict[str, Any]], line_range: dict[str, int]
     ) -> list[dict[str, Any]]:
@@ -313,6 +322,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             if start <= (m.get("line_range") or {}).get("start", 0) <= end
         ]
 
+    # Process: _get_class_fields
     def _get_class_fields(
         self, fields: list[dict[str, Any]], line_range: dict[str, int]
     ) -> list[dict[str, Any]]:
@@ -325,6 +335,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             if start <= (f.get("line_range") or {}).get("start", 0) <= end
         ]
 
+    # Format data for output: _format_method_row
     def _format_method_row(self, method: dict[str, Any]) -> str:
         """Format a method table row"""
         name = str(method.get("name", ""))
@@ -342,6 +353,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
         return f"| {name} | {signature} | {visibility} | {lines_str} | {complexity} | {doc} |"
 
+    # Process: _create_full_signature
     def _create_full_signature(self, method: dict[str, Any]) -> str:
         """Create full method signature"""
         params = method.get("parameters", [])
@@ -366,6 +378,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
         return f"({params_str}):{return_type}"
 
+    # Process: _create_compact_signature
     def _create_compact_signature(self, method: dict[str, Any]) -> str:
         """Create compact method signature"""
         params = method.get("parameters", [])
@@ -383,6 +396,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
         return f"({params_str}):{return_type}"
 
+    # Process: _create_csv_signature
     def _create_csv_signature(self, method: dict[str, Any]) -> str:
         """Create CSV method signature with full parameter details"""
         params = method.get("parameters", [])
@@ -407,6 +421,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
 
         return f"({params_str}):{return_type}"
 
+    # Format data for output: _format_modifiers
     def _format_modifiers(self, element: dict[str, Any]) -> str:
         """Format element modifiers"""
         modifiers = []
@@ -418,6 +433,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             modifiers.append("abstract")
         return " ".join(modifiers)
 
+    # Format data for output: format_table
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
@@ -430,14 +446,17 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         finally:
             self.format_type = original_format_type
 
+    # Format data for output: format_summary
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary output for TypeScript"""
         return self._format_compact_table(analysis_result)
 
+    # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output for TypeScript"""
         return super().format_structure(analysis_result)
 
+    # Format data for output: format_advanced
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
@@ -449,6 +468,7 @@ class TypeScriptTableFormatter(BaseTableFormatter):
         else:
             return self._format_full_table(analysis_result)
 
+    # Format data for output: _format_json
     def _format_json(self, data: dict[str, Any]) -> str:
         """Format data as JSON"""
         import json
@@ -457,3 +477,4 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             return f"# JSON serialization error: {e}\n"
+

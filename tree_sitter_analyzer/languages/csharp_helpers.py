@@ -7,6 +7,13 @@ from ..models import Class, Function, Import, Variable
 from ..utils import log_error
 
 
+# Process: determine_visibility
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def determine_visibility(modifiers: list[str]) -> str:
     """Determine visibility from C# modifiers."""
     if "public" in modifiers:
@@ -20,6 +27,7 @@ def determine_visibility(modifiers: list[str]) -> str:
     return "private"
 
 
+# Extract elements from AST: extract_parameters
 def extract_parameters(
     params_node: Any,
     get_node_text: Callable[..., str],
@@ -34,6 +42,7 @@ def extract_parameters(
     return parameters
 
 
+# Extract elements from AST: extract_type_name
 def extract_type_name(
     type_node: Any,
     get_node_text: Callable[..., str],
@@ -44,6 +53,7 @@ def extract_type_name(
     return get_node_text(type_node)
 
 
+# Extract elements from AST: extract_modifiers
 def extract_modifiers(
     node: Any,
     get_node_text: Callable[..., str],
@@ -56,6 +66,7 @@ def extract_modifiers(
     return modifiers
 
 
+# Process: calculate_complexity
 def calculate_complexity(node: Any, traverse_fn: Callable[..., Iterator]) -> int:
     """Calculate cyclomatic complexity."""
     complexity = 1
@@ -75,6 +86,7 @@ def calculate_complexity(node: Any, traverse_fn: Callable[..., Iterator]) -> int
     return complexity
 
 
+# Extract elements from AST: extract_attributes
 def extract_attributes(
     node: Any,
     get_node_text: Callable[..., str],
@@ -106,6 +118,7 @@ def extract_attributes(
     return attributes
 
 
+# Extract elements from AST: extract_using_directive
 def extract_using_directive(
     node: Any,
     get_node_text: Callable[..., str],
@@ -158,6 +171,7 @@ _CLASS_TYPE_MAP = {
 _BASE_TYPE_NODES = frozenset(["type_identifier", "generic_name", "qualified_name"])
 
 
+# Extract elements from AST: extract_class_declaration
 def extract_class_declaration(
     node: Any,
     current_namespace: str,
@@ -218,6 +232,7 @@ def extract_class_declaration(
         return None
 
 
+# Extract elements from AST: extract_method_declaration
 def extract_method_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -266,6 +281,7 @@ def extract_method_declaration(
         return None
 
 
+# Extract elements from AST: extract_constructor_declaration
 def extract_constructor_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -306,6 +322,7 @@ def extract_constructor_declaration(
         return None
 
 
+# Extract elements from AST: extract_property_declaration
 def extract_property_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -346,6 +363,7 @@ def extract_property_declaration(
         return None
 
 
+# Extract elements from AST: extract_field_declaration
 def extract_field_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -398,6 +416,7 @@ def extract_field_declaration(
     return variables
 
 
+# Extract elements from AST: extract_event_declaration
 def extract_event_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -447,3 +466,4 @@ def extract_event_declaration(
         log_error(f"Error extracting event: {e}")
 
     return variables
+

@@ -126,6 +126,7 @@ def extract_table_columns(
                     columns.append(column)
 
 
+# Process: _split_column_definitions
 def _split_column_definitions(content: str) -> list[str]:
     """Split column definitions by commas, handling nested parentheses."""
     definitions = []
@@ -151,6 +152,7 @@ def _split_column_definitions(content: str) -> list[str]:
     return definitions
 
 
+# Parse input into structured data: _parse_column_definition
 def _parse_column_definition(col_def: str) -> SQLColumn | None:
     """Parse a single column definition string."""
     match = re.match(
@@ -187,3 +189,4 @@ def _parse_column_definition(col_def: str) -> SQLColumn | None:
         is_foreign_key=is_foreign_key,
         foreign_key_reference=foreign_key_reference,
     )
+

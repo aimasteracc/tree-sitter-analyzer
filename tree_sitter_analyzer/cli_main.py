@@ -31,10 +31,17 @@ from .output_manager import output_error, output_info, output_list
 from .query_loader import query_loader
 
 
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 class CLICommandFactory:
     """Factory for creating CLI commands based on arguments."""
 
     @staticmethod
+    # Process: create_command
     def create_command(args: argparse.Namespace) -> Any:
         """Create appropriate command based on arguments."""
 
@@ -97,6 +104,7 @@ class CLICommandFactory:
         return DefaultCommand(args)
 
 
+# Parse input into structured data: create_argument_parser
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
@@ -319,6 +327,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
+# Handle request or event: handle_special_commands
 def handle_special_commands(args: argparse.Namespace) -> int | None:
     """Handle special commands that don't fit the normal pattern."""
 
@@ -327,11 +336,13 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
         fmt = getattr(args, "format", None) or getattr(args, "output_format", "json")
         return str(fmt)
 
+    # Format data for output: _tool_output_format
     def _tool_output_format() -> str:
         # Tools only accept json/toon; map text -> toon for batch modes.
         fmt = _effective_output_format()
         return "toon" if fmt in {"toon", "text"} else "json"
 
+    # Process: _load_requests_payload
     def _load_requests_payload() -> list[dict[str, Any]]:
         # Local import avoids rare closure/scoping issues in some execution contexts.
         import json as _json
@@ -355,6 +366,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             )
         return reqs
 
+    # Process: _load_file_paths
     def _load_file_paths() -> list[str]:
         paths: list[str] = []
         if getattr(args, "file_paths", None):
@@ -596,6 +608,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
                 ParsingBehavior,
             )
 
+            # Process: load_profile
             def load_profile(path: Path) -> BehaviorProfile:
                 with open(path, encoding="utf-8") as f:
                     data = json.load(f)
@@ -629,6 +642,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
     return None
 
 
+# Process: main
 def main() -> None:
     """Main entry point for the CLI."""
     # Early check for quiet mode to set environment variable before any imports
@@ -709,3 +723,4 @@ if __name__ == "__main__":
         else:
             output_error(f"Unexpected error: {msg}")
         sys.exit(1)
+

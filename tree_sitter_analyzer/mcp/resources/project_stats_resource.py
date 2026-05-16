@@ -166,6 +166,7 @@ class ProjectStatsResource:
                 f"Project path is not a directory: {self._project_path}"
             )
 
+    # Process: _is_supported_code_file
     def _is_supported_code_file(self, file_path: Path) -> bool:
         """
         Check if file is a supported code file using language detection
@@ -184,6 +185,7 @@ class ProjectStatsResource:
         except Exception:
             return False
 
+    # Process: _get_language_from_file
     def _get_language_from_file(self, file_path: Path) -> str:
         """
         Get language from file using language detector
@@ -201,6 +203,7 @@ class ProjectStatsResource:
         except Exception:
             return "unknown"
 
+    # Process: _generate_overview_stats
     async def _generate_overview_stats(self) -> dict[str, Any]:
         """
         Generate overview statistics for the project
@@ -269,6 +272,7 @@ class ProjectStatsResource:
         logger.debug(f"Generated overview with {overview['total_files']} files")
         return overview
 
+    # Process: _generate_languages_stats
     async def _generate_languages_stats(self) -> dict[str, Any]:
         """
         Generate language-specific statistics
@@ -332,6 +336,7 @@ class ProjectStatsResource:
         logger.debug(f"Generated stats for {len(languages_list)} languages")
         return languages_stats
 
+    # Process: _generate_complexity_stats
     async def _generate_complexity_stats(self) -> dict[str, Any]:
         """
         Generate complexity statistics
@@ -437,6 +442,7 @@ class ProjectStatsResource:
         logger.debug(f"Generated complexity stats for {file_count} files")
         return complexity_stats
 
+    # Process: _generate_files_stats
     async def _generate_files_stats(self) -> dict[str, Any]:
         """
         Generate file-level statistics
@@ -500,6 +506,7 @@ class ProjectStatsResource:
         logger.debug(f"Generated stats for {len(files_data)} files")
         return files_stats
 
+    # Process: read_resource
     async def read_resource(self, uri: str) -> str:
         """
         Read resource content from URI
@@ -555,6 +562,7 @@ class ProjectStatsResource:
             logger.error(f"Failed to generate {stats_type} statistics: {e}")
             raise
 
+    # Process: get_supported_schemes
     def get_supported_schemes(self) -> list[str]:
         """
         Get list of supported URI schemes
@@ -564,6 +572,7 @@ class ProjectStatsResource:
         """
         return ["code"]
 
+    # Process: get_supported_resource_types
     def get_supported_resource_types(self) -> list[str]:
         """
         Get list of supported resource types
@@ -573,6 +582,7 @@ class ProjectStatsResource:
         """
         return ["stats"]
 
+    # Process: get_supported_stats_types
     def get_supported_stats_types(self) -> list[str]:
         """
         Get list of supported statistics types
@@ -582,13 +592,16 @@ class ProjectStatsResource:
         """
         return list(self._supported_stats_types)
 
+    # Process: __str__
     def __str__(self) -> str:
         """String representation of the resource"""
         return "ProjectStatsResource(pattern=code://stats/{stats_type})"
 
+    # Process: __repr__
     def __repr__(self) -> str:
         """Detailed string representation of the resource"""
         return (
             f"ProjectStatsResource(uri_pattern={self._uri_pattern.pattern}, "
             f"project_path={self._project_path})"
         )
+

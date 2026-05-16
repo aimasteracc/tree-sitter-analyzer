@@ -121,6 +121,7 @@ class UnifiedAnalysisEngine:
         except Exception as e:
             log_error(f"Failed to discover plugins: {e}")
 
+    # Analyze source code structure: analyze
     async def analyze(self, request: AnalysisRequest) -> Any:
         """Unified analysis method (Async)"""
         self._ensure_initialized()
@@ -178,6 +179,7 @@ class UnifiedAnalysisEngine:
         await self._cache_service.set(cache_key, result)
         return result
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(
         self,
         file_path: str,
@@ -215,6 +217,7 @@ class UnifiedAnalysisEngine:
             )
         return await self.analyze(request)
 
+    # Analyze source code structure: analyze_file_async
     async def analyze_file_async(
         self,
         file_path: str,
@@ -224,6 +227,7 @@ class UnifiedAnalysisEngine:
         """Compatibility alias for analyze"""
         return await self.analyze_file(file_path, language, request)
 
+    # Analyze source code structure: analyze_code
     async def analyze_code(
         self,
         code: str,
@@ -268,6 +272,7 @@ class UnifiedAnalysisEngine:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
+    # Analyze source code structure: analyze_code_sync
     def analyze_code_sync(
         self,
         code: str,
@@ -292,6 +297,7 @@ class UnifiedAnalysisEngine:
             )
             return future.result()
 
+    # Execute main logic: _run_queries
     async def _run_queries(
         self,
         request: AnalysisRequest,
@@ -330,6 +336,7 @@ class UnifiedAnalysisEngine:
         except Exception as e:
             log_error(f"Failed to execute queries: {e}")
 
+    # Process: _generate_cache_key
     def _generate_cache_key(self, request: AnalysisRequest) -> str:
         """Generate cache key"""
         key_components = [
@@ -346,6 +353,7 @@ class UnifiedAnalysisEngine:
             pass
         return hashlib.sha256(":".join(key_components).encode("utf-8")).hexdigest()
 
+    # Detect patterns in source code: _detect_language
     def _detect_language(self, file_path: str) -> str:
         """Detect language"""
         self._ensure_initialized()
@@ -354,6 +362,7 @@ class UnifiedAnalysisEngine:
         except Exception:
             return "unknown"
 
+    # Process: _create_empty_result
     def _create_empty_result(
         self, file_path: str, language: str, error: str | None = None
     ) -> Any:
@@ -369,6 +378,7 @@ class UnifiedAnalysisEngine:
             analysis_time=0.0,
         )
 
+    # Process: cleanup
     def cleanup(self) -> None:
         """Resource cleanup"""
         if self._cache_service:
@@ -379,6 +389,7 @@ class UnifiedAnalysisEngine:
 
         log_debug("UnifiedAnalysisEngine cleaned up")
 
+    # Analyze source code structure: analyze_sync
     def analyze_sync(self, request: AnalysisRequest) -> Any:
         """Sync version of analyze"""
         try:
@@ -395,63 +406,74 @@ class UnifiedAnalysisEngine:
             future = pool.submit(asyncio.run, self.analyze(request))
             return future.result()
 
+    # Process: get_supported_languages
     def get_supported_languages(self) -> list[str]:
         """Get list of supported languages"""
         self._ensure_initialized()
         return self._plugin_manager.get_supported_languages()  # type: ignore[no-any-return]
 
+    # Process: get_available_queries
     def get_available_queries(self, language: str) -> list[str]:
         """Get available queries for a language"""
         self._ensure_initialized()
         return self._query_executor.get_available_queries(language)  # type: ignore[no-any-return]
 
+    # Process: get_cache_stats
     def get_cache_stats(self) -> dict[str, Any]:
         """Get cache statistics (compatibility method)"""
         self._ensure_initialized()
         return self._cache_service.get_stats()  # type: ignore[no-any-return]
 
     @property
+    # Detect patterns in source code: language_detector
     def language_detector(self) -> Any:
         """Expose language detector"""
         self._ensure_initialized()
         return self._language_detector
 
     @property
+    # Process: plugin_manager
     def plugin_manager(self) -> Any:
         """Expose plugin manager"""
         self._ensure_initialized()
         return self._plugin_manager
 
     @property
+    # Process: cache_service
     def cache_service(self) -> Any:
         """Expose cache service"""
         self._ensure_initialized()
         return self._cache_service
 
     @property
+    # Parse input into structured data: parser
     def parser(self) -> Any:
         """Expose parser"""
         self._ensure_initialized()
         return self._parser
 
     @property
+    # Process: query_executor
     def query_executor(self) -> Any:
         """Expose query executor"""
         self._ensure_initialized()
         return self._query_executor
 
     @property
+    # Process: security_validator
     def security_validator(self) -> Any:
         """Expose security validator"""
         self._ensure_initialized()
         return self._security_validator
 
+    # Process: measure_operation
     def measure_operation(self, operation_name: str) -> PerformanceContext:
         """Measure an operation using the performance monitor"""
         self._ensure_initialized()
         return self._performance_monitor.measure_operation(operation_name)  # type: ignore[no-any-return]
 
     @classmethod
+    # Process: _reset_instance
     def _reset_instance(cls) -> None:
         """Compatibility method for resetting instances"""
         EngineManager.reset_instances()
@@ -465,15 +487,19 @@ class MockLanguagePlugin:
     def __init__(self, language: str) -> None:
         self.language = language
 
+    # Process: get_language_name
     def get_language_name(self) -> str:
         return self.language
 
+    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         return [f".{self.language}"]
 
+    # Extract elements from AST: create_extractor
     def create_extractor(self) -> None:
         return None
 
+    # Analyze source code structure: analyze_file
     async def analyze_file(self, file_path: str, request: AnalysisRequest) -> Any:
         from ..models import AnalysisResult
 
@@ -492,6 +518,8 @@ class MockLanguagePlugin:
         )
 
 
+# Process: get_analysis_engine
 def get_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:
     """Get unified analysis engine instance"""
     return UnifiedAnalysisEngine(project_root)
+

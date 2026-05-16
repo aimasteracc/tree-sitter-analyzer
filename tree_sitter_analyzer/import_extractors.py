@@ -89,6 +89,7 @@ _JS_BUILTIN = {
 }
 
 
+# Process: walk_imports
 def walk_imports(
     node: Any, source: str, language: str, imports: list[dict[str, Any]]
 ) -> None:
@@ -107,6 +108,7 @@ def walk_imports(
             walk_imports(child, source, language, imports)
 
 
+# Extract elements from AST: extract_python_import_simple
 def extract_python_import_simple(
     node: Any, source: str, imports: list[dict[str, Any]]
 ) -> None:
@@ -128,6 +130,7 @@ def extract_python_import_simple(
         )
 
 
+# Extract elements from AST: extract_python_import_from
 def extract_python_import_from(
     node: Any, source: str, imports: list[dict[str, Any]]
 ) -> None:
@@ -176,6 +179,7 @@ def extract_python_import_from(
     )
 
 
+# Extract elements from AST: _extract_python_imports
 def _extract_python_imports(
     node: Any, source: str, imports: list[dict[str, Any]]
 ) -> None:
@@ -188,6 +192,7 @@ def _extract_python_imports(
         extract_python_import_from(node, source, imports)
 
 
+# Extract elements from AST: extract_js_imports
 def extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
     """Extract JS/TS import/require statements."""
     node_type = getattr(node, "type", None)
@@ -239,6 +244,7 @@ def extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) ->
                         )
 
 
+# Extract elements from AST: _extract_import_names
 def _extract_import_names(names_node: Any, source: str) -> list[str]:
     """Extract individual names from an import_list or aliased_import node."""
     names = []
@@ -258,11 +264,13 @@ def _extract_import_names(names_node: Any, source: str) -> list[str]:
     return names
 
 
+# Extract elements from AST: _extract_js_imports
 def _extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
     """Extract JS/TS import/require statements."""
     extract_js_imports(node, source, imports)
 
 
+# Process: _node_text
 def _node_text(node: Any, source: str) -> str:
     """Safely extract text from a Tree-sitter node."""
     try:
@@ -279,3 +287,4 @@ def _node_text(node: Any, source: str) -> str:
         return ""
     except Exception:
         return ""
+

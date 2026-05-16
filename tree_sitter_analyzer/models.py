@@ -27,6 +27,12 @@ if TYPE_CHECKING:
 
 
 # Use dataclass with slots for Python 3.10+
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def dataclass_with_slots(*args: Any, **kwargs: Any) -> Any:
     return dataclass(*args, slots=True, **kwargs)
 
@@ -48,6 +54,7 @@ class CodeElement(ABC):
     docstring: str | None = None  # JavaDoc/docstring for this element
     element_type: str = "unknown"
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         return {
             "name": self.name,
@@ -185,6 +192,7 @@ class MarkupElement(CodeElement):
     element_class: str = ""  # 分類システムのカテゴリ (例: 'structure', 'media', 'form')
     element_type: str = "html_element"
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {
@@ -210,6 +218,7 @@ class StyleElement(CodeElement):
     )
     element_type: str = "css_rule"
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {
@@ -236,6 +245,7 @@ class JavaAnnotation:
     end_line: int = 0
     raw_text: str = ""
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {
@@ -265,6 +275,7 @@ class JavaMethod:
     complexity_score: int = 1
     file_path: str = ""
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {
@@ -293,6 +304,7 @@ class JavaClass:
     parent_class: str | None = None
     file_path: str = ""
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {
@@ -317,6 +329,7 @@ class JavaField:
     is_final: bool = False
     file_path: str = ""
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {
@@ -340,6 +353,7 @@ class JavaImport:
     start_line: int = 0
     end_line: int = 0
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """要約アイテムとして辞書を返す"""
         return {
@@ -357,6 +371,7 @@ class JavaPackage:
     start_line: int = 0
     end_line: int = 0
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
         return {
@@ -407,9 +422,11 @@ class AnalysisResult:
     channels: list[Any] | None = None
     defers: list[Any] | None = None
 
+    # Process: __post_init__
     def __post_init__(self) -> None:
         pass
 
+    # Process: to_dict
     def to_dict(self) -> dict[str, Any]:
         """Convert analysis result to dictionary for serialization using unified elements"""
         # Use unified elements list for consistent data structure
@@ -488,6 +505,7 @@ class AnalysisResult:
             "error_message": self.error_message,
         }
 
+    # Process: to_summary_dict
     def to_summary_dict(self, types: list[str] | None = None) -> dict[str, Any]:
         """
         Return analysis summary as a dictionary using unified elements.
@@ -526,6 +544,7 @@ class AnalysisResult:
 
         return summary
 
+    # Process: get_summary
     def get_summary(self) -> dict[str, Any]:
         """Get analysis summary statistics using unified elements"""
         elements = self.elements or []
@@ -551,6 +570,7 @@ class AnalysisResult:
             "analysis_time": self.analysis_time,
         }
 
+    # Format data for output: to_mcp_format
     def to_mcp_format(self) -> dict[str, Any]:
         """
         Produce output in MCP-compatible format
@@ -702,10 +722,12 @@ class AnalysisResult:
             },
         }
 
+    # Process: get_statistics
     def get_statistics(self) -> dict[str, Any]:
         """Get detailed statistics (alias for get_summary)"""
         return self.get_summary()
 
+    # Process: to_json
     def to_json(self) -> dict[str, Any]:
         """Convert to JSON-serializable format (alias for to_dict)"""
         return self.to_dict()
@@ -779,6 +801,7 @@ class SQLElement(CodeElement):
     trigger_event: str | None = None  # INSERT, UPDATE, DELETE
     index_type: str | None = None  # UNIQUE, CLUSTERED, etc.
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item with SQL-specific information"""
         return {
@@ -798,10 +821,12 @@ class SQLTable(SQLElement):
     sql_element_type: SQLElementType = SQLElementType.TABLE
     element_type: str = "table"
 
+    # Process: get_primary_key_columns
     def get_primary_key_columns(self) -> list[str]:
         """Get primary key column names"""
         return [col.name for col in self.columns if col.is_primary_key]
 
+    # Process: get_foreign_key_columns
     def get_foreign_key_columns(self) -> list[str]:
         """Get foreign key column names"""
         return [col.name for col in self.columns if col.is_foreign_key]
@@ -884,6 +909,7 @@ class YAMLElement(CodeElement):
     document_index: int = 0
     child_count: int | None = None
 
+    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item with YAML-specific information."""
         return {
@@ -895,3 +921,4 @@ class YAMLElement(CodeElement):
             "nesting_level": self.nesting_level,
             "document_index": self.document_index,
         }
+

@@ -8,6 +8,13 @@ from ..models import Class, Function, Import, Variable
 from ..utils import log_debug, log_error, log_warning
 
 
+# Extract elements from AST: extract_cpp_imports
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def extract_cpp_imports(
     tree: Any,
     source_code: str,
@@ -58,6 +65,7 @@ def extract_cpp_imports(
     return imports
 
 
+# Extract elements from AST: extract_cpp_namespaces
 def extract_cpp_namespaces(
     tree: Any,
     get_node_text: Callable[..., str],
@@ -66,6 +74,7 @@ def extract_cpp_namespaces(
 
     packages: list[Any] = []
 
+    # Search for patterns or elements: find_namespaces
     def find_namespaces(node: Any) -> None:
         if node.type == "namespace_definition":
             info = _extract_namespace_info(node, get_node_text)
@@ -80,6 +89,7 @@ def extract_cpp_namespaces(
     return packages
 
 
+# Extract elements from AST: _extract_include_info
 def _extract_include_info(
     node: Any,
     source_code: str,
@@ -113,6 +123,7 @@ def _extract_include_info(
     return None
 
 
+# Extract elements from AST: _extract_includes_fallback
 def _extract_includes_fallback(source_code: str) -> list[Import]:
     """Fallback include extraction using regex."""
     imports: list[Import] = []
@@ -154,6 +165,7 @@ def _extract_includes_fallback(source_code: str) -> list[Import]:
     return imports
 
 
+# Extract elements from AST: _extract_namespace_info
 def _extract_namespace_info(
     node: Any,
     get_node_text: Callable[..., str],
@@ -182,6 +194,7 @@ def _extract_namespace_info(
     return None
 
 
+# Process: is_global_scope
 def is_global_scope(node: Any) -> bool:
     """Check if a node is in global scope (not inside a class/struct/union)."""
     current = node.parent
@@ -196,6 +209,7 @@ def is_global_scope(node: Any) -> bool:
     return True
 
 
+# Process: get_access_specifier
 def get_access_specifier(
     node: Any,
     get_node_text: Callable[..., str],
@@ -228,6 +242,7 @@ def get_access_specifier(
     return None
 
 
+# Process: determine_visibility
 def determine_visibility(
     modifiers: list[str],
     is_global: bool = False,
@@ -253,6 +268,7 @@ def determine_visibility(
     return "public" if is_global else "private"
 
 
+# Process: calculate_complexity
 def calculate_complexity(node: Any) -> int:
     """Calculate cyclomatic complexity."""
     decision_nodes = {
@@ -267,6 +283,7 @@ def calculate_complexity(node: Any) -> int:
         "do_statement",
     }
 
+    # Process: count_decisions
     def count_decisions(n: Any) -> int:
         count = 0
         if hasattr(n, "type") and n.type in decision_nodes:
@@ -282,6 +299,7 @@ def calculate_complexity(node: Any) -> int:
     return 1 + count_decisions(node)
 
 
+# Extract elements from AST: extract_comment_for_line
 def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
     """Extract comment (documentation) for a specific line."""
     try:
@@ -304,6 +322,7 @@ def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
     return None
 
 
+# Extract elements from AST: extract_parameters
 def extract_parameters(
     params_node: Any,
     get_node_text: Callable[..., str],
@@ -321,6 +340,7 @@ def extract_parameters(
     return parameters
 
 
+# Parse input into structured data: parse_function_signature
 def parse_function_signature(
     node: Any,
     get_node_text: Callable[..., str],
@@ -405,6 +425,7 @@ def parse_function_signature(
         return None
 
 
+# Extract elements from AST: extract_function_from_field_declaration
 def extract_function_from_field_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -493,6 +514,7 @@ def extract_function_from_field_declaration(
         return None
 
 
+# Extract elements from AST: extract_function_declaration
 def extract_function_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -535,6 +557,7 @@ def extract_function_declaration(
         return None
 
 
+# Extract elements from AST: extract_base_classes
 def extract_base_classes(node: Any, get_node_text: Callable[..., str]) -> list[str]:
     """Extract base class names from base_class_clause."""
     base_classes: list[str] = []
@@ -556,6 +579,7 @@ _TYPE_NODES_CPP = frozenset(
 )
 
 
+# Extract elements from AST: extract_cpp_field_declaration
 def extract_cpp_field_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -619,6 +643,7 @@ def extract_cpp_field_declaration(
     return fields
 
 
+# Extract elements from AST: extract_cpp_variable_declaration
 def extract_cpp_variable_declaration(
     node: Any,
     get_node_text: Callable[..., str],
@@ -701,6 +726,7 @@ _CONTAINER_NODE_TYPES = frozenset(
 )
 
 
+# Extract elements from AST: traverse_and_extract_iterative
 def traverse_and_extract_iterative(
     root_node: Any,
     extractors: dict[str, Any],
@@ -770,6 +796,7 @@ def traverse_and_extract_iterative(
     log_debug(f"Iterative traversal processed {processed_count} nodes")
 
 
+# Extract elements from AST: extract_cpp_function
 def extract_cpp_function(
     node: Any,
     get_node_text: Callable[..., str],
@@ -827,6 +854,7 @@ def extract_cpp_function(
         return None
 
 
+# Extract elements from AST: extract_cpp_class
 def extract_cpp_class(
     node: Any,
     get_node_text: Callable[..., str],
@@ -880,3 +908,4 @@ def extract_cpp_class(
     except Exception as e:
         log_debug(f"Failed to extract class info: {e}")
         return None
+

@@ -7,6 +7,13 @@ from ..models import Class, Function, Import, Variable
 from ..utils import log_error
 
 
+# Process: determine_visibility
+# Section: imports and module configuration
+# Section: main class definition
+# Section: helper functions
+# Section: data processing methods
+# Section: output formatting methods
+# Section: validation and error handling
 def determine_visibility(modifiers: list[str]) -> str:
     """Determine visibility from PHP modifiers."""
     if "public" in modifiers:
@@ -18,6 +25,7 @@ def determine_visibility(modifiers: list[str]) -> str:
     return "public"
 
 
+# Extract elements from AST: extract_modifiers
 def extract_modifiers(
     node: Any,
     get_node_text: Callable[..., str],
@@ -36,6 +44,7 @@ def extract_modifiers(
     return modifiers
 
 
+# Extract elements from AST: extract_attributes
 def extract_attributes(
     node: Any,
     get_node_text: Callable[..., str],
@@ -62,6 +71,7 @@ def extract_attributes(
     return attributes
 
 
+# Extract elements from AST: extract_use_statement
 def extract_use_statement(
     node: Any,
     get_node_text: Callable[..., str],
@@ -94,6 +104,7 @@ def extract_use_statement(
     return imports
 
 
+# Extract elements from AST: extract_php_class_element
 def extract_php_class_element(
     node: Any,
     current_namespace: str,
@@ -153,6 +164,7 @@ def extract_php_class_element(
         return None
 
 
+# Extract elements from AST: extract_php_method_element
 def extract_php_method_element(
     node: Any,
     parent_class: str,
@@ -201,6 +213,7 @@ def extract_php_method_element(
         return None
 
 
+# Extract elements from AST: extract_php_function_element
 def extract_php_function_element(
     node: Any,
     current_namespace: str,
@@ -246,6 +259,7 @@ def extract_php_function_element(
         return None
 
 
+# Extract elements from AST: extract_php_property_elements
 def extract_php_property_elements(
     node: Any,
     parent_class: str,
@@ -289,6 +303,7 @@ def extract_php_property_elements(
     return variables
 
 
+# Extract elements from AST: extract_php_constant_elements
 def extract_php_constant_elements(
     node: Any,
     parent_class: str,
@@ -324,3 +339,4 @@ def extract_php_constant_elements(
     except Exception as e:
         log_error(f"Error extracting constant elements: {e}")
     return variables
+
