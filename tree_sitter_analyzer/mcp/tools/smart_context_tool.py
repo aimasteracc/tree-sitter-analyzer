@@ -213,6 +213,8 @@ def _build_summary(
     parts.append(f"{export_count} export(s)")
     if downstream_count > 0:
         parts.append(f"{downstream_count} downstream file(s)")
+    if grade in ("D", "F"):
+        parts.append("run refactoring_suggestions for extraction plans")
     if risk == "dangerous":
         parts.append("call safe_to_edit for a detailed pre-edit checklist")
     elif risk == "caution":
