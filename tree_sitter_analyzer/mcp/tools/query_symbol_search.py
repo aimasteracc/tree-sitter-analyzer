@@ -1,11 +1,20 @@
 """Symbol search helpers extracted from query_tool.py."""
 
+import fnmatch
 from pathlib import Path
 from typing import Any
 
 from ...utils import setup_logger
 
 logger = setup_logger(__name__)
+
+_TYPE_MAP = {
+    "class": {"class_definition", "class_declaration", "class"},
+    "function": {"function_definition", "function_declaration", "function"},
+    "method": {"method_definition", "method_declaration", "method"},
+    "variable": {"variable_definition", "variable_declaration", "variable", "assignment"},
+    "import": {"import_statement", "import_from_statement", "import"},
+}
 
 _SYMBOL_SEARCH_EXTS = {
     ".py",
@@ -112,6 +121,7 @@ async def execute_symbol_search(
 
     output_format = arguments.get("output_format", "toon")
     language = arguments.get("language")
+    symbol_type = arguments.get("symbol_type")
 
     if not project_root:
         raise ValueError("Project root not set. Call set_project_path first.")
@@ -119,6 +129,9 @@ async def execute_symbol_search(
     root = Path(project_root).resolve()
     if not root.is_dir():
         raise ValueError(f"Project root is not a directory: {root}")
+
+    match_fn = _build_match_fn(symbol)
+    type_filter = _build_type_filter(symbol_type)
 
     # Collect source files
     source_files: list[Path] = []
@@ -128,12 +141,10 @@ async def execute_symbol_search(
                 continue
             source_files.append(f)
 
-    # Limit to prevent memory issues
     max_files = 500
     if len(source_files) > max_files:
         source_files = source_files[:max_files]
 
-    # Search using the analysis engine
     import asyncio
 
     from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
@@ -158,28 +169,36 @@ async def execute_symbol_search(
 
             for e in result.elements:
                 name = getattr(e, "name", "")
-                if name == symbol:
-                    etype = getattr(e, "element_type", "")
-                    matches.append(
-                        {
-                            "name": name,
-                            "type": etype,
-                            "file": str(fp.relative_to(root)),
-                            "start_line": getattr(e, "start_line", 0),
-                            "end_line": getattr(e, "end_line", 0),
-                        }
-                    )
+                etype = getattr(e, "element_type", "")
+                if not match_fn(name):
+                    continue
+                if type_filter and not type_filter(etype):
+                    continue
+                matches.append(
+                    {
+                        "name": name,
+                        "type": etype,
+                        "file": str(fp.relative_to(root)),
+                        "start_line": getattr(e, "start_line", 0),
+                        "end_line": getattr(e, "end_line", 0),
+                    }
+                )
         except Exception:  # nosec B110
             pass
         return matches
 
-    # Process in batches to control memory
     batch_size = 50
     for i in range(0, len(source_files), batch_size):
         batch = source_files[i : i + batch_size]
         batch_results = await asyncio.gather(*[_search_file(fp) for fp in batch])
         for matches in batch_results:
             results.extend(matches)
+
+    pattern_desc = symbol
+    if "*" in symbol:
+        pattern_desc = f"wildcard '{symbol}'"
+    elif symbol.startswith("~"):
+        pattern_desc = f"fuzzy '{symbol[1:]}'"
 
     response: dict[str, Any] = {
         "success": True,
@@ -188,14 +207,59 @@ async def execute_symbol_search(
         "matches_found": len(results),
         "definitions": results[:50],
         "smart_workflow_hint": (
-            f"Found {len(results)} definition(s) for '{symbol}'. "
+            f"Found {len(results)} match(es) for {pattern_desc}. "
             "Use extract_code_section to read the implementation, "
             "or analyze_dependencies mode=blast_radius to see usage impact."
         )
         if results
-        else f"No definitions found for '{symbol}'. Try a different name or check spelling.",
+        else f"No matches for {pattern_desc}. Try a different pattern.",
     }
 
     from ..utils.format_helper import apply_toon_format_to_response
 
     return apply_toon_format_to_response(response, output_format)
+
+
+def _build_match_fn(symbol: str) -> Any:
+    """Build a name-matching function based on the symbol pattern.
+
+    - Plain name: exact match (backward compatible)
+    - * wildcards: fnmatch (e.g., '*Service', 'handle_*', '*_test_*')
+    - ~ prefix: fuzzy substring match (e.g., '~analyz' matches 'analyze_file')
+    """
+    if symbol.startswith("~"):
+        substring = symbol[1:].lower()
+
+        def fuzzy(name: str) -> bool:
+            return substring in name.lower()
+
+        return fuzzy
+
+    if "*" in symbol:
+        pattern = symbol.lower()
+
+        def wildcard(name: str) -> bool:
+            return fnmatch.fnmatch(name.lower(), pattern)
+
+        return wildcard
+
+    def exact(name: str) -> bool:
+        return name == symbol
+
+    return exact
+
+
+def _build_type_filter(symbol_type: str | None) -> Any:
+    """Build an element type filter function."""
+    if not symbol_type:
+        return None
+
+    allowed = _TYPE_MAP.get(symbol_type)
+    if not allowed:
+        return None
+
+    def type_check(etype: str) -> bool:
+        etype_lower = etype.lower()
+        return any(a in etype_lower for a in allowed)
+
+    return type_check

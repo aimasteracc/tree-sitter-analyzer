@@ -17,7 +17,12 @@ TOOL_SCHEMA: dict[str, Any] = {
         },
         "symbol": {
             "type": "string",
-            "description": "Symbol to find project-wide. Omit file_path.",
+            "description": "Symbol to find project-wide. Supports wildcards: *Service, handle_*, *test*. Prefix ~ for fuzzy: ~analyz.",
+        },
+        "symbol_type": {
+            "type": "string",
+            "enum": ["class", "function", "method", "variable", "import"],
+            "description": "Filter symbol type (optional)",
         },
         "language": {"type": "string"},
         "query_key": {
