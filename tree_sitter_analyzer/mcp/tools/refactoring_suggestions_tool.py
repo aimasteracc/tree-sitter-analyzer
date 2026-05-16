@@ -119,6 +119,17 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                     "description": "Include specific extraction targets (default: true)",
                     "default": True,
                 },
+                "include_skeleton": {
+                    "type": "boolean",
+                    "description": "Include code skeletons in extraction plans (default: false, saves ~50% tokens)",
+                    "default": False,
+                },
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "toon"],
+                    "description": "'toon' (default) saves ~60% tokens vs 'json'",
+                    "default": "toon",
+                },
             },
             "required": ["file_path"],
         }
@@ -127,6 +138,8 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         file_path = arguments.get("file_path", "")
         max_suggestions = arguments.get("max_suggestions", 10)
         include_extractions = arguments.get("include_extractions", True)
+        include_skeleton = arguments.get("include_skeleton", False)
+        output_format = arguments.get("output_format", "toon")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if not resolved:
@@ -150,15 +163,26 @@ class RefactoringSuggestionsTool(BaseMCPTool):
 
         build_precise_plans(resolved, source, analysis, suggestions)
 
+        if not include_skeleton:
+            for s in suggestions:
+                plan = s.get("precise_plan")
+                if plan:
+                    for ext_target in plan.get("extractions", []):
+                        ext_target.pop("skeleton", None)
+
         suggestions.sort(key=lambda s: s.get("priority_score", 0), reverse=True)
         suggestions = suggestions[:max_suggestions]
 
-        return {
+        result = {
             "file": resolved,
             "total_suggestions": len(suggestions),
             "summary": self._make_summary(suggestions),
             "suggestions": suggestions,
         }
+
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        return apply_toon_format_to_response(result, output_format)
 
     def _analyze_via_treesitter(
         self,
