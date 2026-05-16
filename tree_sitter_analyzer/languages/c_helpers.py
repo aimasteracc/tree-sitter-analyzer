@@ -287,10 +287,12 @@ def extract_field_declaration(
                         field_type = field_type + "*" if field_type else "*"
 
         if not field_type or not field_names:
+            # Return result
             return fields
 
         raw_text = get_node_text(node)
 
+        # Iterate over field_name
         for field_name in field_names:
             fields.append(
                 Variable(
@@ -308,6 +310,7 @@ def extract_field_declaration(
     except Exception as e:
         log_debug(f"Failed to extract field info: {e}")
 
+    # Return result
     return fields
 
 
@@ -316,7 +319,9 @@ def extract_variable_declaration(
     node: Any, get_node_text: Callable[..., str]
 ) -> list[Variable]:
     """Extract C variable declarations (not struct members)."""
+    # Check: node.parent and node.parent.type == "fie
     if node.parent and node.parent.type == "field_declaration_list":
+        # Return result
         return []
 
     variables: list[Variable] = []
@@ -329,35 +334,46 @@ def extract_variable_declaration(
         var_names: list[str] = []
         modifiers: list[str] = []
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type in _TYPE_NODES_VAR
             if child.type in _TYPE_NODES_VAR:
                 var_type = get_node_text(child)
             elif child.type == "storage_class_specifier":
                 mod = get_node_text(child)
+                # Check: mod
                 if mod:
                     modifiers.append(mod)
             elif child.type == "type_qualifier":
                 mod = get_node_text(child)
+                # Check: mod
                 if mod:
                     modifiers.append(mod)
             elif child.type == "identifier":
                 var_names.append(get_node_text(child))
             elif child.type == "init_declarator":
+                # Iterate over grandchild
                 for grandchild in child.children:
+                    # Check: grandchild.type == "identifier"
                     if grandchild.type == "identifier":
                         var_names.append(get_node_text(grandchild))
             elif child.type == "pointer_declarator":
+                # Iterate over grandchild
                 for grandchild in child.children:
+                    # Check: grandchild.type == "identifier"
                     if grandchild.type == "identifier":
                         var_names.append(get_node_text(grandchild))
                         var_type = var_type + "*" if var_type else "*"
 
+        # Check: not var_type or not var_names
         if not var_type or not var_names:
+            # Return result
             return variables
 
         raw_text = get_node_text(node)
         visibility = "private" if "static" in modifiers else "public"
 
+        # Iterate over var_name
         for var_name in var_names:
             variables.append(
                 Variable(
@@ -376,6 +392,7 @@ def extract_variable_declaration(
     except Exception as e:
         log_debug(f"Failed to extract variable declaration: {e}")
 
+    # Return result
     return variables
 
 
@@ -391,18 +408,24 @@ def extract_struct_definition(
         end_line = node.end_point[0] + 1
 
         struct_name = None
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "type_identifier"
             if child.type == "type_identifier":
                 struct_name = get_node_text(child)
 
+        # Check: not struct_name and node.parent and node
         if not struct_name and node.parent and node.parent.type == "type_definition":
+            # Iterate over sibling
             for sibling in node.parent.children:
+                # Check: sibling.type == "type_identifier"
                 if sibling.type == "type_identifier":
                     struct_name = get_node_text(sibling)
                     start_line = node.parent.start_point[0] + 1
                     end_line = node.parent.end_point[0] + 1
                     break
 
+        # Check: not struct_name
         if not struct_name:
             struct_name = f"anonymous_struct_{start_line}"
 
@@ -412,6 +435,7 @@ def extract_struct_definition(
 
         docstring = extract_comment_for_line(start_line, content_lines)
 
+        # Return result
         return Class(
             name=struct_name,
             start_line=start_line,
@@ -424,6 +448,7 @@ def extract_struct_definition(
         )
     except Exception as e:
         log_debug(f"Failed to extract struct info: {e}")
+        # Return result
         return None
 
 
@@ -439,18 +464,24 @@ def extract_enum_definition(
         end_line = node.end_point[0] + 1
 
         enum_name = None
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "type_identifier"
             if child.type == "type_identifier":
                 enum_name = get_node_text(child)
 
+        # Check: not enum_name and node.parent and node.p
         if not enum_name and node.parent and node.parent.type == "type_definition":
+            # Iterate over sibling
             for sibling in node.parent.children:
+                # Check: sibling.type == "type_identifier"
                 if sibling.type == "type_identifier":
                     enum_name = get_node_text(sibling)
                     start_line = node.parent.start_point[0] + 1
                     end_line = node.parent.end_point[0] + 1
                     break
 
+        # Check: not enum_name
         if not enum_name:
             enum_name = f"anonymous_enum_{start_line}"
 
@@ -460,6 +491,7 @@ def extract_enum_definition(
 
         docstring = extract_comment_for_line(start_line, content_lines)
 
+        # Return result
         return Class(
             name=enum_name,
             start_line=start_line,
@@ -472,6 +504,7 @@ def extract_enum_definition(
         )
     except Exception as e:
         log_debug(f"Failed to extract enum info: {e}")
+        # Return result
         return None
 
 
@@ -479,29 +512,40 @@ def extract_enum_definition(
 def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
     """Extract comment for a specific line."""
     try:
+        # Iterate over i
         for i in range(max(0, line - 5), line):
+            # Check: i < len(content_lines)
             if i < len(content_lines):
                 line_content = content_lines[i].strip()
+                # Check: line_content.startswith("/**")
                 if line_content.startswith("/**"):
                     comment_lines = []
+                    # Iterate over j
                     for j in range(i, min(len(content_lines), line)):
                         doc_line = content_lines[j].strip()
                         comment_lines.append(doc_line)
+                        # Check: doc_line.endswith("*/")
                         if doc_line.endswith("*/"):
                             break
+                    # Return result
                     return "\n".join(comment_lines)
                 elif line_content.startswith("/*"):
                     comment_lines = []
+                    # Iterate over j
                     for j in range(i, min(len(content_lines), line)):
                         doc_line = content_lines[j].strip()
                         comment_lines.append(doc_line)
+                        # Check: doc_line.endswith("*/")
                         if doc_line.endswith("*/"):
                             break
+                    # Return result
                     return "\n".join(comment_lines)
                 elif line_content.startswith("///"):
+                    # Return result
                     return line_content
     except Exception as e:
         log_debug(f"Failed to extract comment: {e}")
+    # Return result
     return None
 
 
@@ -516,13 +560,16 @@ def _extract_include_info(
         line_num = node.start_point[0] + 1
 
         is_system = "<" in include_text
+        # Check: is_system
         if is_system:
             match = re.search(r"<([^>]+)>", include_text)
         else:
             match = re.search(r'"([^"]+)"', include_text)
 
+        # Check: match
         if match:
             include_path = match.group(1)
+            # Return result
             return Import(
                 name=include_path,
                 start_line=line_num,
@@ -535,6 +582,7 @@ def _extract_include_info(
     except Exception as e:
         log_debug(f"Failed to extract include info: {e}")
 
+    # Return result
     return None
 
 
@@ -544,10 +592,13 @@ def _extract_includes_fallback(source_code: str) -> list[Import]:
     imports: list[Import] = []
     lines = source_code.split("\n")
 
+    # Iterate over line_num, line
     for line_num, line in enumerate(lines, 1):
         line = line.strip()
+        # Check: line.startswith("#include")
         if line.startswith("#include"):
             system_match = re.search(r"#include\s*<([^>]+)>", line)
+            # Check: system_match
             if system_match:
                 include_path = system_match.group(1)
                 imports.append(
@@ -563,6 +614,7 @@ def _extract_includes_fallback(source_code: str) -> list[Import]:
                 )
             else:
                 local_match = re.search(r'#include\s*"([^"]+)"', line)
+                # Check: local_match
                 if local_match:
                     include_path = local_match.group(1)
                     imports.append(
@@ -577,6 +629,7 @@ def _extract_includes_fallback(source_code: str) -> list[Import]:
                         )
                     )
 
+    # Return result
     return imports
 
 
@@ -603,6 +656,7 @@ def c_traverse_and_extract(
     element_cache: dict[tuple[int, str], Any],
 ) -> None:
     """Iterative node traversal and extraction with caching for C."""
+    # Check: root_node is None
     if root_node is None:
         return
 
@@ -615,6 +669,7 @@ def c_traverse_and_extract(
     while node_stack:
         current_node, depth = node_stack.pop()
 
+        # Check: depth > max_depth
         if depth > max_depth:
             log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
             continue
@@ -629,16 +684,21 @@ def c_traverse_and_extract(
         ):
             continue
 
+        # Check: node_type in target_node_types
         if node_type in target_node_types:
             node_id = id(current_node)
 
+            # Check: node_id in processed_nodes
             if node_id in processed_nodes:
                 continue
 
             cache_key = (node_id, element_type)
+            # Check: cache_key in element_cache
             if cache_key in element_cache:
                 element = element_cache[cache_key]
+                # Check: element
                 if element:
+                    # Check: isinstance(element, list)
                     if isinstance(element, list):
                         results.extend(element)
                     else:
@@ -649,14 +709,18 @@ def c_traverse_and_extract(
             extractor = extractors[node_type]
             element = extractor(current_node)
             element_cache[cache_key] = element
+            # Check: element
             if element:
+                # Check: isinstance(element, list)
                 if isinstance(element, list):
                     results.extend(element)
                 else:
                     results.append(element)
             processed_nodes.add(node_id)
 
+        # Check: current_node.children
         if current_node.children:
+            # Iterate over child
             for child in reversed(current_node.children):
                 node_stack.append((child, depth + 1))
 
@@ -678,7 +742,9 @@ def extract_c_function(
         end_line = node.end_point[0] + 1
 
         function_info = parse_function_signature(node)
+        # Check: not function_info
         if not function_info:
+            # Return result
             return None
 
         name, return_type, parameters, modifiers = function_info
@@ -690,6 +756,7 @@ def extract_c_function(
         complexity_score = calculate_complexity(node)
         docstring = extract_comment_for_line(start_line)
 
+        # Return result
         return Function(
             name=name,
             start_line=start_line,
@@ -706,9 +773,12 @@ def extract_c_function(
         )
     except (AttributeError, ValueError, TypeError) as e:
         log_debug(f"Failed to extract function info: {e}")
+        # Return result
         return None
     except Exception as e:
         log_error(f"Unexpected error in function extraction: {e}")
+        # Return result
         return None
+
 
 

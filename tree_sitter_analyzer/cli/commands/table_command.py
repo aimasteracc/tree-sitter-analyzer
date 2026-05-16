@@ -482,20 +482,26 @@ class TableCommand(BaseCommand):
                     param_list.append({"name": str(param), "type": "Any"})
             return param_list
         else:
+            # Return result
             return [{"name": str(params), "type": "Any"}]
 
     # Process data through pipeline: _process_parameters
     def _process_parameters(self, params: Any, language: str) -> list[dict[str, str]]:
         """Process parameters based on language syntax."""
+        # Check: isinstance(params, str)
         if isinstance(params, str):
             param_list = []
+            # Check: params.strip()
             if params.strip():
                 param_names = [p.strip() for p in params.split(",") if p.strip()]
                 param_list = [{"name": name, "type": "Any"} for name in param_names]
+            # Return result
             return param_list
         elif isinstance(params, list):
             param_list = []
+            # Iterate over param
             for param in params:
+                # Check: isinstance(param, str)
                 if isinstance(param, str):
                     param = param.strip()
                     # Languages using "name: type" syntax
@@ -508,6 +514,7 @@ class TableCommand(BaseCommand):
                         "scala",
                     }
 
+                    # Check: language.lower() in TYPE_SUFFIX_LANGUAGE
                     if language.lower() in TYPE_SUFFIX_LANGUAGES:
                         # Format: "name: type"
                         if ":" in param:
@@ -520,9 +527,11 @@ class TableCommand(BaseCommand):
                     else:
                         # Java format: "Type name"
                         last_space_idx = param.rfind(" ")
+                        # Check: last_space_idx != -1
                         if last_space_idx != -1:
                             param_type = param[:last_space_idx].strip()
                             param_name = param[last_space_idx + 1 :].strip()
+                            # Check: param_type and param_name
                             if param_type and param_name:
                                 param_list.append(
                                     {"name": param_name, "type": param_type}
@@ -535,18 +544,22 @@ class TableCommand(BaseCommand):
                     param_list.append(param)
                 else:
                     param_list.append({"name": str(param), "type": "Any"})
+            # Return result
             return param_list
         else:
+            # Return result
             return []
 
     # Process: _get_element_visibility
     def _get_element_visibility(self, element: Any) -> str:
         """Get element visibility."""
         visibility = getattr(element, "visibility", "public")
+        # Check: hasattr(element, "is_private") and getat
         if hasattr(element, "is_private") and getattr(element, "is_private", False):
             visibility = "private"
         elif hasattr(element, "is_public") and getattr(element, "is_public", False):
             visibility = "public"
+        # Return result
         return visibility
 
     # Process: _output_table
@@ -558,5 +571,6 @@ class TableCommand(BaseCommand):
         except (AttributeError, UnicodeEncodeError):
             # Fallback: Normal print
             print(table_output, end="")
+
 
 

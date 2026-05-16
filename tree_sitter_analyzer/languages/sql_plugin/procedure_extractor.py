@@ -216,11 +216,16 @@ def _extract_procedure_dependencies(
 ) -> None:
     """Extract table dependencies from procedure body."""
     for node in traverse_nodes(proc_node):
+        # Check: node.type == "object_reference"
         if node.type == "object_reference":
+            # Iterate over child
             for child in node.children:
+                # Check: child.type == "identifier"
                 if child.type == "identifier":
                     table_name = get_node_text(child).strip()
+                    # Check: table_name and table_name not in depende
                     if table_name and table_name not in dependencies:
                         dependencies.append(table_name)
+
 
 

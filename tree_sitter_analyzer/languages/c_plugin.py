@@ -470,7 +470,9 @@ class CPlugin(LanguagePlugin):
     # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for C."""
+        # Check: self._cached_language is not None
         if self._cached_language is not None:
+            # Return result
             return self._cached_language
 
         try:
@@ -488,20 +490,26 @@ class CPlugin(LanguagePlugin):
                     self._cached_language = tree_sitter.Language(caps_or_lang)
                 except Exception as e:
                     log_error(f"Failed to create Language object from PyCapsule: {e}")
+                    # Return result
                     return None
 
+            # Return result
             return self._cached_language
         except ImportError as e:
             log_error(f"tree-sitter-c not available: {e}")
+            # Return result
             return None
         except Exception as e:
             log_error(f"Failed to load tree-sitter language for C: {e}")
+            # Return result
             return None
 
     # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from C code."""
+        # Check: tree is None
         if tree is None:
+            # Return result
             return {
                 "functions": [],
                 "classes": [],
@@ -511,6 +519,7 @@ class CPlugin(LanguagePlugin):
 
         try:
             extractor = self.create_extractor()
+            # Return result
             return {
                 "functions": extractor.extract_functions(tree, source_code),
                 "classes": extractor.extract_classes(tree, source_code),
@@ -519,11 +528,13 @@ class CPlugin(LanguagePlugin):
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
+            # Return result
             return {
                 "functions": [],
                 "classes": [],
                 "variables": [],
                 "imports": [],
             }
+
 
 

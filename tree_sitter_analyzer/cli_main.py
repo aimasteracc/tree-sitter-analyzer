@@ -96,15 +96,22 @@ class CLICommandFactory:
             return StructureCommand(args)
 
         if hasattr(args, "summary") and args.summary is not None:
+            # Return result
             return SummaryCommand(args)
 
+        # Check: hasattr(args, "advanced") and args.advan
         if hasattr(args, "advanced") and args.advanced:
+            # Return result
             return AdvancedCommand(args)
 
+        # Check: hasattr(args, "query_key") and args.quer
         if hasattr(args, "query_key") and args.query_key:
+            # Return result
             return QueryCommand(args)
 
+        # Check: hasattr(args, "query_string") and args.q
         if hasattr(args, "query_string") and args.query_string:
+            # Return result
             return QueryCommand(args)
 
         # Default command - if file_path is provided but no specific command, use default analysis
@@ -331,6 +338,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Batch metrics: read file paths from a text file (one path per line)",
     )
 
+    # Return result
     return parser
 
 
@@ -341,12 +349,14 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
     def _effective_output_format() -> str:
         # --format is an alias for json/toon; --output-format supports json/text/toon
         fmt = getattr(args, "format", None) or getattr(args, "output_format", "json")
+        # Return result
         return str(fmt)
 
     # Format data for output: _tool_output_format
     def _tool_output_format() -> str:
         # Tools only accept json/toon; map text -> toon for batch modes.
         fmt = _effective_output_format()
+        # Return result
         return "toon" if fmt in {"toon", "text"} else "json"
 
     # Process: _load_requests_payload
@@ -354,6 +364,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
         # Local import avoids rare closure/scoping issues in some execution contexts.
         import json as _json
 
+        # Check: getattr(args, "partial_read_requests_jso
         if getattr(args, "partial_read_requests_json", None):
             raw = args.partial_read_requests_json
         elif getattr(args, "partial_read_requests_file", None):
@@ -363,34 +374,44 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             raise ValueError("No batch requests source provided")
 
         payload = _json.loads(raw)
+        # Check: isinstance(payload, dict) and "requests"
         if isinstance(payload, dict) and "requests" in payload:
             reqs = payload["requests"]
         else:
             reqs = payload
+        # Check: not isinstance(reqs, list)
         if not isinstance(reqs, list):
             raise ValueError(
                 "Batch requests must be a list or {'requests': [...]} JSON"
             )
+        # Return result
         return reqs
 
     # Process: _load_file_paths
     def _load_file_paths() -> list[str]:
         paths: list[str] = []
+        # Check: getattr(args, "file_paths", None)
         if getattr(args, "file_paths", None):
             paths.extend([str(p) for p in args.file_paths])
+        # Check: getattr(args, "files_from", None)
         if getattr(args, "files_from", None):
             with open(args.files_from, encoding="utf-8") as f:
+                # Iterate over line
                 for line in f.read().splitlines():
                     s = line.strip()
+                    # Check: s
                     if s:
                         paths.append(s)
         # De-dup while preserving order
         seen: set[str] = set()
         unique: list[str] = []
+        # Iterate over p
         for p in paths:
+            # Check: p not in seen
             if p not in seen:
                 unique.append(p)
                 seen.add(p)
+        # Return result
         return unique
 
     # Batch partial read (unified with MCP tool arguments)
@@ -418,6 +439,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             result = asyncio.run(read_tool.execute(tool_args))
 
             fmt = _effective_output_format()
+            # Check: fmt == "toon"
             if fmt == "toon":
                 print(result.get("toon_content", ""))
             else:
@@ -425,9 +447,11 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
                 from tree_sitter_analyzer.output_manager import output_json
 
                 output_json(result)
+            # Return result
             return 0 if result.get("success", False) else 1
         except Exception as e:
             output_error(f"Batch partial read failed: {e}")
+            # Return result
             return 1
 
     # Project health check (bulk scoring)
@@ -448,22 +472,27 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             result = asyncio.run(health_tool.execute(tool_args))
 
             fmt = _effective_output_format()
+            # Check: fmt == "toon"
             if fmt == "toon":
                 print(result.get("toon_content", ""))
             else:
                 from tree_sitter_analyzer.output_manager import output_json
 
                 output_json(result)
+            # Return result
             return 0 if result.get("success", False) else 1
         except Exception as e:
             output_error(f"Health check failed: {e}")
+            # Return result
             return 1
 
     # Batch metrics (unified with MCP tool arguments)
     if getattr(args, "metrics_only", False):
         file_paths = _load_file_paths()
+        # Check: not file_paths
         if not file_paths:
             output_error("--metrics-only requires --file-paths or --files-from")
+            # Return result
             return 1
         try:
             from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
@@ -480,55 +509,74 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             result = asyncio.run(scale_tool.execute(tool_args))
 
             fmt = _effective_output_format()
+            # Check: fmt == "toon"
             if fmt == "toon":
                 print(result.get("toon_content", ""))
             else:
                 from tree_sitter_analyzer.output_manager import output_json
 
                 output_json(result)
+            # Return result
             return 0 if result.get("success", False) else 1
         except Exception as e:
             output_error(f"Batch metrics failed: {e}")
+            # Return result
             return 1
 
     # Validate partial read options (single-range mode)
     if hasattr(args, "partial_read") and args.partial_read:
+        # Check: args.start_line is None
         if args.start_line is None:
             output_error("--start-line is required")
+            # Return result
             return 1
 
+        # Check: args.start_line < 1
         if args.start_line < 1:
             output_error("--start-line must be 1 or greater")
+            # Return result
             return 1
 
+        # Check: args.end_line and args.end_line < args.s
         if args.end_line and args.end_line < args.start_line:
             output_error("--end-line must be greater than or equal to --start-line")
+            # Return result
             return 1
 
+        # Check: args.start_column is not None and args.s
         if args.start_column is not None and args.start_column < 0:
             output_error("--start-column must be 0 or greater")
+            # Return result
             return 1
 
+        # Check: args.end_column is not None and args.end
         if args.end_column is not None and args.end_column < 0:
             output_error("--end-column must be 0 or greater")
+            # Return result
             return 1
 
     # Query language commands
     if args.show_query_languages:
         output_list(["Languages with query support:"])
+        # Iterate over lang
         for lang in query_loader.list_supported_languages():
             query_count = len(query_loader.list_queries_for_language(lang))
             output_list([f"  {lang:<15} ({query_count} queries)"])
+        # Return result
         return 0
 
+    # Check: args.show_common_queries
     if args.show_common_queries:
         common_queries = query_loader.get_common_queries()
+        # Check: common_queries
         if common_queries:
             output_list("Common queries across multiple languages:")
+            # Iterate over query
             for query in common_queries:
                 output_list(f"  {query}")
         else:
             output_info("No common queries found.")
+        # Return result
         return 0
 
     # SQL Platform Compatibility Commands
@@ -549,6 +597,7 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
         )
 
         profile = BehaviorProfile.load(info.platform_key)
+        # Check: profile
         if profile:
             output_list(
                 [
@@ -565,8 +614,10 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
                     "  Using default adaptation rules.",
                 ]
             )
+        # Return result
         return 0
 
+    # Check: args.record_sql_profile
     if args.record_sql_profile:
         from pathlib import Path
 
@@ -586,9 +637,12 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             output_info(f"Saved to {output_dir}")
         except Exception as e:
             output_error(f"Failed to record profile: {e}")
+            # Return result
             return 1
+        # Return result
         return 0
 
+    # Check: args.compare_sql_profiles
     if args.compare_sql_profiles:
         import json
         from pathlib import Path
@@ -602,11 +656,15 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
         p1_path = Path(args.compare_sql_profiles[0])
         p2_path = Path(args.compare_sql_profiles[1])
 
+        # Check: not p1_path.exists()
         if not p1_path.exists():
             output_error(f"Profile not found: {p1_path}")
+            # Return result
             return 1
+        # Check: not p2_path.exists()
         if not p2_path.exists():
             output_error(f"Profile not found: {p2_path}")
+            # Return result
             return 1
 
         try:
@@ -621,7 +679,9 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
                     data = json.load(f)
                     # Manual deserialization of nested objects
                     behaviors: dict[str, ParsingBehavior] = {}
+                    # Iterate over key, b_data
                     for key, b_data in data.get("behaviors", {}).items():
+                        # Check: isinstance(b_data, dict)
                         if isinstance(b_data, dict):
                             behaviors[key] = ParsingBehavior(**b_data)
                         # If b_data is not a dict, it's not a valid ParsingBehavior
@@ -643,9 +703,12 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             print(report)
         except Exception as e:
             output_error(f"Error comparing profiles: {e}")
+            # Return result
             return 1
+        # Return result
         return 0
 
+    # Return result
     return None
 
 
@@ -687,12 +750,14 @@ def main() -> None:
 
     # Handle special commands first
     special_result = handle_special_commands(args)
+    # Check: special_result is not None
     if special_result is not None:
         sys.exit(special_result)
 
     # Create and execute command
     command = CLICommandFactory.create_command(args)
 
+    # Check: command
     if command:
         exit_code = command.execute()
         sys.exit(exit_code)
@@ -700,6 +765,7 @@ def main() -> None:
         # filter_help was processed successfully
         sys.exit(0)
     else:
+        # Check: not args.file_path
         if not args.file_path:
             output_error("File path not specified.")
         else:
@@ -708,6 +774,7 @@ def main() -> None:
         sys.exit(1)
 
 
+# Check: __name__ == "__main__"
 if __name__ == "__main__":
     try:
         main()
@@ -716,6 +783,7 @@ if __name__ == "__main__":
         sys.exit(1)
     except Exception as e:
         msg = str(e)
+        # Check: "does not exist" in msg.lower() or "file
         if "does not exist" in msg.lower() or "file not found" in msg.lower():
             output_error(f"File not found: {msg}")
             output_info("Check the file path and try again.")
@@ -730,5 +798,6 @@ if __name__ == "__main__":
         else:
             output_error(f"Unexpected error: {msg}")
         sys.exit(1)
+
 
 

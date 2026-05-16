@@ -210,6 +210,7 @@ def _extract_dynamic_import(
         else:
             source = import_match.group(1)
 
+        # Return result
         return Import(
             name="dynamic_import",
             start_line=node.start_point[0] + 1,
@@ -222,6 +223,7 @@ def _extract_dynamic_import(
         )
     except Exception as e:
         log_debug(f"Failed to extract dynamic import: {e}")
+        # Return result
         return None
 
 
@@ -235,6 +237,7 @@ def _extract_commonjs_requires(
     imports: list[Import] = []
 
     try:
+        # Check: tree and hasattr(tree, "root_node") and 
         if tree and hasattr(tree, "root_node") and tree.root_node:
             get_node_text(tree.root_node)
 
@@ -242,6 +245,7 @@ def _extract_commonjs_requires(
             r"(?:const|let|var)\s+(\w+)\s*=\s*require\s*\(\s*[\"']([^\"']+)[\"']\s*\)"
         )
 
+        # Iterate over match
         for match in re.finditer(require_pattern, source_code):
             var_name = match.group(1)
             module_path = match.group(2)
@@ -262,8 +266,11 @@ def _extract_commonjs_requires(
 
     except Exception as e:
         log_debug(f"Failed to extract CommonJS requires: {e}")
+        # Return result
         return []
 
+    # Return result
     return imports
+
 
 

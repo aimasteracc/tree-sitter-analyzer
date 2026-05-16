@@ -236,11 +236,13 @@ def extract_php_function_element(
 
         return_type = "void"
         return_type_node = node.child_by_field_name("return_type")
+        # Check: return_type_node
         if return_type_node:
             return_type = get_node_text(return_type_node)
 
         full_name = f"{current_namespace}\\{name}" if current_namespace else name
 
+        # Return result
         return Function(
             name=full_name,
             start_line=node.start_point[0] + 1,
@@ -256,6 +258,7 @@ def extract_php_function_element(
         )
     except Exception as e:
         log_error(f"Error extracting function element: {e}")
+        # Return result
         return None
 
 
@@ -274,12 +277,16 @@ def extract_php_property_elements(
 
         var_type = "mixed"
         type_node = node.child_by_field_name("type")
+        # Check: type_node
         if type_node:
             var_type = get_node_text(type_node)
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "property_element"
             if child.type == "property_element":
                 name_node = child.child_by_field_name("name")
+                # Check: name_node
                 if name_node:
                     name = get_node_text(name_node).lstrip("$")
                     full_name = f"{parent_class}::{name}" if parent_class else name
@@ -300,6 +307,7 @@ def extract_php_property_elements(
                     )
     except Exception as e:
         log_error(f"Error extracting property elements: {e}")
+    # Return result
     return variables
 
 
@@ -316,9 +324,12 @@ def extract_php_constant_elements(
         modifiers = extract_modifiers_fn(node)
         visibility = determine_visibility(modifiers)
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "const_element"
             if child.type == "const_element":
                 name_node = child.child_by_field_name("name")
+                # Check: name_node
                 if name_node:
                     name = get_node_text(name_node)
                     full_name = f"{parent_class}::{name}" if parent_class else name
@@ -338,6 +349,8 @@ def extract_php_constant_elements(
                     )
     except Exception as e:
         log_error(f"Error extracting constant elements: {e}")
+    # Return result
     return variables
+
 
 

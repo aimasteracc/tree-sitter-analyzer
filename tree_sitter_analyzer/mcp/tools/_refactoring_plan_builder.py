@@ -307,10 +307,13 @@ def _infer_returns(block_src: str) -> list[str]:
 
     seen: set[str] = set()
     unique: list[str] = []
+    # Iterate over a
     for a in top_assigned:
+        # Check: a not in seen
         if a not in seen:
             seen.add(a)
             unique.append(a)
+    # Return result
     return unique[:4]
 
 
@@ -322,7 +325,9 @@ def _make_skeleton(
     block_lines: list[str],
     ext: str,
 ) -> str:
+    # Check: ext != ".py"
     if ext != ".py":
+        # Return result
         return f"// TODO: extract {name}({', '.join(params)})"
 
     param_str = ", ".join(params)
@@ -330,11 +335,15 @@ def _make_skeleton(
     clean = dedented.strip()
 
     lines = [f"def {name}({param_str}):"]
+    # Iterate over bl
     for bl in clean.splitlines():
         lines.append(f"    {bl}")
+    # Check: returns
     if returns:
         lines.append(f"    return {', '.join(returns)}")
 
+    # Return result
     return "\n".join(lines)
+
 
 

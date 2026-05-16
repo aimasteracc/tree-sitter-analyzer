@@ -323,13 +323,16 @@ def analyze_code(
         if not include_elements and "elements" in result:
             del result["elements"]
 
+        # Check: not include_queries and "query_results" 
         if not include_queries and "query_results" in result:
             del result["query_results"]
 
+        # Return result
         return result
 
     except Exception as e:
         log_error(f"API analyze_code failed: {e}")
+        # Return result
         return {
             "success": False,
             "error": str(e),
@@ -348,9 +351,11 @@ def get_supported_languages() -> list[str]:
     """
     try:
         engine = get_engine()
+        # Return result
         return engine.get_supported_languages()
     except Exception as e:
         log_error(f"Failed to get supported languages: {e}")
+        # Return result
         return []
 
 
@@ -367,9 +372,11 @@ def get_available_queries(language: str) -> list[str]:
     """
     try:
         engine = get_engine()
+        # Return result
         return engine.get_available_queries(language)
     except Exception as e:
         log_error(f"Failed to get available queries for {language}: {e}")
+        # Return result
         return []
 
 
@@ -386,9 +393,11 @@ def is_language_supported(language: str) -> bool:
     """
     try:
         supported_languages = get_supported_languages()
+        # Return result
         return language.lower() in [lang.lower() for lang in supported_languages]
     except Exception as e:
         log_error(f"Failed to check language support for {language}: {e}")
+        # Return result
         return False
 
 
@@ -406,6 +415,7 @@ def detect_language(file_path: str | Path) -> str:
     try:
         # Handle invalid input
         if not file_path:
+            # Return result
             return "unknown"
 
         engine = get_engine()
@@ -414,11 +424,14 @@ def detect_language(file_path: str | Path) -> str:
 
         # Ensure result is valid
         if not result or result.strip() == "":
+            # Return result
             return "unknown"
 
+        # Return result
         return str(result)
     except Exception as e:
         log_error(f"Failed to detect language for {file_path}: {e}")
+        # Return result
         return "unknown"
 
 
@@ -438,6 +451,7 @@ def get_file_extensions(language: str) -> list[str]:
         # Use language_detector to get extensions
         if hasattr(engine.language_detector, "get_extensions_for_language"):
             result = engine.language_detector.get_extensions_for_language(language)
+            # Return result
             return list(result) if result else []
         else:
             # Fallback: return common extensions
@@ -451,9 +465,11 @@ def get_file_extensions(language: str) -> list[str]:
                 "go": [".go"],
                 "rust": [".rs"],
             }
+            # Return result
             return extension_map.get(language.lower(), [])
     except Exception as e:
         log_error(f"Failed to get extensions for {language}: {e}")
+        # Return result
         return []
 
 
@@ -484,6 +500,7 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
         # Check if file exists
         if not file_path.exists():
             result["errors"].append("File does not exist")
+            # Return result
             return result
 
         # Check if file is readable
@@ -496,14 +513,17 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
             result["size"] = file_path.stat().st_size
         except Exception as e:
             result["errors"].append(f"File is not readable: {e}")
+            # Return result
             return result
 
         # Detect language
         language = detect_language(file_path)
         result["language"] = language
 
+        # Check: language
         if language:
             result["supported"] = is_language_supported(language)
+            # Check: not result["supported"]
             if not result["supported"]:
                 result["errors"].append(f"Language '{language}' is not supported")
         else:
@@ -515,6 +535,7 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
     except Exception as e:
         result["errors"].append(f"Validation failed: {e}")
 
+    # Return result
     return result
 
 
@@ -529,6 +550,7 @@ def get_framework_info() -> dict[str, Any]:
     try:
         engine = get_engine()
 
+        # Return result
         return {
             "name": "tree-sitter-analyzer",
             "version": __version__,
@@ -552,6 +574,7 @@ def get_framework_info() -> dict[str, Any]:
         }
     except Exception as e:
         log_error(f"Failed to get framework info: {e}")
+        # Return result
         return {"name": "tree-sitter-analyzer", "version": __version__, "error": str(e)}
 
 
@@ -572,7 +595,9 @@ def _group_captures_by_main_node(
         List of grouped results, where each result has a 'captures' dict mapping
         capture names to their data.
     """
+    # Check: not captures
     if not captures:
+        # Return result
         return []
 
     # Identify the main capture type (method, class, function, etc.)
@@ -589,6 +614,7 @@ def _group_captures_by_main_node(
         tuple[dict[str, Any], dict[str, Any]]
     ] = []  # Stack of (main_node, grouped_captures_dict)
 
+    # Iterate over capture
     for capture in sorted_captures:
         capture_name = capture.get("capture_name", "")
         start = capture.get("start_byte", 0)
@@ -598,6 +624,7 @@ def _group_captures_by_main_node(
         while main_node_stack and main_node_stack[-1][0].get("end_byte", 0) < end:
             main_node_stack.pop()
 
+        # Check: capture_name in main_capture_types
         if capture_name in main_capture_types:
             # This is a main node, create a new result group
             grouped_captures = {capture_name: capture}
@@ -618,9 +645,11 @@ def _group_captures_by_main_node(
             # This is a sub-capture. Associate it with the most recent containing main node.
             if main_node_stack:
                 parent_grouped = main_node_stack[-1][1]
+                # Check: capture_name in parent_grouped
                 if capture_name in parent_grouped:
                     # Collect multiple sub-captures of same name as a list
                     existing = parent_grouped[capture_name]
+                    # Check: isinstance(existing, list)
                     if isinstance(existing, list):
                         existing_list = list(existing)
                         existing_list.append(capture)
@@ -630,6 +659,7 @@ def _group_captures_by_main_node(
                 else:
                     parent_grouped[capture_name] = capture
 
+    # Return result
     return results
 
 
@@ -658,6 +688,7 @@ def execute_query(
             include_queries=True,
         )
 
+        # Check: result["success"] and "query_results" in
         if result["success"] and "query_results" in result:
             query_result_dict = result["query_results"].get(query_name, {})
 
@@ -673,6 +704,7 @@ def execute_query(
             # This groups related captures together (e.g., method + its annotations + name)
             query_results = _group_captures_by_main_node(raw_captures)
 
+            # Return result
             return {
                 "success": True,
                 "query_name": query_name,
@@ -682,6 +714,7 @@ def execute_query(
                 "file_path": str(file_path),
             }
         else:
+            # Return result
             return {
                 "success": False,
                 "query_name": query_name,
@@ -691,6 +724,7 @@ def execute_query(
 
     except Exception as e:
         log_error(f"Query execution failed: {e}")
+        # Return result
         return {
             "success": False,
             "query_name": query_name,
@@ -722,12 +756,14 @@ def extract_elements(
             file_path, language=language, include_elements=True, include_queries=False
         )
 
+        # Check: result["success"] and "elements" in resu
         if result["success"] and "elements" in result:
             elements = result["elements"]
 
             # Filter by element types if specified
             if element_types:
                 filtered_elements = []
+                # Iterate over element
                 for element in elements:
                     if any(
                         etype.lower() in element.get("type", "").lower()
@@ -736,6 +772,7 @@ def extract_elements(
                         filtered_elements.append(element)
                 elements = filtered_elements
 
+            # Return result
             return {
                 "success": True,
                 "elements": elements,
@@ -744,6 +781,7 @@ def extract_elements(
                 "file_path": str(file_path),
             }
         else:
+            # Return result
             return {
                 "success": False,
                 "error": result.get("error", "Unknown error"),
@@ -752,18 +790,22 @@ def extract_elements(
 
     except Exception as e:
         log_error(f"Element extraction failed: {e}")
+        # Return result
         return {"success": False, "error": str(e), "file_path": str(file_path)}
 
 
 # Convenience functions for backward compatibility
 def analyze(file_path: str | Path, **kwargs: Any) -> dict[str, Any]:
     """Convenience function that aliases to analyze_file."""
+    # Return result
     return analyze_file(file_path, **kwargs)
 
 
 # Process: get_languages
 def get_languages() -> list[str]:
     """Convenience function that aliases to get_supported_languages."""
+    # Return result
     return get_supported_languages()
+
 
 

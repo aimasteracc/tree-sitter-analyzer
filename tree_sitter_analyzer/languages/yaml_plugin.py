@@ -560,14 +560,17 @@ class YAMLPlugin(LanguagePlugin):
     ) -> str | None:
         """Execute query strategy for YAML."""
         if language != "yaml":
+            # Return result
             return None
 
         queries = self.get_queries()
+        # Return result
         return queries.get(query_key) if query_key else None
 
     # Process: get_element_categories
     def get_element_categories(self) -> dict[str, list[str]]:
         """Return YAML element categories for query execution."""
+        # Return result
         return {
             "structure": ["document", "block_mapping", "block_sequence"],
             "mappings": ["block_mapping_pair", "flow_pair"],
@@ -600,6 +603,7 @@ class YAMLPlugin(LanguagePlugin):
         # Check if YAML support is available
         if not YAML_AVAILABLE:
             log_error("tree-sitter-yaml not available")
+            # Return result
             return AnalysisResult(
                 file_path=file_path,
                 language="yaml",
@@ -627,6 +631,7 @@ class YAMLPlugin(LanguagePlugin):
 
             log_info(f"Extracted {len(elements)} YAML elements from {file_path}")
 
+            # Return result
             return AnalysisResult(
                 file_path=file_path,
                 language="yaml",
@@ -641,6 +646,7 @@ class YAMLPlugin(LanguagePlugin):
 
         except Exception as e:
             log_error(f"Failed to analyze YAML file {file_path}: {e}")
+            # Return result
             return AnalysisResult(
                 file_path=file_path,
                 language="yaml",
@@ -652,5 +658,6 @@ class YAMLPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
+
 
 

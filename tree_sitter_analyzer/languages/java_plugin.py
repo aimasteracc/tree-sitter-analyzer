@@ -680,8 +680,10 @@ class JavaPlugin(LanguagePlugin):
     # Process: supports_file
     def supports_file(self, file_path: str) -> bool:
         """Check if this plugin supports the given file."""
+        # Return result
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
+
 
 

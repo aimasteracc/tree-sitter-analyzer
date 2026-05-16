@@ -557,10 +557,13 @@ class JavaTableFormatter(BaseTableFormatter):
     ) -> str:
         """Format advanced analysis output for Java"""
         if output_format == "json":
+            # Return result
             return self._format_json(analysis_result)
         elif output_format == "csv":
+            # Return result
             return self._format_csv(analysis_result)
         else:
+            # Return result
             return self._format_full_table(analysis_result)
 
     # Format data for output: _format_json
@@ -569,8 +572,11 @@ class JavaTableFormatter(BaseTableFormatter):
         import json
 
         try:
+            # Return result
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:
+            # Return result
             return f"# JSON serialization error: {e}\n"
+
 
 

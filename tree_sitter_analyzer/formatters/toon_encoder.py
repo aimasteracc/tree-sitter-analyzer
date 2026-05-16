@@ -796,7 +796,9 @@ class ToonEncoder:
         Returns:
             List of field names
         """
+        # Check: not items
         if not items:
+            # Return result
             return []
 
         # Use first item's keys as schema
@@ -818,16 +820,23 @@ class ToonEncoder:
             Encoded string (TOON, JSON, or error message)
         """
         try:
+            # Return result
             return self.encode(data, indent)
         except ToonEncodeError as e:
             logger.error(f"TOON encoding error: {e}")
+            # Check: self.fallback_to_json
             if self.fallback_to_json:
+                # Return result
                 return self._fallback_to_json(data)
+            # Return result
             return f"# ToonEncodeError: {e.message}\n{{}}"
         except Exception as e:
             logger.error(f"Unexpected error during TOON encoding: {e}", exc_info=True)
+            # Check: self.fallback_to_json
             if self.fallback_to_json:
+                # Return result
                 return self._fallback_to_json(data)
+            # Return result
             return f"# Encoding error: {e}\n{{}}"
 
     @staticmethod
@@ -843,6 +852,7 @@ class ToonEncoder:
         Returns:
             True if circular reference detected, False otherwise
         """
+        # Check: seen is None
         if seen is None:
             seen = set()
 
@@ -852,17 +862,23 @@ class ToonEncoder:
         while stack:
             current = stack.pop()
 
+            # Check: isinstance(current, dict | list)
             if isinstance(current, dict | list):
                 obj_id = id(current)
+                # Check: obj_id in seen
                 if obj_id in seen:
+                    # Return result
                     return True
                 seen.add(obj_id)
 
+                # Check: isinstance(current, dict)
                 if isinstance(current, dict):
                     stack.extend(current.values())
                 else:
                     stack.extend(current)
 
+        # Return result
         return False
+
 
 

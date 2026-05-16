@@ -607,6 +607,7 @@ class HtmlCompactFormatter(IFormatter):
 
         lines.append("")
 
+        # Return result
         return "\n".join(lines)
 
 
@@ -616,6 +617,7 @@ class HtmlCsvFormatter(IFormatter):
     @staticmethod
     # Format data for output: get_format_name
     def get_format_name() -> str:
+        # Return result
         return "html_csv"
 
     # Format data for output: format
@@ -643,6 +645,7 @@ class HtmlCsvFormatter(IFormatter):
 
         # Write data rows
         for element in elements:
+            # Check: isinstance(element, MarkupElement)
             if isinstance(element, MarkupElement):
                 name = element.name or ""
                 tag = element.tag_name or ""
@@ -651,8 +654,11 @@ class HtmlCsvFormatter(IFormatter):
                 end_line = element.end_line
                 # Format attributes as key=value pairs
                 attrs = []
+                # Check: element.attributes
                 if element.attributes:
+                    # Iterate over k, v
                     for k, v in element.attributes.items():
+                        # Check: v
                         if v:
                             attrs.append(f"{k}={v}")
                         else:
@@ -668,7 +674,9 @@ class HtmlCsvFormatter(IFormatter):
                 end_line = element.end_line
                 # Format properties as key:value pairs
                 props = []
+                # Check: element.properties
                 if element.properties:
+                    # Iterate over k, v
                     for k, v in element.properties.items():
                         props.append(f"{k}:{v}")
                 attrs_str = "; ".join(props) if props else ""
@@ -710,10 +718,12 @@ class HtmlCsvFormatter(IFormatter):
 
         csv_content = output.getvalue()
         output.close()
+        # Return result
         return csv_content.rstrip("\n")
 
 
 # HTML formatters are registered via formatter_registry.py
 # to avoid duplicate registration warnings
+
 
 

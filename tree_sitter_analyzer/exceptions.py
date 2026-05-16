@@ -351,6 +351,7 @@ def handle_exceptions(
 
         return wrapper
 
+    # Return result
     return decorator
 
 
@@ -365,8 +366,10 @@ class SecurityError(TreeSitterAnalyzerError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
+        # Check: security_type
         if security_type:
             context["security_type"] = security_type
+        # Check: file_path
         if file_path:
             context["file_path"] = str(file_path)
 
@@ -385,6 +388,7 @@ class PathTraversalError(SecurityError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
+        # Check: attempted_path
         if attempted_path:
             context["attempted_path"] = attempted_path
 
@@ -405,8 +409,10 @@ class RegexSecurityError(SecurityError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
+        # Check: pattern
         if pattern:
             context["pattern"] = pattern
+        # Check: dangerous_construct
         if dangerous_construct:
             context["dangerous_construct"] = dangerous_construct
 
@@ -430,10 +436,12 @@ class MCPToolError(MCPError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
+        # Check: input_params
         if input_params:
             # Sanitize sensitive information from input params
             sanitized_params = self._sanitize_params(input_params)
             context["input_params"] = sanitized_params
+        # Check: execution_stage
         if execution_stage:
             context["execution_stage"] = execution_stage
 
@@ -449,7 +457,9 @@ class MCPToolError(MCPError):
         sanitized = {}
         sensitive_keys = {"password", "token", "key", "secret", "auth", "credential"}
 
+        # Iterate over key, value
         for key, value in params.items():
+            # Check: any(sensitive in key.lower() for sensiti
             if any(sensitive in key.lower() for sensitive in sensitive_keys):
                 sanitized[key] = "***REDACTED***"
             elif isinstance(value, str) and len(value) > 100:
@@ -457,6 +467,7 @@ class MCPToolError(MCPError):
             else:
                 sanitized[key] = value
 
+        # Return result
         return sanitized
 
 
@@ -472,8 +483,10 @@ class MCPResourceError(MCPError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
+        # Check: resource_type
         if resource_type:
             context["resource_type"] = resource_type
+        # Check: access_mode
         if access_mode:
             context["access_mode"] = access_mode
 
@@ -494,8 +507,10 @@ class MCPTimeoutError(MCPError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
+        # Check: timeout_seconds
         if timeout_seconds:
             context["timeout_seconds"] = timeout_seconds
+        # Check: operation_type
         if operation_type:
             context["operation_type"] = operation_type
 
@@ -517,15 +532,19 @@ class MCPValidationError(ValidationError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
+        # Check: tool_name
         if tool_name:
             context["tool_name"] = tool_name
+        # Check: parameter_name
         if parameter_name:
             context["parameter_name"] = parameter_name
+        # Check: validation_rule
         if validation_rule:
             context["validation_rule"] = validation_rule
 
         # Sanitize parameter value for logging
         if parameter_value is not None:
+            # Check: isinstance(parameter_value, str) and len
             if isinstance(parameter_value, str) and len(parameter_value) > 200:
                 context["parameter_value"] = parameter_value[:200] + "...[TRUNCATED]"
             else:
@@ -551,8 +570,10 @@ class FileRestrictionError(SecurityError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
+        # Check: current_mode
         if current_mode:
             context["current_mode"] = current_mode
+        # Check: allowed_patterns
         if allowed_patterns:
             context["allowed_patterns"] = allowed_patterns
 
@@ -631,6 +652,7 @@ def create_mcp_error_response(
         response["error"]["current_mode"] = exception.current_mode
         response["error"]["allowed_patterns"] = exception.allowed_patterns
 
+    # Return result
     return response
 
 
@@ -651,7 +673,9 @@ def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
         "session_id",
     }
 
+    # Iterate over key, value
     for key, value in context.items():
+        # Check: any(sensitive in key.lower() for sensiti
         if any(sensitive in key.lower() for sensitive in sensitive_keys):
             sanitized[key] = "***REDACTED***"
         elif isinstance(value, str) and len(value) > 500:
@@ -666,6 +690,7 @@ def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
         else:
             sanitized[key] = value
 
+    # Return result
     return sanitized
 
 
@@ -691,14 +716,17 @@ async def safe_execute_async(
         Coroutine result or default_return on exception
     """
     try:
+        # Return result
         return await coro
     except exception_types as e:
+        # Check: log_errors
         if log_errors:
             from .utils import log_error
 
             error_context = {"tool_name": tool_name} if tool_name else {}
             log_error(f"Async execution failed: {e}", extra=error_context)
 
+        # Return result
         return default_return
 
 
@@ -721,6 +749,7 @@ def mcp_exception_handler(
         # Process: async_wrapper
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
+                # Return result
                 return await func(*args, **kwargs)
             except Exception as e:
                 from .utils import log_error
@@ -742,6 +771,7 @@ def mcp_exception_handler(
         # Process: sync_wrapper
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
+                # Return result
                 return func(*args, **kwargs)
             except Exception as e:
                 from .utils import log_error
@@ -762,10 +792,14 @@ def mcp_exception_handler(
 
         # Return appropriate wrapper based on function type
         if __import__("asyncio").iscoroutinefunction(func):
+            # Return result
             return async_wrapper
         else:
+            # Return result
             return sync_wrapper
 
+    # Return result
     return decorator
+
 
 

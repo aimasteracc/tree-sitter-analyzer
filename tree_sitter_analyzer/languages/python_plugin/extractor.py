@@ -1216,7 +1216,9 @@ class PythonElementExtractor(ElementExtractor):
         """Extract parameters from function node"""
         parameters: list[str] = []
         for child in node.children:
+            # Check: child.type == "parameters"
             if child.type == "parameters":
+                # Iterate over param_child
                 for param_child in child.children:
                     if param_child.type in [
                         "identifier",
@@ -1227,6 +1229,7 @@ class PythonElementExtractor(ElementExtractor):
                             param_child.start_byte : param_child.end_byte
                         ]
                         parameters.append(param_text)
+        # Return result
         return parameters
 
     # Extract elements from AST: _extract_decorators_from_node
@@ -1238,6 +1241,7 @@ class PythonElementExtractor(ElementExtractor):
 
         # Decorators are before function/class definitions
         if hasattr(node, "parent") and node.parent:
+            # Iterate over sibling
             for sibling in node.parent.children:
                 if (
                     sibling.type == "decorator"
@@ -1249,6 +1253,7 @@ class PythonElementExtractor(ElementExtractor):
                         decorator_text = decorator_text[1:].strip()
                     decorators.append(decorator_text)
 
+        # Return result
         return decorators
 
     # Extract elements from AST: _extract_return_type_from_node
@@ -1258,24 +1263,30 @@ class PythonElementExtractor(ElementExtractor):
         """Extract return type annotation from function node"""
         # Look for return type annotation after '->'
         node_text = self._get_node_text_optimized(node)
+        # Check: "->" in node_text
         if "->" in node_text:
             # Extract everything after '->' and before ':'
             parts = node_text.split("->")
+            # Check: len(parts) > 1
             if len(parts) > 1:
                 return_part = parts[1].split(":")[0].strip()
                 # Clean up the return type (remove whitespace and newlines)
                 return_type = return_part.replace("\n", " ").strip()
                 # Don't return decorator names as return types
                 if return_type and not return_type.startswith("@"):
+                    # Return result
                     return return_type
 
         # Fallback to original method
         for child in node.children:
+            # Check: child.type == "type"
             if child.type == "type":
                 type_text = source_code[child.start_byte : child.end_byte]
                 # Don't return decorator names as return types
                 if type_text and not type_text.startswith("@"):
+                    # Return result
                     return type_text
+        # Return result
         return None
 
     # Extract elements from AST: _extract_docstring_from_node
@@ -1283,13 +1294,19 @@ class PythonElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node", source_code: str
     ) -> str | None:
         """Extract docstring from function/class node"""
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "block"
             if child.type == "block":
                 # Check if the first statement in the block is a docstring
                 for stmt in child.children:
+                    # Check: stmt.type == "expression_statement"
                     if stmt.type == "expression_statement":
+                        # Iterate over expr
                         for expr in stmt.children:
+                            # Check: expr.type == "string"
                             if expr.type == "string":
+                                # Check: self._validate_node(expr)
                                 if self._validate_node(expr):
                                     docstring = source_code[
                                         expr.start_byte : expr.end_byte
@@ -1298,22 +1315,30 @@ class PythonElementExtractor(ElementExtractor):
                                     if docstring.startswith(
                                         '"""'
                                     ) or docstring.startswith("'''"):
+                                        # Return result
                                         return docstring[3:-3].strip()
                                     elif docstring.startswith(
                                         '"'
                                     ) or docstring.startswith("'"):
+                                        # Return result
                                         return docstring[1:-1].strip()
+                                    # Return result
                                     return docstring
                         break
                 break
+        # Return result
         return None
 
     # Extract elements from AST: _extract_function_body
     def _extract_function_body(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract function body"""
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "block"
             if child.type == "block":
+                # Return result
                 return source_code[child.start_byte : child.end_byte]
+        # Return result
         return ""
 
     # Extract elements from AST: _extract_superclasses_from_node
@@ -1322,11 +1347,16 @@ class PythonElementExtractor(ElementExtractor):
     ) -> list[str]:
         """Extract superclasses from class node"""
         superclasses: list[str] = []
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "argument_list"
             if child.type == "argument_list":
+                # Iterate over arg
                 for arg in child.children:
+                    # Check: arg.type == "identifier"
                     if arg.type == "identifier":
                         superclasses.append(source_code[arg.start_byte : arg.end_byte])
+        # Return result
         return superclasses
 
     # Process: _calculate_complexity
@@ -1334,8 +1364,11 @@ class PythonElementExtractor(ElementExtractor):
         """Calculate cyclomatic complexity (simplified)"""
         complexity = 1  # Base complexity
         keywords = ["if", "elif", "for", "while", "try", "except", "with", "and", "or"]
+        # Iterate over keyword
         for keyword in keywords:
             complexity += body.count(f" {keyword} ") + body.count(f"\n{keyword} ")
+        # Return result
         return complexity
+
 
 

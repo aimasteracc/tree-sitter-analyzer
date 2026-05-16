@@ -472,6 +472,7 @@ class CppElementExtractor(ElementExtractor):
 
     # Process: _get_access_specifier
     def _get_access_specifier(self, node: "tree_sitter.Node") -> str | None:
+        # Return result
         return _get_access_standalone(node, self._get_node_text_optimized)
 
     # Process: _determine_visibility
@@ -481,16 +482,19 @@ class CppElementExtractor(ElementExtractor):
         is_global: bool = False,
         node: "tree_sitter.Node | None" = None,
     ) -> str:
+        # Return result
         return _determine_vis_standalone(
             modifiers, is_global, node, self._get_node_text_optimized
         )
 
     # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
+        # Return result
         return _calc_complexity_standalone(node)
 
     # Extract elements from AST: _extract_comment_for_line
     def _extract_comment_for_line(self, line: int) -> str | None:
+        # Return result
         return _extract_comment_standalone(line, self.content_lines)
 
 
@@ -508,16 +512,19 @@ class CppPlugin(LanguagePlugin):
     # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
+        # Return result
         return "cpp"
 
     # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
+        # Return result
         return [".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".h++", ".c++"]
 
     # Extract elements from AST: create_extractor
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
+        # Return result
         return CppElementExtractor()
 
     # Analyze source code structure: analyze_file
@@ -533,7 +540,9 @@ class CppPlugin(LanguagePlugin):
             file_content, detected_encoding = read_file_safe(file_path)
 
             language = self.get_tree_sitter_language()
+            # Check: language is None
             if language is None:
+                # Return result
                 return AnalysisResult(
                     file_path=file_path,
                     language="cpp",
@@ -546,6 +555,7 @@ class CppPlugin(LanguagePlugin):
 
             parser = tree_sitter.Parser()
 
+            # Check: hasattr(parser, "set_language")
             if hasattr(parser, "set_language"):
                 parser.set_language(language)
             elif hasattr(parser, "language"):
@@ -555,6 +565,7 @@ class CppPlugin(LanguagePlugin):
                     parser = tree_sitter.Parser(language)
                 except Exception as e:
                     log_error(f"Failed to create parser with language: {e}")
+                    # Return result
                     return AnalysisResult(
                         file_path=file_path,
                         language="cpp",
@@ -580,6 +591,7 @@ class CppPlugin(LanguagePlugin):
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
             )
 
+            # Return result
             return AnalysisResult(
                 file_path=file_path,
                 language="cpp",
@@ -591,6 +603,7 @@ class CppPlugin(LanguagePlugin):
 
         except Exception as e:
             log_error(f"Error analyzing C++ file {file_path}: {e}")
+            # Return result
             return AnalysisResult(
                 file_path=file_path,
                 language="cpp",
@@ -604,19 +617,26 @@ class CppPlugin(LanguagePlugin):
     # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """Recursively count nodes in the AST tree."""
+        # Check: node is None
         if node is None:
+            # Return result
             return 0
 
         count = 1
+        # Check: hasattr(node, "children")
         if hasattr(node, "children"):
+            # Iterate over child
             for child in node.children:
                 count += self._count_tree_nodes(child)
+        # Return result
         return count
 
     # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for C++."""
+        # Check: self._cached_language is not None
         if self._cached_language is not None:
+            # Return result
             return self._cached_language
 
         try:
@@ -634,20 +654,26 @@ class CppPlugin(LanguagePlugin):
                     self._cached_language = tree_sitter.Language(caps_or_lang)
                 except Exception as e:
                     log_error(f"Failed to create Language object from PyCapsule: {e}")
+                    # Return result
                     return None
 
+            # Return result
             return self._cached_language
         except ImportError as e:
             log_error(f"tree-sitter-cpp not available: {e}")
+            # Return result
             return None
         except Exception as e:
             log_error(f"Failed to load tree-sitter language for C++: {e}")
+            # Return result
             return None
 
     # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from C++ code."""
+        # Check: tree is None
         if tree is None:
+            # Return result
             return {
                 "functions": [],
                 "classes": [],
@@ -658,6 +684,7 @@ class CppPlugin(LanguagePlugin):
 
         try:
             extractor = self.create_extractor()
+            # Return result
             return {
                 "functions": extractor.extract_functions(tree, source_code),
                 "classes": extractor.extract_classes(tree, source_code),
@@ -667,6 +694,7 @@ class CppPlugin(LanguagePlugin):
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
+            # Return result
             return {
                 "functions": [],
                 "classes": [],
@@ -674,5 +702,6 @@ class CppPlugin(LanguagePlugin):
                 "imports": [],
                 "packages": [],
             }
+
 
 

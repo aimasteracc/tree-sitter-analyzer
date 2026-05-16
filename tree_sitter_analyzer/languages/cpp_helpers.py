@@ -177,10 +177,13 @@ def _extract_namespace_info(
         namespace_name = None
 
         for child in node.children:
+            # Check: child.type in ("identifier", "namespace_
             if child.type in ("identifier", "namespace_identifier"):
                 namespace_name = get_node_text(child)
 
+        # Check: namespace_name
         if namespace_name:
+            # Return result
             return Package(
                 name=namespace_name,
                 start_line=node.start_point[0] + 1,
@@ -191,6 +194,7 @@ def _extract_namespace_info(
     except Exception as e:
         log_debug(f"Failed to extract namespace info: {e}")
 
+    # Return result
     return None
 
 
@@ -204,8 +208,10 @@ def is_global_scope(node: Any) -> bool:
             "struct_specifier",
             "union_specifier",
         ):
+            # Return result
             return False
         current = current.parent
+    # Return result
     return True
 
 
@@ -216,29 +222,41 @@ def get_access_specifier(
 ) -> str | None:
     """Get the current access specifier for a class member."""
     parent = node.parent
+    # Check: not parent or parent.type != "field_decl
     if not parent or parent.type != "field_declaration_list":
+        # Return result
         return None
 
     siblings = list(parent.children)
     try:
         node_index = siblings.index(node)
     except ValueError:
+        # Return result
         return None
 
+    # Iterate over i
     for i in range(node_index - 1, -1, -1):
         sibling = siblings[i]
+        # Check: sibling.type == "access_specifier"
         if sibling.type == "access_specifier":
             spec_text = get_node_text(sibling).strip().rstrip(":")
+            # Check: spec_text in ("public", "private", "prot
             if spec_text in ("public", "private", "protected"):
+                # Return result
                 return spec_text
 
     class_node = parent.parent
+    # Check: class_node
     if class_node:
+        # Check: class_node.type == "class_specifier"
         if class_node.type == "class_specifier":
+            # Return result
             return "private"
         elif class_node.type in ("struct_specifier", "union_specifier"):
+            # Return result
             return "public"
 
+    # Return result
     return None
 
 
@@ -250,21 +268,31 @@ def determine_visibility(
     get_node_text: Callable[..., str] | None = None,
 ) -> str:
     """Determine visibility from modifiers and context."""
+    # Check: "public" in modifiers
     if "public" in modifiers:
+        # Return result
         return "public"
     elif "private" in modifiers:
+        # Return result
         return "private"
     elif "protected" in modifiers:
+        # Return result
         return "protected"
 
+    # Check: "static" in modifiers and is_global
     if "static" in modifiers and is_global:
+        # Return result
         return "private"
 
+    # Check: node and not is_global and get_node_text
     if node and not is_global and get_node_text:
         access_spec = get_access_specifier(node, get_node_text)
+        # Check: access_spec
         if access_spec:
+            # Return result
             return access_spec
 
+    # Return result
     return "public" if is_global else "private"
 
 
@@ -286,16 +314,21 @@ def calculate_complexity(node: Any) -> int:
     # Process: count_decisions
     def count_decisions(n: Any) -> int:
         count = 0
+        # Check: hasattr(n, "type") and n.type in decisio
         if hasattr(n, "type") and n.type in decision_nodes:
             count += 1
+        # Check: hasattr(n, "children")
         if hasattr(n, "children"):
             try:
+                # Iterate over child
                 for child in n.children:
                     count += count_decisions(child)
             except (TypeError, AttributeError):
                 pass
+        # Return result
         return count
 
+    # Return result
     return 1 + count_decisions(node)
 
 
@@ -303,22 +336,30 @@ def calculate_complexity(node: Any) -> int:
 def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
     """Extract comment (documentation) for a specific line."""
     try:
+        # Iterate over i
         for i in range(max(0, line - 5), line):
+            # Check: i < len(content_lines)
             if i < len(content_lines):
                 line_content = content_lines[i].strip()
+                # Check: line_content.startswith("/**")
                 if line_content.startswith("/**"):
                     comment_lines = []
+                    # Iterate over j
                     for j in range(i, min(len(content_lines), line)):
                         doc_line = content_lines[j].strip()
                         comment_lines.append(doc_line)
+                        # Check: doc_line.endswith("*/")
                         if doc_line.endswith("*/"):
                             break
+                    # Return result
                     return "\n".join(comment_lines)
                 elif line_content.startswith("///"):
+                    # Return result
                     return line_content
     except Exception as e:
         log_debug(f"Failed to extract comment: {e}")
 
+    # Return result
     return None
 
 
@@ -329,6 +370,7 @@ def extract_parameters(
 ) -> list[str]:
     """Extract function parameters."""
     parameters: list[str] = []
+    # Iterate over child
     for child in params_node.children:
         if child.type in (
             "parameter_declaration",
@@ -337,6 +379,7 @@ def extract_parameters(
             parameters.append(get_node_text(child))
         elif child.type == "variadic_parameter_declaration":
             parameters.append("...")
+    # Return result
     return parameters
 
 
@@ -353,8 +396,11 @@ def parse_function_signature(
         parameters: list[str] = []
         modifiers: list[str] = []
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "function_declarator"
             if child.type == "function_declarator":
+                # Iterate over grandchild
                 for grandchild in child.children:
                     if grandchild.type in (
                         "identifier",
@@ -368,8 +414,11 @@ def parse_function_signature(
                         parameters = extract_params_fn(grandchild)
             elif child.type == "reference_declarator":
                 return_type = return_type + "&" if return_type else "&"
+                # Iterate over grandchild
                 for grandchild in child.children:
+                    # Check: grandchild.type == "function_declarator"
                     if grandchild.type == "function_declarator":
+                        # Iterate over ggchild
                         for ggchild in grandchild.children:
                             if ggchild.type in (
                                 "identifier",
@@ -382,8 +431,11 @@ def parse_function_signature(
                                 parameters = extract_params_fn(ggchild)
             elif child.type == "pointer_declarator":
                 return_type = return_type + "*" if return_type else "*"
+                # Iterate over grandchild
                 for grandchild in child.children:
+                    # Check: grandchild.type == "function_declarator"
                     if grandchild.type == "function_declarator":
+                        # Iterate over ggchild
                         for ggchild in grandchild.children:
                             if ggchild.type in (
                                 "identifier",
@@ -402,26 +454,34 @@ def parse_function_signature(
                 return_type = get_node_text(child)
             elif child.type == "storage_class_specifier":
                 mod = get_node_text(child)
+                # Check: mod
                 if mod:
                     modifiers.append(mod)
             elif child.type == "type_qualifier":
                 mod = get_node_text(child)
+                # Check: mod
                 if mod:
                     modifiers.append(mod)
             elif child.type == "virtual":
                 modifiers.append("virtual")
             elif child.type == "delete_method_clause":
+                # Check: "deleted" not in modifiers
                 if "deleted" not in modifiers:
                     modifiers.append("deleted")
             elif child.type == "default_method_clause":
+                # Check: "default" not in modifiers
                 if "default" not in modifiers:
                     modifiers.append("default")
 
+        # Check: not name
         if not name:
+            # Return result
             return None
 
+        # Return result
         return name, return_type, parameters, modifiers
     except Exception:
+        # Return result
         return None
 
 
@@ -437,12 +497,16 @@ def extract_function_from_field_declaration(
     """Extract function from field_declaration (pure virtual, deleted, etc)."""
     try:
         has_function_declarator = False
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "function_declarator"
             if child.type == "function_declarator":
                 has_function_declarator = True
                 break
 
+        # Check: not has_function_declarator
         if not has_function_declarator:
+            # Return result
             return None
 
         start_line = node.start_point[0] + 1
@@ -453,7 +517,9 @@ def extract_function_from_field_declaration(
         parameters: list[str] = []
         modifiers: list[str] = []
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "virtual"
             if child.type == "virtual":
                 modifiers.append("virtual")
             elif child.type in (
@@ -464,6 +530,7 @@ def extract_function_from_field_declaration(
             ):
                 return_type = get_node_text(child)
             elif child.type == "function_declarator":
+                # Iterate over grandchild
                 for grandchild in child.children:
                     if grandchild.type in (
                         "field_identifier",
@@ -476,19 +543,25 @@ def extract_function_from_field_declaration(
                         parameters = extract_params_fn(grandchild)
                     elif grandchild.type == "type_qualifier":
                         mod = get_node_text(grandchild)
+                        # Check: mod
                         if mod:
                             modifiers.append(mod)
             elif child.type == "number_literal" and get_node_text(child) == "0":
+                # Check: "pure_virtual" not in modifiers
                 if "pure_virtual" not in modifiers:
                     modifiers.append("pure_virtual")
             elif child.type == "delete_method_clause":
+                # Check: "deleted" not in modifiers
                 if "deleted" not in modifiers:
                     modifiers.append("deleted")
             elif child.type == "default_method_clause":
+                # Check: "default" not in modifiers
                 if "default" not in modifiers:
                     modifiers.append("default")
 
+        # Check: not name
         if not name:
+            # Return result
             return None
 
         raw_text = get_node_text(node)
@@ -496,6 +569,7 @@ def extract_function_from_field_declaration(
         visibility = determine_vis_fn(modifiers, is_global=is_global, node=node)
         docstring = extract_comment_fn(start_line)
 
+        # Return result
         return Function(
             name=name,
             start_line=start_line,
@@ -511,6 +585,7 @@ def extract_function_from_field_declaration(
         )
     except Exception as e:
         log_debug(f"Failed to extract function from field declaration: {e}")
+        # Return result
         return None
 
 
@@ -521,7 +596,9 @@ def extract_function_declaration(
     extract_params_fn: Callable[[Any], list[str]],
 ) -> Function | None:
     """Extract function declaration (prototype)."""
+    # Check: node.parent and node.parent.type == "fun
     if node.parent and node.parent.type == "function_definition":
+        # Return result
         return None
 
     try:
@@ -531,17 +608,22 @@ def extract_function_declaration(
         name = None
         parameters: list[str] = []
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type in ("identifier", "qualified_
             if child.type in ("identifier", "qualified_identifier"):
                 name = get_node_text(child)
             elif child.type == "parameter_list":
                 parameters = extract_params_fn(child)
 
+        # Check: not name
         if not name:
+            # Return result
             return None
 
         raw_text = get_node_text(node)
 
+        # Return result
         return Function(
             name=name,
             start_line=start_line,
@@ -554,6 +636,7 @@ def extract_function_declaration(
         )
     except Exception as e:
         log_debug(f"Failed to extract function declaration: {e}")
+        # Return result
         return None
 
 
@@ -561,11 +644,16 @@ def extract_function_declaration(
 def extract_base_classes(node: Any, get_node_text: Callable[..., str]) -> list[str]:
     """Extract base class names from base_class_clause."""
     base_classes: list[str] = []
+    # Iterate over child
     for child in node.children:
+        # Check: child.type == "base_specifier"
         if child.type == "base_specifier":
+            # Iterate over grandchild
             for grandchild in child.children:
+                # Check: grandchild.type in ("type_identifier", "
                 if grandchild.type in ("type_identifier", "template_type"):
                     base_classes.append(get_node_text(grandchild))
+    # Return result
     return base_classes
 
 
@@ -597,31 +685,40 @@ def extract_cpp_field_declaration(
         field_names: list[str] = []
         modifiers: list[str] = []
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type in _TYPE_NODES_CPP
             if child.type in _TYPE_NODES_CPP:
                 field_type = get_node_text(child)
             elif child.type == "storage_class_specifier":
                 mod = get_node_text(child)
+                # Check: mod
                 if mod:
                     modifiers.append(mod)
             elif child.type == "type_qualifier":
                 mod = get_node_text(child)
+                # Check: mod
                 if mod:
                     modifiers.append(mod)
             elif child.type == "field_identifier":
                 field_names.append(get_node_text(child))
             elif child.type == "init_declarator":
+                # Iterate over grandchild
                 for grandchild in child.children:
+                    # Check: grandchild.type in ("field_identifier", 
                     if grandchild.type in ("field_identifier", "identifier"):
                         field_names.append(get_node_text(grandchild))
 
+        # Check: not field_type or not field_names
         if not field_type or not field_names:
+            # Return result
             return fields
 
         raw_text = get_node_text(node)
         is_global = is_global_fn(node)
         visibility = determine_vis_fn(modifiers, is_global=is_global, node=node)
 
+        # Iterate over field_name
         for field_name in field_names:
             fields.append(
                 Variable(
@@ -640,6 +737,7 @@ def extract_cpp_field_declaration(
     except Exception as e:
         log_debug(f"Failed to extract field info: {e}")
 
+    # Return result
     return fields
 
 
@@ -651,7 +749,9 @@ def extract_cpp_variable_declaration(
     determine_vis_fn: Callable[..., str],
 ) -> list[Variable]:
     """Extract C++ variable declarations (not class members)."""
+    # Check: node.parent and node.parent.type == "fie
     if node.parent and node.parent.type == "field_declaration_list":
+        # Return result
         return []
 
     variables: list[Variable] = []
@@ -664,31 +764,40 @@ def extract_cpp_variable_declaration(
         var_names: list[str] = []
         modifiers: list[str] = []
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type in _TYPE_NODES_CPP
             if child.type in _TYPE_NODES_CPP:
                 var_type = get_node_text(child)
             elif child.type == "storage_class_specifier":
                 mod = get_node_text(child)
+                # Check: mod
                 if mod:
                     modifiers.append(mod)
             elif child.type == "type_qualifier":
                 mod = get_node_text(child)
+                # Check: mod
                 if mod:
                     modifiers.append(mod)
             elif child.type == "identifier":
                 var_names.append(get_node_text(child))
             elif child.type == "init_declarator":
+                # Iterate over grandchild
                 for grandchild in child.children:
+                    # Check: grandchild.type == "identifier"
                     if grandchild.type == "identifier":
                         var_names.append(get_node_text(grandchild))
 
+        # Check: not var_type or not var_names
         if not var_type or not var_names:
+            # Return result
             return variables
 
         raw_text = get_node_text(node)
         is_global = is_global_fn(node)
         visibility = determine_vis_fn(modifiers, is_global=is_global, node=node)
 
+        # Iterate over var_name
         for var_name in var_names:
             variables.append(
                 Variable(
@@ -707,6 +816,7 @@ def extract_cpp_variable_declaration(
     except Exception as e:
         log_debug(f"Failed to extract variable declaration: {e}")
 
+    # Return result
     return variables
 
 
@@ -736,6 +846,7 @@ def traverse_and_extract_iterative(
     element_cache: dict[tuple[int, str], Any],
 ) -> None:
     """Iterative node traversal and extraction with caching."""
+    # Check: root_node is None
     if root_node is None:
         return
 
@@ -748,6 +859,7 @@ def traverse_and_extract_iterative(
     while node_stack:
         current_node, depth = node_stack.pop()
 
+        # Check: depth > max_depth
         if depth > max_depth:
             log_warning(f"Maximum traversal depth ({max_depth}) exceeded")
             continue
@@ -762,16 +874,21 @@ def traverse_and_extract_iterative(
         ):
             continue
 
+        # Check: node_type in target_node_types
         if node_type in target_node_types:
             node_id = id(current_node)
 
+            # Check: node_id in processed_nodes
             if node_id in processed_nodes:
                 continue
 
             cache_key = (node_id, element_type)
+            # Check: cache_key in element_cache
             if cache_key in element_cache:
                 element = element_cache[cache_key]
+                # Check: element
                 if element:
+                    # Check: isinstance(element, list)
                     if isinstance(element, list):
                         results.extend(element)
                     else:
@@ -782,14 +899,18 @@ def traverse_and_extract_iterative(
             extractor = extractors[node_type]
             element = extractor(current_node)
             element_cache[cache_key] = element
+            # Check: element
             if element:
+                # Check: isinstance(element, list)
                 if isinstance(element, list):
                     results.extend(element)
                 else:
                     results.append(element)
             processed_nodes.add(node_id)
 
+        # Check: current_node.children
         if current_node.children:
+            # Iterate over child
             for child in reversed(current_node.children):
                 node_stack.append((child, depth + 1))
 
@@ -814,7 +935,9 @@ def extract_cpp_function(
         end_line = node.end_point[0] + 1
 
         function_info = parse_function_signature(node)
+        # Check: not function_info
         if not function_info:
+            # Return result
             return None
 
         name, return_type, parameters, modifiers = function_info
@@ -830,6 +953,7 @@ def extract_cpp_function(
 
         docstring = extract_comment_for_line(start_line)
 
+        # Return result
         return Function(
             name=name,
             start_line=start_line,
@@ -848,9 +972,11 @@ def extract_cpp_function(
         )
     except (AttributeError, ValueError, TypeError) as e:
         log_debug(f"Failed to extract function info: {e}")
+        # Return result
         return None
     except Exception as e:
         log_error(f"Unexpected error in function extraction: {e}")
+        # Return result
         return None
 
 
@@ -872,13 +998,17 @@ def extract_cpp_class(
         superclasses: list[str] = []
         modifiers: list[str] = []
 
+        # Iterate over child
         for child in node.children:
+            # Check: child.type == "type_identifier"
             if child.type == "type_identifier":
                 class_name = get_node_text(child)
             elif child.type == "base_class_clause":
                 superclasses = extract_base_classes(child)
 
+        # Check: not class_name
         if not class_name:
+            # Return result
             return None
 
         start_line_idx = max(0, start_line - 1)
@@ -891,6 +1021,7 @@ def extract_cpp_class(
             f"{current_namespace}::{class_name}" if current_namespace else class_name
         )
 
+        # Return result
         return Class(
             name=class_name,
             start_line=start_line,
@@ -907,6 +1038,8 @@ def extract_cpp_class(
         )
     except Exception as e:
         log_debug(f"Failed to extract class info: {e}")
+        # Return result
         return None
+
 
 

@@ -278,16 +278,20 @@ def extract_strikethrough_elements(
     """Extract strikethrough elements."""
     from .extractor import MarkdownElement
 
+    # Iterate over node
     for node in traverse_nodes(root_node):
+        # Check: node.type == "inline"
         if node.type == "inline":
             try:
                 raw_text = get_node_text(node)
+                # Check: not raw_text
                 if not raw_text:
                     continue
 
                 strike_pattern = r"~~([^~]+)~~"
                 matches = re.finditer(strike_pattern, raw_text)
 
+                # Iterate over match
                 for match in matches:
                     content = match.group(1) or ""
 
@@ -321,16 +325,20 @@ def extract_footnote_elements(
     """Extract footnote elements."""
     from .extractor import MarkdownElement
 
+    # Iterate over node
     for node in traverse_nodes(root_node):
+        # Check: node.type == "inline"
         if node.type == "inline":
             try:
                 raw_text = get_node_text(node)
+                # Check: not raw_text
                 if not raw_text:
                     continue
 
                 footnote_ref_pattern = r"\[\^([^\]]+)\]"
                 matches = re.finditer(footnote_ref_pattern, raw_text)
 
+                # Iterate over match
                 for match in matches:
                     ref_id = match.group(1) or ""
                     start_line = node.start_point[0] + 1
@@ -353,6 +361,7 @@ def extract_footnote_elements(
         elif node.type == "paragraph":
             try:
                 raw_text = get_node_text(node)
+                # Check: not raw_text
                 if not raw_text:
                     continue
 
@@ -361,6 +370,7 @@ def extract_footnote_elements(
                     footnote_def_pattern, raw_text.strip(), re.MULTILINE
                 )
 
+                # Check: footnote_match
                 if footnote_match:
                     ref_id = footnote_match.group(1) or ""
                     content = footnote_match.group(2) or ""
@@ -380,5 +390,6 @@ def extract_footnote_elements(
 
             except Exception as e:
                 log_debug(f"Failed to extract footnote definition: {e}")
+
 
 

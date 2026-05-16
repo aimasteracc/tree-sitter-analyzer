@@ -310,6 +310,7 @@ def _extract_reference_images(
                 ref_image_pattern = r"!\[([^\]]*)\]\[([^\]]*)\]"
                 matches = re.finditer(ref_image_pattern, raw_text)
 
+                # Iterate over match
                 for match in matches:
                     alt_text = match.group(1) or ""
 
@@ -344,18 +345,23 @@ def _extract_image_reference_definitions(
 ) -> None:
     """Extract image reference definitions."""
     image_refs_used: set[str] = set()
+    # Iterate over node
     for node in traverse_nodes(root_node):
+        # Check: node.type == "inline"
         if node.type == "inline":
             try:
                 raw_text = get_node_text(node)
+                # Check: not raw_text
                 if not raw_text:
                     continue
 
                 ref_image_pattern = r"!\[([^\]]*)\]\[([^\]]*)\]"
                 matches = re.finditer(ref_image_pattern, raw_text)
 
+                # Iterate over match
                 for match in matches:
                     ref = match.group(2) or ""
+                    # Check: ref
                     if ref:
                         image_refs_used.add(ref.lower())
 
@@ -364,7 +370,9 @@ def _extract_image_reference_definitions(
 
     image_extensions = {".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp"}
 
+    # Iterate over node
     for node in traverse_nodes(root_node):
+        # Check: node.type == "link_reference_definition"
         if node.type == "link_reference_definition":
             try:
                 start_line = node.start_point[0] + 1
@@ -376,6 +384,7 @@ def _extract_image_reference_definitions(
                     ref_pattern, raw_text.strip()
                 )
 
+                # Check: ref_match
                 if ref_match:
                     label = ref_match.group(1) or ""
                     url = ref_match.group(2) or ""
@@ -386,6 +395,7 @@ def _extract_image_reference_definitions(
                         url.lower().endswith(ext) for ext in image_extensions
                     )
 
+                    # Check: is_used_by_image or is_image_url
                     if is_used_by_image or is_image_url:
                         from .extractor import MarkdownElement
 
@@ -405,5 +415,6 @@ def _extract_image_reference_definitions(
 
             except Exception as e:
                 log_debug(f"Failed to extract image reference definition: {e}")
+
 
 

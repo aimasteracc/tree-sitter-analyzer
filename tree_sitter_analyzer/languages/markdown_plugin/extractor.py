@@ -270,6 +270,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 unique_links.append(link)
 
         log_debug(f"Extracted {len(unique_links)} Markdown links")
+        # Return result
         return unique_links
 
     # Extract elements from AST: extract_images
@@ -283,6 +284,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         images: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 all_images = _extract_md_images_standalone(
@@ -297,13 +299,16 @@ class MarkdownElementExtractor(ElementExtractor):
         # Deduplicate
         seen: set[tuple[str, str]] = set()
         unique_images: list[MarkdownElement] = []
+        # Iterate over img
         for img in images:
             key = (img.alt_text or "", img.url or "")
+            # Check: key not in seen
             if key not in seen:
                 seen.add(key)
                 unique_images.append(img)
 
         log_debug(f"Extracted {len(unique_images)} Markdown images")
+        # Return result
         return unique_images
 
     # Extract elements from AST: extract_references
@@ -317,6 +322,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         references: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 refs = _extract_md_link_refs_standalone(
@@ -329,6 +335,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 log_debug(f"Error during reference extraction: {e}")
 
         log_debug(f"Extracted {len(references)} Markdown references")
+        # Return result
         return references
 
     # Extract elements from AST: extract_blockquotes
@@ -342,6 +349,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         blockquotes: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_block_quotes(tree.root_node, blockquotes)
@@ -349,6 +357,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 log_debug(f"Error during blockquote extraction: {e}")
 
         log_debug(f"Extracted {len(blockquotes)} Markdown blockquotes")
+        # Return result
         return blockquotes
 
     # Extract elements from AST: extract_horizontal_rules
@@ -362,6 +371,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         horizontal_rules: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_thematic_breaks(tree.root_node, horizontal_rules)
@@ -369,6 +379,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 log_debug(f"Error during horizontal rule extraction: {e}")
 
         log_debug(f"Extracted {len(horizontal_rules)} Markdown horizontal rules")
+        # Return result
         return horizontal_rules
 
     # Extract elements from AST: extract_html_elements
@@ -382,6 +393,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         html_elements: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_html_blocks(tree.root_node, html_elements)
@@ -391,6 +403,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 log_debug(f"Error during HTML element extraction: {e}")
 
         log_debug(f"Extracted {len(html_elements)} HTML elements")
+        # Return result
         return html_elements
 
     # Format data for output: extract_text_formatting
@@ -404,6 +417,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         formatting_elements: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_emphasis_elements(tree.root_node, formatting_elements)
@@ -415,6 +429,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 log_debug(f"Error during text formatting extraction: {e}")
 
         log_debug(f"Extracted {len(formatting_elements)} text formatting elements")
+        # Return result
         return formatting_elements
 
     # Extract elements from AST: extract_footnotes
@@ -428,6 +443,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         footnotes: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_footnote_elements(tree.root_node, footnotes)
@@ -435,6 +451,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 log_debug(f"Error during footnote extraction: {e}")
 
         log_debug(f"Extracted {len(footnotes)} footnotes")
+        # Return result
         return footnotes
 
     # Extract elements from AST: extract_lists
@@ -448,6 +465,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         lists: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_list_items(tree.root_node, lists)
@@ -455,6 +473,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 log_debug(f"Error during list extraction: {e}")
 
         log_debug(f"Extracted {len(lists)} Markdown list items")
+        # Return result
         return lists
 
     # Extract elements from AST: extract_tables
@@ -468,6 +487,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
         tables: list[MarkdownElement] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_pipe_tables(tree.root_node, tables)
@@ -475,6 +495,7 @@ class MarkdownElementExtractor(ElementExtractor):
                 log_debug(f"Error during table extraction: {e}")
 
         log_debug(f"Extracted {len(tables)} Markdown tables")
+        # Return result
         return tables
 
     # Process: _reset_caches
@@ -486,6 +507,7 @@ class MarkdownElementExtractor(ElementExtractor):
         # Critical: Reset extraction tracking to prevent cross-call pollution
         if hasattr(self, "_extracted_links"):
             self._extracted_links.clear()
+        # Check: hasattr(self, "_extracted_images")
         if hasattr(self, "_extracted_images"):
             self._extracted_images.clear()
 
@@ -495,7 +517,9 @@ class MarkdownElementExtractor(ElementExtractor):
         # Use position-based cache key for deterministic behavior
         cache_key = (node.start_byte, node.end_byte)
 
+        # Check: cache_key in self._node_text_cache
         if cache_key in self._node_text_cache:
+            # Return result
             return self._node_text_cache[cache_key]
 
         try:
@@ -506,8 +530,10 @@ class MarkdownElementExtractor(ElementExtractor):
             content_bytes = safe_encode("\n".join(self.content_lines), encoding)
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
 
+            # Check: text
             if text:
                 self._node_text_cache[cache_key] = text
+                # Return result
                 return text
         except Exception as e:
             log_error(f"Error in _get_node_text_optimized: {e}")
@@ -517,26 +543,34 @@ class MarkdownElementExtractor(ElementExtractor):
             start_point = node.start_point
             end_point = node.end_point
 
+            # Check: start_point[0] < 0 or start_point[0] >= 
             if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
+                # Return result
                 return ""
 
+            # Check: end_point[0] < 0 or end_point[0] >= len(
             if end_point[0] < 0 or end_point[0] >= len(self.content_lines):
+                # Return result
                 return ""
 
+            # Check: start_point[0] == end_point[0]
             if start_point[0] == end_point[0]:
                 line = self.content_lines[start_point[0]]
                 start_col = max(0, min(start_point[1], len(line)))
                 end_col = max(start_col, min(end_point[1], len(line)))
                 result: str = line[start_col:end_col]
                 self._node_text_cache[cache_key] = result
+                # Return result
                 return result
             else:
                 lines = []
                 for i in range(
                     start_point[0], min(end_point[0] + 1, len(self.content_lines))
                 ):
+                    # Check: i < len(self.content_lines)
                     if i < len(self.content_lines):
                         line = self.content_lines[i]
+                        # Check: i == start_point[0] and i == end_point[0
                         if i == start_point[0] and i == end_point[0]:
                             # Single line case
                             start_col = max(0, min(start_point[1], len(line)))
@@ -552,9 +586,11 @@ class MarkdownElementExtractor(ElementExtractor):
                             lines.append(line)
                 result = "\n".join(lines)
                 self._node_text_cache[cache_key] = result
+                # Return result
                 return result
         except Exception as fallback_error:
             log_error(f"Fallback text extraction also failed: {fallback_error}")
+            # Return result
             return ""
 
     # Extract elements from AST: _extract_atx_headers
@@ -562,7 +598,9 @@ class MarkdownElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", headers: list[MarkdownElement]
     ) -> None:
         """Extract ATX-style headers (# ## ### etc.)"""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "atx_heading"
             if node.type == "atx_heading":
                 try:
                     start_line = node.start_point[0] + 1
@@ -598,7 +636,9 @@ class MarkdownElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", headers: list[MarkdownElement]
     ) -> None:
         """Extract Setext-style headers (underlined)"""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "setext_heading"
             if node.type == "setext_heading":
                 try:
                     start_line = node.start_point[0] + 1
@@ -608,8 +648,10 @@ class MarkdownElementExtractor(ElementExtractor):
                     # Determine level based on underline character
                     level = 2  # Default to H2
                     lines = raw_text.strip().split("\n")
+                    # Check: len(lines) >= 2
                     if len(lines) >= 2:
                         underline = lines[1].strip()
+                        # Check: underline.startswith("=")
                         if underline.startswith("="):
                             level = 1  # H1
                         elif underline.startswith("-"):
@@ -638,7 +680,9 @@ class MarkdownElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", code_blocks: list[MarkdownElement]
     ) -> None:
         """Extract fenced code blocks"""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "fenced_code_block"
             if node.type == "fenced_code_block":
                 try:
                     start_line = node.start_point[0] + 1
@@ -648,19 +692,24 @@ class MarkdownElementExtractor(ElementExtractor):
                     # Extract language info
                     language_info = None
                     lines = raw_text.strip().split("\n")
+                    # Check: lines and lines[0].startswith("```")
                     if lines and lines[0].startswith("```"):
                         language_info = lines[0][3:].strip()
 
                     # Extract content (excluding fence markers)
                     content_lines = []
                     in_content = False
+                    # Iterate over line
                     for line in lines:
+                        # Check: line.startswith("```")
                         if line.startswith("```"):
+                            # Check: not in_content
                             if not in_content:
                                 in_content = True
                                 continue
                             else:
                                 break
+                        # Check: in_content
                         if in_content:
                             content_lines.append(line)
 
@@ -687,7 +736,9 @@ class MarkdownElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", code_blocks: list[MarkdownElement]
     ) -> None:
         """Extract indented code blocks"""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "indented_code_block"
             if node.type == "indented_code_block":
                 try:
                     start_line = node.start_point[0] + 1
@@ -784,7 +835,9 @@ class MarkdownElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", lists: list[MarkdownElement]
     ) -> None:
         """Extract lists (not individual items)"""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "list"
             if node.type == "list":
                 try:
                     start_line = node.start_point[0] + 1
@@ -796,7 +849,9 @@ class MarkdownElementExtractor(ElementExtractor):
                     is_task_list = False
                     is_ordered = False
 
+                    # Iterate over child
                     for child in node.children:
+                        # Check: child.type == "list_item"
                         if child.type == "list_item":
                             item_count += 1
                             item_text = self._get_node_text_optimized(child)
@@ -846,7 +901,9 @@ class MarkdownElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", tables: list[MarkdownElement]
     ) -> None:
         """Extract pipe tables"""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "pipe_table"
             if node.type == "pipe_table":
                 try:
                     start_line = node.start_point[0] + 1
@@ -865,6 +922,7 @@ class MarkdownElementExtractor(ElementExtractor):
 
                     # Count columns from first row
                     column_count = 0
+                    # Check: lines
                     if lines:
                         first_row = lines[0]
                         column_count = len(
@@ -972,6 +1030,7 @@ class MarkdownElementExtractor(ElementExtractor):
     def _traverse_nodes(self, node: "tree_sitter.Node") -> Any:
         """Traverse all nodes in the tree"""
         yield node
+        # Iterate over child
         for child in node.children:
             yield from self._traverse_nodes(child)
 
@@ -984,12 +1043,15 @@ class MarkdownElementExtractor(ElementExtractor):
         pattern = r'\[([^\]]*)\]\(([^)]*?)(?:\s+"([^"]*)")?\)'
         match = re.search(pattern, raw_text)
 
+        # Check: match
         if match:
             text = match.group(1) or ""
             url = match.group(2) or ""
             title = match.group(3) or ""
+            # Return result
             return text, url, title
 
+        # Return result
         return "", "", ""
 
     # Parse input into structured data: _parse_image_components
@@ -1001,12 +1063,16 @@ class MarkdownElementExtractor(ElementExtractor):
         pattern = r'!\[([^\]]*)\]\(([^)]*?)(?:\s+"([^"]*)")?\)'
         match = re.search(pattern, raw_text)
 
+        # Check: match
         if match:
             alt_text = match.group(1) or ""
             url = match.group(2) or ""
             title = match.group(3) or ""
+            # Return result
             return alt_text, url, title
 
+        # Return result
         return "", "", ""
+
 
 

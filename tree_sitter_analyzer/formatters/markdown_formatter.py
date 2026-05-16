@@ -289,6 +289,7 @@ class MarkdownFormatter(BaseFormatter):
         """Format AnalysisResult directly for Markdown files"""
         # Convert AnalysisResult to the format expected by format_table
         data = self._convert_analysis_result_to_format(analysis_result)
+        # Return result
         return self.format_table(data, table_type)
 
     # Format data for output: _convert_analysis_result_to_format
@@ -296,6 +297,7 @@ class MarkdownFormatter(BaseFormatter):
         self, analysis_result: Any
     ) -> dict[str, Any]:
         """Convert AnalysisResult to format expected by format_table"""
+        # Return result
         return {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
@@ -334,16 +336,21 @@ class MarkdownFormatter(BaseFormatter):
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
         """Format table output for Markdown files"""
+        # Check: table_type == "compact"
         if table_type == "compact":
+            # Return result
             return self._format_compact(analysis_result)
         elif table_type == "csv":
+            # Return result
             return self._format_csv(analysis_result)
         else:
+            # Return result
             return self._format_full(analysis_result)
 
     # Format data for output: _format_full
     def _format_full(self, analysis_result: dict[str, Any]) -> str:
         """Format full table output for Markdown files"""
+        # Return result
         return format_full(analysis_result, self._collect_images)
 
     # Process: _collect_images
@@ -365,7 +372,9 @@ class MarkdownFormatter(BaseFormatter):
         has_image_ref_defs = any(
             e.get("type") == "image_reference_definition" for e in elements
         )
+        # Check: has_image_ref_defs
         if has_image_ref_defs:
+            # Return result
             return images
 
         # Fallback: promote reference_definition with image-like URL
@@ -373,17 +382,22 @@ class MarkdownFormatter(BaseFormatter):
             import re
 
             image_exts = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp")
+            # Iterate over e
             for e in elements:
+                # Check: e.get("type") == "reference_definition"
                 if e.get("type") == "reference_definition":
                     url = e.get("url") or ""
                     alt = e.get("alt") or ""
+                    # Check: not url
                     if not url:
                         # Parse from raw content stored in name
                         name_field = (e.get("name") or "").strip()
                         m = re.match(r"^\[([^\]]+)\]:\s*([^\s]+)", name_field)
+                        # Check: m
                         if m:
                             alt = alt or m.group(1)
                             url = m.group(2)
+                    # Check: url and any(url.lower().endswith(ext) fo
                     if url and any(url.lower().endswith(ext) for ext in image_exts):
                         images.append(
                             {
@@ -397,6 +411,7 @@ class MarkdownFormatter(BaseFormatter):
             # Be conservative on any error
             return images
 
+        # Return result
         return images
 
     # Format data for output: _format_advanced_text
@@ -430,6 +445,7 @@ class MarkdownFormatter(BaseFormatter):
         output.append(f'"Has External Links: {content["has_external_links"]}"')
         output.append(f'"Document Complexity: {content["document_complexity"]}"')
 
+        # Return result
         return "\n".join(output)
 
     # Process: _calculate_document_complexity
@@ -457,12 +473,16 @@ class MarkdownFormatter(BaseFormatter):
 
         # Classify complexity
         if score < 20:
+            # Return result
             return "Simple"
         elif score < 50:
+            # Return result
             return "Moderate"
         elif score < 100:
+            # Return result
             return "Complex"
         else:
+            # Return result
             return "Very Complex"
 
     # Format data for output: _format_json_output
@@ -472,6 +492,7 @@ class MarkdownFormatter(BaseFormatter):
 
         output = [f"--- {title} ---"]
         output.append(json.dumps(data, indent=2, ensure_ascii=False))
+        # Return result
         return "\n".join(output)
 
     # Process: _compute_robust_counts_from_file
@@ -484,7 +505,9 @@ class MarkdownFormatter(BaseFormatter):
         import re
 
         counts = {"link_count": 0, "image_count": 0}
+        # Check: not file_path
         if not file_path:
+            # Return result
             return counts
 
         try:
@@ -492,6 +515,7 @@ class MarkdownFormatter(BaseFormatter):
 
             content, _ = read_file_safe(file_path)
         except Exception:
+            # Return result
             return counts
 
         # Autolinks (URLs, mailto, and bare emails), exclude HTML tags by pattern
@@ -530,6 +554,7 @@ class MarkdownFormatter(BaseFormatter):
             r"^\[([^\]]+)\]:\s*([^\s]+)(?:\s+\"([^\"]*)\")?", re.MULTILINE
         )
         image_ref_defs_used = 0
+        # Iterate over m
         for m in def_pattern.finditer(content):
             label = (m.group(1) or "").lower()
             url = (m.group(2) or "").lower()
@@ -542,6 +567,7 @@ class MarkdownFormatter(BaseFormatter):
         counts["image_count"] = (
             inline_images_count + ref_images_count + image_ref_defs_used
         )
+        # Return result
         return counts
 
     # Format data for output: _format_compact
@@ -564,6 +590,7 @@ class MarkdownFormatter(BaseFormatter):
 
         # Extract filename from path
         filename = file_path.split("/")[-1].split("\\")[-1]
+        # Check: filename.endswith((".md", ".markdown"))
         if filename.endswith((".md", ".markdown")):
             filename = filename.rsplit(".", 1)[0]
 
@@ -590,10 +617,12 @@ class MarkdownFormatter(BaseFormatter):
                 text = header.get("text", "").strip()[:50]  # Truncate long headers
                 line = header.get("line_range", {}).get("start", "")
                 output.append(f"| {level} | {text} | {line} |")
+            # Check: len(headers) > 20
             if len(headers) > 20:
                 output.append(f"| ... | ({len(headers) - 20} more) | |")
             output.append("")
 
+        # Return result
         return "\n".join(output)
 
     # Format data for output: _format_csv
@@ -618,6 +647,7 @@ class MarkdownFormatter(BaseFormatter):
             start_line = element.get("line_range", {}).get("start", 0)
             end_line = element.get("line_range", {}).get("end", 0)
 
+            # Check: elem_type == "heading"
             if elem_type == "heading":
                 text = element.get("text", "")[:50]
                 level = element.get("level", 1)
@@ -656,6 +686,8 @@ class MarkdownFormatter(BaseFormatter):
 
         csv_content = output.getvalue()
         output.close()
+        # Return result
         return csv_content.rstrip("\n")
+
 
 

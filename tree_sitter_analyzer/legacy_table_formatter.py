@@ -726,6 +726,7 @@ class LegacyTableFormatter:
         while lines and lines[-1] == "":
             lines.pop()
 
+        # Return result
         return "\n".join(lines)
 
     # Format data for output: _format_csv
@@ -752,7 +753,9 @@ class LegacyTableFormatter:
 
         # Class row
         classes = data.get("classes", [])
+        # Check: classes
         if classes:
+            # Iterate over cls
             for cls in classes:
                 writer.writerow(
                     [
@@ -772,7 +775,9 @@ class LegacyTableFormatter:
             # Format parameters as "param1:type1;param2:type2"
             params = method.get("parameters", [])
             param_strs = []
+            # Iterate over param
             for param in params:
+                # Check: isinstance(param, dict)
                 if isinstance(param, dict):
                     param_type = str(param.get("type", "Object"))
                     param_name = str(param.get("name", "param"))
@@ -780,6 +785,7 @@ class LegacyTableFormatter:
                 elif isinstance(param, str):
                     # Handle "type param" format - convert to "param:type"
                     parts = param.strip().split()
+                    # Check: len(parts) >= 2
                     if len(parts) >= 2:
                         # Everything except last part is type, last part is name
                         param_type = " ".join(parts[:-1])
@@ -837,6 +843,7 @@ class LegacyTableFormatter:
         csv_content = csv_content.rstrip("\n")
         output.close()
 
+        # Return result
         return csv_content
 
     # Process: _create_full_signature
@@ -844,6 +851,7 @@ class LegacyTableFormatter:
         """Create complete method signature"""
         params = method.get("parameters", [])
         param_strs = []
+        # Iterate over param
         for param in params:
             # Handle both dict and string parameters
             if isinstance(param, dict):
@@ -861,21 +869,26 @@ class LegacyTableFormatter:
         return_type = str(method.get("return_type", "void"))
 
         modifiers = []
+        # Check: method.get("is_static", False)
         if method.get("is_static", False):
             modifiers.append("[static]")
 
         modifier_str = " ".join(modifiers)
         signature = f"({params_str}):{return_type}"
 
+        # Check: modifier_str
         if modifier_str:
             signature += f" {modifier_str}"
 
+        # Return result
         return signature
 
     # Process: _shorten_type
     def _shorten_type(self, type_name: Any) -> str:
         """Shorten type name"""
+        # Check: type_name is None
         if type_name is None:
+            # Return result
             return "O"
 
         # Convert non-string types to string
@@ -898,6 +911,7 @@ class LegacyTableFormatter:
 
         # Map<String,Object> -> M<S,O>
         if "Map<" in type_name:
+            # Return result
             return str(
                 type_name.replace("Map<", "M<")
                 .replace("String", "S")
@@ -906,28 +920,36 @@ class LegacyTableFormatter:
 
         # List<String> -> L<S>
         if "List<" in type_name:
+            # Return result
             return str(type_name.replace("List<", "L<").replace("String", "S"))
 
         # String[] -> S[]
         if "[]" in type_name:
             base_type = type_name.replace("[]", "")
+            # Check: base_type
             if base_type:
+                # Return result
                 return str(type_mapping.get(base_type, base_type[0].upper())) + "[]"
             else:
+                # Return result
                 return "O[]"
 
+        # Return result
         return str(type_mapping.get(type_name, type_name))
 
     # Convert between formats: _convert_visibility
     def _convert_visibility(self, visibility: str) -> str:
         """Convert visibility to symbol"""
         mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}
+        # Return result
         return mapping.get(visibility, visibility)
 
     # Extract elements from AST: _extract_doc_summary
     def _extract_doc_summary(self, javadoc: str) -> str:
         """Extract summary from JavaDoc"""
+        # Check: not javadoc
         if not javadoc:
+            # Return result
             return "-"
 
         # Remove comment symbols
@@ -938,15 +960,20 @@ class LegacyTableFormatter:
         # Get first sentence
         if clean_doc:
             sentences = clean_doc.split(".")
+            # Check: sentences
             if sentences:
+                # Return result
                 return sentences[0].strip()
 
+        # Return result
         return "-"
 
     # Process: _clean_csv_text
     def _clean_csv_text(self, text: str) -> str:
         """Clean text for CSV output"""
+        # Check: not text or text == "-"
         if not text or text == "-":
+            # Return result
             return "-"
 
         # Remove newlines and extra whitespace
@@ -955,6 +982,8 @@ class LegacyTableFormatter:
         # Escape quotes for CSV
         cleaned = cleaned.replace('"', '""')
 
+        # Return result
         return cleaned
+
 
 

@@ -1206,10 +1206,12 @@ class TypeScriptElementExtractor(ElementExtractor):
                 generic_text = self._get_node_text_optimized(child)
                 generics.append(generic_text)
 
+        # Return result
         return generics
 
     # Extract elements from AST: _extract_import_info_simple
     def _extract_import_info_simple(self, node: "tree_sitter.Node") -> Import | None:
+        # Return result
         return _import_info_standalone(
             node, self.source_code, self._get_node_text_optimized
         )
@@ -1218,18 +1220,21 @@ class TypeScriptElementExtractor(ElementExtractor):
     def _extract_import_names(
         self, import_clause_node: "tree_sitter.Node", import_text: str = ""
     ) -> list[str]:
+        # Return result
         return _import_names_standalone(
             import_clause_node, self.source_code, self._get_node_text_optimized
         )
 
     # Extract elements from AST: _extract_dynamic_import
     def _extract_dynamic_import(self, node: "tree_sitter.Node") -> Import | None:
+        # Return result
         return _dynamic_import_standalone(node, self._get_node_text_optimized)
 
     # Extract elements from AST: _extract_commonjs_requires
     def _extract_commonjs_requires(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Import]:
+        # Return result
         return _commonjs_requires_standalone(
             tree, source_code, self._get_node_text_optimized
         )
@@ -1239,9 +1244,11 @@ class TypeScriptElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node", class_name: str
     ) -> bool:
         """Check if class is a framework component"""
+        # Check: self.framework_type == "react"
         if self.framework_type == "react":
             # Check if extends React.Component or Component
             node_text = self._get_node_text_optimized(node)
+            # Return result
             return "extends" in node_text and (
                 "Component" in node_text or "PureComponent" in node_text
             )
@@ -1251,6 +1258,7 @@ class TypeScriptElementExtractor(ElementExtractor):
         elif self.framework_type == "vue":
             # Check for Vue component patterns
             return "Vue" in self.source_code or "@Component" in self.source_code
+        # Return result
         return False
 
     # Process: _is_exported_class
@@ -1265,38 +1273,54 @@ class TypeScriptElementExtractor(ElementExtractor):
     # Process: _infer_type_from_value
     def _infer_type_from_value(self, value: str | None) -> str:
         """Infer TypeScript type from value"""
+        # Check: not value
         if not value:
+            # Return result
             return "any"
 
         value = value.strip()
 
+        # Check: value.startswith('"') or value.startswit
         if value.startswith('"') or value.startswith("'") or value.startswith("`"):
+            # Return result
             return "string"
         elif value in ["true", "false"]:
+            # Return result
             return "boolean"
         elif value == "null":
+            # Return result
             return "null"
         elif value == "undefined":
+            # Return result
             return "undefined"
         elif value.startswith("[") and value.endswith("]"):
+            # Return result
             return "array"
         elif value.startswith("{") and value.endswith("}"):
+            # Return result
             return "object"
         elif value.replace(".", "").replace("-", "").isdigit():
+            # Return result
             return "number"
         elif "function" in value or "=>" in value:
+            # Return result
             return "function"
         else:
+            # Return result
             return "any"
 
     # Extract elements from AST: _extract_tsdoc_for_line
     def _extract_tsdoc_for_line(self, target_line: int) -> str | None:
         """Extract TSDoc comment immediately before the specified line"""
+        # Check: target_line in self._tsdoc_cache
         if target_line in self._tsdoc_cache:
+            # Return result
             return self._tsdoc_cache[target_line]
 
         try:
+            # Check: not self.content_lines or target_line <=
             if not self.content_lines or target_line <= 1:
+                # Return result
                 return None
 
             # Search backwards from target_line
@@ -1306,6 +1330,7 @@ class TypeScriptElementExtractor(ElementExtractor):
             # Skip empty lines
             while current_line > 0:
                 line = self.content_lines[current_line - 1].strip()
+                # Check: line
                 if line:
                     break
                 current_line -= 1
@@ -1319,6 +1344,7 @@ class TypeScriptElementExtractor(ElementExtractor):
                     # Single line TSDoc
                     cleaned = self._clean_tsdoc(line)
                     self._tsdoc_cache[target_line] = cleaned
+                    # Return result
                     return cleaned
                 elif line.endswith("*/"):
                     # Multi-line TSDoc
@@ -1331,33 +1357,41 @@ class TypeScriptElementExtractor(ElementExtractor):
                         line_stripped = line_content.strip()
                         tsdoc_lines.append(line_content)
 
+                        # Check: line_stripped.startswith("/**")
                         if line_stripped.startswith("/**"):
                             tsdoc_lines.reverse()
                             tsdoc_text = "\n".join(tsdoc_lines)
                             cleaned = self._clean_tsdoc(tsdoc_text)
                             self._tsdoc_cache[target_line] = cleaned
+                            # Return result
                             return cleaned
                         current_line -= 1
 
             self._tsdoc_cache[target_line] = ""
+            # Return result
             return None
 
         except Exception as e:
             log_debug(f"Failed to extract TSDoc: {e}")
+            # Return result
             return None
 
     # Process: _clean_tsdoc
     def _clean_tsdoc(self, tsdoc_text: str) -> str:
         """Clean TSDoc text by removing comment markers"""
+        # Check: not tsdoc_text
         if not tsdoc_text:
+            # Return result
             return ""
 
         lines = tsdoc_text.split("\n")
         cleaned_lines = []
 
+        # Iterate over line
         for line in lines:
             line = line.strip()
 
+            # Check: line.startswith("/**")
             if line.startswith("/**"):
                 line = line[3:].strip()
             elif line.startswith("*/"):
@@ -1365,16 +1399,20 @@ class TypeScriptElementExtractor(ElementExtractor):
             elif line.startswith("*"):
                 line = line[1:].strip()
 
+            # Check: line
             if line:
                 cleaned_lines.append(line)
 
+        # Return result
         return " ".join(cleaned_lines) if cleaned_lines else ""
 
     # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity efficiently"""
         node_id = id(node)
+        # Check: node_id in self._complexity_cache
         if node_id in self._complexity_cache:
+            # Return result
             return self._complexity_cache[node_id]
 
         complexity = 1
@@ -1392,12 +1430,14 @@ class TypeScriptElementExtractor(ElementExtractor):
                 "||",
                 "?",
             ]
+            # Iterate over keyword
             for keyword in keywords:
                 complexity += node_text.count(keyword)
         except Exception as e:
             log_debug(f"Failed to calculate complexity: {e}")
 
         self._complexity_cache[node_id] = complexity
+        # Return result
         return complexity
 
     # Extract elements from AST: extract_elements
@@ -1413,6 +1453,8 @@ class TypeScriptElementExtractor(ElementExtractor):
         all_elements.extend(self.extract_variables(tree, source_code))
         all_elements.extend(self.extract_imports(tree, source_code))
 
+        # Return result
         return all_elements
+
 
 

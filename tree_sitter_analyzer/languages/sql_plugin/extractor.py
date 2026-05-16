@@ -232,6 +232,7 @@ class SQLElementExtractor(ElementExtractor):
 
         variables: list[Variable] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_indexes(tree.root_node, variables)
@@ -239,6 +240,7 @@ class SQLElementExtractor(ElementExtractor):
             except Exception as e:
                 log_debug(f"Error during variable extraction: {e}")
 
+        # Return result
         return variables
 
     # Extract elements from AST: extract_imports
@@ -252,6 +254,7 @@ class SQLElementExtractor(ElementExtractor):
 
         imports: list[Import] = []
 
+        # Check: tree is not None and tree.root_node is n
         if tree is not None and tree.root_node is not None:
             try:
                 self._extract_schema_references(tree.root_node, imports)
@@ -259,6 +262,7 @@ class SQLElementExtractor(ElementExtractor):
             except Exception as e:
                 log_debug(f"Error during import extraction: {e}")
 
+        # Return result
         return imports
 
     # ---------------------------------------------------------------
@@ -274,7 +278,9 @@ class SQLElementExtractor(ElementExtractor):
         """Get text content from a tree-sitter node with caching."""
         cache_key = (node.start_byte, node.end_byte)
 
+        # Check: cache_key in self._node_text_cache
         if cache_key in self._node_text_cache:
+            # Return result
             return self._node_text_cache[cache_key]
 
         try:
@@ -284,8 +290,10 @@ class SQLElementExtractor(ElementExtractor):
             content_bytes = safe_encode("\n".join(self.content_lines), encoding)
             text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
 
+            # Check: text
             if text:
                 self._node_text_cache[cache_key] = text
+                # Return result
                 return text
         except Exception as e:
             log_debug(f"Error in _get_node_text: {e}")
@@ -295,26 +303,34 @@ class SQLElementExtractor(ElementExtractor):
             start_point = node.start_point
             end_point = node.end_point
 
+            # Check: start_point[0] < 0 or start_point[0] >= 
             if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
+                # Return result
                 return ""
 
+            # Check: end_point[0] < 0 or end_point[0] >= len(
             if end_point[0] < 0 or end_point[0] >= len(self.content_lines):
+                # Return result
                 return ""
 
+            # Check: start_point[0] == end_point[0]
             if start_point[0] == end_point[0]:
                 line = self.content_lines[start_point[0]]
                 start_col = max(0, min(start_point[1], len(line)))
                 end_col = max(start_col, min(end_point[1], len(line)))
                 result: str = line[start_col:end_col]
                 self._node_text_cache[cache_key] = result
+                # Return result
                 return result
             else:
                 lines = []
                 for i in range(
                     start_point[0], min(end_point[0] + 1, len(self.content_lines))
                 ):
+                    # Check: i < len(self.content_lines)
                     if i < len(self.content_lines):
                         line = self.content_lines[i]
+                        # Check: i == start_point[0] and i == end_point[0
                         if i == start_point[0] and i == end_point[0]:
                             start_col = max(0, min(start_point[1], len(line)))
                             end_col = max(start_col, min(end_point[1], len(line)))
@@ -329,20 +345,25 @@ class SQLElementExtractor(ElementExtractor):
                             lines.append(line)
                 result = "\n".join(lines)
                 self._node_text_cache[cache_key] = result
+                # Return result
                 return result
         except Exception as fallback_error:
             log_debug(f"Fallback text extraction also failed: {fallback_error}")
+            # Return result
             return ""
 
     # Process: _traverse_nodes
     def _traverse_nodes(self, node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
         yield node
+        # Check: hasattr(node, "children")
         if hasattr(node, "children"):
+            # Iterate over child
             for child in node.children:
                 yield from self._traverse_nodes(child)
 
     # Process: _is_valid_identifier
     def _is_valid_identifier(self, name: str) -> bool:
+        # Return result
         return _is_valid_identifier_external(name)
 
     # ---------------------------------------------------------------
@@ -353,21 +374,30 @@ class SQLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", classes: list[Class]
     ) -> None:
         """Extract CREATE TABLE statements from SQL AST."""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "create_table"
             if node.type == "create_table":
                 table_name = None
+                # Iterate over child
                 for child in node.children:
+                    # Check: child.type == "object_reference"
                     if child.type == "object_reference":
+                        # Iterate over subchild
                         for subchild in child.children:
+                            # Check: subchild.type == "identifier"
                             if subchild.type == "identifier":
                                 table_name = self._get_node_text(subchild).strip()
+                                # Check: table_name and self._is_valid_identifier
                                 if table_name and self._is_valid_identifier(table_name):
                                     break
                                 else:
                                     table_name = None
+                        # Check: table_name
                         if table_name:
                             break
 
+                # Check: table_name
                 if table_name:
                     try:
                         start_line = node.start_point[0] + 1
@@ -390,28 +420,39 @@ class SQLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", classes: list[Class]
     ) -> None:
         """Extract CREATE VIEW statements from SQL AST."""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "create_view"
             if node.type == "create_view":
                 raw_text = self._get_node_text(node)
                 view_name = None
 
+                # Check: raw_text
                 if raw_text:
                     view_match = re.search(
                         r"CREATE\s+VIEW\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+AS",
                         raw_text,
                         re.IGNORECASE,
                     )
+                    # Check: view_match
                     if view_match:
                         potential_name = view_match.group(1).strip()
+                        # Check: self._is_valid_identifier(potential_name
                         if self._is_valid_identifier(potential_name):
                             view_name = potential_name
 
+                # Check: not view_name
                 if not view_name:
+                    # Iterate over child
                     for child in node.children:
+                        # Check: child.type == "object_reference"
                         if child.type == "object_reference":
+                            # Iterate over subchild
                             for subchild in child.children:
+                                # Check: subchild.type == "identifier"
                                 if subchild.type == "identifier":
                                     potential_name = self._get_node_text(subchild)
+                                    # Check: potential_name
                                     if potential_name:
                                         potential_name = potential_name.strip()
                                         if (
@@ -436,35 +477,43 @@ class SQLElementExtractor(ElementExtractor):
                                         ):
                                             view_name = potential_name
                                             break
+                            # Check: view_name
                             if view_name:
                                 break
 
+                # Check: view_name
                 if view_name:
                     try:
                         start_line = node.start_point[0] + 1
                         end_line = node.end_point[0] + 1
 
+                        # Check: start_line == end_line and self.source_c
                         if start_line == end_line and self.source_code:
                             current_line_idx = start_line - 1
                             found_end = False
+                            # Iterate over i
                             for i in range(current_line_idx, len(self.content_lines)):
                                 line = self.content_lines[i]
+                                # Check: ";" in line
                                 if ";" in line:
                                     end_line = i + 1
                                     found_end = True
                                     break
 
+                            # Check: not found_end
                             if not found_end:
                                 for i in range(
                                     current_line_idx + 1,
                                     min(len(self.content_lines), current_line_idx + 50),
                                 ):
                                     line = self.content_lines[i].strip()
+                                    # Check: not line or line.upper().startswith("CRE
                                     if not line or line.upper().startswith("CREATE "):
                                         end_line = i
                                         found_end = True
                                         break
 
+                            # Check: found_end and end_line > start_line
                             if found_end and end_line > start_line:
                                 raw_text = "\n".join(
                                     self.content_lines[current_line_idx:end_line]
@@ -489,17 +538,22 @@ class SQLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", functions: list[Function]
     ) -> None:
         """Extract CREATE PROCEDURE statements from SQL AST."""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "ERROR"
             if node.type == "ERROR":
                 has_create = False
                 node_text = self._get_node_text(node)
                 node_text_upper = node_text.upper()
 
+                # Iterate over child
                 for child in node.children:
+                    # Check: child.type == "keyword_create"
                     if child.type == "keyword_create":
                         has_create = True
                         break
 
+                # Check: has_create and "PROCEDURE" in node_text_
                 if has_create and "PROCEDURE" in node_text_upper:
                     matches = re.finditer(
                         r"CREATE\s+PROCEDURE\s+([a-zA-Z_][a-zA-Z0-9_]*)",
@@ -507,9 +561,11 @@ class SQLElementExtractor(ElementExtractor):
                         re.IGNORECASE,
                     )
 
+                    # Iterate over match
                     for match in matches:
                         proc_name = match.group(1)
 
+                        # Check: proc_name
                         if proc_name:
                             try:
                                 newlines_before = node_text[: match.start()].count("\n")
@@ -533,30 +589,41 @@ class SQLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", functions: list[Function]
     ) -> None:
         """Extract CREATE FUNCTION statements from SQL AST."""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "create_function"
             if node.type == "create_function":
                 func_name = None
+                # Iterate over child
                 for child in node.children:
+                    # Check: child.type == "object_reference"
                     if child.type == "object_reference":
+                        # Iterate over subchild
                         for subchild in child.children:
+                            # Check: subchild.type == "identifier"
                             if subchild.type == "identifier":
                                 func_name = self._get_node_text(subchild).strip()
+                                # Check: func_name and self._is_valid_identifier(
                                 if func_name and self._is_valid_identifier(func_name):
                                     break
                                 else:
                                     func_name = None
                         break
 
+                # Check: not func_name
                 if not func_name:
                     raw_text = self._get_node_text(node)
                     match = re.search(
                         r"CREATE\s+FUNCTION\s+(\w+)\s*\(", raw_text, re.IGNORECASE
                     )
+                    # Check: match
                     if match:
                         potential_name = match.group(1).strip()
+                        # Check: self._is_valid_identifier(potential_name
                         if self._is_valid_identifier(potential_name):
                             func_name = potential_name
 
+                # Check: func_name
                 if func_name:
                     try:
                         start_line = node.start_point[0] + 1
@@ -578,13 +645,17 @@ class SQLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", functions: list[Function]
     ) -> None:
         """Extract CREATE TRIGGER statements from SQL AST."""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "ERROR"
             if node.type == "ERROR":
                 node_text = self._get_node_text(node)
+                # Check: not node_text
                 if not node_text:
                     continue
 
                 node_text_upper = node_text.upper()
+                # Check: "CREATE" in node_text_upper and "TRIGGER
                 if "CREATE" in node_text_upper and "TRIGGER" in node_text_upper:
                     matches = re.finditer(
                         r"CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z_][a-zA-Z0-9_]*)",
@@ -592,9 +663,11 @@ class SQLElementExtractor(ElementExtractor):
                         re.IGNORECASE,
                     )
 
+                    # Iterate over match
                     for match in matches:
                         trigger_name = match.group(1)
 
+                        # Check: trigger_name and self._is_valid_identifi
                         if trigger_name and self._is_valid_identifier(trigger_name):
                             if trigger_name.upper() in (
                                 "KEY",
@@ -648,14 +721,19 @@ class SQLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", variables: list[Variable]
     ) -> None:
         """Extract CREATE INDEX statements from SQL AST."""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "create_index"
             if node.type == "create_index":
                 index_name = None
+                # Iterate over child
                 for child in node.children:
+                    # Check: child.type == "identifier"
                     if child.type == "identifier":
                         index_name = self._get_node_text(child).strip()
                         break
 
+                # Check: index_name
                 if index_name:
                     try:
                         start_line = node.start_point[0] + 1
@@ -678,9 +756,12 @@ class SQLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", imports: list[Import]
     ) -> None:
         """Extract schema references (e.g., FROM schema.table)."""
+        # Iterate over node
         for node in self._traverse_nodes(root_node):
+            # Check: node.type == "qualified_name"
             if node.type == "qualified_name":
                 text = self._get_node_text(node)
+                # Check: "." in text and len(text.split(".")) == 
                 if "." in text and len(text.split(".")) == 2:
                     try:
                         start_line = node.start_point[0] + 1
@@ -699,10 +780,13 @@ class SQLElementExtractor(ElementExtractor):
 
     # Backward-compatible delegates for tests
     def _parse_column_definition(self, col_def: str) -> Any:
+        # Return result
         return _parse_column_definition(col_def)
 
     # Process: _split_column_definitions
     def _split_column_definitions(self, content: str) -> list[str]:
+        # Return result
         return _split_column_definitions(content)
+
 
 

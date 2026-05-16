@@ -1212,10 +1212,12 @@ class JavaScriptElementExtractor(ElementExtractor):
     def _is_react_component(self, node: "tree_sitter.Node", class_name: str) -> bool:
         """Check if class is a React component"""
         if self.framework_type != "react":
+            # Return result
             return False
 
         # Check if extends React.Component or Component
         node_text = self._get_node_text_optimized(node)
+        # Return result
         return "extends" in node_text and (
             "Component" in node_text or "PureComponent" in node_text
         )
@@ -1223,33 +1225,46 @@ class JavaScriptElementExtractor(ElementExtractor):
     # Process: _is_exported_class
     def _is_exported_class(self, class_name: str) -> bool:
         """Check if class is exported"""
+        # Return result
         return any(class_name in export.get("names", []) for export in self.exports)
 
     # Process: _infer_type_from_value
     def _infer_type_from_value(self, value: str | None) -> str:
         """Infer JavaScript type from value"""
+        # Check: not value
         if not value:
+            # Return result
             return "unknown"
 
         value = value.strip()
 
+        # Check: value.startswith('"') or value.startswit
         if value.startswith('"') or value.startswith("'") or value.startswith("`"):
+            # Return result
             return "string"
         elif value in ["true", "false"]:
+            # Return result
             return "boolean"
         elif value == "null":
+            # Return result
             return "null"
         elif value == "undefined":
+            # Return result
             return "undefined"
         elif value.startswith("[") and value.endswith("]"):
+            # Return result
             return "array"
         elif value.startswith("{") and value.endswith("}"):
+            # Return result
             return "object"
         elif value.replace(".", "").replace("-", "").isdigit():
+            # Return result
             return "number"
         elif "function" in value or "=>" in value:
+            # Return result
             return "function"
         else:
+            # Return result
             return "unknown"
 
     # Extract elements from AST: extract_elements
@@ -1267,37 +1282,50 @@ class JavaScriptElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
 
+        # Return result
         return elements
 
     # Process: _get_variable_kind
     def _get_variable_kind(self, var_data: dict | str) -> str:
         """Get variable declaration kind from variable data or raw text"""
+        # Check: isinstance(var_data, dict)
         if isinstance(var_data, dict):
             raw_text = var_data.get("raw_text", "")
         else:
             raw_text = var_data
 
+        # Check: not raw_text
         if not raw_text:
+            # Return result
             return "unknown"
 
         raw_text = str(raw_text).strip()
+        # Check: raw_text.startswith("const")
         if raw_text.startswith("const"):
+            # Return result
             return "const"
         elif raw_text.startswith("let"):
+            # Return result
             return "let"
         elif raw_text.startswith("var"):
+            # Return result
             return "var"
         else:
+            # Return result
             return "unknown"
 
     # Extract elements from AST: _extract_jsdoc_for_line
     def _extract_jsdoc_for_line(self, target_line: int) -> str | None:
         """Extract JSDoc comment immediately before the specified line"""
+        # Check: target_line in self._jsdoc_cache
         if target_line in self._jsdoc_cache:
+            # Return result
             return self._jsdoc_cache[target_line]
 
         try:
+            # Check: not self.content_lines or target_line <=
             if not self.content_lines or target_line <= 1:
+                # Return result
                 return None
 
             # Search backwards from target_line
@@ -1307,6 +1335,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Skip empty lines
             while current_line > 0:
                 line = self.content_lines[current_line - 1].strip()
+                # Check: line
                 if line:
                     break
                 current_line -= 1
@@ -1314,6 +1343,7 @@ class JavaScriptElementExtractor(ElementExtractor):
             # Check for JSDoc end
             if current_line > 0:
                 line = self.content_lines[current_line - 1].strip()
+                # Check: line.endswith("*/")
                 if line.endswith("*/"):
                     jsdoc_lines.append(self.content_lines[current_line - 1])
                     current_line -= 1
@@ -1324,33 +1354,41 @@ class JavaScriptElementExtractor(ElementExtractor):
                         line_stripped = line_content.strip()
                         jsdoc_lines.append(line_content)
 
+                        # Check: line_stripped.startswith("/**")
                         if line_stripped.startswith("/**"):
                             jsdoc_lines.reverse()
                             jsdoc_text = "\n".join(jsdoc_lines)
                             cleaned = self._clean_jsdoc(jsdoc_text)
                             self._jsdoc_cache[target_line] = cleaned
+                            # Return result
                             return cleaned
                         current_line -= 1
 
             self._jsdoc_cache[target_line] = ""
+            # Return result
             return None
 
         except Exception as e:
             log_debug(f"Failed to extract JSDoc: {e}")
+            # Return result
             return None
 
     # Process: _clean_jsdoc
     def _clean_jsdoc(self, jsdoc_text: str) -> str:
         """Clean JSDoc text by removing comment markers"""
+        # Check: not jsdoc_text
         if not jsdoc_text:
+            # Return result
             return ""
 
         lines = jsdoc_text.split("\n")
         cleaned_lines = []
 
+        # Iterate over line
         for line in lines:
             line = line.strip()
 
+            # Check: line.startswith("/**")
             if line.startswith("/**"):
                 line = line[3:].strip()
             elif line.startswith("*/"):
@@ -1358,16 +1396,20 @@ class JavaScriptElementExtractor(ElementExtractor):
             elif line.startswith("*"):
                 line = line[1:].strip()
 
+            # Check: line
             if line:
                 cleaned_lines.append(line)
 
+        # Return result
         return " ".join(cleaned_lines) if cleaned_lines else ""
 
     # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity efficiently"""
         node_id = id(node)
+        # Check: node_id in self._complexity_cache
         if node_id in self._complexity_cache:
+            # Return result
             return self._complexity_cache[node_id]
 
         complexity = 1
@@ -1385,12 +1427,15 @@ class JavaScriptElementExtractor(ElementExtractor):
                 "||",
                 "?",
             ]
+            # Iterate over keyword
             for keyword in keywords:
                 complexity += node_text.count(keyword)
         except Exception as e:
             log_debug(f"Failed to calculate complexity: {e}")
 
         self._complexity_cache[node_id] = complexity
+        # Return result
         return complexity
+
 
 

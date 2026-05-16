@@ -592,6 +592,7 @@ class CppTableFormatter(BaseTableFormatter):
         class_type = getattr(element, "class_type", "class")
         visibility = getattr(element, "visibility", "public")
 
+        # Return result
         return {
             "name": final_name,
             "type": class_type,
@@ -610,12 +611,15 @@ class CppTableFormatter(BaseTableFormatter):
         # Parse parameters from string format to dict format for consistency
         # C++ parameters are in "type name" format (e.g., "int a", "T* ptr")
         processed_params = []
+        # Iterate over param
         for param in params:
+            # Check: isinstance(param, str)
             if isinstance(param, str):
                 param = param.strip()
                 # Split "type name" format
                 # Find the last space to separate type from name
                 last_space_idx = param.rfind(" ")
+                # Check: last_space_idx != -1
                 if last_space_idx != -1:
                     param_type = param[:last_space_idx].strip()
                     param_name = param[last_space_idx + 1 :].strip()
@@ -626,6 +630,7 @@ class CppTableFormatter(BaseTableFormatter):
                         param_type += "[]"
                         param_name = param_name.replace("[]", "")
 
+                    # Check: param_type and param_name
                     if param_type and param_name:
                         processed_params.append(
                             {"name": param_name, "type": param_type}
@@ -643,6 +648,7 @@ class CppTableFormatter(BaseTableFormatter):
 
         visibility = getattr(element, "visibility", "public")
 
+        # Return result
         return {
             "name": getattr(element, "name", str(element)),
             "visibility": visibility,
@@ -664,6 +670,7 @@ class CppTableFormatter(BaseTableFormatter):
         field_type = getattr(element, "variable_type", "")
         visibility = getattr(element, "visibility", "public")
 
+        # Return result
         return {
             "name": getattr(element, "name", str(element)),
             "type": field_type,
@@ -686,6 +693,7 @@ class CppTableFormatter(BaseTableFormatter):
             else f"#include {getattr(element, 'name', str(element))}"
         )
 
+        # Return result
         return {
             "statement": statement,
             "raw_text": statement,
@@ -696,6 +704,7 @@ class CppTableFormatter(BaseTableFormatter):
     # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis output"""
+        # Return result
         return super().format_structure(analysis_result)
 
     # Format data for output: format_advanced
@@ -703,11 +712,15 @@ class CppTableFormatter(BaseTableFormatter):
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
         """Format advanced analysis output"""
+        # Check: output_format == "json"
         if output_format == "json":
+            # Return result
             return self._format_json(analysis_result)
         elif output_format == "csv":
+            # Return result
             return self._format_csv(analysis_result)
         else:
+            # Return result
             return self._format_full_table(analysis_result)
 
     # Format data for output: _format_json
@@ -715,8 +728,11 @@ class CppTableFormatter(BaseTableFormatter):
         import json
 
         try:
+            # Return result
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:
+            # Return result
             return f"# JSON serialization error: {e}\\n"
+
 
 

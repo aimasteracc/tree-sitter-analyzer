@@ -693,27 +693,34 @@ class PythonTableFormatter(BaseTableFormatter):
                 docstring_lines = [stripped.replace(quote_type, "")]
                 for j in range(i + 1, len(lines)):
                     next_line = lines[j]
+                    # Check: quote_type in next_line
                     if quote_type in next_line:
                         docstring_lines.append(next_line.replace(quote_type, ""))
                         break
                     docstring_lines.append(next_line)
 
+                # Return result
                 return "\n".join(docstring_lines).strip()
 
+        # Return result
         return None
 
     # Format data for output: _format_python_signature
     def _format_python_signature(self, method: dict[str, Any]) -> str:
         """Create Python method signature"""
         params = method.get("parameters", [])
+        # Check: params is None
         if params is None:
             params = []
         param_strs = []
 
+        # Iterate over p
         for p in params:
+            # Check: isinstance(p, dict)
             if isinstance(p, dict):
                 param_name = p.get("name", "")
                 param_type = p.get("type", "")
+                # Check: param_type
                 if param_type:
                     param_strs.append(f"{param_name}: {param_type}")
                 else:
@@ -724,9 +731,12 @@ class PythonTableFormatter(BaseTableFormatter):
         params_str = ", ".join(param_strs)
         return_type = method.get("return_type", "")
 
+        # Check: return_type and return_type != "Any"
         if return_type and return_type != "Any":
+            # Return result
             return f"({params_str}) -> {return_type}"
         else:
+            # Return result
             return f"({params_str})"
 
     # Process: _get_python_visibility_symbol
@@ -738,12 +748,15 @@ class PythonTableFormatter(BaseTableFormatter):
             "protected": "🔐",
             "magic": "✨",
         }
+        # Return result
         return visibility_map.get(visibility, "🔓")
 
     # Format data for output: _format_decorators
     def _format_decorators(self, decorators: list[str]) -> str:
         """Format Python decorators"""
+        # Check: not decorators
         if not decorators:
+            # Return result
             return "-"
 
         # Show important decorators
@@ -756,15 +769,21 @@ class PythonTableFormatter(BaseTableFormatter):
         ]
         shown_decorators = []
 
+        # Iterate over dec
         for dec in decorators:
+            # Check: any(imp in dec for imp in important)
             if any(imp in dec for imp in important):
                 shown_decorators.append(f"@{dec}")
 
+        # Check: shown_decorators
         if shown_decorators:
+            # Return result
             return ", ".join(shown_decorators)
         elif len(decorators) == 1:
+            # Return result
             return f"@{decorators[0]}"
         else:
+            # Return result
             return f"@{decorators[0]} (+{len(decorators) - 1})"
 
     # Format data for output: _format_class_method_row
@@ -775,6 +794,7 @@ class PythonTableFormatter(BaseTableFormatter):
 
         # Python-specific visibility handling
         visibility = method.get("visibility", "public")
+        # Check: name.startswith("__") and name.endswith(
         if name.startswith("__") and name.endswith("__"):
             visibility = "magic"
         elif name.startswith("_"):
@@ -830,25 +850,31 @@ class PythonTableFormatter(BaseTableFormatter):
 
         # Add static modifier if applicable
         modifiers = []
+        # Check: method.get("is_static", False)
         if method.get("is_static", False):
             modifiers.append("static")
 
         modifier_str = f" [{', '.join(modifiers)}]" if modifiers else ""
 
+        # Return result
         return f"| {name} | {signature}{modifier_str} | {vis_symbol} | {lines_str} | {complexity} | {doc} |"
 
     # Format data for output: _format_python_signature_compact
     def _format_python_signature_compact(self, method: dict[str, Any]) -> str:
         """Create compact Python method signature for class sections"""
         params = method.get("parameters", [])
+        # Check: params is None
         if params is None:
             params = []
         param_strs = []
 
+        # Iterate over p
         for p in params:
+            # Check: isinstance(p, dict)
             if isinstance(p, dict):
                 param_name = p.get("name", "")
                 param_type = p.get("type", "")
+                # Check: param_type and param_type != "Any"
                 if param_type and param_type != "Any":
                     param_strs.append(f"{param_name}:{param_type}")
                 else:
@@ -860,9 +886,13 @@ class PythonTableFormatter(BaseTableFormatter):
         params_str = ", ".join(param_strs)
         return_type = method.get("return_type", "")
 
+        # Check: return_type and return_type != "Any"
         if return_type and return_type != "Any":
+            # Return result
             return f"({params_str}):{return_type}"
         else:
+            # Return result
             return f"({params_str}):Any"
+
 
 
