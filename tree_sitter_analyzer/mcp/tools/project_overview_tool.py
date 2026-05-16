@@ -217,14 +217,17 @@ class ProjectOverviewTool(BaseMCPTool):
             result["smart_workflow_hint"] = _build_smart_hint(result)
 
         result["tool_routing"] = {
-            "file_health": "check_file_health(file_path=...)",
+            "project_health": "check_project_health()  # grade ALL files, top fix targets",
+            "file_health": "check_file_health(file_path=...)  # A-F grade + smells + security",
+            "edit_risk": "safe_to_edit(file_path=...)  # MUST call before editing",
+            "refactor_plan": "refactoring_suggestions(file_path=...)  # extraction plans",
+            "change_impact": "analyze_change_impact()  # git diff + deps → tests to run",
             "file_scale": "check_code_scale(file_path=...)",
             "structure_table": "analyze_code_structure(file_path=..., format_type=compact)",
             "read_lines": "extract_code_section(file_path=..., start_line=..., end_line=...)",
-            "find_symbol": "query_code(symbol='...')  # cross-file search",
-            "search_text": "search_content(query='...', roots=['src/'])",
+            "find_symbol": "query_code(symbol='...')  # wildcards: *Service, fuzzy: ~analyz",
+            "search_text": "search_content(query='...', total_only=true)  # ~10 tok",
             "find_files": "list_files(roots=['.'], extensions=['py'])",
-            "refactor_targets": "check_file_health(file_path=...)  # returns code_smells + next_action",
         }
         return result
 
