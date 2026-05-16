@@ -154,7 +154,13 @@ class ProjectHealthTool(BaseMCPTool):
 
         # Top refactoring targets: files with lowest total score
         top_targets = [
-            {"file": s.file_path, "grade": s.grade, "score": s.total} for s in worst[:5]
+            {
+                "file": s.file_path,
+                "grade": s.grade,
+                "score": s.total,
+                "action": _file_action(s),
+            }
+            for s in worst[:5]
         ]
 
         # Weakest dimension
@@ -205,3 +211,21 @@ def _build_project_recommendation(
         )
 
     return f"All {total} files are grade C or better. Project health looks good."
+
+
+def _file_action(score: Any) -> str:
+    """Suggest the next tool to call for a specific file."""
+    grade = score.grade
+    dims = score.dimensions if hasattr(score, "dimensions") else {}
+    weakest = min(dims, key=lambda k: dims[k]) if dims else ""
+    file_path = score.file_path
+
+    if grade in ("D", "F"):
+        return f"refactoring_suggestions(file_path='{file_path}')"
+
+    if grade == "C":
+        if weakest:
+            return f"check_file_health(file_path='{file_path}') — weak: {weakest}"
+        return f"check_file_health(file_path='{file_path}')"
+
+    return ""
