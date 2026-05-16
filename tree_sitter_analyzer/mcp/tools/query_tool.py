@@ -39,10 +39,9 @@ class QueryTool(BaseMCPTool):
         return {
             "name": "query_code",
             "description": (
-                "Retrieve: tree-sitter queries. "
-                "Mode 1: file_path+query_key (single file). "
-                "Mode 2: symbol only (cross-file search). "
-                "Keys: methods, classes, functions, imports, variables."
+                "AST symbol search (NOT text grep). Wildcards: *Service, handle_*. "
+                "Fuzzy: ~analyz. Type filter: class/function. "
+                "Cross-file by default. Use instead of Grep for symbol definitions."
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

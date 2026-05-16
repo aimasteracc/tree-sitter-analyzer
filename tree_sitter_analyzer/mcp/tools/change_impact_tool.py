@@ -142,7 +142,8 @@ class ChangeImpactTool(BaseMCPTool):
         return {
             "name": "analyze_change_impact",
             "description": (
-                "After editing: git diff + deps → affected files, tests to run, risk."
+                "After editing: git diff + dep graph → affected files, tests to run, risk. "
+                "MUST call after edits. No built-in tool provides this."
             ),
             "inputSchema": self.get_tool_schema(),
         }

@@ -95,8 +95,8 @@ class ProjectOverviewTool(BaseMCPTool):
         return {
             "name": "get_project_overview",
             "description": (
-                "Map (use FIRST): project portrait — languages, file counts, "
-                "largest files, directory structure. Replaces multiple list_files calls."
+                "Project portrait in one call: languages, file counts, largest files, "
+                "tool routing guide. Use FIRST on any project. Replaces multiple Glob calls."
             ),
             "inputSchema": TOOL_SCHEMA,
         }

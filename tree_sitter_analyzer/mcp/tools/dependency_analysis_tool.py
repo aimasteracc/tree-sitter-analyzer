@@ -38,8 +38,8 @@ class DependencyAnalysisTool(BaseMCPTool):
         return {
             "name": "analyze_dependencies",
             "description": (
-                "Trace: project dependencies. Modes: blast_radius (impact analysis), "
-                "file_deps (direct deps), cycles (circular deps), summary (stats)."
+                "Dependency graph + blast radius. Modes: blast_radius (impact), "
+                "file_deps, cycles, summary. No built-in tool provides this."
             ),
             "inputSchema": self.get_tool_schema(),
         }

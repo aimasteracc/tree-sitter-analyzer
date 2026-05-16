@@ -49,8 +49,9 @@ class SafeToEditTool(BaseMCPTool):
         return {
             "name": "safe_to_edit",
             "description": (
-                "Call BEFORE editing: returns risk_level (safe/caution/dangerous), "
-                "affected files, test coverage hints, pre-edit checklist."
+                "MUST call before editing files. Returns risk_level (safe/caution/dangerous), "
+                "downstream deps, test files, pre-edit checklist. "
+                "No built-in tool provides this."
             ),
             "inputSchema": self.get_tool_schema(),
         }

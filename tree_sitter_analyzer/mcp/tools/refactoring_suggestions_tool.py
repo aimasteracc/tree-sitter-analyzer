@@ -91,8 +91,9 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         return {
             "name": "refactoring_suggestions",
             "description": (
-                "Refactoring plan: exact function names, line ranges, extraction targets. "
-                "Use BEFORE editing to plan, or AFTER to find remaining issues."
+                "Refactoring plan with precise extraction targets. "
+                "Returns helper names, line ranges, params, returns, code skeletons. "
+                "No built-in tool provides this."
             ),
             "inputSchema": self.get_tool_schema(),
         }

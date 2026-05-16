@@ -63,8 +63,9 @@ class FileHealthTool(BaseMCPTool):
         return {
             "name": "check_file_health",
             "description": (
-                "Analyze: score file health (A-F). Returns 5 dimension scores, "
-                "code smells (God Class, Long Method, Deep Nesting), and fix suggestions."
+                "File health A-F grade with code smells + security scan. "
+                "NOT reading code — gives risk assessment. "
+                "Returns: 5 dimension scores, smells, fix suggestions."
             ),
             "inputSchema": self.get_tool_schema(),
         }

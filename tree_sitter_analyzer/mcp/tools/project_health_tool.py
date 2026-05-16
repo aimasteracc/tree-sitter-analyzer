@@ -73,8 +73,8 @@ class ProjectHealthTool(BaseMCPTool):
         return {
             "name": "check_project_health",
             "description": (
-                "Score ALL files: grade distribution (A-F), worst files, code smells, "
-                "top refactoring targets. Use before check_file_health."
+                "Score ALL files: grade distribution (A-F), worst files, smells, "
+                "top refactoring targets. First call on any project."
             ),
             "inputSchema": self.get_tool_schema(),
         }

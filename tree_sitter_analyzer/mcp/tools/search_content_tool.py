@@ -52,8 +52,9 @@ class SearchContentTool(BaseMCPTool):
         return {
             "name": "search_content",
             "description": (
-                "Trace: ripgrep content search. Find callers, deps, patterns. "
-                "Prefer total_only > count_only > summary > full."
+                "Ripgrep search with total_only (~10 tok) and summary modes. "
+                "Prefer over built-in Grep for: existence checks (total_only), "
+                "counts (count_only), structured results (summary)."
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

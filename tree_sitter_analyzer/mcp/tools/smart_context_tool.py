@@ -56,8 +56,8 @@ class SmartContextTool(BaseMCPTool):
         return {
             "name": "smart_context",
             "description": (
-                "File profile in one call: health grade, exports, deps, test files, "
-                "edit risk. Use when approaching an unfamiliar file."
+                "File profile in one call: health grade, exports, deps, tests, edit risk. "
+                "Use instead of: Read + check_file_health + analyze_dependencies separately."
             ),
             "inputSchema": self.get_tool_schema(),
         }

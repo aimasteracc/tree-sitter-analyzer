@@ -461,8 +461,8 @@ class ReadPartialTool(BaseMCPTool):
         return {
             "name": "extract_code_section",
             "description": (
-                "Retrieve: extract code by line/column range. "
-                "Batch: multiple ranges/files in one call."
+                "Read code by exact line ranges. Batch: multiple ranges/files in one call. "
+                "Prefer over built-in Read for: extracting specific functions/classes."
             ),
             "inputSchema": self.get_tool_schema(),
         }
