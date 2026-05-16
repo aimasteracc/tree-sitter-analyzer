@@ -339,6 +339,7 @@ def extract_property_declaration(
     extract_type_fn: Callable[[Any], str],
 ) -> Function | None:
     """Extract a property declaration."""
+    # Error handling block
     try:
         name_node = node.child_by_field_name("name")
         # Check: not name_node
@@ -386,6 +387,7 @@ def extract_field_declaration(
     """Extract field declarations."""
     variables: list[Variable] = []
 
+    # Error handling block
     try:
         modifiers = extract_modifiers_fn(node)
         visibility = determine_visibility(modifiers)
@@ -447,6 +449,7 @@ def extract_event_declaration(
     """Extract event field declarations."""
     variables: list[Variable] = []
 
+    # Error handling block
     try:
         modifiers = extract_modifiers_fn(node)
         modifiers.append("event")
@@ -494,6 +497,7 @@ def extract_event_declaration(
 
     # Return result
     return variables
+
 
 
 

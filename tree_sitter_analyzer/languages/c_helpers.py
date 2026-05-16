@@ -349,14 +349,17 @@ def extract_variable_declaration(
                 # Check: mod
                 if mod:
                     modifiers.append(mod)
+            # Check: child.type == "identifier"
             elif child.type == "identifier":
                 var_names.append(get_node_text(child))
+            # Check: child.type == "init_declarator
             elif child.type == "init_declarator":
                 # Iterate over grandchild
                 for grandchild in child.children:
                     # Check: grandchild.type == "identifier"
                     if grandchild.type == "identifier":
                         var_names.append(get_node_text(grandchild))
+            # Check: child.type == "pointer_declara
             elif child.type == "pointer_declarator":
                 # Iterate over grandchild
                 for grandchild in child.children:
@@ -403,6 +406,7 @@ def extract_struct_definition(
     content_lines: list[str],
 ) -> Class | None:
     """Extract struct definition."""
+    # Error handling block
     try:
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
@@ -459,6 +463,7 @@ def extract_enum_definition(
     content_lines: list[str],
 ) -> Class | None:
     """Extract enum definition."""
+    # Error handling block
     try:
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
@@ -511,6 +516,7 @@ def extract_enum_definition(
 # Extract elements from AST: extract_comment_for_line
 def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
     """Extract comment for a specific line."""
+    # Error handling block
     try:
         # Iterate over i
         for i in range(max(0, line - 5), line):
@@ -529,6 +535,7 @@ def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
                             break
                     # Return result
                     return "\n".join(comment_lines)
+                # Check: line_content.startswith("/*")
                 elif line_content.startswith("/*"):
                     comment_lines = []
                     # Iterate over j
@@ -540,6 +547,7 @@ def extract_comment_for_line(line: int, content_lines: list[str]) -> str | None:
                             break
                     # Return result
                     return "\n".join(comment_lines)
+                # Check: line_content.startswith("///")
                 elif line_content.startswith("///"):
                     # Return result
                     return line_content
@@ -555,6 +563,7 @@ def _extract_include_info(
     get_node_text: Callable[..., str],
 ) -> Import | None:
     """Extract include directive information."""
+    # Error handling block
     try:
         include_text = get_node_text(node)
         line_num = node.start_point[0] + 1
@@ -737,6 +746,7 @@ def extract_c_function(
     extract_comment_for_line: Callable,
 ) -> Function | None:
     """Extract C function definition."""
+    # Error handling block
     try:
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1
@@ -779,6 +789,7 @@ def extract_c_function(
         log_error(f"Unexpected error in function extraction: {e}")
         # Return result
         return None
+
 
 
 

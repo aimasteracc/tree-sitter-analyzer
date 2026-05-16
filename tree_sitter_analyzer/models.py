@@ -614,6 +614,7 @@ class AnalysisResult:
             # Check: hasattr(self.package, "name")
             if hasattr(self.package, "name"):
                 package_info = {"name": self.package.name}
+            # Check: isinstance(self.package, dict)
             elif isinstance(self.package, dict):
                 package_info = self.package
             else:
@@ -625,6 +626,7 @@ class AnalysisResult:
             if hasattr(obj, attr):
                 # Return result
                 return getattr(obj, attr)
+            # Check: isinstance(obj, dict)
             elif isinstance(obj, dict):
                 # Return result
                 return obj.get(attr, default)
@@ -963,6 +965,7 @@ class YAMLElement(CodeElement):
             "nesting_level": self.nesting_level,
             "document_index": self.document_index,
         }
+
 
 
 

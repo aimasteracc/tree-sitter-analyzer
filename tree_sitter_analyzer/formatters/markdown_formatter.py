@@ -664,16 +664,19 @@ class MarkdownFormatter(BaseFormatter):
                 writer.writerow(
                     [elem_type, f"{alt} -> {url}", "-", start_line, end_line]
                 )
+            # Check: elem_type == "code_block"
             elif elem_type == "code_block":
                 language = element.get("language", "")
                 line_count = element.get("line_count", 0)
                 writer.writerow([elem_type, language, line_count, start_line, end_line])
+            # Check: elem_type in ["list", "task_li
             elif elem_type in ["list", "task_list"]:
                 list_type = element.get("list_type", "")
                 item_count = element.get("item_count", 0)
                 writer.writerow(
                     [elem_type, list_type, item_count, start_line, end_line]
                 )
+            # Check: elem_type == "table"
             elif elem_type == "table":
                 cols = element.get("column_count", 0)
                 rows = element.get("row_count", 0)
@@ -688,6 +691,7 @@ class MarkdownFormatter(BaseFormatter):
         output.close()
         # Return result
         return csv_content.rstrip("\n")
+
 
 
 

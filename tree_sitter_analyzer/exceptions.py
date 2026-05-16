@@ -680,8 +680,10 @@ def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
             sanitized[key] = "***REDACTED***"
         elif isinstance(value, str) and len(value) > 500:
             sanitized[key] = value[:500] + "...[TRUNCATED]"
+        # Check: isinstance(value, list | tuple
         elif isinstance(value, list | tuple) and len(value) > 10:
             sanitized[key] = list(value[:10]) + ["...[TRUNCATED]"]
+        # Check: isinstance(value, dict) and le
         elif isinstance(value, dict) and len(value) > 20:
             # Recursively sanitize nested dictionaries
             truncated_dict = dict(list(value.items())[:20])
@@ -715,6 +717,7 @@ async def safe_execute_async(
     Returns:
         Coroutine result or default_return on exception
     """
+    # Error handling block
     try:
         # Return result
         return await coro
@@ -748,6 +751,7 @@ def mcp_exception_handler(
     def decorator(func: Any) -> Any:
         # Process: async_wrapper
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Error handling block
             try:
                 # Return result
                 return await func(*args, **kwargs)
@@ -770,6 +774,7 @@ def mcp_exception_handler(
 
         # Process: sync_wrapper
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Error handling block
             try:
                 # Return result
                 return func(*args, **kwargs)
@@ -800,6 +805,7 @@ def mcp_exception_handler(
 
     # Return result
     return decorator
+
 
 
 
