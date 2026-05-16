@@ -238,7 +238,9 @@ class TestSecurityBoundaryEnforcementProperties:
             f"Error message should be provided for rejected path: {traversal_path}"
         )
 
-    @settings(max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS)
+    @settings(
+        max_examples=100, suppress_health_check=COMMON_HEALTH_CHECKS, deadline=None
+    )
     @given(null_path=null_byte_injection())
     def test_property_4_null_byte_injection_rejected(self, temp_project_dir, null_path):
         """

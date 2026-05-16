@@ -1,4 +1,3 @@
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
@@ -57,6 +56,8 @@ async def test_fd_50_symlink_and_full_path(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_51_print0_output_simulation(tmp_path, monkeypatch):
     """Test print0 output simulation - corresponds to fd's test_print0."""
@@ -92,6 +93,8 @@ async def test_fd_51_print0_output_simulation(tmp_path, monkeypatch):
     # Verify structured JSON output
     assert "results" in result
     assert isinstance(result["results"], list)
+
+
 @pytest.mark.asyncio
 async def test_fd_52_absolute_path_output(tmp_path, monkeypatch):
     """Test absolute path output - corresponds to fd's test_absolute_path."""
@@ -150,6 +153,8 @@ async def test_fd_52_absolute_path_output(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 3
+
+
 @pytest.mark.asyncio
 async def test_fd_53_implicit_absolute_path(tmp_path, monkeypatch):
     """Test implicit absolute path - corresponds to fd's test_implicit_absolute_path."""
@@ -176,6 +181,8 @@ async def test_fd_53_implicit_absolute_path(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_54_normalized_absolute_path(tmp_path, monkeypatch):
     """Test normalized absolute path - corresponds to fd's test_normalized_absolute_path."""
@@ -209,6 +216,8 @@ async def test_fd_54_normalized_absolute_path(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_55_custom_path_separator(tmp_path, monkeypatch):
     """Test custom path separator - corresponds to fd's test_custom_path_separator."""
@@ -246,6 +255,8 @@ async def test_fd_55_custom_path_separator(tmp_path, monkeypatch):
         path = item["path"]
         # Should use OS-appropriate separators
         assert "/" in path or "\\" in path
+
+
 @pytest.mark.asyncio
 async def test_fd_56_base_directory_output(tmp_path, monkeypatch):
     """Test base directory output - corresponds to fd's test_base_directory."""
@@ -276,6 +287,8 @@ async def test_fd_56_base_directory_output(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_57_strip_cwd_prefix(tmp_path, monkeypatch):
     """Test stripping current working directory prefix - corresponds to fd's test_strip_cwd_prefix."""
@@ -305,6 +318,8 @@ async def test_fd_57_strip_cwd_prefix(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_58_format_output_structured(tmp_path, monkeypatch):
     """Test structured format output - corresponds to fd's format test."""
@@ -343,6 +358,8 @@ async def test_fd_58_format_output_structured(tmp_path, monkeypatch):
     for item in result["results"]:
         assert "path" in item
         assert "is_dir" in item
+
+
 @pytest.mark.asyncio
 async def test_fd_65_exec_invalid_utf8_simulation(tmp_path, monkeypatch):
     """Test exec invalid UTF-8 simulation - corresponds to fd's test_exec_invalid_utf8."""
@@ -369,6 +386,8 @@ async def test_fd_65_exec_invalid_utf8_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_38_gitignore_and_fdignore_advanced(tmp_path, monkeypatch):
     """Test advanced gitignore and fdignore handling - corresponds to fd's test_gitignore_and_fdignore."""
@@ -427,6 +446,8 @@ async def test_fd_38_gitignore_and_fdignore_advanced(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 0  # Allow flexible count
+
+
 @pytest.mark.asyncio
 async def test_fd_75_modified_relative_time(tmp_path, monkeypatch):
     """Test relative modification time filtering - corresponds to fd's test_modified_relative."""
@@ -459,6 +480,8 @@ async def test_fd_75_modified_relative_time(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_76_modified_absolute_time(tmp_path, monkeypatch):
     """Test absolute modification time filtering - corresponds to fd's test_modified_absolute."""
@@ -496,6 +519,8 @@ async def test_fd_76_modified_absolute_time(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_77_size_filtering_advanced(tmp_path, monkeypatch):
     """Test advanced size filtering - corresponds to fd's test_size."""
@@ -538,6 +563,8 @@ async def test_fd_77_size_filtering_advanced(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_78_no_extension_filter(tmp_path, monkeypatch):
     """Test no extension filter - corresponds to fd's test_no_extension."""
@@ -570,6 +597,8 @@ async def test_fd_78_no_extension_filter(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_79_owner_ignore_all(tmp_path, monkeypatch):
     """Test owner filtering - ignore all - corresponds to fd's test_owner_ignore_all."""
@@ -597,6 +626,8 @@ async def test_fd_79_owner_ignore_all(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_80_owner_current_user(tmp_path, monkeypatch):
     """Test current user owner filtering - corresponds to fd's test_owner_current_user."""
@@ -624,6 +655,8 @@ async def test_fd_80_owner_current_user(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_81_owner_current_group(tmp_path, monkeypatch):
     """Test current group owner filtering - corresponds to fd's test_owner_current_group."""
@@ -650,6 +683,8 @@ async def test_fd_81_owner_current_group(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_82_owner_root(tmp_path, monkeypatch):
     """Test root owner filtering - corresponds to fd's test_owner_root."""
@@ -676,6 +711,8 @@ async def test_fd_82_owner_root(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0  # No root files
+
+
 @pytest.mark.asyncio
 async def test_fd_83_quiet_mode_simulation(tmp_path, monkeypatch):
     """Test quiet mode simulation - corresponds to fd's test_quiet."""
@@ -702,6 +739,8 @@ async def test_fd_83_quiet_mode_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_84_max_results_advanced(tmp_path, monkeypatch):
     """Test advanced max results limiting - corresponds to fd's test_max_results."""
@@ -740,6 +779,8 @@ async def test_fd_84_max_results_advanced(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_86_list_details_advanced(tmp_path, monkeypatch):
     """Test advanced list details - corresponds to fd's test_list_details."""

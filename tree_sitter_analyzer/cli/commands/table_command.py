@@ -571,6 +571,3 @@ class TableCommand(BaseCommand):
         except (AttributeError, UnicodeEncodeError):
             # Fallback: Normal print
             print(table_output, end="")
-
-
-

@@ -138,12 +138,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                         f"Failed to analyze structure for file: {file_path}"
                     )
 
-                structure_dict = convert_analysis_result_to_dict(
-                    result,
-                    self._get_method_parameters,
-                    self._get_method_modifiers,
-                    self._get_field_modifiers,
-                )
+                structure_dict = self._convert_analysis_result_to_dict(result)
 
                 table_output = self._format_table(
                     structure_dict, result, language, format_type
@@ -215,11 +210,15 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
     def _extract_metadata(structure_dict: dict[str, Any]) -> dict[str, Any]:
         """Extract metadata (language, line count) from analysis."""
         stats = structure_dict.get("statistics", {})
+
+        def safe_int(value: Any) -> int:
+            return value if isinstance(value, int) else 0
+
         return {
-            "classes_count": stats.get("class_count", 0),
-            "methods_count": stats.get("method_count", 0),
-            "fields_count": stats.get("field_count", 0),
-            "total_lines": stats.get("total_lines", 0),
+            "classes_count": safe_int(stats.get("class_count", 0)),
+            "methods_count": safe_int(stats.get("method_count", 0)),
+            "fields_count": safe_int(stats.get("field_count", 0)),
+            "total_lines": safe_int(stats.get("total_lines", 0)),
         }
 
     def _build_next_steps(
@@ -230,6 +229,13 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         methods = structure_dict.get("methods", [])
         classes = structure_dict.get("classes", [])
         stats = structure_dict.get("statistics", {})
+        if not isinstance(methods, list):
+            methods = []
+        if not isinstance(classes, list):
+            classes = []
+        total_lines = stats.get("total_lines", 0)
+        if not isinstance(total_lines, int):
+            total_lines = 0
 
         complex_methods = [m for m in methods if m.get("complexity_score", 0) >= 8]
         if complex_methods:
@@ -249,7 +255,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 "query_code(query_key='classes') to examine class relationships"
                 # Convert analysis result to JSON-serializable dict
             )
-        if stats.get("total_lines", 0) > 500 and not complex_methods and methods:
+        if total_lines > 500 and not complex_methods and methods:
             first = methods[0]
             lr = first.get("line_range", {})
             if lr.get("start") and lr.get("end"):
@@ -331,4 +337,3 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
 
 # Tool instance for easy access
 analyze_code_structure_tool = AnalyzeCodeStructureTool()
-

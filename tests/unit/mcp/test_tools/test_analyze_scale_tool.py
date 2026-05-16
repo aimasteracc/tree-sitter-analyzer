@@ -603,6 +603,10 @@ class TestAnalyzeScaleToolExecute:
                 "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
                 return_value={"formatted": True},
             ),
+            patch(
+                "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response",
+                return_value={"formatted": True},
+            ),
         ):
             arguments = {"file_path": "test.json", "include_guidance": True}
             result = await tool.execute(arguments)
@@ -964,7 +968,7 @@ class TestAnalyzeScaleToolCreateJsonFileAnalysis:
             "file_size_bytes": 1000,
         }
         with patch(
-            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+            "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response",
             return_value={"formatted": True},
         ):
             result = tool._create_json_file_analysis(
@@ -983,7 +987,7 @@ class TestAnalyzeScaleToolCreateJsonFileAnalysis:
             "file_size_bytes": 10000,
         }
         with patch(
-            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+            "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response",
             return_value={"formatted": True},
         ):
             result = tool._create_json_file_analysis(
@@ -1002,7 +1006,7 @@ class TestAnalyzeScaleToolCreateJsonFileAnalysis:
             "file_size_bytes": 30000,
         }
         with patch(
-            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+            "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response",
             return_value={"formatted": True},
         ):
             result = tool._create_json_file_analysis(
@@ -1021,7 +1025,7 @@ class TestAnalyzeScaleToolCreateJsonFileAnalysis:
             "file_size_bytes": 2000,
         }
         with patch(
-            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+            "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response",
             return_value={"formatted": True},
         ):
             result = tool._create_json_file_analysis(
@@ -1040,7 +1044,7 @@ class TestAnalyzeScaleToolCreateJsonFileAnalysis:
             "file_size_bytes": 2000,
         }
         with patch(
-            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+            "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response",
             return_value={"formatted": True},
         ):
             result = tool._create_json_file_analysis(
@@ -1923,7 +1927,7 @@ class TestExecuteMetricsBatchFullBody:
     @pytest.mark.asyncio
     async def test_batch_with_non_string_path_entry(self, tool):
         with patch(
-            "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.apply_toon_format_to_response",
+            "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response",
             side_effect=lambda r, f: r,
         ):
             arguments = {"file_paths": [None], "metrics_only": True}

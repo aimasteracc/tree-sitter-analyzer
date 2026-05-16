@@ -9,7 +9,7 @@ import json
 import sys
 from typing import Any
 
-from .utils import log_error, log_warning
+from .utils import log_warning
 
 
 class OutputManager:

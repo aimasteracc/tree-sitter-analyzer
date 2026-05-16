@@ -278,3 +278,6 @@ class TestMainFunction:
         with patch("asyncio.run") as mock_run:
             main_sync()
             mock_run.assert_called_once()
+            args, _kwargs = mock_run.call_args
+            if args and hasattr(args[0], "close"):
+                args[0].close()

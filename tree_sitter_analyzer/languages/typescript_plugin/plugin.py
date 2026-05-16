@@ -16,10 +16,10 @@ try:
 except ImportError:
     TREE_SITTER_AVAILABLE = False
 
-from ...language_loader import loader
 from ...models import AnalysisResult, CodeElement
 from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_debug, log_error
+from . import extractor as extractor_module
 from .extractor import TypeScriptElementExtractor
 
 
@@ -59,7 +59,7 @@ class TypeScriptPlugin(LanguagePlugin):
             return None
         if self._language is None:
             try:
-                self._language = loader.load_language("typescript")
+                self._language = extractor_module.loader.load_language("typescript")
             except Exception as e:
                 log_debug(f"Failed to load TypeScript language: {e}")
                 return None

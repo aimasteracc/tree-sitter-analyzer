@@ -649,5 +649,3 @@ def _register_language_formatters_safe() -> None:
 
 # Auto-register built-in formatters when module is imported
 register_builtin_formatters()
-
-

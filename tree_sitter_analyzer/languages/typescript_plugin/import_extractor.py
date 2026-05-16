@@ -237,7 +237,7 @@ def _extract_commonjs_requires(
     imports: list[Import] = []
 
     try:
-        # Check: tree and hasattr(tree, "root_node") and 
+        # Check: tree and hasattr(tree, "root_node") and
         if tree and hasattr(tree, "root_node") and tree.root_node:
             get_node_text(tree.root_node)
 
@@ -271,6 +271,3 @@ def _extract_commonjs_requires(
 
     # Return result
     return imports
-
-
-

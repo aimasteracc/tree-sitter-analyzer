@@ -1,4 +1,3 @@
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
@@ -19,6 +18,8 @@ class DummyProc:
         self.rc = rc
         self.stdout = stdout
         self.stderr = stderr
+
+
 @pytest.mark.unit
 def test_parse_rg_count_output():
     """Test parsing ripgrep --count-matches output."""
@@ -38,6 +39,8 @@ file4.py:12
     assert result["file3.py"] == 0
     assert result["file4.py"] == 12
     assert result["__total__"] == 20  # 5 + 3 + 0 + 12
+
+
 @pytest.mark.unit
 def test_build_rg_command_with_count_only():
     """Test building ripgrep command with count_only_matches option."""
@@ -98,6 +101,8 @@ def test_build_rg_command_with_count_only():
     assert "--count-matches" not in cmd
     assert "test" in cmd
     assert "/test" in cmd
+
+
 @pytest.mark.unit
 def test_summarize_search_results():
     """Test summarizing search results for context reduction."""
@@ -131,6 +136,8 @@ def test_summarize_search_results():
     assert (
         len(summary["top_files"][1]["sample_lines"]) == 1
     )  # limited by max_total_lines
+
+
 @pytest.mark.unit
 def test_build_fd_command():
     """Test building fd command with various options."""
@@ -198,6 +205,8 @@ def test_build_fd_command():
     assert "-p" in cmd  # full path match
     assert "--max-results" in cmd and "100" in cmd  # limit
     assert "/test" in cmd
+
+
 @pytest.mark.unit
 def test_parse_rg_count_output_edge_cases():
     """Test parsing ripgrep count output with edge cases."""
@@ -228,6 +237,8 @@ file3.py:10
     assert result["C:\\path\\with\\colons\\file.py"] == 7
     assert result["/unix/path/file.py"] == 3
     assert result["__total__"] == 10
+
+
 @pytest.mark.unit
 def test_summarize_search_results_edge_cases():
     """Test summarizing search results with edge cases."""
@@ -249,6 +260,8 @@ def test_summarize_search_results_edge_cases():
     assert len(summary["top_files"]) == 1
     assert summary["top_files"][0]["file"] == "test.py"
     assert summary["top_files"][0]["match_count"] == 1
+
+
 @pytest.mark.unit
 def test_fd_rg_utils_edge_cases():
     """Test edge cases in fd_rg_utils functions."""
@@ -275,6 +288,8 @@ def test_fd_rg_utils_edge_cases():
     assert normalize_max_filesize(None) == "10M"
     assert normalize_max_filesize("500M") == "200M"  # Clamped to hard cap
     assert normalize_max_filesize("5M") == "5M"  # Within limits
+
+
 @pytest.mark.asyncio
 async def test_fd_67_performance_large_dataset(tmp_path, monkeypatch):
     """Test performance with large dataset - corresponds to fd's performance tests."""
@@ -303,6 +318,8 @@ async def test_fd_67_performance_large_dataset(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 50
+
+
 @pytest.mark.asyncio
 async def test_fd_68_command_timeout_handling(tmp_path, monkeypatch):
     """Test command timeout handling - corresponds to fd's timeout tests."""
@@ -328,6 +345,8 @@ async def test_fd_68_command_timeout_handling(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_69_invalid_regex_handling(tmp_path, monkeypatch):
     """Test invalid regex handling - corresponds to fd's regex error tests."""
@@ -353,6 +372,8 @@ async def test_fd_69_invalid_regex_handling(tmp_path, monkeypatch):
 
     # Should handle gracefully
     assert result["success"] is False or result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_70_memory_usage_optimization(tmp_path, monkeypatch):
     """Test memory usage optimization - corresponds to fd's memory tests."""
@@ -379,6 +400,8 @@ async def test_fd_70_memory_usage_optimization(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 20
+
+
 @pytest.mark.asyncio
 async def test_fd_71_cross_platform_compatibility(tmp_path, monkeypatch):
     """Test cross-platform compatibility - corresponds to fd's platform tests."""
@@ -410,6 +433,8 @@ async def test_fd_71_cross_platform_compatibility(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2  # Should find files regardless of case
+
+
 @pytest.mark.asyncio
 async def test_fd_72_edge_case_patterns(tmp_path, monkeypatch):
     """Test edge case patterns - corresponds to fd's edge case tests."""
@@ -445,6 +470,8 @@ async def test_fd_72_edge_case_patterns(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 3
+
+
 @pytest.mark.asyncio
 async def test_fd_73_concurrent_execution_safety(tmp_path, monkeypatch):
     """Test concurrent execution safety - corresponds to fd's concurrency tests."""
@@ -471,6 +498,8 @@ async def test_fd_73_concurrent_execution_safety(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_74_resource_cleanup(tmp_path, monkeypatch):
     """Test resource cleanup - corresponds to fd's cleanup tests."""
@@ -495,6 +524,8 @@ async def test_fd_74_resource_cleanup(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_85_invalid_utf8_handling(tmp_path, monkeypatch):
     """Test invalid UTF-8 filename handling - corresponds to fd's test_invalid_utf8."""
@@ -522,6 +553,8 @@ async def test_fd_85_invalid_utf8_handling(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_87_single_and_multithreaded_execution(tmp_path, monkeypatch):
     """Test single and multithreaded execution - corresponds to fd's test_single_and_multithreaded_execution."""
@@ -549,6 +582,8 @@ async def test_fd_87_single_and_multithreaded_execution(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_88_number_parsing_errors(tmp_path, monkeypatch):
     """Test number parsing errors - corresponds to fd's test_number_parsing_errors."""
@@ -580,6 +615,8 @@ async def test_fd_88_number_parsing_errors(tmp_path, monkeypatch):
     )
 
     assert result2["success"] is True or result2["success"] is False
+
+
 @pytest.mark.asyncio
 async def test_fd_89_opposing_parameters(tmp_path, monkeypatch):
     """Test opposing parameters - corresponds to fd's test_opposing."""
@@ -604,6 +641,8 @@ async def test_fd_89_opposing_parameters(tmp_path, monkeypatch):
 
     # Should handle gracefully
     assert result["success"] is True or result["success"] is False
+
+
 @pytest.mark.asyncio
 async def test_fd_90_error_if_hidden_not_set_and_pattern_starts_with_dot(
     tmp_path, monkeypatch
@@ -645,6 +684,8 @@ async def test_fd_90_error_if_hidden_not_set_and_pattern_starts_with_dot(
     )
 
     assert result2["success"] is True or result2["success"] is False
+
+
 @pytest.mark.asyncio
 async def test_fd_91_invalid_cwd(tmp_path, monkeypatch):
     """Test invalid current working directory - corresponds to fd's test_invalid_cwd."""

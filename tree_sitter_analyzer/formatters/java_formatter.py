@@ -577,6 +577,3 @@ class JavaTableFormatter(BaseTableFormatter):
         except (TypeError, ValueError) as e:
             # Return result
             return f"# JSON serialization error: {e}\n"
-
-
-

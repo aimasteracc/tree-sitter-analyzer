@@ -25,6 +25,7 @@ async def analyze_code_scale(
     security_validator: Any,
     universal_analyze_tool: Any | None = None,
     initialization_complete: bool = True,
+    path_class: Any = PathClass,
 ) -> dict[str, Any]:
     """Handle check_code_scale tool execution with full validation."""
     if not initialization_complete:
@@ -51,7 +52,7 @@ async def analyze_code_scale(
 
     _validate_security(resolved_path, base_root, security_validator)
 
-    if not PathClass(resolved_path).exists():
+    if not path_class(resolved_path).exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
     from ...language_detector import detect_language_from_file

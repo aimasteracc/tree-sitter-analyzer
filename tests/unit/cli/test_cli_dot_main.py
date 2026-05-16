@@ -25,7 +25,14 @@ def test_cli_main_has_main_function() -> None:
 def test_cli_main_runs_main_when_executed() -> None:
     """Test that __main__ executes main() when run as script."""
     import runpy
+    import sys
 
     with patch("tree_sitter_analyzer.cli_main.main") as mock_main:
-        runpy.run_module("tree_sitter_analyzer.cli.__main__", run_name="__main__")
-        mock_main.assert_called_once()
+        module_name = "tree_sitter_analyzer.cli.__main__"
+        existing_module = sys.modules.pop(module_name, None)
+        try:
+            runpy.run_module(module_name, run_name="__main__")
+            mock_main.assert_called_once()
+        finally:
+            if existing_module is not None:
+                sys.modules[module_name] = existing_module

@@ -1,4 +1,5 @@
 """User model - imported by main."""
+
 from .base import BaseModel
 
 

@@ -12,7 +12,7 @@ import shutil
 import sqlite3
 import string
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -192,7 +192,7 @@ class FormatTestDataGenerator:
             complexity_level=complexity,
             file_size_bytes=len(source_code.encode()),
             element_counts=element_counts,
-            created_timestamp=datetime.utcnow().isoformat(),
+            created_timestamp=datetime.now(UTC).isoformat(),
             version="1.0.0",
             tags=[language, complexity, "generated"],
             source_hash=source_hash,
@@ -682,7 +682,7 @@ class FormatTestDataRepository:
             (test_data_id, usage_timestamp, test_type, result)
             VALUES (?, ?, ?, ?)
         """,
-            (test_data_id, datetime.utcnow().isoformat(), test_type, result),
+            (test_data_id, datetime.now(UTC).isoformat(), test_type, result),
         )
 
         conn.commit()
@@ -1160,7 +1160,7 @@ class FormatTestDataManager:
         with open(manifest_file, "w", encoding="utf-8") as f:
             json.dump(
                 {
-                    "export_timestamp": datetime.utcnow().isoformat(),
+                    "export_timestamp": datetime.now(UTC).isoformat(),
                     "exported_count": exported_count,
                     "filters_applied": filters or {},
                     "test_data_ids": [m.id for m in test_data_list],

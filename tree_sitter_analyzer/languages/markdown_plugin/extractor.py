@@ -543,7 +543,7 @@ class MarkdownElementExtractor(ElementExtractor):
             start_point = node.start_point
             end_point = node.end_point
 
-            # Check: start_point[0] < 0 or start_point[0] >= 
+            # Check: start_point[0] < 0 or start_point[0] >=
             if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
                 # Return result
                 return ""
@@ -1073,7 +1073,3 @@ class MarkdownElementExtractor(ElementExtractor):
 
         # Return result
         return "", "", ""
-
-
-
-

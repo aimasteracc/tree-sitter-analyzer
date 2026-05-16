@@ -390,6 +390,3 @@ def extract_footnote_elements(
 
             except Exception as e:
                 log_debug(f"Failed to extract footnote definition: {e}")
-
-
-

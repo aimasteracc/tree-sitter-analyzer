@@ -22,9 +22,11 @@ from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_scale_helpers import (
     build_analysis_result,
     build_detailed_analysis,
+    create_json_file_analysis,
     extract_structural_overview,
     extract_structural_overview_universal,
     generate_llm_guidance,
+    validate_scale_arguments,
 )
 from .base_tool import BaseMCPTool
 
@@ -71,12 +73,14 @@ class AnalyzeScaleTool(BaseMCPTool):
         self.analysis_engine = get_analysis_engine(project_root)
         logger.info("AnalyzeScaleTool initialized with security validation")
 
+    # set_project_path: implementation
     def set_project_path(self, project_path: str) -> None:
         """Reset analysis engine when project path changes."""
         super().set_project_path(project_path)
         self.analysis_engine = get_analysis_engine(project_path)
         logger.info(f"AnalyzeScaleTool project path updated to: {project_path}")
 
+    # _calculate_file_metrics: implementation
     def _calculate_file_metrics(
         self, file_path: str, language: str | None = None
     ) -> dict[str, Any]:
@@ -103,10 +107,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "file_size_kb": 0,
             }
 
+    # _extract_structural_overview: implementation
     def _extract_structural_overview(self, analysis_result: Any) -> dict[str, Any]:
         """Extract structural overview using Python-specific analysis."""
         return extract_structural_overview(analysis_result)
 
+    # _extract_structural_overview_universal: implementation
     def _extract_structural_overview_universal(
         self, analysis_result: Any
     ) -> dict[str, Any]:
@@ -114,6 +120,7 @@ class AnalyzeScaleTool(BaseMCPTool):
         return extract_structural_overview_universal(analysis_result)
 
     @staticmethod
+    # _count_elements: implementation
     def _count_elements(
         elements: list, element_type_const: str, element_type_str: str
     ) -> int:
@@ -126,12 +133,14 @@ class AnalyzeScaleTool(BaseMCPTool):
                 count += 1
         return count
 
+    # _generate_llm_guidance: implementation
     def _generate_llm_guidance(
         self, file_metrics: dict[str, Any], structural_overview: dict[str, Any]
     ) -> dict[str, Any]:
         """Generate LLM-oriented guidance based on analysis."""
         return generate_llm_guidance(file_metrics, structural_overview)
 
+    # get_tool_schema: implementation
     def get_tool_schema(self) -> dict[str, Any]:
         """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
@@ -139,9 +148,12 @@ class AnalyzeScaleTool(BaseMCPTool):
     # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute code scale analysis for single or batch files."""
+        # Conditional check
         if "file_paths" in arguments and arguments["file_paths"] is not None:
+            # Return result
             return await self._execute_metrics_batch(arguments)
 
+        # Conditional check
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
 
@@ -154,15 +166,18 @@ class AnalyzeScaleTool(BaseMCPTool):
         resolved = self.resolve_and_validate_file_path(file_path)
         logger.info(f"Analyzing file: {file_path} (resolved to: {resolved})")
 
+        # Conditional check
         if language:
             language = self.security_validator.sanitize_input(language, max_length=50)
 
+        # Conditional check
         if not Path(resolved).exists():
             raise ValueError(f"Invalid file path: File not found: {file_path}")
 
         language = self._resolve_language(resolved, language)
         logger.info(f"Analyzing code scale for {resolved} (language: {language})")
 
+        # Error handling
         try:
             from ...mcp.utils import get_performance_monitor
 
@@ -171,7 +186,9 @@ class AnalyzeScaleTool(BaseMCPTool):
             ):
                 file_metrics = self._calculate_file_metrics(resolved, language)
 
+                # Conditional check
                 if language == "json":
+                    # Return result
                     return self._create_json_file_analysis(
                         resolved, file_metrics, include_guidance, output_format
                     )
@@ -199,6 +216,7 @@ class AnalyzeScaleTool(BaseMCPTool):
                     f"~{file_metrics['estimated_tokens']} tokens"
                 )
 
+                # Return result
                 return apply_toon_format_to_response(result, output_format)
         # Language detection with argument override
 
@@ -206,21 +224,28 @@ class AnalyzeScaleTool(BaseMCPTool):
             logger.error(f"Error analyzing {file_path}: {e}")
             raise
 
+    # _resolve_language: implementation
     def _resolve_language(self, resolved: str, language: str | None) -> str:
         """Detect language from file extension or argument override."""
+        # Conditional check
         if language:
+            # Return result
             return language
         detected = detect_language_from_file(resolved, project_root=self.project_root)
+        # Conditional check
         if detected == "unknown":
             raise ValueError(
                 f"Invalid file path: Unsupported language for file: {resolved}"
             )
+        # Return result
         return detected
 
+    # _run_structural_analysis: implementation
     async def _run_structural_analysis(
         self, resolved: str, language: str, include_details: bool
     ) -> tuple[Any, dict[str, Any]]:
         """Run structural analysis using tree-sitter elements."""
+        # Conditional check
         if language == "java":
             request = AnalysisRequest(
                 file_path=resolved,
@@ -229,8 +254,10 @@ class AnalyzeScaleTool(BaseMCPTool):
                 include_details=True,
             )
             result = await self.analysis_engine.analyze(request)
+            # Conditional check
             if result is None:
                 raise RuntimeError(f"Failed to analyze file: {resolved}")
+            # Return result
             return result, self._extract_structural_overview(result)
 
         request = AnalysisRequest(
@@ -239,6 +266,7 @@ class AnalyzeScaleTool(BaseMCPTool):
             include_details=include_details,
         )
         universal_result = await self.analysis_engine.analyze(request)
+        # Conditional check
         if not universal_result or not universal_result.success:
             error_msg = (
                 universal_result.error_message or "Unknown error"
@@ -249,10 +277,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                 f"Failed to analyze file with universal engine: {error_msg}"
             )
 
+        # Return result
         return universal_result, self._extract_structural_overview_universal(
             universal_result
         )
 
+    # _build_enhanced_result: implementation
     def _build_enhanced_result(
         self,
         file_path: str,
@@ -273,6 +303,7 @@ class AnalyzeScaleTool(BaseMCPTool):
             self._count_elements,
         )
 
+        # Conditional check
         if include_guidance:
             guidance_metrics = {**file_metrics, "language": language}
             result["llm_guidance"] = self._generate_llm_guidance(
@@ -281,27 +312,33 @@ class AnalyzeScaleTool(BaseMCPTool):
                 # Batch metrics computation for multiple files
             )
 
+        # Conditional check
         if include_details:
             result["detailed_analysis"] = build_detailed_analysis(
                 analysis_result, file_path
             )
 
+        # Return result
         return result
 
+    # _execute_metrics_batch: implementation
     async def _execute_metrics_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute batch metrics computation for multiple files."""
         output_format = arguments.get("output_format", "toon")
         metrics_only = bool(arguments.get("metrics_only", False))
         file_paths = arguments.get("file_paths")
 
+        # Conditional check
         if not metrics_only:
             raise ValueError(
                 "metrics_only must be true when using file_paths batch mode"
             )
+        # Conditional check
         if not isinstance(file_paths, list) or not file_paths:
             raise ValueError("file_paths must be a non-empty list of strings")
 
         max_files = 200
+        # Conditional check
         if len(file_paths) > max_files:
             raise ValueError(
                 f"Too many files: {len(file_paths)} > max_files={max_files}"
@@ -311,20 +348,27 @@ class AnalyzeScaleTool(BaseMCPTool):
 
         sem = asyncio.Semaphore(4)
 
+        # _one: implementation
         async def _one(fp: str) -> dict[str, Any]:
             """Analyze a single file in batch mode."""
             async with sem:
+                # Conditional check
                 if not isinstance(fp, str) or not fp.strip():
+                    # Return result
                     return {
                         "file_path": fp,
                         "error": "file_path must be a non-empty string",
                     }
+                # Error handling
                 try:
                     resolved = self.resolve_and_validate_file_path(fp)
                 except ValueError as e:
+                    # Return result
                     return {"file_path": fp, "error": str(e)}
 
+                # Conditional check
                 if not Path(resolved).exists():
+                    # Return result
                     return {
                         "file_path": fp,
                         "resolved_path": resolved,
@@ -334,10 +378,12 @@ class AnalyzeScaleTool(BaseMCPTool):
                 lang: str | None = detect_language_from_file(
                     resolved, project_root=self.project_root
                 )
+                # Conditional check
                 if lang == "unknown":
                     lang = None
 
                 metrics = self._calculate_file_metrics(resolved, lang)
+                # Return result
                 return {
                     "file_path": fp,
                     "resolved_path": resolved,
@@ -357,49 +403,15 @@ class AnalyzeScaleTool(BaseMCPTool):
             "limits": {"max_files": max_files, "concurrency": 4},
             "results": per_file,
         }
+        # Return result
         return apply_toon_format_to_response(response, output_format)
 
-    # Input validation - fail fast with clear error messages
+    # Input validation - delegates to shared helper
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate file_path and option arguments."""
-        if "file_paths" in arguments and arguments["file_paths"] is not None:
-            if "file_path" in arguments:
-                raise ValueError("file_paths is mutually exclusive with file_path")
-            file_paths = arguments["file_paths"]
-            if not isinstance(file_paths, list) or not file_paths:
-                raise ValueError("file_paths must be a non-empty list")
-            if not isinstance(arguments.get("metrics_only", False), bool):
-                raise ValueError("metrics_only must be a boolean")
-            if arguments.get("metrics_only", False) is not True:
-                raise ValueError(
-                    "metrics_only must be true when using file_paths batch mode"
-                )
-            return True
+        return validate_scale_arguments(arguments)
 
-        if "file_path" not in arguments:
-            raise ValueError("Required field 'file_path' is missing")
-
-        if "file_path" in arguments:
-            fp = arguments["file_path"]
-            if not isinstance(fp, str):
-                raise ValueError("file_path must be a string")
-            if not fp.strip():
-                raise ValueError("file_path cannot be empty")
-
-        for key in ("language",):
-            if key in arguments and not isinstance(arguments[key], str):
-                raise ValueError(f"{key} must be a string")
-
-        for key in (
-            "include_complexity",
-            "include_details",
-            "include_guidance",
-        ):
-            if key in arguments and not isinstance(arguments[key], bool):
-                raise ValueError(f"{key} must be a boolean")
-
-        return True
-
+    # _create_json_file_analysis: delegates to shared helper
     def _create_json_file_analysis(
         self,
         file_path: str,
@@ -408,48 +420,14 @@ class AnalyzeScaleTool(BaseMCPTool):
         output_format: str = "toon",
     ) -> dict[str, Any]:
         """Create analysis for non-source files (JSON, YAML, etc.)."""
-        total_lines = file_metrics["total_lines"]
-        result: dict[str, Any] = {
-            "success": True,
-            "file_path": file_path,
-            "language": "json",
-            "file_size_bytes": file_metrics["file_size_bytes"],
-            "total_lines": total_lines,
-            "non_empty_lines": total_lines - file_metrics["blank_lines"],
-            "estimated_tokens": file_metrics["estimated_tokens"],
-            "complexity_metrics": {
-                "total_elements": 0,
-                "max_depth": 0,
-                "avg_complexity": 0.0,
-            },
-            "structural_overview": {"classes": [], "methods": [], "fields": []},
-            "scale_category": (
-                "small"
-                if total_lines < 100
-                else "medium"
-                if total_lines < 1000
-                else "large"
-            ),
-            "analysis_recommendations": {
-                "suitable_for_full_analysis": total_lines < 1000,
-                "recommended_approach": "JSON files are configuration/data files - structural analysis not applicable",
-                "token_efficiency_notes": "JSON files can be read directly without tree-sitter parsing",  # nosec B105
-            },
-        }
-
-        if include_guidance:
-            result["llm_analysis_guidance"] = {
-                "file_characteristics": "JSON configuration/data file",
-                "recommended_workflow": "Direct file reading for content analysis",
-                "token_optimization": "Use simple file reading tools for JSON content",  # nosec B105
-                "analysis_focus": "Data structure and configuration values",
-            }
-
-        return apply_toon_format_to_response(result, output_format)
+        return create_json_file_analysis(
+            file_path, file_metrics, include_guidance, output_format
+        )
 
     # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
+        # Return result
         return {
             "name": "check_code_scale",
             "description": (
@@ -462,4 +440,3 @@ class AnalyzeScaleTool(BaseMCPTool):
 
 # Tool instance for easy access
 analyze_scale_tool = AnalyzeScaleTool()
-

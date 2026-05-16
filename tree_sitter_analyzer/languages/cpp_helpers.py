@@ -705,7 +705,7 @@ def extract_cpp_field_declaration(
             elif child.type == "init_declarator":
                 # Iterate over grandchild
                 for grandchild in child.children:
-                    # Check: grandchild.type in ("field_identifier", 
+                    # Check: grandchild.type in ("field_identifier",
                     if grandchild.type in ("field_identifier", "identifier"):
                         field_names.append(get_node_text(grandchild))
 
@@ -1040,7 +1040,3 @@ def extract_cpp_class(
         log_debug(f"Failed to extract class info: {e}")
         # Return result
         return None
-
-
-
-

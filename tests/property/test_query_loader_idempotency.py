@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Property: QueryLoader.is_language_supported and get_query idempotency."""
 
-import pytest
-from hypothesis import given, strategies as st, settings
+from hypothesis import given
+from hypothesis import strategies as st
 
 from tree_sitter_analyzer.query_loader import QueryLoader
 
@@ -40,5 +40,7 @@ class TestQueryIdempotency:
         result = loader.get_all_queries_for_language(language)
         assert isinstance(result, dict)
         for name, value in result.items():
-            assert isinstance(value, tuple), f"{name} should be tuple, got {type(value)}"
+            assert isinstance(value, tuple), (
+                f"{name} should be tuple, got {type(value)}"
+            )
             assert len(value) == 2

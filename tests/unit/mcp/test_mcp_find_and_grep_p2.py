@@ -1,4 +1,3 @@
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
@@ -56,6 +55,8 @@ async def test_fd_11_and_plus_glob(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_12_and_plus_fixed_strings(tmp_path, monkeypatch):
     """Test AND search with fixed strings - simulates fd's test_and_plus_fixed_strings."""
@@ -94,6 +95,8 @@ async def test_fd_12_and_plus_fixed_strings(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_13_and_plus_ignore_case(tmp_path, monkeypatch):
     """Test AND search with ignore case - simulates fd's test_and_plus_ignore_case."""
@@ -132,6 +135,8 @@ async def test_fd_13_and_plus_ignore_case(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_14_and_plus_case_sensitive(tmp_path, monkeypatch):
     """Test AND search with case sensitive - simulates fd's test_and_plus_case_sensitive."""
@@ -161,6 +166,8 @@ async def test_fd_14_and_plus_case_sensitive(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_15_and_plus_full_path(tmp_path, monkeypatch):
     """Test AND search with full path - simulates fd's test_and_plus_full_path."""
@@ -206,6 +213,8 @@ async def test_fd_15_and_plus_full_path(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_59_exec_command_simulation(tmp_path, monkeypatch):
     """Test exec command simulation - corresponds to fd's test_exec."""
@@ -233,6 +242,8 @@ async def test_fd_59_exec_command_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_60_exec_multi_command_simulation(tmp_path, monkeypatch):
     """Test exec multi command simulation - corresponds to fd's test_exec_multi."""
@@ -259,6 +270,8 @@ async def test_fd_60_exec_multi_command_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_61_exec_batch_simulation(tmp_path, monkeypatch):
     """Test exec batch simulation - corresponds to fd's test_exec_batch."""
@@ -285,6 +298,8 @@ async def test_fd_61_exec_batch_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 5
+
+
 @pytest.mark.asyncio
 async def test_fd_62_exec_batch_multi_simulation(tmp_path, monkeypatch):
     """Test exec batch multi simulation - corresponds to fd's test_exec_batch_multi."""
@@ -316,6 +331,8 @@ async def test_fd_62_exec_batch_multi_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 3
+
+
 @pytest.mark.asyncio
 async def test_fd_63_exec_batch_with_limit_simulation(tmp_path, monkeypatch):
     """Test exec batch with limit simulation - corresponds to fd's test_exec_batch_with_limit."""
@@ -345,6 +362,8 @@ async def test_fd_63_exec_batch_with_limit_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] <= 3
+
+
 @pytest.mark.asyncio
 async def test_fd_64_exec_with_separator_simulation(tmp_path, monkeypatch):
     """Test exec with separator simulation - corresponds to fd's test_exec_with_separator."""

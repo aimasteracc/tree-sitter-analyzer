@@ -19,6 +19,7 @@ from ...constants import (
 )
 
 
+# count_elements_by_type: implementation
 def count_elements_by_type(elements: list[Any]) -> dict[str, int]:
     """Count elements by their type."""
     counts: dict[str, int] = {
@@ -29,15 +30,21 @@ def count_elements_by_type(elements: list[Any]) -> dict[str, int]:
         "annotations": 0,
         "packages": 0,
     }
+    # Loop iteration
     for e in elements:
+        # Conditional check
         if is_element_of_type(e, ELEMENT_TYPE_CLASS):
             counts["classes"] += 1
+        # Alternative check
         elif is_element_of_type(e, ELEMENT_TYPE_FUNCTION):
             counts["methods"] += 1
+        # Alternative check
         elif is_element_of_type(e, ELEMENT_TYPE_VARIABLE):
             counts["fields"] += 1
+        # Alternative check
         elif is_element_of_type(e, ELEMENT_TYPE_IMPORT):
             counts["imports"] += 1
+        # Alternative check
         elif is_element_of_type(e, ELEMENT_TYPE_PACKAGE):
             counts["packages"] += 1
     counts["annotations"] = (
@@ -46,11 +53,14 @@ def count_elements_by_type(elements: list[Any]) -> dict[str, int]:
         else 0
     )
     counts["total"] = sum(v for k, v in counts.items() if k != "annotations")
+    # Return result
     return counts
 
 
+# elements_to_summary: implementation
 def elements_to_summary(elements: list[Any], element_type: str) -> list[dict[str, Any]]:
     """Convert elements of a given type to summary items."""
+    # Return result
     return [
         (
             e.to_summary_item()
@@ -62,6 +72,7 @@ def elements_to_summary(elements: list[Any], element_type: str) -> list[dict[str
     ]
 
 
+# count_dict_elements_by_type: implementation
 def count_dict_elements_by_type(elements: list[Any]) -> dict[str, int]:
     """Count elements from universal analyzer dict-based results."""
     counts: dict[str, int] = {
@@ -71,46 +82,59 @@ def count_dict_elements_by_type(elements: list[Any]) -> dict[str, int]:
         "imports": 0,
         "annotations": 0,
     }
+    # Loop iteration
     for e in elements:
         etype = getattr(e, "element_type", None)
+        # Conditional check
         if etype == "class":
             counts["classes"] += 1
+        # Alternative check
         elif etype == "function":
             counts["methods"] += 1
+        # Alternative check
         elif etype == "variable":
             counts["fields"] += 1
+        # Alternative check
         elif etype == "import":
             counts["imports"] += 1
+    # Return result
     return counts
 
 
+# JSON Schema: input validation for universal_analyze tool
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        # Required: file path to the source file
         "file_path": {
             "type": "string",
             "description": "Path to the code file to analyze",
         },
+        # Optional: override auto-detected language
         "language": {
             "type": "string",
             "description": "Programming language (optional, auto-detected if not specified)",
         },
+        # Analysis depth: basic, detailed, structure, or metrics
         "analysis_type": {
             "type": "string",
             "enum": ["basic", "detailed", "structure", "metrics"],
             "description": "Type of analysis to perform",
             "default": "basic",
         },
+        # Include raw AST nodes in response
         "include_ast": {
             "type": "boolean",
             "description": "Include AST information in the analysis",
             "default": False,
         },
+        # Include available tree-sitter queries for the language
         "include_queries": {
             "type": "boolean",
             "description": "Include available query information",
             "default": False,
         },
+        # Token-efficient toon format by default
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
@@ -118,6 +142,7 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": "toon",
         },
     },
+    # file_path is the only required field
     "required": ["file_path"],
     "additionalProperties": False,
 }

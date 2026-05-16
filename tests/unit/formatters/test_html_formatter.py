@@ -821,11 +821,13 @@ def test_html_formatter_summary():
     output = formatter.format_summary(result)
     assert isinstance(output, str)
 
+
 def test_html_formatter_structure():
     formatter = HtmlFormatter()
     result = {"file_path": "test.html", "language": "html", "classes": []}
     output = formatter.format_structure(result)
     assert isinstance(output, str)
+
 
 def test_html_formatter_advanced():
     formatter = HtmlFormatter()
@@ -860,12 +862,16 @@ class TestHtmlFormatterCoverageGap:
             element_class="layout",
             language="css",
         )
-        self.func = Function(name="init", start_line=1, end_line=3, language="javascript")
+        self.func = Function(
+            name="init", start_line=1, end_line=3, language="javascript"
+        )
 
     def _make_result(self, elements):
         """Create an analysis result object with .elements attribute"""
+
         class AR:
             pass
+
         ar = AR()
         ar.elements = elements
         return ar
@@ -944,6 +950,7 @@ class TestHtmlFormatterCoverageGap:
 
     def test_format_analysis_result_with_analysis_result_object(self):
         """format_analysis_result with object that has .elements (line 115-116)"""
+
         class FakeAnalysisResult:
             def __init__(self):
                 self.elements = [
@@ -964,7 +971,9 @@ class TestHtmlFormatterCoverageGap:
 
     def test_format_analysis_result_without_elements_attr(self):
         """format_analysis_result with object lacking .elements (line 118)"""
-        output = self.formatter.format_analysis_result("plain_string", table_type="full")
+        output = self.formatter.format_analysis_result(
+            "plain_string", table_type="full"
+        )
         assert "No HTML elements found" in output
 
 
@@ -1203,6 +1212,7 @@ class TestHtmlCsvFormatterCoverage:
 
     def test_format_unknown_object_type(self):
         """CSV format with unknown object using getattr (lines 651-658)"""
+
         class UnknownElement:
             pass
 
@@ -1220,6 +1230,7 @@ class TestHtmlCsvFormatterCoverage:
 
     def test_format_unknown_object_no_tag_name(self):
         """CSV format unknown object with selector but no tag_name (line 652)"""
+
         class UnknownElement:
             pass
 

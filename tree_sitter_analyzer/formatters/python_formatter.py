@@ -893,7 +893,3 @@ class PythonTableFormatter(BaseTableFormatter):
         else:
             # Return result
             return f"({params_str}):Any"
-
-
-
-

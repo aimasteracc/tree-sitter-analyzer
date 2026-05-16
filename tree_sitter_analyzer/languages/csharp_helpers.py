@@ -497,7 +497,3 @@ def extract_event_declaration(
 
     # Return result
     return variables
-
-
-
-

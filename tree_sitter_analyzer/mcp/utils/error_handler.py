@@ -7,6 +7,7 @@ mechanisms for the MCP server operations.
 """
 
 import asyncio
+import inspect
 import logging
 import traceback
 from collections.abc import Callable
@@ -553,7 +554,7 @@ def handle_mcp_errors(
                     ) from e
                 raise
 
-        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+        return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
     return decorator
 
@@ -571,4 +572,3 @@ def get_error_handler() -> ErrorHandler:
         Global error handler
     """
     return _error_handler
-

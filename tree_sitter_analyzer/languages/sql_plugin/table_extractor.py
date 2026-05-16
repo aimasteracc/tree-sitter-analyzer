@@ -189,4 +189,3 @@ def _parse_column_definition(col_def: str) -> SQLColumn | None:
         is_foreign_key=is_foreign_key,
         foreign_key_reference=foreign_key_reference,
     )
-

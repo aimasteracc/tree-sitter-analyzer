@@ -355,7 +355,7 @@ class TestElementExtractor:
         assert result == "unknown"
 
 
-class TestDefaultExtractorTraversal:
+class TestDefaultExtractorTraversalDirect:
     """Test DefaultExtractor traversal methods"""
 
     @pytest.fixture
@@ -618,7 +618,9 @@ class TestDefaultExtractorTraversal:
 
         classes: list = []
 
-        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+        with patch.object(
+            extractor, "_extract_node_name", side_effect=RuntimeError("boom")
+        ):
             extractor._traverse_for_classes(mock_node, classes, [], "")
 
         assert len(classes) == 0
@@ -641,7 +643,9 @@ class TestDefaultExtractorTraversal:
 
         classes: list = []
         source = "class Child:\n    pass\n"
-        extractor._traverse_for_classes(mock_parent, classes, source.splitlines(), source)
+        extractor._traverse_for_classes(
+            mock_parent, classes, source.splitlines(), source
+        )
 
         assert len(classes) == 1
         assert isinstance(classes[0], ModelClass)
@@ -673,7 +677,9 @@ class TestDefaultExtractorTraversal:
 
         variables: list = []
         source = "x = 42"
-        extractor._traverse_for_variables(mock_node, variables, source.splitlines(), source)
+        extractor._traverse_for_variables(
+            mock_node, variables, source.splitlines(), source
+        )
 
         assert len(variables) == 1
         assert isinstance(variables[0], ModelVariable)
@@ -696,7 +702,9 @@ class TestDefaultExtractorTraversal:
 
         variables: list = []
         source = "y = 1"
-        extractor._traverse_for_variables(mock_parent, variables, source.splitlines(), source)
+        extractor._traverse_for_variables(
+            mock_parent, variables, source.splitlines(), source
+        )
 
         assert len(variables) == 1
         assert isinstance(variables[0], ModelVariable)
@@ -740,7 +748,9 @@ class TestDefaultExtractorTraversal:
 
         imports: list = []
         source = "import os, sys"
-        extractor._traverse_for_imports(mock_parent, imports, source.splitlines(), source)
+        extractor._traverse_for_imports(
+            mock_parent, imports, source.splitlines(), source
+        )
 
         assert len(imports) == 1
         assert isinstance(imports[0], ModelImport)
@@ -761,7 +771,9 @@ class TestDefaultExtractorErrorPaths:
 
         classes: list = []
 
-        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+        with patch.object(
+            extractor, "_extract_node_name", side_effect=RuntimeError("boom")
+        ):
             extractor._traverse_for_classes(mock_node, classes, [], "")
 
         assert len(classes) == 0
@@ -774,7 +786,9 @@ class TestDefaultExtractorErrorPaths:
 
         variables: list = []
 
-        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+        with patch.object(
+            extractor, "_extract_node_name", side_effect=RuntimeError("boom")
+        ):
             extractor._traverse_for_variables(mock_node, variables, [], "")
 
         assert len(variables) == 0
@@ -787,7 +801,9 @@ class TestDefaultExtractorErrorPaths:
 
         imports: list = []
 
-        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+        with patch.object(
+            extractor, "_extract_node_name", side_effect=RuntimeError("boom")
+        ):
             extractor._traverse_for_imports(mock_node, imports, [], "")
 
         assert len(imports) == 0
@@ -800,7 +816,9 @@ class TestDefaultExtractorErrorPaths:
 
         functions: list = []
 
-        with patch.object(extractor, "_extract_node_name", side_effect=RuntimeError("boom")):
+        with patch.object(
+            extractor, "_extract_node_name", side_effect=RuntimeError("boom")
+        ):
             extractor._traverse_for_functions(mock_node, functions, [], "")
 
         assert len(functions) == 0

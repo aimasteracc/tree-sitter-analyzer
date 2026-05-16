@@ -476,4 +476,3 @@ class YAMLFormatter(BaseFormatter):
         output = [f"--- {title} ---"]
         output.append(json.dumps(data, indent=2, ensure_ascii=False))
         return "\n".join(output)
-

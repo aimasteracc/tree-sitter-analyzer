@@ -18,10 +18,10 @@ except ImportError:
 
 from ...models import AnalysisResult
 from ...platform_compat.adapter import CompatibilityAdapter
-from ...platform_compat.detector import PlatformDetector
 from ...platform_compat.profiles import BehaviorProfile
 from ...plugins.base import ElementExtractor, LanguagePlugin
 from ...utils import log_debug, log_error
+from . import extractor as extractor_module
 from .extractor import SQLElementExtractor
 
 
@@ -55,17 +55,21 @@ class SQLPlugin(LanguagePlugin):
         # Platform compatibility initialization
         self.platform_info = None
         try:
-            self.platform_info = PlatformDetector.detect()
+            self.platform_info = extractor_module.PlatformDetector.detect()
             from ...plugins.base import ElementExtractor
 
             if isinstance(self.extractor, ElementExtractor):
                 self.extractor.platform_info = self.platform_info
 
             platform_info = self.platform_info
+            if self.diagnostic_mode:
+                extractor_module.log_debug(
+                    f"Diagnostic: Platform detected: {platform_info}"
+                )
+
             profile = BehaviorProfile.load(platform_info.platform_key)
 
             if self.diagnostic_mode:
-                log_debug(f"Diagnostic: Platform detected: {platform_info}")
                 if profile:
                     log_debug(
                         f"Diagnostic: Loaded SQL behavior profile for {platform_info.platform_key}"

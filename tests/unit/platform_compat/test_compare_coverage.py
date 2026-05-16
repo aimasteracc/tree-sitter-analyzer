@@ -1,7 +1,5 @@
 """Coverage tests for compare.py — target 55.74% → ≥80%."""
 
-import pytest
-
 from tree_sitter_analyzer.platform_compat.compare import (
     BehaviorDifference,
     ProfileComparison,
@@ -76,7 +74,10 @@ def test_error_mismatch():
     b = _make_profile("macos-3.12", {"f1": _make_behavior("f1", has_error=True)})
     result = compare_profiles(a, b)
     assert result.has_differences
-    assert any(d.construct_id == "f1" and d.diff_type == "error_mismatch" for d in result.differences)
+    assert any(
+        d.construct_id == "f1" and d.diff_type == "error_mismatch"
+        for d in result.differences
+    )
 
 
 def test_count_mismatch():
@@ -85,7 +86,10 @@ def test_count_mismatch():
     b = _make_profile("macos-3.12", {"f1": _make_behavior("f1", element_count=5)})
     result = compare_profiles(a, b)
     assert result.has_differences
-    assert any(d.construct_id == "f1" and d.diff_type == "count_mismatch" for d in result.differences)
+    assert any(
+        d.construct_id == "f1" and d.diff_type == "count_mismatch"
+        for d in result.differences
+    )
 
 
 def test_attribute_mismatch():
@@ -153,12 +157,11 @@ def test_behavior_difference_fields():
 
 def test_profile_comparison_has_differences():
     """Cover ProfileComparison.has_differences property."""
-    empty = ProfileComparison(
-        platform_a="a", platform_b="b", differences=[]
-    )
+    empty = ProfileComparison(platform_a="a", platform_b="b", differences=[])
     assert not empty.has_differences
     full = ProfileComparison(
-        platform_a="a", platform_b="b",
-        differences=[BehaviorDifference("x", "missing", "", "", "")]
+        platform_a="a",
+        platform_b="b",
+        differences=[BehaviorDifference("x", "missing", "", "", "")],
     )
     assert full.has_differences

@@ -535,8 +535,3 @@ class CPlugin(LanguagePlugin):
                 "variables": [],
                 "imports": [],
             }
-
-
-
-
-

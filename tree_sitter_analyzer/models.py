@@ -970,8 +970,3 @@ class YAMLElement(CodeElement):
             "nesting_level": self.nesting_level,
             "document_index": self.document_index,
         }
-
-
-
-
-

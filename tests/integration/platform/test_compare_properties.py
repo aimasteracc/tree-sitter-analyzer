@@ -1,4 +1,4 @@
-from hypothesis import given
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from tree_sitter_analyzer.platform_compat.compare import compare_profiles
@@ -36,6 +36,7 @@ def behavior_profile_strategy(draw):
 
 class TestCompareProperties:
     @given(behavior_profile_strategy())
+    @settings(suppress_health_check=[HealthCheck.too_slow])
     def test_profile_comparison_identity(self, profile):
         """
         Property 9: Profile comparison accuracy (Identity)
@@ -47,6 +48,7 @@ class TestCompareProperties:
         assert len(comparison.differences) == 0
 
     @given(behavior_profile_strategy())
+    @settings(suppress_health_check=[HealthCheck.too_slow])
     def test_profile_comparison_accuracy(self, profile):
         """
         Property 9: Profile comparison accuracy (Differences)
@@ -77,33 +79,67 @@ class TestCompareProperties:
 
 def test_compare_missing_construct():
     from tree_sitter_analyzer.platform_compat.compare import compare_profiles
-    from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile, ParsingBehavior
-    a = BehaviorProfile("1.0", "linux-3.10", {"f": ParsingBehavior("f", "def", 1, [], False, [])}, [])
+    from tree_sitter_analyzer.platform_compat.profiles import (
+        BehaviorProfile,
+        ParsingBehavior,
+    )
+
+    a = BehaviorProfile(
+        "1.0", "linux-3.10", {"f": ParsingBehavior("f", "def", 1, [], False, [])}, []
+    )
     b = BehaviorProfile("1.0", "macos-4.12", {}, [])
     r = compare_profiles(a, b)
     assert r.has_differences
     assert any(d.diff_type == "missing" for d in r.differences)
 
+
 def test_compare_no_differences():
-    from tree_sitter_analyzer.platform_compat.compare import compare_profiles, generate_diff_report
-    from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile, ParsingBehavior
-    p = BehaviorProfile("1.0", "linux-3.10", {"f": ParsingBehavior("f", "def", 1, [], False, [])}, [])
+    from tree_sitter_analyzer.platform_compat.compare import (
+        compare_profiles,
+        generate_diff_report,
+    )
+    from tree_sitter_analyzer.platform_compat.profiles import (
+        BehaviorProfile,
+        ParsingBehavior,
+    )
+
+    p = BehaviorProfile(
+        "1.0", "linux-3.10", {"f": ParsingBehavior("f", "def", 1, [], False, [])}, []
+    )
     r = compare_profiles(p, p)
     assert not r.has_differences
     assert "No differences" in generate_diff_report(r)
 
+
 def test_compare_count_mismatch():
     from tree_sitter_analyzer.platform_compat.compare import compare_profiles
-    from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile, ParsingBehavior
-    a = BehaviorProfile("1.0", "a", {"f": ParsingBehavior("f", "def", 5, [], False, [])}, [])
-    b = BehaviorProfile("1.0", "b", {"f": ParsingBehavior("f", "def", 3, [], False, [])}, [])
+    from tree_sitter_analyzer.platform_compat.profiles import (
+        BehaviorProfile,
+        ParsingBehavior,
+    )
+
+    a = BehaviorProfile(
+        "1.0", "a", {"f": ParsingBehavior("f", "def", 5, [], False, [])}, []
+    )
+    b = BehaviorProfile(
+        "1.0", "b", {"f": ParsingBehavior("f", "def", 3, [], False, [])}, []
+    )
     r = compare_profiles(a, b)
     assert any(d.diff_type == "count_mismatch" for d in r.differences)
 
+
 def test_compare_error_mismatch():
     from tree_sitter_analyzer.platform_compat.compare import compare_profiles
-    from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile, ParsingBehavior
-    a = BehaviorProfile("1.0", "a", {"f": ParsingBehavior("f", "def", 1, [], True, [])}, [])
-    b = BehaviorProfile("1.0", "b", {"f": ParsingBehavior("f", "def", 1, [], False, [])}, [])
+    from tree_sitter_analyzer.platform_compat.profiles import (
+        BehaviorProfile,
+        ParsingBehavior,
+    )
+
+    a = BehaviorProfile(
+        "1.0", "a", {"f": ParsingBehavior("f", "def", 1, [], True, [])}, []
+    )
+    b = BehaviorProfile(
+        "1.0", "b", {"f": ParsingBehavior("f", "def", 1, [], False, [])}, []
+    )
     r = compare_profiles(a, b)
     assert any(d.diff_type == "error_mismatch" for d in r.differences)

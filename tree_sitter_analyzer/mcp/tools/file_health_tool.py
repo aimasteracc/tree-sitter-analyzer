@@ -80,18 +80,20 @@ class FileHealthTool(BaseMCPTool):
             "description": (
                 "File health A-F grade with code smells + security scan. "
                 "NOT reading code — gives risk assessment. "
-                "Returns: 5 dimension scores, smells, fix suggestions."
+                "Returns: 7 dimension scores, smells, fix suggestions."
             ),
             "inputSchema": self.get_tool_schema(),
         }
 
     # JSON schema for input validation
-    def get_tool_schema(self) -> dict[str, Any]:
+    @staticmethod
+    def get_tool_schema() -> dict[str, Any]:
         """Return the JSON schema for tool input validation."""
         return TOOL_SCHEMA
 
     # Input validation - fail fast with clear error messages
-    def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+    @staticmethod
+    def validate_arguments(arguments: dict[str, Any]) -> bool:
         """Validate file_path argument."""
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
@@ -129,26 +131,13 @@ class FileHealthTool(BaseMCPTool):
 
         smells = _detect_code_smells(resolved, health.dimensions, analysis, language)
 
-        result = {
-            "success": True,
-            "file_path": file_path,
-            "grade": health.grade,
-            "total_score": health.total,
-            "dimensions": health.dimensions,
-            "code_smells": smells,
-            "smell_count": len(smells),
-            "recommendation": _build_recommendation(
-                health.grade, health.dimensions, smells
-            ),
-        }
-
-        if health.grade in ("D", "F"):
-            result["next_action"] = _suggest_next_action(
-                file_path, health.grade, smells
-            )
-            plan = _build_extraction_plan(file_path, smells, resolved, analysis)
-            if plan:
-                result["extraction_plan"] = plan
+        result = _build_result(
+            file_path,
+            health,
+            smells,
+            resolved,
+            analysis,
+        )
 
         from ..utils.format_helper import apply_toon_format_to_response
 
@@ -231,18 +220,18 @@ def _check_deep_nesting(smells: list[dict[str, Any]], lines: list[str]) -> None:
         )
 
 
-# Flag low scores in comments, complexity, and dependency dimensions
+# Flag low scores in structure, complexity, and dependency dimensions
 def _check_dimension_smells(
     smells: list[dict[str, Any]], dimensions: dict[str, float]
 ) -> None:
-    """Flag low scores in comments, complexity, and dependency dimensions."""
-    if dimensions.get("comments", 100) < 20:
+    """Flag low scores in structure, complexity, and dependency dimensions."""
+    if dimensions.get("structure", 100) < 30:
         smells.append(
             {
-                "smell": "missing_documentation",
-                "detail": f"Comment ratio: {dimensions.get('comments', 0):.0f}% (recommended > 15%)",
-                "severity": "info",
-                "fix": "Add docstrings to public classes and functions",
+                "smell": "deep_nesting",
+                "detail": f"Structure score: {dimensions.get('structure', 0):.0f}/100 — deep nesting detected",
+                "severity": "warning",
+                "fix": "Flatten nesting with early returns, guard clauses, or extract helper functions",
             }
         )
 
@@ -418,6 +407,79 @@ class _BlockTracker:
         return False
 
 
+# Build a concise signal string for AI agent decision-making
+_SIGNAL_MAP = {
+    "complexity": {"low": "simple", "mid": "moderate_cc", "high": "high_cc"},
+    "dependencies": {
+        "low": "few_deps",
+        "mid": "moderate_deps",
+        "high": "high_coupling",
+    },
+    "size": {"low": "small", "mid": "medium_size", "high": "large_file"},
+    "structure": {"low": "flat", "mid": "moderate_depth", "high": "deep_nesting"},
+    "duplication": {"low": "dry", "mid": "some_dup", "high": "repeated_blocks"},
+    "git_hotspot": {"low": "stable", "mid": "active", "high": "volatile"},
+    "coverage": {
+        "low": "well_tested",
+        "mid": "partial_coverage",
+        "high": "low_coverage",
+    },
+}
+
+
+def _build_result(
+    file_path: str,
+    health: Any,
+    smells: list[dict[str, Any]],
+    resolved: str,
+    analysis: Any,
+) -> dict[str, Any]:
+    """Build the result dict from health data, smells, and optional extraction plan."""
+    result: dict[str, Any] = {
+        "success": True,
+        "file_path": file_path,
+        "grade": health.grade,
+        "total_score": health.total,
+        "signal": _build_signal(health.dimensions),
+        "dimensions": health.dimensions,
+        "code_smells": smells,
+        "smell_count": len(smells),
+        "recommendation": _build_recommendation(
+            health.grade, health.dimensions, smells
+        ),
+    }
+
+    if health.grade in ("D", "F"):
+        result["next_action"] = _suggest_next_action(file_path, health.grade, smells)
+        plan = _build_extraction_plan(file_path, smells, resolved, analysis)
+        if plan:
+            result["extraction_plan"] = plan
+
+    return result
+
+
+def _build_signal(dimensions: dict[str, float]) -> str:
+    """Build a concise signal string identifying the weakest dimension."""
+    if not dimensions:
+        return "no_data"
+
+    worst_dim = min(dimensions, key=lambda k: dimensions[k], default="")
+    worst_score = dimensions.get(worst_dim, 100)
+
+    if worst_score >= 70:
+        return "healthy"
+
+    # Classify the severity
+    if worst_score >= 40:
+        level = "mid"
+    else:
+        level = "high"
+
+    dim_signals = _SIGNAL_MAP.get(worst_dim, {})
+    signal = dim_signals.get(level, f"{worst_dim}_{level}")
+    return signal
+
+
 # Build human-readable recommendation based on grade and smells
 def _build_recommendation(
     grade: str,
@@ -556,6 +618,3 @@ def _find_function_end_line(file_path: str, start_line: int, analysis: Any) -> i
         return len(lines)
     except Exception:  # nosec B110
         return start_line
-
-
-

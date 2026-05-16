@@ -1,12 +1,14 @@
 """
 File-level code health scoring.
 
-Computes a 0-100 health score for source files based on five weighted dimensions:
-- Lines (20%): Penalizes overly large files
-- Complexity (25%): AST node count and nesting depth
+Computes a 0-100 health score for source files based on weighted dimensions:
+- Size (10%): Penalizes overly large files
+- Complexity (25%): McCabe Cyclomatic Complexity (decision-path count)
 - Dependencies (20%): Number of internal project dependencies
-- Comments (15%): Comment-to-code ratio
-- Coverage (20%): Test coverage from coverage.json (default: 50 for unknown)
+- Coverage (10%): Test coverage from coverage.json (None if unknown)
+- Duplication (10%): Repeated line-level code blocks
+- Structure (15%): Nesting depth ratio vs total nodes
+- Git hotspot (10%): Recent change frequency
 """
 
 import json
@@ -15,28 +17,203 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ._health_scorer_helpers import (
+    calculate_git_hotspot,
+    calculate_weighted_total,
+    read_source_file,
+    round_available_scores,
+)
 from .core.parser import Parser
 
 logger = logging.getLogger(__name__)
 
 # Dimension weights (must sum to 100)
 DIMENSION_WEIGHTS = {
-    "lines": 20,
+    "size": 10,
     "complexity": 25,
     "dependencies": 20,
-    "comments": 15,
-    "coverage": 20,
+    "coverage": 10,
+    "duplication": 10,
+    "structure": 15,
+    "git_hotspot": 10,
 }
 
 # Thresholds for scoring
-LINE_SCORE_IDEAL = 200  # Files under 200 lines get full line score
-LINE_SCORE_MAX = 2000  # Files over 2000 lines get 0 line score
-COMPLEXITY_IDEAL = 500  # Under 500 AST nodes → full complexity score
-COMPLEXITY_MAX = 20000  # Over 20000 AST nodes → 0 complexity score
-NESTING_MAX_DEPTH = 15  # AST nesting depth of 15+ → penalty starts
-COMMENT_RATIO_IDEAL = 0.20  # 20% comment ratio → full score
+SIZE_IDEAL = 200  # Files under 200 lines get full size score
+SIZE_MAX = 2000  # Files over 2000 lines get 0 size score
 DEP_IDEAL = 3  # ≤ 3 deps → full score
 DEP_MAX = 100  # ≥ 100 deps → 0 score
+CC_IDEAL = 15  # File-level CC ≤ 15 → full complexity score (aggregate of functions)
+CC_MODERATE = 40  # CC ≤ 40 → moderate penalty
+CC_COMPLEX = 100  # CC ≤ 100 → heavy penalty, CC > 100 → near-zero
+NESTING_MAX_DEPTH = 15  # Depth > 15 → penalty starts
+STRUCTURE_DEPTH_IDEAL = (
+    10  # Ideal max AST depth (tree-sitter trees are inherently deep)
+)
+STRUCTURE_DEPTH_MAX = 30  # Max AST depth for scoring
+HOTSPOT_COMMITS_LOW = 5  # ≤ 5 commits in 90 days → full score (stable)
+HOTSPOT_COMMITS_HIGH = 50  # ≥ 50 commits in 90 days → 0 score (volatile)
+
+# Per-language decision node types for McCabe Cyclomatic Complexity
+# CC = 1 + count(decision_nodes)
+DECISION_NODE_TYPES: dict[str, set[str]] = {
+    "python": {
+        "if_statement",
+        "elif_clause",
+        "for_statement",
+        "while_statement",
+        "except_clause",
+        "conditional_expression",
+        "boolean_operator",
+        "case_clause",
+    },
+    "javascript": {
+        "if_statement",
+        "for_statement",
+        "for_in_statement",
+        "while_statement",
+        "do_statement",
+        "switch_statement",
+        "case_clause",
+        "catch_clause",
+        "conditional_expression",
+        "logical_expression",
+        "try_statement",
+    },
+    "typescript": {
+        "if_statement",
+        "for_statement",
+        "for_in_statement",
+        "while_statement",
+        "do_statement",
+        "switch_statement",
+        "case_clause",
+        "catch_clause",
+        "conditional_expression",
+        "logical_expression",
+        "try_statement",
+    },
+    "java": {
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "enhanced_for_statement",
+        "switch_statement",
+        "case_clause",
+        "catch_clause",
+        "conditional_expression",
+    },
+    "c": {
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "switch_statement",
+        "case_clause",
+        "conditional_expression",
+        "do_statement",
+        "labeled_statement",
+    },
+    "cpp": {
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "switch_statement",
+        "case_clause",
+        "conditional_expression",
+        "do_statement",
+        "catch_clause",
+        "try_statement",
+        "range_based_for_statement",
+    },
+    "go": {
+        "if_statement",
+        "for_statement",
+        "case_clause",
+        "type_switch_statement",
+        "select_statement",
+        "communication_case",
+    },
+    "rust": {
+        "if_statement",
+        "if_let_expression",
+        "while_expression",
+        "while_let_expression",
+        "for_expression",
+        "loop_expression",
+        "match_expression",
+        "try_expression",
+    },
+    "ruby": {
+        "if",
+        "elsif",
+        "unless",
+        "while",
+        "until",
+        "for",
+        "case",
+        "when",
+        "rescue",
+        "and",
+        "or",
+        "ternary",
+    },
+    "php": {
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "foreach_statement",
+        "switch_statement",
+        "case_statement",
+        "catch_clause",
+        "conditional_expression",
+        "try_statement",
+    },
+    "kotlin": {
+        "if_statement",
+        "when_expression",
+        "when_entry",
+        "for_statement",
+        "while_statement",
+        "do_statement",
+        "try_expression",
+        "catch_block",
+        "conditional_expression",
+    },
+    "csharp": {
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "foreach_statement",
+        "switch_statement",
+        "case_switch_label",
+        "catch_clause",
+        "conditional_expression",
+        "try_statement",
+        "do_statement",
+    },
+}
+
+# Extension → language mapping
+_EXT_TO_LANG: dict[str, str] = {
+    ".py": "python",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".jsx": "javascript",
+    ".tsx": "typescript",
+    ".java": "java",
+    ".c": "c",
+    ".h": "c",
+    ".cpp": "cpp",
+    ".cc": "cpp",
+    ".cxx": "cpp",
+    ".hpp": "cpp",
+    ".go": "go",
+    ".rs": "rust",
+    ".rb": "ruby",
+    ".php": "php",
+    ".kt": "kotlin",
+    ".cs": "csharp",
+}
 
 
 @dataclass
@@ -48,7 +225,6 @@ class HealthScore:
         file_path: Path to the analyzed file
         total: Overall health score (0-100)
         dimensions: Per-dimension scores (0-100 each)
-        grade: Letter grade (A-F)
     """
 
     file_path: str
@@ -99,7 +275,9 @@ class HealthScorer:
 
         Args:
             weights: Optional custom dimension weights (must sum to 100).
-                    Default: lines=20, complexity=25, dependencies=20, comments=15, coverage=20
+                    Default: size=10, complexity=25, dependencies=20,
+                             coverage=10, duplication=10, structure=15,
+                             git_hotspot=10
         """
         self.weights = weights or dict(DIMENSION_WEIGHTS)
         self._coverage_cache: dict[str, float] | None = None
@@ -114,49 +292,37 @@ class HealthScorer:
         Returns:
             HealthScore with total and per-dimension scores
         """
-        # Check if file exists
         path = Path(file_path)
-        if not path.exists():
+        source = read_source_file(path)
+        if source is None:
             return HealthScore(file_path=file_path, total=0.0, dimensions={})
 
-        # Read the file
-        try:
-            source = path.read_text()
-        except Exception:
-            return HealthScore(file_path=file_path, total=0.0, dimensions={})
-
-        lines = source.splitlines()
-        line_count = len(lines)
-
-        # Dimension scores
-        dims: dict[str, float] = {}
-
-        # 1. Lines score (20%): smaller files score higher
-        dims["lines"] = self._score_lines(line_count)
-
-        # 2. Complexity score (25%): based on AST node count and nesting depth
-        dims["complexity"] = self._score_complexity(file_path, source)
-
-        # 3. Dependencies score (20%): placeholder (would need project graph)
-        dims["dependencies"] = self._score_dependencies(file_path)
-
-        # 4. Comments score (15%): ratio of comment lines to code lines
-        dims["comments"] = self._score_comments(lines, source)
-
-        # 5. Coverage score (20%): from coverage.json if available
-        dims["coverage"] = self._score_coverage(file_path)
-
-        # Weighted total
-        total = 0.0
-        for dim, score in dims.items():
-            weight = self.weights.get(dim, 20) / 100.0
-            total += score * weight
+        language = _EXT_TO_LANG.get(path.suffix.lower())
+        dims = self._score_dimensions(file_path, source, language)
+        total = calculate_weighted_total(dims, self.weights)
 
         return HealthScore(
             file_path=file_path,
             total=round(total, 1),
-            dimensions={k: round(v, 1) for k, v in dims.items()},
+            dimensions=round_available_scores(dims),
         )
+
+    def _score_dimensions(
+        self,
+        file_path: str,
+        source: str,
+        language: str | None,
+    ) -> dict[str, float | None]:
+        """Score each health dimension for a source file."""
+        return {
+            "size": score_size(len(source.splitlines())),
+            "complexity": score_complexity(file_path, source, language),
+            "dependencies": score_dependencies(file_path),
+            "coverage": self._score_coverage(file_path),
+            "duplication": score_duplication(source, language),
+            "structure": score_structure(file_path, source, language),
+            "git_hotspot": score_git_hotspot(file_path),
+        }
 
     _EXCLUDE_DIRS = {
         "node_modules",
@@ -208,157 +374,8 @@ class HealthScorer:
 
     # ---- Dimension scoring helpers ----
 
-    def _score_lines(self, line_count: int) -> float:
-        """Score based on file length. Smaller files get higher scores."""
-        if line_count <= 0:
-            return 0.0
-        if line_count <= LINE_SCORE_IDEAL:
-            return 100.0
-        if line_count >= LINE_SCORE_MAX:
-            return 0.0
-
-        # Linear interpolation between ideal and max
-        ratio = (line_count - LINE_SCORE_IDEAL) / (LINE_SCORE_MAX - LINE_SCORE_IDEAL)
-        return max(0.0, 100.0 * (1.0 - ratio))
-
-    def _score_complexity(self, file_path: str, source: str) -> float:
-        """Score based on AST node count and nesting depth."""
-        try:
-            ext = Path(file_path).suffix.lower()
-            lang_map = {
-                ".py": "python",
-                ".js": "javascript",
-                ".ts": "typescript",
-                ".jsx": "javascript",
-                ".tsx": "typescript",
-                ".java": "java",
-            }
-            language = lang_map.get(ext)
-            if language is None:
-                return 50.0
-
-            parser = Parser()
-            result = parser.parse_file(file_path, language)
-
-            if not result.success or result.tree is None:
-                return 50.0
-
-            # Count total nodes and find max depth
-            node_count = 0
-            max_depth = 0
-
-            def walk(node: Any, depth: int) -> None:
-                nonlocal node_count, max_depth
-                node_count += 1
-                max_depth = max(max_depth, depth)
-                if hasattr(node, "children"):
-                    for child in node.children:
-                        walk(child, depth + 1)
-
-            walk(result.tree.root_node, 0)
-
-            # Node count score
-            if node_count <= COMPLEXITY_IDEAL:
-                node_score = 100.0
-            elif node_count >= COMPLEXITY_MAX:
-                node_score = 0.0
-            else:
-                ratio = (node_count - COMPLEXITY_IDEAL) / (
-                    COMPLEXITY_MAX - COMPLEXITY_IDEAL
-                )
-                node_score = max(0.0, 100.0 * (1.0 - ratio))
-
-            # Depth penalty (proportional, capped at 40%)
-            depth_penalty_pct = 0.0
-            if max_depth > NESTING_MAX_DEPTH:
-                depth_penalty_pct = min(40.0, (max_depth - NESTING_MAX_DEPTH) * 5.0)
-
-            return max(0.0, node_score * (1.0 - depth_penalty_pct / 100.0))
-
-        except Exception:
-            return 50.0
-
-    def _score_dependencies(self, file_path: str) -> float:
-        """Score based on import count (uses project_graph if available)."""
-        try:
-            from .project_graph import extract_imports_from_file
-
-            imports = extract_imports_from_file(file_path)
-            # Count only non-stdlib imports
-            stdlib = {
-                "os",
-                "sys",
-                "re",
-                "json",
-                "math",
-                "time",
-                "datetime",
-                "collections",
-                "itertools",
-                "functools",
-                "typing",
-                "io",
-                "pathlib",
-                "hashlib",
-                "random",
-                "string",
-                "textwrap",
-            }
-            internal_imports = [
-                i
-                for i in imports
-                if i.get("module_name", "")
-                and i["module_name"].split(".")[0] not in stdlib
-            ]
-            dep_count = len(internal_imports)
-
-            if dep_count <= DEP_IDEAL:
-                return 100.0
-            if dep_count >= DEP_MAX:
-                return 0.0
-
-            ratio = (dep_count - DEP_IDEAL) / (DEP_MAX - DEP_IDEAL)
-            return max(0.0, 100.0 * (1.0 - ratio))
-        except ImportError:
-            return 50.0
-        except Exception:
-            return 50.0
-
-    def _score_comments(self, lines: list[str], source: str) -> float:
-        """Score based on comment-to-code ratio."""
-        if len(lines) == 0:
-            return 0.0
-
-        comment_lines = 0
-        code_lines = 0
-
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if (
-                stripped.startswith("#")
-                or stripped.startswith("//")
-                or stripped.startswith("/*")
-            ):
-                comment_lines += 1
-            elif stripped.startswith('"""') or stripped.startswith("'''"):
-                comment_lines += 1
-            else:
-                code_lines += 1
-
-        total = comment_lines + code_lines
-        if total == 0:
-            return 0.0
-
-        ratio = comment_lines / total
-
-        if ratio >= COMMENT_RATIO_IDEAL:
-            return 100.0
-        elif ratio <= 0.0:
-            return 0.0
-        else:
-            return (ratio / COMMENT_RATIO_IDEAL) * 100.0
+    # Coverage uses instance state (self._coverage_cache), stays as method
+    # All others are pure functions delegated to module-level
 
     def _load_coverage_data(self) -> dict[str, float]:
         """Load coverage data from coverage.json in current or parent directories."""
@@ -368,7 +385,6 @@ class HealthScorer:
         self._coverage_cache = {}
 
         search_paths = [Path.cwd()]
-        # Also check common project root locations
         for parent in Path.cwd().parents[:3]:
             search_paths.append(parent)
 
@@ -393,29 +409,23 @@ class HealthScorer:
                     logger.warning(f"Failed to parse coverage.json: {e}")
                     continue
 
-        logger.debug("No coverage.json found — using default coverage=50")
+        logger.debug("No coverage.json found")
         return self._coverage_cache
 
-    def _score_coverage(self, file_path: str) -> float:
-        """Score based on test coverage from coverage.json."""
+    def _score_coverage(self, file_path: str) -> float | None:
+        """Score based on test coverage. Returns None if no coverage data available."""
         coverage_data = self._load_coverage_data()
         if not coverage_data:
-            return 50.0
+            return None
 
-        # Try exact match first
         path = Path(file_path)
-        candidates = [
-            str(path),
-            path.name,
-        ]
+        candidates = [str(path), path.name]
 
-        # Add relative-from-cwd match
         try:
             candidates.append(str(path.relative_to(Path.cwd())))
         except ValueError:
             pass
 
-        # Add various relative paths
         for parent in [Path.cwd()] + list(Path.cwd().parents[:3]):
             try:
                 candidates.append(str(path.relative_to(parent)))
@@ -426,10 +436,238 @@ class HealthScorer:
             if candidate in coverage_data:
                 return coverage_data[candidate]
 
-        # Prefix match (file_path might be absolute, coverage uses relative)
         path_str = str(path)
         for cov_path, pct in coverage_data.items():
             if path_str.endswith(cov_path) or cov_path.endswith(path_str):
                 return pct
 
+        return None
+
+
+# ---- Module-level dimension scoring functions ----
+
+
+def score_size(line_count: int) -> float:
+    """Score based on file length. Smaller files get higher scores."""
+    if line_count <= 0:
+        return 0.0
+    if line_count <= SIZE_IDEAL:
+        return 100.0
+    if line_count >= SIZE_MAX:
+        return 0.0
+    ratio = (line_count - SIZE_IDEAL) / (SIZE_MAX - SIZE_IDEAL)
+    return max(0.0, 100.0 * (1.0 - ratio))
+
+
+def score_complexity(file_path: str, source: str, language: str | None) -> float:
+    """Score based on McCabe Cyclomatic Complexity (CC = 1 + decision nodes)."""
+    try:
+        if language is None:
+            return 50.0
+
+        parser = Parser()
+        result = parser.parse_file(file_path, language)
+
+        if not result.success or result.tree is None:
+            return 50.0
+
+        decision_types = DECISION_NODE_TYPES.get(language, set())
+        cc = 1
+
+        def walk(node: Any, depth: int) -> None:
+            nonlocal cc
+            if hasattr(node, "type") and node.type in decision_types:
+                cc += 1
+            if hasattr(node, "children"):
+                for child in node.children:
+                    walk(child, depth + 1)
+
+        walk(result.tree.root_node, 0)
+
+        if cc <= CC_IDEAL:
+            return 100.0
+        elif cc <= CC_MODERATE:
+            ratio = (cc - CC_IDEAL) / (CC_MODERATE - CC_IDEAL)
+            return max(30.0, 100.0 - 70.0 * ratio)
+        elif cc <= CC_COMPLEX:
+            ratio = (cc - CC_MODERATE) / (CC_COMPLEX - CC_MODERATE)
+            return max(5.0, 30.0 - 25.0 * ratio)
+        return 5.0
+
+    except Exception:
         return 50.0
+
+
+def find_project_root(path: Path) -> Path:
+    """Walk up from file path to find project root."""
+    markers = {
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "package.json",
+        "Cargo.toml",
+        "go.mod",
+    }
+    current = path.parent if path.is_file() else path
+    for _ in range(10):
+        if any((current / m).exists() for m in markers):
+            return current
+        if current.parent == current:
+            break
+        current = current.parent
+    return path.parent if path.is_file() else path
+
+
+def _score_deps_fallback(file_path: str) -> float:
+    """Fallback: score based on raw import count."""
+    try:
+        from .project_graph import extract_imports_from_file
+
+        imports = extract_imports_from_file(file_path)
+        stdlib = {
+            "os",
+            "sys",
+            "re",
+            "json",
+            "math",
+            "time",
+            "datetime",
+            "collections",
+            "itertools",
+            "functools",
+            "typing",
+            "io",
+            "pathlib",
+            "hashlib",
+            "random",
+            "string",
+            "textwrap",
+        }
+        internal_imports = [
+            i
+            for i in imports
+            if i.get("module_name", "") and i["module_name"].split(".")[0] not in stdlib
+        ]
+        dep_count = len(internal_imports)
+
+        if dep_count <= DEP_IDEAL:
+            return 100.0
+        if dep_count >= DEP_MAX:
+            return 0.0
+
+        ratio = (dep_count - DEP_IDEAL) / (DEP_MAX - DEP_IDEAL)
+        return max(0.0, 100.0 * (1.0 - ratio))
+    except Exception:
+        return 50.0
+
+
+def score_dependencies(file_path: str) -> float:
+    """Score based on real dependency graph (fan-out + fan-in)."""
+    try:
+        from .project_graph import DependencyGraph
+
+        path = Path(file_path).resolve()
+        project_root = find_project_root(path)
+
+        graph = DependencyGraph(str(project_root))
+        rel = str(path.relative_to(project_root))
+
+        fan_out = len(graph.dependencies_of(rel))
+        fan_in = len(graph.dependents_of(rel))
+
+        if fan_out <= DEP_IDEAL:
+            out_score = 100.0
+        elif fan_out >= DEP_MAX:
+            out_score = 0.0
+        else:
+            ratio = (fan_out - DEP_IDEAL) / (DEP_MAX - DEP_IDEAL)
+            out_score = max(0.0, 100.0 * (1.0 - ratio))
+
+        if fan_in <= 5:
+            in_score = 100.0
+        elif fan_in >= 50:
+            in_score = 0.0
+        else:
+            ratio = (fan_in - 5) / 45.0
+            in_score = max(0.0, 100.0 * (1.0 - ratio))
+
+        return 0.6 * out_score + 0.4 * in_score
+
+    except Exception:
+        return _score_deps_fallback(file_path)
+
+
+def score_duplication(source: str, language: str | None) -> float:
+    """Score based on repeated code blocks (line-level hashing)."""
+    lines = source.splitlines()
+    if len(lines) < 10:
+        return 100.0
+
+    block_hashes: dict[int, int] = {}
+    for i in range(len(lines) - 2):
+        block = (lines[i].strip(), lines[i + 1].strip(), lines[i + 2].strip())
+        if all(not b for b in block):
+            continue
+        h = hash(block)
+        block_hashes[h] = block_hashes.get(h, 0) + 1
+
+    total_blocks = len(block_hashes)
+    if total_blocks == 0:
+        return 100.0
+
+    duplicate_blocks = sum(1 for count in block_hashes.values() if count > 1)
+    dup_ratio = duplicate_blocks / total_blocks
+
+    if dup_ratio <= 0.05:
+        return 100.0
+    if dup_ratio >= 0.30:
+        return 0.0
+    return max(0.0, 100.0 * (1.0 - (dup_ratio - 0.05) / 0.25))
+
+
+def score_structure(file_path: str, source: str, language: str | None) -> float:
+    """Score based on AST nesting depth relative to file size."""
+    try:
+        if language is None:
+            return 50.0
+
+        parser = Parser()
+        result = parser.parse_file(file_path, language)
+
+        if not result.success or result.tree is None:
+            return 50.0
+
+        max_depth = 0
+
+        def walk(node: Any, depth: int) -> None:
+            nonlocal max_depth
+            max_depth = max(max_depth, depth)
+            if hasattr(node, "children"):
+                for child in node.children:
+                    walk(child, depth + 1)
+
+        walk(result.tree.root_node, 0)
+
+        if max_depth <= STRUCTURE_DEPTH_IDEAL:
+            return 100.0
+        if max_depth >= STRUCTURE_DEPTH_MAX:
+            return 0.0
+        ratio = (max_depth - STRUCTURE_DEPTH_IDEAL) / (
+            STRUCTURE_DEPTH_MAX - STRUCTURE_DEPTH_IDEAL
+        )
+        return max(0.0, 100.0 * (1.0 - ratio))
+
+    except Exception:
+        return 50.0
+
+
+def score_git_hotspot(file_path: str) -> float | None:
+    """Score based on git commit frequency (Tornhill's hotspot analysis)."""
+    try:
+        return calculate_git_hotspot(
+            file_path,
+            HOTSPOT_COMMITS_LOW,
+            HOTSPOT_COMMITS_HIGH,
+        )
+    except Exception:
+        return None

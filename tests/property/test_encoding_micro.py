@@ -4,7 +4,7 @@
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from tree_sitter_analyzer.encoding_utils import safe_encode, safe_decode
+from tree_sitter_analyzer.encoding_utils import safe_decode, safe_encode
 
 
 class TestEncodingProperties:

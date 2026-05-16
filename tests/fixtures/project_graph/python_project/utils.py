@@ -1,4 +1,6 @@
 """Utility functions - imports nothing from the project."""
+
+
 def helper():
     return "helper"
 

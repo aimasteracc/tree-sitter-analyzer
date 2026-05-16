@@ -7,7 +7,7 @@ command execution and result processing.
 """
 
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -196,12 +196,17 @@ class TestRunCommandCapture:
             patch("asyncio.create_subprocess_exec") as mock_subprocess,
             patch.object(fd_rg_utils, "check_external_command", return_value=True),
         ):
-            mock_proc = AsyncMock()
+            mock_proc = MagicMock()
             mock_proc.returncode = 0
-            mock_proc.communicate.return_value = (b"output", b"")
+            mock_proc.communicate = AsyncMock(return_value=(b"output", b""))
+            mock_proc.wait = AsyncMock(return_value=0)
             mock_subprocess.return_value = mock_proc
 
-            with patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+            async def fake_wait_for(awaitable, timeout=None):
+                awaitable.close()
+                raise asyncio.TimeoutError
+
+            with patch("asyncio.wait_for", new=fake_wait_for):
                 rc, out, err = await fd_rg_utils.run_command_capture(
                     ["sleep", "10"], timeout_ms=100
                 )
@@ -567,5 +572,3 @@ class TestBuildFdCommand:
             roots=["/path"],
         )
         assert "." in cmd  # Default pattern for all files
-
-

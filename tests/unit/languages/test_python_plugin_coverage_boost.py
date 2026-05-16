@@ -125,16 +125,28 @@ class TestExtractPackages:
 
 class TestGetNodeTypeForElement:
     def test_function(self, plugin):
-        assert plugin._get_node_type_for_element(Function("f", 1, 1, "def f(): pass")) == "function_definition"
+        assert (
+            plugin._get_node_type_for_element(Function("f", 1, 1, "def f(): pass"))
+            == "function_definition"
+        )
 
     def test_class(self, plugin):
-        assert plugin._get_node_type_for_element(Class("C", 1, 1, "class C: pass")) == "class_definition"
+        assert (
+            plugin._get_node_type_for_element(Class("C", 1, 1, "class C: pass"))
+            == "class_definition"
+        )
 
     def test_variable(self, plugin):
-        assert plugin._get_node_type_for_element(Variable("x", 1, 1, "x = 1")) == "assignment"
+        assert (
+            plugin._get_node_type_for_element(Variable("x", 1, 1, "x = 1"))
+            == "assignment"
+        )
 
     def test_import(self, plugin):
-        assert plugin._get_node_type_for_element(Import("os", 1, 1, "import os")) == "import_statement"
+        assert (
+            plugin._get_node_type_for_element(Import("os", 1, 1, "import os"))
+            == "import_statement"
+        )
 
     def test_unknown(self, plugin):
         assert plugin._get_node_type_for_element("not_an_element") == "unknown"
@@ -144,6 +156,7 @@ class TestExtractDecoratorsFromNode:
     def test_decorated_function(self, extractor, plugin):
         code = "class A:\n    @property\n    def x(self):\n        return 1\n"
         tree = _parse(plugin, code)
+
         # Find the function_definition node
         def find_nodes(node, node_type):
             result = []
@@ -351,7 +364,9 @@ class TestExtractDetailedFunctionInfo:
 
         func_nodes = find_nodes(tree.root_node, "function_definition")
         assert len(func_nodes) >= 1
-        info = extractor._extract_detailed_function_info(func_nodes[0], code, is_async=True)
+        info = extractor._extract_detailed_function_info(
+            func_nodes[0], code, is_async=True
+        )
         assert info is not None
         assert info.name == "fetch"
 

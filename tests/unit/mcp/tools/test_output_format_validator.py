@@ -25,7 +25,9 @@ class TestOutputFormatValidatorDetectLanguage:
         """Detect Japanese from locale setting (lines 43-48)"""
         validator = OutputFormatValidator()
         with patch.dict(os.environ, {}, clear=True):
-            with patch.object(locale, "getlocale", return_value=("ja_JP.UTF-8", "UTF-8")):
+            with patch.object(
+                locale, "getlocale", return_value=("ja_JP.UTF-8", "UTF-8")
+            ):
                 result = validator._detect_language()
                 assert result == "ja"
 
@@ -41,7 +43,9 @@ class TestOutputFormatValidatorDetectLanguage:
         """Handle locale exception gracefully (line 47-48)"""
         validator = OutputFormatValidator()
         with patch.dict(os.environ, {}, clear=True):
-            with patch.object(locale, "getlocale", side_effect=Exception("locale error")):
+            with patch.object(
+                locale, "getlocale", side_effect=Exception("locale error")
+            ):
                 result = validator._detect_language()
                 assert result == "en"
 
@@ -49,7 +53,9 @@ class TestOutputFormatValidatorDetectLanguage:
         """Detect English for non-Japanese locale"""
         validator = OutputFormatValidator()
         with patch.dict(os.environ, {}, clear=True):
-            with patch.object(locale, "getlocale", return_value=("en_US.UTF-8", "UTF-8")):
+            with patch.object(
+                locale, "getlocale", return_value=("en_US.UTF-8", "UTF-8")
+            ):
                 result = validator._detect_language()
                 assert result == "en"
 
@@ -157,7 +163,9 @@ class TestOutputFormatValidatorActiveFormat:
 
     def test_get_active_suppress_output(self):
         validator = OutputFormatValidator()
-        assert validator.get_active_format({"suppress_output": True}) == "suppress_output"
+        assert (
+            validator.get_active_format({"suppress_output": True}) == "suppress_output"
+        )
 
     def test_get_active_normal_default(self):
         validator = OutputFormatValidator()

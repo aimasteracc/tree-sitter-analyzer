@@ -388,7 +388,7 @@ class TestQueryServiceQueryExceptionFallback:
                     service.parser, "parse_code", return_value=mock_result
                 ):
                     with patch(
-                        "tree_sitter_analyzer.core.query_service.TreeSitterQueryCompat.safe_execute_query",
+                        "tree_sitter_analyzer.core.query_executor.TreeSitterQueryCompat.safe_execute_query",
                         side_effect=RuntimeError("query failed"),
                     ):
                         results = await service.execute_query(
@@ -423,7 +423,7 @@ class TestQueryServiceQueryExceptionFallback:
                     service.parser, "parse_code", return_value=mock_result
                 ):
                     with patch(
-                        "tree_sitter_analyzer.core.query_service.TreeSitterQueryCompat.safe_execute_query",
+                        "tree_sitter_analyzer.core.query_executor.TreeSitterQueryCompat.safe_execute_query",
                         return_value=[],
                     ):
                         results = await service.execute_query(

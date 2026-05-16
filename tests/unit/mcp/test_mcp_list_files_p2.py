@@ -1,4 +1,3 @@
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
@@ -48,6 +47,8 @@ async def test_fd_33_type_empty(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_34_extension_filtering(tmp_path, monkeypatch):
     """Test file extension filtering - corresponds to fd's test_extension."""
@@ -99,6 +100,8 @@ async def test_fd_34_extension_filtering(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 1
+
+
 @pytest.mark.asyncio
 async def test_fd_35_no_extension(tmp_path, monkeypatch):
     """Test files without extension - corresponds to fd's test_no_extension."""
@@ -129,6 +132,8 @@ async def test_fd_35_no_extension(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_36_size_filtering(tmp_path, monkeypatch):
     """Test file size filtering - corresponds to fd's test_size."""
@@ -178,6 +183,8 @@ async def test_fd_36_size_filtering(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 1
+
+
 @pytest.mark.asyncio
 async def test_fd_37_no_ignore_basic(tmp_path, monkeypatch):
     """Test basic no ignore functionality - corresponds to fd's test_no_ignore."""
@@ -228,6 +235,8 @@ async def test_fd_37_no_ignore_basic(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 5
+
+
 @pytest.mark.asyncio
 async def test_fd_39_max_depth_filtering(tmp_path, monkeypatch):
     """Test maximum depth filtering - corresponds to fd's test_max_depth."""
@@ -301,6 +310,8 @@ async def test_fd_39_max_depth_filtering(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 3
+
+
 @pytest.mark.asyncio
 async def test_fd_40_min_depth_filtering(tmp_path, monkeypatch):
     """Test minimum depth filtering - corresponds to fd's test_min_depth."""
@@ -335,6 +346,8 @@ async def test_fd_40_min_depth_filtering(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_41_exact_depth_filtering(tmp_path, monkeypatch):
     """Test exact depth filtering - corresponds to fd's test_exact_depth."""
@@ -382,6 +395,8 @@ async def test_fd_41_exact_depth_filtering(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_42_prune_functionality(tmp_path, monkeypatch):
     """Test prune functionality - corresponds to fd's test_prune."""
@@ -426,6 +441,8 @@ async def test_fd_42_prune_functionality(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 3
+
+
 @pytest.mark.asyncio
 async def test_fd_43_excludes_pattern(tmp_path, monkeypatch):
     """Test exclude patterns - corresponds to fd's test_excludes."""
@@ -499,6 +516,8 @@ async def test_fd_43_excludes_pattern(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_44_follow_symlinks(tmp_path, monkeypatch):
     """Test following symlinks - corresponds to fd's test_follow."""
@@ -572,6 +591,8 @@ async def test_fd_44_follow_symlinks(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 3
+
+
 @pytest.mark.asyncio
 async def test_fd_45_file_system_boundaries(tmp_path, monkeypatch):
     """Test file system boundaries - corresponds to fd's test_file_system_boundaries."""
@@ -604,6 +625,8 @@ async def test_fd_45_file_system_boundaries(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 3
+
+
 @pytest.mark.asyncio
 async def test_fd_46_follow_broken_symlink(tmp_path, monkeypatch):
     """Test following broken symlinks - corresponds to fd's test_follow_broken_symlink."""
@@ -648,6 +671,8 @@ async def test_fd_46_follow_broken_symlink(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_47_symlink_as_root(tmp_path, monkeypatch):
     """Test symlink as search root - corresponds to fd's test_symlink_as_root."""
@@ -692,6 +717,8 @@ async def test_fd_47_symlink_as_root(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_48_symlink_and_absolute_path(tmp_path, monkeypatch):
     """Test symlinks with absolute paths - corresponds to fd's test_symlink_and_absolute_path."""
@@ -736,6 +763,8 @@ async def test_fd_48_symlink_and_absolute_path(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_49_symlink_as_absolute_root(tmp_path, monkeypatch):
     """Test symlink as absolute root - corresponds to fd's test_symlink_as_absolute_root."""

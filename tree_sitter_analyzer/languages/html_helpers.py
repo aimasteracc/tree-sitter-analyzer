@@ -161,4 +161,3 @@ def create_markup_element(
     except Exception as e:
         log_debug(f"Failed to create MarkupElement: {e}")
         return None
-

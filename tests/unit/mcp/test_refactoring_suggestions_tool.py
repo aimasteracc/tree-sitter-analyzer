@@ -122,13 +122,17 @@ class TestRefactoringSuggestionsTool:
                 assert "skeleton" not in ext
 
     def test_include_skeleton_true(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True})
+        )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         if with_plans:
             assert "skeleton" in with_plans[0]["precise_plan"]["extractions"][0]
 
     def test_output_format_toon(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "toon"}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "toon"})
+        )
         assert result.get("format") == "toon"
 
     def test_long_function_has_precise_plan(self, tool):
@@ -143,7 +147,9 @@ class TestRefactoringSuggestionsTool:
         assert len(plan["extractions"]) >= 1
 
     def test_precise_plan_extraction_fields(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True})
+        )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         assert len(with_plans) >= 1
         ext = with_plans[0]["precise_plan"]["extractions"][0]
@@ -173,7 +179,9 @@ class TestRefactoringSuggestionsTool:
         assert "_java_plugin_helpers.py" in helper_mod
 
     def test_precise_plan_skeleton_is_valid_python(self, tool):
-        result = _run(tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True}))
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "include_skeleton": True})
+        )
         with_plans = [s for s in result["suggestions"] if "precise_plan" in s]
         assert len(with_plans) >= 1
         for ext in with_plans[0]["precise_plan"]["extractions"]:

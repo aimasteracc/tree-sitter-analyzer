@@ -227,4 +227,3 @@ def extract_sequence_key(
             break
         parent = getattr(parent, "parent", None)
     return key
-

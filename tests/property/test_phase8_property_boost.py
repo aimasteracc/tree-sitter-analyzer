@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Property-based tests — Phase 8: boost hypothesis coverage to ≥10% gate."""
 
-import pytest
-from hypothesis import given, strategies as st, settings, HealthCheck
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
-from tree_sitter_analyzer.query_loader import QueryLoader
 from tree_sitter_analyzer.encoding_utils import EncodingManager
+from tree_sitter_analyzer.query_loader import QueryLoader
 
 
 class TestQueryLoaderProperties:
     """Property: load_language_queries is deterministic and idempotent."""
 
-    @given(st.sampled_from(["java", "python", "javascript", "sql", "rust", "go", "c", "cpp"]))
+    @given(
+        st.sampled_from(
+            ["java", "python", "javascript", "sql", "rust", "go", "c", "cpp"]
+        )
+    )
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_load_twice_same_result(self, language):
         loader = QueryLoader()
@@ -19,11 +23,26 @@ class TestQueryLoaderProperties:
         r2 = loader.load_language_queries(language)
         assert r1 == r2
 
-    @given(st.text(min_size=1, max_size=10, alphabet=st.characters(whitelist_categories=("Lu", "Ll"))))
+    @given(
+        st.text(
+            min_size=1,
+            max_size=10,
+            alphabet=st.characters(whitelist_categories=("Lu", "Ll")),
+        )
+    )
     @settings(max_examples=50)
     def test_unknown_language_returns_empty(self, fake_lang):
         loader = QueryLoader()
-        if fake_lang.lower() in ("java", "python", "javascript", "sql", "rust", "go", "c", "cpp"):
+        if fake_lang.lower() in (
+            "java",
+            "python",
+            "javascript",
+            "sql",
+            "rust",
+            "go",
+            "c",
+            "cpp",
+        ):
             return  # skip known languages
         result = loader.load_language_queries(fake_lang.lower())
         assert isinstance(result, dict)
@@ -38,8 +57,13 @@ class TestQueryLoaderProperties:
 class TestEncodingProperties:
     """Property: safe_encode → safe_decode roundtrip preserves content."""
 
-    @given(st.text(min_size=1, max_size=500, alphabet=st.characters(
-        blacklist_categories=("Cs",))))
+    @given(
+        st.text(
+            min_size=1,
+            max_size=500,
+            alphabet=st.characters(blacklist_categories=("Cs",)),
+        )
+    )
     @settings(max_examples=100)
     def test_utf8_roundtrip_preserves_content(self, text):
         encoded = EncodingManager.safe_encode(text, "utf-8")
@@ -48,8 +72,15 @@ class TestEncodingProperties:
         decoded = encoded.decode("utf-8")
         assert decoded == text
 
-    @given(st.text(min_size=0, max_size=200, alphabet=st.characters(
-        blacklist_characters="\x00", blacklist_categories=("Cs",))))
+    @given(
+        st.text(
+            min_size=0,
+            max_size=200,
+            alphabet=st.characters(
+                blacklist_characters="\x00", blacklist_categories=("Cs",)
+            ),
+        )
+    )
     @settings(max_examples=100)
     def test_safe_decode_preserves_length(self, text):
         encoded = text.encode("utf-8") if text else b""

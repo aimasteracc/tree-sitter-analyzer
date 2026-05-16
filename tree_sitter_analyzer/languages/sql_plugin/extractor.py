@@ -28,22 +28,27 @@ from ...models import (
     Function,
     Import,
     SQLElement,
+    SQLIndex,
+    SQLTrigger,
     Variable,
 )
 from ...platform_compat.adapter import CompatibilityAdapter
+from ...platform_compat.detector import PlatformDetector  # noqa: F401
 from ...plugins.base import ElementExtractor
 from ...utils import log_debug, log_error
 from .element_validator import validate_and_fix_elements
-from .function_extractor import extract_sql_functions_enhanced
+from .function_extractor import (
+    _extract_function_metadata,
+    extract_sql_functions_enhanced,
+)
 from .identifier_validator import is_valid_identifier as _is_valid_identifier_external
 from .index_extractor import extract_sql_indexes
-from .procedure_extractor import extract_sql_procedures
+from .procedure_extractor import extract_procedure_parameters, extract_sql_procedures
 from .table_extractor import (
     _parse_column_definition,
     _split_column_definitions,
     extract_sql_tables,
 )
-from .trigger_extractor import extract_sql_triggers
 from .view_extractor import extract_sql_views
 
 
@@ -103,42 +108,12 @@ class SQLElementExtractor(ElementExtractor):
 
         if tree is not None and tree.root_node is not None:
             try:
-                extract_sql_tables(
-                    tree.root_node,
-                    self._traverse_nodes,
-                    self._get_node_text,
-                    sql_elements,
-                )
-                extract_sql_views(
-                    tree.root_node,
-                    self._traverse_nodes,
-                    self._get_node_text,
-                    self.source_code,
-                    self.content_lines,
-                    sql_elements,
-                )
-                extract_sql_procedures(
-                    tree.root_node,
-                    self._traverse_nodes,
-                    self._get_node_text,
-                    self.source_code,
-                    sql_elements,
-                )
-                extract_sql_functions_enhanced(
-                    tree.root_node,
-                    self._traverse_nodes,
-                    self._get_node_text,
-                    self.source_code,
-                    sql_elements,
-                )
-                extract_sql_triggers(self.source_code, sql_elements)
-                extract_sql_indexes(
-                    tree.root_node,
-                    self._traverse_nodes,
-                    self._get_node_text,
-                    self.source_code,
-                    sql_elements,
-                )
+                self._extract_sql_tables(tree.root_node, sql_elements)
+                self._extract_sql_views(tree.root_node, sql_elements)
+                self._extract_sql_procedures(tree.root_node, sql_elements)
+                self._extract_sql_functions_enhanced(tree.root_node, sql_elements)
+                self._extract_sql_triggers(tree.root_node, sql_elements)
+                self._extract_sql_indexes(tree.root_node, sql_elements)
 
                 if self.adapter:
                     if self.diagnostic_mode:
@@ -303,7 +278,7 @@ class SQLElementExtractor(ElementExtractor):
             start_point = node.start_point
             end_point = node.end_point
 
-            # Check: start_point[0] < 0 or start_point[0] >= 
+            # Check: start_point[0] < 0 or start_point[0] >=
             if start_point[0] < 0 or start_point[0] >= len(self.content_lines):
                 # Return result
                 return ""
@@ -365,6 +340,207 @@ class SQLElementExtractor(ElementExtractor):
     def _is_valid_identifier(self, name: str) -> bool:
         # Return result
         return _is_valid_identifier_external(name)
+
+    # ---------------------------------------------------------------
+    # Enhanced extraction delegates (backward-compatible test surface)
+    # ---------------------------------------------------------------
+
+    def _extract_sql_tables(
+        self, root_node: "tree_sitter.Node", sql_elements: list[Any]
+    ) -> None:
+        """Extract enhanced SQL table elements."""
+        extract_sql_tables(
+            root_node,
+            self._traverse_nodes,
+            self._get_node_text,
+            sql_elements,
+        )
+
+    def _extract_sql_views(
+        self, root_node: "tree_sitter.Node", sql_elements: list[Any]
+    ) -> None:
+        """Extract enhanced SQL view elements."""
+        extract_sql_views(
+            root_node,
+            self._traverse_nodes,
+            self._get_node_text,
+            self.source_code,
+            self.content_lines,
+            sql_elements,
+        )
+
+    def _extract_sql_procedures(
+        self, root_node: "tree_sitter.Node", sql_elements: list[Any]
+    ) -> None:
+        """Extract enhanced SQL procedure elements."""
+        extract_sql_procedures(
+            root_node,
+            self._traverse_nodes,
+            self._get_node_text,
+            self.source_code,
+            sql_elements,
+        )
+
+    def _extract_sql_functions_enhanced(
+        self, root_node: "tree_sitter.Node", sql_elements: list[Any]
+    ) -> None:
+        """Extract enhanced SQL function elements."""
+        extract_sql_functions_enhanced(
+            root_node,
+            self._traverse_nodes,
+            self._get_node_text,
+            self.source_code,
+            sql_elements,
+        )
+
+    def _extract_function_metadata(
+        self,
+        func_node: "tree_sitter.Node",
+        parameters: list[Any],
+        return_type: str | None,
+        dependencies: list[str],
+    ) -> None:
+        """Extract function metadata using this extractor's node text helper."""
+        _extract_function_metadata(
+            func_node,
+            parameters,
+            return_type,
+            dependencies,
+            self._get_node_text,
+        )
+
+    def _extract_procedure_parameters(
+        self, proc_text: str, parameters: list[Any]
+    ) -> None:
+        """Extract procedure parameters."""
+        extract_procedure_parameters(proc_text, parameters)
+
+    def _extract_sql_triggers(
+        self, root_node: "tree_sitter.Node", sql_elements: list[Any]
+    ) -> None:
+        """Extract enhanced SQL trigger elements."""
+        if not self.source_code:
+            log_debug("WARNING: source_code is empty in _extract_sql_triggers")
+            return
+
+        processed_triggers: set[str] = set()
+        trigger_pattern = re.compile(
+            r"CREATE\s+TRIGGER\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+            re.IGNORECASE | re.MULTILINE,
+        )
+
+        for match in trigger_pattern.finditer(self.source_code):
+            trigger_name = match.group(1)
+            if (
+                trigger_name in processed_triggers
+                or not self._is_valid_identifier(trigger_name)
+                or len(trigger_name) <= 2
+                or trigger_name.upper()
+                in {"KEY", "AUTO_INCREMENT", "PRIMARY", "FOREIGN", "INDEX", "UNIQUE"}
+            ):
+                continue
+
+            processed_triggers.add(trigger_name)
+            start_line = self.source_code[: match.start()].count("\n") + 1
+            trigger_start = match.start()
+            end_match = re.search(
+                r"\bEND\s*;", self.source_code[trigger_start:], re.IGNORECASE
+            )
+            if end_match:
+                trigger_end = trigger_start + end_match.end()
+                end_line = self.source_code[:trigger_end].count("\n") + 1
+                trigger_text = self.source_code[trigger_start:trigger_end]
+            else:
+                end_line = start_line + 20
+                trigger_text = self.source_code[trigger_start : trigger_start + 500]
+
+            timing_match = re.search(r"(BEFORE|AFTER)", trigger_text, re.IGNORECASE)
+            event_match = re.search(
+                r"(INSERT|UPDATE|DELETE)", trigger_text, re.IGNORECASE
+            )
+            table_match = re.search(
+                r"ON\s+([a-zA-Z_][a-zA-Z0-9_]*)", trigger_text, re.IGNORECASE
+            )
+            table_name = table_match.group(1) if table_match else None
+
+            try:
+                sql_elements.append(
+                    SQLTrigger(
+                        name=trigger_name,
+                        start_line=start_line,
+                        end_line=end_line,
+                        raw_text=trigger_text,
+                        language="sql",
+                        table_name=table_name,
+                        trigger_timing=timing_match.group(1).upper()
+                        if timing_match
+                        else None,
+                        trigger_event=event_match.group(1).upper()
+                        if event_match
+                        else None,
+                        dependencies=[table_name] if table_name else [],
+                    )
+                )
+            except Exception as e:
+                log_debug(f"Failed to extract enhanced trigger: {e}")
+
+    def _extract_sql_indexes(
+        self, root_node: "tree_sitter.Node", sql_elements: list[Any]
+    ) -> None:
+        """Extract enhanced SQL index elements."""
+        extract_sql_indexes(
+            root_node,
+            self._traverse_nodes,
+            self._get_node_text,
+            self.source_code,
+            sql_elements,
+        )
+
+    def _extract_indexes_with_regex(
+        self, sql_elements: list[Any], processed_indexes: set[str]
+    ) -> None:
+        """Extract CREATE INDEX statements using regex as fallback."""
+        index_pattern = re.compile(
+            r"^\s*CREATE\s+(UNIQUE\s+)?INDEX\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+ON\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]+)\)",
+            re.IGNORECASE | re.MULTILINE,
+        )
+
+        for line_num, line in enumerate(self.source_code.split("\n"), 1):
+            stripped = line.strip()
+            if (
+                not stripped.upper().startswith("CREATE")
+                or "INDEX" not in stripped.upper()
+            ):
+                continue
+
+            match = index_pattern.match(stripped)
+            if not match:
+                continue
+
+            index_name = match.group(2)
+            if index_name in processed_indexes:
+                continue
+
+            table_name = match.group(3)
+            columns = [col.strip() for col in match.group(4).split(",")]
+
+            try:
+                sql_elements.append(
+                    SQLIndex(
+                        name=index_name,
+                        start_line=line_num,
+                        end_line=line_num,
+                        raw_text=stripped,
+                        language="sql",
+                        table_name=table_name,
+                        indexed_columns=columns,
+                        is_unique=match.group(1) is not None,
+                        dependencies=[table_name] if table_name else [],
+                    )
+                )
+                processed_indexes.add(index_name)
+            except Exception as e:
+                log_debug(f"Failed to create regex-extracted index {index_name}: {e}")
 
     # ---------------------------------------------------------------
     # Legacy extraction methods (used by extract_classes/functions/etc.)
@@ -761,7 +937,7 @@ class SQLElementExtractor(ElementExtractor):
             # Check: node.type == "qualified_name"
             if node.type == "qualified_name":
                 text = self._get_node_text(node)
-                # Check: "." in text and len(text.split(".")) == 
+                # Check: "." in text and len(text.split(".")) ==
                 if "." in text and len(text.split(".")) == 2:
                     try:
                         start_line = node.start_point[0] + 1
@@ -787,8 +963,3 @@ class SQLElementExtractor(ElementExtractor):
     def _split_column_definitions(self, content: str) -> list[str]:
         # Return result
         return _split_column_definitions(content)
-
-
-
-
-

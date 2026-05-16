@@ -183,7 +183,7 @@ class TestQueryFilterCorrectnessProperties:
 
         # Property: All filtered results must NOT contain 'static'
         for result in filtered:
-            assert "static" not in result["content"], (
+            assert re.search(r"\bstatic\b", result["content"]) is None, (
                 f"Filtered result contains 'static' but filter was static=false: {result['content']}"
             )
 

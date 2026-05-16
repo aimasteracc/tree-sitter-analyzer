@@ -13,9 +13,7 @@ Usage:
 
 import argparse
 import ast
-import os
 import sys
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -23,12 +21,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Quality gates from wiki/test-mastery.md
 GATES = {
-    "max_test_file_lines": 1800,       # hard ceiling — above this is truly oversized
-    "min_assertion_density": 1.0,     # min assert/test ratio (allow property/integration natural density)
-    "max_test_source_ratio": 3.0,     # max test:source files ratio
-    "max_test_code_ratio": 3.0,       # max test:code lines ratio
-    "max_skip_rate_percent": 5.0,     # max skip percentage
-    "min_property_test_pct": 10.0,    # min property-based test files
+    "max_test_file_lines": 1800,  # hard ceiling — above this is truly oversized
+    "min_assertion_density": 1.0,  # min assert/test ratio (allow property/integration natural density)
+    "max_test_source_ratio": 3.0,  # max test:source files ratio
+    "max_test_code_ratio": 3.0,  # max test:code lines ratio
+    "max_skip_rate_percent": 5.0,  # max skip percentage
+    "min_property_test_pct": 10.0,  # min property-based test files
 }
 
 
@@ -71,7 +69,8 @@ def scan() -> dict[str, Any]:
 
     # Test metrics — exclude fixtures, test_data, conftest
     test_files = [
-        f for f in test_dir.rglob("*.py")
+        f
+        for f in test_dir.rglob("*.py")
         if f.name not in ("__init__.py", "conftest.py")
         and "test_data" not in str(f)
         and "fixtures" not in str(f)
@@ -98,17 +97,21 @@ def scan() -> dict[str, Any]:
         skips = content.count("pytest.mark.skip") + content.count("pytest.skip(")
         skip_count += skips
 
-        if "hypothesis" in content.lower() and ("@given" in content or "strategies" in content):
+        if "hypothesis" in content.lower() and (
+            "@given" in content or "strategies" in content
+        ):
             property_files += 1
 
-        file_metrics.append({
-            "path": str(tf.relative_to(PROJECT_ROOT)),
-            "lines": n_lines,
-            "tests": n_tests,
-            "asserts": n_asserts,
-            "skips": skips,
-            "density": round(n_asserts / max(n_tests, 1), 2),
-        })
+        file_metrics.append(
+            {
+                "path": str(tf.relative_to(PROJECT_ROOT)),
+                "lines": n_lines,
+                "tests": n_tests,
+                "asserts": n_asserts,
+                "skips": skips,
+                "density": round(n_asserts / max(n_tests, 1), 2),
+            }
+        )
 
     # Compute aggregates
     assertion_density = round(total_asserts / max(total_tests, 1), 2)
@@ -120,9 +123,26 @@ def scan() -> dict[str, Any]:
     # Find violations — exclude non-test files from low-density check
     oversized = [f for f in file_metrics if f["lines"] > GATES["max_test_file_lines"]]
     low_density = [
-        f for f in file_metrics
+        f
+        for f in file_metrics
         if f["density"] < GATES["min_assertion_density"]
-        and not any(x in f["path"] for x in ("integration", "workflows", "validate_golden", "update_baselines", "generate_", "performance_tests", "schema_validation", "compatibility", "format_monitor", "conftest", "coverage_boost", "coverage"))
+        and not any(
+            x in f["path"]
+            for x in (
+                "integration",
+                "workflows",
+                "validate_golden",
+                "update_baselines",
+                "generate_",
+                "performance_tests",
+                "schema_validation",
+                "compatibility",
+                "format_monitor",
+                "conftest",
+                "coverage_boost",
+                "coverage",
+            )
+        )
         and "conftest" not in f["path"]
         and "_coverage" not in f["path"]
     ]
@@ -164,20 +184,38 @@ def print_report(data: dict[str, Any]) -> None:
     print("  Test Mastery Scanner — Phase 1 Baseline")
     print("=" * 60)
     print(f"\nSource: {s['files']} files, {s['lines']:,} lines")
-    print(f"Tests:  {t['files']} files, {t['lines']:,} lines, {t['functions']:,} functions")
-    print(f"        {t['assertions']:,} assertions, {t['skipped']} skipped, {t['property_files']} property files")
-    print(f"\nRatios:")
-    print(f"  Assertion density:     {r['assertion_density']:.2f}  (gate: ≥ {g['min_assertion_density']})")
-    print(f"  Test:Source files:     {r['test_source_ratio']:.2f}  (gate: ≤ {g['max_test_source_ratio']})")
-    print(f"  Test:Code lines:       {r['test_code_ratio']:.2f}  (gate: ≤ {g['max_test_code_ratio']})")
-    print(f"  Skip rate:             {r['skip_rate_pct']:.1f}%  (gate: ≤ {g['max_skip_rate_percent']}%)")
-    print(f"  Property test files:   {r['property_test_pct']:.1f}%  (gate: ≥ {g['min_property_test_pct']}%)")
+    print(
+        f"Tests:  {t['files']} files, {t['lines']:,} lines, {t['functions']:,} functions"
+    )
+    print(
+        f"        {t['assertions']:,} assertions, {t['skipped']} skipped, {t['property_files']} property files"
+    )
+    print("\nRatios:")
+    print(
+        f"  Assertion density:     {r['assertion_density']:.2f}  (gate: ≥ {g['min_assertion_density']})"
+    )
+    print(
+        f"  Test:Source files:     {r['test_source_ratio']:.2f}  (gate: ≤ {g['max_test_source_ratio']})"
+    )
+    print(
+        f"  Test:Code lines:       {r['test_code_ratio']:.2f}  (gate: ≤ {g['max_test_code_ratio']})"
+    )
+    print(
+        f"  Skip rate:             {r['skip_rate_pct']:.1f}%  (gate: ≤ {g['max_skip_rate_percent']}%)"
+    )
+    print(
+        f"  Property test files:   {r['property_test_pct']:.1f}%  (gate: ≥ {g['min_property_test_pct']}%)"
+    )
 
-    print(f"\nViolations:")
-    print(f"  Oversized files (> {g['max_test_file_lines']} lines): {len(v['oversized_files'])}")
+    print("\nViolations:")
+    print(
+        f"  Oversized files (> {g['max_test_file_lines']} lines): {len(v['oversized_files'])}"
+    )
     for f in v["oversized_files"]:
         print(f"    - {f}")
-    print(f"  Low assertion density (< {g['min_assertion_density']}): {len(v['low_assertion_density'])}")
+    print(
+        f"  Low assertion density (< {g['min_assertion_density']}): {len(v['low_assertion_density'])}"
+    )
     for f in v["low_assertion_density"][:10]:
         print(f"    - {f}")
     if len(v["low_assertion_density"]) > 10:
@@ -195,12 +233,16 @@ def print_report(data: dict[str, Any]) -> None:
         if v["oversized_files"]:
             print(f"  1. Split {len(v['oversized_files'])} oversized test files")
         if r["assertion_density"] < g["min_assertion_density"]:
-            print(f"  2. Increase assertion density from {r['assertion_density']} to ≥ {g['min_assertion_density']}")
+            print(
+                f"  2. Increase assertion density from {r['assertion_density']} to ≥ {g['min_assertion_density']}"
+            )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Test Mastery Scanner")
-    parser.add_argument("--gates", action="store_true", help="Exit 1 if any quality gate fails")
+    parser.add_argument(
+        "--gates", action="store_true", help="Exit 1 if any quality gate fails"
+    )
     args = parser.parse_args()
 
     data = scan()

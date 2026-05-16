@@ -232,4 +232,3 @@ def extract_kotlin_property(
     except Exception as e:
         log_error(f"Error extracting Kotlin property: {e}")
         return None
-

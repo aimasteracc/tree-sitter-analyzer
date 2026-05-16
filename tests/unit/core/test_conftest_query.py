@@ -79,7 +79,7 @@ class TestQueryFixtures:
     def test_executor_initialized(self, executor):
         """Test that QueryExecutor fixture initializes correctly."""
         assert executor is not None
-        assert hasattr(executor, '_execution_stats')
+        assert hasattr(executor, "_execution_stats")
         assert executor._execution_stats["total_queries"] == 0
         assert executor._execution_stats["successful_queries"] == 0
 
@@ -112,4 +112,5 @@ class TestQueryFixtures:
         """Test that temp_file fixture creates a valid file."""
         assert temp_file is not None
         import os
+
         assert os.path.exists(temp_file)

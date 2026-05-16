@@ -421,4 +421,3 @@ def extract_var_or_const(
         label = "const" if is_const else "var"
         log_error(f"Error extracting Go {label}: {e}")
     return variables
-

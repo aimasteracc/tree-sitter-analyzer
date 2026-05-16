@@ -461,6 +461,3 @@ def _build_next_steps(matches: list[dict[str, Any]]) -> list[str]:
     if len(matches) > 5:
         steps.append("Use group_by_file=true for a clearer overview")
     return steps
-
-
-

@@ -105,14 +105,16 @@ class TestAnalyzeCodeStructureToolGetToolDefinition:
         assert schema["properties"]["language"]["type"] == "string"
 
     def test_get_tool_definition_schema_has_output_file(self, tool):
-        """output_file removed from schema for token efficiency — handled internally."""
+        """Test schema has output_file property."""
         schema = tool.get_tool_definition()["inputSchema"]
-        assert "output_file" not in schema["properties"]
+        assert "output_file" in schema["properties"]
+        assert schema["properties"]["output_file"]["type"] == "string"
 
     def test_get_tool_definition_schema_has_suppress_output(self, tool):
-        """suppress_output removed from schema for token efficiency — handled internally."""
+        """Test schema has suppress_output property."""
         schema = tool.get_tool_definition()["inputSchema"]
-        assert "suppress_output" not in schema["properties"]
+        assert "suppress_output" in schema["properties"]
+        assert schema["properties"]["suppress_output"]["type"] == "boolean"
 
     def test_get_tool_definition_schema_has_output_format(self, tool):
         """Test schema has output_format property."""

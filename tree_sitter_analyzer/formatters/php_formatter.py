@@ -440,4 +440,3 @@ class PHPCSVFormatter(PHPTableFormatter):
     def format(self, data: dict[str, Any]) -> str:
         """Format data as CSV"""
         return self._format_csv(data)
-

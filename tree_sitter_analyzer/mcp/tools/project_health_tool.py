@@ -12,6 +12,7 @@ from typing import Any
 from ...health_scorer import DIMENSION_WEIGHTS, HealthScorer
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .file_health_tool import _build_signal
 
 logger = setup_logger(__name__)
 
@@ -143,6 +144,7 @@ class ProjectHealthTool(BaseMCPTool):
                     "file": s.file_path,
                     "grade": s.grade,
                     "total_score": s.total,
+                    "signal": _build_signal(s.dimensions),
                     "weakest_dimension": min(
                         s.dimensions, key=lambda k: s.dimensions[k]
                     )
@@ -158,6 +160,7 @@ class ProjectHealthTool(BaseMCPTool):
                 "file": s.file_path,
                 "grade": s.grade,
                 "score": s.total,
+                "signal": _build_signal(s.dimensions),
                 "action": _file_action(s),
             }
             for s in worst[:5]
@@ -171,6 +174,7 @@ class ProjectHealthTool(BaseMCPTool):
             "project_root": root,
             "total_files": len(all_scores),
             "grade_distribution": {g: grade_counts.get(g, 0) for g in "ABCDF"},
+            "signal": _build_signal(dim_avgs),
             "average_dimensions": dim_avgs,
             "weakest_dimension": weakest_dim,
             "top_refactoring_targets": top_targets,

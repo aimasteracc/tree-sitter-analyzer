@@ -25,6 +25,8 @@ def test_find_and_grep_validation_requires_roots_and_query(tmp_path):
         tool.validate_arguments({"roots": [str(tmp_path)]})
     with pytest.raises(ValueError):
         tool.validate_arguments({"query": "foo"})
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_exec_composed(monkeypatch, tmp_path):
@@ -64,6 +66,8 @@ async def test_find_and_grep_exec_composed(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
     assert result["meta"]["searched_file_count"] == 1
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_multiline_case_insensitive(monkeypatch, tmp_path):
@@ -114,6 +118,8 @@ async def test_find_and_grep_multiline_case_insensitive(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] == 1
     assert result["results"][0]["line"] == 1
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_count_only_matches(monkeypatch, tmp_path):
@@ -162,6 +168,8 @@ file4.py:12
     assert result["meta"]["searched_file_count"] == 3
     assert "fd_elapsed_ms" in result["meta"]
     assert "rg_elapsed_ms" in result["meta"]
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_optimize_paths(monkeypatch, tmp_path):
@@ -219,6 +227,8 @@ async def test_find_and_grep_optimize_paths(monkeypatch, tmp_path):
     assert len(optimized_path) <= len(original_path)
     # Should not contain abs_path field
     assert "abs_path" not in result["results"][0]
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_error_handling(monkeypatch, tmp_path):
@@ -241,6 +251,8 @@ async def test_find_and_grep_error_handling(monkeypatch, tmp_path):
     assert result["success"] is False
     assert result["error"] == "fd: permission denied"
     assert result["returncode"] == 1
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_file_discovery_parameters(monkeypatch, tmp_path):
@@ -291,6 +303,8 @@ async def test_find_and_grep_file_discovery_parameters(monkeypatch, tmp_path):
 
     assert result["success"] is True
     assert call_count == 2
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_content_search_parameters(monkeypatch, tmp_path):
@@ -341,6 +355,8 @@ async def test_find_and_grep_content_search_parameters(monkeypatch, tmp_path):
 
     assert result["success"] is True
     assert call_count == 2
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_with_file_sorting(monkeypatch, tmp_path):
@@ -384,6 +400,8 @@ async def test_find_and_grep_with_file_sorting(monkeypatch, tmp_path):
     )
 
     assert result["success"] is True
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_find_and_grep_summary_only_mode(monkeypatch, tmp_path):
@@ -420,6 +438,8 @@ async def test_find_and_grep_summary_only_mode(monkeypatch, tmp_path):
     assert "summary" in result
     assert "meta" in result
     assert result["meta"]["searched_file_count"] == 2
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_tools_timeout_handling(monkeypatch, tmp_path):
@@ -449,6 +469,8 @@ async def test_tools_timeout_handling(monkeypatch, tmp_path):
         result = await tool.execute(args)
         assert result["success"] is False
         assert result["returncode"] == 124
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_tools_with_empty_results(monkeypatch, tmp_path):
@@ -479,6 +501,8 @@ async def test_tools_with_empty_results(monkeypatch, tmp_path):
             assert result["count"] == 0
         if "results" in result:
             assert len(result["results"]) == 0
+
+
 @pytest.mark.asyncio
 async def test_fd_02_multi_file_search(tmp_path, monkeypatch):
     """Test multi-directory search - corresponds to fd's test_multi_file."""
@@ -529,6 +553,8 @@ async def test_fd_02_multi_file_search(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_03_multi_file_with_missing(tmp_path, monkeypatch):
     """Test search with missing directories - corresponds to fd's test_multi_file_with_missing."""
@@ -563,6 +589,8 @@ async def test_fd_03_multi_file_with_missing(tmp_path, monkeypatch):
     except Exception:
         # If it raises an exception for missing directory, that's also expected behavior
         pass
+
+
 @pytest.mark.asyncio
 async def test_fd_04_explicit_root_path(tmp_path, monkeypatch):
     """Test explicit root path - corresponds to fd's test_explicit_root_path."""
@@ -598,6 +626,8 @@ async def test_fd_04_explicit_root_path(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_05_and_basic_simulation(tmp_path, monkeypatch):
     """Test AND search basic functionality - simulates fd's test_and_basic."""
@@ -632,6 +662,8 @@ async def test_fd_05_and_basic_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_06_and_empty_pattern_simulation(tmp_path, monkeypatch):
     """Test AND search with empty pattern - simulates fd's test_and_empty_pattern."""
@@ -657,6 +689,8 @@ async def test_fd_06_and_empty_pattern_simulation(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_07_and_bad_pattern_simulation(tmp_path, monkeypatch):
     """Test AND search with bad pattern - simulates fd's test_and_bad_pattern."""
@@ -683,6 +717,8 @@ async def test_fd_07_and_bad_pattern_simulation(tmp_path, monkeypatch):
 
     # Should handle bad patterns gracefully
     assert result["success"] is False or result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_08_and_pattern_starts_with_dash(tmp_path, monkeypatch):
     """Test AND search with dash-prefixed pattern - simulates fd's test_and_pattern_starts_with_dash."""
@@ -711,6 +747,8 @@ async def test_fd_08_and_pattern_starts_with_dash(tmp_path, monkeypatch):
     )
 
     assert result["success"] is True or result["success"] is False
+
+
 @pytest.mark.asyncio
 async def test_fd_09_and_plus_extension(tmp_path, monkeypatch):
     """Test AND search with extension filter - simulates fd's test_and_plus_extension."""
@@ -758,6 +796,8 @@ async def test_fd_09_and_plus_extension(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_10_and_plus_type(tmp_path, monkeypatch):
     """Test AND search with type filter - simulates fd's test_and_plus_type."""

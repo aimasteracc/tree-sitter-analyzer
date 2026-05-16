@@ -6,7 +6,6 @@ import pytest
 import tree_sitter
 
 from tree_sitter_analyzer.languages.csharp_plugin import (
-    CSharpElementExtractor,
     CSharpPlugin,
 )
 
@@ -261,6 +260,7 @@ def get_tree_for_code(code: str, plugin: CSharpPlugin):
     else:
         parser = tree_sitter.Parser(language)
     return parser.parse(code.encode("utf-8"))
+
 
 class TestCSharpPluginAnalyzeFile:
     """Test analyze_file method."""

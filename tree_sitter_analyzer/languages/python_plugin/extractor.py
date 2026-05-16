@@ -1369,7 +1369,3 @@ class PythonElementExtractor(ElementExtractor):
             complexity += body.count(f" {keyword} ") + body.count(f"\n{keyword} ")
         # Return result
         return complexity
-
-
-
-

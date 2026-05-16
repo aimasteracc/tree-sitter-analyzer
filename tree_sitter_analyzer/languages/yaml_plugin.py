@@ -658,6 +658,3 @@ class YAMLPlugin(LanguagePlugin):
                 success=False,
                 error_message=str(e),
             )
-
-
-

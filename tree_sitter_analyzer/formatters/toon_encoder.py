@@ -879,8 +879,3 @@ class ToonEncoder:
 
         # Return result
         return False
-
-
-
-
-

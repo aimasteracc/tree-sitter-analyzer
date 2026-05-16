@@ -970,8 +970,3 @@ def extract_java_field(
 
     # Return result
     return fields
-
-
-
-
-

@@ -10,19 +10,6 @@ from pathlib import Path
 from typing import Any
 
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
 class TreeSitterAnalyzerError(Exception):
     """Base exception for all tree-sitter analyzer errors."""
 
@@ -37,7 +24,6 @@ class TreeSitterAnalyzerError(Exception):
         self.error_code = error_code or self.__class__.__name__
         self.context = context or {}
 
-    # Process: to_dict
     def to_dict(self) -> dict[str, Any]:
         """Convert exception to dictionary format."""
         return {
@@ -226,21 +212,18 @@ def handle_exception(
     """
     from .utils import log_error
 
-    # Log the original exception
     error_context = context or {}
     if hasattr(exception, "context"):
         error_context.update(exception.context)
 
     log_error(f"Exception handled: {exception}", extra=error_context)
 
-    # Re-raise as different exception type if requested
     if reraise_as and not isinstance(exception, reraise_as):
         if issubclass(reraise_as, TreeSitterAnalyzerError):
             raise reraise_as(str(exception), context=error_context)
         else:
             raise reraise_as(str(exception))
 
-    # Re-raise original exception
     raise exception
 
 
@@ -277,7 +260,6 @@ def safe_execute(
         return default_return
 
 
-# Process: create_error_response
 def create_error_response(
     exception: Exception, include_traceback: bool = False
 ) -> dict[str, Any]:
@@ -298,15 +280,12 @@ def create_error_response(
         "error": {"type": exception.__class__.__name__, "message": str(exception)},
     }
 
-    # Add context if available
     if hasattr(exception, "context"):
         response["error"]["context"] = exception.context
 
-    # Add error code if available
     if hasattr(exception, "error_code"):
         response["error"]["code"] = exception.error_code
 
-    # Add traceback if requested
     if include_traceback:
         response["error"]["traceback"] = traceback.format_exc()
 
@@ -351,7 +330,6 @@ def handle_exceptions(
 
         return wrapper
 
-    # Return result
     return decorator
 
 
@@ -366,10 +344,8 @@ class SecurityError(TreeSitterAnalyzerError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
-        # Check: security_type
         if security_type:
             context["security_type"] = security_type
-        # Check: file_path
         if file_path:
             context["file_path"] = str(file_path)
 
@@ -388,7 +364,6 @@ class PathTraversalError(SecurityError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
-        # Check: attempted_path
         if attempted_path:
             context["attempted_path"] = attempted_path
 
@@ -409,10 +384,8 @@ class RegexSecurityError(SecurityError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
-        # Check: pattern
         if pattern:
             context["pattern"] = pattern
-        # Check: dangerous_construct
         if dangerous_construct:
             context["dangerous_construct"] = dangerous_construct
 
@@ -436,12 +409,9 @@ class MCPToolError(MCPError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
-        # Check: input_params
         if input_params:
-            # Sanitize sensitive information from input params
             sanitized_params = self._sanitize_params(input_params)
             context["input_params"] = sanitized_params
-        # Check: execution_stage
         if execution_stage:
             context["execution_stage"] = execution_stage
 
@@ -451,24 +421,17 @@ class MCPToolError(MCPError):
         self.execution_stage = execution_stage
 
     @staticmethod
-    # Process: _sanitize_params
     def _sanitize_params(params: dict[str, Any]) -> dict[str, Any]:
         """Sanitize sensitive information from parameters."""
-        sanitized = {}
-        sensitive_keys = {"password", "token", "key", "secret", "auth", "credential"}
-
-        # Iterate over key, value
+        result: dict[str, Any] = {}
         for key, value in params.items():
-            # Check: any(sensitive in key.lower() for sensiti
-            if any(sensitive in key.lower() for sensitive in sensitive_keys):
-                sanitized[key] = "***REDACTED***"
+            if any(s in key.lower() for s in _SENSITIVE_KEYS):
+                result[key] = "***REDACTED***"
             elif isinstance(value, str) and len(value) > 100:
-                sanitized[key] = value[:100] + "...[TRUNCATED]"
+                result[key] = value[:100] + "...[TRUNCATED]"
             else:
-                sanitized[key] = value
-
-        # Return result
-        return sanitized
+                result[key] = value
+        return result
 
 
 class MCPResourceError(MCPError):
@@ -483,10 +446,8 @@ class MCPResourceError(MCPError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
-        # Check: resource_type
         if resource_type:
             context["resource_type"] = resource_type
-        # Check: access_mode
         if access_mode:
             context["access_mode"] = access_mode
 
@@ -507,10 +468,8 @@ class MCPTimeoutError(MCPError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
-        # Check: timeout_seconds
         if timeout_seconds:
             context["timeout_seconds"] = timeout_seconds
-        # Check: operation_type
         if operation_type:
             context["operation_type"] = operation_type
 
@@ -532,19 +491,14 @@ class MCPValidationError(ValidationError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
-        # Check: tool_name
         if tool_name:
             context["tool_name"] = tool_name
-        # Check: parameter_name
         if parameter_name:
             context["parameter_name"] = parameter_name
-        # Check: validation_rule
         if validation_rule:
             context["validation_rule"] = validation_rule
 
-        # Sanitize parameter value for logging
         if parameter_value is not None:
-            # Check: isinstance(parameter_value, str) and len
             if isinstance(parameter_value, str) and len(parameter_value) > 200:
                 context["parameter_value"] = parameter_value[:200] + "...[TRUNCATED]"
             else:
@@ -570,10 +524,8 @@ class FileRestrictionError(SecurityError):
         **kwargs: Any,
     ) -> None:
         context = kwargs.pop("context", {})
-        # Check: current_mode
         if current_mode:
             context["current_mode"] = current_mode
-        # Check: allowed_patterns
         if allowed_patterns:
             context["allowed_patterns"] = allowed_patterns
 
@@ -588,79 +540,58 @@ class FileRestrictionError(SecurityError):
         self.allowed_patterns = allowed_patterns
 
 
-# Enhanced error response utilities for MCP
+def _attach_exception_details(error: dict[str, Any], exception: Exception) -> None:
+    """Attach type-specific details from known exception types to error dict."""
+    if isinstance(exception, MCPToolError):
+        error["execution_stage"] = exception.execution_stage
+    elif isinstance(exception, MCPTimeoutError):
+        error["timeout_seconds"] = exception.timeout_seconds
+    elif isinstance(exception, FileRestrictionError):
+        error["current_mode"] = exception.current_mode
+        error["allowed_patterns"] = exception.allowed_patterns
+
+
 def create_mcp_error_response(
     exception: Exception,
     tool_name: str | None = None,
     include_debug_info: bool = False,
     sanitize_sensitive: bool = True,
 ) -> dict[str, Any]:
-    """
-    Create standardized MCP error response dictionary.
-
-    Args:
-        exception: The exception to convert
-        tool_name: Name of the MCP tool that failed
-        include_debug_info: Whether to include debug information
-        sanitize_sensitive: Whether to sanitize sensitive information
-
-    Returns:
-        MCP-compliant error response dictionary
-    """
+    """Create standardized MCP error response dictionary."""
     import traceback
+    from datetime import datetime, timezone
 
-    response: dict[str, Any] = {
-        "success": False,
-        "error": {
-            "type": exception.__class__.__name__,
-            "message": str(exception),
-            "timestamp": __import__("datetime").datetime.utcnow().isoformat() + "Z",
-        },
+    error: dict[str, Any] = {
+        "type": exception.__class__.__name__,
+        "message": str(exception),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    # Add tool name if provided
     if tool_name:
-        response["error"]["tool"] = tool_name
+        error["tool"] = tool_name
 
-    # Add context if available
     if hasattr(exception, "context") and exception.context:
-        context = exception.context.copy()
-
-        # Sanitize sensitive information if requested
+        ctx = exception.context.copy()
         if sanitize_sensitive:
-            context = _sanitize_error_context(context)
+            ctx = _sanitize_error_context(ctx)
+        error["context"] = ctx
 
-        response["error"]["context"] = context
-
-    # Add error code if available
     if hasattr(exception, "error_code"):
-        response["error"]["code"] = exception.error_code
+        error["code"] = exception.error_code
 
-    # Add debug information if requested
     if include_debug_info:
-        response["error"]["debug"] = {
+        error["debug"] = {
             "traceback": traceback.format_exc(),
             "exception_args": list(exception.args) if exception.args else [],
         }
 
-    # Add specific error details for known exception types
-    if isinstance(exception, MCPToolError):
-        response["error"]["execution_stage"] = exception.execution_stage
-    elif isinstance(exception, MCPTimeoutError):
-        response["error"]["timeout_seconds"] = exception.timeout_seconds
-    elif isinstance(exception, FileRestrictionError):
-        response["error"]["current_mode"] = exception.current_mode
-        response["error"]["allowed_patterns"] = exception.allowed_patterns
+    _attach_exception_details(error, exception)
 
-    # Return result
-    return response
+    return {"success": False, "error": error}
 
 
-# Process: _sanitize_error_context
-def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
-    """Sanitize sensitive information from error context."""
-    sanitized: dict[str, Any] = {}
-    sensitive_keys = {
+_SENSITIVE_KEYS = frozenset(
+    {
         "password",
         "token",
         "key",
@@ -672,28 +603,26 @@ def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
         "private_key",
         "session_id",
     }
+)
 
-    # Iterate over key, value
-    for key, value in context.items():
-        # Check: any(sensitive in key.lower() for sensiti
-        if any(sensitive in key.lower() for sensitive in sensitive_keys):
-            sanitized[key] = "***REDACTED***"
-        elif isinstance(value, str) and len(value) > 500:
-            sanitized[key] = value[:500] + "...[TRUNCATED]"
-        # Check: isinstance(value, list | tuple
-        elif isinstance(value, list | tuple) and len(value) > 10:
-            sanitized[key] = list(value[:10]) + ["...[TRUNCATED]"]
-        # Check: isinstance(value, dict) and le
-        elif isinstance(value, dict) and len(value) > 20:
-            # Recursively sanitize nested dictionaries
-            truncated_dict = dict(list(value.items())[:20])
-            sanitized[key] = _sanitize_error_context(truncated_dict)
-            sanitized[key]["__truncated__"] = True
-        else:
-            sanitized[key] = value
 
-    # Return result
-    return sanitized
+def _sanitize_value(key: str, value: Any) -> Any:
+    """Sanitize a single key-value pair for logging."""
+    if any(s in key.lower() for s in _SENSITIVE_KEYS):
+        return "***REDACTED***"
+    if isinstance(value, str) and len(value) > 500:
+        return value[:500] + "...[TRUNCATED]"
+    if isinstance(value, list | tuple) and len(value) > 10:
+        return list(value[:10]) + ["...[TRUNCATED]"]
+    if isinstance(value, dict) and len(value) > 20:
+        truncated = _sanitize_error_context(dict(list(value.items())[:20]))
+        return {**truncated, "__truncated__": True}
+    return value
+
+
+def _sanitize_error_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize sensitive information from error context."""
+    return {k: _sanitize_value(k, v) for k, v in context.items()}
 
 
 # Async exception handling utilities for MCP tools
@@ -717,12 +646,10 @@ async def safe_execute_async(
     Returns:
         Coroutine result or default_return on exception
     """
-    # Error handling block
     try:
         # Return result
         return await coro
     except exception_types as e:
-        # Check: log_errors
         if log_errors:
             from .utils import log_error
 
@@ -749,63 +676,34 @@ def mcp_exception_handler(
     """
 
     def decorator(func: Any) -> Any:
-        # Process: async_wrapper
+        def _handle_error(e: Exception) -> dict[str, Any]:
+            from .utils import log_error
+
+            log_error(
+                f"MCP tool '{tool_name}' failed: {e}",
+                extra={"tool_name": tool_name, "exception_type": type(e).__name__},
+            )
+            return create_mcp_error_response(
+                e,
+                tool_name=tool_name,
+                include_debug_info=include_debug,
+                sanitize_sensitive=sanitize_sensitive,
+            )
+
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Error handling block
             try:
-                # Return result
                 return await func(*args, **kwargs)
             except Exception as e:
-                from .utils import log_error
+                return _handle_error(e)
 
-                # Log the error with tool context
-                log_error(
-                    f"MCP tool '{tool_name}' failed: {e}",
-                    extra={"tool_name": tool_name, "exception_type": type(e).__name__},
-                )
-
-                # Return standardized error response
-                return create_mcp_error_response(
-                    e,
-                    tool_name=tool_name,
-                    include_debug_info=include_debug,
-                    sanitize_sensitive=sanitize_sensitive,
-                )
-
-        # Process: sync_wrapper
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Error handling block
             try:
-                # Return result
                 return func(*args, **kwargs)
             except Exception as e:
-                from .utils import log_error
+                return _handle_error(e)
 
-                # Log the error with tool context
-                log_error(
-                    f"MCP tool '{tool_name}' failed: {e}",
-                    extra={"tool_name": tool_name, "exception_type": type(e).__name__},
-                )
+        import inspect
 
-                # Return standardized error response
-                return create_mcp_error_response(
-                    e,
-                    tool_name=tool_name,
-                    include_debug_info=include_debug,
-                    sanitize_sensitive=sanitize_sensitive,
-                )
+        return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
-        # Return appropriate wrapper based on function type
-        if __import__("asyncio").iscoroutinefunction(func):
-            # Return result
-            return async_wrapper
-        else:
-            # Return result
-            return sync_wrapper
-
-    # Return result
     return decorator
-
-
-
-

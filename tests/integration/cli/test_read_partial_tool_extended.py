@@ -376,6 +376,7 @@ class TestReadPartialToolPerformance:
     async def test_memory_usage_with_repeated_reading(self, tool, temp_dir):
         """Test memory usage with repeated reading operations."""
         import gc
+        import warnings
 
         # Create test file
         test_file = str(Path(temp_dir) / "test.txt")
@@ -397,7 +398,13 @@ class TestReadPartialToolPerformance:
 
             # Force garbage collection
             if i % 10 == 0:
-                gc.collect()
+                with warnings.catch_warnings():
+                    warnings.filterwarnings(
+                        "ignore",
+                        message=r"coroutine '.*' was never awaited",
+                        category=RuntimeWarning,
+                    )
+                    gc.collect()
 
         # Test should complete without memory issues
         assert True

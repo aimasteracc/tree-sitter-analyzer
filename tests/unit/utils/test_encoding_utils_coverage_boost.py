@@ -3,21 +3,17 @@
 
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from tree_sitter_analyzer.encoding_utils import (
     EncodingCache,
     EncodingManager,
-    safe_encode,
-    safe_decode,
-    detect_encoding,
-    read_file_safe,
-    extract_text_slice,
     clear_encoding_cache,
+    extract_text_slice,
     get_encoding_cache_size,
+    read_file_safe,
 )
 
 
@@ -107,12 +103,14 @@ class TestEncodingManagerEdge:
 
     def test_clear_cache(self):
         from tree_sitter_analyzer.encoding_utils import _encoding_cache
+
         _encoding_cache.set("test.txt", "utf-8")
         clear_encoding_cache()
         assert get_encoding_cache_size() == 0
 
     def test_get_encoding_cache_size(self):
         from tree_sitter_analyzer.encoding_utils import _encoding_cache
+
         _encoding_cache.set("test.txt", "utf-8")
         size = get_encoding_cache_size()
         assert size >= 1
@@ -141,7 +139,10 @@ class TestDetectEncodingBOM:
     @patch("tree_sitter_analyzer.encoding_utils.CHARDET_AVAILABLE", True)
     def test_chardet_high_confidence(self):
         with patch("tree_sitter_analyzer.encoding_utils.chardet") as mock_chardet:
-            mock_chardet.detect.return_value = {"encoding": "shift_jis", "confidence": 0.95}
+            mock_chardet.detect.return_value = {
+                "encoding": "shift_jis",
+                "confidence": 0.95,
+            }
             data = b"\x82\xb1\x82\xf1\x82\xc9\x82\xbf\x82\xcd"  # Shift-JIS bytes
             enc = EncodingManager.detect_encoding(data, "test_sjis.txt")
             assert enc == "shift_jis"
@@ -217,7 +218,7 @@ class TestAsyncReadFileSafe:
     async def test_read_async_nonexistent(self, tmp_path):
         from tree_sitter_analyzer.encoding_utils import read_file_safe_async
 
-        with pytest.raises(Exception):
+        with pytest.raises(OSError):
             await read_file_safe_async(str(tmp_path / "nonexistent.txt"))
 
 
@@ -246,7 +247,7 @@ class TestStreamingRead:
         from tree_sitter_analyzer.encoding_utils import read_file_safe_streaming
 
         with pytest.raises(OSError):
-            ctx = read_file_safe_streaming(str(tmp_path / "no_file.txt"))
+            read_file_safe_streaming(str(tmp_path / "no_file.txt"))
 
 
 class TestSafeDecodeFallbacks:

@@ -185,44 +185,38 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
 
 
 @pytest.fixture(autouse=True)
-async def cleanup_asyncio_tasks():
+def cleanup_asyncio_tasks():
     """
     Clean up asyncio tasks after each test to prevent 'NoneType' object has no attribute '_PENDING'
     error on Python 3.10 during shutdown.
     """
     yield
 
-    # Get all tasks
     import asyncio
+    import contextlib
 
     try:
-        # Get running loop if possible
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
     except RuntimeError:
-        # No event loop running
         return
 
-    tasks = asyncio.all_tasks(loop)
+    if loop.is_closed() or loop.is_running():
+        return
 
-    # Cancel all tasks except current one
-    current_task = asyncio.current_task(loop)
-    tasks = [t for t in tasks if t is not current_task]
+    tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
 
     if not tasks:
         return
 
-    # Cancel tasks
     for task in tasks:
         task.cancel()
 
-    # Wait for tasks to complete
-    # We use a timeout to avoid hanging if a task ignores cancellation
-    try:
-        await asyncio.wait_for(
-            asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
+    with contextlib.suppress(asyncio.TimeoutError):
+        loop.run_until_complete(
+            asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
+            )
         )
-    except asyncio.TimeoutError:
-        pass
 
 
 def _reset_all_singletons():

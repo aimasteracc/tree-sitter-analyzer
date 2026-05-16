@@ -12,7 +12,12 @@ _TYPE_MAP = {
     "class": {"class_definition", "class_declaration", "class"},
     "function": {"function_definition", "function_declaration", "function"},
     "method": {"method_definition", "method_declaration", "method"},
-    "variable": {"variable_definition", "variable_declaration", "variable", "assignment"},
+    "variable": {
+        "variable_definition",
+        "variable_declaration",
+        "variable",
+        "assignment",
+    },
     "import": {"import_statement", "import_from_statement", "import"},
 }
 

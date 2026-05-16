@@ -16,10 +16,13 @@ from ...constants import (
     is_element_of_type,
 )
 
+# JSON Schema: input validation for analyze_code_structure tool
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
+        # Required: file path to analyze
         "file_path": {"type": "string"},
+        # Output format: full, compact, or csv
         "format_type": {
             "type": "string",
             "enum": ["full", "compact", "csv"],
@@ -31,12 +34,23 @@ TOOL_SCHEMA: dict[str, Any] = {
             "enum": ["json", "toon"],
             "default": "toon",
         },
+        "output_file": {
+            "type": "string",
+            "description": "Optional base filename for saving formatted output",
+        },
+        "suppress_output": {
+            "type": "boolean",
+            "default": False,
+            "description": "If true with output_file, suppress table_output in response to save tokens",
+        },
     },
+    # file_path is the only required field
     "required": ["file_path"],
     "additionalProperties": False,
 }
 
 
+# convert_analysis_result_to_dict: implementation
 def convert_analysis_result_to_dict(
     result: Any,
     get_method_parameters: Any,
@@ -58,6 +72,7 @@ def convert_analysis_result_to_dict(
 
     package_info = {"name": packages[0].name} if packages else None
 
+    # Return result
     return {
         "success": True,
         "file_path": result.file_path,
@@ -80,7 +95,9 @@ def convert_analysis_result_to_dict(
     }
 
 
+# _convert_class: implementation
 def _convert_class(cls: Any) -> dict[str, Any]:
+    # Return result
     return {
         "name": getattr(cls, "name", "unknown"),
         "line_range": {
@@ -95,7 +112,9 @@ def _convert_class(cls: Any) -> dict[str, Any]:
     }
 
 
+# _convert_method: implementation
 def _convert_method(method: Any, get_params: Any, get_mods: Any) -> dict[str, Any]:
+    # Return result
     return {
         "name": getattr(method, "name", "unknown"),
         "line_range": {
@@ -113,7 +132,9 @@ def _convert_method(method: Any, get_params: Any, get_mods: Any) -> dict[str, An
     }
 
 
+# _convert_field: implementation
 def _convert_field(field: Any, get_mods: Any) -> dict[str, Any]:
+    # Return result
     return {
         "name": getattr(field, "name", "unknown"),
         "type": getattr(field, "field_type", "Object"),
@@ -127,7 +148,9 @@ def _convert_field(field: Any, get_mods: Any) -> dict[str, Any]:
     }
 
 
+# _convert_import: implementation
 def _convert_import(imp: Any) -> dict[str, Any]:
+    # Return result
     return {
         "name": getattr(imp, "name", "unknown"),
         "statement": getattr(imp, "import_statement", getattr(imp, "name", "")),

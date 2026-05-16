@@ -722,7 +722,7 @@ class CoreClass:
             assert "llm_guidance" in analysis
 
     def test_tool_schema_consistency(self, all_tools):
-        """output_file/suppress_output removed from schemas for token efficiency."""
+        """File-output capable tools expose their file output parameters."""
         tools_with_file_output = [
             "search_content",
             "find_and_grep",
@@ -736,12 +736,8 @@ class CoreClass:
             schema = definition["inputSchema"]
             properties = schema["properties"]
 
-            assert "output_file" not in properties, (
-                f"{tool_name} should not have output_file in schema (token efficiency)"
-            )
-            assert "suppress_output" not in properties, (
-                f"{tool_name} should not have suppress_output in schema (token efficiency)"
-            )
+            assert "output_file" in properties
+            assert "suppress_output" in properties
 
     @pytest.mark.asyncio
     async def test_performance_with_file_output(self, all_tools, comprehensive_project):

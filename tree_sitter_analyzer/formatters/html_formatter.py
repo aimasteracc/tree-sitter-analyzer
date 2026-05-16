@@ -724,6 +724,3 @@ class HtmlCsvFormatter(IFormatter):
 
 # HTML formatters are registered via formatter_registry.py
 # to avoid duplicate registration warnings
-
-
-

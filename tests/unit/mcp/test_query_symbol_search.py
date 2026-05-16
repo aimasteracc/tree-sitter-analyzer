@@ -2,7 +2,6 @@
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -105,9 +104,7 @@ class TestSymbolSearchIntegration:
         return tool
 
     def test_exact_search_finds_symbol(self, tool_with_project):
-        result = asyncio.run(
-            tool_with_project.execute({"symbol": "HealthScorer"})
-        )
+        result = asyncio.run(tool_with_project.execute({"symbol": "HealthScorer"}))
         assert result["success"] is True
         assert result["matches_found"] >= 1
         defs = result.get("definitions", [])
@@ -115,9 +112,7 @@ class TestSymbolSearchIntegration:
         assert "HealthScorer" in names
 
     def test_wildcard_search_finds_multiple(self, tool_with_project):
-        result = asyncio.run(
-            tool_with_project.execute({"symbol": "*Tool"})
-        )
+        result = asyncio.run(tool_with_project.execute({"symbol": "*Tool"}))
         assert result["success"] is True
         assert result["matches_found"] >= 3
         defs = result.get("definitions", [])
@@ -125,17 +120,13 @@ class TestSymbolSearchIntegration:
         assert any("Tool" in n for n in names)
 
     def test_fuzzy_search_finds_matches(self, tool_with_project):
-        result = asyncio.run(
-            tool_with_project.execute({"symbol": "~scorer"})
-        )
+        result = asyncio.run(tool_with_project.execute({"symbol": "~scorer"}))
         assert result["success"] is True
         assert result["matches_found"] >= 1
 
     def test_type_filter_classes_only(self, tool_with_project):
         result = asyncio.run(
-            tool_with_project.execute(
-                {"symbol": "*Tool", "symbol_type": "class"}
-            )
+            tool_with_project.execute({"symbol": "*Tool", "symbol_type": "class"})
         )
         assert result["success"] is True
         defs = result.get("definitions", [])

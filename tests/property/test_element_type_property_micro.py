@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Micro property test — push hypothesis coverage past 10% gate."""
 
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
-from tree_sitter_analyzer.constants import is_element_of_type, ELEMENT_TYPE_CLASS, ELEMENT_TYPE_FUNCTION
+from tree_sitter_analyzer.constants import (
+    ELEMENT_TYPE_CLASS,
+    ELEMENT_TYPE_FUNCTION,
+    is_element_of_type,
+)
 from tree_sitter_analyzer.models import CodeElement
 
 

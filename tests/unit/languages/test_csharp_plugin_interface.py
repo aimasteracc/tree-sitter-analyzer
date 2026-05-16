@@ -1,8 +1,5 @@
 """Tests for C# plugin functionality."""
 
-from pathlib import Path
-
-import pytest
 import tree_sitter
 
 from tree_sitter_analyzer.languages.csharp_plugin import (
@@ -262,6 +259,7 @@ def get_tree_for_code(code: str, plugin: CSharpPlugin):
         parser = tree_sitter.Parser(language)
     return parser.parse(code.encode("utf-8"))
 
+
 class TestCSharpPluginInterface:
     """Test CSharp plugin interface implementation."""
 
@@ -342,4 +340,3 @@ class TestCSharpPluginInterface:
         for key in ("classes", "methods", "variables", "imports"):
             result = plugin.execute_query_strategy(key, "csharp")
             assert result is None or isinstance(result, str)
-

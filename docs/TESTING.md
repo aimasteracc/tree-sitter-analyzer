@@ -276,8 +276,14 @@ pytest -m integration
 ### Run Tests in Parallel
 
 ```bash
-# Use pytest-xdist
-pytest -n auto
+# The default pytest config uses pytest-xdist.
+pytest -q
+
+# Override worker scheduling when needed.
+pytest -q --numprocesses=auto --dist=loadfile
+
+# Benchmark-only runs should disable xdist and the 5-minute session limit.
+pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
 ```
 
 ### Generate Coverage Reports

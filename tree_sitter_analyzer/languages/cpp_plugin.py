@@ -702,7 +702,3 @@ class CppPlugin(LanguagePlugin):
                 "imports": [],
                 "packages": [],
             }
-
-
-
-

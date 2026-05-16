@@ -168,4 +168,3 @@ def _extract_view_sources(
                             table_name = get_node_text(child).strip()
                             if table_name and table_name not in source_tables:
                                 source_tables.append(table_name)
-

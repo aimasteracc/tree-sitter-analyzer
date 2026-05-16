@@ -717,5 +717,3 @@ class SQLFormatterWrapper(BaseFormatter):
             columns = [col.strip() for col in columns_str.split(",")]
 
         return {"table_name": table_name, "columns": columns, "is_unique": is_unique}
-
-

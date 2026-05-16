@@ -1,4 +1,3 @@
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
@@ -19,6 +18,8 @@ def test_list_files_validation_requires_roots(tmp_path):
     tool = ListFilesTool(str(tmp_path))
     with pytest.raises(ValueError):
         tool.validate_arguments({})
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_exec_happy_path(monkeypatch, tmp_path):
@@ -44,6 +45,8 @@ async def test_list_files_exec_happy_path(monkeypatch, tmp_path):
     assert result["success"] is True
     assert result["count"] >= 0
     assert any(x["path"].endswith("a.py") for x in result["results"])
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_exclude(monkeypatch, tmp_path):
@@ -79,6 +82,8 @@ async def test_list_files_exclude(monkeypatch, tmp_path):
     assert result["count"] == 1
     assert any(x["path"].endswith("a.py") for x in result["results"])
     assert not any(x["path"].endswith("b.py") for x in result["results"])
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_count_only(monkeypatch, tmp_path):
@@ -109,6 +114,8 @@ file5.py
     assert result["total_count"] == 5
     assert "results" not in result  # No detailed results in count_only mode
     assert "elapsed_ms" in result
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_error_handling(monkeypatch, tmp_path):
@@ -127,6 +134,8 @@ async def test_list_files_error_handling(monkeypatch, tmp_path):
     assert result["success"] is False
     assert result["error"] == "fd: command failed"
     assert result["returncode"] == 1
+
+
 @pytest.mark.unit
 def test_list_files_validation_invalid_types(tmp_path):
     """Test ListFilesTool validation with invalid parameter types."""
@@ -147,6 +156,8 @@ def test_list_files_validation_invalid_types(tmp_path):
     # Test invalid array parameters
     with pytest.raises(ValueError, match="extensions must be an array of strings"):
         tool.validate_arguments({"roots": [str(tmp_path)], "extensions": ["py", 123]})
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_with_pattern_and_no_pattern(monkeypatch, tmp_path):
@@ -190,6 +201,8 @@ async def test_list_files_with_pattern_and_no_pattern(monkeypatch, tmp_path):
         expected_path = expected_path.replace("/private/var/", "/var/", 1)
 
     assert expected_path in captured_commands[0]
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_with_size_filters(monkeypatch, tmp_path):
@@ -218,6 +231,8 @@ async def test_list_files_with_size_filters(monkeypatch, tmp_path):
 
     assert result["success"] is True
     assert result["count"] == 1
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_with_time_filters(monkeypatch, tmp_path):
@@ -241,6 +256,8 @@ async def test_list_files_with_time_filters(monkeypatch, tmp_path):
     )
 
     assert result["success"] is True
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_with_types_and_extensions(monkeypatch, tmp_path):
@@ -263,6 +280,8 @@ async def test_list_files_with_types_and_extensions(monkeypatch, tmp_path):
 
     assert result["success"] is True
     assert result["count"] == 2
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_with_depth_and_symlinks(monkeypatch, tmp_path):
@@ -286,6 +305,8 @@ async def test_list_files_with_depth_and_symlinks(monkeypatch, tmp_path):
 
     assert result["success"] is True
     assert result["count"] == 2
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_with_full_path_match(monkeypatch, tmp_path):
@@ -306,6 +327,8 @@ async def test_list_files_with_full_path_match(monkeypatch, tmp_path):
     )
 
     assert result["success"] is True
+
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_list_files_metadata_fields(monkeypatch, tmp_path):
@@ -338,6 +361,8 @@ async def test_list_files_metadata_fields(monkeypatch, tmp_path):
     assert "ext" in file_result
     assert file_result["ext"] == "py"
     assert file_result["is_dir"] is False
+
+
 @pytest.mark.unit
 def test_list_files_validation_comprehensive(tmp_path):
     """Test comprehensive parameter validation for ListFilesTool."""
@@ -393,6 +418,8 @@ def test_list_files_validation_comprehensive(tmp_path):
     for invalid_args, expected_error in invalid_cases:
         with pytest.raises(ValueError, match=expected_error):
             tool.validate_arguments(invalid_args)
+
+
 @pytest.mark.asyncio
 async def test_fd_21_glob_searches(tmp_path, monkeypatch):
     """Test glob searches - corresponds to fd's test_glob_searches."""
@@ -441,6 +468,8 @@ async def test_fd_21_glob_searches(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_22_full_path_glob_searches(tmp_path, monkeypatch):
     """Test full path glob searches - corresponds to fd's test_full_path_glob_searches."""
@@ -487,6 +516,8 @@ async def test_fd_22_full_path_glob_searches(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_23_smart_case_glob_searches(tmp_path, monkeypatch):
     """Test smart case glob searches - corresponds to fd's test_smart_case_glob_searches."""
@@ -539,6 +570,8 @@ async def test_fd_23_smart_case_glob_searches(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 1
+
+
 @pytest.mark.asyncio
 async def test_fd_24_case_sensitive_glob_searches(tmp_path, monkeypatch):
     """Test case sensitive glob searches - corresponds to fd's test_case_sensitive_glob_searches."""
@@ -579,6 +612,8 @@ async def test_fd_24_case_sensitive_glob_searches(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_25_glob_searches_with_extension(tmp_path, monkeypatch):
     """Test glob searches with extension - corresponds to fd's test_glob_searches_with_extension."""
@@ -626,6 +661,8 @@ async def test_fd_25_glob_searches_with_extension(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_29_hidden_files(tmp_path, monkeypatch):
     """Test hidden files search - corresponds to fd's test_hidden."""
@@ -670,6 +707,8 @@ async def test_fd_29_hidden_files(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 4
+
+
 @pytest.mark.asyncio
 async def test_fd_30_hidden_file_attribute(tmp_path, monkeypatch):
     """Test Windows hidden file attribute - corresponds to fd's test_hidden_file_attribute."""
@@ -700,6 +739,8 @@ async def test_fd_30_hidden_file_attribute(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 2
+
+
 @pytest.mark.asyncio
 async def test_fd_31_type_filtering(tmp_path, monkeypatch):
     """Test file type filtering - corresponds to fd's test_type."""
@@ -765,6 +806,8 @@ async def test_fd_31_type_filtering(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 1
+
+
 @pytest.mark.asyncio
 async def test_fd_32_type_executable(tmp_path, monkeypatch):
     """Test executable file type - corresponds to fd's test_type_executable."""

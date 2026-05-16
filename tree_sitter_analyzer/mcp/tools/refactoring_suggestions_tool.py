@@ -341,6 +341,8 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         suggestions: list[dict[str, Any]],
     ) -> None:
         """Check and flag functions with too many parameters."""
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            return
         params = (
             len(node.args.args)
             + len(node.args.kwonlyargs)
@@ -481,6 +483,3 @@ class RefactoringSuggestionsTool(BaseMCPTool):
     def _error_response(self, file_path: str, error: str) -> dict[str, Any]:
         """Return a standardized error response."""
         return {"file": file_path, "error": error, "suggestions": []}
-
-
-

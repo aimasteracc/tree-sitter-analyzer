@@ -52,7 +52,10 @@ def setup_logger(
 
     # Clear existing handlers if this is a test logger to ensure clean state
     if name.startswith("test_"):
-        logger.handlers.clear()
+        for handler in logger.handlers[:]:
+            with contextlib.suppress(Exception):
+                handler.close()
+            logger.removeHandler(handler)
 
     # Initialize file logging variables at function scope
     enable_file_log = (

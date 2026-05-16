@@ -1,4 +1,3 @@
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
@@ -56,6 +55,8 @@ async def test_fd_19_case_sensitive_search(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_20_case_insensitive_search(tmp_path, monkeypatch):
     """Test case insensitive search - corresponds to fd's test_case_insensitive."""
@@ -91,6 +92,8 @@ async def test_fd_20_case_insensitive_search(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_26_regex_overrides_glob(tmp_path, monkeypatch):
     """Test regex overrides glob - corresponds to fd's test_regex_overrides_glob."""
@@ -123,6 +126,8 @@ async def test_fd_26_regex_overrides_glob(tmp_path, monkeypatch):
 
     assert result1["success"] is True
     assert result1["count"] >= 1
+
+
 @pytest.mark.asyncio
 async def test_fd_27_full_path_searches(tmp_path, monkeypatch):
     """Test full path searches - corresponds to fd's test_full_path."""
@@ -169,6 +174,8 @@ async def test_fd_27_full_path_searches(tmp_path, monkeypatch):
 
     assert result1["success"] is True
     assert result1["count"] >= 1
+
+
 @pytest.mark.asyncio
 async def test_fd_28_fixed_strings_search(tmp_path, monkeypatch):
     """Test fixed strings search - corresponds to fd's test_fixed_strings."""
@@ -206,6 +213,8 @@ async def test_fd_28_fixed_strings_search(tmp_path, monkeypatch):
 
     assert result["success"] is True
     assert result["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_66_count_only_mode_advanced(tmp_path, monkeypatch):
     """Test advanced count only mode - corresponds to fd's count functionality."""

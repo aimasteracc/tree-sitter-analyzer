@@ -86,13 +86,16 @@ jobs:
         echo "### ⚡ Analysis Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        uv run pytest tests/benchmarks/test_performance_benchmarks.py \
+        uv run pytest tests/benchmarks/test_large_file_performance.py \
           -v \
+          -n 0 \
+          --session-timeout=0 \
+          --benchmark-enable \
           --benchmark-only \
           --benchmark-autosave \
           --benchmark-save-data \
           --benchmark-json=benchmark-analysis.json \
-          -k "analysis" \
+          -k "analyze or structure or memory or concurrent or complexity or details" \
           --timeout=${{ env.BENCHMARK_TIMEOUT }} \
           > benchmark-analysis-output.txt 2>&1 || touch benchmark_failed
 
@@ -109,13 +112,15 @@ jobs:
         echo "### 🔍 Query Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        uv run pytest tests/benchmarks/test_performance_benchmarks.py \
+        uv run pytest tests/benchmarks/test_query_performance.py \
           -v \
+          -n 0 \
+          --session-timeout=0 \
+          --benchmark-enable \
           --benchmark-only \
           --benchmark-autosave \
           --benchmark-save-data \
           --benchmark-json=benchmark-query.json \
-          -k "query" \
           --timeout=${{ env.BENCHMARK_TIMEOUT }} \
           > benchmark-query-output.txt 2>&1 || touch benchmark_failed
 
@@ -132,8 +137,11 @@ jobs:
         echo "### 💾 Cache Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        uv run pytest tests/benchmarks/test_performance_benchmarks.py \
+        uv run pytest tests/benchmarks/test_large_file_performance.py \
           -v \
+          -n 0 \
+          --session-timeout=0 \
+          --benchmark-enable \
           --benchmark-only \
           --benchmark-autosave \
           --benchmark-save-data \
@@ -155,15 +163,8 @@ jobs:
         echo "### 📝 Formatting Benchmarks" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        uv run pytest tests/benchmarks/test_performance_benchmarks.py \
-          -v \
-          --benchmark-only \
-          --benchmark-autosave \
-          --benchmark-save-data \
-          --benchmark-json=benchmark-formatting.json \
-          -k "formatting" \
-          --timeout=${{ env.BENCHMARK_TIMEOUT }} \
-          > benchmark-formatting-output.txt 2>&1 || touch benchmark_failed
+        echo "No formatter benchmark pytest module exists in tests/benchmarks yet." \
+          > benchmark-formatting-output.txt
 
         cat benchmark-formatting-output.txt
 
@@ -234,8 +235,8 @@ jobs:
         echo "### 📈 Benchmark Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
 
-        TOTAL_BENCHMARKS=$(uv run pytest tests/benchmarks/test_performance_benchmarks.py \
-          --collect-only -q --benchmark-only 2>/dev/null | grep -c "test_" || echo "0")
+        TOTAL_BENCHMARKS=$(uv run pytest tests/benchmarks/ \
+          --collect-only -q --benchmark-enable --benchmark-only -n 0 --session-timeout=0 2>/dev/null | grep -c "test_" || echo "0")
         echo "**Total Benchmarks:** $TOTAL_BENCHMARKS" >> $GITHUB_STEP_SUMMARY
 
         if [ -f benchmark_failed ]; then

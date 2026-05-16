@@ -192,7 +192,7 @@ uv run tree-sitter-analyzer examples/BigService.java --query-key methods --filte
 
 ```bash
 # Run tests
-uv run pytest tests/ -v
+uv run pytest -q
 
 # Generate coverage report
 uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
@@ -213,7 +213,7 @@ uv sync --extra all --extra mcp
 ### Quality Checks
 
 ```bash
-uv run pytest tests/ -v                    # Run tests
+uv run pytest -q                           # Run all tests in parallel
 uv run python check_quality.py --new-code-only  # Quality check
 uv run python llm_code_checker.py --check-all   # AI code check
 ```
@@ -257,7 +257,7 @@ MIT License - see [LICENSE](LICENSE) file.
 
 ```bash
 # Run all tests
-uv run pytest tests/ -v
+uv run pytest -q
 
 # Run specific test category
 uv run pytest tests/unit/ -v              # Unit tests
@@ -272,7 +272,7 @@ uv run pytest tests/ --cov=tree_sitter_analyzer --cov-report=html
 uv run pytest tests/property/
 
 # Run performance benchmarks
-uv run pytest tests/benchmarks/ --benchmark-only
+uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
 ```
 
 ### Test Documentation

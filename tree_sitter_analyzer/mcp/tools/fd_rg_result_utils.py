@@ -15,6 +15,7 @@ from typing import Any
 _MAX_RESULTS_HARD_CAP = 10000
 
 
+# parse_rg_json_lines_to_matches: implementation
 def parse_rg_json_lines_to_matches(stdout_bytes: bytes) -> list[dict[str, Any]]:
     """Parse ripgrep JSON event stream and keep only match events."""
     results: list[dict[str, Any]] = []
@@ -71,6 +72,7 @@ def parse_rg_json_lines_to_matches(stdout_bytes: bytes) -> list[dict[str, Any]]:
     return results
 
 
+# group_matches_by_file: implementation
 def group_matches_by_file(matches: list[dict[str, Any]]) -> dict[str, Any]:
     """Group matches by file to eliminate file path duplication."""
     if not matches:
@@ -105,6 +107,7 @@ def group_matches_by_file(matches: list[dict[str, Any]]) -> dict[str, Any]:
     return {"success": True, "count": total_matches, "files": files}
 
 
+# optimize_match_paths: implementation
 def optimize_match_paths(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Optimize file paths in match results to reduce token consumption."""
     if not matches:
@@ -129,6 +132,7 @@ def optimize_match_paths(matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return optimized_matches
 
 
+# _optimize_file_path: implementation
 def _optimize_file_path(file_path: str, common_prefix: str = "") -> str:
     """Optimize file path for token efficiency by removing common prefixes and shortening."""
     if not file_path:
@@ -148,11 +152,13 @@ def _optimize_file_path(file_path: str, common_prefix: str = "") -> str:
     return file_path
 
 
+# summarize_search_results: implementation
 def summarize_search_results(
     matches: list[dict[str, Any]], max_files: int = 10, max_total_lines: int = 50
 ) -> dict[str, Any]:
     """Summarize search results to reduce context size while preserving key information."""
     if not matches:
+        # Return result
         return {
             "total_matches": 0,
             "total_files": 0,
@@ -162,14 +168,17 @@ def summarize_search_results(
 
     file_groups: dict[str, list[dict[str, Any]]] = {}
     all_file_paths = []
+    # Loop iteration
     for match in matches:
         file_path = match.get("file", "unknown")
         all_file_paths.append(file_path)
+        # Conditional check
         if file_path not in file_groups:
             file_groups[file_path] = []
         file_groups[file_path].append(match)
 
     common_prefix = ""
+    # Conditional check
     if len(all_file_paths) > 1:
         common_prefix = os.path.commonpath(all_file_paths) if all_file_paths else ""
 
@@ -181,22 +190,27 @@ def summarize_search_results(
     top_files = []
     remaining_lines = max_total_lines
 
+    # Loop iteration
     for file_path, file_matches in sorted_files[:max_files]:
         match_count = len(file_matches)
 
         sample_lines = []
         lines_to_include = min(3, remaining_lines, len(file_matches))
 
+        # Loop iteration
         for _i, match in enumerate(file_matches[:lines_to_include]):
             line_num = match.get("line", match.get("line_number", "?"))
             line_text = match.get("text", match.get("line", "")).strip()
+            # Conditional check
             if line_text:
                 truncated_line = " ".join(line_text.split())[:60]
+                # Conditional check
                 if len(line_text) > 60:
                     truncated_line += "..."
                 sample_lines.append(f"L{line_num}: {truncated_line}")
                 remaining_lines -= 1
 
+        # Conditional check
         if not sample_lines and file_matches:
             sample_lines.append(f"Found {len(file_matches)} matches")
 
@@ -210,14 +224,17 @@ def summarize_search_results(
             }
         )
 
+        # Conditional check
         if remaining_lines <= 0:
             break
 
+    # Conditional check
     if total_files <= max_files:
         summary = f"Found {total_matches} matches in {total_files} files"
     else:
         summary = f"Found {total_matches} matches in {total_files} files (showing top {len(top_files)})"
 
+    # Return result
     return {
         "total_matches": total_matches,
         "total_files": total_files,
@@ -227,16 +244,20 @@ def summarize_search_results(
     }
 
 
+# extract_file_list_from_count_data: implementation
 def extract_file_list_from_count_data(count_data: dict[str, int]) -> list[str]:
     """Extract file list from count data, excluding the special __total__ key."""
+    # Return result
     return [file_path for file_path in count_data.keys() if file_path != "__total__"]
 
 
+# create_file_summary_from_count_data: implementation
 def create_file_summary_from_count_data(count_data: dict[str, int]) -> dict[str, Any]:
     """Create a file summary structure from count data."""
     file_list = extract_file_list_from_count_data(count_data)
     total_matches = count_data.get("__total__", 0)
 
+    # Return result
     return {
         "success": True,
         "total_matches": total_matches,

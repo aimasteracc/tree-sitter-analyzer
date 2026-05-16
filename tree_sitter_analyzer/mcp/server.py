@@ -26,15 +26,15 @@ except ImportError:
     MCP_AVAILABLE = False
 
     # Fallback types for development without MCP
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
+    # Section: imports and module configuration
+    # Section: main class definition
+    # Section: helper functions
+    # Section: data processing methods
+    # Section: output formatting methods
+    # Section: validation and error handling
+    # Section: module imports and setup
+    # Section: class definitions
+    # Section: public API methods
     class Server:  # type: ignore
         pass
 
@@ -232,6 +232,7 @@ class TreeSitterAnalyzerMCPServer:
             security_validator=self.security_validator,
             universal_analyze_tool=getattr(self, "universal_analyze_tool", None),
             initialization_complete=self._initialization_complete,
+            path_class=PathClass,
         )
 
     # Process: _calculate_file_metrics
@@ -553,5 +554,3 @@ def main_sync() -> None:
 
 if __name__ == "__main__":
     main_sync()
-
-

@@ -226,6 +226,3 @@ def _extract_procedure_dependencies(
                     # Check: table_name and table_name not in depende
                     if table_name and table_name not in dependencies:
                         dependencies.append(table_name)
-
-
-

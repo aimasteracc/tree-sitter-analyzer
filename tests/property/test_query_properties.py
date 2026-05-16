@@ -405,7 +405,7 @@ class TestClass:
                 assert len(result1["captures"]) == len(result2["captures"])
 
 
-class TestQueryStateful(RuleBasedStateMachine):
+class QueryStatefulMachine(RuleBasedStateMachine):
     """查询状态机测试。"""
 
     def __init__(self) -> None:
@@ -455,7 +455,7 @@ class TestQueryStateful(RuleBasedStateMachine):
         assert len(available_queries) > 0
 
 
-TestQueryStateful.TestCase.settings = settings(max_examples=100)
+QueryStatefulMachine.TestCase.settings = settings(max_examples=100)
 
 
 class TestQueryEdgeCases:

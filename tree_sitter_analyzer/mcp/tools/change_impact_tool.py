@@ -8,6 +8,7 @@ Tells AI agents: what changed, what's affected, what tests to run.
 
 from __future__ import annotations
 
+import shlex
 import subprocess  # nosec B404
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,34 @@ def _run_git(args: list[str], cwd: str | None = None) -> tuple[int, str]:
         return 1, ""
 
 
+def _split_git_lines(output: str) -> list[str]:
+    """Split git output into non-empty path lines."""
+    return [line for line in output.splitlines() if line.strip()]
+
+
+def _unique_preserve_order(paths: list[str]) -> list[str]:
+    """Return paths without duplicates while preserving git output order."""
+    seen = set()
+    unique_paths = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        unique_paths.append(path)
+    return unique_paths
+
+
+def _get_untracked_files(project_root: str | None) -> list[str]:
+    """Get untracked files that are not ignored by git."""
+    rc, out = _run_git(
+        ["ls-files", "--others", "--exclude-standard"],
+        cwd=project_root,
+    )
+    if rc != 0 or not out:
+        return []
+    return _split_git_lines(out)
+
+
 def _get_changed_files(mode: str, project_root: str | None) -> list[str]:
     """Get list of changed file paths from git diff."""
     if mode == "staged":
@@ -64,9 +93,10 @@ def _get_changed_files(mode: str, project_root: str | None) -> list[str]:
     else:
         rc, out = _run_git(["diff", "--name-only"], cwd=project_root)
 
-    if rc != 0 or not out:
-        return []
-    return [f for f in out.splitlines() if f.strip()]
+    changed = _split_git_lines(out) if rc == 0 and out else []
+    if mode == "diff":
+        changed.extend(_get_untracked_files(project_root))
+    return _unique_preserve_order(changed)
 
 
 def _get_diff_stat(mode: str, project_root: str | None) -> str:
@@ -77,6 +107,12 @@ def _get_diff_stat(mode: str, project_root: str | None) -> str:
         rc, out = _run_git(["diff", "--stat", "HEAD~1", "HEAD"], cwd=project_root)
     else:
         rc, out = _run_git(["diff", "--stat"], cwd=project_root)
+        untracked = _get_untracked_files(project_root)
+        if untracked:
+            untracked_stat = "\n".join(
+                ["Untracked files:"] + [f"  {path}" for path in untracked[:20]]
+            )
+            out = f"{out}\n{untracked_stat}".strip() if out else untracked_stat
     return out if rc == 0 else ""
 
 
@@ -135,6 +171,14 @@ def _assess_risk(
     if total_affected <= 8:
         return "medium"
     return "high"
+
+
+def _build_pytest_command(tests_to_run: list[str]) -> str:
+    """Build a copy-pasteable fast validation command."""
+    if not tests_to_run:
+        return "uv run pytest -q"
+    quoted_tests = shlex.join(tests_to_run)
+    return f"uv run pytest {quoted_tests} -q"
 
 
 class ChangeImpactTool(BaseMCPTool):
@@ -232,6 +276,7 @@ class ChangeImpactTool(BaseMCPTool):
             "risk_level": risk,
             "file_impacts": file_impacts[:20],
             "tests_to_run": all_tests[:30] if all_tests else [],
+            "pytest_command": _build_pytest_command(all_tests[:30]),
             "test_mapping": test_mapping if test_mapping else {},
             "diff_stat": diff_stat[:500] if diff_stat else "",
         }

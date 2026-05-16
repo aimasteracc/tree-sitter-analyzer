@@ -984,7 +984,3 @@ class LegacyTableFormatter:
 
         # Return result
         return cleaned
-
-
-
-

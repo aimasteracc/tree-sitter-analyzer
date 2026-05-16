@@ -22,6 +22,7 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 from ...encoding_utils import extract_text_slice, safe_encode
+from ...language_loader import loader  # noqa: F401
 from ...models import Class, CodeElement, Function, Import, Variable
 from ...plugins.base import ElementExtractor
 from ...utils import log_debug, log_error, log_warning
@@ -30,9 +31,6 @@ from .import_extractor import (
 )
 from .import_extractor import (
     _extract_dynamic_import as _dynamic_import_standalone,
-)
-from .import_extractor import (
-    _extract_import_info_simple as _import_info_standalone,
 )
 from .import_extractor import (
     _extract_import_names as _import_names_standalone,
@@ -1211,10 +1209,47 @@ class TypeScriptElementExtractor(ElementExtractor):
 
     # Extract elements from AST: _extract_import_info_simple
     def _extract_import_info_simple(self, node: "tree_sitter.Node") -> Import | None:
-        # Return result
-        return _import_info_standalone(
-            node, self.source_code, self._get_node_text_optimized
-        )
+        """Extract import information from an import_statement node."""
+        try:
+            start_point = getattr(node, "start_point", (0, 0))
+            end_point = getattr(node, "end_point", (0, 0))
+            start_line = start_point[0] + 1 if isinstance(start_point, tuple) else 1
+            end_line = end_point[0] + 1 if isinstance(end_point, tuple) else 1
+
+            raw_text = self._get_node_text_optimized(node)
+
+            import_names: list[str] = []
+            module_path = ""
+            for child in getattr(node, "children", []) or []:
+                child_type = getattr(child, "type", None)
+                if child_type == "import_clause":
+                    import_names.extend(self._extract_import_names(child))
+                elif child_type == "string":
+                    text = getattr(child, "text", "")
+                    if isinstance(text, bytes):
+                        module_path = text.decode("utf-8").strip("\"'")
+                    elif isinstance(text, str):
+                        module_path = text.strip("\"'")
+                    else:
+                        module_path = self._get_node_text_optimized(child).strip("\"'")
+
+            if not module_path and not import_names:
+                return None
+
+            primary_name = import_names[0] if import_names else "unknown"
+            return Import(
+                name=primary_name,
+                start_line=start_line,
+                end_line=end_line,
+                raw_text=raw_text,
+                language="typescript",
+                module_path=module_path,
+                module_name=module_path,
+                imported_names=import_names,
+            )
+        except Exception as e:
+            log_debug(f"Failed to extract import info: {e}")
+            return None
 
     # Extract elements from AST: _extract_import_names
     def _extract_import_names(
@@ -1455,7 +1490,3 @@ class TypeScriptElementExtractor(ElementExtractor):
 
         # Return result
         return all_elements
-
-
-
-

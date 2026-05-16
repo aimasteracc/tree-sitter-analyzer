@@ -637,8 +637,3 @@ class SearchContentTool(BaseMCPTool):
         return self.cache.create_cache_key(
             query=arguments["query"], roots=arguments.get("roots", []), **cache_params
         )
-
-
-
-
-

@@ -203,18 +203,25 @@ class TestGetToolDefinition:
         assert properties["output_format"]["default"] == "toon"
 
     def test_output_file_property(self, tool):
-        """output_file removed from schema for token efficiency."""
+        """Test that output_file property is correctly defined."""
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
         properties = schema.get("properties", {})
-        assert "output_file" not in properties
+        assert "output_file" in properties
+        assert properties["output_file"]["type"] == "string"
+        assert "save output to file" in properties["output_file"]["description"]
 
     def test_suppress_output_property(self, tool):
-        """suppress_output removed from schema for token efficiency."""
+        """Test that suppress_output property is correctly defined."""
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
         properties = schema.get("properties", {})
-        assert "suppress_output" not in properties
+        assert "suppress_output" in properties
+        assert properties["suppress_output"]["type"] == "boolean"
+        assert properties["suppress_output"]["default"] is False
+        assert (
+            "suppress detailed output" in properties["suppress_output"]["description"]
+        )
 
 
 class TestValidateArguments:
@@ -606,7 +613,7 @@ class TestExecute:
             mock_query.return_value = mock_query_results
 
             with patch(
-                "tree_sitter_analyzer.mcp.tools.query_tool.apply_toon_format_to_response"
+                "tree_sitter_analyzer.mcp.utils.format_helper.apply_toon_format_to_response"
             ) as mock_toon:
                 mock_toon.return_value = {"toon": "formatted"}
 

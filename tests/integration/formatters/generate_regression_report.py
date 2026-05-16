@@ -10,7 +10,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -26,7 +26,7 @@ class RegressionReportGenerator:
         """
         self.output_dir = output_dir or Path.cwd()
         self.report_data = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "git_info": self._get_git_info(),
             "environment": self._get_environment_info(),
             "test_failures": [],
@@ -89,7 +89,7 @@ class RegressionReportGenerator:
                 "expected": expected,
                 "actual": actual,
                 "diff": diff,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -115,7 +115,7 @@ class RegressionReportGenerator:
                 "change_description": change_description,
                 "impact_level": impact_level,
                 "affected_components": affected_components,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -131,7 +131,7 @@ class RegressionReportGenerator:
             {
                 "recommendation": recommendation,
                 "priority": priority,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -222,7 +222,7 @@ class RegressionReportGenerator:
         </ol>
 
         <div class="timestamp">
-            <p>Report generated at {datetime.utcnow().isoformat()} UTC</p>
+            <p>Report generated at {datetime.now(UTC).isoformat()} UTC</p>
         </div>
     </div>
 </body>

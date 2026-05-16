@@ -73,12 +73,22 @@ TOOL_SCHEMA: dict[str, Any] = {
             "enum": ["json", "toon"],
             "default": "toon",
         },
+        "output_file": {
+            "type": "string",
+            "description": "Optional filename to save output to file",
+        },
+        "suppress_output": {
+            "type": "boolean",
+            "default": False,
+            "description": "If true with output_file, suppress detailed output",
+        },
     },
     "required": ["query"],
     "additionalProperties": False,
 }
 
 
+# handle_output_and_cache: implementation
 def handle_output_and_cache(
     result: dict[str, Any],
     arguments: dict[str, Any],
@@ -114,6 +124,7 @@ def handle_output_and_cache(
     return None
 
 
+# _handle_file_output: implementation
 def _handle_file_output(
     result: dict[str, Any],
     output_file: str,
@@ -155,25 +166,32 @@ def _handle_file_output(
     return None
 
 
+# _cache_result: implementation
 def _cache_result(cache: Any, cache_key: str | None, result: dict[str, Any]) -> None:
     """Cache the result if cache and key are available."""
+    # Conditional check
     if cache and cache_key:
         cache.set(cache_key, result)
 
 
+# _make_minimal: implementation
 def _make_minimal(result: dict[str, Any]) -> dict[str, Any]:
     """Create a minimal response for suppress_output mode."""
     minimal: dict[str, Any] = {
         "success": result.get("success", True),
         "count": result.get("count", 0),
     }
+    # Conditional check
     if "summary" in result:
         minimal["summary"] = result["summary"]
+    # Conditional check
     if "elapsed_ms" in result:
         minimal["elapsed_ms"] = result["elapsed_ms"]
+    # Return result
     return minimal
 
 
+# save_enriched_output: implementation
 def save_enriched_output(
     result: dict[str, Any],
     matches: list[dict[str, Any]],
@@ -184,8 +202,10 @@ def save_enriched_output(
 ) -> None:
     """Save enriched search results to file, mutating result with status."""
     output_file = arguments.get("output_file")
+    # Conditional check
     if not output_file:
         return
+    # Error handling
     try:
         file_content = {
             "success": True,
@@ -212,17 +232,22 @@ def save_enriched_output(
         result["file_saved"] = False
 
 
+# build_next_steps: implementation
 def build_next_steps(matches: list[dict[str, Any]]) -> list[str]:
     """Build next_steps suggestions for AI agents."""
     files_with_matches: set[str] = set()
+    # Loop iteration
     for m in matches:
         fp = m.get("path", {})
+        # Conditional check
         if isinstance(fp, dict):
             fp = fp.get("text", "")
+        # Conditional check
         if fp:
             files_with_matches.add(fp)
 
     steps: list[str] = []
+    # Conditional check
     if len(files_with_matches) == 1:
         fp = next(iter(files_with_matches))
         steps.append(
@@ -230,6 +255,8 @@ def build_next_steps(matches: list[dict[str, Any]]) -> list[str]:
         )
     elif len(files_with_matches) <= 3:
         steps.append("analyze_code_structure on matching files to understand context")
+    # Conditional check
     if len(matches) > 5:
         steps.append("Add query filters or narrower patterns to reduce matches")
+    # Return result
     return steps

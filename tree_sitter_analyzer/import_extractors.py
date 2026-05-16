@@ -102,9 +102,11 @@ def walk_imports(
     except Exception:  # nosec B110
         pass
 
-    # Recurse into children
-    if hasattr(node, "children"):
-        for child in node.children:
+    # Recurse into real tree-sitter child lists. Mock objects can synthesize async
+    # attributes here, which creates unawaited coroutine warnings during tests.
+    children = getattr(node, "children", None)
+    if isinstance(children, (list, tuple)):
+        for child in children:
             walk_imports(child, source, language, imports)
 
 
@@ -287,4 +289,3 @@ def _node_text(node: Any, source: str) -> str:
         return ""
     except Exception:
         return ""
-

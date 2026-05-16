@@ -1003,6 +1003,7 @@ class TestMCPServerUtilities:
             import inspect
 
             assert inspect.iscoroutine(args[0])
+            args[0].close()
             # Clean up the coroutine to prevent warning
             args[0].close()
 

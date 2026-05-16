@@ -383,7 +383,7 @@ class TestLanguageDetectionProperties:
             )
 
 
-class TestLanguageDetectionStateful(RuleBasedStateMachine):
+class LanguageDetectionStatefulMachine(RuleBasedStateMachine):
     """语言检测状态机测试。"""
 
     def __init__(self) -> None:
@@ -445,7 +445,7 @@ class TestLanguageDetectionStateful(RuleBasedStateMachine):
                 extension_map[ext] = language
 
 
-TestLanguageDetectionStateful.TestCase.settings = settings(max_examples=100)
+LanguageDetectionStatefulMachine.TestCase.settings = settings(max_examples=100)
 
 
 class TestLanguageDetectionEdgeCases:

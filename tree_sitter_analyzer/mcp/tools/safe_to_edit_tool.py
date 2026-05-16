@@ -15,6 +15,7 @@ from ...health_scorer import HealthScorer
 from ...project_graph import DependencyGraph
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .file_health_tool import _build_signal
 from .utils.test_discovery import find_test_files
 
 logger = setup_logger(__name__)
@@ -28,24 +29,32 @@ class SafeToEditTool(BaseMCPTool):
         self._graph: DependencyGraph | None = None
         self._scorer: HealthScorer | None = None
 
+    # set_project_path: implementation
     def set_project_path(self, project_path: str) -> None:
         super().set_project_path(project_path)
         self._graph = None
         self._scorer = None
 
+    # _get_graph: implementation
     def _get_graph(self) -> DependencyGraph:
         if self._graph is None:
             if not self.project_root:
                 raise ValueError("Project root not set.")
             self._graph = DependencyGraph(self.project_root)
+        # Return result
         return self._graph
 
+    # _get_scorer: implementation
     def _get_scorer(self) -> HealthScorer:
+        # Conditional check
         if self._scorer is None:
             self._scorer = HealthScorer()
+        # Return result
         return self._scorer
 
+    # get_tool_definition: implementation
     def get_tool_definition(self) -> dict[str, Any]:
+        # Return result
         return {
             "name": "safe_to_edit",
             "description": (
@@ -56,7 +65,9 @@ class SafeToEditTool(BaseMCPTool):
             "inputSchema": self.get_tool_schema(),
         }
 
+    # get_tool_schema: implementation
     def get_tool_schema(self) -> dict[str, Any]:
+        # Return result
         return {
             "type": "object",
             "properties": {
@@ -81,14 +92,19 @@ class SafeToEditTool(BaseMCPTool):
             "additionalProperties": False,
         }
 
+    # validate_arguments: implementation
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
+        # Conditional check
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
         fp = arguments["file_path"]
+        # Conditional check
         if not isinstance(fp, str) or not fp.strip():
             raise ValueError("file_path must be a non-empty string")
+        # Return result
         return True
 
+    # execute: implementation
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
@@ -97,6 +113,7 @@ class SafeToEditTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
 
         resolved = self.resolve_and_validate_file_path(file_path)
+        # Conditional check
         if not Path(resolved).exists():
             raise ValueError(f"File not found: {file_path}")
 
@@ -136,58 +153,87 @@ class SafeToEditTool(BaseMCPTool):
             "risk_factors": risk_factors,
             "health_grade": health.grade,
             "health_score": health.total,
+            "health_signal": _build_signal(health.dimensions),
             "downstream_files": dependents[:20],
             "downstream_count": forward_count,
             "dependencies": deps[:10],
             "dependency_count": len(deps),
             "test_files_nearby": test_files,
             "pre_edit_checklist": _build_checklist(
-                risk, forward_count, has_tests, test_files, edit_type,
-                health_grade=health.grade, file_path=file_path,
+                risk,
+                forward_count,
+                has_tests,
+                test_files,
+                edit_type,
+                health_grade=health.grade,
+                file_path=file_path,
             ),
         }
 
         from ..utils.format_helper import apply_toon_format_to_response
 
+        # Return result
         return apply_toon_format_to_response(result, output_format)
 
 
+# _to_relative: implementation
 def _to_relative(abs_path: str, project_root: str) -> str:
+    # Error handling
     try:
+        # Return result
         return str(Path(abs_path).relative_to(project_root))
     except ValueError:
+        # Return result
         return abs_path
 
 
+# _safe_dependents: implementation
 def _safe_dependents(graph: DependencyGraph, rel_path: str) -> list[str]:
+    # Error handling
     try:
+        # Conditional check
         if rel_path in graph._nodes:
+            # Return result
             return graph.dependents_of(rel_path)
         # fuzzy match
         for node in graph._nodes:
+            # Conditional check
             if node.endswith(rel_path):
+                # Return result
                 return graph.dependents_of(node)
     except Exception:  # nosec B110 — graph lookup failure returns empty list
         pass
+    # Return result
     return []
 
 
+# _safe_dependencies: implementation
 def _safe_dependencies(graph: DependencyGraph, rel_path: str) -> list[str]:
+    # Error handling
     try:
+        # Conditional check
         if rel_path in graph._nodes:
+            # Return result
             return graph.dependencies_of(rel_path)
+        # Loop iteration
         for node in graph._nodes:
+            # Conditional check
             if node.endswith(rel_path):
+                # Return result
                 return graph.dependencies_of(node)
     except Exception:  # nosec B110 — graph lookup failure returns empty list
         pass
+    # Return result
     return []
 
 
+# _is_init_file: implementation
 def _is_init_file(file_path: str) -> bool:
+    # Return result
     return Path(file_path).name == "__init__.py"
 
 
+# _compute_risk: implementation
 def _compute_risk(
     forward_count: int,
     dep_count: int,
@@ -289,6 +335,7 @@ def _compute_risk(
                 "severity": "caution",
             }
         )
+    # Alternative check
     elif edit_type == "refactor" and forward_count > 5:
         score += 1
         factors.append(
@@ -313,14 +360,17 @@ def _compute_risk(
     # Determine risk level
     if score >= 6:
         risk = "dangerous"
+    # Alternative check
     elif score >= 3:
         risk = "caution"
     else:
         risk = "safe"
 
+    # Return result
     return risk, factors
 
 
+# _build_checklist: implementation
 def _build_checklist(
     risk: str,
     downstream_count: int,
@@ -333,15 +383,18 @@ def _build_checklist(
     """Build a pre-edit checklist for the AI agent."""
     items: list[str] = []
 
+    # Conditional check
     if risk == "dangerous":
         items.append(
             "1. HIGH RISK — consider breaking changes into smaller, atomic edits"
         )
+    # Alternative check
     elif risk == "caution":
         items.append("1. MODERATE RISK — proceed with caution, test after each change")
     else:
         items.append("1. LOW RISK — file is relatively safe to edit")
 
+    # Conditional check
     if has_tests:
         items.append(f"2. Run existing tests FIRST: pytest {' '.join(test_files[:3])}")
         items.append("3. Run same tests AFTER editing to catch regressions")
@@ -349,22 +402,27 @@ def _build_checklist(
         items.append("2. No tests found nearby — write tests BEFORE editing (TDD)")
         items.append("3. Run full test suite after editing to catch side effects")
 
+    # Conditional check
     if downstream_count > 0:
         items.append(
             f"4. {downstream_count} downstream file(s) — verify imports still resolve"
         )
 
+    # Conditional check
     if edit_type == "rename":
         items.append(
             "5. After rename: run find_and_grep(old_name) to find all references"
         )
 
+    # Conditional check
     if edit_type == "refactor":
         items.append("5. Keep public API signatures unchanged during refactor")
 
+    # Conditional check
     if health_grade in ("D", "F") and file_path:
         items.append(
             f"6. File is grade {health_grade} — run refactoring_suggestions(file_path='{file_path}') for extraction plans"
         )
 
+    # Return result
     return items

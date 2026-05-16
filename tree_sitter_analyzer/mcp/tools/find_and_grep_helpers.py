@@ -108,6 +108,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "enum": ["json", "toon"],
             "default": "toon",
         },
+        "output_file": {
+            "type": "string",
+            "description": "Optional filename to save output to file",
+        },
+        "suppress_output": {
+            "type": "boolean",
+            "default": False,
+            "description": "If true with output_file, suppress detailed output",
+        },
     },
     "required": ["roots", "query"],
     "additionalProperties": False,
@@ -157,7 +166,9 @@ def _handle_file_output(
 
     try:
         # Build content for file output
-        if matches:
+        if arguments.get("summary_only", False):
+            file_content = result
+        elif matches:
             from . import fd_rg_utils
 
             file_content = {

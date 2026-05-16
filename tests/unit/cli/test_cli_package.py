@@ -78,9 +78,12 @@ def test_cli_import_error_fallback() -> None:
     """Test CLI package sets None fallbacks when core imports fail."""
     import importlib
     import sys
-    from unittest.mock import patch
 
-    cli_mods_snapshot = {m: sys.modules[m] for m in list(sys.modules) if m.startswith("tree_sitter_analyzer.cli")}
+    cli_mods_snapshot = {
+        m: sys.modules[m]
+        for m in list(sys.modules)
+        if m.startswith("tree_sitter_analyzer.cli")
+    }
 
     block_list = {
         "tree_sitter_analyzer.cli_main",

@@ -1,4 +1,3 @@
-
 import pytest
 
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
@@ -57,6 +56,8 @@ async def test_fd_92_git_dir_handling(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_93_gitignore_parent_handling(tmp_path, monkeypatch):
     """Test gitignore parent directory handling - corresponds to fd's test_gitignore_parent."""
@@ -104,6 +105,8 @@ async def test_fd_93_gitignore_parent_handling(tmp_path, monkeypatch):
 
     assert result2["success"] is True
     assert result2["count"] >= 0
+
+
 @pytest.mark.asyncio
 async def test_fd_94_hyperlink_output_advanced(tmp_path, monkeypatch):
     """Test advanced hyperlink output - corresponds to fd's test_hyperlink."""

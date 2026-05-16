@@ -1299,7 +1299,7 @@ mcp_servers:
 
 ### 10. check_file_health
 
-**Purpose**: Score a single file's code health (A-F grade) across 5 dimensions.
+**Purpose**: Score a single file's code health (A-F grade) across 7 dimensions.
 
 **Input Schema**:
 ```json
@@ -1324,8 +1324,9 @@ mcp_servers:
     "lines": 95.0,
     "complexity": 72.0,
     "dependencies": 100.0,
-    "comments": 65.0,
-    "coverage": 50.0
+    "duplication": 85.0,
+    "structure": 90.0,
+    "git_hotspot": 100.0
   },
   "recommendation": "File is in good shape. No immediate action needed."
 }
@@ -1389,9 +1390,9 @@ mcp_servers:
 }
 ```
 
-**Output**: changed files, affected downstream files (via blast radius), related test files to run, risk level (low/medium/high), diff stat.
+**Output**: changed files (including untracked files in `diff` mode), affected downstream files (via blast radius), related test files to run, copy-pasteable `pytest_command`, risk level (low/medium/high), diff stat.
 
-**SMART Workflow**: Call AFTER editing code to understand what's affected and what tests to run.
+**SMART Workflow**: Call AFTER editing code to understand what's affected and what tests to run. Prefer `pytest_command` for fast feedback during development; run the full suite before release/PR when risk remains high.
 
 ---
 
@@ -1447,7 +1448,7 @@ Categories: `file_not_found`, `language_unsupported`, `project_not_set`, `securi
 ### v1.11.0 (2026-05-14)
 - **3 new project-level tools** exposed to AI agents
   - `get_project_overview` — One-call project portrait (language distribution, file counts, health summary)
-  - `check_file_health` — A-F grade scoring per file (lines, complexity, dependencies, comments, coverage)
+  - `check_file_health` — A-F grade scoring per file (size, complexity, dependencies, duplication, structure, git_hotspot)
   - `analyze_dependencies` — 4 modes: blast_radius, file_deps, cycles, summary
 - **MCP Prompts** for SMART workflow self-discovery
   - `smart_analyze` — Guided single-file analysis prompt

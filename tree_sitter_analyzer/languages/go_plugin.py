@@ -582,5 +582,3 @@ class GoPlugin(LanguagePlugin):
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )
-
-

@@ -477,4 +477,3 @@ class TypeScriptTableFormatter(BaseTableFormatter):
             return json.dumps(data, indent=2, ensure_ascii=False)
         except (TypeError, ValueError) as e:
             return f"# JSON serialization error: {e}\n"
-

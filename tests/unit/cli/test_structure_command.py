@@ -351,9 +351,7 @@ class TestStructureCommandOutputStructureAnalysis:
                 mock_formatter.format.assert_called_once()
                 assert mock_print.call_count == 1
                 # The print call contains the formatted output
-                assert (
-                    mock_print.call_args_list[0][0][0] == "formatted_output"
-                )
+                assert mock_print.call_args_list[0][0][0] == "formatted_output"
 
 
 class TestStructureCommandOutputTextFormat:

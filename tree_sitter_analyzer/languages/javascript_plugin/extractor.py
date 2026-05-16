@@ -1436,7 +1436,3 @@ class JavaScriptElementExtractor(ElementExtractor):
         self._complexity_cache[node_id] = complexity
         # Return result
         return complexity
-
-
-
-

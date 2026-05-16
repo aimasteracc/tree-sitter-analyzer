@@ -524,5 +524,3 @@ class MockLanguagePlugin:
 def get_analysis_engine(project_root: str | None = None) -> UnifiedAnalysisEngine:
     """Get unified analysis engine instance"""
     return UnifiedAnalysisEngine(project_root)
-
-

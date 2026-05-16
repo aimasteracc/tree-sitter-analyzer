@@ -126,7 +126,7 @@ class TestFileOutputManagerFactoryNormalizeProjectRoot:
 
     def test_normalize_project_root_invalid_path(self, monkeypatch):
         """Test normalize_project_root with invalid path returns resolved path."""
-        monkeypatch.setenv("TREE_SITTER_OUTPUT_PATH", None)
+        monkeypatch.delenv("TREE_SITTER_OUTPUT_PATH", raising=False)
 
         with patch("pathlib.Path.cwd") as mock_cwd:
             mock_cwd.return_value = Path("/fallback/dir")

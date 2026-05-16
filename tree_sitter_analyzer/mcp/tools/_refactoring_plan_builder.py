@@ -81,7 +81,9 @@ def _build_plan_for_func(
         block_src = "\n".join(lines[b_start - 1 : b_end])
         params = _infer_params_for_block(block_src, func_assigned)
         returns = _infer_returns(block_src)
-        skeleton = _make_skeleton(helper_name, params, returns, lines[b_start - 1 : b_end], ext)
+        skeleton = _make_skeleton(
+            helper_name, params, returns, lines[b_start - 1 : b_end], ext
+        )
         targets.append(
             {
                 "helper_name": helper_name,
@@ -93,6 +95,8 @@ def _build_plan_for_func(
             }
         )
 
+    helper_names = ", ".join(str(target["helper_name"]) for target in targets)
+
     return {
         "function": func_name,
         "function_lines": f"{start}-{end}",
@@ -100,7 +104,7 @@ def _build_plan_for_func(
         "extractions": targets,
         "steps": [
             f"1. Create {helper_module} with extracted helpers",
-            f"2. In {Path(file_path).name}, add: from _{stem}_helpers import {', '.join(t['helper_name'] for t in targets)}",
+            f"2. In {Path(file_path).name}, add: from _{stem}_helpers import {helper_names}",
             f"3. Replace lines in '{func_name}' with calls to extracted helpers",
             f"4. Re-run refactoring_suggestions(file_path='{file_path}') to verify",
         ],
@@ -193,13 +197,9 @@ def _classify_line(stripped: str) -> str:
 
 # Process: _is_block_continuation
 def _is_block_continuation(next_stripped: str, hint: str) -> bool:
-    if hint == "resource" and next_stripped.startswith(
-        ("except", "else:", "finally:")
-    ):
+    if hint == "resource" and next_stripped.startswith(("except", "else:", "finally:")):
         return True
-    if hint == "conditional" and next_stripped.startswith(
-        ("elif ", "else:", "else:")
-    ):
+    if hint == "conditional" and next_stripped.startswith(("elif ", "else:", "else:")):
         return True
     return False
 
@@ -237,11 +237,37 @@ def _collect_assigned_names(source: str) -> set[str]:
 
 
 _BUILTINS = {
-    "self", "cls", "True", "False", "None",
-    "print", "len", "range", "str", "int", "list", "dict", "set",
-    "tuple", "type", "isinstance", "hasattr", "getattr", "setattr",
-    "sorted", "max", "min", "enumerate", "zip", "map", "filter",
-    "any", "all", "abs", "round", "reversed",
+    "self",
+    "cls",
+    "True",
+    "False",
+    "None",
+    "print",
+    "len",
+    "range",
+    "str",
+    "int",
+    "list",
+    "dict",
+    "set",
+    "tuple",
+    "type",
+    "isinstance",
+    "hasattr",
+    "getattr",
+    "setattr",
+    "sorted",
+    "max",
+    "min",
+    "enumerate",
+    "zip",
+    "map",
+    "filter",
+    "any",
+    "all",
+    "abs",
+    "round",
+    "reversed",
 }
 
 
@@ -344,6 +370,3 @@ def _make_skeleton(
 
     # Return result
     return "\n".join(lines)
-
-
-

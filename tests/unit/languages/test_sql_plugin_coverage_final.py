@@ -102,8 +102,10 @@ END;
         tree, source = _parse(extractor, sql)
         elements = extractor.extract_sql_elements(tree, source)
         proc_names = [
-            e.name for e in elements
-            if hasattr(e, "sql_element_type") and e.sql_element_type.value == "procedure"
+            e.name
+            for e in elements
+            if hasattr(e, "sql_element_type")
+            and e.sql_element_type.value == "procedure"
         ]
         assert "sp_get_user" in proc_names
 
@@ -118,8 +120,10 @@ END;
         tree, source = _parse(extractor, sql)
         elements = extractor.extract_sql_elements(tree, source)
         procs = [
-            e for e in elements
-            if hasattr(e, "sql_element_type") and e.sql_element_type.value == "procedure"
+            e
+            for e in elements
+            if hasattr(e, "sql_element_type")
+            and e.sql_element_type.value == "procedure"
         ]
         assert len(procs) >= 1
         assert procs[0].name == "sp_calc_total"
@@ -140,8 +144,10 @@ END;
         tree, source = _parse(extractor, sql)
         elements = extractor.extract_sql_elements(tree, source)
         proc_names = [
-            e.name for e in elements
-            if hasattr(e, "sql_element_type") and e.sql_element_type.value == "procedure"
+            e.name
+            for e in elements
+            if hasattr(e, "sql_element_type")
+            and e.sql_element_type.value == "procedure"
         ]
         assert "sp_first" in proc_names
         assert "sp_second" in proc_names
@@ -164,7 +170,8 @@ JOIN customers c ON o.customer_id = c.id;
         tree, source = _parse(extractor, sql)
         elements = extractor.extract_sql_elements(tree, source)
         view_names = [
-            e.name for e in elements
+            e.name
+            for e in elements
             if hasattr(e, "sql_element_type") and e.sql_element_type.value == "view"
         ]
         assert "v_customer_orders" in view_names
@@ -180,7 +187,8 @@ SELECT id FROM t1;
         tree, source = _parse(extractor, sql)
         elements = extractor.extract_sql_elements(tree, source)
         view_names = [
-            e.name for e in elements
+            e.name
+            for e in elements
             if hasattr(e, "sql_element_type") and e.sql_element_type.value == "view"
         ]
         assert "v_summary" in view_names
@@ -199,7 +207,8 @@ CREATE INDEX idx_email ON users(email);
         tree, source = _parse(extractor, sql)
         elements = extractor.extract_sql_elements(tree, source)
         index_names = [
-            e.name for e in elements
+            e.name
+            for e in elements
             if hasattr(e, "sql_element_type") and e.sql_element_type.value == "index"
         ]
         assert "idx_email" in index_names
@@ -214,7 +223,8 @@ CREATE UNIQUE INDEX idx_username ON accounts(username);
         tree, source = _parse(extractor, sql)
         elements = extractor.extract_sql_elements(tree, source)
         index_names = [
-            e.name for e in elements
+            e.name
+            for e in elements
             if hasattr(e, "sql_element_type") and e.sql_element_type.value == "index"
         ]
         assert "idx_username" in index_names
@@ -236,7 +246,8 @@ END;
         tree, source = _parse(extractor, sql)
         elements = extractor.extract_sql_elements(tree, source)
         func_names = [
-            e.name for e in elements
+            e.name
+            for e in elements
             if hasattr(e, "sql_element_type")
             and e.sql_element_type.value in ("function", "procedure")
         ]

@@ -48,11 +48,21 @@ class TestYAMLScalarTypeProperties:
             min_size=1,
             max_size=30,
         ).filter(
-            lambda x: x.lower()
-            not in [
-                "true", "false", "yes", "no", "on", "off", "null",
-                "inf", "-inf", "nan",
-            ]
+            lambda x: (
+                x.lower()
+                not in [
+                    "true",
+                    "false",
+                    "yes",
+                    "no",
+                    "on",
+                    "off",
+                    "null",
+                    "inf",
+                    "-inf",
+                    "nan",
+                ]
+            )
         ),
     )
     def test_property_5_string_scalar_identification(

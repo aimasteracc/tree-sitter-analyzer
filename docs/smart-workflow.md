@@ -284,11 +284,11 @@ For files > 500 lines:
 
 | Workflow Step | Primary MCP Tool | CLI Equivalent |
 |---------------|------------------|----------------|
-| Set | `set_project_path` | N/A (config) |
+| Set | `set_project_path` | `TREE_SITTER_PROJECT_ROOT` or command path |
 | Map | `list_files`, `find_and_grep` | `list-files`, `find-and-grep` |
-| Analyze | `analyze_code_structure`, `check_code_scale` | `--table`, `--summary` |
+| Analyze | `analyze_code_structure`, `check_code_scale`, `check_file_health` | `--structure`, `--metrics-only`, `--file-health` |
 | Retrieve | `extract_code_section`, `query_code` | `--partial-read`, `--query-key` |
-| Trace | `search_content`, `find_and_grep` | `search-content` |
+| Trace | `search_content`, `analyze_dependencies`, `analyze_change_impact`, `safe_to_edit` | `search-content`, `--dependencies`, `--change-impact`, `--safe-to-edit` |
 
 ## Troubleshooting
 
@@ -296,7 +296,7 @@ For files > 500 lines:
 
 Use incremental approach:
 1. Check scale with `check_code_scale`
-2. Use `--table compact` for overview
+2. Use `--structure` for overview
 3. Query specific elements instead of full analysis
 
 ### "Can't find the file"
@@ -318,4 +318,3 @@ Apply optimization:
 - [CLI Reference](cli-reference.md) - Complete command-line reference
 - [MCP Tools Specification](api/mcp_tools_specification.md) - Detailed API documentation
 - [Features Overview](features.md) - Language-specific features
-

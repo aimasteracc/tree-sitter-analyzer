@@ -2,7 +2,6 @@
 
 import importlib
 
-import tree_sitter_analyzer.mcp.utils as mcp_utils_mod
 from tree_sitter_analyzer.mcp.utils import (
     MCP_UTILS_CAPABILITIES,
     get_cache_manager,

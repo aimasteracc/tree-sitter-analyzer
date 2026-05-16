@@ -20,6 +20,7 @@ JS_PROJECT = FIXTURES_DIR / "js_project"
 # Import extraction tests
 # ============================================================
 
+
 class TestImportExtraction:
     """Test import extraction from source files."""
 
@@ -39,7 +40,9 @@ class TestImportExtraction:
         # We expect at least: utils, models.user, models.base, pkg.submodule
         # (os, sys, pathlib are stdlib/external)
         found_internal = {r for r in resolved if "." in r or "/" in r}
-        assert len(found_internal) >= 3, f"Expected >=3 internal imports, got {found_internal}"
+        assert len(found_internal) >= 3, (
+            f"Expected >=3 internal imports, got {found_internal}"
+        )
 
     def test_extract_python_imports_from_utils(self):
         """utils.py has no imports → empty list."""
@@ -48,7 +51,9 @@ class TestImportExtraction:
         imports = extract_imports_from_file(str(PY_PROJECT / "utils.py"), "python")
         # Only count non-stdlib imports
         internal = [i for i in imports if not _is_stdlib(i)]
-        assert len(internal) == 0, f"utils.py should have no internal imports, got {internal}"
+        assert len(internal) == 0, (
+            f"utils.py should have no internal imports, got {internal}"
+        )
 
     def test_extract_js_imports_from_index(self):
         """index.js should yield imports to src/utils, src/models/user, src/formatter."""
@@ -57,9 +62,12 @@ class TestImportExtraction:
         imports = extract_imports_from_file(str(JS_PROJECT / "index.js"), "javascript")
         assert imports, "Should extract imports from JS file"
 
-        resolved = {i.get("module_name", "") or i.get("resolved_path", "") for i in imports}
-        assert any("utils" in r or "formatter" in r or "user" in r for r in resolved), \
+        resolved = {
+            i.get("module_name", "") or i.get("resolved_path", "") for i in imports
+        }
+        assert any("utils" in r or "formatter" in r or "user" in r for r in resolved), (
             f"Expected project imports in {resolved}"
+        )
 
     def test_extract_imports_unsupported_language(self):
         """Unsupported language returns empty list."""
@@ -73,17 +81,20 @@ class TestImportExtraction:
 # DependencyGraph tests
 # ============================================================
 
+
 class TestDependencyGraph:
     """Test DependencyGraph construction and queries."""
 
     @pytest.fixture
     def py_graph(self):
         from tree_sitter_analyzer.project_graph import DependencyGraph
+
         return DependencyGraph(str(PY_PROJECT))
 
     @pytest.fixture
     def js_graph(self):
         from tree_sitter_analyzer.project_graph import DependencyGraph
+
         return DependencyGraph(str(JS_PROJECT))
 
     def test_build_python_graph(self, py_graph):
@@ -107,7 +118,9 @@ class TestDependencyGraph:
         """Query what files depend on a specific file."""
         # utils.py is imported by main.py
         dependents = py_graph.dependents_of("utils.py")
-        assert len(dependents) >= 1, f"utils.py should have dependents, got {dependents}"
+        assert len(dependents) >= 1, (
+            f"utils.py should have dependents, got {dependents}"
+        )
 
     def test_leaf_file_has_no_dependents(self, py_graph):
         """utils.py only has imports from standard library, no internal deps."""
@@ -126,6 +139,7 @@ class TestDependencyGraph:
     def test_empty_project_handled(self, tmp_path):
         """Empty project directory produces empty graph."""
         from tree_sitter_analyzer.project_graph import DependencyGraph
+
         empty = tmp_path / "empty_project"
         empty.mkdir()
         graph = DependencyGraph(str(empty))
@@ -137,12 +151,14 @@ class TestDependencyGraph:
 # Cycle detection tests
 # ============================================================
 
+
 class TestCycleDetection:
     """Test circular dependency detection."""
 
     @pytest.fixture
     def py_graph(self):
         from tree_sitter_analyzer.project_graph import DependencyGraph
+
         return DependencyGraph(str(PY_PROJECT))
 
     def test_detect_cycles(self, py_graph):
@@ -156,17 +172,20 @@ class TestCycleDetection:
 # BlastRadius tests
 # ============================================================
 
+
 class TestBlastRadius:
     """Test blast radius / impact analysis."""
 
     @pytest.fixture
     def py_graph(self):
         from tree_sitter_analyzer.project_graph import DependencyGraph
+
         return DependencyGraph(str(PY_PROJECT))
 
     @pytest.fixture
     def radius(self, py_graph):
         from tree_sitter_analyzer.project_graph import BlastRadius
+
         return BlastRadius(py_graph)
 
     def test_blast_radius_forward(self, radius):
@@ -184,7 +203,9 @@ class TestBlastRadius:
     def test_blast_radius_leaf_file_forward(self, radius):
         """Changing utils.py (no internal deps, imported by main) → only main is impacted."""
         impacted = radius.forward("utils.py")
-        assert len(impacted) >= 1, f"utils.py change should impact at least main.py, got {impacted}"
+        assert len(impacted) >= 1, (
+            f"utils.py change should impact at least main.py, got {impacted}"
+        )
 
     def test_blast_radius_nonexistent_file(self, radius):
         """Nonexistent file returns empty set."""
@@ -202,6 +223,7 @@ class TestBlastRadius:
 # ============================================================
 # Cache tests
 # ============================================================
+
 
 class TestDependencyGraphCache:
     """Test caching behavior."""
@@ -228,10 +250,23 @@ class TestDependencyGraphCache:
 # Helpers
 # ============================================================
 
+
 def _is_stdlib(import_dict: dict) -> bool:
     """Check if an import is a stdlib module (heuristic)."""
     name = import_dict.get("module_name", "")
     # Common stdlib modules
-    stdlib = {"os", "sys", "json", "re", "pathlib", "math", "collections",
-              "itertools", "functools", "typing", "io", "datetime"}
+    stdlib = {
+        "os",
+        "sys",
+        "json",
+        "re",
+        "pathlib",
+        "math",
+        "collections",
+        "itertools",
+        "functools",
+        "typing",
+        "io",
+        "datetime",
+    }
     return name in stdlib

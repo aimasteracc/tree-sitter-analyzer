@@ -33,52 +33,80 @@ async def test_query_service_execute_empty(query_service):
 class TestExtractNodeName:
     """Cover _extract_node_name branches."""
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="my_func")
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe",
+        return_value="my_func",
+    )
     def test_name_field_found(self, mock_text, query_service):
         node = MagicMock()
         name_node = MagicMock()
         name_node.type = "identifier"
-        node.child_by_field_name.side_effect = lambda f: name_node if f == "name" else None
+        node.child_by_field_name.side_effect = lambda f: (
+            name_node if f == "name" else None
+        )
         assert query_service._extract_node_name(node) == "my_func"
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="inner_name")
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe",
+        return_value="inner_name",
+    )
     def test_declarator_field_with_inner_declarator(self, mock_text, query_service):
         node = MagicMock()
         decl_node = MagicMock()
         decl_node.type = "function_declarator"
         inner_node = MagicMock()
-        decl_node.child_by_field_name.side_effect = lambda f: inner_node if f == "declarator" else None
-        node.child_by_field_name.side_effect = lambda f: decl_node if f == "declarator" else None
+        decl_node.child_by_field_name.side_effect = lambda f: (
+            inner_node if f == "declarator" else None
+        )
+        node.child_by_field_name.side_effect = lambda f: (
+            decl_node if f == "declarator" else None
+        )
         assert query_service._extract_node_name(node) == "inner_name"
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="inner_name2")
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe",
+        return_value="inner_name2",
+    )
     def test_declarator_field_with_inner_name(self, mock_text, query_service):
         node = MagicMock()
         decl_node = MagicMock()
         decl_node.type = "function_declarator"
         inner_node = MagicMock()
-        decl_node.child_by_field_name.side_effect = lambda f: inner_node if f == "name" else None
-        node.child_by_field_name.side_effect = lambda f: decl_node if f == "declarator" else None
+        decl_node.child_by_field_name.side_effect = lambda f: (
+            inner_node if f == "name" else None
+        )
+        node.child_by_field_name.side_effect = lambda f: (
+            decl_node if f == "declarator" else None
+        )
         assert query_service._extract_node_name(node) == "inner_name2"
 
     def test_no_child_by_field_name(self, query_service):
         node = MagicMock(spec=[])
         assert query_service._extract_node_name(node) is None
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="")
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value=""
+    )
     def test_empty_text_returns_none(self, mock_text, query_service):
         node = MagicMock()
         name_node = MagicMock()
         name_node.type = "identifier"
-        node.child_by_field_name.side_effect = lambda f: name_node if f == "name" else None
+        node.child_by_field_name.side_effect = lambda f: (
+            name_node if f == "name" else None
+        )
         assert query_service._extract_node_name(node) is None
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="x" * 201)
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe",
+        return_value="x" * 201,
+    )
     def test_very_long_name_ignored(self, mock_text, query_service):
         node = MagicMock()
         name_node = MagicMock()
         name_node.type = "identifier"
-        node.child_by_field_name.side_effect = lambda f: name_node if f == "name" else None
+        node.child_by_field_name.side_effect = lambda f: (
+            name_node if f == "name" else None
+        )
         assert query_service._extract_node_name(node) is None
 
 
@@ -89,7 +117,10 @@ class TestExtractParentContext:
         node = MagicMock(spec=[])
         assert query_service._extract_parent_context(node) is None
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="MyClass")
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe",
+        return_value="MyClass",
+    )
     def test_parent_is_container(self, mock_text, query_service):
         parent = MagicMock()
         parent.type = "class"
@@ -108,7 +139,9 @@ class TestExtractParentContext:
         node.parent = parent
         assert query_service._extract_parent_context(node) is None
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="Mod")
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="Mod"
+    )
     def test_grandparent_is_container(self, mock_text, query_service):
         name_node = MagicMock()
         gp = MagicMock()
@@ -129,7 +162,9 @@ class TestExtractParentContext:
         node.parent = parent
         assert query_service._extract_parent_context(node) is None
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="")
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value=""
+    )
     def test_container_with_empty_name(self, mock_text, query_service):
         parent = MagicMock()
         parent.type = "class"
@@ -153,7 +188,10 @@ class TestExtractParentContext:
 class TestCreateResultDictFull:
     """Cover _create_result_dict with name and parent extraction."""
 
-    @patch("tree_sitter_analyzer.core.query_service.get_node_text_safe", return_value="my_method")
+    @patch(
+        "tree_sitter_analyzer.core.query_service.get_node_text_safe",
+        return_value="my_method",
+    )
     def test_with_name_and_parent(self, mock_text, query_service):
         name_node = MagicMock()
         name_node.type = "identifier"
@@ -166,11 +204,15 @@ class TestCreateResultDictFull:
         node.type = "method_declaration"
         node.start_point = (2, 0)
         node.end_point = (10, 0)
-        node.child_by_field_name.side_effect = lambda f: name_node if f == "name" else None
+        node.child_by_field_name.side_effect = lambda f: (
+            name_node if f == "name" else None
+        )
         node.parent = parent
         # Call order: content extraction, name extraction, parent extraction
         mock_text.side_effect = ["def my_method(): pass", "my_method", "MyClass"]
-        result = query_service._create_result_dict(node, "method", "def my_method(): pass")
+        result = query_service._create_result_dict(
+            node, "method", "def my_method(): pass"
+        )
         assert result["name"] == "my_method"
         assert result["parent"] == "MyClass"
         assert result["start_line"] == 3
@@ -196,8 +238,12 @@ class TestExecutePluginQueryElementConversion:
         plugin = MagicMock()
         plugin.execute_query_strategy.return_value = [element]
         root = MagicMock()
-        with patch.object(query_service.plugin_manager, "get_plugin", return_value=plugin):
-            captures = query_service._execute_plugin_query(root, "functions", "python", "def foo(): pass")
+        with patch.object(
+            query_service.plugin_manager, "get_plugin", return_value=plugin
+        ):
+            captures = query_service._execute_plugin_query(
+                root, "functions", "python", "def foo(): pass"
+            )
             assert len(captures) == 1
             mock_node, name = captures[0]
             assert name == "functions"
@@ -214,7 +260,9 @@ class TestExecutePluginQueryElementConversion:
         plugin = MagicMock()
         plugin.execute_query_strategy.return_value = [element]
         root = MagicMock()
-        with patch.object(query_service.plugin_manager, "get_plugin", return_value=plugin):
+        with patch.object(
+            query_service.plugin_manager, "get_plugin", return_value=plugin
+        ):
             captures = query_service._execute_plugin_query(root, None, "python", "x")
             assert len(captures) == 1
             _, name = captures[0]
@@ -223,16 +271,24 @@ class TestExecutePluginQueryElementConversion:
     def test_no_plugin_uses_fallback(self, query_service):
         root = MagicMock()
         root.children = []
-        with patch.object(query_service.plugin_manager, "get_plugin", return_value=None):
-            captures = query_service._execute_plugin_query(root, "function", "unknown_lang", "code")
+        with patch.object(
+            query_service.plugin_manager, "get_plugin", return_value=None
+        ):
+            captures = query_service._execute_plugin_query(
+                root, "function", "unknown_lang", "code"
+            )
             assert isinstance(captures, list)
 
     def test_plugin_returns_none_elements(self, query_service):
         plugin = MagicMock()
         plugin.execute_query_strategy.return_value = None
         root = MagicMock()
-        with patch.object(query_service.plugin_manager, "get_plugin", return_value=plugin):
-            captures = query_service._execute_plugin_query(root, "functions", "python", "code")
+        with patch.object(
+            query_service.plugin_manager, "get_plugin", return_value=plugin
+        ):
+            captures = query_service._execute_plugin_query(
+                root, "functions", "python", "code"
+            )
             assert isinstance(captures, list)
 
 

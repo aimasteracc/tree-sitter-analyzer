@@ -604,4 +604,3 @@ class ProjectStatsResource:
             f"ProjectStatsResource(uri_pattern={self._uri_pattern.pattern}, "
             f"project_path={self._project_path})"
         )
-

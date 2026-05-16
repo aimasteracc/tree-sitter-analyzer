@@ -556,4 +556,3 @@ class SQLCSVFormatter(SQLFormatterBase):
             )
 
         return "\n".join(output) + "\n"
-

@@ -329,4 +329,3 @@ class PythonPlugin(LanguagePlugin):
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
         return elements
-

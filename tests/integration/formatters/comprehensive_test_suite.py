@@ -5,11 +5,11 @@ Main test suite that integrates all format testing components.
 Provides unified interface for running all format validation tests.
 """
 
-import asyncio
+import inspect
 import json
 import tempfile
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -153,7 +153,7 @@ class ComprehensiveFormatTestSuite:
     ) -> TestSuiteResults:
         """Run comprehensive format testing suite"""
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
 
         print("🚀 Starting Comprehensive Format Testing Suite")
         print(f"Configuration: {self.config}")
@@ -269,7 +269,7 @@ class ComprehensiveFormatTestSuite:
             results.failed_tests += 1
 
         # Calculate final metrics
-        end_time = datetime.utcnow()
+        end_time = datetime.now(UTC)
         results.execution_time_seconds = (end_time - start_time).total_seconds()
 
         if results.total_tests > 0:
@@ -420,7 +420,7 @@ class ComprehensiveFormatTestSuite:
                 try:
                     # Generate output
                     # Handle both sync and async analyzer functions
-                    if asyncio.iscoroutinefunction(analyzer_function):
+                    if inspect.iscoroutinefunction(analyzer_function):
                         output = await analyzer_function(
                             test_data["source_code"], format_type=format_type
                         )
@@ -693,7 +693,7 @@ class ComprehensiveFormatTestSuite:
                     try:
                         # Generate output
                         # Handle both sync and async analyzer functions
-                        if asyncio.iscoroutinefunction(analyzer_function):
+                        if inspect.iscoroutinefunction(analyzer_function):
                             output = await analyzer_function(
                                 test_data["source_code"], format_type=format_type
                             )
@@ -835,7 +835,7 @@ class ComprehensiveFormatTestSuite:
                 try:
                     # Generate output
                     # Handle both sync and async analyzer functions
-                    if asyncio.iscoroutinefunction(analyzer_function):
+                    if inspect.iscoroutinefunction(analyzer_function):
                         output = await analyzer_function(
                             test_data["source_code"], format_type=format_type
                         )
@@ -951,7 +951,7 @@ class ComprehensiveFormatTestSuite:
         """Save comprehensive test results"""
         results_file = (
             self.results_dir
-            / f"comprehensive_results_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            / f"comprehensive_results_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
         )
 
         # Convert results to dict for JSON serialization
@@ -983,7 +983,7 @@ class ComprehensiveFormatTestSuite:
         """Generate summary report"""
         report_file = (
             self.results_dir
-            / f"summary_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.md"
+            / f"summary_report_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.md"
         )
 
         report_lines = [

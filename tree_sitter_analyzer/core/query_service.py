@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 class QueryService:
     """Unified query service providing tree-sitter query functionality"""
 
+    _MAX_PARENT_CONTEXT_DEPTH = 64
+
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize the query service"""
         self.project_root = project_root
@@ -97,9 +99,13 @@ class QueryService:
         start_line = node.start_point[0] + 1 if hasattr(node, "start_point") else 0
         end_line = node.end_point[0] + 1 if hasattr(node, "end_point") else 0
 
+        node_type = getattr(node, "type", "unknown")
+        if not isinstance(node_type, str):
+            node_type = "unknown"
+
         result = {
             "capture_name": capture_name,
-            "node_type": node.type if hasattr(node, "type") else "unknown",
+            "node_type": node_type,
             "start_line": start_line,
             "end_line": end_line,
             "line_span": end_line - start_line + 1,
@@ -119,20 +125,25 @@ class QueryService:
 
     def _extract_node_name(self, node: Any) -> str | None:
         """Extract a human-readable name from a tree-sitter node."""
-        if not hasattr(node, "child_by_field_name"):
+        child_by_field_name = getattr(node, "child_by_field_name", None)
+        if not callable(child_by_field_name):
             return None
 
         for field in ("name", "declarator"):
-            name_node = node.child_by_field_name(field)
-            if name_node is not None:
+            name_node = child_by_field_name(field)
+            if name_node is not None and self._is_node_like(name_node):
                 text = get_node_text_safe(name_node, "")
                 if text and len(text) < 200:
                     # For declarators, dig deeper to get the actual identifier
-                    if name_node.type.endswith("_declarator"):
-                        inner = name_node.child_by_field_name(
-                            "declarator"
-                        ) or name_node.child_by_field_name("name")
-                        if inner is not None:
+                    name_node_type = getattr(name_node, "type", "")
+                    if isinstance(name_node_type, str) and name_node_type.endswith(
+                        "_declarator"
+                    ):
+                        nested_child = getattr(name_node, "child_by_field_name", None)
+                        if not callable(nested_child):
+                            return text
+                        inner = nested_child("declarator") or nested_child("name")
+                        if inner is not None and self._is_node_like(inner):
                             return get_node_text_safe(inner, "")
                     return text
 
@@ -166,19 +177,30 @@ class QueryService:
 
     def _extract_parent_context(self, node: Any) -> str | None:
         """Walk up the tree to find the enclosing class/struct/module name."""
-        if not hasattr(node, "parent"):
-            return None
+        current = getattr(node, "parent", None)
+        seen_ids: set[int] = set()
+        depth = 0
+        while (
+            current is not None
+            and depth < self._MAX_PARENT_CONTEXT_DEPTH
+            and id(current) not in seen_ids
+        ):
+            seen_ids.add(id(current))
+            depth += 1
 
-        current = node.parent
-        while current is not None:
-            if not hasattr(current, "type"):
+            if not self._is_node_like(current):
+                break
+
+            current_type = getattr(current, "type", None)
+            if not isinstance(current_type, str):
                 current = getattr(current, "parent", None)
                 continue
 
-            if current.type in self._CONTAINER_TYPES:
+            if current_type in self._CONTAINER_TYPES:
                 name_node = None
-                if hasattr(current, "child_by_field_name"):
-                    name_node = current.child_by_field_name("name")
+                child_by_field_name = getattr(current, "child_by_field_name", None)
+                if callable(child_by_field_name):
+                    name_node = child_by_field_name("name")
                 if name_node is not None:
                     text = get_node_text_safe(name_node, "")
                     if text and len(text) < 200:
@@ -187,6 +209,29 @@ class QueryService:
             current = getattr(current, "parent", None)
 
         return None
+
+    def _is_node_like(self, node: Any) -> bool:
+        """Return True for real tree-sitter nodes or explicitly configured test nodes."""
+        node_type = getattr(node, "type", None)
+        if isinstance(node_type, str):
+            return True
+
+        text = getattr(node, "text", None)
+        if isinstance(text, (bytes, str)):
+            return True
+
+        start_point = getattr(node, "start_point", None)
+        end_point = getattr(node, "end_point", None)
+        return self._is_point(start_point) and self._is_point(end_point)
+
+    @staticmethod
+    def _is_point(value: Any) -> bool:
+        """Return True for tree-sitter point tuples."""
+        return (
+            isinstance(value, tuple)
+            and len(value) == 2
+            and all(isinstance(part, int) for part in value)
+        )
 
     def get_available_queries(self, language: str) -> list[str]:
         """

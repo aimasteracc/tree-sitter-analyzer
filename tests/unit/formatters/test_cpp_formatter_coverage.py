@@ -50,7 +50,9 @@ def test_cpp_formatter_complex(formatter):
 
 def test_cpp_formatter_with_namespace(formatter):
     """Cover namespace/package rendering path."""
-    func = Function(name="do_work", start_line=10, end_line=12, raw_text="void do_work();")
+    func = Function(
+        name="do_work", start_line=10, end_line=12, raw_text="void do_work();"
+    )
     cls = Class(name="Helper", start_line=1, end_line=8, raw_text="class Helper {};")
     result = AnalysisResult(
         file_path="src/main.cpp",
@@ -61,12 +63,17 @@ def test_cpp_formatter_with_namespace(formatter):
     assert "Helper" in output
     assert "do_work" in output
 
+
 def test_cpp_formatter_global_functions_only(formatter):
     """Cover pure C-style global functions (no classes)."""
-    funcs = [Function(name=f"f{i}", start_line=i, end_line=i+1, raw_text=f"int f{i}();") for i in range(3)]
+    funcs = [
+        Function(name=f"f{i}", start_line=i, end_line=i + 1, raw_text=f"int f{i}();")
+        for i in range(3)
+    ]
     result = AnalysisResult(file_path="math.c", elements=funcs, language="c")
     output = formatter.format_analysis_result(result, "full")
     assert "Global Functions" in output or any(f"f{i}" in output for i in range(3))
+
 
 def test_cpp_formatter_compact_format(formatter):
     """Cover compact table path (non-full format)."""
@@ -81,6 +88,7 @@ def test_cpp_formatter_compact_format(formatter):
 # ============================================================
 
 # --- packages list → Namespaces section (line 44) ---
+
 
 def test_packages_list_renders_namespaces_section(formatter):
     """Cover the `packages` list path at line 44."""
@@ -101,6 +109,7 @@ def test_packages_list_renders_namespaces_section(formatter):
 
 # --- single package → Package section (line 45-47) ---
 
+
 def test_single_package_renders_package_section(formatter):
     """Cover the elif branch for single package_name."""
     pkg = Package(name="myapp", start_line=1, end_line=5, raw_text="namespace myapp {}")
@@ -116,25 +125,25 @@ def test_single_package_renders_package_section(formatter):
 
 # --- imports section (lines 52-59) ---
 
+
 def test_imports_section_rendered(formatter):
     """Cover imports rendering at lines 52-59."""
     imp = Import(
         name="stdio.h",
         start_line=1,
         end_line=1,
-        raw_text='#include <stdio.h>',
+        raw_text="#include <stdio.h>",
         module_name="stdio",
     )
     func = Function(name="main", start_line=3, end_line=5, raw_text="int main() {}")
-    result = AnalysisResult(
-        file_path="main.c", elements=[imp, func], language="c"
-    )
+    result = AnalysisResult(file_path="main.c", elements=[imp, func], language="c")
     output = formatter.format_analysis_result(result, "full")
     assert "## Imports" in output
     assert "#include <stdio.h>" in output
 
 
 # --- global fields not inside classes (lines 129-153) ---
+
 
 def test_global_fields_rendered(formatter):
     """Cover global variables table at lines 129-153."""
@@ -154,6 +163,7 @@ def test_global_fields_rendered(formatter):
 
 
 # --- _create_compact_signature: string param formats ---
+
 
 def test_compact_signature_string_params(formatter):
     """Cover _create_compact_signature branches for string-format params."""
@@ -199,6 +209,7 @@ def test_compact_signature_string_params(formatter):
 
 # --- _shorten_type edge cases ---
 
+
 def test_shorten_type_none(formatter):
     """Cover _shorten_type → None path."""
     assert formatter._shorten_type(None) == "void"
@@ -243,6 +254,7 @@ def test_shorten_type_unknown_passthrough(formatter):
 
 # --- format_table: json path ---
 
+
 def test_format_table_json(formatter):
     """Cover format_table with json type."""
     data = {
@@ -255,6 +267,7 @@ def test_format_table_json(formatter):
 
 
 # --- format_advanced: csv and full_table paths ---
+
 
 def test_format_advanced_csv(formatter):
     """Cover format_advanced csv path."""
@@ -279,6 +292,7 @@ def test_format_advanced_full(formatter):
 
 
 # --- _convert_function_element: parameter formats ---
+
 
 def test_convert_function_element_no_space_param(formatter):
     """Cover _convert_function_element with param string having no space."""
@@ -327,6 +341,7 @@ def test_convert_function_element_non_str_non_dict_param(formatter):
 
 # --- _convert_import_element: no raw_text fallback ---
 
+
 def test_convert_import_no_raw_text(formatter):
     """Cover _convert_import_element when raw_text is empty."""
     imp = Import(
@@ -347,6 +362,7 @@ def test_convert_import_no_raw_text(formatter):
 
 # --- format_summary (line 446-449) ---
 
+
 def test_format_summary(formatter):
     """Cover format_summary method."""
     data = {
@@ -361,6 +377,7 @@ def test_format_summary(formatter):
 
 # --- Other Methods section (lines 235-240, 243-248) ---
 # Triggered when a method has visibility other than public/private
+
 
 def test_other_methods_section(formatter):
     """Cover 'Other Methods' rendering for non-public, non-private methods."""
@@ -379,15 +396,14 @@ def test_other_methods_section(formatter):
         is_public=False,
         is_private=False,
     )
-    result = AnalysisResult(
-        file_path="other.cpp", elements=[cls, func], language="cpp"
-    )
+    result = AnalysisResult(file_path="other.cpp", elements=[cls, func], language="cpp")
     output = formatter.format_analysis_result(result, "full")
     assert "### Methods" in output
     assert "helper" in output
 
 
 # --- _create_compact_signature: dict param with pointer name (*ptr) ---
+
 
 def test_compact_signature_dict_param_pointer(formatter):
     """Cover dict-format param where name starts with * (pointer)."""
@@ -401,6 +417,7 @@ def test_compact_signature_dict_param_pointer(formatter):
 
 
 # --- _convert_function_element: string param with fallback ---
+
 
 def test_convert_function_element_fallback_param(formatter):
     """Cover fallback when param_type or param_name is empty after split."""
@@ -418,6 +435,7 @@ def test_convert_function_element_fallback_param(formatter):
 
 
 # --- Private Methods section (lines 235-240) ---
+
 
 def test_private_methods_section(formatter):
     """Cover 'Private Methods' rendering in _format_class_details."""

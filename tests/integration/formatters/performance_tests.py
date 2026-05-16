@@ -13,7 +13,7 @@ import tracemalloc
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -172,7 +172,7 @@ class PerformanceTester:
                     file_size_bytes=file_size,
                     element_count=element_count,
                     format_type=format_type,
-                    timestamp=datetime.utcnow().isoformat(),
+                    timestamp=datetime.now(UTC).isoformat(),
                     success=True,
                 )
 
@@ -189,7 +189,7 @@ class PerformanceTester:
                     file_size_bytes=0,
                     element_count=0,
                     format_type=format_type,
-                    timestamp=datetime.utcnow().isoformat(),
+                    timestamp=datetime.now(UTC).isoformat(),
                     success=False,
                     error_message=str(e),
                 )
@@ -219,7 +219,7 @@ class PerformanceTester:
             file_size_bytes=successful_results[0].file_size_bytes,
             element_count=successful_results[0].element_count,
             format_type=format_type,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
             success=True,
         )
 
@@ -280,7 +280,7 @@ class PerformanceTester:
             throughput_rates=throughput_rates,
             scalability_factor=scalability_factor,
             performance_threshold_exceeded=performance_threshold_exceeded,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(UTC).isoformat(),
         )
 
         # Save scalability results
@@ -330,7 +330,7 @@ class PerformanceTester:
                         file_size_bytes=0,
                         element_count=0,
                         format_type=format_type,
-                        timestamp=datetime.utcnow().isoformat(),
+                        timestamp=datetime.now(UTC).isoformat(),
                         success=False,
                         error_message=str(e),
                     )
@@ -403,8 +403,8 @@ class PerformanceTester:
             baseline_time_ms=metrics.execution_time_ms,
             baseline_memory_mb=metrics.memory_usage_mb,
             acceptable_variance_percent=acceptable_variance_percent,
-            created_timestamp=datetime.utcnow().isoformat(),
-            last_updated=datetime.utcnow().isoformat(),
+            created_timestamp=datetime.now(UTC).isoformat(),
+            last_updated=datetime.now(UTC).isoformat(),
         )
 
         self.baselines[test_name] = baseline
@@ -417,7 +417,7 @@ class PerformanceTester:
             baseline = self.baselines[test_name]
             baseline.baseline_time_ms = metrics.execution_time_ms
             baseline.baseline_memory_mb = metrics.memory_usage_mb
-            baseline.last_updated = datetime.utcnow().isoformat()
+            baseline.last_updated = datetime.now(UTC).isoformat()
 
             self.save_baselines()
 
@@ -451,7 +451,7 @@ class PerformanceTester:
 
         report_lines = [
             "# Performance Test Report",
-            f"Generated: {datetime.utcnow().isoformat()}",
+            f"Generated: {datetime.now(UTC).isoformat()}",
             "",
             "## Summary",
             f"Total tests: {len(all_results)}",
@@ -518,7 +518,7 @@ class PerformanceTester:
         # Save report
         report_file = (
             self.results_dir
-            / f"performance_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.md"
+            / f"performance_report_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.md"
         )
         with open(report_file, "w") as f:
             f.write(report_content)
@@ -570,7 +570,7 @@ class PerformanceTester:
         """Save performance test results"""
         results_file = (
             self.results_dir
-            / f"{test_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            / f"{test_name}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
         )
 
         data = {
@@ -585,7 +585,7 @@ class PerformanceTester:
         """Save scalability test results"""
         results_file = (
             self.results_dir
-            / f"scalability_{result.test_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            / f"scalability_{result.test_name}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
         )
 
         with open(results_file, "w") as f:

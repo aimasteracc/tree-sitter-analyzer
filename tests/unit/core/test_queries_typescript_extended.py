@@ -145,7 +145,12 @@ class TestTypeScriptExtendedQueries:
 
     def test_jsx_queries(self):
         """Test that JSX queries are not in TypeScript grammar (TSX-only)"""
-        jsx_queries = ["jsx_element", "jsx_self_closing", "jsx_fragment", "jsx_expression"]
+        jsx_queries = [
+            "jsx_element",
+            "jsx_self_closing",
+            "jsx_fragment",
+            "jsx_expression",
+        ]
         for query_name in jsx_queries:
             assert query_name not in ts_queries.ALL_QUERIES
 

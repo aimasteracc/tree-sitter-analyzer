@@ -207,4 +207,3 @@ def _traverse_nodes_default(node: Any) -> Iterator[Any]:
     if hasattr(node, "children"):
         for child in node.children:
             yield from _traverse_nodes_default(child)
-

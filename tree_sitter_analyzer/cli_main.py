@@ -132,6 +132,14 @@ def create_argument_parser() -> argparse.ArgumentParser:
             "  tree-sitter-analyzer file.java --structure           Structure overview in JSON\n"
             "  tree-sitter-analyzer file.java --summary             Quick summary of classes/methods\n"
             "  tree-sitter-analyzer file.java --partial-read --start-line 10 --end-line 20\n"
+            "  tree-sitter-analyzer file.py --file-health           A-F health grade + signal + smells\n"
+            "  tree-sitter-analyzer file.py --safe-to-edit          Edit risk assessment before changes\n"
+            "  tree-sitter-analyzer file.py --refactor              Refactoring suggestions with plans\n"
+            "  tree-sitter-analyzer file.py --smart-context         One-call file profile\n"
+            "  tree-sitter-analyzer file.py --dependencies full     Dependency graph analysis\n"
+            "  tree-sitter-analyzer file.py --change-impact         Git diff impact analysis\n"
+            "  tree-sitter-analyzer --project-health                Score ALL project files\n"
+            "  tree-sitter-analyzer --overview                      Project portrait + health summary\n"
             "  tree-sitter-analyzer --list-queries                  Show available query keys\n"
             "  tree-sitter-analyzer --show-supported-languages      List supported languages\n"
         ),
@@ -338,6 +346,56 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Batch metrics: read file paths from a text file (one path per line)",
     )
 
+    # MCP-equivalent commands
+    parser.add_argument(
+        "--file-health",
+        action="store_true",
+        help="Score a single file's health (A-F grade, 7 dimensions, signal, smells)",
+    )
+    parser.add_argument(
+        "--project-health",
+        action="store_true",
+        help="Score ALL project files: grade distribution, worst files, refactoring targets",
+    )
+    parser.add_argument(
+        "--overview",
+        action="store_true",
+        help="Project portrait: language distribution, file counts, health summary",
+    )
+    parser.add_argument(
+        "--safe-to-edit",
+        action="store_true",
+        help="Edit risk assessment: risk level, downstream deps, test proximity",
+    )
+    parser.add_argument(
+        "--change-impact",
+        action="store_true",
+        help="Analyze git diff impact: affected files, tests to run, risk level",
+    )
+    parser.add_argument(
+        "--dependencies",
+        nargs="?",
+        const="full",
+        choices=["full", "blast_radius", "cycles"],
+        help="Dependency graph analysis (full, blast_radius, cycles)",
+    )
+    parser.add_argument(
+        "--refactor",
+        action="store_true",
+        help="Refactoring suggestions: extraction plans with line ranges",
+    )
+    parser.add_argument(
+        "--smart-context",
+        action="store_true",
+        help="One-call file profile: health, exports, structure, deps, edit risk",
+    )
+    parser.add_argument(
+        "--min-grade",
+        default="D",
+        choices=["A", "B", "C", "D", "F"],
+        help="Minimum grade for --project-health detail list (default: D)",
+    )
+
     # Return result
     return parser
 
@@ -520,8 +578,20 @@ def handle_special_commands(args: argparse.Namespace) -> int | None:
             return 0 if result.get("success", False) else 1
         except Exception as e:
             output_error(f"Batch metrics failed: {e}")
-            # Return result
             return 1
+
+    # === MCP-equivalent CLI commands ===
+    from .cli.commands.mcp_commands import handle_mcp_commands
+    from .output_manager import output_json as _output_json
+
+    mcp_result = handle_mcp_commands(
+        args,
+        _output_json,
+        output_error,
+        _tool_output_format,
+    )
+    if mcp_result is not None:
+        return mcp_result
 
     # Validate partial read options (single-range mode)
     if hasattr(args, "partial_read") and args.partial_read:
@@ -798,8 +868,3 @@ if __name__ == "__main__":
         else:
             output_error(f"Unexpected error: {msg}")
         sys.exit(1)
-
-
-
-
-

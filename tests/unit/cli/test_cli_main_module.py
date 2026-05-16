@@ -393,7 +393,7 @@ class TestCreateArgumentParser:
         assert args.file_path is None
 
 
-class TestHandleSpecialCommands:
+class TestHandleSpecialCommandsBranchCoverage:
     """Tests for handle_special_commands function."""
 
     @patch("tree_sitter_analyzer.cli_main.output_list")
@@ -938,9 +938,7 @@ class TestHandleSpecialCommands:
 
     @patch("tree_sitter_analyzer.cli_main.query_loader.get_common_queries")
     @patch("tree_sitter_analyzer.cli_main.output_list")
-    def test_show_common_queries_with_results(
-        self, mock_output_list, mock_get_common
-    ):
+    def test_show_common_queries_with_results(self, mock_output_list, mock_get_common):
         """show_common_queries lists common queries when available."""
         mock_get_common.return_value = ["class", "method"]
 
@@ -962,9 +960,7 @@ class TestHandleSpecialCommands:
 
     @patch("tree_sitter_analyzer.cli_main.query_loader.get_common_queries")
     @patch("tree_sitter_analyzer.cli_main.output_info")
-    def test_show_common_queries_empty(
-        self, mock_output_info, mock_get_common
-    ):
+    def test_show_common_queries_empty(self, mock_output_info, mock_get_common):
         """show_common_queries shows info when no common queries."""
         mock_get_common.return_value = []
 
@@ -1121,9 +1117,7 @@ class TestHandleSpecialCommands:
 
     @patch("pathlib.Path")
     @patch("tree_sitter_analyzer.cli_main.output_error")
-    def test_compare_sql_profiles_missing_first(
-        self, mock_output_error, mock_path_cls
-    ):
+    def test_compare_sql_profiles_missing_first(self, mock_output_error, mock_path_cls):
         """compare_sql_profiles when first profile doesn't exist."""
         mock_p1 = Mock()
         mock_p1.exists.return_value = False
@@ -1189,22 +1183,28 @@ class TestHandleSpecialCommands:
         mock_p2.exists.return_value = True
         mock_path_cls.side_effect = [mock_p1, mock_p2]
 
-        profile_data = json.dumps({
-            "schema_version": "1.0.0",
-            "platform_key": "test-platform",
-            "behaviors": {
-                "func_call": {"construct_id": "func_call", "node_type": "call", "element_count": 5, "attributes": ["name"], "has_error": False}
-            },
-            "adaptation_rules": []
-        })
+        profile_data = json.dumps(
+            {
+                "schema_version": "1.0.0",
+                "platform_key": "test-platform",
+                "behaviors": {
+                    "func_call": {
+                        "construct_id": "func_call",
+                        "node_type": "call",
+                        "element_count": 5,
+                        "attributes": ["name"],
+                        "has_error": False,
+                    }
+                },
+                "adaptation_rules": [],
+            }
+        )
 
         mock_comparison = Mock()
         mock_compare.return_value = mock_comparison
         mock_generate_diff.return_value = "Diff report content"
 
-        with patch(
-            "builtins.open", create=True
-        ) as mock_open:
+        with patch("builtins.open", create=True) as mock_open:
             mock_open.return_value.__enter__.return_value.read.return_value = (
                 profile_data
             )
@@ -1228,9 +1228,7 @@ class TestHandleSpecialCommands:
 
     @patch("pathlib.Path")
     @patch("tree_sitter_analyzer.cli_main.output_error")
-    def test_compare_sql_profiles_error(
-        self, mock_output_error, mock_path_cls
-    ):
+    def test_compare_sql_profiles_error(self, mock_output_error, mock_path_cls):
         """compare_sql_profiles when comparison raises."""
         mock_p1 = Mock()
         mock_p1.exists.return_value = True
@@ -1275,9 +1273,7 @@ class TestHandleSpecialCommands:
             metrics_only=False,
             quiet=False,
         )
-        with patch(
-            "tree_sitter_analyzer.cli_main.output_error"
-        ) as mock_error:
+        with patch("tree_sitter_analyzer.cli_main.output_error") as mock_error:
             result = handle_special_commands(args)
             assert result == 1
             mock_error.assert_called_once_with("--start-line is required")
@@ -1301,14 +1297,10 @@ class TestHandleSpecialCommands:
             metrics_only=False,
             quiet=False,
         )
-        with patch(
-            "tree_sitter_analyzer.cli_main.output_error"
-        ) as mock_error:
+        with patch("tree_sitter_analyzer.cli_main.output_error") as mock_error:
             result = handle_special_commands(args)
             assert result == 1
-            mock_error.assert_called_once_with(
-                "--start-line must be 1 or greater"
-            )
+            mock_error.assert_called_once_with("--start-line must be 1 or greater")
 
     def test_partial_read_end_line_lt_start(self):
         """partial_read with --end-line < --start-line returns error."""
@@ -1329,9 +1321,7 @@ class TestHandleSpecialCommands:
             metrics_only=False,
             quiet=False,
         )
-        with patch(
-            "tree_sitter_analyzer.cli_main.output_error"
-        ) as mock_error:
+        with patch("tree_sitter_analyzer.cli_main.output_error") as mock_error:
             result = handle_special_commands(args)
             assert result == 1
             mock_error.assert_called_once_with(
@@ -1357,14 +1347,10 @@ class TestHandleSpecialCommands:
             metrics_only=False,
             quiet=False,
         )
-        with patch(
-            "tree_sitter_analyzer.cli_main.output_error"
-        ) as mock_error:
+        with patch("tree_sitter_analyzer.cli_main.output_error") as mock_error:
             result = handle_special_commands(args)
             assert result == 1
-            mock_error.assert_called_once_with(
-                "--start-column must be 0 or greater"
-            )
+            mock_error.assert_called_once_with("--start-column must be 0 or greater")
 
     def test_partial_read_negative_end_column(self):
         """partial_read with --end-column < 0 returns error."""
@@ -1385,22 +1371,16 @@ class TestHandleSpecialCommands:
             metrics_only=False,
             quiet=False,
         )
-        with patch(
-            "tree_sitter_analyzer.cli_main.output_error"
-        ) as mock_error:
+        with patch("tree_sitter_analyzer.cli_main.output_error") as mock_error:
             result = handle_special_commands(args)
             assert result == 1
-            mock_error.assert_called_once_with(
-                "--end-column must be 0 or greater"
-            )
+            mock_error.assert_called_once_with("--end-column must be 0 or greater")
 
     # --- Batch partial read ---
 
     @patch("tree_sitter_analyzer.mcp.tools.read_partial_tool.ReadPartialTool")
     @patch("tree_sitter_analyzer.cli_main.asyncio")
-    def test_batch_partial_read_json_input(
-        self, mock_asyncio, mock_read_tool_cls
-    ):
+    def test_batch_partial_read_json_input(self, mock_asyncio, mock_read_tool_cls):
         """batch partial read with JSON string input."""
         mock_tool = Mock()
         mock_tool.execute = Mock()
@@ -1438,9 +1418,7 @@ class TestHandleSpecialCommands:
 
     @patch("tree_sitter_analyzer.cli_main.output_error")
     @patch("tree_sitter_analyzer.mcp.tools.read_partial_tool.ReadPartialTool")
-    def test_batch_partial_read_failure(
-        self, mock_read_tool_cls, mock_output_error
-    ):
+    def test_batch_partial_read_failure(self, mock_read_tool_cls, mock_output_error):
         """batch partial read handling exception."""
         mock_read_tool_cls.side_effect = RuntimeError("Tool error")
 
@@ -1475,9 +1453,7 @@ class TestHandleSpecialCommands:
 
     @patch("tree_sitter_analyzer.mcp.tools.analyze_scale_tool.AnalyzeScaleTool")
     @patch("tree_sitter_analyzer.cli_main.asyncio")
-    def test_batch_metrics_success(
-        self, mock_asyncio, mock_scale_tool_cls
-    ):
+    def test_batch_metrics_success(self, mock_asyncio, mock_scale_tool_cls):
         """batch metrics success path."""
         mock_tool = Mock()
         mock_tool.execute = Mock()
@@ -1520,9 +1496,7 @@ class TestHandleSpecialCommands:
             compare_sql_profiles=None,
             quiet=False,
         )
-        with patch(
-            "tree_sitter_analyzer.cli_main.output_error"
-        ) as mock_error:
+        with patch("tree_sitter_analyzer.cli_main.output_error") as mock_error:
             result = handle_special_commands(args)
             assert result == 1
             mock_error.assert_called_once_with(
@@ -1531,9 +1505,7 @@ class TestHandleSpecialCommands:
 
     @patch("tree_sitter_analyzer.mcp.tools.analyze_scale_tool.AnalyzeScaleTool")
     @patch("tree_sitter_analyzer.cli_main.output_error")
-    def test_batch_metrics_failure(
-        self, mock_output_error, mock_scale_tool_cls
-    ):
+    def test_batch_metrics_failure(self, mock_output_error, mock_scale_tool_cls):
         """batch metrics failure path."""
         mock_scale_tool_cls.side_effect = RuntimeError("Scale error")
 

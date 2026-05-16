@@ -323,7 +323,7 @@ def analyze_code(
         if not include_elements and "elements" in result:
             del result["elements"]
 
-        # Check: not include_queries and "query_results" 
+        # Check: not include_queries and "query_results"
         if not include_queries and "query_results" in result:
             del result["query_results"]
 
@@ -806,8 +806,3 @@ def get_languages() -> list[str]:
     """Convenience function that aliases to get_supported_languages."""
     # Return result
     return get_supported_languages()
-
-
-
-
-

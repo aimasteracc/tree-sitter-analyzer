@@ -347,6 +347,3 @@ def _build_smart_hint(result: dict[str, Any]) -> str:
         )
 
     return " | ".join(parts[:3])
-
-
-

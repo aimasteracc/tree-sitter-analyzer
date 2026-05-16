@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -386,7 +386,7 @@ class AnalysisResultFactory:
         metadata = {
             "analysis_time": analysis_time or 0.5,
             "element_count": element_count or 10,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
         return AnalysisResultFactory.create_analysis_result(

@@ -479,9 +479,9 @@ class QueryExecutor:
             if lang_obj is None:
                 return False
 
-            # Try to create the query
-            lang_obj.query(query_string)
-            return True
+            from ..utils.tree_sitter_compat import create_query_safely
+
+            return create_query_safely(lang_obj, query_string) is not None
 
         except Exception as e:
             logger.error(f"Query validation failed: {e}")
@@ -608,4 +608,3 @@ try:
     loader = get_loader()
 except Exception:
     loader = None  # type: ignore
-

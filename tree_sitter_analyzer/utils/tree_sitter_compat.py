@@ -310,13 +310,9 @@ def count_nodes_iterative(root_node: Any) -> int:
         node = stack.pop()
         count += 1
 
-        # Add children to stack
-        if hasattr(node, "children"):
-            try:
-                # Optimized: add children in reverse if we cared about order,
-                # but for counting it doesn't matter.
-                stack.extend(node.children)
-            except (TypeError, AttributeError):
-                # Handle cases where children might not be iterable
-                pass
+        # Add real tree-sitter child lists to the stack. Mock objects can synthesize
+        # async attributes here, which creates unawaited coroutine warnings.
+        children = getattr(node, "children", None)
+        if isinstance(children, (list, tuple)):
+            stack.extend(children)
     return count

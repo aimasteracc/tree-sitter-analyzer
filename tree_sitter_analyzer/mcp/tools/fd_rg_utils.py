@@ -492,7 +492,3 @@ def split_roots_for_parallel_processing(
         start = end
 
     return [chunk for chunk in chunks if chunk]
-
-
-
-

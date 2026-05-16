@@ -691,7 +691,3 @@ class MarkdownFormatter(BaseFormatter):
         output.close()
         # Return result
         return csv_content.rstrip("\n")
-
-
-
-

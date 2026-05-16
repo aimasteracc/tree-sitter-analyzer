@@ -276,7 +276,7 @@ class TestYAMLQueryProperties:
             yaml_language = tree_sitter.Language(ts_yaml.language())
 
             # Attempt to compile the query
-            compiled_query = yaml_language.query(query_string)
+            compiled_query = tree_sitter.Query(yaml_language, query_string)
 
             # Property: Compiled query must not be None
             assert compiled_query is not None, f"Query '{query_name}' compiled to None"
@@ -304,7 +304,7 @@ class TestYAMLQueryProperties:
         # Property: All queries must compile successfully
         for query_name, query_string in YAML_QUERIES.items():
             try:
-                compiled_query = yaml_language.query(query_string)
+                compiled_query = tree_sitter.Query(yaml_language, query_string)
                 assert compiled_query is not None, (
                     f"Query '{query_name}' compiled to None"
                 )
