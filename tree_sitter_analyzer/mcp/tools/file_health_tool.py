@@ -15,6 +15,7 @@ from typing import Any
 from ...health_scorer import HealthScorer
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
+from .security_scanner import detect_security_issues
 from .utils.element_extractor import extract_elements, get_classes, get_functions
 
 logger = setup_logger(__name__)
@@ -84,18 +85,27 @@ class FileHealthTool(BaseMCPTool):
 
         file_path = arguments["file_path"]
         output_format = arguments.get("output_format", "toon")
+        language = arguments.get("language")
 
         resolved = self.resolve_and_validate_file_path(file_path)
         if not Path(resolved).exists():
             raise ValueError(f"File not found: {file_path}")
 
+        if not language:
+            from ...language_detector import detect_language_from_file
+
+            language = detect_language_from_file(
+                resolved, project_root=self.project_root
+            )
+            if language == "unknown":
+                language = None
+
         scorer = self._get_scorer()
         health = scorer.score_file(resolved)
 
-        # Use tree-sitter for cross-language element extraction
         analysis = extract_elements(resolved, self.project_root)
 
-        smells = _detect_code_smells(resolved, health.dimensions, analysis)
+        smells = _detect_code_smells(resolved, health.dimensions, analysis, language)
 
         result = {
             "success": True,
@@ -127,6 +137,7 @@ def _detect_code_smells(
     file_path: str,
     dimensions: dict[str, float],
     analysis: Any,
+    language: str | None = None,
 ) -> list[dict[str, Any]]:
     """Detect specific code smells using tree-sitter elements."""
     try:
@@ -143,6 +154,18 @@ def _detect_code_smells(
     _check_dimension_smells(smells, dimensions)
     _check_element_smells(smells, lines, line_count, analysis)
     _check_technical_debt(smells, lines)
+
+    if language:
+        sec_issues = detect_security_issues(source, language)
+        for issue in sec_issues[:10]:
+            smells.append(
+                {
+                    "smell": f"security:{issue['issue']}",
+                    "detail": f"{issue['description']} (line {issue['lines'][0]})",
+                    "severity": issue["severity"],
+                    "fix": "Move secrets to env vars / use parameterized queries / avoid eval()",
+                }
+            )
 
     return smells
 
