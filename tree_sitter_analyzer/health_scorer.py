@@ -6,14 +6,18 @@ Computes a 0-100 health score for source files based on five weighted dimensions
 - Complexity (25%): AST node count and nesting depth
 - Dependencies (20%): Number of internal project dependencies
 - Comments (15%): Comment-to-code ratio
-- Coverage (20%): Test coverage placeholder (default: 50 for unknown)
+- Coverage (20%): Test coverage from coverage.json (default: 50 for unknown)
 """
 
+import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .core.parser import Parser
+
+logger = logging.getLogger(__name__)
 
 # Dimension weights (must sum to 100)
 DIMENSION_WEIGHTS = {
@@ -98,6 +102,7 @@ class HealthScorer:
                     Default: lines=20, complexity=25, dependencies=20, comments=15, coverage=20
         """
         self.weights = weights or dict(DIMENSION_WEIGHTS)
+        self._coverage_cache: dict[str, float] | None = None
 
     def score_file(self, file_path: str) -> HealthScore:
         """
@@ -138,8 +143,8 @@ class HealthScorer:
         # 4. Comments score (15%): ratio of comment lines to code lines
         dims["comments"] = self._score_comments(lines, source)
 
-        # 5. Coverage score (20%): placeholder (would need coverage data)
-        dims["coverage"] = 50.0
+        # 5. Coverage score (20%): from coverage.json if available
+        dims["coverage"] = self._score_coverage(file_path)
 
         # Weighted total
         total = 0.0
@@ -354,3 +359,77 @@ class HealthScorer:
             return 0.0
         else:
             return (ratio / COMMENT_RATIO_IDEAL) * 100.0
+
+    def _load_coverage_data(self) -> dict[str, float]:
+        """Load coverage data from coverage.json in current or parent directories."""
+        if self._coverage_cache is not None:
+            return self._coverage_cache
+
+        self._coverage_cache = {}
+
+        search_paths = [Path.cwd()]
+        # Also check common project root locations
+        for parent in Path.cwd().parents[:3]:
+            search_paths.append(parent)
+
+        for search_dir in search_paths:
+            cov_file = search_dir / "coverage.json"
+            if cov_file.exists():
+                try:
+                    data = json.loads(cov_file.read_text(encoding="utf-8"))
+                    files = data.get("files", {})
+                    for file_path, file_data in files.items():
+                        summary = file_data.get("summary", {})
+                        pct = summary.get("percent_covered", 0.0)
+                        self._coverage_cache[file_path] = float(pct)
+
+                    total = data.get("totals", {}).get("percent_covered", 0)
+                    logger.info(
+                        f"Loaded coverage data for {len(self._coverage_cache)} files "
+                        f"from {cov_file} (total: {total:.1f}%)"
+                    )
+                    return self._coverage_cache
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
+                    logger.warning(f"Failed to parse coverage.json: {e}")
+                    continue
+
+        logger.debug("No coverage.json found — using default coverage=50")
+        return self._coverage_cache
+
+    def _score_coverage(self, file_path: str) -> float:
+        """Score based on test coverage from coverage.json."""
+        coverage_data = self._load_coverage_data()
+        if not coverage_data:
+            return 50.0
+
+        # Try exact match first
+        path = Path(file_path)
+        candidates = [
+            str(path),
+            path.name,
+        ]
+
+        # Add relative-from-cwd match
+        try:
+            candidates.append(str(path.relative_to(Path.cwd())))
+        except ValueError:
+            pass
+
+        # Add various relative paths
+        for parent in [Path.cwd()] + list(Path.cwd().parents[:3]):
+            try:
+                candidates.append(str(path.relative_to(parent)))
+            except ValueError:
+                continue
+
+        for candidate in candidates:
+            if candidate in coverage_data:
+                return coverage_data[candidate]
+
+        # Prefix match (file_path might be absolute, coverage uses relative)
+        path_str = str(path)
+        for cov_path, pct in coverage_data.items():
+            if path_str.endswith(cov_path) or cov_path.endswith(path_str):
+                return pct
+
+        return 50.0
