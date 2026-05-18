@@ -14,6 +14,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from tests.unit.languages._test_yaml_element_metadata_properties_helpers import (
+    assert_comment_elements,
+    assert_consistent_mappings,
     assert_element_line_number_properties,
     assert_mapping_raw_text_contains_key,
     assert_mixed_structures_complete_metadata,
@@ -22,6 +24,7 @@ from tests.unit.languages._test_yaml_element_metadata_properties_helpers import 
     assert_raw_text_fields,
     assert_raw_text_matches_source,
     assert_scalar_raw_text_non_empty,
+    assert_sequence_metadata,
     parse_yaml_elements_and_lines,
 )
 from tree_sitter_analyzer.languages.yaml_plugin import (
@@ -33,6 +36,32 @@ from tree_sitter_analyzer.languages.yaml_plugin import (
 pytestmark = pytest.mark.skipif(
     not YAML_AVAILABLE, reason="tree-sitter-yaml not installed"
 )
+
+_YAML_TEXT_CHARS = st.characters(
+    whitelist_categories=("Lu", "Ll", "Nd"), min_codepoint=97, max_codepoint=122
+)
+_YAML_COMMENT_CHARS = st.characters(
+    whitelist_categories=("Lu", "Ll", "Nd", "Zs"),
+    min_codepoint=32,
+    max_codepoint=122,
+)
+
+
+def _yaml_word() -> st.SearchStrategy[str]:
+    return st.text(alphabet=_YAML_TEXT_CHARS, min_size=1, max_size=20)
+
+
+def _yaml_comment() -> st.SearchStrategy[str]:
+    return st.text(alphabet=_YAML_COMMENT_CHARS, min_size=1, max_size=30)
+
+
+def _yaml_scalar_value() -> st.SearchStrategy[str]:
+    """Generate YAML scalar values used in property strategies."""
+    return st.one_of(
+        st.text(alphabet="abcdefghijklmnopqrstuvwxyz", min_size=1, max_size=20),
+        st.integers(min_value=0, max_value=100).map(str),
+        st.sampled_from(["true", "false", "null"]),
+    )
 
 
 # Strategies for generating valid YAML content
@@ -51,15 +80,7 @@ def yaml_simple_mapping(draw):
             )
         )
         # Simplified value generation
-        value = draw(
-            st.one_of(
-                st.text(
-                    alphabet="abcdefghijklmnopqrstuvwxyz ", min_size=1, max_size=20
-                ),
-                st.integers(min_value=0, max_value=100).map(str),
-                st.sampled_from(["true", "false", "null"]),
-            )
-        )
+        value = draw(_yaml_scalar_value())
         lines.append(f"{key}: {value}")
     return "\n".join(lines)
 
@@ -71,18 +92,7 @@ def yaml_simple_sequence(draw):
     lines = []
     for _i in range(num_items):
         item = draw(
-            st.one_of(
-                st.text(
-                    alphabet=st.characters(
-                        whitelist_categories=("Lu", "Ll", "Nd"),
-                        min_codepoint=97,
-                        max_codepoint=122,
-                    ),
-                    min_size=1,
-                    max_size=20,
-                ),
-                st.integers(min_value=0, max_value=1000).map(str),
-            )
+            st.one_of(_yaml_word(), st.integers(min_value=0, max_value=1000).map(str))
         )
         lines.append(f"- {item}")
     return "\n".join(lines)
@@ -96,31 +106,11 @@ def yaml_with_comments(draw):
     for _i in range(num_lines):
         if draw(st.booleans()):
             # Add a comment
-            comment_text = draw(
-                st.text(
-                    alphabet=st.characters(
-                        whitelist_categories=("Lu", "Ll", "Nd", "Zs"),
-                        min_codepoint=32,
-                        max_codepoint=122,
-                    ),
-                    min_size=1,
-                    max_size=30,
-                )
-            )
+            comment_text = draw(_yaml_comment())
             lines.append(f"# {comment_text}")
         else:
             # Add a mapping
-            key = draw(
-                st.text(
-                    alphabet=st.characters(
-                        whitelist_categories=("Lu", "Ll", "Nd"),
-                        min_codepoint=97,
-                        max_codepoint=122,
-                    ),
-                    min_size=1,
-                    max_size=15,
-                )
-            )
+            key = draw(_yaml_word())
             value = draw(st.integers(min_value=0, max_value=100).map(str))
             lines.append(f"{key}: {value}")
     return "\n".join(lines)
@@ -190,28 +180,7 @@ class TestYAMLElementMetadataProperties:
         # Get sequences
         sequences = [e for e in elements if e.element_type == "sequence"]
 
-        # Property: Sequences must have valid metadata
-        for sequence in sequences:
-            # Property: Must have line numbers
-            assert sequence.start_line > 0, "Sequence start_line must be positive"
-            assert sequence.end_line >= sequence.start_line, (
-                "Sequence end_line must be >= start_line"
-            )
-
-            # Property: Must have raw_text
-            assert sequence.raw_text is not None, "Sequence raw_text must not be None"
-            assert isinstance(sequence.raw_text, str), "Sequence raw_text must be str"
-            assert len(sequence.raw_text) > 0, "Sequence raw_text must not be empty"
-
-        # Property: Sequence raw_text should span multiple lines if sequence has items
-        if sequences:
-            main_sequence = sequences[0]
-            if main_sequence.child_count and main_sequence.child_count > 0:
-                # Multi-item sequences typically span multiple lines
-                line_count = main_sequence.end_line - main_sequence.start_line + 1
-                assert line_count >= 1, (
-                    f"Sequence with {main_sequence.child_count} items should span at least 1 line"
-                )
+        assert_sequence_metadata(sequences)
 
     @settings(max_examples=50)
     @given(yaml_content=yaml_with_comments())
@@ -243,38 +212,7 @@ class TestYAMLElementMetadataProperties:
         # Get source lines
         source_lines = yaml_content.split("\n")
 
-        # Property: All elements must have complete metadata
-        for element in elements:
-            # Property: Must have line numbers
-            assert hasattr(element, "start_line"), "Must have start_line"
-            assert hasattr(element, "end_line"), "Must have end_line"
-            assert element.start_line > 0, "start_line must be positive"
-            assert element.end_line >= element.start_line, (
-                "end_line must be >= start_line"
-            )
-
-            # Property: Must have raw_text
-            assert hasattr(element, "raw_text"), "Must have raw_text"
-            assert element.raw_text is not None, "raw_text must not be None"
-            assert isinstance(element.raw_text, str), "raw_text must be str"
-
-        # Property: Comment elements should have accurate raw_text
-        comments = [e for e in elements if e.element_type == "comment"]
-        for comment in comments:
-            # Comment raw_text should contain the # character
-            assert "#" in comment.raw_text, (
-                f"Comment raw_text should contain '#'. Got: '{comment.raw_text}'"
-            )
-
-            # Verify against source
-            start_idx = comment.start_line - 1
-            end_idx = comment.end_line
-            if start_idx < len(source_lines) and end_idx <= len(source_lines):
-                expected_text = "\n".join(source_lines[start_idx:end_idx])
-                assert comment.raw_text == expected_text, (
-                    f"Comment raw_text mismatch. Expected: '{expected_text}', "
-                    f"Got: '{comment.raw_text}'"
-                )
+        assert_comment_elements(elements, source_lines)
 
     @settings(max_examples=100)
     @given(
@@ -295,10 +233,7 @@ class TestYAMLElementMetadataProperties:
         except ImportError:
             pytest.skip("tree-sitter-yaml not available")
 
-        # Generate YAML content with known structure
-        lines = []
-        for i in range(num_keys):
-            lines.append(f"key{i}: value{i}")
+        lines = [f"key{i}: value{i}" for i in range(num_keys)]
         yaml_content = "\n".join(lines)
 
         # Parse the YAML content
@@ -311,43 +246,8 @@ class TestYAMLElementMetadataProperties:
         extractor = YAMLElementExtractor()
         elements = extractor.extract_yaml_elements(tree, yaml_content)
 
-        # Property: Number of elements should match expected count
-        mappings = [e for e in elements if e.element_type == "mapping"]
-        assert len(mappings) == num_keys, (
-            f"Expected {num_keys} mappings, got {len(mappings)}"
-        )
-
-        # Property: Each mapping should be on a different line
-        mapping_lines = [m.start_line for m in mappings]
-        assert len(mapping_lines) == len(set(mapping_lines)), (
-            f"Mappings should be on different lines. Lines: {mapping_lines}"
-        )
-
-        # Property: Mappings should be in sequential order
-        sorted_mappings = sorted(mappings, key=lambda m: m.start_line)
-        for i, mapping in enumerate(sorted_mappings):
-            expected_line = i + 1
-            assert mapping.start_line == expected_line, (
-                f"Mapping {i} should be on line {expected_line}, "
-                f"got line {mapping.start_line}"
-            )
-
-        # Property: Each mapping's raw_text should match its source line
         source_lines = yaml_content.split("\n")
-        for mapping in mappings:
-            line_idx = mapping.start_line - 1
-            expected_text = source_lines[line_idx]
-            assert mapping.raw_text == expected_text, (
-                f"Mapping raw_text mismatch at line {mapping.start_line}. "
-                f"Expected: '{expected_text}', Got: '{mapping.raw_text}'"
-            )
-
-        # Property: Each mapping's key should be in its raw_text
-        for mapping in mappings:
-            if mapping.key:
-                assert mapping.key in mapping.raw_text, (
-                    f"Mapping key '{mapping.key}' should be in raw_text '{mapping.raw_text}'"
-                )
+        assert_consistent_mappings(elements, source_lines, num_keys)
 
     @settings(max_examples=50)
     @given(

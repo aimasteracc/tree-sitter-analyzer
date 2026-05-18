@@ -182,3 +182,104 @@ def assert_scalar_raw_text_non_empty(elements):
         assert len(scalar.raw_text) > 0, (
             f"Scalar raw_text should not be empty. Value: '{scalar.value}'"
         )
+
+
+def assert_comment_raw_text(elements, source_lines):
+    """Assert comment elements have raw text and source alignment."""
+    comments = [e for e in elements if e.element_type == "comment"]
+    for comment in comments:
+        assert "#" in comment.raw_text, (
+            f"Comment raw_text should contain '#'. Got: '{comment.raw_text}'"
+        )
+
+        start_idx = comment.start_line - 1
+        end_idx = comment.end_line
+        if start_idx < len(source_lines) and end_idx <= len(source_lines):
+            expected_text = "\n".join(source_lines[start_idx:end_idx])
+            assert comment.raw_text == expected_text, (
+                f"Comment raw_text mismatch. Expected: '{expected_text}', "
+                f"Got: '{comment.raw_text}'"
+            )
+
+
+def assert_comment_elements(elements, source_lines):
+    """Assert comment metadata is complete and source aligned."""
+    for element in elements:
+        assert hasattr(element, "start_line"), (
+            f"Element '{element.name}' must have start_line"
+        )
+        assert hasattr(element, "end_line"), (
+            f"Element '{element.name}' must have end_line"
+        )
+        assert element.start_line > 0, "start_line must be positive"
+        assert element.end_line >= element.start_line, "end_line must be >= start_line"
+        assert hasattr(element, "raw_text"), (
+            f"Element '{element.name}' must have raw_text"
+        )
+        assert element.raw_text is not None, "raw_text must not be None"
+        assert isinstance(element.raw_text, str), "raw_text must be str"
+
+    assert_comment_raw_text(elements, source_lines)
+
+
+def assert_element_line_metadata(elements):
+    """Assert every element has numeric and non-empty metadata."""
+    for element in elements:
+        assert element.start_line > 0, (
+            f"Element '{element.name}' start_line must be positive"
+        )
+        assert element.end_line >= element.start_line, (
+            f"Element '{element.name}' end_line ({element.end_line}) must be >= "
+            f"start_line ({element.start_line})"
+        )
+
+
+def assert_consistent_mappings(elements, source_lines, num_keys: int):
+    """Assert mappings are complete and aligned for consistency test."""
+    mappings = [e for e in elements if e.element_type == "mapping"]
+    assert len(mappings) == num_keys, (
+        f"Expected {num_keys} mappings, got {len(mappings)}"
+    )
+
+    mapping_lines = [m.start_line for m in mappings]
+    assert len(mapping_lines) == len(set(mapping_lines)), (
+        f"Mappings should be on different lines. Lines: {mapping_lines}"
+    )
+
+    sorted_mappings = sorted(mappings, key=lambda m: m.start_line)
+    for i, mapping in enumerate(sorted_mappings):
+        assert mapping.start_line == i + 1, (
+            f"Mapping {i} should be on line {i + 1}, got line {mapping.start_line}"
+        )
+
+    for mapping in mappings:
+        expected_text = source_lines[mapping.start_line - 1]
+        assert mapping.raw_text == expected_text, (
+            f"Mapping raw_text mismatch at line {mapping.start_line}. "
+            f"Expected: '{expected_text}', Got: '{mapping.raw_text}'"
+        )
+        if mapping.key:
+            assert mapping.key in mapping.raw_text, (
+                f"Mapping key '{mapping.key}' should be in raw_text '{mapping.raw_text}'"
+            )
+
+
+def assert_sequence_metadata(sequences):
+    """Assert sequence-specific metadata invariants."""
+    for sequence in sequences:
+        assert sequence.start_line > 0, "Sequence start_line must be positive"
+        assert sequence.end_line >= sequence.start_line, (
+            "Sequence end_line must be >= start_line"
+        )
+        assert sequence.raw_text is not None, "Sequence raw_text must not be None"
+        assert isinstance(sequence.raw_text, str), "Sequence raw_text must be str"
+        assert len(sequence.raw_text) > 0, "Sequence raw_text must not be empty"
+
+    if not sequences or not sequences[0].child_count:
+        return
+
+    main_sequence = sequences[0]
+    line_count = main_sequence.end_line - main_sequence.start_line + 1
+    assert line_count >= 1, (
+        f"Sequence with {main_sequence.child_count} items should span at least 1 line"
+    )

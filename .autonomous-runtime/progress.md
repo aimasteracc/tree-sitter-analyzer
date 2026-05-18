@@ -92,4 +92,21 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果:
   - 全量回归: `10417 passed, 32 skipped`（上游记录）
   - 本文件健康评分: 从 `C(73.8, 5 warnings)` 提升到 `B(81.7, 3 warnings)`；
-  - 剩余主要 smell: `deep_nesting`（line 77）与两个长方法（with_comments、consistency）。
+    - 剩余主要 smell: `deep_nesting`（line 77）与两个长方法（with_comments、consistency）。
+
+## 2026-05-18: YAML 元数据测试结构化重构（收口）
+
+- 目标: 继续清理 `tests/unit/languages/test_yaml_element_metadata_properties.py` 的最后一类结构异味。
+- 动作:
+  - 在 helper 模块补齐 `assert_sequence_metadata`，将 sequence 断言从主测试中抽离。
+  - 继续降低策略复杂度，新增 `_yaml_scalar_value` 降低 `deep_nesting`。
+  - 通过 `ruff check --fix` + import reorder 校验。
+- 验证:
+  - `uv run pytest tests/unit/languages/test_yaml_element_metadata_properties.py -q`（6 passed）
+  - `uv run python -m tree_sitter_analyzer tests/unit/languages/test_yaml_element_metadata_properties.py --file-health --format json`
+  - `uv run pytest -q`（10417 passed, 32 skipped）
+- 结果:
+  - 文件级健康评分回到 `A(90.9)`，`code_smells = 0`。
+  - 变更文件:
+    - `tests/unit/languages/_test_yaml_element_metadata_properties_helpers.py`
+    - `tests/unit/languages/test_yaml_element_metadata_properties.py`
