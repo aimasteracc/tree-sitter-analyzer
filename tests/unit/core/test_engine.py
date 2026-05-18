@@ -28,6 +28,7 @@ from tests.unit.core._test_engine_test_mixin import (
     TestMockLanguagePluginTestMixin,
     TestUnifiedAnalysisEngineAnalysisTestMixin,
     TestUnifiedAnalysisEngineCacheManagementTestMixin,
+    TestUnifiedAnalysisEngineCleanupTestMixin,
     TestUnifiedAnalysisEngineInitTestMixin,
     TestUnifiedAnalysisEngineLanguageDetectionTestMixin,
     TestUnifiedAnalysisEnginePerformanceTestMixin,
@@ -243,15 +244,8 @@ class TestUnifiedAnalysisEngineQueries(TestUnifiedAnalysisEngineQueriesTestMixin
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestUnifiedAnalysisEngineCleanup:
+class TestUnifiedAnalysisEngineCleanup(TestUnifiedAnalysisEngineCleanupTestMixin):
     """Test cases for resource cleanup."""
-
-    def test_cleanup(self):
-        """Test cleaning up engine resources."""
-        engine = UnifiedAnalysisEngine()
-        engine.cleanup()
-        # Should complete without error
-        assert True
 
     @classmethod
     def teardown_class(cls):

@@ -486,6 +486,19 @@ class TestUnifiedAnalysisEngineQueriesTestMixin:
                 os.remove(temp_path)
 
 
+class TestUnifiedAnalysisEngineCleanupTestMixin:
+    """Shared tests for resource cleanup behavior."""
+
+    __test__ = False
+
+    def test_cleanup(self):
+        """Test cleaning up engine resources."""
+        engine = UnifiedAnalysisEngine()
+        engine.cleanup()
+        # Should complete without error
+        assert True
+
+
 class TestUnifiedAnalysisEnginePerformanceTestMixin:
     """Shared tests for performance monitoring behavior."""
 

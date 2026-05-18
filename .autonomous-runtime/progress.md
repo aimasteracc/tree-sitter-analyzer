@@ -244,3 +244,16 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果:
   - 继续保持低风险：`test_engine.py` 行数略降，类边界更清晰。
   - `test_engine.py` 仍为 `oversized_file`，但持续朝切片方向推进。
+
+## 2026-05-18: test_engine.py 可维护性切片（继续）
+
+- 目标: 继续 `TestUnifiedAnalysisEngine*` 的责任切片，处理 `TestUnifiedAnalysisEngineCleanup`。
+- 动作:
+  - 新增 `TestUnifiedAnalysisEngineCleanupTestMixin`，将 `test_cleanup` 从 `TestUnifiedAnalysisEngineCleanup` 迁出到 mixin。
+  - `tests/unit/core/test_engine.py` 的 `TestUnifiedAnalysisEngineCleanup` 改为继承 `TestUnifiedAnalysisEngineCleanupTestMixin`，仅保留 `teardown_class`。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run pytest tests/unit/core/test_engine.py -q`
+- 结果:
+  - `TestUnifiedAnalysisEngineCleanup` 已并入 mixin 体系，`test_engine.py` 继续沿切片目标前进。

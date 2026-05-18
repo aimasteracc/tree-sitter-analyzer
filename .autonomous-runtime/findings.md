@@ -107,3 +107,13 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
     - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(75.1)`，`oversized_file` + `deep_nesting`）
     - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险：2 文件变更，1 文件受影响）
   - 结论：本次切片完成且回归通过，队列继续推进到 `TestUnifiedAnalysisEngineCleanup` 或下一类 `*Comprehensive` 责任块。
+
+- 2026-05-18 Tick: `TestUnifiedAnalysisEngineCleanup` 迁入 mixin
+  - 目标：继续收口 `TestUnifiedAnalysisEngine*` 组并继续压缩 `test_engine.py`。
+  - 执行结果：
+    - 新增 `TestUnifiedAnalysisEngineCleanupTestMixin`（`tests/unit/core/_test_engine_test_mixin.py`）；
+    - `TestUnifiedAnalysisEngineCleanup` 在 `tests/unit/core/test_engine.py` 改为继承该 mixin，仅保留 `teardown_class`。
+  - 验证链路：
+    - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run pytest tests/unit/core/test_engine.py -q`
