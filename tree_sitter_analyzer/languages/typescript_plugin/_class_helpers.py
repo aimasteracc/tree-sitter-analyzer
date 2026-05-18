@@ -107,6 +107,81 @@ def extract_interface(
         return None
 
 
+def extract_type_alias(
+    node: tree_sitter.Node,
+    get_node_text: TextExtractor,
+    extract_generics: GenericsExtractor,
+    extract_tsdoc: TsdocExtractor,
+    is_exported_class: ExportPredicate,
+    framework_type: str,
+) -> Class | None:
+    """Extract type alias information."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        type_name = None
+        for child in node.children:
+            if child.type == "type_identifier":
+                type_name = child.text.decode("utf8") if child.text else None
+            elif child.type == "type_parameters":
+                extract_generics(child)
+
+        if not type_name:
+            return None
+
+        return Class(
+            name=type_name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=get_node_text(node),
+            language="typescript",
+            class_type="type",
+            docstring=extract_tsdoc(start_line),
+            framework_type=framework_type,
+            is_exported=is_exported_class(type_name),
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract type alias info: {e}")
+        return None
+
+
+def extract_enum(
+    node: tree_sitter.Node,
+    get_node_text: TextExtractor,
+    extract_tsdoc: TsdocExtractor,
+    is_exported_class: ExportPredicate,
+    framework_type: str,
+) -> Class | None:
+    """Extract enum information."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        enum_name = None
+        for child in node.children:
+            if child.type == "identifier":
+                enum_name = child.text.decode("utf8") if child.text else None
+
+        if not enum_name:
+            return None
+
+        return Class(
+            name=enum_name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=get_node_text(node),
+            language="typescript",
+            class_type="enum",
+            docstring=extract_tsdoc(start_line),
+            framework_type=framework_type,
+            is_exported=is_exported_class(enum_name),
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract enum info: {e}")
+        return None
+
+
 def _parse_class_parts(
     node: tree_sitter.Node,
     get_node_text: TextExtractor,

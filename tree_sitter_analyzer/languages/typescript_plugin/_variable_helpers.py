@@ -64,6 +64,117 @@ def extract_property(
         return None
 
 
+def extract_property_signature(
+    node: tree_sitter.Node,
+    get_node_text: TextExtractor,
+) -> Variable | None:
+    """Extract property signature from an interface."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        prop_name = None
+        prop_type = None
+        for child in node.children:
+            if child.type == "property_identifier":
+                prop_name = get_node_text(child)
+            elif child.type == "type_annotation":
+                prop_type = get_node_text(child).lstrip(": ")
+
+        if not prop_name:
+            return None
+
+        return Variable(
+            name=prop_name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=get_node_text(node),
+            language="typescript",
+            variable_type=prop_type or "any",
+            is_constant=False,
+            visibility="public",
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract property signature info: {e}")
+        return None
+
+
+def extract_variables_from_declaration(
+    node: tree_sitter.Node,
+    kind: str,
+    get_node_text: TextExtractor,
+    parse_declarator: Callable,
+    extract_tsdoc: TsdocExtractor,
+) -> list[Variable]:
+    """Extract variables from a declaration node."""
+    variables: list[Variable] = []
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        for child in node.children:
+            if child.type == "variable_declarator":
+                var_info = parse_declarator(child, kind, start_line, end_line)
+                if var_info:
+                    variables.append(var_info)
+    except Exception as e:
+        log_debug(f"Failed to extract variables from declaration: {e}")
+    return variables
+
+
+def is_framework_component(
+    framework_type: str,
+    source_code: str,
+    get_node_text: TextExtractor,
+    node: tree_sitter.Node,
+) -> bool:
+    """Check if class is a framework component."""
+    if framework_type == "react":
+        node_text = get_node_text(node)
+        return "extends" in node_text and (
+            "Component" in node_text or "PureComponent" in node_text
+        )
+    if framework_type == "angular":
+        return "@Component" in source_code
+    if framework_type == "vue":
+        return "Vue" in source_code or "@Component" in source_code
+    return False
+
+
+def is_exported_class(class_name: str, source_code: str) -> bool:
+    """Check if class is exported."""
+    return (
+        f"export class {class_name}" in source_code
+        or f"export default {class_name}" in source_code
+    )
+
+
+def infer_type_from_value(value: str | None) -> str:
+    """Infer TypeScript type from a value literal."""
+    if not value:
+        return "any"
+
+    value = value.strip()
+
+    if value.startswith('"') or value.startswith("'") or value.startswith("`"):
+        return "string"
+    if value in ("true", "false"):
+        return "boolean"
+    if value == "null":
+        return "null"
+    if value == "undefined":
+        return "undefined"
+    if value.startswith("[") and value.endswith("]"):
+        return "array"
+    if value.startswith("{") and value.endswith("}"):
+        return "object"
+    if value.replace(".", "").replace("-", "").isdigit():
+        return "number"
+    if "function" in value or "=>" in value:
+        return "function"
+    return "any"
+
+
 def parse_variable_declarator(
     node: tree_sitter.Node,
     kind: str,

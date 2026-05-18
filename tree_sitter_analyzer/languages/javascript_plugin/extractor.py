@@ -72,7 +72,6 @@ class JavaScriptElementExtractor(
         self._jsdoc_cache.clear()
         self._complexity_cache.clear()
 
-    # Detect patterns in source code: _detect_file_characteristics
     def _detect_file_characteristics(self) -> None:
         """Detect JavaScript file characteristics"""
         # Check if it's a module
@@ -89,7 +88,6 @@ class JavaScriptElementExtractor(
         elif "angular" in self.source_code.lower():
             self.framework_type = "angular"
 
-    # Extract elements from AST: _traverse_and_extract_iterative
     def _traverse_and_extract_iterative(
         self,
         root_node: Optional["tree_sitter.Node"],
@@ -118,7 +116,6 @@ class JavaScriptElementExtractor(
             safe_encode,
         )
 
-    # Extract elements from AST: _extract_class_optimized
     def _extract_class_optimized(self, node: "tree_sitter.Node") -> Class | None:
         """Extract class information with detailed metadata"""
         return extract_class(
@@ -130,12 +127,10 @@ class JavaScriptElementExtractor(
             self.framework_type,
         )
 
-    # Extract elements from AST: _extract_variable_optimized
     def _extract_variable_optimized(self, node: "tree_sitter.Node") -> list[Variable]:
         """Extract var declaration variables"""
         return self._extract_variables_from_declaration(node, "var")
 
-    # Extract elements from AST: _extract_lexical_variable_optimized
     def _extract_lexical_variable_optimized(
         self, node: "tree_sitter.Node"
     ) -> list[Variable]:
@@ -145,7 +140,6 @@ class JavaScriptElementExtractor(
         kind = "let" if node_text.strip().startswith("let") else "const"
         return self._extract_variables_from_declaration(node, kind)
 
-    # Extract elements from AST: _extract_property_optimized
     def _extract_property_optimized(self, node: "tree_sitter.Node") -> Variable | None:
         """Extract class property definition"""
         try:
@@ -193,7 +187,6 @@ class JavaScriptElementExtractor(
             log_debug(f"Failed to extract property info: {e}")
             return None
 
-    # Extract elements from AST: _extract_variables_from_declaration
     def _extract_variables_from_declaration(
         self, node: "tree_sitter.Node", kind: str
     ) -> list[Variable]:
@@ -218,7 +211,6 @@ class JavaScriptElementExtractor(
 
         return variables
 
-    # Parse input into structured data: _parse_variable_declarator
     def _parse_variable_declarator(
         self, node: "tree_sitter.Node", kind: str, start_line: int, end_line: int
     ) -> Variable | None:

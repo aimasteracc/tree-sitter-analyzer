@@ -219,6 +219,48 @@ def extract_method_signature(
         return None
 
 
+def extract_generator_function(
+    node: tree_sitter.Node,
+    parse_signature: FunctionSignatureParser,
+    extract_tsdoc: TsdocExtractor,
+    calculate_complexity: ComplexityCalculator,
+    get_node_text: TextExtractor,
+    framework_type: str,
+) -> Function | None:
+    """Extract generator function information."""
+    try:
+        start_line = node.start_point[0] + 1
+        end_line = node.end_point[0] + 1
+
+        function_info = parse_signature(node)
+        if not function_info:
+            return None
+
+        name, parameters, is_async, _, return_type, _generics = function_info
+        if name is None:
+            return None
+
+        return Function(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=get_node_text(node),
+            language="typescript",
+            parameters=parameters,
+            return_type=return_type or "Generator",
+            is_async=is_async,
+            is_generator=True,
+            docstring=extract_tsdoc(start_line),
+            complexity_score=calculate_complexity(node),
+            is_arrow=False,
+            is_method=False,
+            framework_type=framework_type,
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract generator function info: {e}")
+        return None
+
+
 def _arrow_function_name(node: tree_sitter.Node, get_node_text: TextExtractor) -> str:
     parent = node.parent
     if not parent or parent.type != "variable_declarator":

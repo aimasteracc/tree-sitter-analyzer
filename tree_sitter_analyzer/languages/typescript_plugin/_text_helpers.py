@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeAlias
 
-from ...utils import log_error
+from ...utils import log_debug, log_error
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -101,3 +101,39 @@ def _slice_fallback_line(
     if line_index == end_point[0]:
         return line[: end_point[1]]
     return line
+
+
+_COMPLEXITY_KEYWORDS = (
+    "if",
+    "else if",
+    "while",
+    "for",
+    "catch",
+    "case",
+    "switch",
+    "&&",
+    "||",
+    "?",
+)
+
+
+def calculate_complexity(
+    node: tree_sitter.Node,
+    get_node_text: Callable[[tree_sitter.Node], str],
+    cache: dict[int, int],
+) -> int:
+    """Calculate cyclomatic complexity for a node."""
+    node_id = id(node)
+    if node_id in cache:
+        return cache[node_id]
+
+    complexity = 1
+    try:
+        node_text = get_node_text(node).lower()
+        for keyword in _COMPLEXITY_KEYWORDS:
+            complexity += node_text.count(keyword)
+    except Exception as e:
+        log_debug(f"Failed to calculate complexity: {e}")
+
+    cache[node_id] = complexity
+    return complexity

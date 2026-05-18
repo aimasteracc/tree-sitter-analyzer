@@ -665,7 +665,6 @@ class ToonEncoder:
             return f"# Encoding error: {e}\n{{}}"
 
     @staticmethod
-    # Detect patterns in source code: detect_circular_reference
     def detect_circular_reference(data: Any, seen: set[int] | None = None) -> bool:
         """
         Check if data contains circular references using iterative approach.
