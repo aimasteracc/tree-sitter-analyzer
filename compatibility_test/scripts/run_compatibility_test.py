@@ -28,6 +28,52 @@ except ImportError:
     from utils.cache_reporter import CacheReporter
 
 
+def _set_project_path_result(params: dict[str, Any]) -> dict[str, Any]:
+    project_path = params.get("project_path")
+    if not project_path:
+        raise ValueError("project_path parameter is required")
+    return {"status": "success", "project_root": project_path}
+
+
+def _load_mcp_tool_class(tool_name: str) -> type[Any]:
+    if tool_name == "check_code_scale":
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+
+        return AnalyzeScaleTool
+
+    if tool_name == "analyze_code_structure":
+        from tree_sitter_analyzer.mcp.tools.table_format_tool import TableFormatTool
+
+        return TableFormatTool
+
+    if tool_name == "query_code":
+        from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
+
+        return QueryTool
+
+    if tool_name == "extract_code_section":
+        from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
+
+        return ReadPartialTool
+
+    if tool_name == "list_files":
+        from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
+
+        return ListFilesTool
+
+    if tool_name == "find_and_grep":
+        from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
+
+        return FindAndGrepTool
+
+    if tool_name == "search_content":
+        from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+
+        return SearchContentTool
+
+    raise ValueError(f"未知のツール名: {tool_name}")
+
+
 class StandardizedCompatibilityTester:
     def __init__(
         self,
@@ -259,71 +305,12 @@ class StandardizedCompatibilityTester:
     async def _execute_mcp_tool(self, tool_name: str, params: dict[str, Any]) -> Any:
         """実際のMCPツールを実行"""
         try:
-            # プロジェクトルートを設定
-            project_root = str(self.project_root)
-
-            # MCPツールクラスをインポートして実行
             if tool_name == "set_project_path":
-                # set_project_pathは特別な処理
-                project_path = params.get("project_path")
-                if not project_path:
-                    raise ValueError("project_path parameter is required")
-                return {"status": "success", "project_root": project_path}
+                return _set_project_path_result(params)
 
-            elif tool_name == "check_code_scale":
-                from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
-                    AnalyzeScaleTool,
-                )
-
-                tool = AnalyzeScaleTool(project_root)
-                return await tool.execute(params)
-
-            elif tool_name == "analyze_code_structure":
-                from tree_sitter_analyzer.mcp.tools.table_format_tool import (
-                    TableFormatTool,
-                )
-
-                tool = TableFormatTool(project_root)
-                return await tool.execute(params)
-
-            elif tool_name == "query_code":
-                from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
-
-                tool = QueryTool(project_root)
-                return await tool.execute(params)
-
-            elif tool_name == "extract_code_section":
-                from tree_sitter_analyzer.mcp.tools.read_partial_tool import (
-                    ReadPartialTool,
-                )
-
-                tool = ReadPartialTool(project_root)
-                return await tool.execute(params)
-
-            elif tool_name == "list_files":
-                from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
-
-                tool = ListFilesTool(project_root)
-                return await tool.execute(params)
-
-            elif tool_name == "find_and_grep":
-                from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import (
-                    FindAndGrepTool,
-                )
-
-                tool = FindAndGrepTool(project_root)
-                return await tool.execute(params)
-
-            elif tool_name == "search_content":
-                from tree_sitter_analyzer.mcp.tools.search_content_tool import (
-                    SearchContentTool,
-                )
-
-                tool = SearchContentTool(project_root)
-                return await tool.execute(params)
-
-            else:
-                raise ValueError(f"未知のツール名: {tool_name}")
+            tool_class = _load_mcp_tool_class(tool_name)
+            tool = tool_class(str(self.project_root))
+            return await tool.execute(params)
 
         except ImportError as e:
             raise Exception(f"ツール {tool_name} のインポートに失敗: {e}") from e
