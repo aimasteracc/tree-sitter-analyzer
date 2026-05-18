@@ -94,6 +94,21 @@ def convert_analysis_result_to_dict(
     }
 
 
+def extract_metadata(structure_dict: dict[str, Any]) -> dict[str, Any]:
+    """Extract response metadata from the structure statistics block."""
+    stats = structure_dict.get("statistics", {})
+
+    def safe_int(value: Any) -> int:
+        return value if isinstance(value, int) else 0
+
+    return {
+        "classes_count": safe_int(stats.get("class_count", 0)),
+        "methods_count": safe_int(stats.get("method_count", 0)),
+        "fields_count": safe_int(stats.get("field_count", 0)),
+        "total_lines": safe_int(stats.get("total_lines", 0)),
+    }
+
+
 # _convert_class: implementation
 def _convert_class(cls: Any) -> dict[str, Any]:
     return {

@@ -10,6 +10,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+    extract_metadata,
+)
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool,
 )
@@ -754,6 +757,39 @@ class TestAnalyzeCodeStructureToolExecute:
         metadata = tool._convert_analysis_result_to_dict(mock_analysis_result)
         assert "statistics" in metadata
         assert metadata["statistics"]["total_lines"] == 100
+
+
+class TestAnalyzeCodeStructureHelpers:
+    """Tests for module-level analyze_code_structure helpers."""
+
+    def test_extract_metadata_coerces_non_int_statistics_to_zero(self):
+        """Non-integer statistics should not leak into response metadata."""
+        metadata = extract_metadata(
+            {
+                "statistics": {
+                    "class_count": 2,
+                    "method_count": "3",
+                    "field_count": None,
+                    "total_lines": 42,
+                }
+            }
+        )
+
+        assert metadata == {
+            "classes_count": 2,
+            "methods_count": 0,
+            "fields_count": 0,
+            "total_lines": 42,
+        }
+
+    def test_extract_metadata_defaults_missing_statistics_to_zero(self):
+        """Missing statistics should produce stable zero counts."""
+        assert extract_metadata({}) == {
+            "classes_count": 0,
+            "methods_count": 0,
+            "fields_count": 0,
+            "total_lines": 0,
+        }
 
 
 class TestAnalyzeCodeStructureToolConvertParameters:

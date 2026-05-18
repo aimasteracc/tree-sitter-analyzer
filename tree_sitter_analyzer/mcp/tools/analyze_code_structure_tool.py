@@ -18,7 +18,10 @@ from ..utils import get_performance_monitor
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_code_structure_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
-from .analyze_code_structure_helpers import convert_analysis_result_to_dict
+from .analyze_code_structure_helpers import (
+    convert_analysis_result_to_dict,
+    extract_metadata,
+)
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -143,7 +146,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                 table_output = self._format_table(
                     structure_dict, result, language, format_type
                 )
-                metadata = self._extract_metadata(structure_dict)
+                metadata = extract_metadata(structure_dict)
 
                 response: dict[str, Any] = {
                     "success": True,
@@ -205,21 +208,6 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         else:
             raise ValueError(f"Unsupported format type: {format_type}")
         return str(output.replace("\r\n", "\n").replace("\r", "\n").rstrip())
-
-    @staticmethod
-    def _extract_metadata(structure_dict: dict[str, Any]) -> dict[str, Any]:
-        """Extract metadata (language, line count) from analysis."""
-        stats = structure_dict.get("statistics", {})
-
-        def safe_int(value: Any) -> int:
-            return value if isinstance(value, int) else 0
-
-        return {
-            "classes_count": safe_int(stats.get("class_count", 0)),
-            "methods_count": safe_int(stats.get("method_count", 0)),
-            "fields_count": safe_int(stats.get("field_count", 0)),
-            "total_lines": safe_int(stats.get("total_lines", 0)),
-        }
 
     def _build_next_steps(
         self, structure_dict: dict[str, Any], file_path: str
