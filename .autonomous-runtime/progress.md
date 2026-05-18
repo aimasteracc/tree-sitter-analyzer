@@ -69,3 +69,10 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 更新 `ds-automation.yaml`，要求自动化只调用 tick 入口，不再手写 nohup。
 - 验证: `bash -n` 通过，`tick.sh` 真实运行可写 tick 状态，
   `status.sh` 显示最近 heartbeat 在线。
+
+## 2026-05-18: 自主状态 JSON 输出
+
+- 为 `.autonomous-runtime/status.sh` 增加 `--json` 模式，输出 loop 探针、
+  Codex heartbeat、OpenSpec 待办、最近 Python 变更和机器可读结论。
+- 保留默认人类可读输出，方便人工检查；心跳可用 JSON 模式决定是否通知用户。
+- 验证: `bash -n` 通过，`status.sh --json | uv run python -m json.tool` 通过。

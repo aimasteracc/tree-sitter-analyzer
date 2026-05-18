@@ -3,7 +3,20 @@
 # DeepSeek TUI autonomous development — 状态检查命令（对标 24x7 监控手册）
 # =============================================================================
 
-PROJECT_DIR="${1:-/Users/aisheng.yu/git-private/tree-sitter-analyzer}"
+PROJECT_DIR="/Users/aisheng.yu/git-private/tree-sitter-analyzer"
+OUTPUT_FORMAT="text"
+
+for arg in "$@"; do
+    case "${arg}" in
+        --json)
+            OUTPUT_FORMAT="json"
+            ;;
+        *)
+            PROJECT_DIR="${arg}"
+            ;;
+    esac
+done
+
 cd "${PROJECT_DIR}"
 
 RUNTIME_DIR="${PROJECT_DIR}/.autonomous-runtime"
@@ -71,6 +84,89 @@ is_heartbeat_recent() {
     [ "${age}" -le "${HEARTBEAT_MAX_AGE_SECONDS}" ]
 }
 
+json_bool() {
+    if "$@"; then
+        echo "true"
+    else
+        echo "false"
+    fi
+}
+
+json_escape() {
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+json_array_from_lines() {
+    local first=1
+    local item
+    printf '['
+    while IFS= read -r item; do
+        [ -z "${item}" ] && continue
+        if [ "${first}" -eq 0 ]; then
+            printf ','
+        fi
+        first=0
+        printf '"%s"' "$(json_escape "${item}")"
+    done
+    printf ']'
+}
+
+collect_pending_changes() {
+    for dir in openspec/changes/*/; do
+        if [ -f "${dir}tasks.md" ] 2>/dev/null; then
+            basename "${dir}"
+        fi
+    done
+}
+
+py_change_count() {
+    git log -5 --oneline --name-only --pretty=format: 2>/dev/null | grep "\.py$" | wc -l | tr -d ' '
+}
+
+emit_json_status() {
+    local loop_running loop_pids tick_age heartbeat_recent pending_changes pending_count py_count conclusion
+
+    loop_running="$(json_bool is_loop_running)"
+    loop_pids="$(get_loop_pids | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+    tick_age="$(heartbeat_age_seconds)"
+    heartbeat_recent="$(json_bool is_heartbeat_recent)"
+    pending_changes="$(collect_pending_changes)"
+    pending_count="$(printf '%s\n' "${pending_changes}" | sed '/^$/d' | wc -l | tr -d ' ')"
+    py_count="$(py_change_count)"
+
+    if [ "${loop_running}" = "true" ] && [ "${py_count}" -ge 3 ]; then
+        conclusion="healthy_loop_probe_active"
+    elif [ "${loop_running}" = "true" ]; then
+        conclusion="loop_probe_active_low_python_change"
+    elif [ "${heartbeat_recent}" = "true" ]; then
+        conclusion="healthy_codex_heartbeat_active"
+    else
+        conclusion="stopped"
+    fi
+
+    cat << JSON
+{
+  "project": "$(json_escape "${PROJECT_DIR}")",
+  "branch": "$(json_escape "$(git branch --show-current 2>/dev/null || true)")",
+  "head": "$(json_escape "$(git rev-parse --short HEAD 2>/dev/null || true)")",
+  "loop_running": ${loop_running},
+  "loop_pids": "$(json_escape "${loop_pids}")",
+  "heartbeat_recent": ${heartbeat_recent},
+  "heartbeat_age_seconds": ${tick_age},
+  "heartbeat_max_age_seconds": ${HEARTBEAT_MAX_AGE_SECONDS},
+  "py_changes_last_5_commits": ${py_count},
+  "pending_openspec_count": ${pending_count},
+  "pending_openspec_changes": $(printf '%s\n' "${pending_changes}" | json_array_from_lines),
+  "conclusion": "$(json_escape "${conclusion}")"
+}
+JSON
+}
+
+if [ "${OUTPUT_FORMAT}" = "json" ]; then
+    emit_json_status
+    exit 0
+fi
+
 echo "📊 tree-sitter-analyzer 自主开发状态 @ $(date)"
 echo ""
 
@@ -110,19 +206,18 @@ git log -5 --oneline --pretty=format:"%h %s (%ar)" 2>/dev/null || echo "无提�
 # 3. .py 变更
 echo ""
 echo "── 3. .py 文件变更 ──"
-py_count=$(git log -5 --oneline --name-only --pretty=format: 2>/dev/null | grep "\.py$" | wc -l | tr -d ' ')
+py_count="$(py_change_count)"
 echo "最近5提交: ${py_count} 个 .py 文件"
 
 # 4. OpenSpec
 echo ""
 echo "── 4. OpenSpec changes ──"
 pending=0
-for dir in openspec/changes/*/; do
-    if [ -f "${dir}tasks.md" ] 2>/dev/null; then
-        pending=$((pending + 1))
-        echo "  📋 $(basename ${dir})"
-    fi
-done
+while IFS= read -r change_name; do
+    [ -z "${change_name}" ] && continue
+    pending=$((pending + 1))
+    echo "  📋 ${change_name}"
+done < <(collect_pending_changes)
 [ "${pending}" -eq 0 ] && echo "  全部完成"
 
 # 5. 自主状态
