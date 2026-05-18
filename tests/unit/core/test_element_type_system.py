@@ -25,6 +25,99 @@ from tree_sitter_analyzer.constants import (
 )
 
 
+def _advanced_args(sample_java_file: str) -> list[str]:
+    sample_dir = str(Path(sample_java_file).parent)
+    return [
+        "cli",
+        sample_java_file,
+        "--advanced",
+        "--output-format",
+        "text",
+        "--project-root",
+        sample_dir,
+    ]
+
+
+def _table_args(sample_java_file: str) -> list[str]:
+    sample_dir = str(Path(sample_java_file).parent)
+    return [
+        "cli",
+        sample_java_file,
+        "--table",
+        "full",
+        "--project-root",
+        sample_dir,
+    ]
+
+
+def _run_cli(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> str:
+    monkeypatch.setattr(sys, "argv", argv)
+    mock_stdout = StringIO()
+    monkeypatch.setattr("sys.stdout", mock_stdout)
+
+    with contextlib.suppress(SystemExit):
+        main()
+
+    return mock_stdout.getvalue()
+
+
+def _parse_advanced_counts(output: str) -> dict[str, int]:
+    labels = {
+        "Classes: ": "classes",
+        "Methods: ": "methods",
+        "Fields: ": "fields",
+        "Imports: ": "imports",
+    }
+    element_counts = {}
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        for prefix, key in labels.items():
+            if not stripped.startswith(prefix):
+                continue
+            with contextlib.suppress(ValueError, IndexError):
+                element_counts[key] = int(stripped.split(": ")[1])
+            break
+
+    return element_counts
+
+
+def _parse_table_class_info_counts(output: str) -> dict[str, int]:
+    table_counts = {}
+    in_class_info = False
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if "## Class Info" in stripped:
+            in_class_info = True
+            continue
+        if stripped.startswith("## ") and in_class_info:
+            in_class_info = False
+            continue
+        if not in_class_info:
+            continue
+
+        _capture_table_count(table_counts, stripped, "Total Methods", "methods")
+        _capture_table_count(table_counts, stripped, "Total Fields", "fields")
+
+    return table_counts
+
+
+def _capture_table_count(
+    table_counts: dict[str, int],
+    line: str,
+    label: str,
+    key: str,
+) -> None:
+    if label not in line:
+        return
+    parts = line.split("|")
+    if len(parts) < 3:
+        return
+    with contextlib.suppress(ValueError):
+        table_counts[key] = int(parts[2].strip())
+
+
 class TestElementTypeSystem:
     """Test the unified element type system"""
 
@@ -111,42 +204,8 @@ public class SampleClass {
 
     def test_advanced_command_element_counts(self, monkeypatch, sample_java_file):
         """Test that advanced command shows correct element counts"""
-        sample_dir = str(Path(sample_java_file).parent)
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "cli",
-                sample_java_file,
-                "--advanced",
-                "--output-format",
-                "text",
-                "--project-root",
-                sample_dir,
-            ],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-
-        # Parse element counts from output (text format without quotes)
-        lines = output.split("\n")
-        element_counts = {}
-
-        for line in lines:
-            line = line.strip()
-            if line.startswith("Classes: "):
-                element_counts["classes"] = int(line.split(": ")[1])
-            elif line.startswith("Methods: "):
-                element_counts["methods"] = int(line.split(": ")[1])
-            elif line.startswith("Fields: "):
-                element_counts["fields"] = int(line.split(": ")[1])
-            elif line.startswith("Imports: "):
-                element_counts["imports"] = int(line.split(": ")[1])
+        output = _run_cli(monkeypatch, _advanced_args(sample_java_file))
+        element_counts = _parse_advanced_counts(output)
 
         # Verify expected counts for the sample file
         assert element_counts.get("classes", 0) == 1, (
@@ -164,173 +223,34 @@ public class SampleClass {
 
     def test_table_command_element_counts(self, monkeypatch, sample_java_file):
         """Test that table command shows correct element counts"""
-        sample_dir = str(Path(sample_java_file).parent)
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "cli",
-                sample_java_file,
-                "--table",
-                "full",
-                "--project-root",
-                sample_dir,
-            ],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-
-        # Parse method and field counts from table output - look for Total Methods and Total Fields in Class Info section
-        lines = output.split("\n")
-        method_count = 0
-        field_count = 0
-        in_class_info = False
-
-        for line in lines:
-            line = line.strip()
-
-            # Check if we're in the Class Info section
-            if "## Class Info" in line:
-                in_class_info = True
-                continue
-            elif line.startswith("## ") and in_class_info:
-                # We've moved to another section
-                in_class_info = False
-                continue
-
-            if in_class_info and "Total Methods" in line:
-                parts = line.split("|")
-                if len(parts) >= 3:
-                    with contextlib.suppress(ValueError):
-                        method_count = int(parts[2].strip())
-            elif in_class_info and "Total Fields" in line:
-                parts = line.split("|")
-                if len(parts) >= 3:
-                    with contextlib.suppress(ValueError):
-                        field_count = int(parts[2].strip())
-
-        # Debug: Print the actual output to understand the format
-        print("DEBUG: Table output lines:")
-        for i, line in enumerate(output.split("\n")):
-            if "Methods" in line or "Fields" in line or "Class Info" in line:
-                print(f"  {i}: {repr(line)}")
-        print(f"DEBUG: Parsed counts - methods: {method_count}, fields: {field_count}")
+        output = _run_cli(monkeypatch, _table_args(sample_java_file))
+        table_counts = _parse_table_class_info_counts(output)
 
         # Verify expected counts
-        assert method_count == 3, f"Expected 3 methods in table, got {method_count}"
-        assert field_count == 2, f"Expected 2 fields in table, got {field_count}"
+        assert table_counts["methods"] == 3, (
+            f"Expected 3 methods in table, got {table_counts['methods']}"
+        )
+        assert table_counts["fields"] == 2, (
+            f"Expected 2 fields in table, got {table_counts['fields']}"
+        )
 
     def test_consistency_between_advanced_and_table(
         self, monkeypatch, sample_java_file
     ):
         """Test that advanced and table commands show consistent results"""
-        sample_dir = str(Path(sample_java_file).parent)
-
-        # Test advanced command
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "cli",
-                sample_java_file,
-                "--advanced",
-                "--output-format",
-                "text",
-                "--project-root",
-                sample_dir,
-            ],
+        advanced_counts = _parse_advanced_counts(
+            _run_cli(monkeypatch, _advanced_args(sample_java_file))
         )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        advanced_output = mock_stdout.getvalue()
-
-        # Parse advanced output (text format without quotes)
-        advanced_counts = {}
-        for line in advanced_output.split("\n"):
-            line = line.strip()
-            if line.startswith("Classes: "):
-                with contextlib.suppress(ValueError, IndexError):
-                    advanced_counts["classes"] = int(line.split(": ")[1])
-            elif line.startswith("Methods: "):
-                with contextlib.suppress(ValueError, IndexError):
-                    advanced_counts["methods"] = int(line.split(": ")[1])
-            elif line.startswith("Fields: "):
-                with contextlib.suppress(ValueError, IndexError):
-                    advanced_counts["fields"] = int(line.split(": ")[1])
-            elif line.startswith("Imports: "):
-                with contextlib.suppress(ValueError, IndexError):
-                    advanced_counts["imports"] = int(line.split(": ")[1])
-
-        # Test table command
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "cli",
-                sample_java_file,
-                "--table",
-                "full",
-                "--project-root",
-                sample_dir,
-            ],
+        table_counts = _parse_table_class_info_counts(
+            _run_cli(monkeypatch, _table_args(sample_java_file))
         )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        table_output = mock_stdout.getvalue()
-
-        # Parse table output - look for Total Methods and Total Fields in Class Info section
-        table_counts = {}
-        in_class_info = False
-
-        for line in table_output.split("\n"):
-            line = line.strip()
-
-            # Check if we're in the Class Info section
-            if "## Class Info" in line:
-                in_class_info = True
-                continue
-            elif line.startswith("## ") and in_class_info:
-                # We've moved to another section
-                in_class_info = False
-                continue
-
-            if in_class_info and "Total Methods" in line:
-                parts = line.split("|")
-                if len(parts) >= 3:
-                    with contextlib.suppress(ValueError):
-                        table_counts["methods"] = int(parts[2].strip())
-            elif in_class_info and "Total Fields" in line:
-                parts = line.split("|")
-                if len(parts) >= 3:
-                    with contextlib.suppress(ValueError):
-                        table_counts["fields"] = int(parts[2].strip())
-
-        # Debug: Print the actual output to understand the format
-        print("DEBUG: Table output lines:")
-        for i, line in enumerate(table_output.split("\n")):
-            if "Methods" in line or "Fields" in line:
-                print(f"  {i}: {repr(line)}")
-        print(f"DEBUG: Parsed table counts: {table_counts}")
 
         # Verify consistency
-        assert advanced_counts.get("methods", 0) == table_counts.get("methods", 0), (
-            f"Method count mismatch: advanced={advanced_counts.get('methods', 0)}, table={table_counts.get('methods', 0)}"
+        assert advanced_counts["methods"] == table_counts["methods"], (
+            f"Method count mismatch: advanced={advanced_counts['methods']}, table={table_counts['methods']}"
         )
-        assert advanced_counts.get("fields", 0) == table_counts.get("fields", 0), (
-            f"Field count mismatch: advanced={advanced_counts.get('fields', 0)}, table={table_counts.get('fields', 0)}"
+        assert advanced_counts["fields"] == table_counts["fields"], (
+            f"Field count mismatch: advanced={advanced_counts['fields']}, table={table_counts['fields']}"
         )
 
 
@@ -347,43 +267,8 @@ public class EmptyClass {
         file_path = tmp_path / "EmptyClass.java"
         file_path.write_text(java_content, encoding="utf-8")
         sample_java_file = str(file_path)
-        sample_dir = str(Path(sample_java_file).parent)
-
-        monkeypatch.setattr(
-            sys,
-            "argv",
-            [
-                "cli",
-                sample_java_file,
-                "--advanced",
-                "--output-format",
-                "text",
-                "--project-root",
-                sample_dir,
-            ],
-        )
-        mock_stdout = StringIO()
-        monkeypatch.setattr("sys.stdout", mock_stdout)
-
-        with contextlib.suppress(SystemExit):
-            main()
-
-        output = mock_stdout.getvalue()
-
-        # Parse element counts (text format without quotes)
-        lines = output.split("\n")
-        element_counts = {}
-
-        for line in lines:
-            line = line.strip()
-            if line.startswith("Classes: "):
-                element_counts["classes"] = int(line.split(": ")[1])
-            elif line.startswith("Methods: "):
-                element_counts["methods"] = int(line.split(": ")[1])
-            elif line.startswith("Fields: "):
-                element_counts["fields"] = int(line.split(": ")[1])
-            elif line.startswith("Imports: "):
-                element_counts["imports"] = int(line.split(": ")[1])
+        output = _run_cli(monkeypatch, _advanced_args(sample_java_file))
+        element_counts = _parse_advanced_counts(output)
 
         # For an empty class, we should have 1 class, 0 methods, 0 fields, 0 imports
         assert element_counts.get("classes", 0) == 1, "Empty class should have 1 class"
