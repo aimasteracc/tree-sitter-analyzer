@@ -14,7 +14,7 @@ STATE_FILE="${RUNTIME_DIR}/autonomous-state.json"
 LOCK_FILE="${RUNTIME_DIR}/loop.lock"
 LOG_FILE="${RUNTIME_DIR}/autonomous-loop.log"
 SLEEP_SECONDS="${TS_AUTONOMY_SLEEP_SECONDS:-1800}"
-WIKI_DIR="/Users/aisheng.yu/wiki/wiki"
+WIKI_DIR="/Users/aisheng.yu/wiki/wiki/ai-tech"
 
 mkdir -p "${RUNTIME_DIR}"
 

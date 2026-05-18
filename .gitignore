@@ -60,6 +60,9 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+.autonomous-runtime/autonomous-state.json
+.autonomous-runtime/loop.lock
+.autonomous-runtime/autonomous-loop.log
 
 # Flask stuff:
 instance/
