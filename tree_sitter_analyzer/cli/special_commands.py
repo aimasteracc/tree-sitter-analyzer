@@ -202,7 +202,7 @@ def _handle_health_check(
             tool.execute(
                 {
                     "min_grade": getattr(args, "min_grade", "D"),
-                    "max_files": 30,
+                    "max_files": getattr(args, "max_files", 30),
                     "output_format": _tool_output_format(args),
                 }
             )

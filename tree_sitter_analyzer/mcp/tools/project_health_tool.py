@@ -127,7 +127,7 @@ class ProjectHealthTool(BaseMCPTool):
 
         root = self.project_root
         min_grade = arguments.get("min_grade", "D")
-        max_files = arguments.get("max_files", 20)
+        max_files = _normalize_max_files(arguments.get("max_files", 20))
         output_format = arguments.get("output_format", "toon")
 
         scorer = HealthScorer()
@@ -157,30 +157,50 @@ def _build_project_health_result(
     dim_avgs = _average_dimensions(all_scores)
     worst = _scores_at_or_below_min_grade(all_scores, min_grade)
     weakest_dim = _weakest_dimension(dim_avgs)
-    agent_backlog = _build_agent_backlog(all_scores)
+    visible_limit = _visible_file_limit(max_files)
+    agent_backlog = _build_agent_backlog(all_scores, limit=visible_limit)
+    files = _file_details(worst, max_files)
 
     return {
         "success": True,
         "project_root": root,
         "total_files": len(all_scores),
+        "matching_file_count": len(worst),
+        "detail_limit": max_files,
+        "detail_count": len(files),
+        "hidden_detail_count": max(0, len(worst) - len(files)),
         "grade_distribution": grade_distribution,
         "signal": _build_signal(dim_avgs),
         "average_dimensions": dim_avgs,
         "weakest_dimension": weakest_dim,
-        "top_refactoring_targets": _top_refactoring_targets(worst),
+        "top_refactoring_targets": _top_refactoring_targets(worst, visible_limit),
         "agent_summary": _build_project_agent_summary(
             root=root,
             total_files=len(all_scores),
             grade_distribution=grade_distribution,
             weakest_dim=weakest_dim,
             agent_backlog=agent_backlog,
+            max_files=max_files,
         ),
         "agent_backlog": agent_backlog,
-        "files": _file_details(worst, max_files),
+        "files": files,
         "recommendation": _build_project_recommendation(
             grade_counts, weakest_dim, len(all_scores)
         ),
     }
+
+
+def _normalize_max_files(value: Any) -> int:
+    """Normalize user-provided project-health detail limit."""
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 20
+
+
+def _visible_file_limit(max_files: int) -> int:
+    """Keep compact target/backlog lists aligned with the requested detail limit."""
+    return min(_AGENT_BACKLOG_LIMIT, max_files)
 
 
 def _average_dimensions(scores: list[Any]) -> dict[str, float]:
@@ -221,8 +241,12 @@ def _file_details(scores: list[Any], max_files: int) -> list[dict[str, Any]]:
     ]
 
 
-def _top_refactoring_targets(scores: list[Any]) -> list[dict[str, Any]]:
+def _top_refactoring_targets(
+    scores: list[Any],
+    max_files: int = _AGENT_BACKLOG_LIMIT,
+) -> list[dict[str, Any]]:
     """Build the compact top-refactoring target list."""
+    candidates = [score for score in scores if _is_agent_backlog_candidate(score)]
     return [
         {
             "file": score.file_path,
@@ -231,7 +255,7 @@ def _top_refactoring_targets(scores: list[Any]) -> list[dict[str, Any]]:
             "signal": _build_signal(score.dimensions),
             "action": _file_action(score),
         }
-        for score in scores[:5]
+        for score in candidates[:max_files]
     ]
 
 
@@ -308,6 +332,7 @@ def _build_project_agent_summary(
     grade_distribution: dict[str, int],
     weakest_dim: str,
     agent_backlog: list[dict[str, Any]],
+    max_files: int = 20,
 ) -> dict[str, Any]:
     """Build a compact project-level summary for autonomous agent loops."""
     queue_head = agent_backlog[0] if agent_backlog else None
@@ -321,7 +346,8 @@ def _build_project_agent_summary(
         "backlog_count": len(agent_backlog),
         "verification_command": "uv run pytest -q",
         "project_health_command": (
-            "uv run python -m tree_sitter_analyzer --project-health --format json"
+            "uv run python -m tree_sitter_analyzer "
+            f"--project-health --max-files {max_files} --format json"
         ),
     }
     if not queue_head:

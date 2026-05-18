@@ -305,6 +305,12 @@ def _add_mcp_health_options(parser: argparse.ArgumentParser) -> None:
         help="Score ALL project files: grade distribution, worst files, refactoring targets",
     )
     parser.add_argument(
+        "--max-files",
+        type=int,
+        default=30,
+        help="Project health: maximum detailed files to include (default: 30)",
+    )
+    parser.add_argument(
         "--overview",
         action="store_true",
         help="Project portrait: language distribution, file counts, health summary",

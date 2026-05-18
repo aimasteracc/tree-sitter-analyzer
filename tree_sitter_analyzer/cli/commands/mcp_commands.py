@@ -81,7 +81,7 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         label="Project health check",
         build_tool_args=lambda args, output_format: {
             "min_grade": getattr(args, "min_grade", "D"),
-            "max_files": 30,
+            "max_files": getattr(args, "max_files", 30),
             "output_format": output_format,
         },
     ),

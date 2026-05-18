@@ -31,6 +31,7 @@ def _args(**overrides: Any) -> Namespace:
             "edit_type": "refactor",
             "project_root": "/repo",
             "min_grade": "C",
+            "max_files": 30,
             "change_impact_mode": "diff",
             "change_impact_include_tests": True,
         }
@@ -171,6 +172,37 @@ def test_safe_to_edit_cli_forwards_requested_edit_type(monkeypatch) -> None:
         "arguments": {
             "file_path": "target.py",
             "edit_type": "rename",
+            "output_format": "json",
+        },
+    }
+
+
+def test_project_health_cli_forwards_requested_max_files(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    class FakeProjectHealthTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True}
+
+    monkeypatch.setattr(mcp_commands, "ProjectHealthTool", FakeProjectHealthTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(project_health=True, max_files=7),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {
+            "min_grade": "C",
+            "max_files": 7,
             "output_format": "json",
         },
     }

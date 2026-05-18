@@ -11,6 +11,7 @@ from tree_sitter_analyzer.mcp.tools.project_health_tool import (
     ProjectHealthTool,
     _build_agent_backlog,
     _build_project_agent_summary,
+    _build_project_health_result,
     _build_project_recommendation,
     _is_agent_backlog_candidate,
 )
@@ -97,6 +98,25 @@ def test_agent_backlog_skips_demo_fixture_queue_heads() -> None:
     assert [item["file"] for item in backlog] == ["src/runtime.py"]
 
 
+def test_project_health_top_targets_skip_demo_fixture_queue_heads() -> None:
+    result = _build_project_health_result(
+        root="/repo",
+        all_scores=[
+            _score("examples/BigService.java", "D", 10.0),
+            _score("tests/golden_masters/full/java_bigservice_full.md", "F", 5.0),
+            _score("README.md", "D", 12.0),
+            _score("src/runtime.py", "D", 58.0),
+        ],
+        min_grade="D",
+        max_files=3,
+    )
+
+    assert [item["file"] for item in result["top_refactoring_targets"]] == [
+        "src/runtime.py"
+    ]
+    assert result["agent_summary"]["queue_head"]["file"] == "src/runtime.py"
+
+
 def test_agent_backlog_candidate_keeps_source_and_test_code() -> None:
     assert _is_agent_backlog_candidate(_score("src/runtime.py", "D", 58.0))
     assert _is_agent_backlog_candidate(_score("tests/unit/test_runtime.py", "D", 58.0))
@@ -134,6 +154,40 @@ def test_project_health_execute_exposes_agent_backlog(monkeypatch, tmp_path) -> 
     assert result["agent_backlog"][0]["safety_cli_command"].endswith(
         "--safe-to-edit --format json"
     )
+
+
+def test_project_health_max_files_controls_agent_visible_lists(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    scores = [
+        _score("src/bad.py", "D", 48.0, {"size": 22.0}),
+        _score("src/worse.py", "D", 47.0, {"complexity": 18.0}),
+        _score("src/ok.py", "C", 70.0, {"coverage": 35.0}),
+    ]
+
+    class FakeHealthScorer:
+        def score_project(self, project_root: str) -> list[SimpleNamespace]:
+            assert project_root == str(tmp_path)
+            return scores
+
+    monkeypatch.setattr(project_health_tool, "HealthScorer", FakeHealthScorer)
+
+    tool = ProjectHealthTool(project_root=str(tmp_path))
+    result = _run(
+        tool.execute({"min_grade": "C", "max_files": 1, "output_format": "json"})
+    )
+
+    assert result["matching_file_count"] == 3
+    assert result["detail_limit"] == 1
+    assert result["detail_count"] == 1
+    assert result["hidden_detail_count"] == 2
+    assert [item["file"] for item in result["files"]] == ["src/worse.py"]
+    assert [item["file"] for item in result["top_refactoring_targets"]] == [
+        "src/worse.py"
+    ]
+    assert [item["file"] for item in result["agent_backlog"]] == ["src/worse.py"]
+    assert "--max-files 1" in result["agent_summary"]["project_health_command"]
 
 
 def test_project_recommendation_handles_clean_projects() -> None:

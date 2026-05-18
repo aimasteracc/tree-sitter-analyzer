@@ -80,10 +80,14 @@ uv run tree-sitter-analyzer smart-context tree_sitter_analyzer/cli_main.py --for
 uv run tree-sitter-analyzer change-impact --agent-summary-only --format json
 uv run tree-sitter-analyzer change-impact --change-impact-mode staged --change-impact-no-tests --format json
 uv run tree-sitter-analyzer change-impact --change-impact-scope tree_sitter_analyzer/cli_main.py --agent-summary-only --format json
-uv run tree-sitter-analyzer project-health --format json
+uv run tree-sitter-analyzer project-health --max-files 5 --format json
 uv run tree-sitter-analyzer --dependencies summary --format json
 uv run tree-sitter-analyzer tree_sitter_analyzer/cli_main.py --dependencies file_deps --format json
 ```
+
+Use `project-health --max-files <n>` when working inside a noisy repository.
+It limits detailed file rows, top targets, and the agent backlog so the next
+queue head stays compact and intentional.
 
 `file-health` JSON and TOON responses include an `agent_summary` with the weakest
 dimension and score plus the first actionable smell, its line, symbol, and detail
