@@ -13,6 +13,7 @@ Uses Go-specific terminology:
 
 from typing import Any
 
+from ._go_formatter_helpers import format_go_full_table
 from .base_formatter import BaseTableFormatter
 
 
@@ -21,157 +22,14 @@ class GoTableFormatter(BaseTableFormatter):
 
     def _format_full_table(self, data: dict[str, Any]) -> str:
         """Full table format for Go"""
-        lines = []
-
-        # Header - Package name
-        package_name = self._get_package_name(data)
-        file_name = data.get("file_path", "Unknown").split("/")[-1].split("\\")[-1]
-
-        if package_name:
-            lines.append(f"# {package_name}/{file_name}")
-        else:
-            lines.append(f"# {file_name}")
-        lines.append("")
-
-        # Package Info
-        lines.append("## Package Info")
-        lines.append("| Property | Value |")
-        lines.append("|----------|-------|")
-        lines.append(f"| Package | {package_name or 'main'} |")
-
-        stats = data.get("statistics") or {}
-        lines.append(f"| Functions | {stats.get('function_count', 0)} |")
-        lines.append(f"| Types | {stats.get('class_count', 0)} |")
-        lines.append(f"| Variables | {stats.get('variable_count', 0)} |")
-        lines.append("")
-
-        # Imports
-        imports = data.get("imports", [])
-        if imports:
-            lines.append("## Imports")
-            lines.append("```go")
-            for imp in imports:
-                stmt = imp.get("import_statement", "") or imp.get("raw_text", "")
-                if stmt:
-                    # Clean up the import statement
-                    stmt = stmt.strip()
-                    if not stmt.startswith("import"):
-                        stmt = f'import "{stmt}"'
-                    lines.append(stmt)
-            lines.append("```")
-            lines.append("")
-
-        # Types (Structs, Interfaces, Type Aliases)
-        classes = data.get("classes", [])
-        structs = [c for c in classes if c.get("type") == "struct"]
-        interfaces = [c for c in classes if c.get("type") == "interface"]
-        type_aliases = [c for c in classes if c.get("type") == "type_alias"]
-
-        if structs:
-            lines.append("## Structs")
-            lines.append("| Name | Visibility | Lines | Embedded | Doc |")
-            lines.append("|------|------------|-------|----------|-----|")
-            for s in structs:
-                name = s.get("name", "")
-                vis = self._go_visibility(name)
-                line_range = s.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                embedded = ", ".join([str(i) for i in (s.get("interfaces", []) or [])])
-                doc = self._extract_doc_summary(s.get("docstring", "") or "")
-                lines.append(
-                    f"| {name} | {vis} | {lines_str} | {embedded or '-'} | {doc or '-'} |"
-                )
-            lines.append("")
-
-        if interfaces:
-            lines.append("## Interfaces")
-            lines.append("| Name | Visibility | Lines | Doc |")
-            lines.append("|------|------------|-------|-----|")
-            for i in interfaces:
-                name = i.get("name", "")
-                vis = self._go_visibility(name)
-                line_range = i.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                doc = self._extract_doc_summary(i.get("docstring", "") or "")
-                lines.append(f"| {name} | {vis} | {lines_str} | {doc or '-'} |")
-            lines.append("")
-
-        if type_aliases:
-            lines.append("## Type Aliases")
-            lines.append("| Name | Visibility | Lines |")
-            lines.append("|------|------------|-------|")
-            for t in type_aliases:
-                name = t.get("name", "")
-                vis = self._go_visibility(name)
-                line_range = t.get("line_range", {})
-                lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-                lines.append(f"| {name} | {vis} | {lines_str} |")
-            lines.append("")
-
-        # Functions (non-methods)
-        functions = data.get("functions", []) or data.get("methods", [])
-        funcs = [
-            f
-            for f in functions
-            if not getattr(f, "is_method", False) and not f.get("is_method", False)
-        ]
-        methods = [
-            f
-            for f in functions
-            if getattr(f, "is_method", False) or f.get("is_method", False)
-        ]
-
-        if funcs:
-            lines.append("## Functions")
-            lines.append("| Func | Signature | Vis | Lines | Doc |")
-            lines.append("|------|-----------|-----|-------|-----|")
-            for func in funcs:
-                lines.append(self._format_func_row(func))
-            lines.append("")
-
-        # Methods (with receiver)
-        if methods:
-            lines.append("## Methods")
-            lines.append("| Receiver | Func | Signature | Vis | Lines | Doc |")
-            lines.append("|----------|------|-----------|-----|-------|-----|")
-            for method in methods:
-                lines.append(self._format_method_row(method))
-            lines.append("")
-
-        # Constants
-        variables = data.get("variables", []) or data.get("fields", [])
-        consts = [v for v in variables if v.get("is_constant", False)]
-        vars_list = [v for v in variables if not v.get("is_constant", False)]
-
-        if consts:
-            lines.append("## Constants")
-            lines.append("| Name | Type | Vis | Line |")
-            lines.append("|------|------|-----|------|")
-            for c in consts:
-                name = c.get("name", "")
-                var_type = c.get("variable_type", "") or c.get("type", "") or "-"
-                vis = self._go_visibility(name)
-                line = c.get("line_range", {}).get("start", 0)
-                lines.append(f"| {name} | {var_type} | {vis} | {line} |")
-            lines.append("")
-
-        if vars_list:
-            lines.append("## Variables")
-            lines.append("| Name | Type | Vis | Line |")
-            lines.append("|------|------|-----|------|")
-            for v in vars_list:
-                name = v.get("name", "")
-                var_type = v.get("variable_type", "") or v.get("type", "") or "-"
-                vis = self._go_visibility(name)
-                line = v.get("line_range", {}).get("start", 0)
-                lines.append(f"| {name} | {var_type} | {vis} | {line} |")
-            lines.append("")
-
-        # Trim trailing blank lines
-        while lines and lines[-1] == "":
-            lines.pop()
-
-        return "\n".join(lines)
+        return format_go_full_table(
+            data,
+            self._get_package_name,
+            self._go_visibility,
+            self._extract_doc_summary,
+            self._format_func_row,
+            self._format_method_row,
+        )
 
     def _format_compact_table(self, data: dict[str, Any]) -> str:
         """Compact table format for Go"""
