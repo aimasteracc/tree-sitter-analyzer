@@ -349,3 +349,18 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
   - `uv run pytest -q`（10417 passed, 32 skipped）
   - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py --format json`（`A(96.4)`）
 - 结论：`test_engine.py` 相关管理器职责收口完成，队列可继续继续处理剩余 `test_engine.py` 类（如需）或转向下一个 oversized 目标。
+
+## 2026-05-19: test_engine_manager 依赖整理（收尾）
+
+- 目标：消除上一次迁移后遗留的导入耦合，避免重复定义。
+- 动作：
+  - 将 `tests/unit/core/test_engine_manager.py` 的 mixin import 调整为 `tests/unit/core/_test_engine_manager_test_mixin.py`。
+  - 在 `tests/unit/core/_test_engine_test_mixin.py` 删除已迁移出的 `TestEngineManager*` 与 `TestEngineSecurityRegression` mixin 定义，并清理无用 import。
+  - 保持 `tests/unit/core/_test_engine_manager_test_mixin.py` 作为单一管理器 mixin 来源。
+- 验证：
+  - `uv run ruff check tests/unit/core/_test_engine_test_mixin.py tests/unit/core/_test_engine_manager_test_mixin.py tests/unit/core/test_engine_manager.py tests/unit/core/test_engine.py`
+  - `uv run pytest tests/unit/core/test_engine.py tests/unit/core/test_engine_manager.py -q`（101 passed, 1 skipped）
+  - `uv run pytest -q`（10568 passed, 32 skipped）
+- 结论：
+  - 管理器测试职责在文件层面完成收口，行为未变更、回归通过。
+  - 当前可继续按同队列向 `test_engine.py` 其余职责或下一目标 oversized 文件推进。

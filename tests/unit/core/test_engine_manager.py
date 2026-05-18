@@ -3,7 +3,7 @@
 
 import pytest
 
-from tests.unit.core._test_engine_test_mixin import (
+from tests.unit.core._test_engine_manager_test_mixin import (
     TestEngineManagerEdgeCasesTestMixin,
     TestEngineManagerGetInstanceTestMixin,
     TestEngineManagerResetInstancesTestMixin,
