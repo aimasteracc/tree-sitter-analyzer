@@ -13,6 +13,10 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from tests.unit.languages._test_yaml_element_metadata_properties_helpers import (
+    assert_element_line_number_properties,
+    parse_yaml_elements_and_lines,
+)
 from tree_sitter_analyzer.languages.yaml_plugin import (
     YAML_AVAILABLE,
     YAMLElementExtractor,
@@ -129,84 +133,8 @@ class TestYAMLElementMetadataProperties:
 
         Validates: Requirements 2.4
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Get source lines for validation
-        source_lines = yaml_content.split("\n")
-        total_lines = len(source_lines)
-
-        # Property: All elements must have start_line attribute
-        for element in elements:
-            assert hasattr(element, "start_line"), (
-                f"Element '{element.name}' must have start_line attribute"
-            )
-            assert isinstance(element.start_line, int), (
-                f"start_line must be int, got {type(element.start_line)}"
-            )
-
-        # Property: All elements must have end_line attribute
-        for element in elements:
-            assert hasattr(element, "end_line"), (
-                f"Element '{element.name}' must have end_line attribute"
-            )
-            assert isinstance(element.end_line, int), (
-                f"end_line must be int, got {type(element.end_line)}"
-            )
-
-        # Property: start_line must be positive (1-indexed)
-        for element in elements:
-            assert element.start_line > 0, (
-                f"Element '{element.name}' start_line must be positive, "
-                f"got {element.start_line}"
-            )
-
-        # Property: end_line must be >= start_line
-        for element in elements:
-            assert element.end_line >= element.start_line, (
-                f"Element '{element.name}' end_line ({element.end_line}) must be >= "
-                f"start_line ({element.start_line})"
-            )
-
-        # Property: Line numbers must be within source bounds
-        for element in elements:
-            assert element.start_line <= total_lines, (
-                f"Element '{element.name}' start_line ({element.start_line}) must be "
-                f"<= total lines ({total_lines})"
-            )
-            assert element.end_line <= total_lines, (
-                f"Element '{element.name}' end_line ({element.end_line}) must be "
-                f"<= total lines ({total_lines})"
-            )
-
-        # Property: Line numbers must correspond to actual content
-        for element in elements:
-            # Get the lines for this element
-            start_idx = element.start_line - 1  # Convert to 0-indexed
-            end_idx = element.end_line  # end_line is inclusive, so no -1
-
-            if start_idx < len(source_lines) and end_idx <= len(source_lines):
-                element_lines = source_lines[start_idx:end_idx]
-                element_text = "\n".join(element_lines)
-
-                # Property: Element text should not be empty
-                assert len(element_text.strip()) > 0, (
-                    f"Element '{element.name}' at lines {element.start_line}-{element.end_line} "
-                    f"should have non-empty content"
-                )
+        elements, source_lines = parse_yaml_elements_and_lines(yaml_content)
+        assert_element_line_number_properties(elements, source_lines)
 
     @settings(max_examples=100)
     @given(yaml_content=yaml_simple_mapping())

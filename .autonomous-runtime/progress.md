@@ -76,3 +76,12 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
   Codex heartbeat、OpenSpec 待办、最近 Python 变更和机器可读结论。
 - 保留默认人类可读输出，方便人工检查；心跳可用 JSON 模式决定是否通知用户。
 - 验证: `bash -n` 通过，`status.sh --json | uv run python -m json.tool` 通过。
+
+## 2026-05-18: YAML 元数据测试结构化重构
+
+- 目标: 继续 Phase 8 Slice 3，降低测试可维护性风险，优先处理 `test_yaml_element_metadata_properties.py`。
+- 动作: 新增 `tests/unit/languages/_test_yaml_element_metadata_properties_helpers.py`，提取 `test_property_4_element_metadata_line_numbers` 的公共解析/断言逻辑；主测试改为调用 helper。
+- 验证: 
+  - `uv run pytest tests/unit/languages/test_yaml_element_metadata_properties.py -q`
+  - `uv run pytest -q`
+- 结果: 全量测试通过（`10417 passed, 32 skipped`）。
