@@ -394,7 +394,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         self, result: Any, options: _ExecutionOptions
     ) -> dict[str, Any]:
         """Convert analysis output into the final MCP response payload."""
-        structure_dict = self._convert_analysis_result_to_dict(result)
+        structure_dict = _convert_analysis_result(result)
         table_output = _format_table(
             structure_dict, result, options.language, options.format_type
         )
@@ -474,10 +474,6 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         except Exception as e:
             self.logger.error(f"Failed to save output to file: {e}")
             _mark_file_save_error(response, e)
-
-    def _convert_analysis_result_to_dict(self, result: Any) -> dict[str, Any]:
-        """Convert AnalysisResult to a JSON-serializable dict."""
-        return _convert_analysis_result(result)
 
 
 # Tool instance for easy access

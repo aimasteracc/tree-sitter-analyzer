@@ -11,15 +11,18 @@ Phase 7: Performance Integration Tests
 
 import asyncio
 import gc
-import os
 import tempfile
-import time
 from pathlib import Path
-from typing import Any
 
 import psutil
 import pytest
 
+from tests.integration._test_phase7_performance_integration_helpers import (
+    PerformanceProfiler,
+    create_large_scale_structure,
+    nonnegative_float_from_env,
+    positive_int_from_env,
+)
 from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
@@ -35,55 +38,6 @@ DEFAULT_RESOURCE_CLEANUP_SETTLE_SECONDS = 0.05
 DEFAULT_MEMORY_EFFICIENCY_FILES = 8
 
 
-def _positive_int_from_env(name: str, default: int) -> int:
-    """Read a positive integer env override without making test collection brittle."""
-    try:
-        value = int(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-    return max(1, value)
-
-
-def _nonnegative_float_from_env(name: str, default: float) -> float:
-    """Read a non-negative float env override without making test collection brittle."""
-    try:
-        value = float(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-    return max(0.0, value)
-
-
-class PerformanceProfiler:
-    """パフォーマンス測定ユーティリティ"""
-
-    def __init__(self):
-        self.process = psutil.Process()
-        self.start_time = None
-        self.start_memory = None
-        self.start_cpu = None
-
-    def start_profiling(self):
-        """プロファイリング開始"""
-        gc.collect()  # ガベージコレクション実行
-        self.start_time = time.time()
-        self.start_memory = self.process.memory_info().rss
-        self.start_cpu = self.process.cpu_percent()
-
-    def end_profiling(self) -> dict[str, Any]:
-        """プロファイリング終了と結果取得"""
-        end_time = time.time()
-        end_memory = self.process.memory_info().rss
-        end_cpu = self.process.cpu_percent()
-
-        return {
-            "execution_time": end_time - self.start_time,
-            "memory_used": end_memory - self.start_memory,
-            "peak_memory": self.process.memory_info().rss,
-            "cpu_usage": end_cpu,
-            "memory_mb": (end_memory - self.start_memory) / 1024 / 1024,
-        }
-
-
 class TestPhase7PerformanceIntegration:
     """Phase 7 パフォーマンス統合テスト"""
 
@@ -94,423 +48,9 @@ class TestPhase7PerformanceIntegration:
             project_root = Path(temp_dir)
 
             # 大量のファイルを作成
-            self._create_large_scale_structure(project_root)
+            create_large_scale_structure(project_root)
 
             yield str(project_root)
-
-    def _create_large_scale_structure(self, project_root: Path):
-        """大規模プロジェクト構造作成"""
-        # 100個のJavaクラス
-        java_root = project_root / "src" / "main" / "java" / "com" / "enterprise"
-        java_root.mkdir(parents=True)
-
-        for i in range(100):
-            package_dir = java_root / f"package{i // 10}"
-            package_dir.mkdir(exist_ok=True)
-
-            class_content = f"""
-package com.enterprise.package{i // 10};
-
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
-
-/**
- * Generated class {i} for performance testing
- */
-public class GeneratedClass{i} {{
-    private String name;
-    private List<String> items;
-    private Map<String, Object> properties;
-
-    public GeneratedClass{i}(String name) {{
-        this.name = name;
-        this.items = new ArrayList<>();
-        this.properties = new HashMap<>();
-    }}
-
-    public String getName() {{ return name; }}
-    public void setName(String name) {{ this.name = name; }}
-
-    public List<String> getItems() {{ return items; }}
-    public void addItem(String item) {{ items.add(item); }}
-
-    public Map<String, Object> getProperties() {{ return properties; }}
-    public void setProperty(String key, Object value) {{ properties.put(key, value); }}
-
-    public void processData() {{
-        for (int j = 0; j < 10; j++) {{
-            items.add("item_" + j);
-            properties.put("key_" + j, "value_" + j);
-        }}
-    }}
-
-    public String generateReport() {{
-        StringBuilder report = new StringBuilder();
-        report.append("Class: ").append(name).append("\\n");
-        report.append("Items: ").append(items.size()).append("\\n");
-        report.append("Properties: ").append(properties.size()).append("\\n");
-        return report.toString();
-    }}
-
-    public boolean validateData() {{
-        return name != null && !name.isEmpty() && items != null && properties != null;
-    }}
-
-    public void cleanup() {{
-        items.clear();
-        properties.clear();
-    }}
-}}
-"""
-            (package_dir / f"GeneratedClass{i}.java").write_text(class_content)
-
-        # 50個のPythonモジュール
-        python_root = project_root / "python" / "modules"
-        python_root.mkdir(parents=True)
-
-        for i in range(50):
-            module_content = f'''#!/usr/bin/env python3
-"""
-Generated module {i} for performance testing
-"""
-
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, field
-from datetime import datetime
-import json
-
-
-@dataclass
-class DataModel{i}:
-    """Generated data model {i}"""
-    id: int = {i}
-    name: str = "model_{i}"
-    items: List[str] = field(default_factory=list)
-    properties: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.now)
-
-    def add_item(self, item: str) -> None:
-        """Add item to the model"""
-        self.items.append(item)
-
-    def set_property(self, key: str, value: Any) -> None:
-        """Set property value"""
-        self.properties[key] = value
-
-    def get_property(self, key: str, default: Any = None) -> Any:
-        """Get property value"""
-        return self.properties.get(key, default)
-
-    def process_data(self) -> Dict[str, Any]:
-        """Process model data"""
-        result = {{}}
-        for j in range(10):
-            self.add_item(f"item_{{j}}")
-            self.set_property(f"key_{{j}}", f"value_{{j}}")
-
-        result["item_count"] = len(self.items)
-        result["property_count"] = len(self.properties)
-        result["processed_at"] = datetime.now().isoformat()
-
-        return result
-
-    def validate(self) -> bool:
-        """Validate model data"""
-        return (
-            self.id >= 0 and
-            self.name and
-            isinstance(self.items, list) and
-            isinstance(self.properties, dict)
-        )
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
-        return {{
-            "id": self.id,
-            "name": self.name,
-            "items": self.items,
-            "properties": self.properties,
-            "created_at": self.created_at.isoformat()
-        }}
-
-    def to_json(self) -> str:
-        """Convert to JSON string"""
-        return json.dumps(self.to_dict(), indent=2)
-
-
-class ProcessorService{i}:
-    """Generated processor service {i}"""
-
-    def __init__(self):
-        self.models: List[DataModel{i}] = []
-        self.cache: Dict[int, Any] = {{}}
-
-    def add_model(self, model: DataModel{i}) -> None:
-        """Add model to processor"""
-        if model.validate():
-            self.models.append(model)
-            self.cache[model.id] = model.to_dict()
-
-    def process_all(self) -> List[Dict[str, Any]]:
-        """Process all models"""
-        results = []
-        for model in self.models:
-            result = model.process_data()
-            results.append(result)
-        return results
-
-    def get_statistics(self) -> Dict[str, Any]:
-        """Get processing statistics"""
-        return {{
-            "total_models": len(self.models),
-            "cache_size": len(self.cache),
-            "average_items": sum(len(m.items) for m in self.models) / len(self.models) if self.models else 0,
-            "average_properties": sum(len(m.properties) for m in self.models) / len(self.models) if self.models else 0
-        }}
-
-    def cleanup(self) -> None:
-        """Cleanup processor"""
-        self.models.clear()
-        self.cache.clear()
-
-
-def create_sample_data_{i}() -> List[DataModel{i}]:
-    """Create sample data for testing"""
-    models = []
-    for j in range(5):
-        model = DataModel{i}(
-            id=j,
-            name=f"sample_model_{{j}}"
-        )
-        model.process_data()
-        models.append(model)
-    return models
-
-
-def main():
-    """Main function for module {i}"""
-    processor = ProcessorService{i}()
-    sample_data = create_sample_data_{i}()
-
-    for model in sample_data:
-        processor.add_model(model)
-
-    results = processor.process_all()
-    stats = processor.get_statistics()
-
-    print(f"Module {i} processed {{len(results)}} models")
-    print(f"Statistics: {{stats}}")
-
-    processor.cleanup()
-
-
-if __name__ == "__main__":
-    main()
-'''
-            (python_root / f"module_{i}.py").write_text(module_content)
-
-        # 30個のJavaScriptファイル
-        js_root = project_root / "frontend" / "src" / "components"
-        js_root.mkdir(parents=True)
-
-        for i in range(30):
-            js_content = f"""/**
- * Generated React component {i} for performance testing
- */
-
-import React, {{ useState, useEffect, useCallback, useMemo }} from 'react';
-
-const GeneratedComponent{i} = ({{ data, onUpdate, config }}) => {{
-    const [state, setState] = useState({{
-        items: [],
-        loading: false,
-        error: null,
-        counter: 0
-    }});
-
-    const [cache, setCache] = useState(new Map());
-
-    // Memoized calculations
-    const processedData = useMemo(() => {{
-        if (!data) return [];
-
-        return data.map((item, index) => ({{
-            ...item,
-            id: `item_${{index}}`,
-            processed: true,
-            timestamp: Date.now()
-        }}));
-    }}, [data]);
-
-    const statistics = useMemo(() => ({{
-        totalItems: processedData.length,
-        loadingState: state.loading,
-        errorCount: state.error ? 1 : 0,
-        cacheSize: cache.size
-    }}), [processedData, state.loading, state.error, cache.size]);
-
-    // Event handlers
-    const handleItemClick = useCallback((itemId) => {{
-        setState(prev => ({{
-            ...prev,
-            counter: prev.counter + 1
-        }}));
-
-        if (onUpdate) {{
-            onUpdate({{
-                action: 'item_clicked',
-                itemId,
-                timestamp: Date.now()
-            }});
-        }}
-    }}, [onUpdate]);
-
-    const handleDataRefresh = useCallback(async () => {{
-        setState(prev => ({{ ...prev, loading: true, error: null }}));
-
-        try {{
-            // Simulate API call
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            const newItems = Array.from({{ length: 10 }}, (_, index) => ({{
-                id: `generated_${{index}}`,
-                name: `Item ${{index}}`,
-                value: Math.random() * 100
-            }}));
-
-            setState(prev => ({{
-                ...prev,
-                items: newItems,
-                loading: false
-            }}));
-
-            // Update cache
-            setCache(prev => {{
-                const newCache = new Map(prev);
-                newItems.forEach(item => {{
-                    newCache.set(item.id, item);
-                }});
-                return newCache;
-            }});
-
-        }} catch (error) {{
-            setState(prev => ({{
-                ...prev,
-                loading: false,
-                error: error.message
-            }}));
-        }}
-    }}, []);
-
-    const handleClearCache = useCallback(() => {{
-        setCache(new Map());
-        setState(prev => ({{ ...prev, counter: 0 }}));
-    }}, []);
-
-    // Effects
-    useEffect(() => {{
-        if (config?.autoRefresh) {{
-            const interval = setInterval(handleDataRefresh, config.refreshInterval || 5000);
-            return () => clearInterval(interval);
-        }}
-    }}, [config, handleDataRefresh]);
-
-    useEffect(() => {{
-        // Cleanup on unmount
-        return () => {{
-            setCache(new Map());
-        }};
-    }}, []);
-
-    // Render helpers
-    const renderItem = useCallback((item) => (
-        <div
-            key={{item.id}}
-            className="item"
-            onClick={{() => handleItemClick(item.id)}}
-        >
-            <h4>{{item.name}}</h4>
-            <p>Value: {{item.value?.toFixed(2)}}</p>
-            <small>ID: {{item.id}}</small>
-        </div>
-    ), [handleItemClick]);
-
-    const renderStatistics = useCallback(() => (
-        <div className="statistics">
-            <h3>Component {i} Statistics</h3>
-            <ul>
-                <li>Total Items: {{statistics.totalItems}}</li>
-                <li>Loading: {{statistics.loadingState ? 'Yes' : 'No'}}</li>
-                <li>Errors: {{statistics.errorCount}}</li>
-                <li>Cache Size: {{statistics.cacheSize}}</li>
-                <li>Click Counter: {{state.counter}}</li>
-            </ul>
-        </div>
-    ), [statistics, state.counter]);
-
-    if (state.loading) {{
-        return <div className="loading">Loading component {i}...</div>;
-    }}
-
-    if (state.error) {{
-        return (
-            <div className="error">
-                <h3>Error in Component {i}</h3>
-                <p>{{state.error}}</p>
-                <button onClick={{handleDataRefresh}}>Retry</button>
-            </div>
-        );
-    }}
-
-    return (
-        <div className="generated-component-{i}">
-            <header>
-                <h2>Generated Component {i}</h2>
-                <div className="actions">
-                    <button onClick={{handleDataRefresh}} disabled={{state.loading}}>
-                        Refresh Data
-                    </button>
-                    <button onClick={{handleClearCache}}>
-                        Clear Cache
-                    </button>
-                </div>
-            </header>
-
-            {{renderStatistics()}}
-
-            <main className="content">
-                <div className="processed-data">
-                    <h3>Processed Data ({{processedData.length}} items)</h3>
-                    <div className="items-grid">
-                        {{processedData.map(renderItem)}}
-                    </div>
-                </div>
-
-                <div className="state-items">
-                    <h3>State Items ({{state.items.length}} items)</h3>
-                    <div className="items-grid">
-                        {{state.items.map(renderItem)}}
-                    </div>
-                </div>
-            </main>
-        </div>
-    );
-}};
-
-// Default props
-GeneratedComponent{i}.defaultProps = {{
-    data: [],
-    config: {{
-        autoRefresh: false,
-        refreshInterval: 5000
-    }}
-}};
-
-export default GeneratedComponent{i};
-"""
-            (js_root / f"GeneratedComponent{i}.js").write_text(js_content)
 
     @pytest.mark.requires_fd
     @pytest.mark.requires_ripgrep
@@ -666,7 +206,7 @@ export default GeneratedComponent{i};
         # 大量のファイル処理
         table_tool = TableFormatTool(large_scale_project)
         memory_measurements = []
-        sample_file_count = _positive_int_from_env(
+        sample_file_count = positive_int_from_env(
             "TSA_MEMORY_EFFICIENCY_FILES",
             DEFAULT_MEMORY_EFFICIENCY_FILES,
         )
@@ -739,7 +279,7 @@ export default GeneratedComponent{i};
 
         # 段階的に負荷を増加
         load_levels = [5, 10, 20, 30]
-        recovery_interval = _nonnegative_float_from_env(
+        recovery_interval = nonnegative_float_from_env(
             "TSA_SCALABILITY_RECOVERY_SECONDS",
             DEFAULT_SCALABILITY_RECOVERY_SECONDS,
         )
@@ -856,11 +396,11 @@ export default GeneratedComponent{i};
         server = TreeSitterAnalyzerMCPServer()
         server.set_project_path(large_scale_project)
 
-        sample_count = _positive_int_from_env(
+        sample_count = positive_int_from_env(
             "TSA_SUSTAINED_LOAD_ITERATIONS",
             DEFAULT_SUSTAINED_LOAD_ITERATIONS,
         )
-        sample_interval = _nonnegative_float_from_env(
+        sample_interval = nonnegative_float_from_env(
             "TSA_SUSTAINED_LOAD_INTERVAL_SECONDS",
             DEFAULT_SUSTAINED_LOAD_INTERVAL_SECONDS,
         )
@@ -943,7 +483,7 @@ export default GeneratedComponent{i};
         server.set_project_path(large_scale_project)
 
         initial_memory = psutil.Process().memory_info().rss / 1024 / 1024
-        cleanup_settle_seconds = _nonnegative_float_from_env(
+        cleanup_settle_seconds = nonnegative_float_from_env(
             "TSA_RESOURCE_CLEANUP_SETTLE_SECONDS",
             DEFAULT_RESOURCE_CLEANUP_SETTLE_SECONDS,
         )
