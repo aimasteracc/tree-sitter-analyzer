@@ -56,8 +56,14 @@ def test_agent_skills_inventory_exposes_decision_fields(tmp_path):
     assert result["skill_count"] == 1
     assert result["validation"]["status"] == "ready"
     assert result["agent_summary"]["validation_status"] == "ready"
+    assert result["agent_summary"]["ready_for_use_count"] == 1
+    assert result["agent_summary"]["readiness_ratio"] == 1.0
+    assert result["agent_summary"]["actionable_skills"] == ["triage"]
     assert skill["name"] == "triage"
     assert skill["model_invocation_enabled"] is True
+    assert skill["ready_for_use"] is True
+    assert skill["actionability"] == "ready"
+    assert skill["actionability_score"] >= 85
     assert skill["completion_guidance_present"] is True
     assert skill["scripts"] == [".agents/skills/triage/scripts/helper.sh"]
     assert skill["requires_context"] == ["issue_tracker", "triage_labels"]
@@ -90,9 +96,11 @@ def test_agent_skills_inventory_reports_missing_completion_without_brief_noise(
     skill = result["skills"][0]
 
     assert skill["model_invocation_enabled"] is False
+    assert skill["ready_for_use"] is False
     assert skill["gaps"] == ["missing_completion_guidance"]
     assert result["gaps"]["missing_completion_guidance"] == ["zoom-out"]
     assert result["gaps"]["optional_agent_brief_missing"] == ["zoom-out"]
+    assert result["agent_summary"]["ready_for_use_count"] == 0
     assert result["validation"]["status"] == "caution"
     assert result["validation"]["caution_gap_count"] == 1
     assert result["agent_summary"]["next_fix"] == (

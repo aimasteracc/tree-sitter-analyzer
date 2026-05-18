@@ -59,6 +59,8 @@ def _build_result(
         {
             "readiness": records,
             "recommendations": recommendations,
+            "status_distribution": _status_distribution(records),
+            "high_priority_languages": _high_priority_languages(recommendations),
             "agent_summary": agent_summary,
         }
     )
@@ -92,6 +94,20 @@ def _metadata_summary(
         "implemented_languages": sorted(plugin_entrypoints),
         "parser_packages": parser_package_requirements(parser_packages),
     }
+
+
+def _status_distribution(records: list[dict[str, Any]]) -> dict[str, int]:
+    """Return a compact status histogram for workflow-aware prioritization."""
+    distribution: dict[str, int] = {}
+    for record in records:
+        status = record["status"]
+        distribution[status] = distribution.get(status, 0) + 1
+    return distribution
+
+
+def _high_priority_languages(recommendations: list[dict[str, Any]]) -> list[str]:
+    """Expose top language names by score for quick CLI triage."""
+    return [item["language"] for item in recommendations[:3]]
 
 
 def _candidate_count(records: list[dict[str, Any]]) -> int:
@@ -145,11 +161,17 @@ def _summary_verification_command(first: dict[str, Any] | None) -> str:
 
 def _build_toon_content(result: dict[str, Any]) -> str:
     summary = result["agent_summary"]
+    status_distribution = result.get("status_distribution", {})
     lines = [
         "advisor: parser readiness",
         f"risk: {summary['risk']}",
         f"reported_language_count: {summary['reported_language_count']}",
         f"candidate_count: {summary['candidate_count']}",
+        "status_distribution: "
+        + ", ".join(
+            f"{key}={status_distribution[key]}" for key in sorted(status_distribution)
+        ),
+        f"top_priority_languages: {', '.join(result.get('high_priority_languages', []))}",
         f"next_step: {summary['next_step']}",
         f"verification_command: {summary['verification_command']}",
         "readiness:",

@@ -32,9 +32,19 @@ uv run tree-sitter-analyzer agent-workflow tree_sitter_analyzer/cli_main.py --fo
 The JSON and TOON responses include `current_phase`, `phase_order`,
 `current_step`, and `recommended_commands`, so agents can tell whether they
 should start at project setup (`set`) or jump directly to targeted file analysis
-(`analyze`) for an existing queue head. When a target path is supplied,
-`agent_summary.queue_ledger_command` gives the scoped `change-impact` command
-that reports current-queue and out-of-scope dirty counts.
+(`analyze`) for an existing queue head. JSON mode also includes per-step
+`handoff` metadata (`to`, `condition`, `goal`, `transition_command`) so callers
+can assert exact queue transitions. TOON includes a compact `handoffs:` section
+with one readable rule per step.
+
+When a target path is supplied, `agent_summary.queue_ledger_command` gives the
+scoped `change-impact` command that reports current-queue and out-of-scope dirty
+counts.
+
+When the `set` phase is chosen, the pack now also recommends
+`agent-skills --format json` and `parser-readiness --format json` so the first
+queue cycle starts with skill availability and language-plugin readiness checked
+before file mapping.
 
 ### Agent Skills Inventory
 

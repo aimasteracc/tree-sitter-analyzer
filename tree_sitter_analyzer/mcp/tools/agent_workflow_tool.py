@@ -95,6 +95,7 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
         "success": result["success"],
         "format": "toon",
         "workflow": result["workflow"],
+        "workflow_mode": result["workflow_mode"],
         "project_root": result["project_root"],
         "target_path": result["target_path"],
         "agent_summary": result["agent_summary"],
@@ -102,6 +103,8 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
         "phase_order": result["phase_order"],
         "current_step": result["current_step"],
         "recommended_commands": result["recommended_commands"],
+        "routing": result["routing"],
         "queue_boundary_commands": result["queue_boundary_commands"],
+        "sprint_contract": result["sprint_contract"],
         "toon_content": result["toon_content"],
     }

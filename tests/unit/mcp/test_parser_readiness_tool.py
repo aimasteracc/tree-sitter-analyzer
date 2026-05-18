@@ -34,6 +34,7 @@ python = "tree_sitter_analyzer.languages.python_plugin:PythonPlugin"
     assert result["advisor"] == "parser readiness"
     assert result["implemented_languages"] == ["python"]
     assert result["candidate_count"] == 1
+    assert result["status_distribution"]["candidate"] == 1
     assert result["recommendations"][0]["language"] == "fixturelang"
     assert result["recommendations"][0]["status"] == "candidate"
     fixture = result["readiness"][0]
@@ -90,6 +91,8 @@ swift = ["tree-sitter-swift>=0.7.2"]
 
     assert result["success"] is True
     assert result["requested_language"] == "swift"
+    assert result["status_distribution"]["candidate"] == 1
+    assert result["high_priority_languages"] == ["swift"]
     readiness = result["readiness"][0]
     signals = readiness["signals"]
     assert readiness["language"] == "swift"

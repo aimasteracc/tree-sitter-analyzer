@@ -45,6 +45,7 @@ SIDE_EFFECT_MARKERS = {
     ),
     "changes_tests": ("test-driven", "red-green-refactor", "regression-test"),
 }
+ACTIONABILITY_PREVIEW_LIMIT = 3
 
 
 def build_agent_skills_inventory(
@@ -105,6 +106,13 @@ def _build_skill_record(project_path: Path, skill_dir: Path) -> dict[str, Any]:
     out_of_scope_path = skill_dir / OUT_OF_SCOPE_FILE
     combined_text = _combined_skill_text(skill_text, brief_path)
     gaps = _skill_gaps(skill_path, metadata, combined_text)
+    actionability = _skill_actionability(
+        metadata=metadata,
+        has_skill_md=skill_path.exists(),
+        has_agent_brief=brief_path.exists(),
+        gaps=gaps,
+        support_file_count=len(support_files),
+    )
     completion_present = _contains_completion_guidance(combined_text)
 
     return {
@@ -140,8 +148,49 @@ def _build_skill_record(project_path: Path, skill_dir: Path) -> dict[str, Any]:
             brief_path,
             support_files,
         ),
+        "actionability_score": actionability["score"],
+        "actionability": actionability["status"],
+        "ready_for_use": actionability["ready_for_use"],
         "gaps": gaps,
     }
+
+
+def _skill_actionability(
+    metadata: dict[str, str],
+    has_skill_md: bool,
+    has_agent_brief: bool,
+    gaps: list[str],
+    support_file_count: int,
+) -> dict[str, Any]:
+    """Compute a compact actionability score from metadata and guidance gaps."""
+    score = 100
+    if not has_skill_md:
+        score -= 70
+    if NAME_KEY not in metadata:
+        score -= 12
+    if DESCRIPTION_KEY not in metadata:
+        score -= 18
+    if "missing_trigger_text" in gaps:
+        score -= 22
+    if "missing_completion_guidance" in gaps:
+        score -= 20
+    if not has_agent_brief:
+        score -= 8
+    if support_file_count == 0:
+        score -= 5
+
+    score = max(0, score)
+    ready_for_use = (
+        has_skill_md
+        and NAME_KEY in metadata
+        and DESCRIPTION_KEY in metadata
+        and "missing_trigger_text" not in gaps
+        and "missing_completion_guidance" not in gaps
+    )
+    status = (
+        "ready" if ready_for_use else "caution" if score >= 70 else "needs_improvement"
+    )
+    return {"score": score, "status": status, "ready_for_use": ready_for_use}
 
 
 def _list_support_files(skill_dir: Path, project_path: Path) -> list[str]:
@@ -327,6 +376,8 @@ def _build_agent_summary(
         if gaps["skills_root_missing"]
         else "Pick the matching skill, read its read_order, then run its verification guidance."
     )
+    ready_for_use_count = len([skill for skill in skills if skill["ready_for_use"]])
+    actionability_preview = _top_actionable_skills(skills)
     return {
         "risk": risk,
         "skill_count": len(skills),
@@ -335,11 +386,22 @@ def _build_agent_summary(
         "caution_gap_count": validation["caution_gap_count"],
         "optional_gap_count": validation["optional_gap_count"],
         "missing_completion_count": missing_completion_count,
+        "ready_for_use_count": ready_for_use_count,
+        "actionable_skills": actionability_preview,
+        "readiness_ratio": (
+            round(ready_for_use_count / len(skills), 2) if skills else 0.0
+        ),
         "next_step": next_step,
         "next_fix": validation["next_fix"],
         "inspection_command": "uv run tree-sitter-analyzer agent-skills --format json",
         "stop_condition": "A matching skill has clear trigger text and completion guidance.",
     }
+
+
+def _top_actionable_skills(skills: list[dict[str, Any]]) -> list[str]:
+    """Return highest-actionability skills by score."""
+    ranked = sorted(skills, key=lambda item: item["actionability_score"], reverse=True)
+    return [skill["name"] for skill in ranked[:ACTIONABILITY_PREVIEW_LIMIT]]
 
 
 def _build_toon_content(result: dict[str, Any]) -> str:
@@ -354,11 +416,19 @@ def _build_toon_content(result: dict[str, Any]) -> str:
         f"blocking_gap_count: {summary['blocking_gap_count']}",
         f"caution_gap_count: {summary['caution_gap_count']}",
         f"missing_completion_count: {summary['missing_completion_count']}",
+        f"ready_for_use_count: {summary['ready_for_use_count']}",
+        f"readiness_ratio: {summary['readiness_ratio']}",
         "skills:",
     ]
     for skill in result["skills"]:
         gaps = ",".join(skill["gaps"]) if skill["gaps"] else "none"
-        lines.append(f"  - {skill['name']}: path={skill['skill_path']} gaps={gaps}")
+        lines.append(
+            "  - "
+            + skill["name"]
+            + f" | actionability={skill['actionability']} ({skill['actionability_score']})"
+            + f" | ready={str(skill['ready_for_use']).lower()} | path={skill['skill_path']} gaps={gaps}"
+        )
+    lines.append("top_actionable_skills: " + ", ".join(summary["actionable_skills"]))
     lines.append(f"next_step: {summary['next_step']}")
     lines.append(f"next_fix: {summary['next_fix']}")
     return "\n".join(lines)

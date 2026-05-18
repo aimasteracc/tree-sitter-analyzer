@@ -29,6 +29,10 @@ async def test_agent_skills_tool_lists_project_skills(tmp_path):
     assert result["inventory"] == "project agent skills"
     assert result["skill_count"] == 1
     assert result["skills"][0]["name"] == "demo"
+    assert result["skills"][0]["ready_for_use"] is True
+    assert result["skills"][0]["actionability"] == "ready"
+    assert result["agent_summary"]["ready_for_use_count"] == 1
+    assert result["skills"][0]["actionability_score"] >= 85
     assert result["validation"]["status"] == "ready"
     assert result["agent_summary"]["inspection_command"] == (
         "uv run tree-sitter-analyzer agent-skills --format json"
@@ -56,6 +60,7 @@ async def test_agent_skills_tool_supports_custom_relative_root(tmp_path):
     assert result["format"] == "toon"
     assert result["skills_root"] == "docs/skills"
     assert "skills" not in result
+    assert result["agent_summary"]["ready_for_use_count"] == 0
     assert result["validation"]["status"] == "caution"
     assert "toon_content" in result
     assert "validation_status: caution" in result["toon_content"]

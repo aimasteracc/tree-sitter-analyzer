@@ -1297,7 +1297,7 @@ uv run tree-sitter-analyzer agent-workflow --format json
 uv run tree-sitter-analyzer agent-workflow tree_sitter_analyzer/mcp/server.py --format json
 ```
 
-**Output**: `success`, `workflow`, `project_root`, optional `target_path`, `current_phase`, `phase_order`, `current_step`, `recommended_commands`, `steps` with `mcp_tools` and `cli_commands` in JSON mode, `queue_boundary_commands`, compact `agent_summary`, and `toon_content`. When `target_path` is provided, `agent_summary.queue_ledger_command` points to the scoped `change-impact --agent-summary-only` command that emits the queue ledger. TOON mode omits full structured `steps` and returns the compact decision surface plus the current step.
+**Output**: `success`, `workflow`, `workflow_mode`, `project_root`, optional `target_path`, `current_phase`, `phase_order`, `current_step`, `routing`, `recommended_commands`, `steps` with `mcp_tools`, `cli_commands`, and `handoff` (`to`, `condition`, `goal`, `transition_command`) in JSON mode, `queue_boundary_commands`, `sprint_contract` (mode/scope/transition/evaluator checks), compact `agent_summary`, and `toon_content`. When `target_path` is provided, `agent_summary.queue_ledger_command` points to the scoped `change-impact --agent-summary-only` command that emits the queue ledger. TOON mode omits full structured `steps` and returns the compact decision surface, current step, and a `handoffs:` block.
 
 **SMART Workflow**: Call before opening a fresh task queue. Pair with `list_agent_skills` when the queue item may benefit from a project-local skill.
 
