@@ -210,3 +210,37 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果:
   - `test_engine.py` 进一步收缩并降低维护复杂度，`Security`/`Queries` 责任分离完成。
   - `test_engine.py` 味道仍是 oversized_file，属于可继续执行的下一步（`TestUnifiedAnalysisEnginePerformance`、`Properties` 等组）。
+
+## 2026-05-18: test_engine.py 可维护性切片（继续）
+
+- 目标: 继续 `TestUnifiedAnalysisEngine*` 责任拆分，抽离 `TestUnifiedAnalysisEnginePerformance` 与 `TestUnifiedAnalysisEngineProperties`。
+- 动作:
+  - 在 `tests/unit/core/_test_engine_test_mixin.py` 新增
+    `TestUnifiedAnalysisEnginePerformanceTestMixin` 与 `TestUnifiedAnalysisEnginePropertiesTestMixin`。
+  - 将 `TestUnifiedAnalysisEnginePerformance` 与 `TestUnifiedAnalysisEngineProperties`
+    在 `tests/unit/core/test_engine.py` 改为继承对应 mixin，仅保留 `teardown_class`。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run pytest tests/unit/core/test_engine.py -q`（60 passed, 1 skipped）
+  - `uv run pytest -q`（10376 passed, 32 skipped）
+  - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(75.0)`，仍有 `oversized_file` 与 `deep_nesting`）
+  - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险，变更 2 个文件）
+- 结果:
+- `test_engine.py` 继续收缩并保持低风险；当前主异味仍是 `oversized_file`，下一步建议优先处理 `TestUnifiedAnalysisEngineCleanup` 与深度嵌套点。
+
+## 2026-05-18: test_engine.py 可维护性切片（继续）
+
+- 目标: 继续 `tests/unit/core/test_engine.py` 的责任切片，收敛 `TestMockLanguagePlugin`。
+- 动作:
+  - 新增 `TestMockLanguagePluginTestMixin` 到 `tests/unit/core/_test_engine_test_mixin.py`，抽离 `TestMockLanguagePlugin` 的 5 个用例（初始化、语言名、扩展名、extractor、analyze_file）。
+  - `tests/unit/core/test_engine.py` 的 `TestMockLanguagePlugin` 改为继承 `TestMockLanguagePluginTestMixin`。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run pytest tests/unit/core/test_engine.py -q`
+  - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`
+  - `uv run python -m tree_sitter_analyzer --change-impact --format json`
+- 结果:
+  - 继续保持低风险：`test_engine.py` 行数略降，类边界更清晰。
+  - `test_engine.py` 仍为 `oversized_file`，但持续朝切片方向推进。

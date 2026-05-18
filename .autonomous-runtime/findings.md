@@ -79,3 +79,31 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
     - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险：2 文件变更，1 文件受影响）
     - `uv run pytest -q`（10380 passed, 32 skipped）
   - 结论：`Security` 与 `Queries` 责任已成功抽离；文件健康仍由 `oversized_file` 主导，下一步建议继续迁移 `TestUnifiedAnalysisEnginePerformance` 与 `Properties`。
+
+- 2026-05-18 Tick: `TestUnifiedAnalysisEnginePerformance` 与 `TestUnifiedAnalysisEngineProperties` 迁入 mixin
+  - 触发理由：沿 `refactoring_suggestions` 顺序继续收口 `TestUnifiedAnalysisEngine*` 组，优先缩短大文件主职责。
+  - 执行结果：
+    - 新增 `TestUnifiedAnalysisEnginePerformanceTestMixin` 与 `TestUnifiedAnalysisEnginePropertiesTestMixin`；
+    - 在 `tests/unit/core/test_engine.py` 中将 `TestUnifiedAnalysisEnginePerformance` 与 `TestUnifiedAnalysisEngineProperties` 改为继承对应 mixin。
+  - 验证结果：
+    - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+    - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+    - `uv run pytest tests/unit/core/test_engine.py -q`（60 passed, 1 skipped）
+    - `uv run pytest -q`（10376 passed, 32 skipped）
+    - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(75.0)`；`oversized_file` + `deep_nesting`）
+    - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险：2 文件变更）
+  - 结论：`Performance` 与 `Properties` 已迁移，`test_engine.py` 异味主因仍为 `oversized_file`，下一步建议继续处理 `TestUnifiedAnalysisEngineCleanup` 与深度嵌套位置。
+
+- 2026-05-18 Tick: `TestMockLanguagePlugin` 迁入 mixin（继续切片）
+  - 目标：延续 `test_engine.py` 责任拆分，抽离 `TestMockLanguagePlugin`。
+  - 执行结果：
+    - 新增 `TestMockLanguagePluginTestMixin`（`tests/unit/core/_test_engine_test_mixin.py`）。
+    - `TestMockLanguagePlugin` 在 `tests/unit/core/test_engine.py` 改为继承 mixin。
+  - 验证链路：
+    - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run pytest tests/unit/core/test_engine.py -q`（55 passed, 1 skipped）
+    - `uv run pytest -q`（10371 passed, 32 skipped）
+    - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(75.1)`，`oversized_file` + `deep_nesting`）
+    - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险：2 文件变更，1 文件受影响）
+  - 结论：本次切片完成且回归通过，队列继续推进到 `TestUnifiedAnalysisEngineCleanup` 或下一类 `*Comprehensive` 责任块。

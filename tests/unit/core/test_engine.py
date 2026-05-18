@@ -25,11 +25,14 @@ import pytest
 
 from tests.unit.core._test_engine_test_mixin import (
     TestAnalysisEngineTestMixin,
+    TestMockLanguagePluginTestMixin,
     TestUnifiedAnalysisEngineAnalysisTestMixin,
     TestUnifiedAnalysisEngineCacheManagementTestMixin,
     TestUnifiedAnalysisEngineInitTestMixin,
     TestUnifiedAnalysisEngineLanguageDetectionTestMixin,
+    TestUnifiedAnalysisEnginePerformanceTestMixin,
     TestUnifiedAnalysisEnginePluginManagementTestMixin,
+    TestUnifiedAnalysisEnginePropertiesTestMixin,
     TestUnifiedAnalysisEngineQueriesTestMixin,
     TestUnifiedAnalysisEngineSecurityTestMixin,
 )
@@ -37,7 +40,6 @@ from tree_sitter_analyzer.api import get_engine
 from tree_sitter_analyzer.core import AnalysisEngine
 from tree_sitter_analyzer.core.analysis_engine import (
     AnalysisRequest,
-    MockLanguagePlugin,
     UnifiedAnalysisEngine,
     UnsupportedLanguageError,
     get_analysis_engine,
@@ -241,32 +243,6 @@ class TestUnifiedAnalysisEngineQueries(TestUnifiedAnalysisEngineQueriesTestMixin
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestUnifiedAnalysisEnginePerformance:
-    """Test cases for performance monitoring."""
-
-    def test_measure_operation(self):
-        """Test measuring an operation."""
-        engine = UnifiedAnalysisEngine()
-        with engine.measure_operation("test_operation"):
-            # Simulate some work
-            sum(range(100))
-        # Should complete without error
-        assert True
-
-    def test_performance_monitor_property(self):
-        """Test accessing performance monitor property."""
-        engine = UnifiedAnalysisEngine()
-        # Ensure initialization first
-        engine._ensure_initialized()
-        monitor = engine._performance_monitor
-        assert monitor is not None
-
-    @classmethod
-    def teardown_class(cls):
-        """Clean up singleton instances."""
-        UnifiedAnalysisEngine._reset_instance()
-
-
 class TestUnifiedAnalysisEngineCleanup:
     """Test cases for resource cleanup."""
 
@@ -283,24 +259,10 @@ class TestUnifiedAnalysisEngineCleanup:
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestUnifiedAnalysisEngineProperties:
-    """Test cases for engine property accessors."""
-
-    def test_parser_property(self):
-        """Test accessing parser property."""
-        engine = UnifiedAnalysisEngine()
-        parser = engine.parser
-        assert parser is not None
-
-    def test_all_properties_accessible(self):
-        """Test that all properties are accessible."""
-        engine = UnifiedAnalysisEngine()
-        assert engine.cache_service is not None
-        assert engine.parser is not None
-        assert engine.query_executor is not None
-        assert engine.language_detector is not None
-        assert engine.security_validator is not None
-        assert engine.plugin_manager is not None
+class TestUnifiedAnalysisEnginePerformance(
+    TestUnifiedAnalysisEnginePerformanceTestMixin
+):
+    """Test cases for performance monitoring."""
 
     @classmethod
     def teardown_class(cls):
@@ -308,40 +270,17 @@ class TestUnifiedAnalysisEngineProperties:
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestMockLanguagePlugin:
+class TestUnifiedAnalysisEngineProperties(TestUnifiedAnalysisEnginePropertiesTestMixin):
+    """Test cases for engine property accessors."""
+
+    @classmethod
+    def teardown_class(cls):
+        """Clean up singleton instances."""
+        UnifiedAnalysisEngine._reset_instance()
+
+
+class TestMockLanguagePlugin(TestMockLanguagePluginTestMixin):
     """Test cases for MockLanguagePlugin."""
-
-    def test_mock_plugin_initialization(self):
-        """Test mock plugin initialization."""
-        plugin = MockLanguagePlugin("python")
-        assert plugin.language == "python"
-
-    def test_mock_plugin_get_language_name(self):
-        """Test mock plugin get_language_name method."""
-        plugin = MockLanguagePlugin("python")
-        assert plugin.get_language_name() == "python"
-
-    def test_mock_plugin_get_file_extensions(self):
-        """Test mock plugin get_file_extensions method."""
-        plugin = MockLanguagePlugin("python")
-        extensions = plugin.get_file_extensions()
-        assert ".python" in extensions
-
-    def test_mock_plugin_create_extractor(self):
-        """Test mock plugin create_extractor method."""
-        plugin = MockLanguagePlugin("python")
-        extractor = plugin.create_extractor()
-        assert extractor is None
-
-    @pytest.mark.asyncio
-    async def test_mock_plugin_analyze_file(self):
-        """Test mock plugin analyze_file method."""
-        plugin = MockLanguagePlugin("python")
-        request = AnalysisRequest(file_path="test.py", language="python")
-        result = await plugin.analyze_file("test.py", request)
-        assert result is not None
-        assert result.language == "python"
-        assert result.success is True
 
 
 # =============================================================================
