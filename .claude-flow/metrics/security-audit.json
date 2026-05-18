@@ -1,0 +1,66 @@
+{
+  "timestamp": "2026-05-18T15:43:50.886Z",
+  "mode": "headless",
+  "workerType": "audit",
+  "model": "haiku",
+  "durationMs": 147219,
+  "executionId": "audit_1779118883667_1jyu2e",
+  "success": true,
+  "findings": {
+    "vulnerabilities": [
+      {
+        "severity": "low",
+        "file": "tree_sitter_analyzer/core/cache_service.py",
+        "line": 188,
+        "description": "pickle.dumps() used for serializability check. While not directly deserializing untrusted data (only dumps, not loads), pickle usage should be minimized. No actual exploitation path exists since only pickle.dumps() is called."
+      },
+      {
+        "severity": "low",
+        "file": "tree_sitter_analyzer/mcp/tools/fd_rg_utils.py",
+        "line": 103,
+        "description": "asyncio.create_subprocess_exec() executes external commands (fd, rg). Safe: uses list-form argv (no shell injection), and only executes known system commands (fd/rg), not user-controlled command names."
+      },
+      {
+        "severity": "low",
+        "file": "tree_sitter_analyzer/_health_scorer_helpers.py",
+        "line": 75,
+        "description": "subprocess.run() calls git commands. Safe: uses list-form argv with hardcoded 'git' binary and fixed flag arguments. No user-controlled command injection possible."
+      },
+      {
+        "severity": "low",
+        "file": "tree_sitter_analyzer/mcp/tools/utils/change_impact_git.py",
+        "line": 11,
+        "description": "subprocess.run() calls git with caller-provided pathspecs. Mitigated: pathspecs are passed via '--' separator and list-form argv (no shell interpretation), but pathspec values originate from MCP tool parameters."
+      },
+      {
+        "severity": "info",
+        "file": "tree_sitter_analyzer/mcp/tools/fd_rg_utils.py",
+        "line": 333,
+        "description": "Custom contextlib.suppress shim shadows stdlib contextlib. Not a vulnerability but confusing — could hide bugs if the shim's behavior diverges from stdlib."
+      },
+      {
+        "severity": "info",
+        "file": "tree_sitter_analyzer/security/validator.py",
+        "line": 279,
+        "description": "sanitize_input() strips HTML tags via regex (re.sub(r'<[^>]*>', '', ...)). This is a basic sanitization approach that can be bypassed with malformed HTML. Acceptable for this codebase since it's a code analysis tool, not a web-facing application."
+      },
+      {
+        "severity": "info",
+        "file": "pyproject.toml",
+        "line": 14,
+        "description": "Author email address (aimasteracc@gmail.com) committed to pyproject.toml. This is intentional for package metadata but is PII in the repository."
+      }
+    ],
+    "riskScore": 12,
+    "recommendations": [
+      "No hardcoded secrets, SQL injection, or XSS vulnerabilities found in the source code.",
+      "The codebase has a well-designed security layer: SecurityValidator with path traversal protection, ProjectBoundaryManager with symlink/junction detection, RegexSafetyChecker for ReDoS prevention, and _exceptions_sanitization.py for sensitive data redaction.",
+      "All subprocess calls use list-form argv (no shell=True), preventing command injection.",
+      "The .env files are properly excluded via .gitignore.",
+      "The custom contextlib shim in fd_rg_utils.py (line 333) should be replaced with the standard library import to avoid maintenance burden and potential behavioral divergence.",
+      "Consider adding SCA (Software Composition Analysis) scanning to the CI pipeline to catch dependency vulnerabilities proactively."
+    ]
+  },
+  "rawOutputPreview": "Now I have a thorough picture. Here's the security analysis report:\n\n```json\n{\n  \"vulnerabilities\": [\n    {\n      \"severity\": \"low\",\n      \"file\": \"tree_sitter_analyzer/core/cache_service.py\",\n      \"line\": 188,\n      \"description\": \"pickle.dumps() used for serializability check. While not directly deserializing untrusted data (only dumps, not loads), pickle usage should be minimized. No actual exploitation path exists since only pickle.dumps() is called.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"tree_sitter_analyzer/mcp/tools/fd_rg_utils.py\",\n      \"line\": 103,\n      \"description\": \"asyncio.create_subprocess_exec() executes external commands (fd, rg). Safe: uses list-form argv (no shell injection), and only executes known system commands (fd/rg), not user-controlled command names.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"tree_sitter_analyzer/_health_scorer_helpers.py\",\n      \"line\": 75,\n      \"description\": \"subprocess.run() calls git commands. Safe: uses list-form argv with hardcoded 'git' binary and fixed flag arguments. No user-controlled command injection possible.\"\n    },\n    {\n      \"severity\": \"low\",\n      \"file\": \"tree_sitter_analyzer/mcp/tools/utils/change_impact_git.py\",\n      \"line\": 11,\n      \"description\": \"subprocess.run() calls git with caller-provided pathspecs. Mitigated: pathspecs are passed via '--' separator and list-form argv (no shell interpretation), but pathspec values originate from MCP tool parameters.\"\n    },\n    {\n      \"severity\": \"info\",\n      \"file\": \"tree_sitter_analyzer/mcp/tools/fd_rg_utils.py\",\n      \"line\": 333,\n      \"description\": \"Custom contextlib.suppress shim shadows stdlib contextlib. Not a vulnerability but confusing — could hide bugs if the shim's behavior diverges from stdlib.\"\n    },\n    {\n      \"severity\": \"info\",\n      \"file\": \"tree_sitter_analyzer/security/validator.py\",\n      \"line\": 279,\n      \"description\": \"sanitize_input() strips HTML tags via regex (re.sub(r'<[^>]*>', '', ...)). This i",
+  "rawOutputLength": 4449
+}

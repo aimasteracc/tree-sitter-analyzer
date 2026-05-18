@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-05-18T15:41:23.666Z",
+  "projectRoot": "/Users/aisheng.yu/git-private/tree-sitter-analyzer",
+  "structure": {
+    "hasPackageJson": false,
+    "hasTsConfig": false,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1779118883666
+}

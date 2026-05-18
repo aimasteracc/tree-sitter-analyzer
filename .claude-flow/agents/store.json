@@ -1,0 +1,80 @@
+{
+  "agents": {
+    "agent-1779117818483-0mdizx": {
+      "agentId": "agent-1779117818483-0mdizx",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "provider": "anthropic",
+        "task": "Refactor tree_sitter_analyzer/languages/python_plugin/extractor.py (CC=51.0, D grade). Extract helper functions from large methods. Use guard clauses to reduce nesting. Keep all existing tests passing. Run safe_to_edit before changes, analyze_change_impact after. Target: reduce CC below 40.",
+        "timeout": 300
+      },
+      "createdAt": "2026-05-18T15:23:38.486Z",
+      "model": "sonnet",
+      "modelRoutedBy": "router"
+    },
+    "agent-1779117830178-id4i4h": {
+      "agentId": "agent-1779117830178-id4i4h",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "provider": "anthropic",
+        "task": "Refactor tree_sitter_analyzer/languages/typescript_plugin/extractor.py (CC=52.3, D grade). Extract helper functions from large methods. Use guard clauses to reduce nesting. Keep all existing tests passing. Target: reduce CC below 40.",
+        "timeout": 300
+      },
+      "createdAt": "2026-05-18T15:23:50.181Z",
+      "model": "opus",
+      "modelRoutedBy": "router"
+    },
+    "agent-1779117840450-56o50u": {
+      "agentId": "agent-1779117840450-56o50u",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "provider": "anthropic",
+        "task": "Refactor tree_sitter_analyzer/languages/javascript_plugin/extractor.py (CC=53.3, D grade). Extract helper functions from large methods. Use guard clauses to reduce nesting. Keep all existing tests passing. Target: reduce CC below 40.",
+        "timeout": 300
+      },
+      "createdAt": "2026-05-18T15:24:00.452Z",
+      "model": "opus",
+      "modelRoutedBy": "router"
+    },
+    "agent-1779117850226-ptv3xk": {
+      "agentId": "agent-1779117850226-ptv3xk",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "provider": "anthropic",
+        "task": "Refactor tree_sitter_analyzer/languages/cpp_helpers.py (CC=55.4, D grade). Extract helper functions from large methods. Use guard clauses to reduce nesting. Keep all existing tests passing. Target: reduce CC below 40.",
+        "timeout": 300
+      },
+      "createdAt": "2026-05-18T15:24:10.231Z",
+      "model": "sonnet",
+      "modelRoutedBy": "router"
+    },
+    "agent-1779117861413-d26ady": {
+      "agentId": "agent-1779117861413-d26ady",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "provider": "anthropic",
+        "task": "Refactor tree_sitter_analyzer/formatters/toon_encoder.py (CC=58.8, D grade). Extract helper functions from large methods. Use guard clauses to reduce nesting. Keep all existing tests passing. Target: reduce CC below 40.",
+        "timeout": 300
+      },
+      "createdAt": "2026-05-18T15:24:21.416Z",
+      "model": "opus",
+      "modelRoutedBy": "router"
+    }
+  },
+  "version": "3.0.0"
+}

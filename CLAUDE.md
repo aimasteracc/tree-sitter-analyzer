@@ -1,197 +1,175 @@
-# Project Guidelines
+# Ruflo — Claude Code Configuration
 
-## gstack
+## Rules
 
-Use /browse from gstack for all web browsing. Never use mcp__claude-in-chrome__* tools.
+- Do what has been asked; nothing more, nothing less
+- NEVER create files unless absolutely necessary — prefer editing existing files
+- NEVER create documentation files unless explicitly requested
+- NEVER save working files or tests to root — use `/src`, `/tests`, `/docs`, `/config`, `/scripts`
+- ALWAYS read a file before editing it
+- NEVER commit secrets, credentials, or .env files
+- Keep files under 500 lines
+- Validate input at system boundaries
 
-Available skills:
-- /office-hours - YC Office Hours: reframe your product before you write code
-- /plan-ceo-review - CEO/Founder: rethink the problem, find the 10-star product
-- /plan-eng-review - Eng Manager: lock in architecture, data flow, diagrams
-- /plan-design-review - Senior Designer: rate design dimensions, detect AI slop
-- /design-consultation - Design Partner: build a complete design system
-- /review - Staff Engineer: find bugs that pass CI but blow up in production
-- /ship - Release Engineer: sync main, run tests, push, open PR
-- /land-and-deploy - Release Engineer: merge PR, wait for CI/deploy, verify
-- /canary - SRE: post-deploy monitoring loop
-- /benchmark - Performance Engineer: baseline page load, Core Web Vitals
-- /browse - QA Engineer: real Chromium browser with eyes
-- /qa - QA Lead: test your app, find bugs, fix with atomic commits
-- /qa-only - QA Reporter: pure bug report without code changes
-- /design-review - Designer Who Codes: audit and fix design issues
-- /setup-browser-cookies - Session Manager: import cookies for authenticated pages
-- /setup-deploy - Deploy Configurator: one-time setup for /land-and-deploy
-- /retro - Eng Manager: weekly retro with per-person breakdowns
-- /investigate - Debugger: systematic root-cause debugging
-- /document-release - Technical Writer: update docs to match what you shipped
-- /codex - Second Opinion: independent code review from OpenAI Codex CLI
-- /careful - Safety Guardrails: warns before destructive commands
-- /freeze - Edit Lock: restrict file edits to one directory
-- /guard - Full Safety: /careful + /freeze in one command
-- /unfreeze - Unlock: remove the /freeze boundary
-- /gstack-upgrade - Self-Updater: upgrade gstack to latest
+## Agent Comms (SendMessage-First Coordination)
 
-If gstack skills aren't working, run `cd .claude/skills/gstack && ./setup` to build the binary and register skills.
-
-## Agent skills
-
-### Issue tracker
-
-GitHub Issues for `aimasteracc/tree-sitter-analyzer` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-The five canonical roles use the default label names: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context layout: one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
-
-## Development workflow
-
-### Pre-work alignment
-Before any non-trivial change, use `/grill-with-docs` to sharpen terminology and surface contradictions with the CONTEXT.md glossary. Use `/grill-me` for quick one-on-one interrogation without docs update.
-
-### Architecture stewardship  
-Run `/improve-codebase-architecture` when you notice repeated changes in the same module, or when adding the Nth language plugin. Use `/zoom-out` when unfamiliar with a code area to get a high-level map first.
-
-### Feature pipeline
-New features follow: `/grill-with-docs` → `/to-prd` (synthesize PRD) → `/to-issues` (split into vertical slices) → `/tdd` (implement one slice at a time). Each Issue gets a behavioral Agent Brief for AFK execution.
-
-### Branch and review
-- `/caveman` for ultra-compact communication (~75% token savings) in long sessions
-- `/review` for independent code review before merge
-- `/codex` for second opinion from OpenAI Codex
-- `/prototype` for throwaway logic/UI experiments
-
-### Quality and diagnosis
-- `/diagnose` with 10-step feedback loop when a bug passes existing tests
-- `/benchmark` for performance baseline before/after optimization
-- `/qa` for comprehensive testing with atomic fix commits
-- `/qa-only` for bug reports without code changes
-
-### Issue triage (via `/triage`)
-State machine: `needs-triage` → `needs-info` → `ready-for-agent` / `ready-for-human` / `wontfix`.
-Agent Briefs are behavioral (not procedural) — no file paths, just what must be true.
-
-### Release flow
-- `/ship` — sync main, run tests, push, open PR
-- `/land-and-deploy` — merge PR, wait for CI/deploy, verify
-- `/canary` — post-deploy monitoring loop
-- `/retro` — weekly retrospective
-
-### Safety
-- `/careful` — warn before destructive commands
-- `/freeze` — restrict edits to one directory
-- `/guard` — both combined
-
-### Meta
-- `/write-a-skill` — create new skills from patterns you discover
-- `/document-release` — update docs after shipping
-- `/gstack-upgrade` — keep gstack current
-
-## DeepSeek TUI — native skills
-
-DS TUI has its own skill system at `~/.deepseek/skills/`. Use `/skill-creator` to create new DS-native skills from reusable patterns discovered during development.
-
-### Automation integration
-- `/automation-list` — see all registered automations
-- `/automation-run ts-analyzer-autonomous-loop` — trigger autonomous dev loop manually
-- Read `.autonomous-runtime/ds-automation.yaml` for the full 8-step loop specification
-## MCP tool usage (self-hosted)
-
-This project provides its own MCP server with 14 tools for deep code analysis.
-These tools provide capabilities that Claude Code built-in tools (Read, Grep, Glob) CANNOT:
-AST structural analysis, health scoring with security scan, dependency graphs,
-git-aware impact analysis, refactoring extraction plans, edit risk assessment.
-
-### Complete workflow (tools call each other)
+Named agents coordinate via `SendMessage`, not polling or shared state.
 
 ```
-get_project_overview     → Start here: languages, files, tool routing guide
-        ↓
-check_project_health     → Grade ALL files, top targets with fix actions
-        ↓
-check_file_health        → Single file: A-F grade + smells + security scan
-        ↓ (D/F files auto-suggest ↓)
-refactoring_suggestions  → Precise plans: helper names, line ranges, params, skeletons
-        ↓
-safe_to_edit             → MUST call before editing: risk + deps + test files
-        ↓
-  ... edit code ...
-        ↓
-analyze_change_impact    → git diff + dep graph → affected files, tests, risk, verification_command
-        ↓
-check_file_health        → Verify improvement
+Lead (you) ←→ architect ←→ developer ←→ tester ←→ reviewer
+              (named agents message each other directly)
 ```
 
-### Edit workflow (use EVERY time you modify code)
+### Spawning a Coordinated Team
 
-```
-BEFORE editing:  safe_to_edit → risk_level + blast_radius + checklist
-AFTER editing:   analyze_change_impact → affected files + tests to run + verification_command
-IF health issue: check_file_health → D/F grade files get next_action
-```
+```javascript
+// ALL agents in ONE message, each knows WHO to message next
+Agent({ prompt: "Research the codebase. SendMessage findings to 'architect'.",
+  subagent_type: "researcher", name: "researcher", run_in_background: true })
+Agent({ prompt: "Wait for 'researcher'. Design solution. SendMessage to 'coder'.",
+  subagent_type: "system-architect", name: "architect", run_in_background: true })
+Agent({ prompt: "Wait for 'architect'. Implement it. SendMessage to 'tester'.",
+  subagent_type: "coder", name: "coder", run_in_background: true })
+Agent({ prompt: "Wait for 'coder'. Write tests. SendMessage results to 'reviewer'.",
+  subagent_type: "tester", name: "tester", run_in_background: true })
+Agent({ prompt: "Wait for 'tester'. Review code quality and security.",
+  subagent_type: "reviewer", name: "reviewer", run_in_background: true })
 
-Run `uv run python -m tree_sitter_analyzer --change-impact --format json`
-after edits and follow its `verification_command` first. For code changes this
-is usually the targeted `test_command`; for docs-only changes `test_required`
-is false and the command may be `git diff --check`. `pytest_command` remains
-available when the detected runner is pytest, with `pytest_required` kept as a
-compatibility signal for older agent prompts.
-Use the full suite before release/PR when risk remains high. `uv run pytest -q`
-runs with pytest-xdist by default (`--numprocesses=auto --dist=loadfile`); the
-latest measured full-suite wall time is about 26 seconds on this workstation.
-Default pytest also enforces a 300-second session timeout, a 180-second per-test
-timeout, and disables benchmark hooks during normal test runs. Run
-benchmark-only jobs with `--benchmark-enable -n 0 --session-timeout=0` so
-pytest-benchmark is active, xdist is disabled, and long benchmark runs are
-allowed.
-
-### Discovery workflow (when approaching unfamiliar code)
-
-```
-1. get_project_overview  → project portrait: languages, structure, health
-2. check_code_scale      → file metrics + complexity
-3. analyze_code_structure → AST elements: classes, methods, fields, line positions
-4. extract_code_section  → read specific line ranges (batch supported)
-5. query_code(symbol=)   → AST symbol search (NOT text grep), wildcards: *Service, fuzzy: ~analyz
+// Kick off the pipeline
+SendMessage({ to: "researcher", summary: "Start", message: "[task context]" })
 ```
 
-### Search tools (prefer over built-in Grep for efficiency)
+### Patterns
 
+| Pattern | Flow | Use When |
+|---------|------|----------|
+| **Pipeline** | A → B → C → D | Sequential dependencies (feature dev) |
+| **Fan-out** | Lead → A, B, C → Lead | Independent parallel work (research) |
+| **Supervisor** | Lead ↔ workers | Ongoing coordination (complex refactor) |
+
+### Rules
+
+- ALWAYS name agents — `name: "role"` makes them addressable
+- ALWAYS include comms instructions in prompts — who to message, what to send
+- Spawn ALL agents in ONE message with `run_in_background: true`
+- After spawning: STOP, tell user what's running, wait for results
+- NEVER poll status — agents message back or complete automatically
+
+## Swarm & Routing
+
+### Config
+- **Topology**: hierarchical-mesh (anti-drift)
+- **Max Agents**: 15
+- **Memory**: hybrid
+- **HNSW**: Enabled
+- **Neural**: Enabled
+
+```bash
+npx @claude-flow/cli@latest swarm init --topology hierarchical --max-agents 8 --strategy specialized
 ```
-search_content  → ripgrep with total_only (~10 tok) / count_only / summary modes
-find_and_grep   → fd + ripgrep combined
-list_files      → fd-based file discovery
-query_code      → AST symbol search with wildcards and type filtering
+
+### Agent Routing
+
+| Task | Agents | Topology |
+|------|--------|----------|
+| Bug Fix | researcher, coder, tester | hierarchical |
+| Feature | architect, coder, tester, reviewer | hierarchical |
+| Refactor | architect, coder, reviewer | hierarchical |
+| Performance | perf-engineer, coder | hierarchical |
+| Security | security-architect, auditor | hierarchical |
+
+### When to Swarm
+- **YES**: 3+ files, new features, cross-module refactoring, API changes, security, performance
+- **NO**: single file edits, 1-2 line fixes, docs updates, config changes, questions
+
+### 3-Tier Model Routing
+
+| Tier | Handler | Use Cases |
+|------|---------|-----------|
+| 1 | Agent Booster (WASM) | Simple transforms — skip LLM, use Edit directly |
+| 2 | Haiku | Simple tasks, low complexity |
+| 3 | Sonnet/Opus | Architecture, security, complex reasoning |
+
+## Memory & Learning
+
+### Before Any Task
+```bash
+npx @claude-flow/cli@latest memory search --query "[task keywords]" --namespace patterns
+npx @claude-flow/cli@latest hooks route --task "[task description]"
 ```
 
-### Efficiency tips
-- Always use `output_format: toon` (default) for ~60% token reduction
-- Use `total_only: true` on `search_content` for existence checks (~10 tokens)
-- Use `include_skeleton: true` on `refactoring_suggestions` only when you need code skeletons (default: off, saves ~50%)
-- Use `symbol_type: class/function` on `query_code` to filter by element type
+### After Success
+```bash
+npx @claude-flow/cli@latest memory store --namespace patterns --key "[name]" --value "[what worked]"
+npx @claude-flow/cli@latest hooks post-task --task-id "[id]" --success true --store-results true
+```
 
-## Development guardrails
+### MCP Tools (use `ToolSearch("keyword")` to discover)
 
-### Edit discipline
-- Edit <50 lines at a time; use `uv run python -m tree_sitter_analyzer --change-impact --format json` to choose focused verification, then run the reported `verification_command`
-- For "move to module-level" refactors: add new function → update call site → delete old method, testing between each step
-- Never replace 200+ lines in a single edit without immediate verification
+| Category | Key Tools |
+|----------|-----------|
+| **Memory** | `memory_store`, `memory_search`, `memory_search_unified` |
+| **Bridge** | `memory_import_claude`, `memory_bridge_status` |
+| **Swarm** | `swarm_init`, `swarm_status`, `swarm_health` |
+| **Agents** | `agent_spawn`, `agent_list`, `agent_status` |
+| **Hooks** | `hooks_route`, `hooks_post-task`, `hooks_worker-dispatch` |
+| **Security** | `aidefence_scan`, `aidefence_is_safe`, `aidefence_has_pii` |
+| **Hive-Mind** | `hive-mind_init`, `hive-mind_consensus`, `hive-mind_spawn` |
 
-### CLI-MCP parity (hard requirement)
-- Every MCP tool MUST have a CLI equivalent entry in `cli_main.py`
-- When adding/updating an MCP tool: add `--flag` to `create_argument_parser()`, handler in `handle_special_commands()` or `tree_sitter_analyzer/cli/commands/mcp_commands.py`, and example in epilog
-- Test: `uv run python -m tree_sitter_analyzer <file> --flag --format json`
-- Guardrails: `tests/unit/test_agent_contracts.py` fails if a registered MCP tool loses its CLI access path; `tests/unit/cli/test_mcp_commands.py` fails if MCP-equivalent CLI handlers pass the wrong arguments, require the wrong file path, or drop TOON output.
+### Background Workers
 
-### Test runtime contract (do not weaken)
-- Keep `uv run pytest -q` parallel, benchmark-disabled, and bounded by `--session-timeout=300`.
-- Do not remove `pytest-xdist`, `pytest-timeout`, `--dist=loadfile`, or the 300s/180s timeout defaults without updating `tests/unit/test_agent_contracts.py` and proving the full suite remains under 5 minutes.
-- Reason: this prevents recurring agent failures from serial test runs, accidental benchmark execution, and hidden hangs.
+| Worker | When |
+|--------|------|
+| `audit` | After security changes |
+| `optimize` | After performance work |
+| `testgaps` | After adding features |
+| `map` | Every 5+ file changes |
+| `document` | After API changes |
 
-### Self-hosting verification
-- Before committing: run `--file-health` on changed files and verify grade did not drop
-- Before committing: run `--safe-to-edit` to confirm blast radius is acceptable
-- After committing: run `--change-impact` to verify no unexpected regressions
+```bash
+npx @claude-flow/cli@latest hooks worker dispatch --trigger audit
+```
+
+## Agents
+
+**Core**: `coder`, `reviewer`, `tester`, `planner`, `researcher`
+**Architecture**: `system-architect`, `backend-dev`, `mobile-dev`
+**Security**: `security-architect`, `security-auditor`
+**Performance**: `performance-engineer`, `perf-analyzer`
+**Coordination**: `hierarchical-coordinator`, `mesh-coordinator`, `adaptive-coordinator`
+**GitHub**: `pr-manager`, `code-review-swarm`, `issue-tracker`, `release-manager`
+
+Any string works as a custom agent type.
+
+## Build & Test
+
+- ALWAYS run tests after code changes
+- ALWAYS verify build succeeds before committing
+
+```bash
+npm run build && npm test
+```
+
+## CLI Quick Reference
+
+```bash
+npx @claude-flow/cli@latest init --wizard           # Setup
+npx @claude-flow/cli@latest swarm init --v3-mode     # Start swarm
+npx @claude-flow/cli@latest memory search --query "" # Vector search
+npx @claude-flow/cli@latest hooks route --task ""    # Route to agent
+npx @claude-flow/cli@latest doctor --fix             # Diagnostics
+npx @claude-flow/cli@latest security scan            # Security scan
+npx @claude-flow/cli@latest performance benchmark    # Benchmarks
+```
+
+26 commands, 140+ subcommands. Use `--help` on any command for details.
+
+## Setup
+
+```bash
+claude mcp add claude-flow -- npx -y @claude-flow/cli@latest
+npx @claude-flow/cli@latest daemon start
+npx @claude-flow/cli@latest doctor --fix
+```
+
+**Agent tool** handles execution (agents, files, code, git). **MCP tools** handle coordination (swarm, memory, hooks). **CLI** is the same via Bash.
