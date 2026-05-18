@@ -14,6 +14,11 @@ from ..encoding_utils import read_file_safe
 from ..plugins.manager import PluginManager
 from ..query_loader import query_loader
 from ..utils.tree_sitter_compat import get_node_text_safe
+from ._query_service_helpers import (
+    fallback_query_captures,
+    plugin_category_captures,
+    plugin_strategy_captures,
+)
 from .parser import Parser
 from .query_executor import execute_ts_query, process_captures, resolve_query_string
 from .query_filter import QueryFilter
@@ -131,23 +136,38 @@ class QueryService:
 
         for field in ("name", "declarator"):
             name_node = child_by_field_name(field)
-            if name_node is not None and self._is_node_like(name_node):
-                text = get_node_text_safe(name_node, "")
-                if text and len(text) < 200:
-                    # For declarators, dig deeper to get the actual identifier
-                    name_node_type = getattr(name_node, "type", "")
-                    if isinstance(name_node_type, str) and name_node_type.endswith(
-                        "_declarator"
-                    ):
-                        nested_child = getattr(name_node, "child_by_field_name", None)
-                        if not callable(nested_child):
-                            return text
-                        inner = nested_child("declarator") or nested_child("name")
-                        if inner is not None and self._is_node_like(inner):
-                            return get_node_text_safe(inner, "")
-                    return text
+            text = self._extract_name_node_text(name_node)
+            if text:
+                return text
 
         return None
+
+    def _extract_name_node_text(self, name_node: Any) -> str | None:
+        if name_node is None or not self._is_node_like(name_node):
+            return None
+
+        text = get_node_text_safe(name_node, "")
+        if not text or len(text) >= 200:
+            return None
+
+        declarator_text = self._extract_nested_declarator_name(name_node)
+        return declarator_text or text
+
+    def _extract_nested_declarator_name(self, name_node: Any) -> str | None:
+        name_node_type = getattr(name_node, "type", "")
+        if not (
+            isinstance(name_node_type, str) and name_node_type.endswith("_declarator")
+        ):
+            return None
+
+        nested_child = getattr(name_node, "child_by_field_name", None)
+        if not callable(nested_child):
+            return None
+
+        inner = nested_child("declarator") or nested_child("name")
+        if inner is None or not self._is_node_like(inner):
+            return None
+        return get_node_text_safe(inner, "")
 
     # Node types that represent enclosing containers
     _CONTAINER_TYPES = frozenset(
@@ -197,17 +217,26 @@ class QueryService:
                 continue
 
             if current_type in self._CONTAINER_TYPES:
-                name_node = None
-                child_by_field_name = getattr(current, "child_by_field_name", None)
-                if callable(child_by_field_name):
-                    name_node = child_by_field_name("name")
-                if name_node is not None:
-                    text = get_node_text_safe(name_node, "")
-                    if text and len(text) < 200:
-                        return text
+                text = self._extract_container_name(current)
+                if text:
+                    return text
 
             current = getattr(current, "parent", None)
 
+        return None
+
+    def _extract_container_name(self, node: Any) -> str | None:
+        child_by_field_name = getattr(node, "child_by_field_name", None)
+        if not callable(child_by_field_name):
+            return None
+
+        name_node = child_by_field_name("name")
+        if name_node is None:
+            return None
+
+        text = get_node_text_safe(name_node, "")
+        if text and len(text) < 200:
+            return text
         return None
 
     def _is_node_like(self, node: Any) -> bool:
@@ -276,76 +305,19 @@ class QueryService:
         Returns:
             List of (node, capture_name) tuples
         """
-        captures = []
-
         # Try to get plugin for the language
         plugin = self.plugin_manager.get_plugin(language)
         if not plugin:
             logger.warning(f"No plugin found for language: {language}")
             return self._fallback_query_execution(root_node, query_key)
 
-        # Use plugin's execute_query_strategy method
-        try:
-            # Create a mock tree object for plugin compatibility
-            class MockTree:
-                def __init__(self, root_node: Any) -> None:
-                    self.root_node = root_node
-
-            # Execute plugin query strategy
-            elements = plugin.execute_query_strategy(
-                source_code, query_key or "function"
-            )
-
-            # Convert elements to captures format
-            if elements:
-                for element in elements:
-                    if hasattr(element, "start_line") and hasattr(element, "end_line"):
-                        # Create a mock node for compatibility
-                        class MockNode:
-                            def __init__(self, element: Any) -> None:
-                                self.type = getattr(
-                                    element, "element_type", query_key or "unknown"
-                                )
-                                self.start_point = (
-                                    getattr(element, "start_line", 1) - 1,
-                                    0,
-                                )
-                                self.end_point = (
-                                    getattr(element, "end_line", 1) - 1,
-                                    0,
-                                )
-                                self.text = getattr(element, "raw_text", "").encode(
-                                    "utf-8"
-                                )
-
-                        mock_node = MockNode(element)
-                        captures.append((mock_node, query_key or "element"))
-
+        captures = plugin_strategy_captures(plugin, query_key, source_code)
+        if captures is not None:
             return captures
 
-        except Exception as e:
-            logger.debug(f"Plugin query strategy failed: {e}")
-
-        # Fallback: Use plugin's element categories for tree traversal
-        try:
-            element_categories = plugin.get_element_categories()
-            if element_categories and query_key and query_key in element_categories:
-                node_types = element_categories[query_key]
-
-                def walk_tree(node: Any) -> None:
-                    """Walk the tree and find matching nodes using plugin categories"""
-                    if node.type in node_types:
-                        captures.append((node, query_key))
-
-                    # Recursively process children
-                    for child in node.children:
-                        walk_tree(child)
-
-                walk_tree(root_node)
-                return captures
-
-        except Exception as e:
-            logger.debug(f"Plugin element categories failed: {e}")
+        captures = plugin_category_captures(plugin, root_node, query_key)
+        if captures is not None:
+            return captures
 
         # Final fallback
         return self._fallback_query_execution(root_node, query_key)
@@ -363,39 +335,7 @@ class QueryService:
         Returns:
             List of (node, capture_name) tuples
         """
-        captures = []
-
-        def walk_tree_basic(node: Any) -> None:
-            """Basic tree walking for unsupported languages"""
-            # Get node type safely
-            node_type = getattr(node, "type", "")
-            if not isinstance(node_type, str):
-                node_type = str(node_type)
-
-            # Generic node type matching (support both singular and plural forms)
-            if (
-                query_key in ("function", "functions")
-                and "function" in node_type
-                or query_key in ("class", "classes")
-                and "class" in node_type
-                or query_key in ("method", "methods")
-                and "method" in node_type
-                or query_key in ("variable", "variables")
-                and "variable" in node_type
-                or query_key in ("import", "imports")
-                and "import" in node_type
-                or query_key in ("header", "headers")
-                and "heading" in node_type
-            ):
-                captures.append((node, query_key))
-
-            # Recursively process children
-            children = getattr(node, "children", [])
-            for child in children:
-                walk_tree_basic(child)
-
-        walk_tree_basic(root_node)
-        return captures
+        return fallback_query_captures(root_node, query_key)
 
     async def _read_file_async(self, file_path: str) -> tuple[str, str]:
         """
