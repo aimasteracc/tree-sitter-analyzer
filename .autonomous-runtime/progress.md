@@ -280,3 +280,25 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果:
   - `test_engine.py` 从 1031 行降到 971 行，健康分从 `C(76.7)` 提升到 `C(77.0)`。
   - 队头仍是 `test_engine.py` oversized 文件，下一步继续迁移 `TestAnalysisEnginePublicAPI` / `Concurrency` / `EdgeCases` 等剩余主文件测试组。
+
+## 2026-05-19: test_engine.py 可维护性切片（继续）
+
+- 目标: 继续收口 `test_engine.py` 剩余职责组，降低主文件混合度。
+- 动作:
+  - 将 `TestAnalysisEnginePublicAPI`、`TestAnalysisEngineConcurrency`、`TestAnalysisEngineEdgeCases` 的 9 个测试体抽离到
+    `tests/unit/core/_test_engine_test_mixin.py` 对应的 `TestAnalysisEnginePublicAPITestMixin`、`TestAnalysisEngineConcurrencyTestMixin`、`TestAnalysisEngineEdgeCasesTestMixin`。
+  - `tests/unit/core/test_engine.py` 对应类改为继承 mixin（保留类边界，移除重复实现）。
+  - 为满足变更契约，补充 `CLAUDE.md` 的验证元数据字段（`verification_command` / `pytest_required` / `--change-impact --format json`）。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run pytest tests/unit/core/test_engine.py -q`（20 passed）
+  - `uv run pytest tests/unit/core/_test_engine_test_mixin.py -q`（若未单独运行则不影响队列，见下）
+  - `uv run pytest tests/unit/core/test_engine.py tests/benchmarks/test_large_file_performance.py tests/benchmarks/test_query_performance.py tests/integration/test_phase7_performance_integration.py tests/unit/core/test_performance.py tests/unit/performance/test_async_performance.py tests/unit/performance/test_mcp_performance.py -q`（84 passed, 3 skipped）
+  - `uv run pytest -q`（10336 passed, 31 skipped）
+  - `uv run pytest tests/unit/test_agent_contracts.py::test_agent_docs_require_change_impact_verification_command -q`（通过）
+  - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py --format json`
+  - `uv run python -m tree_sitter_analyzer --change-impact --format json`
+- 结果:
+  - 本轮队头切片闭环完成，`test_engine.py` 对应职责面继续收敛且无测试回归。
+  - 风险保持低，继续沿同一 queue 处理下一组职责（例如 `TestAnalysisEngineAnalyze*` / `TestAnalysisEngineProperties`）。

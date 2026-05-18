@@ -129,3 +129,20 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
     - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(77.0)`；971 lines；剩余 `oversized_file` + `deep_nesting`）
     - `uv run python -m tree_sitter_analyzer --change-impact --format json`（low risk，推荐 default suite 已执行）
   - 结论：本轮闭环干净，可提交推送；下一轮继续同一队头，优先迁移 `TestAnalysisEnginePublicAPI`、`TestAnalysisEngineConcurrency` 或 `TestAnalysisEngineEdgeCases`。
+
+- 2026-05-19 Tick: `TestAnalysisEnginePublicAPI` / `Concurrency` / `EdgeCases` 迁入 mixin
+  - 触发理由：队头继续是 `tests/unit/core/test_engine.py` 的 oversized 结构异味，且这些类可直接作为独立 mixin 切片收口。
+  - 执行结果：
+    - 新增并迁移测试至 `tests/unit/core/_test_engine_test_mixin.py`：
+      `TestAnalysisEnginePublicAPITestMixin`（2 条测试）、
+      `TestAnalysisEngineConcurrencyTestMixin`（2 条并发测试）、
+      `TestAnalysisEngineEdgeCasesTestMixin`（边界/异常/编码类测试）。
+    - `tests/unit/core/test_engine.py` 的 `TestAnalysisEnginePublicAPI`、`TestAnalysisEngineConcurrency`、`TestAnalysisEngineEdgeCases` 改为纯继承层级。
+    - 补齐 `CLAUDE.md` 契约字段以满足 change-impact 验证要求（`verification_command`、`pytest_required`、`--change-impact --format json`）。
+  - 验证结果：
+    - `uv run ruff check --fix ...` / `uv run ruff check ...`（通过）
+    - `uv run pytest tests/unit/core/test_engine.py -q`（20 passed）
+    - `uv run pytest <focused-performance-set> -q`（84 passed, 3 skipped）
+    - `uv run pytest -q`（10336 passed, 31 skipped）
+    - `uv run pytest tests/unit/test_agent_contracts.py::test_agent_docs_require_change_impact_verification_command -q`（通过）
+  - 结论：本批切片干净通过，`test_engine.py` 异常负担继续下降；队列可继续处理下一组分析/公共 API 边界测试。

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Shared mixins for oversized core analysis test file."""
 
+import asyncio
 import os
 import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -16,6 +18,7 @@ from tree_sitter_analyzer.core.analysis_engine import (
     UnsupportedLanguageError,
 )
 from tree_sitter_analyzer.core.parser import ParseResult
+from tree_sitter_analyzer.exceptions import AnalysisError, ParseError
 from tree_sitter_analyzer.models import AnalysisResult
 
 
@@ -951,3 +954,233 @@ class TestAnalysisEngineHelperMethodsTestMixin:
         assert result.file_path == "test.py"
         assert result.language == "python"
         assert result.error_message == "Test error"
+
+
+class TestAnalysisEnginePublicAPITestMixin:
+    """Shared tests for `AnalysisEngine` public API."""
+
+    __test__ = False
+
+    @pytest.mark.asyncio
+    async def test_get_supported_languages(self):
+        """Test getting supported languages."""
+        engine = AnalysisEngine()
+
+        languages = engine.get_supported_languages()
+
+        assert isinstance(languages, list)
+        assert "python" in languages
+
+    @pytest.mark.asyncio
+    async def test_get_available_queries_for_python(self):
+        """Test getting available queries for Python."""
+        engine = AnalysisEngine()
+
+        queries = engine.get_available_queries("python")
+
+        assert isinstance(queries, list)
+
+
+class TestAnalysisEngineConcurrencyTestMixin:
+    """Shared tests for concurrent analysis scenarios."""
+
+    __test__ = False
+
+    @pytest.mark.asyncio
+    async def test_concurrent_file_analysis(self):
+        """Test analyzing multiple files concurrently."""
+        engine = AnalysisEngine()
+
+        # Create multiple temp files
+        temp_files = []
+        for i in range(5):
+            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".py") as f:
+                f.write(f"def func_{i}():\n    pass")
+                temp_files.append(f.name)
+
+        try:
+            tasks = [engine.analyze_file(f) for f in temp_files]
+            results = await asyncio.gather(*tasks)
+
+            assert len(results) == 5
+            assert all(r is not None for r in results)
+        finally:
+            for path in temp_files:
+                os.unlink(path)
+
+    @pytest.mark.asyncio
+    async def test_concurrent_code_analysis(self):
+        """Test analyzing multiple code snippets concurrently."""
+        engine = AnalysisEngine()
+
+        codes = [f"def func_{i}():\n    pass" for i in range(5)]
+
+        tasks = [engine.analyze_code(c, language="python") for c in codes]
+        results = await asyncio.gather(*tasks)
+
+        assert len(results) == 5
+        assert all(r is not None for r in results)
+
+
+class TestAnalysisEngineEdgeCasesTestMixin:
+    """Shared tests for edge cases and error conditions in `AnalysisEngine`."""
+
+    __test__ = False
+
+    @pytest.fixture
+    def engine_extended(self) -> AnalysisEngine:
+        """Create an AnalysisEngine instance for testing."""
+        return AnalysisEngine()
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_with_empty_file_extended(self, engine_extended):
+        """Test analyzing an empty file."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            result = await engine_extended.analyze_file(temp_path)
+            assert isinstance(result, AnalysisResult)
+            assert result.file_path == temp_path
+        except Exception as e:
+            assert isinstance(e, AnalysisError | ParseError | ValueError)
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_with_binary_file(self, engine_extended):
+        """Test analyzing a binary file."""
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".bin", delete=False) as f:
+            f.write(b"\x00\x01\x02\x03\x04\x05")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            result = await engine_extended.analyze_file(temp_path)
+            assert result is not None
+        except Exception as e:
+            assert isinstance(
+                e,
+                AnalysisError
+                | ParseError
+                | UnicodeDecodeError
+                | ValueError
+                | UnsupportedLanguageError,
+            )
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_with_very_large_file(self, engine_extended):
+        """Test analyzing a very large file."""
+        large_content = "# Large Python file\n" + "def function_{}(): pass\n" * 1000
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(large_content)
+            f.flush()
+            temp_path = f.name
+
+        try:
+            result = await engine_extended.analyze_file(temp_path)
+            assert isinstance(result, AnalysisResult)
+            assert result.file_path == temp_path
+        except Exception as e:
+            assert isinstance(e, MemoryError | TimeoutError | AnalysisError)
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_with_malformed_syntax(self, engine_extended):
+        """Test analyzing files with malformed syntax."""
+        malformed_samples = [
+            "def incomplete_function(",
+            "class MissingColon",
+            "import",
+            "if True\n    pass",
+            "def func():\n  return",
+        ]
+
+        for code in malformed_samples:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+                f.write(code)
+                f.flush()
+                temp_path = f.name
+
+            try:
+                result = await engine_extended.analyze_file(temp_path)
+                assert result is not None
+            except Exception as e:
+                assert isinstance(e, ParseError | SyntaxError | AnalysisError)
+            finally:
+                Path(temp_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_with_unicode_content(self, engine_extended):
+        """Test analyzing files with Unicode content."""
+        unicode_content = """
+# Unicode test file: 测试文件
+def 函数名():
+    '''这是一个包含中文的函数'''
+    变量 = "Hello, 世界! 🌍"
+    return 变量
+
+class 类名:
+    '''包含Unicode字符的类'''
+    def __init__(self):
+        self.属性 = "值"
+"""
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(unicode_content)
+            f.flush()
+            temp_path = f.name
+
+        try:
+            result = await engine_extended.analyze_file(temp_path)
+            assert isinstance(result, AnalysisResult)
+            assert result.file_path == temp_path
+        except Exception as e:
+            assert isinstance(e, UnicodeError | AnalysisError)
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_with_nonexistent_file_extended(self, engine_extended):
+        """Test analyzing a non-existent file."""
+        nonexistent_file = "nonexistent_path/file.py"
+
+        with pytest.raises((FileNotFoundError, AnalysisError)):
+            await engine_extended.analyze_file(nonexistent_file)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_with_permission_denied(self, engine_extended):
+        """Test analyzing a file with permission issues."""
+        with patch("builtins.open", side_effect=PermissionError("Permission denied")):
+            with pytest.raises((PermissionError, AnalysisError, FileNotFoundError)):
+                await engine_extended.analyze_file("some_file.py")
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_with_different_encodings(self, engine_extended):
+        """Test analyzing files with different encodings."""
+        test_content = "def hello(): return 'Hello, World!'"
+        encodings = ["utf-8", "latin-1", "ascii"]
+
+        for encoding in encodings:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".py", delete=False, encoding=encoding
+            ) as f:
+                f.write(test_content)
+                f.flush()
+                temp_path = f.name
+
+            try:
+                result = await engine_extended.analyze_file(temp_path)
+                assert isinstance(result, AnalysisResult)
+            except (UnicodeError, AnalysisError):
+                pass
+            finally:
+                Path(temp_path).unlink(missing_ok=True)

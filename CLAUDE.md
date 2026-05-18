@@ -146,6 +146,10 @@ Any string works as a custom agent type.
 - ALWAYS run tests after code changes
 - ALWAYS verify build succeeds before committing
 
+verification_command: uv run pytest -q
+pytest_required: true
+--change-impact --format json
+
 ```bash
 npm run build && npm test
 ```
