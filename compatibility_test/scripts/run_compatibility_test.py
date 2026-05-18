@@ -74,6 +74,85 @@ def _load_mcp_tool_class(tool_name: str) -> type[Any]:
     raise ValueError(f"未知のツール名: {tool_name}")
 
 
+def _list_output_files(output_dir: Path) -> set[str]:
+    if not output_dir.exists():
+        return set()
+    return {file_path.name for file_path in output_dir.iterdir() if file_path.is_file()}
+
+
+def _compare_common_output_files(
+    comparison_results: dict[str, Any],
+    common_files: set[str],
+    version_a_dir: Path,
+    version_b_dir: Path,
+    version_a: str,
+    version_b: str,
+) -> None:
+    for filename in common_files:
+        _compare_output_file(
+            comparison_results,
+            version_a_dir / filename,
+            version_b_dir / filename,
+            filename,
+            version_a,
+            version_b,
+        )
+
+
+def _compare_output_file(
+    comparison_results: dict[str, Any],
+    file_a: Path,
+    file_b: Path,
+    filename: str,
+    version_a: str,
+    version_b: str,
+) -> None:
+    try:
+        content_a = file_a.read_text(encoding="utf-8")
+        content_b = file_b.read_text(encoding="utf-8")
+    except Exception as e:
+        print(f"⚠️ ファイル比較エラー ({filename}): {e}")
+        return
+
+    if content_a == content_b:
+        comparison_results["identical_files"].append(filename)
+        return
+
+    comparison_results["different_files"].append(filename)
+    comparison_results["detailed_diffs"][filename] = _build_unified_diff(
+        content_a, content_b, filename, version_a, version_b
+    )
+
+
+def _build_unified_diff(
+    content_a: str,
+    content_b: str,
+    filename: str,
+    version_a: str,
+    version_b: str,
+) -> str:
+    diff = difflib.unified_diff(
+        content_a.splitlines(keepends=True),
+        content_b.splitlines(keepends=True),
+        fromfile=f"v{version_a}/{filename}",
+        tofile=f"v{version_b}/{filename}",
+    )
+    return "".join(diff)
+
+
+def _record_missing_output_files(
+    comparison_results: dict[str, Any],
+    version_a_files: set[str],
+    version_b_files: set[str],
+    version_a: str,
+    version_b: str,
+) -> None:
+    for filename in version_a_files - version_b_files:
+        comparison_results["missing_files"].append(f"{filename} (v{version_b}で欠落)")
+    for filename in version_b_files - version_a_files:
+        comparison_results["missing_files"].append(f"{filename} (v{version_a}で欠落)")
+
+
 class StandardizedCompatibilityTester:
     def __init__(
         self,
@@ -386,70 +465,30 @@ class StandardizedCompatibilityTester:
         """バージョン間の出力を比較"""
         print("\n🔍 バージョン間の差分を分析中...")
 
-        comparison_results = {
+        comparison_results: dict[str, Any] = {
             "identical_files": [],
             "different_files": [],
             "missing_files": [],
             "detailed_diffs": {},
         }
 
-        # バージョンAの出力ファイル一覧を取得
-        version_a_files = set()
-        if self.version_a_dir.exists():
-            version_a_files = {
-                f.name for f in self.version_a_dir.iterdir() if f.is_file()
-            }
-
-        # バージョンBの出力ファイル一覧を取得
-        version_b_files = set()
-        if self.version_b_dir.exists():
-            version_b_files = {
-                f.name for f in self.version_b_dir.iterdir() if f.is_file()
-            }
-
-        # 共通ファイルを比較
-        common_files = version_a_files & version_b_files
-        for filename in common_files:
-            file_a = self.version_a_dir / filename
-            file_b = self.version_b_dir / filename
-
-            try:
-                with open(file_a, encoding="utf-8") as f:
-                    content_a = f.read()
-                with open(file_b, encoding="utf-8") as f:
-                    content_b = f.read()
-
-                if content_a == content_b:
-                    comparison_results["identical_files"].append(filename)
-                else:
-                    comparison_results["different_files"].append(filename)
-
-                    # 詳細な差分を生成
-                    diff = list(
-                        difflib.unified_diff(
-                            content_a.splitlines(keepends=True),
-                            content_b.splitlines(keepends=True),
-                            fromfile=f"v{self.version_a}/{filename}",
-                            tofile=f"v{self.version_b}/{filename}",
-                        )
-                    )
-                    comparison_results["detailed_diffs"][filename] = "".join(diff)
-
-            except Exception as e:
-                print(f"⚠️ ファイル比較エラー ({filename}): {e}")
-
-        # 欠落ファイルを記録
-        missing_in_b = version_a_files - version_b_files
-        missing_in_a = version_b_files - version_a_files
-
-        for filename in missing_in_b:
-            comparison_results["missing_files"].append(
-                f"{filename} (v{self.version_b}で欠落)"
-            )
-        for filename in missing_in_a:
-            comparison_results["missing_files"].append(
-                f"{filename} (v{self.version_a}で欠落)"
-            )
+        version_a_files = _list_output_files(self.version_a_dir)
+        version_b_files = _list_output_files(self.version_b_dir)
+        _compare_common_output_files(
+            comparison_results,
+            version_a_files & version_b_files,
+            self.version_a_dir,
+            self.version_b_dir,
+            self.version_a,
+            self.version_b,
+        )
+        _record_missing_output_files(
+            comparison_results,
+            version_a_files,
+            version_b_files,
+            self.version_a,
+            self.version_b,
+        )
 
         return comparison_results
 
