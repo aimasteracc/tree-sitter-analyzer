@@ -10,6 +10,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 STATUS_SCRIPT = PROJECT_ROOT / ".autonomous-runtime" / "status.sh"
+TICK_SCRIPT = PROJECT_ROOT / ".autonomous-runtime" / "tick.sh"
 
 
 def run_status(
@@ -20,6 +21,21 @@ def run_status(
         run_env.update(env)
     return subprocess.run(
         ["bash", str(STATUS_SCRIPT), str(project_dir), *args],
+        check=True,
+        text=True,
+        capture_output=True,
+        env=run_env,
+    )
+
+
+def run_tick(
+    project_dir: Path, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
+    return subprocess.run(
+        ["bash", str(TICK_SCRIPT), str(project_dir)],
         check=True,
         text=True,
         capture_output=True,
@@ -43,6 +59,13 @@ def make_runtime_project(tmp_path: Path) -> Path:
     (runtime_dir / "autonomous-loop.log").write_text(
         "[iteration 1] sleep 300s\n", encoding="utf-8"
     )
+    (runtime_dir / "loop.sh").write_text(
+        "#!/bin/bash\n"
+        'echo $$ > "$(dirname "$0")/loop.lock"\n'
+        'sleep "${TS_AUTONOMY_SLEEP_SECONDS:-300}"\n',
+        encoding="utf-8",
+    )
+    (runtime_dir / "loop.sh").chmod(0o755)
     (change_dir / "tasks.md").write_text("- [ ] keep improving\n", encoding="utf-8")
 
     subprocess.run(
@@ -106,3 +129,42 @@ def test_status_text_includes_heartbeat_section(tmp_path: Path) -> None:
     assert "Codex heartbeat" in result.stdout
     assert "phase8-code-slimming" in result.stdout
     assert "健康运行" in result.stdout
+
+
+def test_tick_writes_machine_readable_state(tmp_path: Path) -> None:
+    project_dir = make_runtime_project(tmp_path)
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=project_dir,
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.strip()
+
+    result = run_tick(project_dir, env={"TS_AUTONOMY_SLEEP_SECONDS": "2"})
+    payload = json.loads(
+        (project_dir / ".autonomous-runtime" / "last-tick.json").read_text()
+    )
+
+    assert "AUTONOMY_TICK" in result.stdout
+    assert payload["heartbeat_status"] == "recorded"
+    assert payload["loop_probe_status"] == "running"
+    assert payload["branch"] == branch
+
+
+def test_tick_reuses_existing_loop_lock(tmp_path: Path) -> None:
+    project_dir = make_runtime_project(tmp_path)
+    runtime_dir = project_dir / ".autonomous-runtime"
+    sleep_process = subprocess.Popen(["sleep", "5"])
+    try:
+        (runtime_dir / "loop.lock").write_text(str(sleep_process.pid), encoding="utf-8")
+
+        result = run_tick(project_dir, env={"TS_AUTONOMY_SLEEP_SECONDS": "1"})
+        payload = json.loads((runtime_dir / "last-tick.json").read_text())
+
+        assert "ready" in result.stdout
+        assert payload["action"] == "ready"
+        assert payload["loop_pids"] == str(sleep_process.pid)
+    finally:
+        sleep_process.terminate()
+        sleep_process.wait(timeout=5)
