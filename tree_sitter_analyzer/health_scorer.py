@@ -402,6 +402,13 @@ class HealthScorer:
         for search_dir in search_paths:
             cov_file = search_dir / "coverage.json"
             if cov_file.exists():
+                coverage_db = search_dir / ".coverage"
+                if _coverage_json_is_stale(cov_file, coverage_db):
+                    logger.info(
+                        "Ignoring stale coverage.json because .coverage is newer: "
+                        f"{cov_file}"
+                    )
+                    continue
                 try:
                     data = json.loads(cov_file.read_text(encoding="utf-8"))
                     files = data.get("files", {})
@@ -453,6 +460,16 @@ class HealthScorer:
                 return pct
 
         return None
+
+
+def _coverage_json_is_stale(cov_file: Path, coverage_db: Path) -> bool:
+    """Return True when pytest-cov data is newer than the JSON report."""
+    if not coverage_db.exists():
+        return False
+    try:
+        return coverage_db.stat().st_mtime > cov_file.stat().st_mtime
+    except OSError:
+        return False
 
 
 # ---- Module-level dimension scoring functions ----

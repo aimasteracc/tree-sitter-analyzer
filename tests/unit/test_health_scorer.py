@@ -1,5 +1,7 @@
 """Unit tests for health_scorer.py — file-level code health scoring."""
 
+import json
+import os
 from pathlib import Path
 
 import pytest
@@ -125,6 +127,60 @@ class TestHealthScorer:
         assert "coverage" not in dims, (
             f"Coverage should be absent when no data, got {dims}"
         )
+
+    def test_stale_coverage_json_is_ignored(self, monkeypatch, tmp_path):
+        """Do not use stale JSON coverage when pytest-cov has newer raw data."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        source = tmp_path / "pkg" / "module.py"
+        source.parent.mkdir()
+        source.write_text("x = 1\n")
+        coverage_json = tmp_path / "coverage.json"
+        coverage_json.write_text(
+            json.dumps(
+                {
+                    "files": {"pkg/module.py": {"summary": {"percent_covered": 12.5}}},
+                    "totals": {"percent_covered": 12.5},
+                }
+            ),
+            encoding="utf-8",
+        )
+        coverage_db = tmp_path / ".coverage"
+        coverage_db.write_text("newer raw coverage", encoding="utf-8")
+        os.utime(coverage_json, (1000, 1000))
+        os.utime(coverage_db, (2000, 2000))
+        monkeypatch.chdir(tmp_path)
+
+        result = HealthScorer().score_file(str(source))
+
+        assert "coverage" not in result.to_dict()["dimensions"]
+
+    def test_current_coverage_json_is_used(self, monkeypatch, tmp_path):
+        """Use JSON coverage when it is as current as the raw coverage data."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        source = tmp_path / "pkg" / "module.py"
+        source.parent.mkdir()
+        source.write_text("x = 1\n")
+        coverage_json = tmp_path / "coverage.json"
+        coverage_json.write_text(
+            json.dumps(
+                {
+                    "files": {"pkg/module.py": {"summary": {"percent_covered": 87.5}}},
+                    "totals": {"percent_covered": 87.5},
+                }
+            ),
+            encoding="utf-8",
+        )
+        coverage_db = tmp_path / ".coverage"
+        coverage_db.write_text("older raw coverage", encoding="utf-8")
+        os.utime(coverage_db, (1000, 1000))
+        os.utime(coverage_json, (2000, 2000))
+        monkeypatch.chdir(tmp_path)
+
+        result = HealthScorer().score_file(str(source))
+
+        assert result.to_dict()["dimensions"]["coverage"] == 87.5
 
     def test_weights_sum_to_100(self):
         """Default dimension weights must sum to 100."""
