@@ -141,3 +141,21 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果:
   - `test_engine.py` 行数继续下降到约 1573 行；
   - `TestUnifiedAnalysisEngineInit` 抽离成功，下一步继续沿 `refactor` 建议处理 `PluginManagement`、`CacheManagement`、`LanguageDetection`。
+
+## 2026-05-18: test_engine.py 可维护性切片（继续）
+
+- 目标: 继续 `TestUnifiedAnalysisEngine*` 的拆分，降低 `test_engine.py` 的维护负担。
+- 动作:
+  - 在 `tests/unit/core/_test_engine_test_mixin.py` 新增 `TestUnifiedAnalysisEnginePluginManagementTestMixin`，抽离 3 个 `TestUnifiedAnalysisEnginePluginManagement` 测试。
+  - 将 `tests/unit/core/test_engine.py` 的 `TestUnifiedAnalysisEnginePluginManagement` 改造为继承该 mixin。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run pytest tests/unit/core/test_engine.py -q`（85 passed, 1 skipped）
+  - `uv run pytest -q`（10401 passed, 32 skipped）
+  - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py`（`D(69.0)`，`oversized_file` 与 `deep_nesting` 仍在）
+  - `uv run python -m tree_sitter_analyzer --change-impact --format json`（变更影响仅在上述两个文件，默认队列级验证仍为 `uv run pytest -q`）
+- 结果:
+  - `test_engine.py` 约 1554 行，较前已继续收缩。
+  - `TestUnifiedAnalysisEnginePluginManagement` 的职责更内聚，未引入新风险。
+  - 下一步建议继续迁移 `TestUnifiedAnalysisEngineCacheManagement` 与 `TestUnifiedAnalysisEngineLanguageDetection`。

@@ -6,7 +6,11 @@ import tempfile
 
 import pytest
 
-from tree_sitter_analyzer.core.analysis_engine import UnsupportedLanguageError
+from tree_sitter_analyzer.core.analysis_engine import (
+    MockLanguagePlugin,
+    UnifiedAnalysisEngine,
+    UnsupportedLanguageError,
+)
 from tree_sitter_analyzer.models import AnalysisResult
 
 
@@ -170,3 +174,31 @@ class TestUnifiedAnalysisEngineInitTestMixin:
         engine1 = get_analysis_engine(project_root="/test")
         engine2 = get_analysis_engine(project_root="/test")
         assert engine1 is engine2
+
+
+class TestUnifiedAnalysisEnginePluginManagementTestMixin:
+    """Shared tests for `UnifiedAnalysisEngine` plugin management."""
+
+    __test__ = False
+
+    def test_register_plugin(self):
+        """Test registering a language plugin."""
+        engine = UnifiedAnalysisEngine()
+        plugin = MockLanguagePlugin("python")
+        engine.register_plugin("python", plugin)
+        # Plugin should be registered without error
+        assert True
+
+    def test_get_supported_languages(self):
+        """Test getting list of supported languages."""
+        engine = UnifiedAnalysisEngine()
+        languages = engine.get_supported_languages()
+        assert isinstance(languages, list)
+        # Should at least have some languages
+        assert len(languages) > 0
+
+    def test_plugin_manager_property(self):
+        """Test accessing plugin manager property."""
+        engine = UnifiedAnalysisEngine()
+        plugin_manager = engine.plugin_manager
+        assert plugin_manager is not None

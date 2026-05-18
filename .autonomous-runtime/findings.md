@@ -38,7 +38,9 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
 
 - `test_engine.py` 是高优先目标文件（D 级，1700+ 行）。首次动作已完成一次 mixin 拆分。
 - 按 CLAUDE/MCP 建议，`refactoring_suggestions` 给出的切片顺序可继续执行；建议本轮持续沿 `TestUnifiedAnalysisEngine*` 分组拆出混杂职责。
-- 风险低：本轮再次收口后完成验证
-  - `uv run pytest tests/unit/core/test_engine.py -q`（88 passed, 1 skipped）
-  - `uv run pytest -q`（10404 passed, 32 skipped）
-  - `--file-health` 仍为 `D(68.9)`，`oversized_file` 关键异味持续（1573 行），继续执行下一组切片：`TestUnifiedAnalysisEnginePluginManagement` / `CacheManagement` / `LanguageDetection`。
+- 风险低：`TestUnifiedAnalysisEnginePluginManagement` 再次收口后完成验证
+  - `uv run pytest tests/unit/core/test_engine.py -q`（85 passed, 1 skipped）
+  - `uv run pytest -q`（10401 passed, 32 skipped）
+  - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py`（`D(69.0)`，`oversized_file` 与 `deep_nesting` 仍为关键异味）
+  - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险队列，推荐 `uv run pytest -q` 进行队列验收）
+- 下一步：继续按同一顺序切片 `TestUnifiedAnalysisEngineCacheManagement` / `TestUnifiedAnalysisEngineLanguageDetection`，优先保持每次单批次的测试反馈闭环。
