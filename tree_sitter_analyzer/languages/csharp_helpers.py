@@ -356,6 +356,31 @@ def extract_property_declaration(
         return None
 
 
+def _find_variable_declaration(node: Any) -> Any | None:
+    for child in node.children:
+        if child.type == "variable_declaration":
+            return child
+    return None
+
+
+def _iter_variable_declarators(variable_declaration: Any | None) -> Iterator[Any]:
+    if variable_declaration is None:
+        return
+    for declarator in variable_declaration.children:
+        if declarator.type == "variable_declarator":
+            yield declarator
+
+
+def _extract_declarator_name(
+    declarator: Any,
+    get_node_text: Callable[..., str],
+) -> str | None:
+    name_node = declarator.child_by_field_name("name")
+    if not name_node:
+        return None
+    return get_node_text(name_node)
+
+
 # Extract elements from AST: extract_field_declaration
 def extract_field_declaration(
     node: Any,
@@ -373,40 +398,32 @@ def extract_field_declaration(
         visibility = determine_visibility(modifiers)
         is_constant = "const" in modifiers
         attributes = extract_attributes_fn(node)
-
-        type_node = None
-        # Iterate over child
-        for child in node.children:
-            if child.type == "variable_declaration":
-                type_node = child.child_by_field_name("type")
-                break
-
+        variable_declaration = _find_variable_declaration(node)
+        type_node = (
+            variable_declaration.child_by_field_name("type")
+            if variable_declaration
+            else None
+        )
         field_type = extract_type_fn(type_node)
+        raw_text = get_node_text(node)
 
-        # Iterate over child
-        for child in node.children:
-            if child.type == "variable_declaration":
-                # Iterate over declarator
-                for declarator in child.children:
-                    if declarator.type == "variable_declarator":
-                        name_node = declarator.child_by_field_name("name")
-                        if name_node:
-                            field_name = get_node_text(name_node)
-                            raw_text = get_node_text(node)
-
-                            variables.append(
-                                Variable(
-                                    name=field_name,
-                                    start_line=node.start_point[0] + 1,
-                                    end_line=node.end_point[0] + 1,
-                                    raw_text=raw_text,
-                                    variable_type=field_type,
-                                    modifiers=modifiers,
-                                    visibility=visibility,
-                                    is_constant=is_constant,
-                                    annotations=attributes,
-                                )
-                            )
+        for declarator in _iter_variable_declarators(variable_declaration):
+            field_name = _extract_declarator_name(declarator, get_node_text)
+            if field_name is None:
+                continue
+            variables.append(
+                Variable(
+                    name=field_name,
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    raw_text=raw_text,
+                    variable_type=field_type,
+                    modifiers=modifiers,
+                    visibility=visibility,
+                    is_constant=is_constant,
+                    annotations=attributes,
+                )
+            )
     except Exception as e:
         log_error(f"Error extracting field: {e}")
 
@@ -430,39 +447,31 @@ def extract_event_declaration(
         modifiers.append("event")
         visibility = determine_visibility(modifiers)
         attributes = extract_attributes_fn(node)
-
-        type_node = None
-        # Iterate over child
-        for child in node.children:
-            if child.type == "variable_declaration":
-                type_node = child.child_by_field_name("type")
-                break
-
+        variable_declaration = _find_variable_declaration(node)
+        type_node = (
+            variable_declaration.child_by_field_name("type")
+            if variable_declaration
+            else None
+        )
         event_type = extract_type_fn(type_node)
+        raw_text = get_node_text(node)
 
-        # Iterate over child
-        for child in node.children:
-            if child.type == "variable_declaration":
-                # Iterate over declarator
-                for declarator in child.children:
-                    if declarator.type == "variable_declarator":
-                        name_node = declarator.child_by_field_name("name")
-                        if name_node:
-                            event_name = get_node_text(name_node)
-                            raw_text = get_node_text(node)
-
-                            variables.append(
-                                Variable(
-                                    name=event_name,
-                                    start_line=node.start_point[0] + 1,
-                                    end_line=node.end_point[0] + 1,
-                                    raw_text=raw_text,
-                                    variable_type=event_type,
-                                    modifiers=modifiers,
-                                    visibility=visibility,
-                                    annotations=attributes,
-                                )
-                            )
+        for declarator in _iter_variable_declarators(variable_declaration):
+            event_name = _extract_declarator_name(declarator, get_node_text)
+            if event_name is None:
+                continue
+            variables.append(
+                Variable(
+                    name=event_name,
+                    start_line=node.start_point[0] + 1,
+                    end_line=node.end_point[0] + 1,
+                    raw_text=raw_text,
+                    variable_type=event_type,
+                    modifiers=modifiers,
+                    visibility=visibility,
+                    annotations=attributes,
+                )
+            )
     except Exception as e:
         log_error(f"Error extracting event: {e}")
 
