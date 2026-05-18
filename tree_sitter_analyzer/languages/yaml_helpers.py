@@ -3,7 +3,9 @@
 from collections.abc import Callable
 from typing import Any
 
-from ..utils import log_debug
+from ..encoding_utils import read_file_safe
+from ..models import AnalysisResult
+from ..utils import log_debug, log_error, log_info
 
 
 def extract_node_text(node: Any, source_code: str) -> str:
@@ -227,3 +229,67 @@ def extract_sequence_key(
             break
         parent = getattr(parent, "parent", None)
     return key
+
+
+def analyze_yaml_file(
+    *,
+    file_path: str,
+    create_extractor: Callable[[], Any],
+    yaml_available: bool,
+    parser: Any,
+    parser_lock: Any,
+) -> AnalysisResult:
+    """Analyze a YAML file using the shared parser and extractor factory."""
+    if not yaml_available:
+        log_error("tree-sitter-yaml not available")
+        return _yaml_failure_result(
+            file_path,
+            "YAML support not available. Install tree-sitter-yaml.",
+        )
+
+    try:
+        content, _encoding = read_file_safe(file_path)
+        tree = _parse_yaml_content(content, parser, parser_lock)
+        yaml_extractor = create_extractor()
+        elements = yaml_extractor.extract_yaml_elements(tree, content)
+
+        log_info(f"Extracted {len(elements)} YAML elements from {file_path}")
+
+        return AnalysisResult(
+            file_path=file_path,
+            language="yaml",
+            line_count=len(content.splitlines()),
+            elements=elements,
+            node_count=len(elements),
+            query_results={},
+            source_code=content,
+            success=True,
+            error_message=None,
+        )
+
+    except Exception as exc:
+        log_error(f"Failed to analyze YAML file {file_path}: {exc}")
+        return _yaml_failure_result(file_path, str(exc))
+
+
+def _parse_yaml_content(content: str, parser: Any, parser_lock: Any) -> Any:
+    """Parse YAML content while respecting the shared parser lock."""
+    if parser is None or parser_lock is None:
+        raise RuntimeError("YAML parser is not initialized")
+    with parser_lock:
+        return parser.parse(content.encode("utf-8"))
+
+
+def _yaml_failure_result(file_path: str, error_message: str) -> AnalysisResult:
+    """Build a consistent YAML analysis failure result."""
+    return AnalysisResult(
+        file_path=file_path,
+        language="yaml",
+        line_count=0,
+        elements=[],
+        node_count=0,
+        query_results={},
+        source_code="",
+        success=False,
+        error_message=error_message,
+    )

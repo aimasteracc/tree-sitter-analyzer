@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING, Any
 
 from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_info, log_warning
+from ..utils import log_debug, log_error, log_warning
+from .yaml_helpers import (
+    analyze_yaml_file as _analyze_yaml_file_standalone,
+)
 from .yaml_helpers import (
     calculate_nesting_level as _calc_nesting_standalone,
 )
@@ -570,60 +573,10 @@ class YAMLPlugin(LanguagePlugin):
         Returns:
             AnalysisResult with extracted elements
         """
-        from ..encoding_utils import read_file_safe
-
-        # Check if YAML support is available
-        if not YAML_AVAILABLE:
-            log_error("tree-sitter-yaml not available")
-            return AnalysisResult(
-                file_path=file_path,
-                language="yaml",
-                line_count=0,
-                elements=[],
-                node_count=0,
-                query_results={},
-                source_code="",
-                success=False,
-                error_message="YAML support not available. Install tree-sitter-yaml.",
-            )
-
-        try:
-            # Read file content with encoding detection
-            content, encoding = read_file_safe(file_path)
-
-            # Parse the YAML content
-            # tree-sitter Parser is not guaranteed to be thread-safe across concurrent calls.
-            with _YAML_PARSER_LOCK:
-                tree = YAML_PARSER.parse(content.encode("utf-8"))
-
-            # Extract elements using the extractor
-            yaml_extractor = self.create_extractor()
-            elements = yaml_extractor.extract_yaml_elements(tree, content)
-
-            log_info(f"Extracted {len(elements)} YAML elements from {file_path}")
-
-            return AnalysisResult(
-                file_path=file_path,
-                language="yaml",
-                line_count=len(content.splitlines()),
-                elements=elements,
-                node_count=len(elements),
-                query_results={},
-                source_code=content,
-                success=True,
-                error_message=None,
-            )
-
-        except Exception as e:
-            log_error(f"Failed to analyze YAML file {file_path}: {e}")
-            return AnalysisResult(
-                file_path=file_path,
-                language="yaml",
-                line_count=0,
-                elements=[],
-                node_count=0,
-                query_results={},
-                source_code="",
-                success=False,
-                error_message=str(e),
-            )
+        return _analyze_yaml_file_standalone(
+            file_path=file_path,
+            create_extractor=self.create_extractor,
+            yaml_available=YAML_AVAILABLE,
+            parser=globals().get("YAML_PARSER"),
+            parser_lock=globals().get("_YAML_PARSER_LOCK"),
+        )
