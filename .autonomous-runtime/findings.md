@@ -171,3 +171,19 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
     - `uv run pytest tests/unit/core/test_engine.py -q`（101 passed, 1 skipped）
     - `uv run pytest -q`（10417 passed, 32 skipped）
   - 结论：收集问题闭环处理完毕，队列可直接进入下一组 mixin 收敛（`test_engine.py` 剩余类边界整合），风险较低。
+
+- 2026-05-19 Tick: test_engine 管理器职责切片迁移到独立文件
+  - 目标: 继续 `test_engine.py` 队头收敛，按职责边界将 `test_engine_manager` 相关测试从主文件独立出来，降低单文件认知负担。
+  - 动作:
+    - 在 `tests/unit/core/test_engine_manager.py` 新建 `TestEngineManagerGetInstance`、`TestEngineManagerThreadSafety`、`TestEngineManagerResetInstances`、`TestEngineManagerEdgeCases`、`TestEngineSecurityRegression` 5 个类。
+    - 各类继续继承既有 `tests/unit/core/_test_engine_test_mixin.py` 中的对应 mixin，不变更测试实现与断言。
+    - 从 `tests/unit/core/test_engine.py` 移除上述管理器/安全回归壳类，剥离出专属文件并清理多余导入。
+  - 验证:
+    - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/test_engine_manager.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+    - `uv run pytest tests/unit/core/test_engine.py tests/unit/core/test_engine_manager.py -q`（101 passed, 1 skipped）
+    - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py --format json`（`A(96.4)`，`test_engine.py` 无 `oversized_file` 异味）
+    - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险）
+    - `uv run pytest -q`（10417 passed, 32 skipped）
+  - 结果:
+    - `test_engine.py` 已从单文件承载中移出 `EngineManager` 相关边界，健康分回升到 `A(96.4)`，风险下降。
+    - 当前队列建议：继续检查是否有剩余的 `test_engine.py` 相关类可进一步按文件边界拆分；如无明显动作，则在下一步评估是否回到其他 top-5 oversized 文件。

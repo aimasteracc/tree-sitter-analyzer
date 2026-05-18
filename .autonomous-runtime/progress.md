@@ -331,3 +331,21 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果:
   - 队头任务 `tests/unit/core/test_engine.py` 已恢复完整收集并通过回归，`Test*` mixin 派生类行为保持一致。
   - 当前切片链路可继续推进到后续 `test_engine_manager.py` 的整合收口（若未在本轮完成则延续下一 tick）。
+
+## 2026-05-19: test_engine 管理器职责切片（收口）
+
+- 目标：继续 `test_engine.py` 队头收敛，将管理器/安全回归类独立到独立文件以降低单文件认知负担。
+- 结果：
+  - 在 `tests/unit/core/test_engine_manager.py` 新建 5 个壳类：
+    - `TestEngineManagerGetInstance`
+    - `TestEngineManagerThreadSafety`
+    - `TestEngineManagerResetInstances`
+    - `TestEngineManagerEdgeCases`
+    - `TestEngineSecurityRegression`
+  - 以上类均继承既有 mixin（`tests/unit/core/_test_engine_test_mixin.py`）并保留原测试行为。
+  - 从 `tests/unit/core/test_engine.py` 去掉对应壳类定义，减少主文件职责杂糅。
+- 验证：
+  - `uv run pytest tests/unit/core/test_engine.py tests/unit/core/test_engine_manager.py -q`（101 passed, 1 skipped）
+  - `uv run pytest -q`（10417 passed, 32 skipped）
+  - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py --format json`（`A(96.4)`）
+- 结论：`test_engine.py` 相关管理器职责收口完成，队列可继续继续处理剩余 `test_engine.py` 类（如需）或转向下一个 oversized 目标。
