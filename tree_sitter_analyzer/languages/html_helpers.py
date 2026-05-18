@@ -27,30 +27,11 @@ def parse_attribute(
 ) -> tuple[str, str]:
     """Parse individual attribute node."""
     try:
-        attr_name = ""
-        attr_value = ""
+        attr_name, attr_value = _parse_attribute_children(attr_node, get_node_text)
+        if attr_name:
+            return attr_name, attr_value
 
-        if hasattr(attr_node, "children"):
-            for child in attr_node.children:
-                if hasattr(child, "type"):
-                    if child.type == "attribute_name":
-                        attr_name = get_node_text(child).strip()
-                    elif child.type == "quoted_attribute_value":
-                        attr_value = get_node_text(child).strip().strip('"').strip("'")
-                    elif child.type == "attribute_value":
-                        attr_value = get_node_text(child).strip()
-
-        if not attr_name:
-            attr_text = get_node_text(attr_node)
-            if "=" in attr_text:
-                name, value = attr_text.split("=", 1)
-                attr_name = name.strip()
-                attr_value = value.strip().strip('"').strip("'")
-            else:
-                attr_name = attr_text.strip()
-                attr_value = ""
-
-        return attr_name, attr_value
+        return _parse_attribute_text(get_node_text(attr_node))
     except Exception:
         return "", ""
 
@@ -71,24 +52,11 @@ def classify_element(
 def extract_html_tag_name(node: Any, get_node_text: Callable[..., str]) -> str:
     """Extract tag name from HTML element node."""
     try:
-        if hasattr(node, "children"):
-            for child in node.children:
-                if hasattr(child, "type"):
-                    if child.type == "tag_name":
-                        return get_node_text(child).strip()
-                    elif child.type in ("start_tag", "self_closing_tag"):
-                        for grandchild in child.children:
-                            if (
-                                hasattr(grandchild, "type")
-                                and grandchild.type == "tag_name"
-                            ):
-                                return get_node_text(grandchild).strip()
+        tag_name = _extract_tag_name_from_children(node, get_node_text)
+        if tag_name:
+            return tag_name
 
-        node_text = get_node_text(node)
-        if node_text.startswith("<"):
-            tag_part = node_text.split(">")[0].split()[0]
-            return tag_part.lstrip("<").rstrip(">")
-        return "unknown"
+        return _extract_tag_name_from_text(get_node_text(node))
     except Exception:
         return "unknown"
 
@@ -100,24 +68,10 @@ def extract_html_attributes(
     """Extract attributes from HTML element node."""
     attributes: dict[str, str] = {}
     try:
-        if hasattr(node, "children"):
-            for child in node.children:
-                if hasattr(child, "type"):
-                    if child.type == "attribute":
-                        attr_name, attr_value = parse_attribute(child, get_node_text)
-                        if attr_name:
-                            attributes[attr_name] = attr_value
-                    elif child.type in ("start_tag", "self_closing_tag"):
-                        for grandchild in child.children:
-                            if (
-                                hasattr(grandchild, "type")
-                                and grandchild.type == "attribute"
-                            ):
-                                attr_name, attr_value = parse_attribute(
-                                    grandchild, get_node_text
-                                )
-                                if attr_name:
-                                    attributes[attr_name] = attr_value
+        for attr_node in _iter_attribute_nodes(node):
+            attr_name, attr_value = parse_attribute(attr_node, get_node_text)
+            if attr_name:
+                attributes[attr_name] = attr_value
     except Exception as e:
         log_debug(f"Failed to extract attributes: {e}")
     return attributes
@@ -159,3 +113,73 @@ def create_markup_element(
     except Exception as e:
         log_debug(f"Failed to create MarkupElement: {e}")
         return None
+
+
+def _iter_typed_children(node: Any) -> list[Any]:
+    if not hasattr(node, "children"):
+        return []
+    return [child for child in node.children if hasattr(child, "type")]
+
+
+def _parse_attribute_children(
+    attr_node: Any, get_node_text: Callable[..., str]
+) -> tuple[str, str]:
+    attr_name = ""
+    attr_value = ""
+
+    for child in _iter_typed_children(attr_node):
+        if child.type == "attribute_name":
+            attr_name = get_node_text(child).strip()
+        elif child.type == "quoted_attribute_value":
+            attr_value = get_node_text(child).strip().strip('"').strip("'")
+        elif child.type == "attribute_value":
+            attr_value = get_node_text(child).strip()
+
+    return attr_name, attr_value
+
+
+def _parse_attribute_text(attr_text: str) -> tuple[str, str]:
+    if "=" not in attr_text:
+        return attr_text.strip(), ""
+
+    name, value = attr_text.split("=", 1)
+    return name.strip(), value.strip().strip('"').strip("'")
+
+
+def _extract_tag_name_from_children(
+    node: Any, get_node_text: Callable[..., str]
+) -> str:
+    for child in _iter_typed_children(node):
+        if child.type == "tag_name":
+            return get_node_text(child).strip()
+
+        if child.type in ("start_tag", "self_closing_tag"):
+            tag_name = _extract_tag_name_from_children(child, get_node_text)
+            if tag_name:
+                return tag_name
+
+    return ""
+
+
+def _extract_tag_name_from_text(node_text: str) -> str:
+    if not node_text.startswith("<"):
+        return "unknown"
+
+    tag_part = node_text.split(">")[0].split()[0]
+    return tag_part.lstrip("<").rstrip(">")
+
+
+def _iter_attribute_nodes(node: Any) -> list[Any]:
+    attribute_nodes = []
+
+    for child in _iter_typed_children(node):
+        if child.type == "attribute":
+            attribute_nodes.append(child)
+        elif child.type in ("start_tag", "self_closing_tag"):
+            attribute_nodes.extend(
+                grandchild
+                for grandchild in _iter_typed_children(child)
+                if grandchild.type == "attribute"
+            )
+
+    return attribute_nodes

@@ -7,10 +7,45 @@ import pytest
 import tree_sitter
 import tree_sitter_html as ts_html
 
+from tree_sitter_analyzer.languages.html_helpers import (
+    classify_element,
+    create_markup_element,
+    extract_html_attributes,
+    extract_html_tag_name,
+    extract_node_text,
+    parse_attribute,
+)
 from tree_sitter_analyzer.languages.html_plugin import (
     HtmlElementExtractor,
     HtmlPlugin,
 )
+
+
+class FakeHtmlNode:
+    """Small tree-sitter-like node for direct helper tests."""
+
+    def __init__(
+        self,
+        node_type: str = "element",
+        *,
+        children: list["FakeHtmlNode"] | None = None,
+        start_byte: int = 0,
+        end_byte: int = 0,
+        start_point: tuple[int, int] = (0, 0),
+        end_point: tuple[int, int] = (0, 0),
+        text: str = "",
+    ) -> None:
+        self.type = node_type
+        self.children = children or []
+        self.start_byte = start_byte
+        self.end_byte = end_byte
+        self.start_point = start_point
+        self.end_point = end_point
+        self.text = text
+
+
+def fake_node_text(node: FakeHtmlNode) -> str:
+    return node.text
 
 
 class TestHtmlExtractorErrorPaths:
@@ -92,6 +127,144 @@ class TestHtmlExtractorErrorPaths:
 
         result = extractor._parse_attribute(mock_node, "")
         assert result == ("", "")
+
+
+class TestHtmlHelperDirectCoverage:
+    """Direct coverage for html_helpers.py behavior."""
+
+    def test_extract_node_text_uses_utf8_byte_offsets(self):
+        source = "<p>東京</p>"
+        start = source.encode("utf-8").index("東".encode())
+        end = source.encode("utf-8").index(b"</p>")
+        node = FakeHtmlNode(start_byte=start, end_byte=end)
+
+        assert extract_node_text(node, source) == "東京"
+
+    def test_extract_node_text_handles_missing_offsets_and_encode_errors(self):
+        assert extract_node_text(Mock(spec=[]), "<p>x</p>") == ""
+
+        class BrokenSource:
+            def encode(self, encoding):
+                raise RuntimeError(f"cannot encode {encoding}")
+
+        node = FakeHtmlNode(start_byte=0, end_byte=1)
+        assert extract_node_text(node, BrokenSource()) == ""
+
+    def test_parse_attribute_from_child_nodes(self):
+        attr = FakeHtmlNode(
+            "attribute",
+            children=[
+                FakeHtmlNode("attribute_name", text="data-id"),
+                FakeHtmlNode("quoted_attribute_value", text='"abc"'),
+            ],
+        )
+
+        assert parse_attribute(attr, fake_node_text) == ("data-id", "abc")
+
+    def test_parse_attribute_fallback_and_exception_paths(self):
+        assert parse_attribute(FakeHtmlNode(text="disabled"), fake_node_text) == (
+            "disabled",
+            "",
+        )
+        assert parse_attribute(FakeHtmlNode(text="type=text"), fake_node_text) == (
+            "type",
+            "text",
+        )
+        assert parse_attribute(FakeHtmlNode(), Mock(side_effect=RuntimeError)) == (
+            "",
+            "",
+        )
+
+    def test_extract_tag_name_from_direct_nested_and_fallback_shapes(self):
+        direct = FakeHtmlNode(children=[FakeHtmlNode("tag_name", text="article")])
+        nested = FakeHtmlNode(
+            children=[
+                FakeHtmlNode(
+                    "start_tag",
+                    children=[FakeHtmlNode("tag_name", text="section")],
+                )
+            ]
+        )
+        fallback = FakeHtmlNode(text="<custom-widget data-id='1'>")
+
+        assert extract_html_tag_name(direct, fake_node_text) == "article"
+        assert extract_html_tag_name(nested, fake_node_text) == "section"
+        assert extract_html_tag_name(fallback, fake_node_text) == "custom-widget"
+        assert extract_html_tag_name(FakeHtmlNode(text="plain"), fake_node_text) == (
+            "unknown"
+        )
+
+    def test_extract_html_attributes_from_top_level_and_nested_tags(self):
+        top_level_attr = FakeHtmlNode(
+            "attribute",
+            children=[
+                FakeHtmlNode("attribute_name", text="id"),
+                FakeHtmlNode("attribute_value", text="hero"),
+            ],
+        )
+        nested_attr = FakeHtmlNode(
+            "attribute",
+            children=[
+                FakeHtmlNode("attribute_name", text="class"),
+                FakeHtmlNode("quoted_attribute_value", text='"card"'),
+            ],
+        )
+        node = FakeHtmlNode(
+            children=[
+                top_level_attr,
+                FakeHtmlNode("self_closing_tag", children=[nested_attr]),
+            ]
+        )
+
+        assert extract_html_attributes(node, fake_node_text) == {
+            "id": "hero",
+            "class": "card",
+        }
+
+    def test_classify_and_create_markup_element_with_parent(self):
+        categories = {"structure": ["div"], "media": ["img"]}
+        parent = create_markup_element(
+            FakeHtmlNode(children=[FakeHtmlNode("tag_name", text="div")], text="<div>"),
+            fake_node_text,
+            categories,
+            None,
+        )
+        child = create_markup_element(
+            FakeHtmlNode(
+                children=[FakeHtmlNode("tag_name", text="img")],
+                start_point=(2, 0),
+                end_point=(2, 5),
+                text="<img>",
+            ),
+            fake_node_text,
+            categories,
+            parent,
+        )
+
+        assert classify_element("IMG", categories) == "media"
+        assert parent is not None
+        assert child is not None
+        assert child.parent is parent
+        assert parent.children == [child]
+        assert child.start_line == 3
+        assert child.end_line == 3
+
+    def test_create_markup_element_returns_none_on_empty_or_exception(self):
+        assert (
+            create_markup_element(
+                FakeHtmlNode(text="plain text"), fake_node_text, {}, None
+            )
+            is not None
+        )
+        assert (
+            create_markup_element(
+                FakeHtmlNode(children=[FakeHtmlNode("tag_name", text="div")]),
+                Mock(side_effect=RuntimeError),
+                {},
+                None,
+            )
+            is None
+        )
 
 
 class TestHtmlPluginAnalyzeFile:
