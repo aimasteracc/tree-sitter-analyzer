@@ -65,3 +65,17 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
     - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险：主变更集中在 2 个文件）
     - `uv run pytest -q`（10385 passed, 32 skipped）
   - 结论：高优先异味已持续下降，下一步继续拆分 `Security` / `Queries`，保持单批次回归闭环。
+
+- 2026-05-18 Tick: `TestUnifiedAnalysisEngineSecurity` 与 `TestUnifiedAnalysisEngineQueries` 迁入 mixin
+  - 触发理由：继续沿 `TestUnifiedAnalysisEngine*` 列表收缩 oversized test file，并优先处理安全/查询分组。
+  - 执行结果：
+    - 新增 `TestUnifiedAnalysisEngineSecurityTestMixin` 与 `TestUnifiedAnalysisEngineQueriesTestMixin`（`tests/unit/core/_test_engine_test_mixin.py`）；
+    - `TestUnifiedAnalysisEngineSecurity` 与 `TestUnifiedAnalysisEngineQueries` 在 `tests/unit/core/test_engine.py` 改为继承对应 mixin。
+  - 验证结果：
+    - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run pytest tests/unit/core/test_engine.py -q`（64 passed, 1 skipped）
+    - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(75.1)`；剩余 `oversized_file` + `deep_nesting`）
+    - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险：2 文件变更，1 文件受影响）
+    - `uv run pytest -q`（10380 passed, 32 skipped）
+  - 结论：`Security` 与 `Queries` 责任已成功抽离；文件健康仍由 `oversized_file` 主导，下一步建议继续迁移 `TestUnifiedAnalysisEnginePerformance` 与 `Properties`。

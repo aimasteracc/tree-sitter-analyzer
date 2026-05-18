@@ -30,6 +30,8 @@ from tests.unit.core._test_engine_test_mixin import (
     TestUnifiedAnalysisEngineInitTestMixin,
     TestUnifiedAnalysisEngineLanguageDetectionTestMixin,
     TestUnifiedAnalysisEnginePluginManagementTestMixin,
+    TestUnifiedAnalysisEngineQueriesTestMixin,
+    TestUnifiedAnalysisEngineSecurityTestMixin,
 )
 from tree_sitter_analyzer.api import get_engine
 from tree_sitter_analyzer.core import AnalysisEngine
@@ -221,23 +223,8 @@ class TestUnifiedAnalysisEngineAnalysis(TestUnifiedAnalysisEngineAnalysisTestMix
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestUnifiedAnalysisEngineSecurity:
+class TestUnifiedAnalysisEngineSecurity(TestUnifiedAnalysisEngineSecurityTestMixin):
     """Test cases for security validation."""
-
-    @pytest.mark.asyncio
-    async def test_security_validation_invalid_path(self):
-        """Test security validation with invalid path."""
-        engine = UnifiedAnalysisEngine()
-        # Try to access path outside project root
-        with pytest.raises(ValueError, match="Invalid file path"):
-            await engine.analyze_file("../../../etc/passwd")
-
-    @pytest.mark.asyncio
-    async def test_security_validator_property(self):
-        """Test accessing security validator property."""
-        engine = UnifiedAnalysisEngine()
-        validator = engine.security_validator
-        assert validator is not None
 
     @classmethod
     def teardown_class(cls):
@@ -245,46 +232,8 @@ class TestUnifiedAnalysisEngineSecurity:
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestUnifiedAnalysisEngineQueries:
+class TestUnifiedAnalysisEngineQueries(TestUnifiedAnalysisEngineQueriesTestMixin):
     """Test cases for query execution."""
-
-    def test_get_available_queries(self):
-        """Test getting available queries for a language."""
-        engine = UnifiedAnalysisEngine()
-        queries = engine.get_available_queries("python")
-        assert isinstance(queries, list)
-
-    def test_query_executor_property(self):
-        """Test accessing query executor property."""
-        engine = UnifiedAnalysisEngine()
-        executor = engine.query_executor
-        assert executor is not None
-
-    @pytest.mark.asyncio
-    async def test_analyze_with_queries(self):
-        """Test analyzing with query execution."""
-        engine = UnifiedAnalysisEngine()
-
-        # Create a temporary Python file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as tf:
-            tf.write("def hello():\n    pass\n")
-            temp_path = tf.name
-
-        try:
-            request = AnalysisRequest(
-                file_path=temp_path,
-                language="python",
-                queries=["functions"],
-                include_queries=True,
-            )
-            result = await engine.analyze(request)
-            assert result is not None
-            assert result.success is True
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
 
     @classmethod
     def teardown_class(cls):
