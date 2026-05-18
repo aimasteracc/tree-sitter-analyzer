@@ -238,6 +238,178 @@ def build_mapping_element(
     )
 
 
+def iter_sequence_nodes(nodes: list[Any]) -> list[Any]:
+    """Return YAML sequence nodes from a traversed node list."""
+    return [node for node in nodes if node.type in ("block_sequence", "flow_sequence")]
+
+
+def append_sequence_element(
+    elements: list[YAMLElement],
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+    calculate_nesting_level_func: Callable[[Any], int],
+) -> None:
+    """Append a YAML sequence element, preserving extractor fault tolerance."""
+    try:
+        elements.append(
+            build_sequence_element(
+                node,
+                get_node_text,
+                get_document_index_func,
+                calculate_nesting_level_func,
+            )
+        )
+    except Exception as exc:
+        log_debug(f"Skipped YAML sequence node: {exc}")
+
+
+def build_sequence_element(
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+    calculate_nesting_level_func: Callable[[Any], int],
+) -> YAMLElement:
+    """Build a YAML sequence element from a tree-sitter sequence node."""
+    return YAMLElement(
+        name="sequence",
+        start_line=node.start_point[0] + 1,
+        end_line=node.end_point[0] + 1,
+        raw_text=_truncate_raw_text(get_node_text(node)),
+        element_type="sequence",
+        key=extract_sequence_key(node, get_node_text),
+        value_type="sequence",
+        nesting_level=calculate_nesting_level_func(node),
+        document_index=get_document_index_func(node),
+        child_count=count_sequence_children(node),
+    )
+
+
+def iter_nodes_by_type(nodes: list[Any], node_type: str) -> list[Any]:
+    """Return nodes with the requested tree-sitter type."""
+    return [node for node in nodes if node.type == node_type]
+
+
+def append_anchor_element(
+    elements: list[YAMLElement],
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+    calculate_nesting_level_func: Callable[[Any], int],
+) -> None:
+    """Append a YAML anchor element, preserving extractor fault tolerance."""
+    try:
+        elements.append(
+            build_anchor_element(
+                node,
+                get_node_text,
+                get_document_index_func,
+                calculate_nesting_level_func,
+            )
+        )
+    except Exception as exc:
+        log_debug(f"Skipped YAML anchor node: {exc}")
+
+
+def build_anchor_element(
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+    calculate_nesting_level_func: Callable[[Any], int],
+) -> YAMLElement:
+    """Build a YAML anchor element from a tree-sitter anchor node."""
+    raw_text = get_node_text(node)
+    anchor_name = raw_text.lstrip("&").strip()
+    return YAMLElement(
+        name=f"&{anchor_name}",
+        start_line=node.start_point[0] + 1,
+        end_line=node.end_point[0] + 1,
+        raw_text=raw_text,
+        element_type="anchor",
+        anchor_name=anchor_name,
+        nesting_level=calculate_nesting_level_func(node),
+        document_index=get_document_index_func(node),
+    )
+
+
+def append_alias_element(
+    elements: list[YAMLElement],
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+    calculate_nesting_level_func: Callable[[Any], int],
+) -> None:
+    """Append a YAML alias element, preserving extractor fault tolerance."""
+    try:
+        elements.append(
+            build_alias_element(
+                node,
+                get_node_text,
+                get_document_index_func,
+                calculate_nesting_level_func,
+            )
+        )
+    except Exception as exc:
+        log_debug(f"Skipped YAML alias node: {exc}")
+
+
+def build_alias_element(
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+    calculate_nesting_level_func: Callable[[Any], int],
+) -> YAMLElement:
+    """Build a YAML alias element from a tree-sitter alias node."""
+    raw_text = get_node_text(node)
+    alias_target = raw_text.lstrip("*").strip()
+    return YAMLElement(
+        name=f"*{alias_target}",
+        start_line=node.start_point[0] + 1,
+        end_line=node.end_point[0] + 1,
+        raw_text=raw_text,
+        element_type="alias",
+        alias_target=alias_target,
+        nesting_level=calculate_nesting_level_func(node),
+        document_index=get_document_index_func(node),
+    )
+
+
+def append_comment_element(
+    elements: list[YAMLElement],
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+) -> None:
+    """Append a YAML comment element, preserving extractor fault tolerance."""
+    try:
+        elements.append(
+            build_comment_element(node, get_node_text, get_document_index_func)
+        )
+    except Exception as exc:
+        log_debug(f"Skipped YAML comment node: {exc}")
+
+
+def build_comment_element(
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+) -> YAMLElement:
+    """Build a YAML comment element from a tree-sitter comment node."""
+    raw_text = get_node_text(node)
+    comment_text = raw_text.lstrip("#").strip()
+    return YAMLElement(
+        name=_truncate_raw_text(comment_text, limit=50),
+        start_line=node.start_point[0] + 1,
+        end_line=node.end_point[0] + 1,
+        raw_text=raw_text,
+        element_type="comment",
+        value=comment_text,
+        value_type="comment",
+        document_index=get_document_index_func(node),
+        nesting_level=0,
+    )
+
+
 def _truncate_raw_text(raw_text: str, limit: int = 200) -> str:
     if len(raw_text) > limit:
         return raw_text[:limit] + "..."

@@ -19,22 +19,28 @@ from .yaml_helpers import (
     analyze_yaml_file as _analyze_yaml_file_standalone,
 )
 from .yaml_helpers import (
+    append_alias_element as _append_alias_element_standalone,
+)
+from .yaml_helpers import (
+    append_anchor_element as _append_anchor_element_standalone,
+)
+from .yaml_helpers import (
+    append_comment_element as _append_comment_element_standalone,
+)
+from .yaml_helpers import (
     append_document_element as _append_document_element_standalone,
 )
 from .yaml_helpers import (
     append_mapping_element as _append_mapping_element_standalone,
 )
 from .yaml_helpers import (
+    append_sequence_element as _append_sequence_element_standalone,
+)
+from .yaml_helpers import (
     calculate_nesting_level as _calc_nesting_standalone,
 )
 from .yaml_helpers import (
     count_document_children as _count_document_children_standalone,
-)
-from .yaml_helpers import (
-    count_sequence_children as _count_sequence_children_standalone,
-)
-from .yaml_helpers import (
-    extract_sequence_key as _extract_seq_key_standalone,
 )
 from .yaml_helpers import (
     extract_value_info as _extract_value_standalone,
@@ -47,6 +53,12 @@ from .yaml_helpers import (
 )
 from .yaml_helpers import (
     iter_mapping_nodes as _iter_mapping_nodes_standalone,
+)
+from .yaml_helpers import (
+    iter_nodes_by_type as _iter_nodes_by_type_standalone,
+)
+from .yaml_helpers import (
+    iter_sequence_nodes as _iter_sequence_nodes_standalone,
 )
 from .yaml_helpers import (
     traverse_nodes as _traverse_standalone,
@@ -249,128 +261,70 @@ class YAMLElementExtractor(ElementExtractor):
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
         """Extract YAML sequences (lists)."""
-        for node in self._traverse_nodes(root_node):
-            if node.type in ("block_sequence", "flow_sequence"):
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text(node)
-                    child_count = _count_sequence_children_standalone(node)
-
-                    nesting_level = self._calculate_nesting_level(node)
-                    doc_index = self._get_document_index(node)
-
-                    key = _extract_seq_key_standalone(node, self._get_node_text)
-
-                    element = YAMLElement(
-                        name="sequence",
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text[:200] + "..."
-                        if len(raw_text) > 200
-                        else raw_text,
-                        element_type="sequence",
-                        key=key,
-                        value_type="sequence",
-                        nesting_level=nesting_level,
-                        document_index=doc_index,
-                        child_count=child_count,
-                    )
-                    elements.append(element)
-                except Exception:  # nosec B110
-                    pass
+        sequence_nodes = _iter_sequence_nodes_standalone(
+            self._traverse_nodes(root_node)
+        )
+        for node in sequence_nodes:
+            _append_sequence_element_standalone(
+                elements,
+                node,
+                self._get_node_text,
+                self._get_document_index,
+                self._calculate_nesting_level,
+            )
 
     # Extract elements from AST: _extract_anchors
     def _extract_anchors(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
         """Extract YAML anchors (&name)."""
-        for node in self._traverse_nodes(root_node):
-            if node.type == "anchor":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text(node)
-                    anchor_name = raw_text.lstrip("&").strip()
-
-                    nesting_level = self._calculate_nesting_level(node)
-                    doc_index = self._get_document_index(node)
-
-                    element = YAMLElement(
-                        name=f"&{anchor_name}",
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        element_type="anchor",
-                        anchor_name=anchor_name,
-                        nesting_level=nesting_level,
-                        document_index=doc_index,
-                    )
-                    elements.append(element)
-                except Exception:  # nosec B110
-                    pass
+        anchor_nodes = _iter_nodes_by_type_standalone(
+            self._traverse_nodes(root_node),
+            "anchor",
+        )
+        for node in anchor_nodes:
+            _append_anchor_element_standalone(
+                elements,
+                node,
+                self._get_node_text,
+                self._get_document_index,
+                self._calculate_nesting_level,
+            )
 
     # Extract elements from AST: _extract_aliases
     def _extract_aliases(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
         """Extract YAML aliases (*name)."""
-        for node in self._traverse_nodes(root_node):
-            if node.type == "alias":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text(node)
-                    alias_target = raw_text.lstrip("*").strip()
-
-                    nesting_level = self._calculate_nesting_level(node)
-                    doc_index = self._get_document_index(node)
-
-                    element = YAMLElement(
-                        name=f"*{alias_target}",
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        element_type="alias",
-                        alias_target=alias_target,
-                        nesting_level=nesting_level,
-                        document_index=doc_index,
-                    )
-                    elements.append(element)
-                except Exception:  # nosec B110
-                    pass
+        alias_nodes = _iter_nodes_by_type_standalone(
+            self._traverse_nodes(root_node),
+            "alias",
+        )
+        for node in alias_nodes:
+            _append_alias_element_standalone(
+                elements,
+                node,
+                self._get_node_text,
+                self._get_document_index,
+                self._calculate_nesting_level,
+            )
 
     # Extract elements from AST: _extract_comments
     def _extract_comments(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
         """Extract YAML comments."""
-        for node in self._traverse_nodes(root_node):
-            if node.type == "comment":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text(node)
-                    comment_text = raw_text.lstrip("#").strip()
-
-                    doc_index = self._get_document_index(node)
-
-                    element = YAMLElement(
-                        name=comment_text[:50] + "..."
-                        if len(comment_text) > 50
-                        else comment_text,
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        element_type="comment",
-                        value=comment_text,
-                        value_type="comment",
-                        document_index=doc_index,
-                        nesting_level=0,
-                    )
-                    elements.append(element)
-                except Exception:  # nosec B110
-                    pass
+        comment_nodes = _iter_nodes_by_type_standalone(
+            self._traverse_nodes(root_node),
+            "comment",
+        )
+        for node in comment_nodes:
+            _append_comment_element_standalone(
+                elements,
+                node,
+                self._get_node_text,
+                self._get_document_index,
+            )
 
 
 class YAMLPlugin(LanguagePlugin):
