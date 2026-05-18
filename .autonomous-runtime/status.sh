@@ -17,6 +17,14 @@ else
     echo "❌ 未运行"
 fi
 
+if [ -f ".autonomous-runtime/loop.lock" ] && [ -r ".autonomous-runtime/loop.lock" ]; then
+    echo "🔐 lock 文件: $(wc -c < .autonomous-runtime/loop.lock) bytes"
+fi
+if [ -f ".autonomous-runtime/autonomous-loop.log" ]; then
+    echo "🧾 最新日志: "
+    tail -n 5 .autonomous-runtime/autonomous-loop.log
+fi
+
 # 2. Git 提交
 echo ""
 echo "── 2. 最近提交 ──"
