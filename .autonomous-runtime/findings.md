@@ -53,3 +53,15 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
     - `uv run python -m tree_sitter_analyzer --change-impact --format json`（low risk, affected 1 file）
     - `uv run pytest -q`（10426 passed, 32 skipped）
   - 下一步优先级：继续 `TestUnifiedAnalysisEngineAnalysis`、`Security`、`Queries` 等职责分离方向，优先保持每次 1 个小批次可回归闭环。
+
+- 2026-05-18 Tick: `TestUnifiedAnalysisEngineAnalysis` 迁入 mixin
+  - 触发理由：沿现有 `refactoring_suggestions` 顺序，优先继续剥离 `TestUnifiedAnalysisEngine*` 责任块。
+  - 执行结果：
+    - 抽离 10 个 analysis 相关测试到 `TestUnifiedAnalysisEngineAnalysisTestMixin`（`tests/unit/core/_test_engine_test_mixin.py`）；
+    - `TestUnifiedAnalysisEngineAnalysis` 保留清理钩子并继承 mixin（`tests/unit/core/test_engine.py`）。
+  - 验证结果：
+    - `uv run pytest tests/unit/core/test_engine.py -q`（69 passed, 1 skipped）
+    - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(74.3)`；关键点仍是 `oversized_file` + `deep_nesting`）
+    - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险：主变更集中在 2 个文件）
+    - `uv run pytest -q`（10385 passed, 32 skipped）
+  - 结论：高优先异味已持续下降，下一步继续拆分 `Security` / `Queries`，保持单批次回归闭环。

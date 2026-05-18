@@ -25,6 +25,7 @@ import pytest
 
 from tests.unit.core._test_engine_test_mixin import (
     TestAnalysisEngineTestMixin,
+    TestUnifiedAnalysisEngineAnalysisTestMixin,
     TestUnifiedAnalysisEngineCacheManagementTestMixin,
     TestUnifiedAnalysisEngineInitTestMixin,
     TestUnifiedAnalysisEngineLanguageDetectionTestMixin,
@@ -211,151 +212,8 @@ class TestUnifiedAnalysisEngineLanguageDetection(
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestUnifiedAnalysisEngineAnalysis:
+class TestUnifiedAnalysisEngineAnalysis(TestUnifiedAnalysisEngineAnalysisTestMixin):
     """Test cases for file and code analysis operations."""
-
-    @pytest.mark.asyncio
-    async def test_analyze_file_success(self):
-        """Test successful file analysis."""
-        engine = UnifiedAnalysisEngine()
-
-        # Create a temporary Python file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as tf:
-            tf.write("def hello():\n    pass\n")
-            temp_path = tf.name
-
-        try:
-            result = await engine.analyze_file(temp_path)
-            assert result is not None
-            assert result.success is True
-            assert result.language == "python"
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-
-    @pytest.mark.asyncio
-    async def test_analyze_file_not_found(self):
-        """Test analyzing non-existent file."""
-        engine = UnifiedAnalysisEngine()
-        # Use a relative path that doesn't exist
-        with pytest.raises(FileNotFoundError):
-            await engine.analyze_file("nonexistent_file.py")
-
-    @pytest.mark.asyncio
-    async def test_analyze_unsupported_language(self):
-        """Test analyzing file with unsupported language."""
-        engine = UnifiedAnalysisEngine()
-
-        # Create a temporary file with unknown extension
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".unknown", delete=False, encoding="utf-8"
-        ) as tf:
-            tf.write("some content\n")
-            temp_path = tf.name
-
-        try:
-            with pytest.raises(UnsupportedLanguageError):
-                await engine.analyze_file(temp_path)
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-
-    @pytest.mark.asyncio
-    async def test_analyze_code_success(self):
-        """Test analyzing code string directly."""
-        engine = UnifiedAnalysisEngine()
-        code = "def hello():\n    pass\n"
-        result = await engine.analyze_code(code, language="python")
-        assert result is not None
-        assert result.success is True
-        assert result.language == "python"
-
-    @pytest.mark.asyncio
-    async def test_analyze_code_with_filename(self):
-        """Test analyzing code with custom filename."""
-        engine = UnifiedAnalysisEngine()
-        code = "def hello():\n    pass\n"
-        result = await engine.analyze_code(
-            code, language="python", filename="custom.py"
-        )
-        assert result is not None
-        assert result.file_path == "custom.py"
-
-    def test_analyze_code_sync(self):
-        """Test synchronous version of analyze_code."""
-        engine = UnifiedAnalysisEngine()
-        code = "def hello():\n    pass\n"
-        result = engine.analyze_code_sync(code, language="python")
-        assert result is not None
-        assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_analyze_with_request(self):
-        """Test analyzing with AnalysisRequest object."""
-        engine = UnifiedAnalysisEngine()
-
-        # Create a temporary Python file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as tf:
-            tf.write("def hello():\n    pass\n")
-            temp_path = tf.name
-
-        try:
-            request = AnalysisRequest(
-                file_path=temp_path,
-                language="python",
-                include_elements=True,
-                include_complexity=True,
-            )
-            result = await engine.analyze(request)
-            assert result is not None
-            assert result.success is True
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-
-    def test_analyze_sync(self):
-        """Test synchronous version of analyze."""
-        engine = UnifiedAnalysisEngine()
-
-        # Create a temporary Python file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as tf:
-            tf.write("def hello():\n    pass\n")
-            temp_path = tf.name
-
-        try:
-            request = AnalysisRequest(file_path=temp_path, language="python")
-            result = engine.analyze_sync(request)
-            assert result is not None
-            assert result.success is True
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-
-    @pytest.mark.asyncio
-    async def test_analyze_file_async_compatibility(self):
-        """Test analyze_file_async compatibility alias."""
-        engine = UnifiedAnalysisEngine()
-
-        # Create a temporary Python file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
-        ) as tf:
-            tf.write("def hello():\n    pass\n")
-            temp_path = tf.name
-
-        try:
-            result = await engine.analyze_file_async(temp_path)
-            assert result is not None
-            assert result.success is True
-        finally:
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
 
     @classmethod
     def teardown_class(cls):
