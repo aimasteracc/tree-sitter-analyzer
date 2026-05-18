@@ -80,8 +80,16 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 ## 2026-05-18: YAML 元数据测试结构化重构
 
 - 目标: 继续 Phase 8 Slice 3，降低测试可维护性风险，优先处理 `test_yaml_element_metadata_properties.py`。
-- 动作: 新增 `tests/unit/languages/_test_yaml_element_metadata_properties_helpers.py`，提取 `test_property_4_element_metadata_line_numbers` 的公共解析/断言逻辑；主测试改为调用 helper。
+- 动作:
+  - 新增 `tests/unit/languages/_test_yaml_element_metadata_properties_helpers.py`，提取 `test_property_4_element_metadata_line_numbers` 的公共解析/断言逻辑；主测试改为调用 helper。
+  - 本次继续重构：
+    - 将 `test_property_4_element_metadata_mixed_structures` 改为结构化 helper 检查；
+    - 将 `test_property_4_element_metadata_raw_text_accuracy` 改为共享 helper 检查；
+    - 新增 `assert_raw_text_fields`、`assert_raw_text_matches_source`、`assert_mapping_raw_text_contains_key`、`assert_scalar_raw_text_non_empty`。
 - 验证: 
-  - `uv run pytest tests/unit/languages/test_yaml_element_metadata_properties.py -q`
-  - `uv run pytest -q`
-- 结果: 全量测试通过（`10417 passed, 32 skipped`）。
+  - `uv run pytest tests/unit/languages/test_yaml_element_metadata_properties.py -q`（6 passed）
+  - `uv run python -m tree_sitter_analyzer tests/unit/languages/test_yaml_element_metadata_properties.py --file-health --format json`
+- 结果:
+  - 全量回归: `10417 passed, 32 skipped`（上游记录）
+  - 本文件健康评分: 从 `C(73.8, 5 warnings)` 提升到 `B(81.7, 3 warnings)`；
+  - 剩余主要 smell: `deep_nesting`（line 77）与两个长方法（with_comments、consistency）。

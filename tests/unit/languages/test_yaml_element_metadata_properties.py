@@ -15,6 +15,13 @@ from hypothesis import strategies as st
 
 from tests.unit.languages._test_yaml_element_metadata_properties_helpers import (
     assert_element_line_number_properties,
+    assert_mapping_raw_text_contains_key,
+    assert_mixed_structures_complete_metadata,
+    assert_mixed_structures_mapping_raw_text,
+    assert_mixed_structures_nesting,
+    assert_raw_text_fields,
+    assert_raw_text_matches_source,
+    assert_scalar_raw_text_non_empty,
     parse_yaml_elements_and_lines,
 )
 from tree_sitter_analyzer.languages.yaml_plugin import (
@@ -147,71 +154,11 @@ class TestYAMLElementMetadataProperties:
 
         Validates: Requirements 2.5
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Get source lines for validation
-        source_lines = yaml_content.split("\n")
-
-        # Property: All elements must have raw_text attribute
-        for element in elements:
-            assert hasattr(element, "raw_text"), (
-                f"Element '{element.name}' must have raw_text attribute"
-            )
-            assert isinstance(element.raw_text, str), (
-                f"raw_text must be str, got {type(element.raw_text)}"
-            )
-
-        # Property: raw_text must not be None
-        for element in elements:
-            assert element.raw_text is not None, (
-                f"Element '{element.name}' raw_text must not be None"
-            )
-
-        # Property: raw_text should match source content at specified lines
-        for element in elements:
-            start_idx = element.start_line - 1  # Convert to 0-indexed
-            end_idx = element.end_line  # end_line is inclusive
-
-            if start_idx < len(source_lines) and end_idx <= len(source_lines):
-                expected_text = "\n".join(source_lines[start_idx:end_idx])
-
-                # Property: raw_text should match expected text from source
-                # Note: tree-sitter may strip trailing whitespace from nodes,
-                # so we compare stripped versions
-                assert element.raw_text.rstrip() == expected_text.rstrip(), (
-                    f"Element '{element.name}' raw_text does not match source. "
-                    f"Expected: '{expected_text}', Got: '{element.raw_text}'"
-                )
-
-        # Property: raw_text should contain element's key (for mappings)
-        mappings = [e for e in elements if e.element_type == "mapping" and e.key]
-        for mapping in mappings:
-            assert mapping.key in mapping.raw_text, (
-                f"Mapping raw_text should contain key '{mapping.key}'. "
-                f"Raw text: '{mapping.raw_text}'"
-            )
-
-        # Property: raw_text should contain element's value (for scalars with values)
-        scalars = [e for e in elements if e.element_type == "scalar" and e.value]
-        for scalar in scalars:
-            # Value might be quoted or transformed, so check if it's present in some form
-            assert len(scalar.raw_text) > 0, (
-                f"Scalar raw_text should not be empty. Value: '{scalar.value}'"
-            )
+        elements, source_lines = parse_yaml_elements_and_lines(yaml_content)
+        assert_raw_text_fields(elements)
+        assert_raw_text_matches_source(elements, source_lines)
+        assert_mapping_raw_text_contains_key(elements)
+        assert_scalar_raw_text_non_empty(elements)
 
     @settings(max_examples=100)
     @given(yaml_content=yaml_simple_sequence())
@@ -418,12 +365,6 @@ class TestYAMLElementMetadataProperties:
 
         Validates: Requirements 2.4, 2.5
         """
-        try:
-            import tree_sitter
-            import tree_sitter_yaml as ts_yaml
-        except ImportError:
-            pytest.skip("tree-sitter-yaml not available")
-
         # Generate mixed YAML content
         lines = []
 
@@ -437,83 +378,9 @@ class TestYAMLElementMetadataProperties:
             lines.append(f"  - item{i}")
 
         yaml_content = "\n".join(lines)
-
-        # Parse the YAML content
-        YAML_LANGUAGE = tree_sitter.Language(ts_yaml.language())
-        parser = tree_sitter.Parser()
-        parser.language = YAML_LANGUAGE
-        tree = parser.parse(yaml_content.encode("utf-8"))
-
-        # Extract elements
-        extractor = YAMLElementExtractor()
-        elements = extractor.extract_yaml_elements(tree, yaml_content)
-
-        # Property: All elements must have complete metadata
-        for element in elements:
-            assert element.start_line > 0, (
-                f"Element '{element.name}' must have positive start_line"
-            )
-            assert element.end_line >= element.start_line, (
-                f"Element '{element.name}' must have valid end_line"
-            )
-            assert element.raw_text is not None, (
-                f"Element '{element.name}' must have raw_text"
-            )
-            assert len(element.raw_text) > 0, (
-                f"Element '{element.name}' must have non-empty raw_text"
-            )
-
-        # Property: Mappings should have accurate metadata
+        elements, _ = parse_yaml_elements_and_lines(yaml_content)
         mappings = [e for e in elements if e.element_type == "mapping"]
-        for mapping in mappings:
-            # Verify raw_text matches source
-            source_lines = yaml_content.split("\n")
-            start_idx = mapping.start_line - 1
-            end_idx = mapping.end_line
-            if start_idx < len(source_lines) and end_idx <= len(source_lines):
-                expected_text = "\n".join(source_lines[start_idx:end_idx])
-                assert mapping.raw_text == expected_text, (
-                    f"Mapping raw_text mismatch at line {mapping.start_line}"
-                )
 
-        # Property: Sequences should have accurate metadata
-        sequences = [e for e in elements if e.element_type == "sequence"]
-        for sequence in sequences:
-            assert sequence.start_line > 0, "Sequence must have valid start_line"
-            assert sequence.end_line >= sequence.start_line, (
-                "Sequence must have valid end_line"
-            )
-            assert sequence.raw_text is not None, "Sequence must have raw_text"
-            assert len(sequence.raw_text) > 0, "Sequence must have non-empty raw_text"
-
-        # Property: No two elements at the same nesting level should have identical line ranges
-        # unless one is contained within the other
-        for i, elem1 in enumerate(elements):
-            for elem2 in elements[i + 1 :]:
-                if elem1.nesting_level == elem2.nesting_level:
-                    # If they have the same line range, they should be the same element
-                    if (
-                        elem1.start_line == elem2.start_line
-                        and elem1.end_line == elem2.end_line
-                    ):
-                        # This is acceptable if they represent different aspects
-                        # (e.g., a mapping and its value)
-                        pass
-                    else:
-                        # Otherwise, they should not overlap
-                        assert (
-                            elem1.end_line < elem2.start_line
-                            or elem2.end_line < elem1.start_line
-                            or (
-                                elem1.start_line <= elem2.start_line
-                                and elem1.end_line >= elem2.end_line
-                            )
-                            or (
-                                elem2.start_line <= elem1.start_line
-                                and elem2.end_line >= elem1.end_line
-                            )
-                        ), (
-                            f"Elements at same nesting level should not partially overlap. "
-                            f"Element 1: {elem1.name} lines {elem1.start_line}-{elem1.end_line}, "
-                            f"Element 2: {elem2.name} lines {elem2.start_line}-{elem2.end_line}"
-                        )
+        assert_mixed_structures_complete_metadata(elements)
+        assert_mixed_structures_mapping_raw_text(mappings, yaml_content)
+        assert_mixed_structures_nesting(elements)
