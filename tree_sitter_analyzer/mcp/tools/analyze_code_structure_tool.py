@@ -27,6 +27,23 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 
+def _format_table(
+    structure_dict: dict[str, Any],
+    result: Any,
+    language: str,
+    format_type: str,
+) -> str:
+    """Format analysis result as a compact or full table."""
+    if format_type in ["full", "compact", "csv"]:
+        formatter = FormatterRegistry.get_formatter_for_language(language, format_type)
+        output = formatter.format_structure(structure_dict)
+    elif FormatterRegistry.is_format_supported(format_type):
+        output = FormatterRegistry.get_formatter(format_type).format(result.elements)
+    else:
+        raise ValueError(f"Unsupported format type: {format_type}")
+    return str(output.replace("\r\n", "\n").replace("\r", "\n").rstrip())
+
+
 class AnalyzeCodeStructureTool(BaseMCPTool):
     """MCP Tool for code structure analysis and table formatting."""
 
@@ -143,7 +160,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
 
                 structure_dict = self._convert_analysis_result_to_dict(result)
 
-                table_output = self._format_table(
+                table_output = _format_table(
                     structure_dict, result, language, format_type
                 )
                 metadata = extract_metadata(structure_dict)
@@ -186,28 +203,6 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         except Exception as e:
             self.logger.error(f"Error in code structure analysis tool: {e}")
             raise
-
-    def _format_table(
-        self,
-        structure_dict: dict[str, Any],
-        result: Any,
-        language: str,
-        format_type: str,
-    ) -> str:
-        """Format analysis result as a compact or full table."""
-        if format_type in ["full", "compact", "csv"]:
-            formatter = FormatterRegistry.get_formatter_for_language(
-                language, format_type
-            )
-            output = formatter.format_structure(structure_dict)
-        elif FormatterRegistry.is_format_supported(format_type):
-            output = FormatterRegistry.get_formatter(format_type).format(
-                result.elements
-            )
-        # Extract metadata from analysis result
-        else:
-            raise ValueError(f"Unsupported format type: {format_type}")
-        return str(output.replace("\r\n", "\n").replace("\r", "\n").rstrip())
 
     def _build_next_steps(
         self, structure_dict: dict[str, Any], file_path: str

@@ -15,6 +15,7 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
 )
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool,
+    _format_table,
 )
 
 
@@ -790,6 +791,33 @@ class TestAnalyzeCodeStructureHelpers:
             "fields_count": 0,
             "total_lines": 0,
         }
+
+
+class TestAnalyzeCodeStructureFormatting:
+    """Tests for module-level structure table formatting."""
+
+    def test_format_table_uses_language_formatter_and_normalizes_newlines(self):
+        """Language-backed formats should return stable LF-only text."""
+        formatter = MagicMock()
+        formatter.format_structure.return_value = "line1\r\nline2\r\n"
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FormatterRegistry.get_formatter_for_language",
+            return_value=formatter,
+        ) as get_formatter:
+            output = _format_table({}, MagicMock(), "python", "full")
+
+        assert output == "line1\nline2"
+        get_formatter.assert_called_once_with("python", "full")
+
+    def test_format_table_raises_for_unsupported_format(self):
+        """Unsupported formats should fail before formatter lookup."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FormatterRegistry.is_format_supported",
+            return_value=False,
+        ):
+            with pytest.raises(ValueError, match="Unsupported format type"):
+                _format_table({}, MagicMock(elements=[]), "python", "unsupported")
 
 
 class TestAnalyzeCodeStructureToolConvertParameters:
