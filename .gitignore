@@ -63,6 +63,7 @@ db.sqlite3-journal
 .autonomous-runtime/autonomous-state.json
 .autonomous-runtime/loop.lock
 .autonomous-runtime/autonomous-loop.log
+.autonomous-runtime/last-tick.json
 
 # Flask stuff:
 instance/

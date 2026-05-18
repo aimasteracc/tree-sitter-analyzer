@@ -15,9 +15,10 @@ prompt: |
 
   ## 强制执行流程（不可跳过）
 
-  1. **检查运行**: 先调用 `.autonomous-runtime/status.sh`，若 `loop.sh` 未在运行则先启动
-     - 启动命令: `nohup .autonomous-runtime/loop.sh >/tmp/ts-analyzer-autonomous-loop.log 2>&1 &`
-     - 启动后记录时间戳到 `.autonomous-runtime/autonomous-state.json`
+  1. **检查运行**: 先调用 `.autonomous-runtime/tick.sh`
+     - tick 是幂等入口: 已运行则输出 READY/ready，未运行则启动并复核
+     - 启动命令由 tick 内部封装，默认 `TS_AUTONOMY_SLEEP_SECONDS=300`
+     - tick 会写 `.autonomous-runtime/last-tick.json`，便于下次心跳恢复上下文
      - 若发现已在运行，进入步骤 2，不再次启动
 
   2. **检查计划**: 读取 .autonomous-runtime/task_plan.md，确定当前 Phase

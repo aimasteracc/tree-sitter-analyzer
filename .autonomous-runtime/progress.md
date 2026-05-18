@@ -59,3 +59,13 @@
 ## 下一步
 
 Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
+
+## 2026-05-18: 自主运行层 tick 入口修复
+
+- 新增 `.autonomous-runtime/tick.sh`，作为 5 分钟 heartbeat 的幂等入口:
+  检查 loop、尝试启动、sleep 1 复核、写 `last-tick.json`、输出单行状态。
+- 修正 `status.sh` 的健康语义: Codex heartbeat 是真正 24/7 开发引擎，
+  `loop.sh` 只作为辅助探针，避免后台进程被桌面执行器清理时误报系统已停。
+- 更新 `ds-automation.yaml`，要求自动化只调用 tick 入口，不再手写 nohup。
+- 验证: `bash -n` 通过，`tick.sh` 真实运行可写 tick 状态，
+  `status.sh` 显示最近 heartbeat 在线。
