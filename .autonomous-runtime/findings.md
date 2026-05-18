@@ -44,3 +44,12 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
   - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py`（`D(69.0)`，`oversized_file` 与 `deep_nesting` 仍为关键异味）
   - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险队列，推荐 `uv run pytest -q` 进行队列验收）
 - 下一步：继续按同一顺序切片 `TestUnifiedAnalysisEngineCacheManagement` / `TestUnifiedAnalysisEngineLanguageDetection`，优先保持每次单批次的测试反馈闭环。
+
+- 2026-05-18 Tick: `test_engine.py` 继续切片成功收口 2 个类
+  - 完成动作：将 `TestUnifiedAnalysisEngineCacheManagement` 与 `TestUnifiedAnalysisEngineLanguageDetection` 的测试迁移到 `tests/unit/core/_test_engine_test_mixin.py`。
+  - 验证链路：
+    - `uv run pytest tests/unit/core/test_engine.py -q`（78 passed, 1 skipped）
+    - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py --format json`（`D(69.2)`，剩余 `oversized_file` 与 `deep_nesting`）
+    - `uv run python -m tree_sitter_analyzer --change-impact --format json`（low risk, affected 1 file）
+    - `uv run pytest -q`（10426 passed, 32 skipped）
+  - 下一步优先级：继续 `TestUnifiedAnalysisEngineAnalysis`、`Security`、`Queries` 等职责分离方向，优先保持每次 1 个小批次可回归闭环。

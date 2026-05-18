@@ -159,3 +159,20 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
   - `test_engine.py` 约 1554 行，较前已继续收缩。
   - `TestUnifiedAnalysisEnginePluginManagement` 的职责更内聚，未引入新风险。
   - 下一步建议继续迁移 `TestUnifiedAnalysisEngineCacheManagement` 与 `TestUnifiedAnalysisEngineLanguageDetection`。
+
+## 2026-05-18: test_engine.py 可维护性切片（继续）
+
+- 目标: 继续 `TestUnifiedAnalysisEngine*` 的切片，完成 `CacheManagement` 与 `LanguageDetection` 的抽离。
+- 动作:
+  - 在 `tests/unit/core/_test_engine_test_mixin.py` 新增 `TestUnifiedAnalysisEngineCacheManagementTestMixin` 与 `TestUnifiedAnalysisEngineLanguageDetectionTestMixin`，将对应 8 个测试抽出到 mixin。
+  - `tests/unit/core/test_engine.py` 的 `TestUnifiedAnalysisEngineCacheManagement` 与 `TestUnifiedAnalysisEngineLanguageDetection` 改为继承各自 mixin，仅保留清理钩子。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过，1 个自动修复）
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run pytest tests/unit/core/test_engine.py -q`（78 passed, 1 skipped）
+  - `uv run python -m tree_sitter_analyzer --file-health tests/unit/core/test_engine.py --format json`（`D(69.2)`, `oversized_file` + `deep_nesting`）
+  - `uv run python -m tree_sitter_analyzer --change-impact --format json`（低风险，集中影响 2 个更改文件）
+  - `uv run pytest -q`（10426 passed, 32 skipped）
+- 结果:
+  - 两组测试从主文件成功抽离，`test_engine.py` 继续收缩至约 1505 行。
+  - 风险继续受控：变更未触发回归，继续沿 `refactoring_suggestions` 逐步拆解 `oversized_file`。

@@ -25,7 +25,9 @@ import pytest
 
 from tests.unit.core._test_engine_test_mixin import (
     TestAnalysisEngineTestMixin,
+    TestUnifiedAnalysisEngineCacheManagementTestMixin,
     TestUnifiedAnalysisEngineInitTestMixin,
+    TestUnifiedAnalysisEngineLanguageDetectionTestMixin,
     TestUnifiedAnalysisEnginePluginManagementTestMixin,
 )
 from tree_sitter_analyzer.api import get_engine
@@ -187,45 +189,10 @@ class TestUnifiedAnalysisEnginePluginManagement(
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestUnifiedAnalysisEngineCacheManagement:
+class TestUnifiedAnalysisEngineCacheManagement(
+    TestUnifiedAnalysisEngineCacheManagementTestMixin
+):
     """Test cases for cache operations."""
-
-    def test_clear_cache(self):
-        """Test clearing the analysis cache."""
-        engine = UnifiedAnalysisEngine()
-        engine.clear_cache()
-        # Should complete without error
-        assert True
-
-    def test_get_cache_stats(self):
-        """Test getting cache statistics."""
-        engine = UnifiedAnalysisEngine()
-        stats = engine.get_cache_stats()
-        assert isinstance(stats, dict)
-        # Should have at least some stats keys
-        assert len(stats) > 0
-
-    def test_cache_service_property(self):
-        """Test accessing cache service property."""
-        engine = UnifiedAnalysisEngine()
-        cache_service = engine.cache_service
-        assert cache_service is not None
-
-    def test_cache_key_generation(self):
-        """Test cache key generation for different requests."""
-        engine = UnifiedAnalysisEngine()
-        request1 = AnalysisRequest(
-            file_path="test.py", language="python", include_complexity=True
-        )
-        request2 = AnalysisRequest(
-            file_path="test.py", language="python", include_complexity=False
-        )
-
-        key1 = engine._generate_cache_key(request1)
-        key2 = engine._generate_cache_key(request2)
-
-        # Different requests should generate different keys
-        assert key1 != key2
 
     @classmethod
     def teardown_class(cls):
@@ -233,26 +200,10 @@ class TestUnifiedAnalysisEngineCacheManagement:
         UnifiedAnalysisEngine._reset_instance()
 
 
-class TestUnifiedAnalysisEngineLanguageDetection:
+class TestUnifiedAnalysisEngineLanguageDetection(
+    TestUnifiedAnalysisEngineLanguageDetectionTestMixin
+):
     """Test cases for language detection."""
-
-    def test_detect_language_from_extension(self):
-        """Test detecting language from file extension."""
-        engine = UnifiedAnalysisEngine()
-        language = engine._detect_language("test.py")
-        assert language == "python"
-
-    def test_detect_language_unknown_extension(self):
-        """Test detecting language with unknown extension."""
-        engine = UnifiedAnalysisEngine()
-        language = engine._detect_language("test.unknown")
-        assert language == "unknown"
-
-    def test_language_detector_property(self):
-        """Test accessing language detector property."""
-        engine = UnifiedAnalysisEngine()
-        detector = engine.language_detector
-        assert detector is not None
 
     @classmethod
     def teardown_class(cls):
