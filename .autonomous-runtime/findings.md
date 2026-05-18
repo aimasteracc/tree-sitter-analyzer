@@ -145,4 +145,29 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
     - `uv run pytest <focused-performance-set> -q`（84 passed, 3 skipped）
     - `uv run pytest -q`（10336 passed, 31 skipped）
     - `uv run pytest tests/unit/test_agent_contracts.py::test_agent_docs_require_change_impact_verification_command -q`（通过）
-  - 结论：本批切片干净通过，`test_engine.py` 异常负担继续下降；队列可继续处理下一组分析/公共 API 边界测试。
+- 结论：本批切片干净通过，`test_engine.py` 异常负担继续下降；队列可继续处理下一组分析/公共 API 边界测试。
+
+- 2026-05-19 Tick: `TestAnalysisEngineConfiguration` / `TestAnalysisEnginePerformanceExtended` 迁入 mixin
+  - 目标：继续切分 `tests/unit/core/test_engine.py`，把初始化配置与扩展性能场景抽出到 mixin。
+  - 执行：
+    - 新建 `TestAnalysisEngineConfigurationTestMixin`、`TestAnalysisEnginePerformanceExtendedTestMixin`。
+    - 将 `TestAnalysisEngineConfiguration`、`TestAnalysisEnginePerformanceExtended` 改为纯继承层。
+    - 保持行为一致，仅做测试组织重构。
+  - 验证结果：
+    - `uv run ruff check --fix tests/unit/core/test_engine.py`（通过）
+    - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+    - `uv run pytest tests/unit/core/test_engine.py -q`（14 passed）
+    - `uv run pytest tests/unit/core/test_engine.py tests/benchmarks/test_large_file_performance.py tests/benchmarks/test_query_performance.py tests/integration/test_phase7_performance_integration.py tests/unit/core/test_performance.py tests/unit/performance/test_async_performance.py tests/unit/performance/test_mcp_performance.py -q`（78 passed, 3 skipped）
+- 结论：本批次切片通过；未发现功能回归。继续下一队头任务（`TestAnalysisEngine*` 其余职责）。
+
+- 2026-05-19 Tick: `test_engine.py` mixin 派生类收集问题修复
+  - 触发理由：最近一次大规模 mixin 迁移后出现 `pytest` 0 tests collected，根因在于 `mixin` 类保留 `__test__ = False`，子类沿用该标记导致主文件测试全部被过滤。
+  - 处理过程：
+    - 检查 `tests/unit/core/test_engine.py` 所有 `Test*` 派生类是否需要覆盖 `__test__` 标记。
+    - 为 `TestAnalysisEngine`、`TestUnified*`、`TestMockLanguagePlugin`、`TestAnalysisEngine*`、`TestAnalysisEnginePerformanceExtended`、`TestEngineManager*`、`TestEngineSecurityRegression` 全部补齐 `__test__ = True`。
+    - 不更改测试实现与断言，仅修复可收集性元数据，保持功能无变更。
+  - 验证链路：
+    - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run pytest tests/unit/core/test_engine.py -q`（101 passed, 1 skipped）
+    - `uv run pytest -q`（10417 passed, 32 skipped）
+  - 结论：收集问题闭环处理完毕，队列可直接进入下一组 mixin 收敛（`test_engine.py` 剩余类边界整合），风险较低。

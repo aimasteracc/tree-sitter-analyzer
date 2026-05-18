@@ -302,3 +302,32 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果:
   - 本轮队头切片闭环完成，`test_engine.py` 对应职责面继续收敛且无测试回归。
   - 风险保持低，继续沿同一 queue 处理下一组职责（例如 `TestAnalysisEngineAnalyze*` / `TestAnalysisEngineProperties`）。
+
+## 2026-05-19: test_engine.py 扩展职责切片（配置+性能）
+
+- 目标: 继续推进 `test_engine.py` 的职责收口，减少文件内的散落场景测试。
+- 动作:
+  - 新增 `TestAnalysisEngineConfigurationTestMixin` 与 `TestAnalysisEnginePerformanceExtendedTestMixin` 到 `tests/unit/core/_test_engine_test_mixin.py`。
+  - 将 `TestAnalysisEngineConfiguration` 与 `TestAnalysisEnginePerformanceExtended` 改为继承对应 mixin。
+  - 继续保持测试行为与断言不变，避免功能偏移。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py`
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run pytest tests/unit/core/test_engine.py -q`（14 passed）
+  - `uv run pytest tests/unit/core/test_engine.py tests/benchmarks/test_large_file_performance.py tests/benchmarks/test_query_performance.py tests/integration/test_phase7_performance_integration.py tests/unit/core/test_performance.py tests/unit/performance/test_async_performance.py tests/unit/performance/test_mcp_performance.py -q`（78 passed, 3 skipped）
+- 结果: 该批切片在有状态 + 无状态验证下通过，`test_engine.py` 继续向混合职责拆分推进。
+
+## 2026-05-19: test_engine.py mixin 收敛（测试收集修复）
+
+- 目标: 继续 `test_engine.py` 的责任切片，处理近期将测试迁入 mixin 后的 `pytest` 收集中断问题（`0 tests collected`）。
+- 动作:
+  - 检查 `tests/unit/core/test_engine.py` 与 `tests/unit/core/_test_engine_test_mixin.py` 的类定义，确认 `mixin` 侧使用 `__test__ = False`，导致派生类继承后被标记为不可收集。
+  - 在 `tests/unit/core/test_engine.py` 的所有 mixin 派生类上显式补上 `__test__ = True`，覆盖继承的禁用标记，恢复正常收集。
+  - 同步保持各类原有生命周期 hook 与测试行为不变，仅做元数据修复与组织化收束。
+- 验证:
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run pytest tests/unit/core/test_engine.py -q`（101 passed, 1 skipped）
+  - `uv run pytest -q`（10417 passed, 32 skipped）
+- 结果:
+  - 队头任务 `tests/unit/core/test_engine.py` 已恢复完整收集并通过回归，`Test*` mixin 派生类行为保持一致。
+  - 当前切片链路可继续推进到后续 `test_engine_manager.py` 的整合收口（若未在本轮完成则延续下一 tick）。

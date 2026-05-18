@@ -4,6 +4,7 @@
 import asyncio
 import os
 import tempfile
+import threading
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,7 +17,9 @@ from tree_sitter_analyzer.core.analysis_engine import (
     MockLanguagePlugin,
     UnifiedAnalysisEngine,
     UnsupportedLanguageError,
+    get_analysis_engine,
 )
+from tree_sitter_analyzer.core.engine_manager import EngineManager
 from tree_sitter_analyzer.core.parser import ParseResult
 from tree_sitter_analyzer.exceptions import AnalysisError, ParseError
 from tree_sitter_analyzer.models import AnalysisResult
@@ -1184,3 +1187,415 @@ class 类名:
                 pass
             finally:
                 Path(temp_path).unlink(missing_ok=True)
+
+
+class TestAnalysisEngineConfigurationTestMixin:
+    """Shared tests for AnalysisEngine configuration and initialization."""
+
+    __test__ = False
+
+    def test_engine_initialization_with_custom_config(self):
+        """Test engine initialization with custom configuration."""
+        # Test with different configurations
+        configs = [
+            {},
+            {"timeout": 30},
+            {"max_file_size": 1024 * 1024},
+            {"enable_caching": True},
+        ]
+
+        for config in configs:
+            try:
+                engine = AnalysisEngine(**config)
+                assert engine is not None
+            except TypeError:
+                # Some config options might not be supported
+                pass
+
+    def test_engine_with_mock_dependencies(self):
+        """Test engine with mocked dependencies."""
+        try:
+            with patch(
+                "tree_sitter_analyzer.language_loader.LanguageLoader"
+            ) as mock_loader:
+                mock_loader.return_value.load_language.return_value = None
+
+                engine = AnalysisEngine()
+                assert engine is not None
+        except (ImportError, AttributeError):
+            # Mock patching might fail, which is acceptable for this test
+            pass
+
+    def test_engine_language_detection(self):
+        """Test engine language detection capabilities."""
+        engine = AnalysisEngine()
+
+        test_files = [
+            ("test.py", "python"),
+            ("test.java", "java"),
+            ("test.js", "javascript"),
+            ("test.unknown", None),
+        ]
+
+        for _filename, _expected_lang in test_files:
+            # Test language detection logic
+            # This might be internal to the engine
+            assert engine is not None  # Basic test that engine exists
+
+
+class TestAnalysisEnginePerformanceExtendedTestMixin:
+    """Shared tests for AnalysisEngine performance characteristics."""
+
+    __test__ = False
+
+    @pytest.fixture
+    def engine_perf(self) -> AnalysisEngine:
+        """Create an AnalysisEngine instance for testing."""
+        return AnalysisEngine()
+
+    @pytest.mark.asyncio
+    async def test_concurrent_analysis_extended(self, engine_perf):
+        """Test concurrent file analysis."""
+
+        # Create multiple test files using context manager
+        with tempfile.TemporaryDirectory() as temp_dir:
+            test_files = []
+            for i in range(5):
+                file_path = Path(temp_dir) / f"test_{i}.py"
+                with open(file_path, "w") as f:
+                    f.write(f"def function_{i}(): pass\\nclass Class_{i}: pass")
+                test_files.append(file_path)
+
+            # Test concurrent analysis using asyncio.gather
+            tasks = [engine_perf.analyze_file(str(f)) for f in test_files]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Check that some analyses completed
+            successful_results = [r for r in results if isinstance(r, AnalysisResult)]
+            assert len(successful_results) >= 0  # At least some should succeed
+
+    @pytest.mark.asyncio
+    async def test_memory_usage_with_repeated_analysis(self, engine_perf):
+        """Test memory usage with repeated analysis."""
+        import gc
+
+        test_content = "def test_function(): pass\\nclass TestClass: pass"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write(test_content)
+            f.flush()
+            temp_path = f.name
+
+        try:
+            # Perform repeated analysis
+            for _i in range(10):
+                try:
+                    result = await engine_perf.analyze_file(temp_path)
+                    assert result is not None or result is None  # Either is acceptable
+                except Exception:
+                    # Some failures are acceptable in stress testing
+                    pass
+
+                # Force garbage collection
+                gc.collect()
+
+            # Test should complete without memory issues
+            assert True
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_analysis_with_timeout(self, engine_perf):
+        """Test analysis with timeout scenarios."""
+        # Create a file that might take time to analyze
+        complex_content = "\n".join(
+            [
+                f"class Class_{i}:\\n    def method_{j}(self): pass"
+                for i in range(20)
+                for j in range(5)  # Reduced complexity
+            ]
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("# Complex Python file with nested structures\n" + complex_content)
+            f.flush()
+            temp_path = f.name
+
+        try:
+            # Test with potential timeout
+            result = await engine_perf.analyze_file(temp_path)
+            assert result is not None or result is None
+        except (TimeoutError, AnalysisError):
+            # Timeout errors are acceptable for complex files
+            pass
+        finally:
+            Path(temp_path).unlink(missing_ok=True)
+
+
+class TestEngineManagerGetInstanceTestMixin:
+    """Shared tests for EngineManager.get_instance behavior."""
+
+    __test__ = False
+
+    def test_get_instance_default_project_root(self):
+        """Test get_instance with default project root."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(UnifiedAnalysisEngine)
+        instance2 = EngineManager.get_instance(UnifiedAnalysisEngine)
+
+        # Should return same instance for same class and default root
+        assert instance1 is instance2
+
+        # Clean up
+        EngineManager.reset_instances()
+
+    def test_get_instance_with_project_root(self):
+        """Test get_instance with specific project root."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        instance2 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+
+        # Same class + same root should return same instance
+        assert instance1 is instance2
+
+        # Clean up
+        EngineManager.reset_instances()
+
+    def test_get_instance_different_project_roots(self):
+        """Test get_instance with different project roots."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        instance2 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project2"
+        )
+
+        # Should return different instances for different project roots
+        assert instance1 is not instance2
+
+        # Clean up
+        EngineManager.reset_instances()
+
+    def test_get_instance_none_project_root(self):
+        """Test get_instance with None project root."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root=None)
+        instance2 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root=None)
+
+        # None uses "default" key for same project root
+        assert instance1 is instance2
+
+        # Clean up
+        EngineManager.reset_instances()
+
+
+class TestEngineManagerThreadSafetyTestMixin:
+    """Shared tests for thread safety behavior in EngineManager."""
+
+    __test__ = False
+
+    def test_concurrent_get_instance(self):
+        """Test concurrent calls to get_instance."""
+        EngineManager.reset_instances()
+        instances = []
+        lock = threading.Lock()
+
+        def create_instance():
+            instance = EngineManager.get_instance(UnifiedAnalysisEngine)
+            with lock:
+                instances.append(instance)
+
+        threads = [threading.Thread(target=create_instance) for _ in range(10)]
+
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len(instances) == 10
+        assert all(inst is instances[0] for inst in instances)
+
+        EngineManager.reset_instances()
+
+    def test_double_checked_locking(self):
+        """Test that concurrent access doesn't create duplicate instances."""
+        EngineManager.reset_instances()
+        instances = []
+
+        def create_instance():
+            instance = EngineManager.get_instance(UnifiedAnalysisEngine)
+            instances.append(instance)
+
+        threads = [threading.Thread(target=create_instance) for _ in range(5)]
+
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert len(instances) == 5
+        assert all(inst is instances[0] for inst in instances)
+
+        EngineManager.reset_instances()
+
+
+class TestEngineManagerResetInstancesTestMixin:
+    """Shared tests for EngineManager.reset_instances behavior."""
+
+    __test__ = False
+
+    def test_reset_instances_clears_all(self):
+        """Test that reset_instances clears all instances."""
+        EngineManager.reset_instances()
+
+        EngineManager.get_instance(UnifiedAnalysisEngine, project_root="/path1")
+        EngineManager.get_instance(UnifiedAnalysisEngine, project_root="/path2")
+
+        EngineManager.reset_instances()
+
+        instance3 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path1"
+        )
+        instance4 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path2"
+        )
+
+        assert instance3 is not None
+        assert instance4 is not None
+        EngineManager.reset_instances()
+
+    def test_reset_instances_thread_safety(self):
+        """Test that reset_instances remains safe under concurrent access."""
+        EngineManager.reset_instances()
+        EngineManager.get_instance(UnifiedAnalysisEngine)
+
+        def reset_and_create():
+            EngineManager.reset_instances()
+            EngineManager.get_instance(UnifiedAnalysisEngine)
+
+        threads = [threading.Thread(target=reset_and_create) for _ in range(5)]
+
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert True
+        EngineManager.reset_instances()
+
+
+class TestEngineManagerEdgeCasesTestMixin:
+    """Shared tests for engine manager edge-case handling."""
+
+    __test__ = False
+
+    def test_instance_key_generation(self):
+        """Test instance key generation for falsy project roots."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root=None)
+        instance2 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root=None)
+        assert instance1 is instance2
+
+        instance3 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root="")
+        instance4 = EngineManager.get_instance(UnifiedAnalysisEngine, project_root="")
+        assert instance3 is instance4
+
+        # None and empty string both map to default key
+        assert instance1 is instance3
+        EngineManager.reset_instances()
+
+    def test_multiple_project_roots(self):
+        """Test managing multiple separate project roots."""
+        EngineManager.reset_instances()
+
+        instance1 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        instance2 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project2"
+        )
+        instance3 = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project3"
+        )
+
+        assert instance1 is not instance2
+        assert instance2 is not instance3
+        assert instance1 is not instance3
+
+        instance1_again = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        assert instance1 is instance1_again
+        EngineManager.reset_instances()
+
+    def test_reset_clears_all_project_roots(self):
+        """Test reset clears all project-root-scoped instances."""
+        EngineManager.reset_instances()
+
+        EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project2"
+        )
+        EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project3"
+        )
+        EngineManager.reset_instances()
+
+        instance1_new = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project1"
+        )
+        instance2_new = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project2"
+        )
+        instance3_new = EngineManager.get_instance(
+            UnifiedAnalysisEngine, project_root="/path/to/project3"
+        )
+
+        assert instance1_new is not None
+        assert instance2_new is not None
+        assert instance3_new is not None
+        EngineManager.reset_instances()
+
+
+class TestEngineSecurityRegressionTestMixin:
+    """Shared regression tests for security and boundary behavior."""
+
+    __test__ = False
+
+    @pytest.mark.asyncio
+    async def test_path_traversal_prevention(self):
+        """Path traversal attempts should still be blocked."""
+        engine = get_analysis_engine(project_root=os.getcwd())
+        request = AnalysisRequest(file_path="../../../../../etc/passwd")
+
+        with pytest.raises(ValueError) as excinfo:
+            await engine.analyze(request)
+
+        assert "Invalid file path" in str(excinfo.value)
+        assert "traversal" in str(excinfo.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_unsupported_language_handling(self):
+        """Unsupported languages should still surface the expected error."""
+        engine = get_analysis_engine()
+        request = AnalysisRequest(file_path="pyproject.toml", language="brainfuck")
+
+        with pytest.raises(UnsupportedLanguageError):
+            await engine.analyze(request)
+
+    def test_singleton_engine_cleanup(self):
+        """Cleanup should remain safe after refactoring."""
+        engine = get_analysis_engine()
+        engine.cleanup()
