@@ -190,6 +190,54 @@ def test_project_health_max_files_controls_agent_visible_lists(
     assert "--max-files 1" in result["agent_summary"]["project_health_command"]
 
 
+def test_project_health_result_marks_coverage_unavailable_without_coverage_scores() -> (
+    None
+):
+    scores = [
+        _score("src/bad.py", "D", 48.0, {"size": 22.0, "complexity": 14.0}),
+        _score("src/worse.py", "D", 30.0, {"size": 18.0, "complexity": 10.0}),
+    ]
+
+    result = _build_project_health_result(
+        root="/repo",
+        all_scores=scores,
+        min_grade="D",
+        max_files=10,
+    )
+
+    assert result["coverage_status"] == "unavailable"
+    assert result["average_dimensions"]["coverage"] is None
+    assert result["weakest_dimension"] == "complexity"
+
+
+def test_project_health_result_marks_coverage_available_when_present() -> None:
+    scores = [
+        _score(
+            "src/bad.py",
+            "D",
+            48.0,
+            {"size": 22.0, "complexity": 14.0, "coverage": 12.5},
+        ),
+        _score(
+            "src/worse.py",
+            "D",
+            30.0,
+            {"size": 18.0, "complexity": 10.0, "coverage": 25.0},
+        ),
+    ]
+
+    result = _build_project_health_result(
+        root="/repo",
+        all_scores=scores,
+        min_grade="D",
+        max_files=10,
+    )
+
+    assert result["coverage_status"] == "available"
+    assert result["average_dimensions"]["coverage"] == 18.8
+    assert result["weakest_dimension"] == "complexity"
+
+
 def test_project_recommendation_handles_clean_projects() -> None:
     recommendation = _build_project_recommendation(
         Counter({"A": 2, "B": 1}),

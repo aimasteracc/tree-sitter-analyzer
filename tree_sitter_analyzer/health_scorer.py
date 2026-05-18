@@ -38,6 +38,33 @@ DIMENSION_WEIGHTS = {
     "git_hotspot": 10,
 }
 
+PROJECT_HEALTH_SOURCE_EXTS = {
+    ".py",
+    ".java",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".go",
+    ".rs",
+    ".kt",
+    ".cs",
+    ".rb",
+    ".php",
+    ".c",
+    ".cpp",
+    ".h",
+    ".cc",
+    ".cxx",
+    ".hpp",
+    ".sql",
+    ".html",
+    ".css",
+    ".yaml",
+    ".yml",
+    ".md",
+}
+
 # Thresholds for scoring
 SIZE_IDEAL = 200  # Files under 200 lines get full size score
 SIZE_MAX = 2000  # Files over 2000 lines get 0 size score
@@ -280,7 +307,11 @@ class HealthScorer:
             print(f"{r.file_path}: {r.grade}")
     """
 
-    def __init__(self, weights: dict[str, float] | None = None) -> None:
+    def __init__(
+        self,
+        weights: dict[str, float] | None = None,
+        source_extensions: set[str] | None = None,
+    ) -> None:
         """
         Initialize the scorer.
 
@@ -289,8 +320,11 @@ class HealthScorer:
                     Default: size=10, complexity=25, dependencies=20,
                              coverage=10, duplication=10, structure=15,
                              git_hotspot=10
+            source_extensions: Optional override for file extensions to scan.
+                Defaults to project-health supported source extensions.
         """
         self.weights = weights or dict(DIMENSION_WEIGHTS)
+        self.source_extensions = set(source_extensions or PROJECT_HEALTH_SOURCE_EXTS)
         self._coverage_cache: dict[str, float] | None = None
 
     def score_file(self, file_path: str) -> HealthScore:
@@ -368,10 +402,8 @@ class HealthScorer:
             List of HealthScore objects, sorted by total descending
         """
         root = Path(project_root)
-        supported_exts = {".py", ".js", ".ts", ".jsx", ".tsx", ".java"}
-
         results: list[HealthScore] = []
-        for ext in supported_exts:
+        for ext in self.source_extensions:
             for f in root.rglob(f"*{ext}"):
                 if any(part in self._EXCLUDE_DIRS for part in f.parts):
                     continue

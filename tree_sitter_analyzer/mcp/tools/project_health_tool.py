@@ -17,31 +17,6 @@ from .file_health_tool import _build_signal
 
 logger = setup_logger(__name__)
 
-_SOURCE_EXTS = {
-    ".py",
-    ".java",
-    ".js",
-    ".ts",
-    ".jsx",
-    ".tsx",
-    ".go",
-    ".rs",
-    ".kt",
-    ".cs",
-    ".rb",
-    ".php",
-    ".c",
-    ".cpp",
-    ".h",
-    ".hpp",
-    ".sql",
-    ".html",
-    ".css",
-    ".yaml",
-    ".yml",
-    ".md",
-}
-
 _EXCLUDE_DIRS = {
     "node_modules",
     ".git",
@@ -155,6 +130,7 @@ def _build_project_health_result(
     grade_counts = Counter(score.grade for score in all_scores)
     grade_distribution = {grade: grade_counts.get(grade, 0) for grade in "ABCDF"}
     dim_avgs = _average_dimensions(all_scores)
+    signal_dims = _numeric_dimensions(dim_avgs)
     worst = _scores_at_or_below_min_grade(all_scores, min_grade)
     weakest_dim = _weakest_dimension(dim_avgs)
     visible_limit = _visible_file_limit(max_files)
@@ -170,8 +146,9 @@ def _build_project_health_result(
         "detail_count": len(files),
         "hidden_detail_count": max(0, len(worst) - len(files)),
         "grade_distribution": grade_distribution,
-        "signal": _build_signal(dim_avgs),
+        "signal": _build_signal(signal_dims),
         "average_dimensions": dim_avgs,
+        "coverage_status": _coverage_status(dim_avgs),
         "weakest_dimension": weakest_dim,
         "top_refactoring_targets": _top_refactoring_targets(worst, visible_limit),
         "agent_summary": _build_project_agent_summary(
@@ -203,15 +180,32 @@ def _visible_file_limit(max_files: int) -> int:
     return min(_AGENT_BACKLOG_LIMIT, max_files)
 
 
-def _average_dimensions(scores: list[Any]) -> dict[str, float]:
+def _average_dimensions(scores: list[Any]) -> dict[str, float | None]:
     """Average health dimensions across a scored project."""
-    dim_avgs: dict[str, float] = {}
+    dim_avgs: dict[str, float | None] = {}
     for dim in DIMENSION_WEIGHTS:
         vals = [
-            score.dimensions.get(dim, 0) for score in scores if dim in score.dimensions
+            score.dimensions.get(dim, 0)
+            for score in scores
+            if dim in score.dimensions
+            and isinstance(score.dimensions[dim], (int, float))
         ]
-        dim_avgs[dim] = round(sum(vals) / len(vals), 1) if vals else 0.0
+        dim_avgs[dim] = round(sum(vals) / len(vals), 1) if vals else None
     return dim_avgs
+
+
+def _numeric_dimensions(dimensions: dict[str, float | None]) -> dict[str, float]:
+    """Keep only numeric dimensions for signal and comparison logic."""
+    return {
+        dimension: score
+        for dimension, score in dimensions.items()
+        if isinstance(score, (int, float))
+    }
+
+
+def _coverage_status(dimensions: dict[str, float | None]) -> str:
+    """Track whether project coverage data was available."""
+    return "available" if dimensions.get("coverage") is not None else "unavailable"
 
 
 def _scores_at_or_below_min_grade(scores: list[Any], min_grade: str) -> list[Any]:
@@ -455,6 +449,11 @@ def _agent_backlog_reason(grade: str, weakest: str) -> str:
     return f"grade {grade}; inspect weakest dimension before deciding whether to refactor: {weakest}"
 
 
-def _weakest_dimension(dimensions: dict[str, float]) -> str:
+def _weakest_dimension(dimensions: dict[str, float | None]) -> str:
     """Return the weakest dimension name, or an empty string when unavailable."""
-    return min(dimensions, key=lambda k: dimensions[k]) if dimensions else ""
+    numeric_dimensions = _numeric_dimensions(dimensions)
+    return (
+        min(numeric_dimensions, key=lambda k: numeric_dimensions[k])
+        if numeric_dimensions
+        else ""
+    )

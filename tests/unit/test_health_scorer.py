@@ -70,6 +70,42 @@ class TestHealthScorer:
         for r in results:
             assert 0 <= r.total <= 100
 
+    def test_score_project_includes_reported_source_extensions(self, scorer, tmp_path):
+        """Project scoring should include all configured reportable extensions."""
+        from tree_sitter_analyzer.health_scorer import PROJECT_HEALTH_SOURCE_EXTS
+
+        for idx, ext in enumerate(sorted(PROJECT_HEALTH_SOURCE_EXTS)):
+            path = tmp_path / f"sample{idx}{ext}"
+            path.write_text("x = 1\n")
+
+        unknown = tmp_path / "ignored.log"
+        unknown.write_text("x = 1\n")
+
+        results = scorer.score_project(str(tmp_path))
+        names = {Path(result.file_path).name for result in results}
+        included = {
+            f"sample{idx}{ext}"
+            for idx, ext in enumerate(sorted(PROJECT_HEALTH_SOURCE_EXTS))
+        }
+
+        assert names >= included
+        assert "ignored.log" not in names
+
+    def test_score_project_respects_custom_source_extensions(self, tmp_path):
+        """Health scorer should limit scan scope to caller-provided extensions."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        py_file = tmp_path / "main.py"
+        cfg_file = tmp_path / "project.cfg"
+        py_file.write_text("x = 1\n")
+        cfg_file.write_text("x = 1\n")
+
+        scorer = HealthScorer(source_extensions={".cfg"})
+        results = scorer.score_project(str(tmp_path))
+        names = {Path(result.file_path).name for result in results}
+
+        assert names == {"project.cfg"}
+
     def test_large_file_gets_penalized(self, scorer, tmp_path):
         """Files over 500 lines should have lower size score."""
         big = tmp_path / "big.py"
