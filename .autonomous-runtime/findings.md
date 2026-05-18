@@ -117,3 +117,15 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
     - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
     - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`
     - `uv run pytest tests/unit/core/test_engine.py -q`
+
+- 2026-05-19 Tick: unification 测试组迁入 mixin
+  - 触发理由：`safe-to-edit` 判定 `tests/unit/core/test_engine.py` 可直接聚焦编辑；`file-health` 显示主要弱点仍是 `oversized_file`。
+  - 执行结果：
+    - 将 `TestUnifiedEngineSingleton`、`SyncAnalysis`、`AnalyzeCode`、`QueryExecution`、`NonexistentFile`、`CompatibilityProperties` 的测试体迁入 mixin；
+    - 主测试文件保留类名和来源分组，降低单文件体积并保持 pytest 收集路径稳定。
+  - 验证结果：
+    - `uv run pytest tests/unit/core/test_engine.py -q`（32 passed）
+    - `uv run pytest -q`（10348 passed, 31 skipped）
+    - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(77.0)`；971 lines；剩余 `oversized_file` + `deep_nesting`）
+    - `uv run python -m tree_sitter_analyzer --change-impact --format json`（low risk，推荐 default suite 已执行）
+  - 结论：本轮闭环干净，可提交推送；下一轮继续同一队头，优先迁移 `TestAnalysisEnginePublicAPI`、`TestAnalysisEngineConcurrency` 或 `TestAnalysisEngineEdgeCases`。

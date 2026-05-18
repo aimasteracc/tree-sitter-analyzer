@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tree_sitter_analyzer.api import get_engine
 from tree_sitter_analyzer.core import AnalysisEngine
 from tree_sitter_analyzer.core.analysis_engine import (
     AnalysisRequest,
@@ -126,6 +127,113 @@ class Greeter:
         assert isinstance(supported_languages, list)
         assert "java" in supported_languages
         assert "python" in supported_languages
+
+
+class TestUnifiedEngineSingletonTestMixin:
+    """Shared tests for `UnifiedAnalysisEngine` singleton behavior."""
+
+    __test__ = False
+
+    def test_unified_engine_singleton(self):
+        """Verify that UnifiedAnalysisEngine acts as a singleton."""
+        engine1 = UnifiedAnalysisEngine()
+        engine2 = UnifiedAnalysisEngine()
+        assert engine1 is engine2
+
+
+class TestUnifiedEngineSyncAnalysisTestMixin:
+    """Shared tests for synchronous file analysis."""
+
+    __test__ = False
+
+    def test_unified_engine_sync_analysis(self, tmp_path):
+        """Verify synchronous analysis of a file."""
+        # Create a dummy Java file
+        java_file = tmp_path / "Test.java"
+        java_file.write_text("public class Test { public void hello() {} }")
+
+        engine = get_engine()
+        request = AnalysisRequest(file_path=str(java_file), language="java")
+
+        result = engine.analyze_sync(request)
+        assert result.success is True
+        assert result.language == "java"
+        assert len(result.elements) >= 2  # Class and Method
+
+
+class TestUnifiedEngineAnalyzeCodeTestMixin:
+    """Shared tests for synchronous code-string analysis."""
+
+    __test__ = False
+
+    def test_unified_engine_analyze_code(self):
+        """Verify code string analysis."""
+        code = "def hello(): print('world')"
+        engine = get_engine()
+
+        result = engine.analyze_code_sync(code, language="python")
+        assert result.success is True
+        assert result.language == "python"
+        assert any(el.name == "hello" for el in result.elements)
+
+
+class TestUnifiedEngineQueryExecutionTestMixin:
+    """Shared tests for synchronous query execution."""
+
+    __test__ = False
+
+    def test_unified_engine_query_execution(self, tmp_path):
+        """Verify post-processing query execution."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text("def my_func(): pass")
+
+        engine = get_engine()
+        request = AnalysisRequest(
+            file_path=str(py_file),
+            language="python",
+            queries=["function"],
+            include_queries=True,
+        )
+
+        result = engine.analyze_sync(request)
+        assert result.success is True
+        assert "function" in result.query_results
+        assert len(result.query_results["function"]) > 0
+
+
+class TestUnifiedEngineNonexistentFileTestMixin:
+    """Shared tests for missing-file handling."""
+
+    __test__ = False
+
+    def test_unified_engine_nonexistent_file(self):
+        """Verify FileNotFoundError is raised for missing files."""
+        engine = get_engine()
+        request = AnalysisRequest(file_path="nonexistent_file.java", language="java")
+
+        with pytest.raises(FileNotFoundError):
+            engine.analyze_sync(request)
+
+
+class TestUnifiedEngineCompatibilityPropertiesTestMixin:
+    """Shared tests for API/MCP compatibility surface checks."""
+
+    __test__ = False
+
+    def test_unified_engine_compatibility_properties(self):
+        """Verify compatibility properties for API/MCP layer."""
+        engine = get_engine()
+
+        # Check properties
+        assert hasattr(engine, "language_detector")
+        assert hasattr(engine, "plugin_manager")
+        assert hasattr(engine, "parser")
+        assert hasattr(engine, "query_executor")
+
+        # Check methods
+        assert hasattr(engine, "get_available_queries")
+        assert hasattr(engine, "get_supported_languages")
+        assert hasattr(engine, "analyze_sync")
 
 
 class TestUnifiedAnalysisEngineInitTestMixin:

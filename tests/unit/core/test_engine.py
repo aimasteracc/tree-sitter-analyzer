@@ -41,8 +41,13 @@ from tests.unit.core._test_engine_test_mixin import (
     TestUnifiedAnalysisEnginePropertiesTestMixin,
     TestUnifiedAnalysisEngineQueriesTestMixin,
     TestUnifiedAnalysisEngineSecurityTestMixin,
+    TestUnifiedEngineAnalyzeCodeTestMixin,
+    TestUnifiedEngineCompatibilityPropertiesTestMixin,
+    TestUnifiedEngineNonexistentFileTestMixin,
+    TestUnifiedEngineQueryExecutionTestMixin,
+    TestUnifiedEngineSingletonTestMixin,
+    TestUnifiedEngineSyncAnalysisTestMixin,
 )
-from tree_sitter_analyzer.api import get_engine
 from tree_sitter_analyzer.core import AnalysisEngine
 from tree_sitter_analyzer.core.analysis_engine import (
     AnalysisRequest,
@@ -76,99 +81,42 @@ class TestAnalysisEngine(TestAnalysisEngineTestMixin):
 # =============================================================================
 
 
-class TestUnifiedEngineSingleton:
+class TestUnifiedEngineSingleton(TestUnifiedEngineSingletonTestMixin):
     """Verify that UnifiedAnalysisEngine acts as a singleton."""
 
-    def test_unified_engine_singleton(self):
-        """Verify that UnifiedAnalysisEngine acts as a singleton."""
-        engine1 = UnifiedAnalysisEngine()
-        engine2 = UnifiedAnalysisEngine()
-        assert engine1 is engine2
+    pass
 
 
-class TestUnifiedEngineSyncAnalysis:
+class TestUnifiedEngineSyncAnalysis(TestUnifiedEngineSyncAnalysisTestMixin):
     """Verify synchronous analysis of a file."""
 
-    def test_unified_engine_sync_analysis(self, tmp_path):
-        """Verify synchronous analysis of a file."""
-        # Create a dummy Java file
-        java_file = tmp_path / "Test.java"
-        java_file.write_text("public class Test { public void hello() {} }")
-
-        engine = get_engine()
-        request = AnalysisRequest(file_path=str(java_file), language="java")
-
-        result = engine.analyze_sync(request)
-        assert result.success is True
-        assert result.language == "java"
-        assert len(result.elements) >= 2  # Class and Method
+    pass
 
 
-class TestUnifiedEngineAnalyzeCode:
+class TestUnifiedEngineAnalyzeCode(TestUnifiedEngineAnalyzeCodeTestMixin):
     """Verify code string analysis."""
 
-    def test_unified_engine_analyze_code(self):
-        """Verify code string analysis."""
-        code = "def hello(): print('world')"
-        engine = get_engine()
-
-        result = engine.analyze_code_sync(code, language="python")
-        assert result.success is True
-        assert result.language == "python"
-        assert any(el.name == "hello" for el in result.elements)
+    pass
 
 
-class TestUnifiedEngineQueryExecution:
+class TestUnifiedEngineQueryExecution(TestUnifiedEngineQueryExecutionTestMixin):
     """Verify post-processing query execution."""
 
-    def test_unified_engine_query_execution(self, tmp_path):
-        """Verify post-processing query execution."""
-        py_file = tmp_path / "test.py"
-        py_file.write_text("def my_func(): pass")
-
-        engine = get_engine()
-        request = AnalysisRequest(
-            file_path=str(py_file),
-            language="python",
-            queries=["function"],
-            include_queries=True,
-        )
-
-        result = engine.analyze_sync(request)
-        assert result.success is True
-        assert "function" in result.query_results
-        assert len(result.query_results["function"]) > 0
+    pass
 
 
-class TestUnifiedEngineNonexistentFile:
+class TestUnifiedEngineNonexistentFile(TestUnifiedEngineNonexistentFileTestMixin):
     """Verify FileNotFoundError is raised for missing files."""
 
-    def test_unified_engine_nonexistent_file(self):
-        """Verify FileNotFoundError is raised for missing files."""
-        engine = get_engine()
-        request = AnalysisRequest(file_path="nonexistent_file.java", language="java")
-
-        with pytest.raises(FileNotFoundError):
-            engine.analyze_sync(request)
+    pass
 
 
-class TestUnifiedEngineCompatibilityProperties:
+class TestUnifiedEngineCompatibilityProperties(
+    TestUnifiedEngineCompatibilityPropertiesTestMixin
+):
     """Verify compatibility properties for API/MCP layer."""
 
-    def test_unified_engine_compatibility_properties(self):
-        """Verify compatibility properties for API/MCP layer."""
-        engine = get_engine()
-
-        # Check properties
-        assert hasattr(engine, "language_detector")
-        assert hasattr(engine, "plugin_manager")
-        assert hasattr(engine, "parser")
-        assert hasattr(engine, "query_executor")
-
-        # Check methods
-        assert hasattr(engine, "get_available_queries")
-        assert hasattr(engine, "get_supported_languages")
-        assert hasattr(engine, "analyze_sync")
+    pass
 
 
 # =============================================================================

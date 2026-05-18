@@ -257,3 +257,26 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
   - `uv run pytest tests/unit/core/test_engine.py -q`
 - 结果:
   - `TestUnifiedAnalysisEngineCleanup` 已并入 mixin 体系，`test_engine.py` 继续沿切片目标前进。
+
+## 2026-05-19: test_engine.py 可维护性切片（unification 组）
+
+- 目标: 继续压缩 `tests/unit/core/test_engine.py`，处理 `test_engine_unification.py` 来源的同步 API/兼容性测试组。
+- 动作:
+  - 在 `tests/unit/core/_test_engine_test_mixin.py` 新增 6 个 unification mixin:
+    - `TestUnifiedEngineSingletonTestMixin`
+    - `TestUnifiedEngineSyncAnalysisTestMixin`
+    - `TestUnifiedEngineAnalyzeCodeTestMixin`
+    - `TestUnifiedEngineQueryExecutionTestMixin`
+    - `TestUnifiedEngineNonexistentFileTestMixin`
+    - `TestUnifiedEngineCompatibilityPropertiesTestMixin`
+  - `tests/unit/core/test_engine.py` 中对应 6 个类改为继承 mixin，主文件仅保留类边界。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过，自动修复导入）
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run pytest tests/unit/core/test_engine.py -q`（32 passed）
+  - `uv run python -m tree_sitter_analyzer tests/unit/core/test_engine.py --file-health --format json`（`C(77.0)`，971 lines，剩余 `oversized_file` 与 `deep_nesting`）
+  - `uv run python -m tree_sitter_analyzer --change-impact --format json`（low risk，2 个变更文件，1 个受影响文件）
+  - `uv run pytest -q`（10348 passed, 31 skipped，约 27s）
+- 结果:
+  - `test_engine.py` 从 1031 行降到 971 行，健康分从 `C(76.7)` 提升到 `C(77.0)`。
+  - 队头仍是 `test_engine.py` oversized 文件，下一步继续迁移 `TestAnalysisEnginePublicAPI` / `Concurrency` / `EdgeCases` 等剩余主文件测试组。
