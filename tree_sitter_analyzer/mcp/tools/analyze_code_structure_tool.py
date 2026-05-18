@@ -44,6 +44,18 @@ def _format_table(
     return str(output.replace("\r\n", "\n").replace("\r", "\n").rstrip())
 
 
+def _get_method_modifiers(method: Any) -> list[str]:
+    """Extract method modifiers (static, final, abstract)."""
+    mods = []
+    if getattr(method, "is_static", False):
+        mods.append("static")
+    if getattr(method, "is_final", False):
+        mods.append("final")
+    if getattr(method, "is_abstract", False):
+        mods.append("abstract")
+    return mods
+
+
 class AnalyzeCodeStructureTool(BaseMCPTool):
     """MCP Tool for code structure analysis and table formatting."""
 
@@ -252,7 +264,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return convert_analysis_result_to_dict(
             result,
             self._get_method_parameters,
-            self._get_method_modifiers,
+            _get_method_modifiers,
             self._get_field_modifiers,
         )
 
@@ -278,17 +290,6 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     }
                 )
         return result
-
-    def _get_method_modifiers(self, method: Any) -> list[str]:
-        """Extract method modifiers (static, async, etc.)."""
-        mods = []
-        if getattr(method, "is_static", False):
-            mods.append("static")
-        if getattr(method, "is_final", False):
-            mods.append("final")
-        if getattr(method, "is_abstract", False):
-            mods.append("abstract")
-        return mods
 
     def _get_method_parameters(self, method: Any) -> list[dict[str, str]]:
         """Extract method parameters with types."""

@@ -16,6 +16,7 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool,
     _format_table,
+    _get_method_modifiers,
 )
 
 
@@ -849,56 +850,56 @@ class TestAnalyzeCodeStructureToolConvertParameters:
 
 
 class TestAnalyzeCodeStructureToolGetMethodModifiers:
-    """Tests for _get_method_modifiers method."""
+    """Tests for _get_method_modifiers helper."""
 
-    def test_get_method_modifiers_none(self, tool):
+    def test_get_method_modifiers_none(self):
         """Test getting modifiers with no modifiers."""
         mock_method = MagicMock()
         mock_method.is_static = False
         mock_method.is_final = False
         mock_method.is_abstract = False
 
-        result = tool._get_method_modifiers(mock_method)
+        result = _get_method_modifiers(mock_method)
         assert result == []
 
-    def test_get_method_modifiers_static(self, tool):
+    def test_get_method_modifiers_static(self):
         """Test getting static modifier."""
         mock_method = MagicMock()
         mock_method.is_static = True
         mock_method.is_final = False
         mock_method.is_abstract = False
 
-        result = tool._get_method_modifiers(mock_method)
+        result = _get_method_modifiers(mock_method)
         assert result == ["static"]
 
-    def test_get_method_modifiers_final(self, tool):
+    def test_get_method_modifiers_final(self):
         """Test getting final modifier."""
         mock_method = MagicMock()
         mock_method.is_static = False
         mock_method.is_final = True
         mock_method.is_abstract = False
 
-        result = tool._get_method_modifiers(mock_method)
+        result = _get_method_modifiers(mock_method)
         assert result == ["final"]
 
-    def test_get_method_modifiers_abstract(self, tool):
+    def test_get_method_modifiers_abstract(self):
         """Test getting abstract modifier."""
         mock_method = MagicMock()
         mock_method.is_static = False
         mock_method.is_final = False
         mock_method.is_abstract = True
 
-        result = tool._get_method_modifiers(mock_method)
+        result = _get_method_modifiers(mock_method)
         assert result == ["abstract"]
 
-    def test_get_method_modifiers_multiple(self, tool):
+    def test_get_method_modifiers_multiple(self):
         """Test getting multiple modifiers."""
         mock_method = MagicMock()
         mock_method.is_static = True
         mock_method.is_final = True
         mock_method.is_abstract = True
 
-        result = tool._get_method_modifiers(mock_method)
+        result = _get_method_modifiers(mock_method)
         assert len(result) == 3
         assert "static" in result
         assert "final" in result
