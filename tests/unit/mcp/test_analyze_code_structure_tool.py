@@ -868,6 +868,65 @@ class TestAnalyzeCodeStructureNextSteps:
 
         assert steps == []
 
+    def test_build_next_steps_adds_query_navigation_steps(self):
+        """Larger method and class sets should route agents to query tools."""
+        methods = [
+            {"name": f"method_{index}", "complexity_score": 1} for index in range(6)
+        ]
+        structure = {
+            "methods": methods,
+            "classes": [{"name": "One"}, {"name": "Two"}],
+            "statistics": {"total_lines": 120},
+        }
+
+        steps = _build_next_steps(structure, "example.py")
+
+        assert steps == [
+            "query_code(query_key='methods') to get detailed method list with filters",
+            "query_code(query_key='classes') to examine class relationships",
+        ]
+
+    def test_build_next_steps_uses_large_file_fallback(self):
+        """Large files without complex methods should suggest a first read slice."""
+        structure = {
+            "methods": [
+                {
+                    "name": "entrypoint",
+                    "complexity_score": 2,
+                    "line_range": {"start": 25, "end": 40},
+                }
+            ],
+            "classes": [],
+            "statistics": {"total_lines": 800},
+        }
+
+        steps = _build_next_steps(structure, "example.py")
+
+        assert steps == [
+            "extract_code_section(start_line=25, end_line=40) to read 'entrypoint'"
+        ]
+
+    def test_build_next_steps_caps_to_three_suggestions(self):
+        """The agent-facing response should stay compact even for busy files."""
+        methods = [
+            {
+                "name": "hard_part",
+                "complexity_score": 12,
+                "line_range": {"start": 5, "end": 55},
+            },
+            *[{"name": f"method_{index}", "complexity_score": 1} for index in range(6)],
+        ]
+        structure = {
+            "methods": methods,
+            "classes": [{"name": "One"}, {"name": "Two"}],
+            "statistics": {"total_lines": 900},
+        }
+
+        steps = _build_next_steps(structure, "example.py")
+
+        assert len(steps) == 3
+        assert steps[0].startswith("extract_code_section(start_line=5, end_line=55)")
+
 
 class TestAnalyzeCodeStructureToolConvertParameters:
     """Tests for _convert_parameters helper."""
