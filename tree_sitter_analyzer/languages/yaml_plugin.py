@@ -11,17 +11,27 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any
 
-from ..models import AnalysisResult, Class, CodeElement, Function, Import, Variable
+from ..models import AnalysisResult, Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error, log_warning
+from .yaml_helpers import YAMLElement
 from .yaml_helpers import (
     analyze_yaml_file as _analyze_yaml_file_standalone,
+)
+from .yaml_helpers import (
+    append_document_element as _append_document_element_standalone,
+)
+from .yaml_helpers import (
+    append_mapping_element as _append_mapping_element_standalone,
 )
 from .yaml_helpers import (
     calculate_nesting_level as _calc_nesting_standalone,
 )
 from .yaml_helpers import (
-    extract_mapping_key_and_value as _extract_kv_standalone,
+    count_document_children as _count_document_children_standalone,
+)
+from .yaml_helpers import (
+    count_sequence_children as _count_sequence_children_standalone,
 )
 from .yaml_helpers import (
     extract_sequence_key as _extract_seq_key_standalone,
@@ -31,6 +41,12 @@ from .yaml_helpers import (
 )
 from .yaml_helpers import (
     get_document_index as _get_doc_idx_standalone,
+)
+from .yaml_helpers import (
+    iter_document_nodes as _iter_document_nodes_standalone,
+)
+from .yaml_helpers import (
+    iter_mapping_nodes as _iter_mapping_nodes_standalone,
 )
 from .yaml_helpers import (
     traverse_nodes as _traverse_standalone,
@@ -58,65 +74,6 @@ try:
 except ImportError:
     YAML_AVAILABLE = False
     log_warning("tree-sitter-yaml not installed, YAML support disabled")
-
-
-class YAMLElement(CodeElement):
-    """YAML-specific code element."""
-
-    def __init__(
-        self,
-        name: str,
-        start_line: int,
-        end_line: int,
-        raw_text: str,
-        language: str = "yaml",
-        element_type: str = "yaml",
-        key: str | None = None,
-        value: str | None = None,
-        value_type: str | None = None,
-        anchor_name: str | None = None,
-        alias_target: str | None = None,
-        nesting_level: int = 0,
-        document_index: int = 0,
-        child_count: int | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Initialize YAMLElement.
-
-        Args:
-            name: Element name
-            start_line: Starting line number
-            end_line: Ending line number
-            raw_text: Raw text content
-            language: Language identifier
-            element_type: Type of YAML element
-            key: Key for mapping pairs
-            value: Scalar value (None for complex structures)
-            value_type: Type of value (string, number, boolean, null, mapping, sequence)
-            anchor_name: Anchor name for &anchor definitions
-            alias_target: Target anchor name for *alias references (not resolved)
-            nesting_level: AST-based logical depth
-            document_index: Index of document in multi-document YAML
-            child_count: Number of child elements for complex structures
-            **kwargs: Additional attributes
-        """
-        super().__init__(
-            name=name,
-            start_line=start_line,
-            end_line=end_line,
-            raw_text=raw_text,
-            language=language,
-            **kwargs,
-        )
-        self.element_type = element_type
-        self.key = key
-        self.value = value
-        self.value_type = value_type
-        self.anchor_name = anchor_name
-        self.alias_target = alias_target
-        self.nesting_level = nesting_level
-        self.document_index = document_index
-        self.child_count = child_count
 
 
 class YAMLElementExtractor(ElementExtractor):
@@ -241,100 +198,38 @@ class YAMLElementExtractor(ElementExtractor):
         This counts the number of top-level key-value pairs in the document,
         which is more meaningful than counting AST nodes.
         """
-        count = 0
-        for child in document_node.children:
-            # Skip document markers and comments
-            if child.type in ("---", "...", "comment"):
-                continue
-            # For block_node, count the mappings inside
-            if child.type == "block_node":
-                for subchild in child.children:
-                    if subchild.type == "block_mapping":
-                        # Count the mapping pairs
-                        count += len(
-                            [
-                                c
-                                for c in subchild.children
-                                if c.type == "block_mapping_pair"
-                            ]
-                        )
-                    elif subchild.type in ("block_sequence", "flow_sequence"):
-                        count += 1
-            elif child.type == "block_mapping":
-                count += len(
-                    [c for c in child.children if c.type == "block_mapping_pair"]
-                )
-        return count
+        return _count_document_children_standalone(document_node)
 
     # Extract elements from AST: _extract_documents
     def _extract_documents(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
         """Extract YAML documents."""
-        for node in self._traverse_nodes(root_node):
-            if node.type == "document":
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text(node)
-                    doc_index = self._get_document_index(node)
-
-                    # Count meaningful child elements (top-level mappings)
-                    # Exclude document markers (---) and comments
-                    child_count = self._count_document_children(node)
-
-                    element = YAMLElement(
-                        name=f"Document {doc_index}",
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text[:200] + "..."
-                        if len(raw_text) > 200
-                        else raw_text,
-                        element_type="document",
-                        document_index=doc_index,
-                        child_count=child_count,
-                        nesting_level=0,
-                    )
-                    elements.append(element)
-                except Exception:  # nosec B110
-                    pass
+        document_nodes = _iter_document_nodes_standalone(
+            self._traverse_nodes(root_node)
+        )
+        for node in document_nodes:
+            _append_document_element_standalone(
+                elements,
+                node,
+                self._get_node_text,
+                self._get_document_index,
+            )
 
     # Extract elements from AST: _extract_mappings
     def _extract_mappings(
         self, root_node: "tree_sitter.Node", elements: list[YAMLElement]
     ) -> None:
         """Extract YAML mappings (key-value pairs)."""
-        for node in self._traverse_nodes(root_node):
-            if node.type in ("block_mapping_pair", "flow_pair"):
-                try:
-                    start_line = node.start_point[0] + 1
-                    end_line = node.end_point[0] + 1
-                    raw_text = self._get_node_text(node)
-
-                    key, value, value_type, child_count, anchor_name = (
-                        _extract_kv_standalone(node, self._get_node_text)
-                    )
-
-                    nesting_level = self._calculate_nesting_level(node)
-                    doc_index = self._get_document_index(node)
-
-                    element = YAMLElement(
-                        name=key or "mapping",
-                        start_line=start_line,
-                        end_line=end_line,
-                        raw_text=raw_text,
-                        element_type="mapping",
-                        key=key,
-                        value=value,
-                        value_type=value_type,
-                        nesting_level=nesting_level,
-                        document_index=doc_index,
-                        child_count=child_count,
-                        anchor_name=anchor_name,
-                    )
-                    elements.append(element)
-                except Exception:  # nosec B110
-                    pass
+        mapping_nodes = _iter_mapping_nodes_standalone(self._traverse_nodes(root_node))
+        for node in mapping_nodes:
+            _append_mapping_element_standalone(
+                elements,
+                node,
+                self._get_node_text,
+                self._get_document_index,
+                self._calculate_nesting_level,
+            )
 
     # Extract elements from AST: _extract_value_info
     def _extract_value_info(
@@ -360,17 +255,7 @@ class YAMLElementExtractor(ElementExtractor):
                     start_line = node.start_point[0] + 1
                     end_line = node.end_point[0] + 1
                     raw_text = self._get_node_text(node)
-
-                    if node.type == "block_sequence":
-                        child_count = len(
-                            [
-                                c
-                                for c in node.children
-                                if c.type == "block_sequence_item"
-                            ]
-                        )
-                    else:
-                        child_count = len(node.children)
+                    child_count = _count_sequence_children_standalone(node)
 
                     nesting_level = self._calculate_nesting_level(node)
                     doc_index = self._get_document_index(node)

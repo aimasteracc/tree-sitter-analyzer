@@ -4,8 +4,49 @@ from collections.abc import Callable
 from typing import Any
 
 from ..encoding_utils import read_file_safe
-from ..models import AnalysisResult
+from ..models import AnalysisResult, CodeElement
 from ..utils import log_debug, log_error, log_info
+
+
+class YAMLElement(CodeElement):
+    """YAML-specific code element."""
+
+    def __init__(
+        self,
+        name: str,
+        start_line: int,
+        end_line: int,
+        raw_text: str,
+        language: str = "yaml",
+        element_type: str = "yaml",
+        key: str | None = None,
+        value: str | None = None,
+        value_type: str | None = None,
+        anchor_name: str | None = None,
+        alias_target: str | None = None,
+        nesting_level: int = 0,
+        document_index: int = 0,
+        child_count: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize a YAML element with YAML-specific metadata."""
+        super().__init__(
+            name=name,
+            start_line=start_line,
+            end_line=end_line,
+            raw_text=raw_text,
+            language=language,
+            **kwargs,
+        )
+        self.element_type = element_type
+        self.key = key
+        self.value = value
+        self.value_type = value_type
+        self.anchor_name = anchor_name
+        self.alias_target = alias_target
+        self.nesting_level = nesting_level
+        self.document_index = document_index
+        self.child_count = child_count
 
 
 def extract_node_text(node: Any, source_code: str) -> str:
@@ -63,6 +104,144 @@ def traverse_nodes(node: Any) -> list[Any]:
     for child in node.children:
         nodes.extend(traverse_nodes(child))
     return nodes
+
+
+def count_document_children(document_node: Any) -> int:
+    """Count meaningful top-level YAML document children."""
+    count = 0
+    for child in document_node.children:
+        if child.type in ("---", "...", "comment"):
+            continue
+        count += _count_top_level_document_child(child)
+    return count
+
+
+def _count_top_level_document_child(node: Any) -> int:
+    if node.type == "block_node":
+        return sum(_count_block_node_child(child) for child in node.children)
+    if node.type == "block_mapping":
+        return _count_mapping_pairs(node)
+    return 0
+
+
+def _count_block_node_child(node: Any) -> int:
+    if node.type == "block_mapping":
+        return _count_mapping_pairs(node)
+    if node.type in ("block_sequence", "flow_sequence"):
+        return 1
+    return 0
+
+
+def _count_mapping_pairs(node: Any) -> int:
+    return sum(1 for child in node.children if child.type == "block_mapping_pair")
+
+
+def count_sequence_children(sequence_node: Any) -> int:
+    """Count meaningful YAML sequence children."""
+    if sequence_node.type == "block_sequence":
+        return sum(
+            1 for child in sequence_node.children if child.type == "block_sequence_item"
+        )
+    return len(sequence_node.children)
+
+
+def build_document_element(
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+) -> YAMLElement:
+    """Build a YAML document element from a tree-sitter document node."""
+    raw_text = get_node_text(node)
+    document_index = get_document_index_func(node)
+    return YAMLElement(
+        name=f"Document {document_index}",
+        start_line=node.start_point[0] + 1,
+        end_line=node.end_point[0] + 1,
+        raw_text=_truncate_raw_text(raw_text),
+        element_type="document",
+        document_index=document_index,
+        child_count=count_document_children(node),
+        nesting_level=0,
+    )
+
+
+def iter_document_nodes(nodes: list[Any]) -> list[Any]:
+    """Return YAML document nodes from a traversed node list."""
+    return [node for node in nodes if node.type == "document"]
+
+
+def append_document_element(
+    elements: list[YAMLElement],
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+) -> None:
+    """Append a YAML document element, preserving extractor fault tolerance."""
+    try:
+        elements.append(
+            build_document_element(node, get_node_text, get_document_index_func)
+        )
+    except Exception as exc:
+        log_debug(f"Skipped YAML document node: {exc}")
+
+
+def iter_mapping_nodes(nodes: list[Any]) -> list[Any]:
+    """Return YAML mapping pair nodes from a traversed node list."""
+    return [node for node in nodes if node.type in ("block_mapping_pair", "flow_pair")]
+
+
+def append_mapping_element(
+    elements: list[YAMLElement],
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+    calculate_nesting_level_func: Callable[[Any], int],
+) -> None:
+    """Append a YAML mapping element, preserving extractor fault tolerance."""
+    try:
+        elements.append(
+            build_mapping_element(
+                node,
+                get_node_text,
+                get_document_index_func,
+                calculate_nesting_level_func,
+            )
+        )
+    except Exception as exc:
+        log_debug(f"Skipped YAML mapping node: {exc}")
+
+
+def build_mapping_element(
+    node: Any,
+    get_node_text: Callable[[Any], str],
+    get_document_index_func: Callable[[Any], int],
+    calculate_nesting_level_func: Callable[[Any], int],
+) -> YAMLElement:
+    """Build a YAML mapping element from a tree-sitter mapping pair node."""
+    key, value, value_type, child_count, anchor_name = extract_mapping_key_and_value(
+        node,
+        get_node_text,
+    )
+    return YAMLElement(
+        name=key or "mapping",
+        start_line=node.start_point[0] + 1,
+        end_line=node.end_point[0] + 1,
+        raw_text=get_node_text(node),
+        element_type="mapping",
+        key=key,
+        value=value,
+        value_type=value_type,
+        nesting_level=calculate_nesting_level_func(node),
+        document_index=get_document_index_func(node),
+        child_count=child_count,
+        anchor_name=anchor_name,
+    )
+
+
+def _truncate_raw_text(raw_text: str, limit: int = 200) -> str:
+    if len(raw_text) > limit:
+        return raw_text[:limit] + "..."
+    return raw_text
 
 
 def is_number(text: str) -> bool:
