@@ -56,6 +56,104 @@ def _get_method_modifiers(method: Any) -> list[str]:
     return mods
 
 
+def _get_field_modifiers(field: Any) -> list[str]:
+    """Extract field modifiers (visibility, static, final)."""
+    mods = []
+    visibility = getattr(field, "visibility", "private")
+    if visibility and visibility != "package":
+        mods.append(visibility)
+    if getattr(field, "is_static", False):
+        mods.append("static")
+    if getattr(field, "is_final", False):
+        mods.append("final")
+    return mods
+
+
+def _convert_parameters(parameters: Any) -> list[dict[str, str]]:
+    """Convert method parameters to dict format."""
+    result = []
+    for param in parameters:
+        if isinstance(param, dict):
+            result.append(
+                {
+                    "name": param.get("name", "param"),
+                    "type": param.get("type", "Object"),
+                }
+            )
+        else:
+            result.append(
+                {
+                    "name": getattr(param, "name", "param"),
+                    "type": getattr(param, "param_type", "Object"),
+                }
+            )
+    return result
+
+
+def _get_method_parameters(method: Any) -> list[dict[str, str]]:
+    """Extract method parameters with types."""
+    parameters = getattr(method, "parameters", [])
+    if parameters and isinstance(parameters[0], str):
+        result = []
+        for param_str in parameters:
+            parts = param_str.strip().split()
+            if len(parts) >= 2:
+                result.append({"name": parts[-1], "type": " ".join(parts[:-1])})
+            elif len(parts) == 1:
+                result.append({"name": "param", "type": parts[0]})
+        return result
+    return _convert_parameters(parameters)
+
+
+def _build_next_steps(structure_dict: dict[str, Any], file_path: str) -> list[str]:
+    """Build next_steps suggestions for AI agents."""
+    steps: list[str] = []
+    methods = structure_dict.get("methods", [])
+    classes = structure_dict.get("classes", [])
+    stats = structure_dict.get("statistics", {})
+    if not isinstance(methods, list):
+        methods = []
+    if not isinstance(classes, list):
+        classes = []
+    total_lines = stats.get("total_lines", 0)
+    if not isinstance(total_lines, int):
+        total_lines = 0
+
+    complex_methods = [m for m in methods if m.get("complexity_score", 0) >= 8]
+    if complex_methods:
+        top = max(complex_methods, key=lambda m: m.get("complexity_score", 0))
+        lr = top.get("line_range", {})
+        if lr.get("start") and lr.get("end"):
+            steps.append(
+                f"extract_code_section(start_line={lr['start']}, end_line={lr['end']}) "
+                f"to read complex method '{top.get('name', 'method')}' (complexity={top.get('complexity_score', '?')})"
+            )
+    if len(methods) > 5:
+        steps.append(
+            "query_code(query_key='methods') to get detailed method list with filters"
+        )
+    if len(classes) > 1:
+        steps.append("query_code(query_key='classes') to examine class relationships")
+    if total_lines > 500 and not complex_methods and methods:
+        first = methods[0]
+        lr = first.get("line_range", {})
+        if lr.get("start") and lr.get("end"):
+            steps.append(
+                f"extract_code_section(start_line={lr['start']}, end_line={lr['end']}) to read '{first.get('name', 'first method')}'"
+            )
+    return steps[:3]
+
+
+def _convert_analysis_result(result: Any) -> dict[str, Any]:
+    """Convert AnalysisResult to a JSON-serializable dict."""
+    return convert_analysis_result_to_dict(
+        result,
+        _get_method_parameters,
+        _get_method_modifiers,
+        _get_field_modifiers,
+    )
+
+
 class AnalyzeCodeStructureTool(BaseMCPTool):
     """MCP Tool for code structure analysis and table formatting."""
 
@@ -187,7 +285,7 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
                     "table_output": table_output,
                 }
 
-                steps = self._build_next_steps(structure_dict, file_path)
+                steps = _build_next_steps(structure_dict, file_path)
                 if steps:
                     response["next_steps"] = steps
 
@@ -216,107 +314,9 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             self.logger.error(f"Error in code structure analysis tool: {e}")
             raise
 
-    def _build_next_steps(
-        self, structure_dict: dict[str, Any], file_path: str
-    ) -> list[str]:
-        """Build next_steps suggestions for AI agents."""
-        steps: list[str] = []
-        methods = structure_dict.get("methods", [])
-        classes = structure_dict.get("classes", [])
-        stats = structure_dict.get("statistics", {})
-        if not isinstance(methods, list):
-            methods = []
-        if not isinstance(classes, list):
-            classes = []
-        total_lines = stats.get("total_lines", 0)
-        if not isinstance(total_lines, int):
-            total_lines = 0
-
-        complex_methods = [m for m in methods if m.get("complexity_score", 0) >= 8]
-        if complex_methods:
-            top = max(complex_methods, key=lambda m: m.get("complexity_score", 0))
-            lr = top.get("line_range", {})
-            if lr.get("start") and lr.get("end"):
-                steps.append(
-                    f"extract_code_section(start_line={lr['start']}, end_line={lr['end']}) "
-                    f"to read complex method '{top.get('name', 'method')}' (complexity={top.get('complexity_score', '?')})"
-                )
-        if len(methods) > 5:
-            steps.append(
-                "query_code(query_key='methods') to get detailed method list with filters"
-            )
-        if len(classes) > 1:
-            steps.append(
-                "query_code(query_key='classes') to examine class relationships"
-                # Convert analysis result to JSON-serializable dict
-            )
-        if total_lines > 500 and not complex_methods and methods:
-            first = methods[0]
-            lr = first.get("line_range", {})
-            if lr.get("start") and lr.get("end"):
-                steps.append(
-                    f"extract_code_section(start_line={lr['start']}, end_line={lr['end']}) to read '{first.get('name', 'first method')}'"
-                )
-        return steps[:3]
-
     def _convert_analysis_result_to_dict(self, result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to a JSON-serializable dict."""
-        return convert_analysis_result_to_dict(
-            result,
-            self._get_method_parameters,
-            _get_method_modifiers,
-            self._get_field_modifiers,
-        )
-
-    # -- Element conversion helpers (used by convert_analysis_result_to_dict) --
-
-    def _convert_parameters(self, parameters: Any) -> list[dict[str, str]]:
-        """Convert method parameters to dict format."""
-        result = []
-        for param in parameters:
-            if isinstance(param, dict):
-                result.append(
-                    {
-                        "name": param.get("name", "param"),
-                        "type": param.get("type", "Object"),
-                        # Extract method/field modifiers and parameters
-                    }
-                )
-            else:
-                result.append(
-                    {
-                        "name": getattr(param, "name", "param"),
-                        "type": getattr(param, "param_type", "Object"),
-                    }
-                )
-        return result
-
-    def _get_method_parameters(self, method: Any) -> list[dict[str, str]]:
-        """Extract method parameters with types."""
-        parameters = getattr(method, "parameters", [])
-        if parameters and isinstance(parameters[0], str):
-            result = []
-            for param_str in parameters:
-                parts = param_str.strip().split()
-                if len(parts) >= 2:
-                    # End-of-tool helper methods
-                    result.append({"name": parts[-1], "type": " ".join(parts[:-1])})
-                elif len(parts) == 1:
-                    result.append({"name": "param", "type": parts[0]})
-            return result
-        return self._convert_parameters(parameters)
-
-    def _get_field_modifiers(self, field: Any) -> list[str]:
-        """Extract field modifiers (static, final, etc.)."""
-        mods = []
-        visibility = getattr(field, "visibility", "private")
-        if visibility and visibility != "package":
-            mods.append(visibility)
-        if getattr(field, "is_static", False):
-            mods.append("static")
-        if getattr(field, "is_final", False):
-            mods.append("final")
-        return mods
+        return _convert_analysis_result(result)
 
 
 # Tool instance for easy access

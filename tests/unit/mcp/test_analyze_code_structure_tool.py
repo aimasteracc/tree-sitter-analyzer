@@ -15,8 +15,13 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
 )
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool,
+    _build_next_steps,
+    _convert_analysis_result,
+    _convert_parameters,
     _format_table,
+    _get_field_modifiers,
     _get_method_modifiers,
+    _get_method_parameters,
 )
 
 
@@ -756,7 +761,7 @@ class TestAnalyzeCodeStructureToolExecute:
         mock_analysis_result.package = None
         mock_analysis_result.annotations = []
 
-        metadata = tool._convert_analysis_result_to_dict(mock_analysis_result)
+        metadata = _convert_analysis_result(mock_analysis_result)
         assert "statistics" in metadata
         assert metadata["statistics"]["total_lines"] == 100
 
@@ -821,29 +826,72 @@ class TestAnalyzeCodeStructureFormatting:
                 _format_table({}, MagicMock(elements=[]), "python", "unsupported")
 
 
-class TestAnalyzeCodeStructureToolConvertParameters:
-    """Tests for _convert_parameters method."""
+class TestAnalyzeCodeStructureNextSteps:
+    """Tests for next-step suggestions exposed to agents."""
 
-    def test_convert_parameters_empty(self, tool):
+    def test_build_next_steps_prefers_complex_method(self):
+        """Complex methods should route agents to focused section extraction."""
+        structure = {
+            "methods": [
+                {
+                    "name": "simple",
+                    "complexity_score": 1,
+                    "line_range": {"start": 10, "end": 12},
+                },
+                {
+                    "name": "hard_part",
+                    "complexity_score": 11,
+                    "line_range": {"start": 40, "end": 80},
+                },
+            ],
+            "classes": [],
+            "statistics": {"total_lines": 120},
+        }
+
+        steps = _build_next_steps(structure, "example.py")
+
+        assert steps == [
+            "extract_code_section(start_line=40, end_line=80) "
+            "to read complex method 'hard_part' (complexity=11)"
+        ]
+
+    def test_build_next_steps_handles_invalid_collections(self):
+        """Invalid structure shapes should not produce noisy suggestions."""
+        steps = _build_next_steps(
+            {
+                "methods": "not-a-list",
+                "classes": None,
+                "statistics": {"total_lines": "many"},
+            },
+            "example.py",
+        )
+
+        assert steps == []
+
+
+class TestAnalyzeCodeStructureToolConvertParameters:
+    """Tests for _convert_parameters helper."""
+
+    def test_convert_parameters_empty(self):
         """Test converting empty parameters."""
-        result = tool._convert_parameters([])
+        result = _convert_parameters([])
         assert result == []
 
-    def test_convert_parameters_dict(self, tool):
+    def test_convert_parameters_dict(self):
         """Test converting dict parameters."""
         parameters = [{"name": "param1", "type": "string"}]
-        result = tool._convert_parameters(parameters)
+        result = _convert_parameters(parameters)
         assert len(result) == 1
         assert result[0]["name"] == "param1"
         assert result[0]["type"] == "string"
 
-    def test_convert_parameters_object(self, tool):
+    def test_convert_parameters_object(self):
         """Test converting object parameters."""
         mock_param = MagicMock()
         mock_param.name = "param1"
         mock_param.param_type = "string"
         parameters = [mock_param]
-        result = tool._convert_parameters(parameters)
+        result = _convert_parameters(parameters)
         assert len(result) == 1
         assert result[0]["name"] == "param1"
         assert result[0]["type"] == "string"
@@ -907,48 +955,48 @@ class TestAnalyzeCodeStructureToolGetMethodModifiers:
 
 
 class TestAnalyzeCodeStructureToolGetFieldModifiers:
-    """Tests for _get_field_modifiers method."""
+    """Tests for _get_field_modifiers helper."""
 
-    def test_get_field_modifiers_none(self, tool):
+    def test_get_field_modifiers_none(self):
         """Test getting modifiers with no modifiers."""
         mock_field = MagicMock()
         mock_field.visibility = "public"
         mock_field.is_static = False
         mock_field.is_final = False
 
-        result = tool._get_field_modifiers(mock_field)
+        result = _get_field_modifiers(mock_field)
         # Public visibility is added as a modifier (not package)
         assert result == ["public"]
 
-    def test_get_field_modifiers_private(self, tool):
+    def test_get_field_modifiers_private(self):
         """Test getting private visibility."""
         mock_field = MagicMock()
         mock_field.visibility = "private"
         mock_field.is_static = False
         mock_field.is_final = False
 
-        result = tool._get_field_modifiers(mock_field)
+        result = _get_field_modifiers(mock_field)
         assert result == ["private"]
 
-    def test_get_field_modifiers_static(self, tool):
+    def test_get_field_modifiers_static(self):
         """Test getting static modifier."""
         mock_field = MagicMock()
         mock_field.visibility = "public"
         mock_field.is_static = True
         mock_field.is_final = False
 
-        result = tool._get_field_modifiers(mock_field)
+        result = _get_field_modifiers(mock_field)
         # Public visibility is added as a modifier
         assert result == ["public", "static"]
 
-    def test_get_field_modifiers_multiple(self, tool):
+    def test_get_field_modifiers_multiple(self):
         """Test getting multiple modifiers."""
         mock_field = MagicMock()
         mock_field.visibility = "private"
         mock_field.is_static = True
         mock_field.is_final = True
 
-        result = tool._get_field_modifiers(mock_field)
+        result = _get_field_modifiers(mock_field)
         assert len(result) == 3
         assert "private" in result
         assert "static" in result
@@ -956,45 +1004,45 @@ class TestAnalyzeCodeStructureToolGetFieldModifiers:
 
 
 class TestAnalyzeCodeStructureToolGetMethodParameters:
-    """Tests for _get_method_parameters method."""
+    """Tests for _get_method_parameters helper."""
 
-    def test_get_method_parameters_empty(self, tool):
+    def test_get_method_parameters_empty(self):
         """Test getting empty parameters."""
         mock_method = MagicMock()
         mock_method.parameters = []
 
-        result = tool._get_method_parameters(mock_method)
+        result = _get_method_parameters(mock_method)
         assert result == []
 
-    def test_get_method_parameters_list_of_strings(self, tool):
+    def test_get_method_parameters_list_of_strings(self):
         """Test getting parameters as list of strings."""
         mock_method = MagicMock()
         mock_method.parameters = ["str param1", "str param2"]
 
-        result = tool._get_method_parameters(mock_method)
+        result = _get_method_parameters(mock_method)
         assert len(result) == 2
         assert result[0]["name"] == "param1"
         assert result[0]["type"] == "str"
         assert result[1]["name"] == "param2"
         assert result[1]["type"] == "str"
 
-    def test_get_method_parameters_list_of_dicts(self, tool):
+    def test_get_method_parameters_list_of_dicts(self):
         """Test getting parameters as list of dicts."""
         mock_method = MagicMock()
         mock_method.parameters = [{"name": "param1", "type": "string"}]
 
-        result = tool._get_method_parameters(mock_method)
+        result = _get_method_parameters(mock_method)
         assert len(result) == 1
         assert result[0]["name"] == "param1"
         assert result[0]["type"] == "string"
 
-    def test_get_method_parameters_mixed(self, tool):
+    def test_get_method_parameters_mixed(self):
         """Test getting mixed parameters."""
         mock_method = MagicMock()
         # Use all string format (the implementation handles this case)
         mock_method.parameters = ["str param1", "int param2"]
 
-        result = tool._get_method_parameters(mock_method)
+        result = _get_method_parameters(mock_method)
         assert len(result) == 2
         assert result[0]["name"] == "param1"
         assert result[0]["type"] == "str"
