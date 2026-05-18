@@ -110,3 +110,34 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
   - 变更文件:
     - `tests/unit/languages/_test_yaml_element_metadata_properties_helpers.py`
     - `tests/unit/languages/test_yaml_element_metadata_properties.py`
+
+## 2026-05-18: test_engine.py 可维护性切片（持续）
+
+- 目标: 继续 Phase 8 Slice 3，降低 `tests/unit/core/test_engine.py` 的文件异味（`D 68.2`）。
+- 动作:
+  - 新增 `tests/unit/core/_test_engine_test_mixin.py`，抽离 `TestAnalysisEngine` 中的 8 个测试为 mixin。
+  - `tests/unit/core/test_engine.py` 的 `TestAnalysisEngine` 继承该 mixin，行数从 1707 降至 1605，单次改动集中在初始化/文件分析相关测试块。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run pytest tests/unit/core/test_engine.py -q`（93 passed, 1 skipped）
+  - `uv run pytest -q`（10409 passed, 32 skipped）
+- 结果:
+  - `test_engine.py` 文件健康仍为 `D(68.7)`，但已稳定：拆分后的 mixin 文件健康 `A(96.7)`，无新增警告。
+  - 风险保持低，后续下一步可继续按建议继续迁移 `TestUnifiedAnalysisEngine*` 责任片段。
+
+## 2026-05-18: test_engine.py 可维护性切片（继续）
+
+- 目标: 继续 `TestUnifiedAnalysisEngineInit` 责任拆分，降低类内测试混杂。
+- 动作:
+  - 在 `tests/unit/core/_test_engine_test_mixin.py` 新增 `TestUnifiedAnalysisEngineInitTestMixin`，抽离 5 个 `TestUnifiedAnalysisEngineInit` 测试。
+  - 修改 `tests/unit/core/test_engine.py`，让 `TestUnifiedAnalysisEngineInit` 继承该 mixin，并保留生命周期清理钩子。
+- 验证:
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_test_mixin.py`（通过）
+  - `uv run pytest tests/unit/core/test_engine.py -q`（88 passed, 1 skipped）
+  - `uv run pytest -q`（10404 passed, 32 skipped）
+  - `uv run python -m tree_sitter_analyzer --file-health --format json tests/unit/core/test_engine.py`（`D(68.9)`；`oversized_file` 与 `deep_nesting` 仍在，继续切片）
+- 结果:
+  - `test_engine.py` 行数继续下降到约 1573 行；
+  - `TestUnifiedAnalysisEngineInit` 抽离成功，下一步继续沿 `refactor` 建议处理 `PluginManagement`、`CacheManagement`、`LanguageDetection`。

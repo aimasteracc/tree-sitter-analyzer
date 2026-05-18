@@ -33,3 +33,12 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
 - 79 low assertion density files (待增强)
 - Skip rate 2.8% ✓
 - 覆盖率: tree_sitter_compat 66%→目标>70%
+
+### 2026-05-18 Tick 观察
+
+- `test_engine.py` 是高优先目标文件（D 级，1700+ 行）。首次动作已完成一次 mixin 拆分。
+- 按 CLAUDE/MCP 建议，`refactoring_suggestions` 给出的切片顺序可继续执行；建议本轮持续沿 `TestUnifiedAnalysisEngine*` 分组拆出混杂职责。
+- 风险低：本轮再次收口后完成验证
+  - `uv run pytest tests/unit/core/test_engine.py -q`（88 passed, 1 skipped）
+  - `uv run pytest -q`（10404 passed, 32 skipped）
+  - `--file-health` 仍为 `D(68.9)`，`oversized_file` 关键异味持续（1573 行），继续执行下一组切片：`TestUnifiedAnalysisEnginePluginManagement` / `CacheManagement` / `LanguageDetection`。
