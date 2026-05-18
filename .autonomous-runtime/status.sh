@@ -6,13 +6,41 @@
 PROJECT_DIR="${1:-/Users/aisheng.yu/git-private/tree-sitter-analyzer}"
 cd "${PROJECT_DIR}"
 
+get_loop_pids() {
+    pgrep -f "loop.sh"
+}
+
+is_loop_running() {
+    local pid
+    local running=1
+
+    while IFS= read -r pid; do
+        [ -z "${pid}" ] && continue
+        if ps -p "${pid}" -o pid= >/dev/null 2>&1; then
+            return 0
+        fi
+    done < <(get_loop_pids)
+
+    if [ -f ".autonomous-runtime/loop.lock" ]; then
+        pid="$(cat .autonomous-runtime/loop.lock 2>/dev/null || true)"
+        if [ -n "${pid}" ] && ps -p "${pid}" -o pid= >/dev/null 2>&1; then
+            return 0
+        fi
+        # 清理死 pid 的残留 lock
+        rm -f ".autonomous-runtime/loop.lock"
+    fi
+    return 1
+}
+
 echo "📊 tree-sitter-analyzer 自主开发状态 @ $(date)"
 echo ""
 
 # 1. 进程检查
 echo "── 1. loop.sh 进程 ──"
-if pgrep -f "loop.sh" > /dev/null 2>&1; then
-    echo "✅ 运行中: $(pgrep -f loop.sh | head -3)"
+if is_loop_running; then
+    loop_pids="$(get_loop_pids | tr '\n' ' ')"
+    [ -z "${loop_pids}" ] && loop_pids="$(cat .autonomous-runtime/loop.lock 2>/dev/null || true)"
+    echo "✅ 运行中: ${loop_pids}"
 else
     echo "❌ 未运行"
 fi
@@ -59,9 +87,9 @@ fi
 
 # 6. 结论
 echo ""
-if pgrep -f "loop.sh" > /dev/null 2>&1 && [ "${py_count}" -ge 3 ]; then
+if is_loop_running && [ "${py_count}" -ge 3 ]; then
     echo "✅ 健康运行 — 有实质性开发活动"
-elif pgrep -f "loop.sh" > /dev/null 2>&1; then
+elif is_loop_running; then
     echo "⚠️  可能空转 — loop.sh 运行中但 .py 变更较少"
 else
     echo "❌ 已停止 — 重启: .autonomous-runtime/loop.sh"
