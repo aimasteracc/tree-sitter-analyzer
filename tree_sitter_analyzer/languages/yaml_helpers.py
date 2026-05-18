@@ -441,32 +441,48 @@ def extract_value_info(
     text = get_node_text(node).strip()
 
     if node_type in ("plain_scalar", "double_quote_scalar", "single_quote_scalar"):
-        if text.lower() in ("true", "false", "yes", "no", "on", "off"):
-            return text, "boolean", None
-        elif text.lower() in ("null", "~", ""):
-            return text if text else None, "null", None
-        elif is_number(text):
-            return text, "number", None
-        else:
-            return text, "string", None
-    elif node_type == "block_scalar":
+        return _extract_scalar_value_info(text)
+    if node_type == "block_scalar":
         return text, "string", None
-    elif node_type in ("block_mapping", "flow_mapping"):
-        child_count = len(
-            [c for c in node.children if c.type in ("block_mapping_pair", "flow_pair")]
-        )
-        return None, "mapping", child_count
-    elif node_type in ("block_sequence", "flow_sequence"):
-        child_count = len(
-            [c for c in node.children if c.type in ("block_sequence_item",)]
-            or node.children
-        )
-        return None, "sequence", child_count
-    elif node_type == "alias":
-        alias_name = text.lstrip("*")
-        return f"*{alias_name}", "alias", None
+    if node_type in ("block_mapping", "flow_mapping"):
+        return None, "mapping", _count_value_mapping_children(node)
+    if node_type in ("block_sequence", "flow_sequence"):
+        return None, "sequence", _count_value_sequence_children(node)
+    if node_type == "alias":
+        return _extract_alias_value_info(text)
 
     return text, "unknown", None
+
+
+def _extract_scalar_value_info(text: str) -> tuple[str | None, str, None]:
+    lowered = text.lower()
+    if lowered in ("true", "false", "yes", "no", "on", "off"):
+        return text, "boolean", None
+    if lowered in ("null", "~", ""):
+        return text if text else None, "null", None
+    if is_number(text):
+        return text, "number", None
+    return text, "string", None
+
+
+def _count_value_mapping_children(node: Any) -> int:
+    return sum(
+        1
+        for child in node.children
+        if child.type in ("block_mapping_pair", "flow_pair")
+    )
+
+
+def _count_value_sequence_children(node: Any) -> int:
+    sequence_items = [
+        child for child in node.children if child.type == "block_sequence_item"
+    ]
+    return len(sequence_items or node.children)
+
+
+def _extract_alias_value_info(text: str) -> tuple[str, str, None]:
+    alias_name = text.lstrip("*")
+    return f"*{alias_name}", "alias", None
 
 
 def _drill_to_scalar(node: Any, get_node_text: Callable[..., str]) -> str | None:
@@ -488,61 +504,98 @@ def extract_mapping_key_and_value(
     Returns:
         Tuple of (key, value, value_type, child_count, anchor_name)
     """
-    key = None
-    value = None
-    value_type = None
-    child_count = None
-    anchor_name = None
-
-    key_node = None
-    value_node = None
-    found_colon = False
-
-    for child in node.children:
-        if child.type == ":":
-            found_colon = True
-        elif child.type in ("flow_node", "block_node"):
-            if not found_colon:
-                key_node = child
-            else:
-                value_node = child
-                for subchild in child.children:
-                    if subchild.type == "anchor":
-                        anchor_text = get_node_text(subchild)
-                        anchor_name = anchor_text.lstrip("&").strip()
-        elif child.type == "key":
-            if child.children:
-                key_node = child.children[0]
-            else:
-                key_node = child
-        elif child.type == "value":
-            if child.children:
-                value_node = child.children[0]
-            else:
-                value_node = child
-            for subchild in child.children:
-                if subchild.type == "anchor":
-                    anchor_text = get_node_text(subchild)
-                    anchor_name = anchor_text.lstrip("&").strip()
-        elif child.type == "anchor":
-            anchor_text = get_node_text(child)
-            anchor_name = anchor_text.lstrip("&").strip()
-
-    if key_node is not None:
-        key = _drill_to_scalar(key_node, get_node_text)
-
-    if value_node is not None:
-        scalar = _drill_to_scalar(value_node, get_node_text)
-        if scalar:
-            value, value_type, child_count = extract_value_info(
-                _find_inner_node(value_node), get_node_text
-            )
-        else:
-            value, value_type, child_count = extract_value_info(
-                _find_inner_node(value_node), get_node_text
-            )
+    key_node, value_node, anchor_name = _extract_mapping_nodes(
+        node.children,
+        get_node_text,
+    )
+    key = _drill_to_scalar(key_node, get_node_text) if key_node is not None else None
+    value, value_type, child_count = _extract_mapping_value_info(
+        value_node,
+        get_node_text,
+    )
 
     return key, value, value_type, child_count, anchor_name
+
+
+def _extract_mapping_nodes(
+    children: list[Any],
+    get_node_text: Callable[..., str],
+) -> tuple[Any | None, Any | None, str | None]:
+    key_node = None
+    value_node = None
+    anchor_name = None
+    found_colon = False
+
+    for child in children:
+        if child.type == ":":
+            found_colon = True
+            continue
+        if child.type in ("flow_node", "block_node"):
+            key_node, value_node, anchor_name = _assign_flow_or_block_mapping_node(
+                child,
+                found_colon,
+                key_node,
+                value_node,
+                anchor_name,
+                get_node_text,
+            )
+            continue
+        if child.type == "key":
+            key_node = _first_child_or_self(child)
+            continue
+        if child.type == "value":
+            value_node = _first_child_or_self(child)
+            anchor_name = (
+                _find_anchor_name(child.children, get_node_text) or anchor_name
+            )
+            continue
+        if child.type == "anchor":
+            anchor_name = _anchor_name(child, get_node_text)
+
+    return key_node, value_node, anchor_name
+
+
+def _assign_flow_or_block_mapping_node(
+    child: Any,
+    found_colon: bool,
+    key_node: Any | None,
+    value_node: Any | None,
+    anchor_name: str | None,
+    get_node_text: Callable[..., str],
+) -> tuple[Any | None, Any | None, str | None]:
+    if not found_colon:
+        return child, value_node, anchor_name
+    anchor_name = _find_anchor_name(child.children, get_node_text) or anchor_name
+    return key_node, child, anchor_name
+
+
+def _extract_mapping_value_info(
+    value_node: Any | None,
+    get_node_text: Callable[..., str],
+) -> tuple[str | None, str | None, int | None]:
+    if value_node is None:
+        return None, None, None
+    return extract_value_info(_find_inner_node(value_node), get_node_text)
+
+
+def _first_child_or_self(node: Any) -> Any:
+    if node.children:
+        return node.children[0]
+    return node
+
+
+def _find_anchor_name(
+    children: list[Any], get_node_text: Callable[..., str]
+) -> str | None:
+    for child in children:
+        if child.type == "anchor":
+            return _anchor_name(child, get_node_text)
+    return None
+
+
+def _anchor_name(node: Any, get_node_text: Callable[..., str]) -> str:
+    anchor_text = get_node_text(node)
+    return anchor_text.lstrip("&").strip()
 
 
 # Search for patterns or elements: _find_inner_node
@@ -560,26 +613,41 @@ def extract_sequence_key(
     get_node_text: Callable[..., str],
 ) -> str | None:
     """Try to find the key for a sequence by checking parent mapping."""
-    key = None
+    parent = _find_parent_mapping_pair(node)
+    if parent is None:
+        return None
+
+    key_node = _find_sequence_key_node(parent)
+    if key_node is None:
+        return None
+    return _drill_to_scalar(key_node, get_node_text)
+
+
+def _find_parent_mapping_pair(node: Any) -> Any | None:
     parent = node.parent
     while parent is not None:
         if parent.type in ("block_mapping_pair", "flow_pair"):
-            for child in parent.children:
-                if child.type in ("flow_node", "block_node"):
-                    found_colon = False
-                    for sibling in parent.children:
-                        if sibling.type == ":":
-                            found_colon = True
-                            break
-                    if (
-                        not found_colon
-                        or child.start_byte < parent.children[1].start_byte
-                    ):
-                        key = _drill_to_scalar(child, get_node_text)
-                        break
-            break
+            return parent
         parent = getattr(parent, "parent", None)
-    return key
+    return None
+
+
+def _find_sequence_key_node(parent: Any) -> Any | None:
+    found_colon = any(sibling.type == ":" for sibling in parent.children)
+    for child in parent.children:
+        if child.type not in ("flow_node", "block_node"):
+            continue
+        if _is_sequence_key_child(child, parent, found_colon):
+            return child
+    return None
+
+
+def _is_sequence_key_child(child: Any, parent: Any, found_colon: bool) -> bool:
+    if not found_colon:
+        return True
+    if len(parent.children) < 2:
+        return False
+    return bool(child.start_byte < parent.children[1].start_byte)
 
 
 def analyze_yaml_file(
@@ -599,28 +667,31 @@ def analyze_yaml_file(
         )
 
     try:
-        content, _encoding = read_file_safe(file_path)
-        tree = _parse_yaml_content(content, parser, parser_lock)
-        yaml_extractor = create_extractor()
-        elements = yaml_extractor.extract_yaml_elements(tree, content)
-
-        log_info(f"Extracted {len(elements)} YAML elements from {file_path}")
-
-        return AnalysisResult(
+        content, elements = _extract_yaml_file_elements(
             file_path=file_path,
-            language="yaml",
-            line_count=len(content.splitlines()),
-            elements=elements,
-            node_count=len(elements),
-            query_results={},
-            source_code=content,
-            success=True,
-            error_message=None,
+            create_extractor=create_extractor,
+            parser=parser,
+            parser_lock=parser_lock,
         )
+        log_info(f"Extracted {len(elements)} YAML elements from {file_path}")
+        return _yaml_success_result(file_path, content, elements)
 
     except Exception as exc:
         log_error(f"Failed to analyze YAML file {file_path}: {exc}")
         return _yaml_failure_result(file_path, str(exc))
+
+
+def _extract_yaml_file_elements(
+    *,
+    file_path: str,
+    create_extractor: Callable[[], Any],
+    parser: Any,
+    parser_lock: Any,
+) -> tuple[str, list[Any]]:
+    content, _encoding = read_file_safe(file_path)
+    tree = _parse_yaml_content(content, parser, parser_lock)
+    yaml_extractor = create_extractor()
+    return content, yaml_extractor.extract_yaml_elements(tree, content)
 
 
 def _parse_yaml_content(content: str, parser: Any, parser_lock: Any) -> Any:
@@ -629,6 +700,24 @@ def _parse_yaml_content(content: str, parser: Any, parser_lock: Any) -> Any:
         raise RuntimeError("YAML parser is not initialized")
     with parser_lock:
         return parser.parse(content.encode("utf-8"))
+
+
+def _yaml_success_result(
+    file_path: str,
+    content: str,
+    elements: list[Any],
+) -> AnalysisResult:
+    return AnalysisResult(
+        file_path=file_path,
+        language="yaml",
+        line_count=len(content.splitlines()),
+        elements=elements,
+        node_count=len(elements),
+        query_results={},
+        source_code=content,
+        success=True,
+        error_message=None,
+    )
 
 
 def _yaml_failure_result(file_path: str, error_message: str) -> AnalysisResult:
