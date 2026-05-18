@@ -185,6 +185,35 @@ AFTER UPDATE ON users FOR EACH ROW BEGIN END;"""
             extractor._extract_sql_triggers(root, sql_elements)
         assert not any(e.name == "valid_trg" for e in sql_elements)
 
+    def test_trigger_metadata_from_regex(self, extractor):
+        """Regex trigger extraction populates event, timing, table, and raw text."""
+        code = """CREATE TRIGGER audit_user_update
+AFTER UPDATE ON users
+FOR EACH ROW
+BEGIN
+    INSERT INTO audit_log(user_id) VALUES (NEW.id);
+END;
+
+CREATE TABLE after_trigger_table (id INT);"""
+        extractor.source_code = code
+        extractor.content_lines = code.split("\n")
+        extractor._reset_caches()
+        root = Mock()
+        root.type = "root"
+        root.children = []
+        sql_elements = []
+
+        extractor._extract_sql_triggers(root, sql_elements)
+
+        assert len(sql_elements) == 1
+        trigger = sql_elements[0]
+        assert trigger.name == "audit_user_update"
+        assert trigger.trigger_timing == "AFTER"
+        assert trigger.trigger_event == "UPDATE"
+        assert trigger.table_name == "users"
+        assert trigger.dependencies == ["users"]
+        assert trigger.raw_text.strip().endswith("END;")
+
 
 class TestIndexRegexExceptionPath:
     """Cover lines 2155-2156, 2245-2246: index extraction exception handling."""
@@ -209,6 +238,32 @@ class TestIndexRegexExceptionPath:
         ):
             extractor._extract_indexes_with_regex(sql_elements, set())
         assert not any(e.name == "idx_test" for e in sql_elements)
+
+    def test_index_metadata_and_duplicate_tracking(self, extractor):
+        """Regex index extraction records metadata and skips duplicate names."""
+        code = """CREATE UNIQUE INDEX idx_users_lookup ON users (email, username)
+CREATE INDEX idx_users_lookup ON users (id)
+CREATE INDEX idx_orders_user_id ON orders (user_id)"""
+        extractor.source_code = code
+        extractor.content_lines = code.split("\n")
+        extractor._reset_caches()
+        sql_elements = []
+        processed_indexes = set()
+
+        extractor._extract_indexes_with_regex(sql_elements, processed_indexes)
+
+        assert [index.name for index in sql_elements] == [
+            "idx_users_lookup",
+            "idx_orders_user_id",
+        ]
+        first_index = sql_elements[0]
+        assert first_index.start_line == 1
+        assert first_index.end_line == 1
+        assert first_index.table_name == "users"
+        assert first_index.indexed_columns == ["email", "username"]
+        assert first_index.is_unique is True
+        assert first_index.dependencies == ["users"]
+        assert processed_indexes == {"idx_users_lookup", "idx_orders_user_id"}
 
 
 @pytest.mark.skipif(

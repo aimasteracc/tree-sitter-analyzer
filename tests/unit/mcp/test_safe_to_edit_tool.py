@@ -13,18 +13,41 @@ from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
 from tree_sitter_analyzer.mcp.tools.utils.test_discovery import find_test_files
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
-SAMPLE_PYTHON = str(
-    PROJECT_ROOT / "tree_sitter_analyzer" / "languages" / "java_plugin.py"
-)
-SAMPLE_HEALTH = str(
-    PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "tools" / "file_health_tool.py"
-)
+TARGET_FILE = "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py"
+SERVER_FILE = "tree_sitter_analyzer/mcp/server.py"
 
 
 @pytest.fixture
-def tool():
-    t = SafeToEditTool(str(PROJECT_ROOT))
-    t.set_project_path(str(PROJECT_ROOT))
+def tool(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'sample'\n")
+
+    target = tmp_path / TARGET_FILE
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        """
+class SafeToEditTool:
+    def execute(self):
+        return "safe"
+""".strip()
+    )
+
+    server = tmp_path / SERVER_FILE
+    server.write_text(
+        """
+from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+
+
+def create_tool():
+    return SafeToEditTool()
+""".strip()
+    )
+
+    test_file = tmp_path / "tests/unit/mcp/test_safe_to_edit_tool.py"
+    test_file.parent.mkdir(parents=True)
+    test_file.write_text("def test_safe_to_edit_tool(): pass\n")
+
+    t = SafeToEditTool(str(tmp_path))
+    t.set_project_path(str(tmp_path))
     return t
 
 
@@ -51,63 +74,89 @@ class TestSafeToEditTool:
         assert tool.validate_arguments({"file_path": "some_file.py"})
 
     def test_execute_returns_risk_level(self, tool):
-        result = _run(
-            tool.execute(
-                {"file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py"}
-            )
-        )
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
         assert "risk_level" in result
         assert result["risk_level"] in ("safe", "caution", "dangerous")
 
     def test_execute_includes_health_grade(self, tool):
-        result = _run(
-            tool.execute(
-                {"file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py"}
-            )
-        )
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
         assert "health_grade" in result
         assert result["health_grade"] in ("A", "B", "C", "D", "F")
 
     def test_execute_includes_pre_edit_checklist(self, tool):
-        result = _run(
-            tool.execute(
-                {"file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py"}
-            )
-        )
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
         assert "pre_edit_checklist" in result
         assert len(result["pre_edit_checklist"]) >= 2
 
-    def test_execute_includes_risk_factors(self, tool):
-        result = _run(
-            tool.execute(
-                {"file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py"}
-            )
+    def test_execute_includes_structured_agent_workflow(self, tool):
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
+
+        workflow = result["agent_workflow"]
+
+        assert workflow["edit_strategy"] in {
+            "direct_focused_edit",
+            "focused_edit_with_tests",
+            "split_into_atomic_edits",
+            "trace_references_before_edit",
+        }
+        assert workflow["before_edit_commands"] == [
+            "uv run pytest tests/unit/mcp/test_safe_to_edit_tool.py -q"
+        ]
+        assert workflow["after_edit_commands"][0] == (
+            "uv run pytest tests/unit/mcp/test_safe_to_edit_tool.py -q"
         )
+        assert (
+            "uv run python -m tree_sitter_analyzer "
+            "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py "
+            "--file-health --format json"
+        ) in workflow["after_edit_commands"]
+        assert workflow["queue_boundary_commands"] == ["uv run pytest -q"]
+
+    def test_execute_includes_compact_agent_summary(self, tool):
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
+
+        summary = result["agent_summary"]
+
+        assert summary["risk"] == result["risk_level"]
+        assert summary["edit_strategy"] == "direct_focused_edit"
+        assert summary["preflight_command"] == (
+            "uv run pytest tests/unit/mcp/test_safe_to_edit_tool.py -q"
+        )
+        assert summary["verification_command"] == (
+            "uv run pytest tests/unit/mcp/test_safe_to_edit_tool.py -q"
+        )
+        assert summary["queue_boundary_command"] == "uv run pytest -q"
+        assert summary["stop_condition"] == (
+            "uv run pytest tests/unit/mcp/test_safe_to_edit_tool.py -q passes; "
+            "run uv run pytest -q at the queue boundary."
+        )
+
+    def test_pre_edit_checklist_uses_uv_pytest_contract(self, tool):
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
+        checklist = "\n".join(result["pre_edit_checklist"])
+
+        assert "uv run pytest" in checklist
+        assert "Run existing tests FIRST: pytest " not in checklist
+
+    def test_execute_includes_risk_factors(self, tool):
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
         assert "risk_factors" in result
         assert isinstance(result["risk_factors"], list)
 
     def test_execute_includes_dependency_info(self, tool):
-        result = _run(
-            tool.execute(
-                {"file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py"}
-            )
-        )
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
         assert "downstream_count" in result
         assert "dependency_count" in result
 
     def test_execute_includes_test_files(self, tool):
-        result = _run(
-            tool.execute(
-                {"file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py"}
-            )
-        )
+        result = _run(tool.execute({"file_path": TARGET_FILE}))
         assert "test_files_nearby" in result
 
     def test_edit_type_rename_higher_risk(self, tool):
         result_refactor = _run(
             tool.execute(
                 {
-                    "file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py",
+                    "file_path": TARGET_FILE,
                     "edit_type": "refactor",
                 }
             )
@@ -115,7 +164,7 @@ class TestSafeToEditTool:
         result_rename = _run(
             tool.execute(
                 {
-                    "file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py",
+                    "file_path": TARGET_FILE,
                     "edit_type": "rename",
                 }
             )
@@ -129,7 +178,7 @@ class TestSafeToEditTool:
         result = _run(
             tool.execute(
                 {
-                    "file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py",
+                    "file_path": TARGET_FILE,
                     "output_format": "toon",
                 }
             )
@@ -140,7 +189,7 @@ class TestSafeToEditTool:
         result = _run(
             tool.execute(
                 {
-                    "file_path": "tree_sitter_analyzer/mcp/tools/safe_to_edit_tool.py",
+                    "file_path": TARGET_FILE,
                     "output_format": "json",
                 }
             )
@@ -153,7 +202,7 @@ class TestSafeToEditTool:
             _run(tool.execute({"file_path": "nonexistent_file.py"}))
 
     def test_well_connected_file_has_downstream(self, tool):
-        result = _run(tool.execute({"file_path": "tree_sitter_analyzer/mcp/server.py"}))
+        result = _run(tool.execute({"file_path": SERVER_FILE}))
         # server.py is widely imported, should have downstream
         assert result["downstream_count"] >= 0
 

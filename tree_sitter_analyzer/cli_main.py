@@ -8,7 +8,6 @@ import os
 import sys
 from typing import Any
 
-from . import __version__
 from .cli.argument_validator import CLIArgumentValidator
 
 # Import command classes
@@ -30,804 +29,194 @@ from .cli.info_commands import (
 from .output_manager import output_error, output_info, output_list
 from .query_loader import query_loader
 
+_NO_COMMAND_MATCH = object()
+_FILE_SCOPED_AGENT_COMMANDS = {
+    "file-health": "--file-health",
+    "safe-to-edit": "--safe-to-edit",
+    "refactor": "--refactor",
+    "smart-context": "--smart-context",
+}
+_PROJECT_SCOPED_AGENT_COMMANDS = {
+    "agent-skills": "--agent-skills",
+    "agent-workflow": "--agent-workflow",
+    "change-impact": "--change-impact",
+    "overview": "--overview",
+    "parser-readiness": "--parser-readiness",
+    "project-health": "--project-health",
+}
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
+
 class CLICommandFactory:
     """Factory for creating CLI commands based on arguments."""
 
     @staticmethod
-    # Process: create_command
     def create_command(args: argparse.Namespace) -> Any:
         """Create appropriate command based on arguments."""
-
-        # Validate argument combinations first
-        validator = CLIArgumentValidator()
-        validation_error = validator.validate_arguments(args)
-        if validation_error:
-            output_error(validation_error)
-            output_info(validator.get_usage_examples())
+        if not _validate_command_arguments(args):
             return None
 
-        # Information commands (no file analysis required)
-        if args.list_queries:
-            return ListQueriesCommand(args)
+        info_command = _create_info_command(args)
+        if info_command is not _NO_COMMAND_MATCH:
+            return info_command
 
-        if args.describe_query:
-            return DescribeQueryCommand(args)
-
-        if args.show_supported_languages:
-            return ShowLanguagesCommand(args)
-
-        if args.show_supported_extensions:
-            return ShowExtensionsCommand(args)
-
-        if args.filter_help:
-            from tree_sitter_analyzer.core.query_filter import QueryFilter
-
-            filter_service = QueryFilter()
-            output_info(filter_service.get_filter_help())
-            return None  # This will exit with code 0
-
-        # File analysis commands (require file path)
-        if not args.file_path:
+        if not getattr(args, "file_path", None):
             return None
 
-        # Partial read command - highest priority for file operations
-        if hasattr(args, "partial_read") and args.partial_read:
-            return PartialReadCommand(args)
-
-        # Handle table command with or without query-key
-        if hasattr(args, "table") and args.table:
-            return TableCommand(args)
-
-        if hasattr(args, "structure") and args.structure:
-            return StructureCommand(args)
-
-        if hasattr(args, "summary") and args.summary is not None:
-            # Return result
-            return SummaryCommand(args)
-
-        # Check: hasattr(args, "advanced") and args.advan
-        if hasattr(args, "advanced") and args.advanced:
-            # Return result
-            return AdvancedCommand(args)
-
-        # Check: hasattr(args, "query_key") and args.quer
-        if hasattr(args, "query_key") and args.query_key:
-            # Return result
-            return QueryCommand(args)
-
-        # Check: hasattr(args, "query_string") and args.q
-        if hasattr(args, "query_string") and args.query_string:
-            # Return result
-            return QueryCommand(args)
-
-        # Default command - if file_path is provided but no specific command, use default analysis
-        return DefaultCommand(args)
+        return _create_file_command(args)
 
 
-# Parse input into structured data: create_argument_parser
+def _validate_command_arguments(args: argparse.Namespace) -> bool:
+    """Validate CLI argument combinations before selecting a command."""
+    validator = CLIArgumentValidator()
+    validation_error = validator.validate_arguments(args)
+    if not validation_error:
+        return True
+    output_error(validation_error)
+    output_info(validator.get_usage_examples())
+    return False
+
+
+def _create_info_command(args: argparse.Namespace) -> Any:
+    """Create commands that do not require a file path."""
+    if getattr(args, "list_queries", False):
+        return ListQueriesCommand(args)
+    if getattr(args, "describe_query", None):
+        return DescribeQueryCommand(args)
+    if getattr(args, "show_supported_languages", False):
+        return ShowLanguagesCommand(args)
+    if getattr(args, "show_supported_extensions", False):
+        return ShowExtensionsCommand(args)
+    if getattr(args, "filter_help", False):
+        _print_filter_help()
+        return None
+    return _NO_COMMAND_MATCH
+
+
+def _print_filter_help() -> None:
+    """Print query filter help and let the caller exit successfully."""
+    from tree_sitter_analyzer.core.query_filter import QueryFilter
+
+    output_info(QueryFilter().get_filter_help())
+
+
+def _create_file_command(args: argparse.Namespace) -> Any:
+    """Create the highest-priority file-analysis command for parsed arguments."""
+    command_specs = (
+        ("partial_read", PartialReadCommand),
+        ("table", TableCommand),
+        ("structure", StructureCommand),
+        ("summary", SummaryCommand),
+        ("advanced", AdvancedCommand),
+        ("query_key", QueryCommand),
+        ("query_string", QueryCommand),
+    )
+    for attr_name, command_cls in command_specs:
+        if _argument_is_selected(args, attr_name):
+            return command_cls(args)
+    return DefaultCommand(args)
+
+
+def _argument_is_selected(args: argparse.Namespace, attr_name: str) -> bool:
+    """Return True when an argparse field selects a command."""
+    value = getattr(args, attr_name, None)
+    return value is not None if attr_name == "summary" else bool(value)
+
+
 def create_argument_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
-    parser = argparse.ArgumentParser(
-        description="Analyze code using Tree-sitter and extract structured information.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Examples:\n"
-            "  tree-sitter-analyzer file.java --table=full         Markdown table of classes/methods\n"
-            "  tree-sitter-analyzer file.java --query-key class    Extract all class definitions\n"
-            "  tree-sitter-analyzer file.java --advanced            Full analysis with all elements\n"
-            "  tree-sitter-analyzer file.java --structure           Structure overview in JSON\n"
-            "  tree-sitter-analyzer file.java --summary             Quick summary of classes/methods\n"
-            "  tree-sitter-analyzer file.java --partial-read --start-line 10 --end-line 20\n"
-            "  tree-sitter-analyzer file.py --file-health           A-F health grade + signal + smells\n"
-            "  tree-sitter-analyzer file.py --safe-to-edit          Edit risk assessment before changes\n"
-            "  tree-sitter-analyzer file.py --refactor              Refactoring suggestions with plans\n"
-            "  tree-sitter-analyzer file.py --smart-context         One-call file profile\n"
-            "  tree-sitter-analyzer file.py --dependencies full     Dependency graph analysis\n"
-            "  tree-sitter-analyzer file.py --change-impact         Git diff impact analysis\n"
-            "  tree-sitter-analyzer --project-health                Score ALL project files\n"
-            "  tree-sitter-analyzer --overview                      Project portrait + health summary\n"
-            "  tree-sitter-analyzer --list-queries                  Show available query keys\n"
-            "  tree-sitter-analyzer --show-supported-languages      List supported languages\n"
-        ),
-    )
-    parser.add_argument(
-        "--version", action="version", version=f"%(prog)s {__version__}"
-    )
+    from .cli.argument_parser_builder import create_argument_parser as build_parser
 
-    # File path
-    parser.add_argument("file_path", nargs="?", help="Path to the file to analyze")
-
-    # Query options
-    query_group = parser.add_mutually_exclusive_group(required=False)
-    query_group.add_argument(
-        "--query-key", help="Available query key (e.g., class, method)"
-    )
-    query_group.add_argument(
-        "--query-string", help="Directly specify Tree-sitter query to execute"
-    )
-
-    # Query filter options
-    parser.add_argument(
-        "--filter",
-        help="Filter query results (e.g., 'name=main', 'name=~get*,public=true')",
-    )
-
-    # Information options
-    parser.add_argument(
-        "--list-queries",
-        action="store_true",
-        help="Display list of available query keys",
-    )
-    parser.add_argument(
-        "--filter-help",
-        action="store_true",
-        help="Display help for query filter syntax",
-    )
-    parser.add_argument(
-        "--describe-query",
-        help="Display description of specified query key (requires --language or target file)",
-    )
-    parser.add_argument(
-        "--show-supported-languages",
-        action="store_true",
-        help="Display list of supported languages",
-    )
-    parser.add_argument(
-        "--show-supported-extensions",
-        action="store_true",
-        help="Display list of supported file extensions",
-    )
-    parser.add_argument(
-        "--show-common-queries",
-        action="store_true",
-        help="Display list of common queries across multiple languages",
-    )
-    parser.add_argument(
-        "--show-query-languages",
-        action="store_true",
-        help="Display list of languages with query support",
-    )
-
-    # Output format options
-    parser.add_argument(
-        "--output-format",
-        choices=["json", "text", "toon"],
-        default="json",
-        help="Specify output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction)",
-    )
-    parser.add_argument(
-        "--format",
-        choices=["json", "toon"],
-        help="Alias for --output-format (json or toon)",
-    )
-    parser.add_argument(
-        "--toon-use-tabs",
-        action="store_true",
-        help="Use tab delimiters instead of commas in TOON format (further compression)",
-    )
-    parser.add_argument(
-        "--table",
-        choices=["full", "compact", "csv", "json", "toon"],
-        help="Output in table format (toon format provides 50-70%% token reduction)",
-    )
-    parser.add_argument(
-        "--include-javadoc",
-        action="store_true",
-        help="Include JavaDoc/documentation comments in output",
-    )
-
-    # Analysis options
-    parser.add_argument(
-        "--advanced", action="store_true", help="Use advanced analysis features"
-    )
-    parser.add_argument(
-        "--summary",
-        nargs="?",
-        const="classes,methods",
-        help="Display summary of specified element types (default: classes,methods)",
-    )
-    parser.add_argument(
-        "--structure",
-        action="store_true",
-        help="Output detailed structure information in JSON format",
-    )
-    parser.add_argument(
-        "--statistics",
-        action="store_true",
-        help="Display only statistical information (requires --query-key or --advanced)",
-    )
-
-    # Language options
-    parser.add_argument(
-        "--language",
-        help="Explicitly specify language (auto-detected from extension if omitted)",
-    )
-
-    # SQL Platform Compatibility options
-    parser.add_argument(
-        "--sql-platform-info",
-        action="store_true",
-        help="Show current SQL platform detection details",
-    )
-    parser.add_argument(
-        "--record-sql-profile",
-        action="store_true",
-        help="Record a new SQL behavior profile for the current platform",
-    )
-    parser.add_argument(
-        "--compare-sql-profiles",
-        nargs=2,
-        metavar=("PROFILE1", "PROFILE2"),
-        help="Compare two SQL behavior profiles",
-    )
-
-    # Project options
-    parser.add_argument(
-        "--project-root",
-        help="Project root directory for security validation (auto-detected if not specified)",
-    )
-
-    # Logging options
-    parser.add_argument(
-        "--quiet",
-        action="store_true",
-        help="Suppress INFO level logs (show errors only)",
-    )
-
-    # Partial reading options
-    parser.add_argument(
-        "--partial-read",
-        action="store_true",
-        help="Enable partial file reading mode",
-    )
-    parser.add_argument(
-        "--partial-read-requests-json",
-        help="Batch partial read: JSON string containing either {'requests': [...]} or a list of requests[]",
-    )
-    parser.add_argument(
-        "--partial-read-requests-file",
-        help="Batch partial read: path to a JSON file containing either {'requests': [...]} or a list of requests[]",
-    )
-    parser.add_argument(
-        "--start-line", type=int, help="Starting line number for reading (1-based)"
-    )
-    parser.add_argument(
-        "--end-line", type=int, help="Ending line number for reading (1-based)"
-    )
-    parser.add_argument(
-        "--start-column", type=int, help="Starting column number for reading (0-based)"
-    )
-    parser.add_argument(
-        "--end-column", type=int, help="Ending column number for reading (0-based)"
-    )
-    parser.add_argument(
-        "--allow-truncate",
-        action="store_true",
-        help="Batch mode: allow truncation of results to fit limits (default: fail on limit exceed)",
-    )
-    parser.add_argument(
-        "--fail-fast",
-        action="store_true",
-        help="Batch mode: stop on first error (default: partial success)",
-    )
-
-    # Batch metrics options (spec unification with MCP tool arguments)
-    parser.add_argument(
-        "--health-check",
-        action="store_true",
-        help="Project health: score all source files and report grade distribution, worst files, and refactoring targets",
-    )
-    parser.add_argument(
-        "--metrics-only",
-        action="store_true",
-        help="Batch metrics: compute file metrics only (no structural analysis). Requires --file-paths or --files-from.",
-    )
-    parser.add_argument(
-        "--file-paths",
-        nargs="+",
-        help="Batch metrics: list of file paths (space-separated). Example: --file-paths a.py b.py",
-    )
-    parser.add_argument(
-        "--files-from",
-        help="Batch metrics: read file paths from a text file (one path per line)",
-    )
-
-    # MCP-equivalent commands
-    parser.add_argument(
-        "--file-health",
-        action="store_true",
-        help="Score a single file's health (A-F grade, 7 dimensions, signal, smells)",
-    )
-    parser.add_argument(
-        "--project-health",
-        action="store_true",
-        help="Score ALL project files: grade distribution, worst files, refactoring targets",
-    )
-    parser.add_argument(
-        "--overview",
-        action="store_true",
-        help="Project portrait: language distribution, file counts, health summary",
-    )
-    parser.add_argument(
-        "--safe-to-edit",
-        action="store_true",
-        help="Edit risk assessment: risk level, downstream deps, test proximity",
-    )
-    parser.add_argument(
-        "--change-impact",
-        action="store_true",
-        help="Analyze git diff impact: affected files, tests to run, risk level",
-    )
-    parser.add_argument(
-        "--dependencies",
-        nargs="?",
-        const="full",
-        choices=["full", "blast_radius", "cycles"],
-        help="Dependency graph analysis (full, blast_radius, cycles)",
-    )
-    parser.add_argument(
-        "--refactor",
-        action="store_true",
-        help="Refactoring suggestions: extraction plans with line ranges",
-    )
-    parser.add_argument(
-        "--smart-context",
-        action="store_true",
-        help="One-call file profile: health, exports, structure, deps, edit risk",
-    )
-    parser.add_argument(
-        "--min-grade",
-        default="D",
-        choices=["A", "B", "C", "D", "F"],
-        help="Minimum grade for --project-health detail list (default: D)",
-    )
-
-    # Return result
-    return parser
+    return build_parser()
 
 
-# Handle request or event: handle_special_commands
 def handle_special_commands(args: argparse.Namespace) -> int | None:
     """Handle special commands that don't fit the normal pattern."""
-
-    def _effective_output_format() -> str:
-        # --format is an alias for json/toon; --output-format supports json/text/toon
-        fmt = getattr(args, "format", None) or getattr(args, "output_format", "json")
-        # Return result
-        return str(fmt)
-
-    # Format data for output: _tool_output_format
-    def _tool_output_format() -> str:
-        # Tools only accept json/toon; map text -> toon for batch modes.
-        fmt = _effective_output_format()
-        # Return result
-        return "toon" if fmt in {"toon", "text"} else "json"
-
-    # Process: _load_requests_payload
-    def _load_requests_payload() -> list[dict[str, Any]]:
-        # Local import avoids rare closure/scoping issues in some execution contexts.
-        import json as _json
-
-        # Check: getattr(args, "partial_read_requests_jso
-        if getattr(args, "partial_read_requests_json", None):
-            raw = args.partial_read_requests_json
-        elif getattr(args, "partial_read_requests_file", None):
-            with open(args.partial_read_requests_file, encoding="utf-8") as f:
-                raw = f.read()
-        else:
-            raise ValueError("No batch requests source provided")
-
-        payload = _json.loads(raw)
-        # Check: isinstance(payload, dict) and "requests"
-        if isinstance(payload, dict) and "requests" in payload:
-            reqs = payload["requests"]
-        else:
-            reqs = payload
-        # Check: not isinstance(reqs, list)
-        if not isinstance(reqs, list):
-            raise ValueError(
-                "Batch requests must be a list or {'requests': [...]} JSON"
-            )
-        # Return result
-        return reqs
-
-    # Process: _load_file_paths
-    def _load_file_paths() -> list[str]:
-        paths: list[str] = []
-        # Check: getattr(args, "file_paths", None)
-        if getattr(args, "file_paths", None):
-            paths.extend([str(p) for p in args.file_paths])
-        # Check: getattr(args, "files_from", None)
-        if getattr(args, "files_from", None):
-            with open(args.files_from, encoding="utf-8") as f:
-                # Iterate over line
-                for line in f.read().splitlines():
-                    s = line.strip()
-                    # Check: s
-                    if s:
-                        paths.append(s)
-        # De-dup while preserving order
-        seen: set[str] = set()
-        unique: list[str] = []
-        # Iterate over p
-        for p in paths:
-            # Check: p not in seen
-            if p not in seen:
-                unique.append(p)
-                seen.add(p)
-        # Return result
-        return unique
-
-    # Batch partial read (unified with MCP tool arguments)
-    if (
-        hasattr(args, "partial_read")
-        and args.partial_read
-        and (
-            getattr(args, "partial_read_requests_json", None)
-            or getattr(args, "partial_read_requests_file", None)
-        )
-    ):
-        try:
-            from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
-
-            requests_list = _load_requests_payload()
-            project_root = getattr(args, "project_root", None) or os.getcwd()
-            read_tool = ReadPartialTool(project_root=project_root)
-            tool_args: dict[str, Any] = {
-                "requests": requests_list,
-                "output_format": _tool_output_format(),
-                "format": "text",
-                "allow_truncate": bool(getattr(args, "allow_truncate", False)),
-                "fail_fast": bool(getattr(args, "fail_fast", False)),
-            }
-            result = asyncio.run(read_tool.execute(tool_args))
-
-            fmt = _effective_output_format()
-            # Check: fmt == "toon"
-            if fmt == "toon":
-                print(result.get("toon_content", ""))
-            else:
-                # json or text: print the returned dict as JSON (text is mapped for batch modes)
-                from tree_sitter_analyzer.output_manager import output_json
-
-                output_json(result)
-            # Return result
-            return 0 if result.get("success", False) else 1
-        except Exception as e:
-            output_error(f"Batch partial read failed: {e}")
-            # Return result
-            return 1
-
-    # Project health check (bulk scoring)
-    if getattr(args, "health_check", False):
-        try:
-            from tree_sitter_analyzer.mcp.tools.project_health_tool import (
-                ProjectHealthTool,
-            )
-
-            project_root = getattr(args, "project_root", None) or os.getcwd()
-            health_tool = ProjectHealthTool(project_root=project_root)
-            min_grade = getattr(args, "min_grade", "D")
-            tool_args = {
-                "min_grade": min_grade,
-                "max_files": 30,
-                "output_format": _tool_output_format(),
-            }
-            result = asyncio.run(health_tool.execute(tool_args))
-
-            fmt = _effective_output_format()
-            # Check: fmt == "toon"
-            if fmt == "toon":
-                print(result.get("toon_content", ""))
-            else:
-                from tree_sitter_analyzer.output_manager import output_json
-
-                output_json(result)
-            # Return result
-            return 0 if result.get("success", False) else 1
-        except Exception as e:
-            output_error(f"Health check failed: {e}")
-            # Return result
-            return 1
-
-    # Batch metrics (unified with MCP tool arguments)
-    if getattr(args, "metrics_only", False):
-        file_paths = _load_file_paths()
-        # Check: not file_paths
-        if not file_paths:
-            output_error("--metrics-only requires --file-paths or --files-from")
-            # Return result
-            return 1
-        try:
-            from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
-                AnalyzeScaleTool,
-            )
-
-            project_root = getattr(args, "project_root", None) or os.getcwd()
-            scale_tool = AnalyzeScaleTool(project_root=project_root)
-            tool_args = {
-                "file_paths": file_paths,
-                "metrics_only": True,
-                "output_format": _tool_output_format(),
-            }
-            result = asyncio.run(scale_tool.execute(tool_args))
-
-            fmt = _effective_output_format()
-            # Check: fmt == "toon"
-            if fmt == "toon":
-                print(result.get("toon_content", ""))
-            else:
-                from tree_sitter_analyzer.output_manager import output_json
-
-                output_json(result)
-            # Return result
-            return 0 if result.get("success", False) else 1
-        except Exception as e:
-            output_error(f"Batch metrics failed: {e}")
-            return 1
-
-    # === MCP-equivalent CLI commands ===
-    from .cli.commands.mcp_commands import handle_mcp_commands
-    from .output_manager import output_json as _output_json
-
-    mcp_result = handle_mcp_commands(
-        args,
-        _output_json,
-        output_error,
-        _tool_output_format,
+    from .cli.special_commands import (
+        SpecialCommandContext,
     )
-    if mcp_result is not None:
-        return mcp_result
+    from .cli.special_commands import (
+        handle_special_commands as handle_special,
+    )
+    from .output_manager import output_json
 
-    # Validate partial read options (single-range mode)
-    if hasattr(args, "partial_read") and args.partial_read:
-        # Check: args.start_line is None
-        if args.start_line is None:
-            output_error("--start-line is required")
-            # Return result
-            return 1
-
-        # Check: args.start_line < 1
-        if args.start_line < 1:
-            output_error("--start-line must be 1 or greater")
-            # Return result
-            return 1
-
-        # Check: args.end_line and args.end_line < args.s
-        if args.end_line and args.end_line < args.start_line:
-            output_error("--end-line must be greater than or equal to --start-line")
-            # Return result
-            return 1
-
-        # Check: args.start_column is not None and args.s
-        if args.start_column is not None and args.start_column < 0:
-            output_error("--start-column must be 0 or greater")
-            # Return result
-            return 1
-
-        # Check: args.end_column is not None and args.end
-        if args.end_column is not None and args.end_column < 0:
-            output_error("--end-column must be 0 or greater")
-            # Return result
-            return 1
-
-    # Query language commands
-    if args.show_query_languages:
-        output_list(["Languages with query support:"])
-        # Iterate over lang
-        for lang in query_loader.list_supported_languages():
-            query_count = len(query_loader.list_queries_for_language(lang))
-            output_list([f"  {lang:<15} ({query_count} queries)"])
-        # Return result
-        return 0
-
-    # Check: args.show_common_queries
-    if args.show_common_queries:
-        common_queries = query_loader.get_common_queries()
-        # Check: common_queries
-        if common_queries:
-            output_list("Common queries across multiple languages:")
-            # Iterate over query
-            for query in common_queries:
-                output_list(f"  {query}")
-        else:
-            output_info("No common queries found.")
-        # Return result
-        return 0
-
-    # SQL Platform Compatibility Commands
-    if args.sql_platform_info:
-        from tree_sitter_analyzer.platform_compat.detector import PlatformDetector
-        from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
-
-        info = PlatformDetector.detect()
-        output_list(
-            [
-                "SQL Platform Information:",
-                f"  OS Name: {info.os_name}",
-                f"  OS Version: {info.os_version}",
-                f"  Python Version: {info.python_version}",
-                f"  Platform Key: {info.platform_key}",
-                "",
-            ]
-        )
-
-        profile = BehaviorProfile.load(info.platform_key)
-        # Check: profile
-        if profile:
-            output_list(
-                [
-                    f"Loaded Profile: {info.platform_key}",
-                    f"  Schema Version: {profile.schema_version}",
-                    f"  Behaviors Recorded: {len(profile.behaviors)}",
-                    f"  Adaptation Rules: {', '.join(profile.adaptation_rules) if profile.adaptation_rules else 'None'}",
-                ]
-            )
-        else:
-            output_list(
-                [
-                    f"No profile found for {info.platform_key}",
-                    "  Using default adaptation rules.",
-                ]
-            )
-        # Return result
-        return 0
-
-    # Check: args.record_sql_profile
-    if args.record_sql_profile:
-        from pathlib import Path
-
-        from tree_sitter_analyzer.platform_compat.recorder import BehaviorRecorder
-
-        output_info("Starting SQL behavior recording...")
-        try:
-            recorder = BehaviorRecorder()
-            profile = recorder.record_all()
-
-            # Default output directory
-            output_dir = Path("tests/platform_profiles")
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            profile.save(output_dir)
-            output_info(f"Recorded profile for {profile.platform_key}")
-            output_info(f"Saved to {output_dir}")
-        except Exception as e:
-            output_error(f"Failed to record profile: {e}")
-            # Return result
-            return 1
-        # Return result
-        return 0
-
-    # Check: args.compare_sql_profiles
-    if args.compare_sql_profiles:
-        import json
-        from pathlib import Path
-
-        from tree_sitter_analyzer.platform_compat.compare import (
-            compare_profiles,
-            generate_diff_report,
-        )
-        from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
-
-        p1_path = Path(args.compare_sql_profiles[0])
-        p2_path = Path(args.compare_sql_profiles[1])
-
-        # Check: not p1_path.exists()
-        if not p1_path.exists():
-            output_error(f"Profile not found: {p1_path}")
-            # Return result
-            return 1
-        # Check: not p2_path.exists()
-        if not p2_path.exists():
-            output_error(f"Profile not found: {p2_path}")
-            # Return result
-            return 1
-
-        try:
-            from tree_sitter_analyzer.platform_compat.profiles import (
-                BehaviorProfile,
-                ParsingBehavior,
-            )
-
-            # Process: load_profile
-            def load_profile(path: Path) -> BehaviorProfile:
-                with open(path, encoding="utf-8") as f:
-                    data = json.load(f)
-                    # Manual deserialization of nested objects
-                    behaviors: dict[str, ParsingBehavior] = {}
-                    # Iterate over key, b_data
-                    for key, b_data in data.get("behaviors", {}).items():
-                        # Check: isinstance(b_data, dict)
-                        if isinstance(b_data, dict):
-                            behaviors[key] = ParsingBehavior(**b_data)
-                        # If b_data is not a dict, it's not a valid ParsingBehavior
-                        # and should be skipped or an error raised.
-                        # For now, we'll skip to avoid type errors.
-
-                    return BehaviorProfile(
-                        schema_version=data.get("schema_version", "1.0.0"),
-                        platform_key=data["platform_key"],
-                        behaviors=behaviors,
-                        adaptation_rules=data.get("adaptation_rules", []),
-                    )
-
-            p1 = load_profile(p1_path)
-            p2 = load_profile(p2_path)
-
-            comparison = compare_profiles(p1, p2)
-            report = generate_diff_report(comparison)
-            print(report)
-        except Exception as e:
-            output_error(f"Error comparing profiles: {e}")
-            # Return result
-            return 1
-        # Return result
-        return 0
-
-    # Return result
-    return None
+    return handle_special(
+        args,
+        SpecialCommandContext(
+            asyncio_run=asyncio.run,
+            output_json=output_json,
+            output_error=output_error,
+            output_info=output_info,
+            output_list=output_list,
+            query_loader=query_loader,
+        ),
+    )
 
 
-# Process: main
 def main() -> None:
     """Main entry point for the CLI."""
-    # Early check for quiet mode to set environment variable before any imports
-    if "--quiet" in sys.argv:
-        os.environ["LOG_LEVEL"] = "ERROR"
-    else:
-        # Set default log level to ERROR to prevent log output in CLI
-        os.environ["LOG_LEVEL"] = "ERROR"
-
+    _set_cli_log_environment()
     parser = create_argument_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(_normalize_agent_command_aliases(sys.argv[1:]))
+    _apply_format_alias(args)
+    _configure_logging(args)
 
-    # Handle --format alias for --output-format
-    if hasattr(args, "format") and args.format:
-        args.output_format = args.format
-
-    # Configure all logging to ERROR level to prevent output contamination
-    logging.getLogger().setLevel(logging.ERROR)
-    logging.getLogger("tree_sitter_analyzer").setLevel(logging.ERROR)
-    logging.getLogger("tree_sitter_analyzer.performance").setLevel(logging.ERROR)
-    logging.getLogger("tree_sitter_analyzer.plugins").setLevel(logging.ERROR)
-    logging.getLogger("tree_sitter_analyzer.plugins.manager").setLevel(logging.ERROR)
-
-    # Configure logging for table output
-    if hasattr(args, "table") and args.table:
-        logging.getLogger().setLevel(logging.ERROR)
-        logging.getLogger("tree_sitter_analyzer").setLevel(logging.ERROR)
-        logging.getLogger("tree_sitter_analyzer.performance").setLevel(logging.ERROR)
-
-    # Configure logging for quiet mode
-    if hasattr(args, "quiet") and args.quiet:
-        logging.getLogger().setLevel(logging.ERROR)
-        logging.getLogger("tree_sitter_analyzer").setLevel(logging.ERROR)
-        logging.getLogger("tree_sitter_analyzer.performance").setLevel(logging.ERROR)
-
-    # Handle special commands first
     special_result = handle_special_commands(args)
-    # Check: special_result is not None
     if special_result is not None:
         sys.exit(special_result)
 
-    # Create and execute command
+    _execute_selected_command(args, parser)
+
+
+def _set_cli_log_environment() -> None:
+    """Force CLI logging to stderr-only error noise regardless of quiet mode."""
+    os.environ["LOG_LEVEL"] = "ERROR"
+
+
+def _normalize_agent_command_aliases(argv: list[str]) -> list[str]:
+    """Rewrite agent-friendly subcommands to the existing flag-based CLI."""
+    if not argv:
+        return argv
+
+    command, rest = argv[0], argv[1:]
+    if command in _PROJECT_SCOPED_AGENT_COMMANDS:
+        return [_PROJECT_SCOPED_AGENT_COMMANDS[command], *rest]
+    if command in _FILE_SCOPED_AGENT_COMMANDS:
+        return _normalize_file_scoped_alias(command, rest)
+    return argv
+
+
+def _normalize_file_scoped_alias(command: str, rest: list[str]) -> list[str]:
+    flag = _FILE_SCOPED_AGENT_COMMANDS[command]
+    if not rest or rest[0].startswith("-"):
+        return [flag, *rest]
+    return [rest[0], flag, *rest[1:]]
+
+
+def _apply_format_alias(args: argparse.Namespace) -> None:
+    """Mirror --format into --output-format after parsing."""
+    if hasattr(args, "format") and args.format:
+        args.output_format = args.format
+
+
+def _configure_logging(args: argparse.Namespace) -> None:
+    """Configure noisy loggers before command execution."""
+    for logger_name in (
+        "",
+        "tree_sitter_analyzer",
+        "tree_sitter_analyzer.performance",
+        "tree_sitter_analyzer.plugins",
+        "tree_sitter_analyzer.plugins.manager",
+    ):
+        logging.getLogger(logger_name).setLevel(logging.ERROR)
+
+
+def _execute_selected_command(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> None:
+    """Create the selected command and exit with the correct status."""
     command = CLICommandFactory.create_command(args)
 
-    # Check: command
     if command:
         exit_code = command.execute()
         sys.exit(exit_code)
@@ -835,7 +224,6 @@ def main() -> None:
         # filter_help was processed successfully
         sys.exit(0)
     else:
-        # Check: not args.file_path
         if not args.file_path:
             output_error("File path not specified.")
         else:
@@ -844,7 +232,6 @@ def main() -> None:
         sys.exit(1)
 
 
-# Check: __name__ == "__main__"
 if __name__ == "__main__":
     try:
         main()
@@ -853,7 +240,6 @@ if __name__ == "__main__":
         sys.exit(1)
     except Exception as e:
         msg = str(e)
-        # Check: "does not exist" in msg.lower() or "file
         if "does not exist" in msg.lower() or "file not found" in msg.lower():
             output_error(f"File not found: {msg}")
             output_info("Check the file path and try again.")

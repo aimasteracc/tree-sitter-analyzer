@@ -9,12 +9,6 @@ from ...utils import log_debug
 
 
 # Extract elements from AST: extract_ts_imports
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
 def extract_ts_imports(
     tree: Any,
     source_code: str,
@@ -210,7 +204,6 @@ def _extract_dynamic_import(
         else:
             source = import_match.group(1)
 
-        # Return result
         return Import(
             name="dynamic_import",
             start_line=node.start_point[0] + 1,
@@ -223,7 +216,6 @@ def _extract_dynamic_import(
         )
     except Exception as e:
         log_debug(f"Failed to extract dynamic import: {e}")
-        # Return result
         return None
 
 
@@ -237,7 +229,6 @@ def _extract_commonjs_requires(
     imports: list[Import] = []
 
     try:
-        # Check: tree and hasattr(tree, "root_node") and
         if tree and hasattr(tree, "root_node") and tree.root_node:
             get_node_text(tree.root_node)
 
@@ -266,8 +257,6 @@ def _extract_commonjs_requires(
 
     except Exception as e:
         log_debug(f"Failed to extract CommonJS requires: {e}")
-        # Return result
         return []
 
-    # Return result
     return imports

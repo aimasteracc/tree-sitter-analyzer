@@ -126,7 +126,6 @@ def extract_table_columns(
                     columns.append(column)
 
 
-# Process: _split_column_definitions
 def _split_column_definitions(content: str) -> list[str]:
     """Split column definitions by commas, handling nested parentheses."""
     definitions = []

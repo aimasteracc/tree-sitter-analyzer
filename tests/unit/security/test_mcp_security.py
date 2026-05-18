@@ -14,17 +14,24 @@ from pathlib import Path
 
 import pytest
 
+from tests.unit.security._test_mcp_security_helpers import (
+    assert_absolute_paths_restricted,
+    assert_directory_paths_rejected,
+    assert_error_message_sanitization,
+    assert_file_content_filtering,
+    assert_project_root_enforcement,
+    assert_query_paths_rejected,
+    assert_stack_trace_filtering,
+    assert_symlink_traversal_prevention,
+)
 from tree_sitter_analyzer.exceptions import SecurityError, ValidationError
 from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
     AnalyzeCodeStructureTool as TableFormatTool,
 )
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
-from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
-from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
-from tree_sitter_analyzer.mcp.utils.error_handler import AnalysisError
 from tree_sitter_analyzer.security.validator import SecurityValidator
 
 
@@ -90,24 +97,7 @@ class TestInputValidation:
         self, safe_project_structure, malicious_paths
     ):
         """ディレクトリパス検証テスト"""
-        tool = ListFilesTool()
-
-        for malicious_path in malicious_paths:
-            try:
-                result = await tool.execute({"roots": [malicious_path]})
-                # ツールがエラー辞書を返す場合をチェック
-                if isinstance(result, dict) and not result.get("success", True):
-                    continue  # エラーが適切に処理された
-                # 例外が発生しなかった場合は失敗
-                pytest.fail(f"Expected exception for malicious path: {malicious_path}")
-            except (
-                SecurityError,
-                ValidationError,
-                FileNotFoundError,
-                ValueError,
-                AnalysisError,
-            ):
-                continue  # 期待される例外
+        await assert_directory_paths_rejected(malicious_paths)
 
     @pytest.mark.asyncio
     async def test_null_byte_injection(self, safe_project_structure):
@@ -136,8 +126,6 @@ class TestInputValidation:
     @pytest.mark.asyncio
     async def test_unicode_normalization_attack(self, safe_project_structure):
         """Unicode正規化攻撃の防御テスト"""
-        tool = QueryTool()
-
         # Unicode正規化を悪用した攻撃パス
         malicious_paths = [
             "normal.py\u002e\u002e/\u002e\u002e/etc/passwd",
@@ -145,26 +133,7 @@ class TestInputValidation:
             "test\u2024\u2024\u2044etc\u2044passwd",
         ]
 
-        for malicious_path in malicious_paths:
-            try:
-                result = await tool.execute(
-                    {"file_path": malicious_path, "query_key": "methods"}
-                )
-                # 結果がエラーを示している場合は適切にブロックされた
-                if isinstance(result, dict) and not result.get("success", True):
-                    continue
-                # 成功した場合は失敗
-                pytest.fail(
-                    f"Expected security block for malicious path: {malicious_path}"
-                )
-            except (
-                SecurityError,
-                ValidationError,
-                FileNotFoundError,
-                ValueError,
-                AnalysisError,
-            ):
-                continue  # 期待される例外
+        await assert_query_paths_rejected(malicious_paths)
 
     @pytest.mark.asyncio
     async def test_long_path_attack(self, safe_project_structure):
@@ -238,8 +207,6 @@ class TestProjectBoundaryProtection:
     @pytest.mark.asyncio
     async def test_absolute_path_restriction(self, safe_project_structure):
         """絶対パス制限テスト"""
-        tool = ListFilesTool()
-
         absolute_paths = [
             "/etc",
             "/usr/bin",
@@ -250,166 +217,17 @@ class TestProjectBoundaryProtection:
             "C:\\Users\\Administrator\\Documents",
         ]
 
-        for abs_path in absolute_paths:
-            try:
-                result = await tool.execute({"roots": [abs_path]})
-                # 結果がエラーを示している場合は適切にブロックされた
-                if isinstance(result, dict) and not result.get("success", True):
-                    continue  # 適切にブロックされた
-                # 成功した場合は失敗
-                pytest.fail(f"Expected security block for absolute path: {abs_path}")
-            except (SecurityError, ValidationError, ValueError, AnalysisError):
-                continue  # 期待される例外
+        await assert_absolute_paths_restricted(absolute_paths)
 
     @pytest.mark.asyncio
     async def test_symlink_traversal_prevention(self, tmp_path):
         """シンボリックリンクトラバーサル防御テスト"""
-        import platform
-        from unittest.mock import patch
-
-        # プロジェクトディレクトリ作成
-        project_dir = tmp_path / "project"
-        project_dir.mkdir()
-
-        # 外部ディレクトリ作成
-        external_dir = tmp_path / "external"
-        external_dir.mkdir()
-        (external_dir / "secret.txt").write_text("secret data")
-
-        # 悪意のあるシンボリックリンク作成（可能な場合）
-        symlink_path = project_dir / "malicious_link"
-
-        # シンボリックリンク作成を試行
-        symlink_created = False
-        try:
-            if platform.system() == "Windows":
-                # Windowsでシンボリックリンクを作成（管理者権限が必要な場合がある）
-                symlink_path.symlink_to(external_dir / "secret.txt")
-            else:
-                # Unix系でシンボリックリンクを作成
-                symlink_path.symlink_to(external_dir / "secret.txt")
-
-            # シンボリックリンクが正常に作成されたことを確認
-            if symlink_path.is_symlink():
-                symlink_created = True
-
-        except (OSError, PermissionError, NotImplementedError):
-            # シンボリックリンク作成に失敗した場合
-            pass
-
-        # シンボリックリンクが作成できなかった場合はモックを使用
-        if not symlink_created:
-            # 通常のファイルを作成
-            symlink_path.write_text("fake content")
-
-            # 特定のパスに対してのみis_symlink()をTrueにするモック関数
-            def mock_is_symlink(self):
-                return str(self) == str(symlink_path)
-
-            # Path.is_symlink()をモックしてTrueを返すようにする
-            with patch.object(Path, "is_symlink", mock_is_symlink):
-                tool = ReadPartialTool()
-
-                # セキュリティバリデーターがシンボリックリンクをブロックすることを確認
-                result = await tool.execute(
-                    {"file_path": str(symlink_path), "start_line": 1, "end_line": 10}
-                )
-
-                # 結果がエラーを示している場合は適切にブロックされた
-                if isinstance(result, dict) and not result.get("success", True):
-                    # エラーメッセージにシンボリックリンクに関する内容が含まれていることを確認
-                    error_msg = result.get("error", "").lower()
-                    if (
-                        "symbolic" in error_msg
-                        or "symlink" in error_msg
-                        or "link" in error_msg
-                    ):
-                        return  # 適切にブロックされた
-                    else:
-                        pytest.fail(
-                            f"シンボリックリンクが検出されませんでした。エラー: {result.get('error', '')}"
-                        )
-
-                # 成功した場合は失敗（シンボリックリンクがブロックされるべき）
-                pytest.fail(f"Expected security block for symlink: {symlink_path}")
-        else:
-            # 実際のシンボリックリンクが作成された場合のテスト
-            tool = ReadPartialTool()
-
-            # セキュリティバリデーターがシンボリックリンクをブロックすることを確認
-            try:
-                result = await tool.execute(
-                    {"file_path": str(symlink_path), "start_line": 1, "end_line": 10}
-                )
-
-                # 結果がエラーを示している場合は適切にブロックされた
-                if isinstance(result, dict) and not result.get("success", True):
-                    # エラーメッセージにシンボリックリンクに関する内容が含まれていることを確認
-                    error_msg = result.get("error", "").lower()
-                    if (
-                        "symbolic" in error_msg
-                        or "symlink" in error_msg
-                        or "link" in error_msg
-                    ):
-                        return  # 適切にブロックされた
-                    else:
-                        pytest.fail(
-                            f"シンボリックリンクが検出されませんでした。エラー: {result.get('error', '')}"
-                        )
-
-                # 成功した場合は失敗（シンボリックリンクがブロックされるべき）
-                pytest.fail(f"Expected security block for symlink: {symlink_path}")
-
-            except (SecurityError, ValidationError, FileNotFoundError, ValueError) as e:
-                # 例外メッセージにシンボリックリンクに関する内容が含まれていることを確認
-                error_msg = str(e).lower()
-                if (
-                    "symbolic" in error_msg
-                    or "symlink" in error_msg
-                    or "link" in error_msg
-                ):
-                    return  # 期待される例外
-                else:
-                    # 他の理由での例外の場合は再発生
-                    raise
+        await assert_symlink_traversal_prevention(tmp_path)
 
     @pytest.mark.asyncio
     async def test_project_root_enforcement(self, safe_project_structure):
         """プロジェクトルート強制テスト"""
-        tool = FindAndGrepTool()
-
-        # プロジェクト外のディレクトリを指定
-        external_paths = [
-            str(Path(safe_project_structure).parent),
-            str(Path(safe_project_structure).parent.parent),
-            "/tmp",
-            "C:\\Temp",
-        ]
-
-        for external_path in external_paths:
-            if Path(external_path).exists():
-                try:
-                    result = await tool.execute(
-                        {"roots": [external_path], "query": "test"}
-                    )
-                    # 結果がエラーを示している場合は適切にブロックされた
-                    if isinstance(result, dict) and not result.get("success", True):
-                        continue  # 適切にブロックされた
-                    # tempディレクトリ内の場合は許可される可能性がある
-                    # また、テストフィクスチャ自体がtempディレクトリにある場合も許可される
-                    if (
-                        "temp" in external_path.lower()
-                        or "tmp" in external_path.lower()
-                        or "pytest" in external_path.lower()
-                        or "/private/var" in external_path.lower()  # macOS temp dirs
-                    ):
-                        continue  # tempディレクトリは許可される場合がある
-                    # 成功した場合は失敗
-                    pytest.fail(
-                        f"Expected security block for external path: {external_path}"
-                    )
-                except (SecurityError, ValidationError, ValueError, AnalysisError):
-                    continue  # 期待される例外
+        await assert_project_root_enforcement(safe_project_structure)
 
 
 class TestInformationLeakagePrevention:
@@ -418,111 +236,17 @@ class TestInformationLeakagePrevention:
     @pytest.mark.asyncio
     async def test_error_message_sanitization(self, safe_project_structure):
         """エラーメッセージのサニタイゼーション"""
-        tool = AnalyzeScaleTool()
-
-        # 絶対パスでエラーを発生させる
-        try:
-            result = await tool.execute({"file_path": "/etc/passwd"})
-
-            # 結果がエラーを示している場合は適切にブロックされた
-            if isinstance(result, dict) and not result.get("success", True):
-                error_message = result.get("error", "")
-
-                # エラーメッセージに機密情報が含まれていないことを確認
-                sensitive_patterns = [
-                    "/etc/passwd",
-                    "/home/",
-                    "/Users/",
-                    "C:\\Users\\",
-                    "password",
-                    "secret",
-                    "token",
-                    "key",
-                ]
-
-                for pattern in sensitive_patterns:
-                    assert pattern.lower() not in error_message.lower(), (
-                        f"エラーメッセージに機密情報が含まれている: {pattern}"
-                    )
-            else:
-                pytest.fail("Expected security error for absolute path")
-        except (SecurityError, ValidationError, ValueError) as e:
-            # 例外メッセージも確認
-            error_message = str(e)
-            assert "/etc/passwd" not in error_message, (
-                "例外メッセージに機密パスが含まれている"
-            )
+        await assert_error_message_sanitization()
 
     @pytest.mark.asyncio
     async def test_stack_trace_filtering(self, safe_project_structure):
         """スタックトレースのフィルタリング"""
-        tool = QueryTool()
-
-        # 絶対パスでエラーを発生させる
-        try:
-            result = await tool.execute(
-                {"file_path": "/etc/passwd", "query_string": "invalid_query_syntax"}
-            )
-
-            # 結果がエラーを示している場合は適切にブロックされた
-            if isinstance(result, dict) and not result.get("success", True):
-                error_info = str(result)
-
-                # スタックトレースに機密パスが含まれていないことを確認
-                sensitive_paths = [
-                    "/etc/passwd",
-                    "/home/",
-                    "/Users/",
-                    "C:\\Users\\",
-                    "__pycache__",
-                    ".pyc",
-                ]
-
-                for path in sensitive_paths:
-                    # Ignore exact match if it's the target of the test
-                    if path == "/etc/passwd":
-                        continue
-                    assert path not in error_info, (
-                        f"エラー情報に機密パスが含まれている: {path}"
-                    )
-            else:
-                pytest.fail("Expected security error for absolute path")
-        except (SecurityError, ValidationError, ValueError, AnalysisError) as e:
-            # 例外メッセージも確認
-            error_message = str(e)
-            assert "/etc/passwd" not in error_message, (
-                "例外メッセージに機密パスが含まれている"
-            )
+        await assert_stack_trace_filtering()
 
     @pytest.mark.asyncio
     async def test_file_content_filtering(self, tmp_path):
         """ファイル内容のフィルタリング"""
-        # 機密情報を含むファイルを作成
-        sensitive_file = tmp_path / "sensitive.py"
-        sensitive_content = """
-# This file contains sensitive information
-API_KEY = "sk-1234567890abcdef"
-PASSWORD = "super_secret_password"
-DATABASE_URL = "postgresql://user:pass@localhost/db"
-
-def process_data():
-    return "normal code"
-"""
-        sensitive_file.write_text(sensitive_content)
-
-        tool = ReadPartialTool()
-        result = await tool.execute(
-            {
-                "file_path": str(sensitive_file),
-                "start_line": 1,
-                "end_line": 10,
-                "format": "text",
-            }
-        )
-
-        # ファイル内容は取得されるが、ログに機密情報が記録されないことを確認
-        assert result["success"] is True
-        # 実際の機密情報フィルタリングは実装依存
+        await assert_file_content_filtering(tmp_path)
 
 
 class TestSecurityBestPractices:

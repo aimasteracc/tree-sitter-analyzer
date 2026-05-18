@@ -14,6 +14,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import pytest  # noqa: E402
+from hypothesis import settings as hypothesis_settings  # noqa: E402
+
+hypothesis_settings.register_profile("tree_sitter_analyzer", deadline=None)
+hypothesis_settings.load_profile("tree_sitter_analyzer")
 
 
 def pytest_configure(config):

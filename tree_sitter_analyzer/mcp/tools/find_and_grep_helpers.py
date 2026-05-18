@@ -6,9 +6,14 @@ Extracted from the monolithic tool file to reduce duplication.
 """
 
 import logging
+from dataclasses import dataclass
 from typing import Any
 
-from ..utils.format_helper import format_for_file_output
+from ..utils.format_helper import (
+    attach_toon_content_to_response,
+    format_for_file_output,
+)
+from .find_and_grep_agent_summary import build_agent_summary_from_meta
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +128,131 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+@dataclass(frozen=True)
+class FindAndGrepFullMatchContext:
+    """State needed to build full, summary, or grouped match responses."""
+
+    arguments: dict[str, Any]
+    rg_out: bytes
+    fd_elapsed_ms: int
+    rg_elapsed_ms: int
+    searched_file_count: int
+    truncated_fd: bool
+    output_format: str
+
+
+@dataclass(frozen=True)
+class FindAndGrepCountOnlyContext:
+    """State needed to build a count-only find_and_grep response."""
+
+    arguments: dict[str, Any]
+    count_data: dict[str, int]
+    output_format: str
+    searched_file_count: int
+    truncated: bool
+    fd_elapsed_ms: int
+    rg_elapsed_ms: int
+
+
+@dataclass(frozen=True)
+class FindAndGrepRgModeContext:
+    """State needed after fd has produced candidate files."""
+
+    arguments: dict[str, Any]
+    files: list[str]
+    fd_elapsed_ms: int
+    truncated_fd: bool
+    output_format: str
+
+
+def build_missing_commands_response(
+    missing_commands: list[str],
+) -> dict[str, Any] | None:
+    """Return an install hint when required fd/rg commands are missing."""
+    if not missing_commands:
+        return None
+    return {
+        "success": False,
+        "error": f"Required commands not found: {', '.join(missing_commands)}. Please install fd and ripgrep.",
+        "count": 0,
+        "results": [],
+    }
+
+
+def build_search_meta(
+    *,
+    searched_file_count: int,
+    truncated: bool,
+    fd_elapsed_ms: int,
+    rg_elapsed_ms: int,
+) -> dict[str, Any]:
+    """Build the shared metadata block for find_and_grep responses."""
+    return {
+        "searched_file_count": searched_file_count,
+        "truncated": truncated,
+        "fd_elapsed_ms": fd_elapsed_ms,
+        "rg_elapsed_ms": rg_elapsed_ms,
+    }
+
+
+def build_empty_response(
+    arguments: dict[str, Any],
+    *,
+    truncated: bool,
+    fd_elapsed_ms: int,
+) -> dict[str, Any]:
+    """Build the response returned when fd finds no candidate files."""
+    meta = build_search_meta(
+        searched_file_count=0,
+        truncated=truncated,
+        fd_elapsed_ms=fd_elapsed_ms,
+        rg_elapsed_ms=0,
+    )
+    return {
+        "success": True,
+        "results": [],
+        "count": 0,
+        "meta": meta,
+        "agent_summary": build_agent_summary_from_meta(
+            arguments,
+            mode="empty",
+            count=0,
+            meta=meta,
+            file_count=0,
+        ),
+    }
+
+
+def build_count_only_response(context: FindAndGrepCountOnlyContext) -> dict[str, Any]:
+    """Build a count-only response from parsed ripgrep count output."""
+    file_counts = dict(context.count_data)
+    total_matches = file_counts.pop("__total__", 0)
+    meta = build_search_meta(
+        searched_file_count=context.searched_file_count,
+        truncated=context.truncated,
+        fd_elapsed_ms=context.fd_elapsed_ms,
+        rg_elapsed_ms=context.rg_elapsed_ms,
+    )
+    result = {
+        "success": True,
+        "count_only": True,
+        "total_matches": total_matches,
+        "file_counts": file_counts,
+        "meta": meta,
+        "agent_summary": build_agent_summary_from_meta(
+            context.arguments,
+            mode="count_only",
+            count=total_matches,
+            total_matches=total_matches,
+            meta=meta,
+            file_count=len(file_counts),
+        ),
+    }
+    if context.output_format == "toon":
+        return attach_toon_content_to_response(result)
+    return result
+
+
 def handle_output(
     result: dict[str, Any],
     arguments: dict[str, Any],
@@ -182,6 +312,7 @@ def _handle_file_output(
                 ),
                 "summary": fd_rg_utils.summarize_search_results(matches),
                 "meta": result.get("meta", {}),
+                "agent_summary": result.get("agent_summary", {}),
             }
         else:
             file_content = result
@@ -197,6 +328,7 @@ def _handle_file_output(
                 "count": result.get("count", 0),
                 "output_file": output_file,
                 "file_saved": f"Results saved to {saved_path}",
+                "agent_summary": result.get("agent_summary", {}),
             }
 
         result["output_file"] = output_file
@@ -222,4 +354,6 @@ def _make_minimal(
     }
     if include_summary:
         minimal["summary"] = result.get("summary", {})
+    if "agent_summary" in result:
+        minimal["agent_summary"] = result["agent_summary"]
     return minimal

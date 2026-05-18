@@ -2178,6 +2178,7 @@ all = [
     { name = "tree-sitter-python" },
     { name = "tree-sitter-rust" },
     { name = "tree-sitter-sql" },
+    { name = "tree-sitter-swift" },
     { name = "tree-sitter-typescript" },
     { name = "types-psutil" },
 ]
@@ -2197,6 +2198,7 @@ all-languages = [
     { name = "tree-sitter-ruby" },
     { name = "tree-sitter-rust" },
     { name = "tree-sitter-sql" },
+    { name = "tree-sitter-swift" },
     { name = "tree-sitter-typescript" },
     { name = "tree-sitter-yaml" },
 ]
@@ -2257,6 +2259,7 @@ full = [
     { name = "tree-sitter-markdown" },
     { name = "tree-sitter-python" },
     { name = "tree-sitter-rust" },
+    { name = "tree-sitter-swift" },
     { name = "tree-sitter-typescript" },
     { name = "types-psutil" },
 ]
@@ -2562,6 +2565,9 @@ requires-dist = [
     { name = "tree-sitter-sql", marker = "extra == 'all-languages'", specifier = ">=0.3.11,<0.4.0" },
     { name = "tree-sitter-sql", marker = "extra == 'sql'", specifier = ">=0.3.11,<0.4.0" },
     { name = "tree-sitter-sql", marker = "extra == 'test'", specifier = ">=0.3.11,<0.4.0" },
+    { name = "tree-sitter-swift", marker = "extra == 'all'", specifier = ">=0.7.2" },
+    { name = "tree-sitter-swift", marker = "extra == 'all-languages'", specifier = ">=0.7.2" },
+    { name = "tree-sitter-swift", marker = "extra == 'full'", specifier = ">=0.7.2" },
     { name = "tree-sitter-swift", marker = "extra == 'swift'", specifier = ">=0.7.2" },
     { name = "tree-sitter-typescript", specifier = ">=0.23.2" },
     { name = "tree-sitter-typescript", marker = "extra == 'all'", specifier = ">=0.20.0,<0.25.0" },
@@ -2578,7 +2584,7 @@ requires-dist = [
     { name = "types-psutil", marker = "extra == 'dev'", specifier = ">=5.9.0" },
     { name = "types-psutil", marker = "extra == 'full'", specifier = ">=5.9.0" },
 ]
-provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "rust", "go", "markdown", "html", "css", "sql", "csharp", "php", "ruby", "yaml", "kotlin", "web", "systems", "popular", "all-languages", "mcp", "dev", "test", "integration", "full", "all", "swift"]
+provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "rust", "go", "markdown", "html", "css", "sql", "csharp", "php", "ruby", "yaml", "kotlin", "swift", "web", "systems", "popular", "all-languages", "mcp", "dev", "test", "integration", "full", "all"]
 
 [package.metadata.requires-dev]
 dev = [

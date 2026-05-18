@@ -86,3 +86,10 @@ Only offer to create an ADR when all three are true:
 If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
 
 </supporting-info>
+
+## Acceptance Criteria
+
+- [ ] Each question challenges one unresolved branch of the plan against code or docs.
+- [ ] Resolved domain terms are recorded in `CONTEXT.md` or the correct context file.
+- [ ] ADRs are proposed only for hard-to-reverse, surprising, trade-off decisions.
+- [ ] The final handoff names updated docs and remaining unresolved decisions.

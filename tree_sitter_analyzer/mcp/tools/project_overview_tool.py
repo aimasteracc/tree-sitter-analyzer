@@ -1,4 +1,3 @@
-# One-call project portrait for AI agents
 #!/usr/bin/env python3
 """
 Project Overview MCP Tool
@@ -25,6 +24,7 @@ _SUPPORTED_EXTS = {
     ".go": "go",
     ".rs": "rust",
     ".kt": "kotlin",
+    ".swift": "swift",
     ".cs": "csharp",
     ".rb": "ruby",
     ".php": "php",
@@ -69,7 +69,6 @@ _EXCLUDE_DIRS = {
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        # JSON schema for tool input
         "include_health": {
             "type": "boolean",
             "description": "Include health grades for top-10 largest source files (slower)",
@@ -100,7 +99,6 @@ class ProjectOverviewTool(BaseMCPTool):
             "name": "get_project_overview",
             "description": (
                 "Project portrait in one call: languages, file counts, largest files, "
-                # Project scan and build result pipeline
                 "tool routing guide. Use FIRST on any project. Replaces multiple Glob calls."
             ),
             "inputSchema": TOOL_SCHEMA,
@@ -132,169 +130,242 @@ class ProjectOverviewTool(BaseMCPTool):
         if not root.is_dir():
             raise ValueError(f"Project root is not a directory: {root}")
 
-        # Walk project tree collecting file/directory stats
-        scan = self._scan_project(root, max_depth)
-        result = self._build_result(root, scan, include_health)
+        scan = _scan_project(root, max_depth)
+        result = _build_result(root, scan, include_health)
 
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
 
-    # Walk project tree collecting file statistics
-    def _scan_project(self, root: Path, max_depth: int) -> dict[str, Any]:
-        """Walk the project tree and collect file/directory stats."""
-        lang_dist: dict[str, int] = {}
-        ext_dist: dict[str, int] = {}
-        all_source_files: list[dict[str, Any]] = []
-        dir_tree: dict[str, int] = {}
 
-        for f in root.rglob("*"):
-            if any(part in _EXCLUDE_DIRS for part in f.parts):
-                continue
-            try:
-                depth = len(f.relative_to(root).parts)
-            except ValueError:
-                continue
-            if depth > max_depth:
-                continue
+def _scan_project(root: Path, max_depth: int) -> dict[str, Any]:
+    """Walk the project tree and collect file/directory stats."""
+    scan = _new_scan()
+    for path in root.rglob("*"):
+        _add_path_to_scan(scan, root, path, max_depth)
+    scan["source_files"].sort(key=lambda item: item["lines"], reverse=True)
+    return scan
 
-            if f.is_file():
-                ext = f.suffix.lower()
-                ext_dist[ext] = ext_dist.get(ext, 0) + 1
-                lang = _SUPPORTED_EXTS.get(ext)
-                if lang:
-                    lang_dist[lang] = lang_dist.get(lang, 0) + 1
-                    # File extension counting
-                    try:
-                        size = f.stat().st_size
-                        lines = _count_lines(f)
-                        all_source_files.append(
-                            {
-                                "path": str(f.relative_to(root)),
-                                "language": lang,
-                                "lines": lines,
-                                "size_bytes": size,
-                            }
-                        )
-                    except (OSError, UnicodeDecodeError):
-                        continue
-            elif f.is_dir():
-                dir_tree[f.name] = dir_tree.get(f.name, 0) + 1
 
-        all_source_files.sort(key=lambda x: x["lines"], reverse=True)
-        return {
-            "lang_dist": lang_dist,
-            "ext_dist": ext_dist,
-            # Build result dict from scan data
-            "source_files": all_source_files,
-            "dir_tree": dir_tree,
-        }
+def _new_scan() -> dict[str, Any]:
+    """Return mutable scan accumulators."""
+    return {
+        "lang_dist": {},
+        "ext_dist": {},
+        "source_files": [],
+        "dir_tree": {},
+    }
 
-    # Assemble response dict from analysis data
-    def _build_result(
-        self, root: Path, scan: dict[str, Any], include_health: bool
-    ) -> dict[str, Any]:
-        """Build the result dict from scan data."""
-        lang_dist = scan["lang_dist"]
-        source_files = scan["source_files"]
-        ext_dist = scan["ext_dist"]
 
-        total_files = sum(ext_dist.values())
-        total_lines = sum(f["lines"] for f in source_files)
+def _add_path_to_scan(
+    scan: dict[str, Any], root: Path, path: Path, max_depth: int
+) -> None:
+    """Add a path to project scan accumulators when it is in scope."""
+    if any(part in _EXCLUDE_DIRS for part in path.parts):
+        return
+    try:
+        rel_path = path.relative_to(root)
+    except ValueError:
+        return
+    if len(rel_path.parts) > max_depth:
+        return
+    if path.is_dir():
+        _increment(scan["dir_tree"], path.name)
+        return
+    if path.is_file():
+        _add_file_to_scan(scan, root, path)
 
-        result: dict[str, Any] = {
-            "success": True,
-            "project_root": str(root),
-            "summary": {
-                "total_files": total_files,
-                "source_files": sum(lang_dist.values()),
-                "non_source_files": total_files - sum(lang_dist.values()),
-                "total_lines": total_lines,
-                "languages_count": len(lang_dist),
-            },
-            "language_distribution": dict(
-                sorted(lang_dist.items(), key=lambda x: -x[1])
-            ),
-            "largest_source_files": source_files[:15],
-            "top_directories": dict(
-                # Add health grades for top source files
-                sorted(scan["dir_tree"].items(), key=lambda x: -x[1])[:20]
-            ),
-        }
 
-        if not include_health:
-            result["smart_workflow_hint"] = (
-                "Call get_project_overview(include_health=true) for health grades, "
-                "or check_code_scale on any file for a quick assessment."
-            )
-        else:
-            self._add_health_data(result, source_files, root)
-            result["smart_workflow_hint"] = _build_smart_hint(result)
+def _add_file_to_scan(scan: dict[str, Any], root: Path, path: Path) -> None:
+    """Add one source or non-source file to scan accumulators."""
+    ext = path.suffix.lower()
+    _increment(scan["ext_dist"], ext)
+    lang = _SUPPORTED_EXTS.get(ext)
+    if not lang:
+        return
+    try:
+        size = path.stat().st_size
+        lines = _count_lines(path)
+        scan["source_files"].append(
+            {
+                "path": str(path.relative_to(root)),
+                "language": lang,
+                "lines": lines,
+                "size_bytes": size,
+            }
+        )
+        _increment(scan["lang_dist"], lang)
+    except (OSError, UnicodeDecodeError):
+        return
 
-        result["tool_routing"] = {
-            "project_health": "check_project_health()  # grade ALL files, top fix targets",
-            "file_health": "check_file_health(file_path=...)  # A-F grade + smells + security",
-            "edit_risk": "safe_to_edit(file_path=...)  # MUST call before editing",
-            "refactor_plan": "refactoring_suggestions(file_path=...)  # extraction plans",
-            "change_impact": "analyze_change_impact()  # git diff + deps → tests to run",
-            "file_scale": "check_code_scale(file_path=...)",
-            # Build tool routing guide for AI agents
-            "structure_table": "analyze_code_structure(file_path=..., format_type=compact)",
-            "read_lines": "extract_code_section(file_path=..., start_line=..., end_line=...)",
-            "find_symbol": "query_code(symbol='...')  # wildcards: *Service, fuzzy: ~analyz",
-            "search_text": "search_content(query='...', total_only=true)  # ~10 tok",
-            "find_files": "list_files(roots=['.'], extensions=['py'])",
-        }
-        return result
 
-    # Score health for top source files
-    def _add_health_data(
-        self, result: dict[str, Any], source_files: list[dict[str, Any]], root: Path
-    ) -> None:
-        """Add health grades for top source files."""
-        from ...health_scorer import HealthScorer
+def _increment(counts: dict[str, int], key: str) -> None:
+    counts[key] = counts.get(key, 0) + 1
 
-        scorer = HealthScorer()
-        health_results = []
-        for sf in source_files[:10]:
-            try:
-                h = scorer.score_file(str(root / sf["path"]))
-                entry: dict[str, Any] = {
-                    # Count file lines efficiently
-                    "file": sf["path"],
-                    "grade": h.grade,
-                    "score": h.total,
-                }
-                if h.grade in ("D", "F"):
-                    suggestion = _suggest_refactor_action(
-                        sf["path"], sf.get("lines", 0), h
-                    )
-                    if suggestion:
-                        entry["suggestion"] = suggestion
-                # Suggest refactoring action for unhealthy files
-                health_results.append(entry)
-            except Exception:  # nosec B112
-                continue
 
-        result["health_summary"] = health_results
-        unhealthy = [h for h in health_results if h["grade"] in ("D", "F")]
-        if unhealthy:
-            result["health_alert"] = (
-                f"{len(unhealthy)} file(s) scored D or F — prioritize refactoring: "
-                + ", ".join(h["file"] for h in unhealthy[:5])
-                # Build smart workflow hint from results
-            )
+def _build_result(
+    root: Path, scan: dict[str, Any], include_health: bool
+) -> dict[str, Any]:
+    """Build the result dict from scan data."""
+    result = _build_base_result(root, scan)
+    if include_health:
+        _add_health_data(result, scan["source_files"], root)
+        result["smart_workflow_hint"] = _build_smart_hint(result)
+    else:
+        result["smart_workflow_hint"] = _health_opt_in_hint()
+    result["agent_summary"] = _build_agent_summary(result, include_health)
+    result["tool_routing"] = _build_tool_routing()
+    return result
+
+
+def _build_base_result(root: Path, scan: dict[str, Any]) -> dict[str, Any]:
+    """Build the health-independent overview response."""
+    lang_dist = scan["lang_dist"]
+    source_files = scan["source_files"]
+    ext_dist = scan["ext_dist"]
+    total_files = sum(ext_dist.values())
+    source_count = sum(lang_dist.values())
+    return {
+        "success": True,
+        "project_root": str(root),
+        "summary": {
+            "total_files": total_files,
+            "source_files": source_count,
+            "non_source_files": total_files - source_count,
+            "total_lines": sum(item["lines"] for item in source_files),
+            "languages_count": len(lang_dist),
+        },
+        "language_distribution": dict(
+            sorted(lang_dist.items(), key=lambda item: -item[1])
+        ),
+        "largest_source_files": source_files[:15],
+        "top_directories": dict(
+            sorted(scan["dir_tree"].items(), key=lambda item: -item[1])[:20]
+        ),
+    }
+
+
+def _health_opt_in_hint() -> str:
+    return (
+        "Call get_project_overview(include_health=true) for health grades, "
+        "or check_code_scale on any file for a quick assessment."
+    )
+
+
+def _add_health_data(
+    result: dict[str, Any], source_files: list[dict[str, Any]], root: Path
+) -> None:
+    """Add health grades for top source files."""
+    from ...health_scorer import HealthScorer
+
+    scorer = HealthScorer()
+    health_results = [
+        entry
+        for sf in source_files[:10]
+        if (entry := _score_health_entry(scorer, root, sf)) is not None
+    ]
+    result["health_summary"] = health_results
+    unhealthy = [entry for entry in health_results if entry["grade"] in ("D", "F")]
+    if unhealthy:
+        result["health_alert"] = _build_health_alert(unhealthy)
+
+
+def _score_health_entry(
+    scorer: Any, root: Path, source_file: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Score one source file for project overview health output."""
+    try:
+        health = scorer.score_file(str(root / source_file["path"]))
+    except Exception:  # nosec B112
+        return None
+    entry: dict[str, Any] = {
+        "file": source_file["path"],
+        "grade": health.grade,
+        "score": health.total,
+    }
+    if health.grade in ("D", "F"):
+        suggestion = _suggest_refactor_action(
+            source_file["path"], source_file.get("lines", 0), health
+        )
+        if suggestion:
+            entry["suggestion"] = suggestion
+    return entry
+
+
+def _build_health_alert(unhealthy: list[dict[str, Any]]) -> str:
+    files = ", ".join(entry["file"] for entry in unhealthy[:5])
+    return f"{len(unhealthy)} file(s) scored D or F — prioritize refactoring: {files}"
+
+
+def _build_agent_summary(
+    result: dict[str, Any], include_health: bool
+) -> dict[str, Any]:
+    """Build a compact project-overview summary for first-hop agent decisions."""
+    summary = result["summary"]
+    largest = result.get("largest_source_files", [])
+    top_language = _top_language(result.get("language_distribution", {}))
+    return {
+        "risk": _overview_risk(result, include_health),
+        "next_step": _overview_next_step(result, include_health),
+        "verification_command": "uv run python -m tree_sitter_analyzer --overview --format json",
+        "project_health_command": "uv run python -m tree_sitter_analyzer --project-health --format json",
+        "stop_condition": "Overview returns tool_routing and a concrete next_step.",
+        "source_files": summary["source_files"],
+        "languages_count": summary["languages_count"],
+        "top_language": top_language,
+        "largest_file": largest[0]["path"] if largest else "",
+        "health_checked": include_health,
+    }
+
+
+def _overview_risk(result: dict[str, Any], include_health: bool) -> str:
+    if result.get("health_alert"):
+        return "high"
+    if not include_health:
+        return "unknown"
+    return "low"
+
+
+def _overview_next_step(result: dict[str, Any], include_health: bool) -> str:
+    if result.get("health_alert"):
+        return (
+            "Run project-health for the full backlog, then safe-to-edit the queue head."
+        )
+    if not include_health:
+        return "Re-run overview with include_health=true or run project-health."
+    return "Use tool_routing to choose the next focused MCP tool."
+
+
+def _top_language(language_distribution: dict[str, int]) -> str:
+    if not language_distribution:
+        return ""
+    return max(language_distribution, key=lambda lang: language_distribution[lang])
+
+
+def _build_tool_routing() -> dict[str, str]:
+    """Return the static MCP tool routing guide."""
+    return {
+        "project_health": "check_project_health()  # grade ALL files, top fix targets",
+        "file_health": "check_file_health(file_path=...)  # A-F grade + smells + security",
+        "edit_risk": "safe_to_edit(file_path=...)  # MUST call before editing",
+        "refactor_plan": "refactoring_suggestions(file_path=...)  # extraction plans",
+        "change_impact": "analyze_change_impact()  # git diff + deps → tests to run",
+        "file_scale": "check_code_scale(file_path=...)",
+        "structure_table": "analyze_code_structure(file_path=..., format_type=compact)",
+        "read_lines": "extract_code_section(file_path=..., start_line=..., end_line=...)",
+        "find_symbol": "query_code(symbol='...')  # wildcards: *Service, fuzzy: ~analyz",
+        "search_text": "search_content(query='...', total_only=true)  # ~10 tok",
+        "find_files": "list_files(roots=['.'], extensions=['py'])",
+    }
 
 
 def _count_lines(path: Path) -> int:
     """Count lines in a file using UTF-8 encoding."""
     try:
-        return sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            return sum(1 for _ in handle)
     except Exception:
         return 0
-
-
-# Determine next tool to call based on project state
 
 
 def _suggest_refactor_action(
@@ -306,7 +377,6 @@ def _suggest_refactor_action(
     is_prod = not is_test and ext == ".py"
 
     if line_count > 500 and is_prod:
-        # Format language distribution for display
         return f"check_file_health(file_path='{file_path}') for extraction targets, then extract longest methods into a new module"
     if is_test:
         return f"Split test file by test class into separate files (current: {line_count} lines)"
@@ -315,7 +385,6 @@ def _suggest_refactor_action(
     return None
 
 
-# Generate contextual workflow suggestion
 def _build_smart_hint(result: dict[str, Any]) -> str:
     """Build smart workflow hint from health and language data."""
     parts: list[str] = []

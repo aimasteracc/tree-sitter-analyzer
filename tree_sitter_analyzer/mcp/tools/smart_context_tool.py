@@ -9,6 +9,8 @@ agents should call FIRST when approaching an unfamiliar file.
 Uses tree-sitter for cross-language element extraction (all 15 languages).
 """
 
+import shlex
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,32 @@ from .utils.element_extractor import (
 from .utils.test_discovery import find_test_files
 
 logger = setup_logger(__name__)
+
+
+@dataclass(frozen=True)
+class SmartContextProfile:
+    file_path: str
+    line_count: int
+    language: str
+    health: Any
+    exports: list[dict[str, Any]]
+    structure: list[dict[str, Any]]
+    dependencies: list[str]
+    dependents: list[str]
+    test_files: list[str]
+    risk: str
+
+
+@dataclass(frozen=True)
+class AgentSummaryInput:
+    file_path: str
+    grade: str
+    score: float
+    weakest: str
+    risk: str
+    export_count: int
+    downstream_count: int
+    test_files: list[str]
 
 
 class SmartContextTool(BaseMCPTool):
@@ -99,10 +127,16 @@ class SmartContextTool(BaseMCPTool):
     # execute: implementation
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
-
         file_path = arguments["file_path"]
         output_format = arguments.get("output_format", "toon")
+        profile = self._build_profile(file_path)
+        result = _build_smart_context_result(profile)
+        from ..utils.format_helper import apply_toon_format_to_response
 
+        return apply_toon_format_to_response(result, output_format)
+
+    # _build_profile: implementation
+    def _build_profile(self, file_path: str) -> SmartContextProfile:
         resolved = self.resolve_and_validate_file_path(file_path)
         if not Path(resolved).exists():
             raise ValueError(f"File not found: {file_path}")
@@ -117,53 +151,26 @@ class SmartContextTool(BaseMCPTool):
             "."
         )
 
-        # 1. Health
         health = scorer.score_file(resolved)
-
-        # 2. Exports + structure via tree-sitter (cross-language)
         analysis = extract_elements(resolved, self.project_root)
         exports = get_all_exports(analysis) if analysis else []
         structure = get_structure(analysis) if analysis else []
-
-        # 3. Dependencies
         dependents = _safe_query(graph, rel_path, "dependents")
         dependencies = _safe_query(graph, rel_path, "dependencies")
-
-        # 4. Tests (language-aware discovery)
         test_files = find_test_files(resolved, self.project_root or ".")
-
-        # 5. Quick risk assessment
         risk = _quick_risk(len(dependents), health.grade, len(test_files) > 0)
-
-        result = {
-            "success": True,
-            "file_path": file_path,
-            "line_count": len(lines),
-            "language": language,
-            "health": {
-                "grade": health.grade,
-                "score": round(health.total, 1),
-                "signal": _build_signal(health.dimensions),
-                "weakest_dimension": _weakest_dimension(health.dimensions),
-            },
-            "exports": exports,
-            "structure": structure,
-            "dependencies": {
-                "imports_count": len(dependencies),
-                "imported_by_count": len(dependents),
-                "imports_sample": dependencies[:5],
-                "imported_by_sample": dependents[:5],
-            },
-            "tests": test_files,
-            "edit_risk": risk,
-            "recommendation": _build_summary(
-                health.grade, risk, len(exports), len(dependents)
-            ),
-        }
-
-        from ..utils.format_helper import apply_toon_format_to_response
-
-        return apply_toon_format_to_response(result, output_format)
+        return SmartContextProfile(
+            file_path=file_path,
+            line_count=len(lines),
+            language=language,
+            health=health,
+            exports=exports,
+            structure=structure,
+            dependencies=dependencies,
+            dependents=dependents,
+            test_files=test_files,
+            risk=risk,
+        )
 
 
 # _to_relative: implementation
@@ -177,17 +184,142 @@ def _to_relative(abs_path: str, project_root: str) -> str:
 # _safe_query: implementation
 def _safe_query(graph: DependencyGraph, rel_path: str, method: str) -> list[str]:
     try:
-        target = rel_path
-        if target not in graph._nodes:
-            for node in graph._nodes:
-                if node.endswith(rel_path):
-                    target = node
-                    break
+        target = _resolve_graph_node(graph, rel_path)
         if method == "dependents":
             return graph.dependents_of(target)
         return graph.dependencies_of(target)
     except Exception:  # nosec B110
         return []
+
+
+# _resolve_graph_node: implementation
+def _resolve_graph_node(graph: DependencyGraph, rel_path: str) -> str:
+    if rel_path in graph._nodes:
+        return rel_path
+    return next((node for node in graph._nodes if node.endswith(rel_path)), rel_path)
+
+
+# _build_smart_context_result: implementation
+def _build_smart_context_result(profile: SmartContextProfile) -> dict[str, Any]:
+    grade = profile.health.grade
+    score = round(profile.health.total, 1)
+    weakest = _weakest_dimension(profile.health.dimensions)
+    summary_input = AgentSummaryInput(
+        file_path=profile.file_path,
+        grade=grade,
+        score=score,
+        weakest=weakest,
+        risk=profile.risk,
+        export_count=len(profile.exports),
+        downstream_count=len(profile.dependents),
+        test_files=profile.test_files,
+    )
+    return {
+        "success": True,
+        "file_path": profile.file_path,
+        "line_count": profile.line_count,
+        "language": profile.language,
+        "health": {
+            "grade": grade,
+            "score": score,
+            "signal": _build_signal(profile.health.dimensions),
+            "weakest_dimension": weakest,
+        },
+        "agent_summary": _build_agent_summary(summary_input),
+        "exports": profile.exports,
+        "structure": profile.structure,
+        "dependencies": {
+            "imports_count": len(profile.dependencies),
+            "imported_by_count": len(profile.dependents),
+            "imports_sample": profile.dependencies[:5],
+            "imported_by_sample": profile.dependents[:5],
+        },
+        "tests": profile.test_files,
+        "edit_risk": profile.risk,
+        "recommendation": _build_summary(
+            grade, profile.risk, len(profile.exports), len(profile.dependents)
+        ),
+    }
+
+
+# _build_agent_summary: implementation
+def _build_agent_summary(context: AgentSummaryInput) -> dict[str, Any]:
+    quoted_path = shlex.quote(context.file_path)
+    focused_test_command = _focused_test_command(context.test_files)
+    verification_command = focused_test_command or (
+        "uv run python -m tree_sitter_analyzer "
+        f"{quoted_path} --file-health --format json"
+    )
+    return {
+        "risk": context.risk,
+        "grade": context.grade,
+        "score": context.score,
+        "next_step": _agent_next_step(
+            file_path=context.file_path,
+            grade=context.grade,
+            risk=context.risk,
+            has_tests=bool(context.test_files),
+        ),
+        "verification_command": verification_command,
+        "focused_test_command": focused_test_command,
+        "safe_to_edit_command": (
+            "uv run python -m tree_sitter_analyzer "
+            f"{quoted_path} --safe-to-edit --format json"
+        ),
+        "change_impact_command": (
+            "uv run python -m tree_sitter_analyzer --change-impact "
+            f"--change-impact-scope {quoted_path} --format json"
+        ),
+        "stop_condition": _agent_stop_condition(
+            verification_command, context.test_files
+        ),
+        "weakest_dimension": context.weakest,
+        "exports_count": context.export_count,
+        "downstream_count": context.downstream_count,
+    }
+
+
+# _focused_test_command: implementation
+def _focused_test_command(test_files: list[str]) -> str:
+    if not test_files:
+        return ""
+    quoted_tests = shlex.join(test_files[:5])
+    return f"uv run pytest {quoted_tests} -q"
+
+
+# _agent_next_step: implementation
+def _agent_next_step(
+    *,
+    file_path: str,
+    grade: str,
+    risk: str,
+    has_tests: bool,
+) -> str:
+    quoted_path = shlex.quote(file_path)
+    if risk == "dangerous":
+        return (
+            "Run safe-to-edit before modifying this file: "
+            f"uv run python -m tree_sitter_analyzer {quoted_path} "
+            "--safe-to-edit --format json"
+        )
+    if grade in {"D", "F"}:
+        return (
+            "Run refactoring suggestions before editing: "
+            f"uv run python -m tree_sitter_analyzer {quoted_path} "
+            "--refactor --format json"
+        )
+    if not has_tests:
+        return "Find or add a focused test before making behavior changes."
+    return "Make a focused edit, then run the nearby tests and scoped change-impact."
+
+
+# _agent_stop_condition: implementation
+def _agent_stop_condition(verification_command: str, test_files: list[str]) -> str:
+    if test_files:
+        return (
+            f"{verification_command} passes and scoped change-impact matches the edit."
+        )
+    return "File-health is reviewed and a focused test plan is selected before editing."
 
 
 # _quick_risk: implementation
@@ -209,13 +341,10 @@ def _quick_risk(downstream: int, grade: str, has_tests: bool) -> str:
         score += 1
     # Conditional check
     if score >= 5:
-        # Return result
         return "dangerous"
     # Conditional check
     if score >= 3:
-        # Return result
         return "caution"
-    # Return result
     return "safe"
 
 
@@ -223,9 +352,7 @@ def _quick_risk(downstream: int, grade: str, has_tests: bool) -> str:
 def _weakest_dimension(dimensions: dict[str, float]) -> str:
     # Conditional check
     if not dimensions:
-        # Return result
         return "unknown"
-    # Return result
     return min(dimensions, key=lambda k: dimensions[k])
 
 
@@ -246,5 +373,4 @@ def _build_summary(
         parts.append("call safe_to_edit for a detailed pre-edit checklist")
     elif risk == "caution":
         parts.append("proceed with caution — run tests after editing")
-    # Return result
     return ". ".join(parts)

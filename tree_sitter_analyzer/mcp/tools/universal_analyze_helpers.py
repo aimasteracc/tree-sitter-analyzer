@@ -53,14 +53,12 @@ def count_elements_by_type(elements: list[Any]) -> dict[str, int]:
         else 0
     )
     counts["total"] = sum(v for k, v in counts.items() if k != "annotations")
-    # Return result
     return counts
 
 
 # elements_to_summary: implementation
 def elements_to_summary(elements: list[Any], element_type: str) -> list[dict[str, Any]]:
     """Convert elements of a given type to summary items."""
-    # Return result
     return [
         (
             e.to_summary_item()
@@ -97,7 +95,6 @@ def count_dict_elements_by_type(elements: list[Any]) -> dict[str, int]:
         # Alternative check
         elif etype == "import":
             counts["imports"] += 1
-    # Return result
     return counts
 
 

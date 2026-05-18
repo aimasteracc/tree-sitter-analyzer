@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import ast
 import configparser
 import re
 from pathlib import Path
 
 import tomllib
+from hypothesis import settings as hypothesis_settings
 
 from tree_sitter_analyzer.cli_main import create_argument_parser
 from tree_sitter_analyzer.mcp.server import _create_tool_registry
@@ -26,9 +28,36 @@ def test_default_pytest_runtime_contract_is_locked() -> None:
     """The default full suite must stay parallel and bounded under 5 minutes."""
     config = configparser.ConfigParser()
     config.read(PROJECT_ROOT / "pytest.ini")
-    addopts = config["pytest"]["addopts"]
-    warning_filters = config["pytest"]["filterwarnings"]
+    _assert_pytest_runtime_contract(
+        config["pytest"]["addopts"],
+        config["pytest"]["filterwarnings"],
+    )
 
+
+def test_pyproject_pytest_runtime_contract_mirror_is_locked() -> None:
+    """pyproject's mirror config must not weaken the default pytest contract."""
+    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+    pytest_options = data["tool"]["pytest"]["ini_options"]
+    _assert_pytest_runtime_contract(
+        pytest_options["addopts"],
+        pytest_options["filterwarnings"],
+    )
+
+
+def _assert_pytest_runtime_contract(
+    addopts: str | list[str],
+    warning_filters: str | list[str],
+) -> None:
+    if isinstance(addopts, str):
+        addopts_list = addopts.split()
+    else:
+        addopts_list = addopts
+    if isinstance(warning_filters, str):
+        warning_filter_list = [
+            line.strip() for line in warning_filters.splitlines() if line.strip()
+        ]
+    else:
+        warning_filter_list = warning_filters
     required = {
         "--numprocesses=auto",
         "--dist=loadfile",
@@ -37,11 +66,11 @@ def test_default_pytest_runtime_contract_is_locked() -> None:
         "--benchmark-disable",
     }
 
-    missing = [option for option in sorted(required) if option not in addopts]
+    missing = [option for option in sorted(required) if option not in addopts_list]
     assert missing == []
-    assert "error" in warning_filters
-    assert "ignore::DeprecationWarning" not in warning_filters
-    assert "ignore::PendingDeprecationWarning" not in warning_filters
+    assert warning_filter_list[0] == "error"
+    assert "ignore::DeprecationWarning" not in warning_filter_list
+    assert "ignore::PendingDeprecationWarning" not in warning_filter_list
 
 
 def test_pytest_runtime_dependencies_are_declared() -> None:
@@ -52,6 +81,81 @@ def test_pytest_runtime_dependencies_are_declared() -> None:
 
     assert "pytest-xdist>=3.8.0" in dev_dependencies
     assert "pytest-timeout>=2.4.0" in dev_dependencies
+
+
+def test_agent_facing_docs_do_not_recommend_bare_pytest() -> None:
+    """Agent docs should route pytest through uv for consistent environments."""
+    bare_pytest_command = re.compile(r"^(?:\$\s+)?pytest(?:\s|$)")
+    bare_pytest_code_span = re.compile(r"`pytest(?:\s[^`]*)?`")
+    paths = [
+        PROJECT_ROOT / "AGENTS.md",
+        PROJECT_ROOT / "CLAUDE.md",
+        PROJECT_ROOT / "docs" / "TESTING.md",
+        PROJECT_ROOT / "docs" / "developer_guide.md",
+    ]
+    bare_pytest_lines = [
+        f"{path.relative_to(PROJECT_ROOT)}:{line_number}:{line}"
+        for path in paths
+        for line_number, line in enumerate(path.read_text().splitlines(), start=1)
+        if bare_pytest_command.match(line.strip()) or bare_pytest_code_span.search(line)
+    ]
+
+    assert bare_pytest_lines == []
+
+
+def test_hypothesis_deadlines_are_disabled_for_parallel_suite_stability() -> None:
+    """xdist load variance is bounded by pytest-timeout, not Hypothesis deadlines."""
+    assert hypothesis_settings.default.deadline is None
+
+
+def test_default_sustained_load_check_stays_fast_and_configurable() -> None:
+    """Default performance checks use short configurable waits."""
+    path = PROJECT_ROOT / "tests/integration/test_phase7_performance_integration.py"
+    module = ast.parse(path.read_text())
+    constants = {
+        node.targets[0].id: ast.literal_eval(node.value)
+        for node in module.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id.startswith("DEFAULT_")
+    }
+
+    assert constants["DEFAULT_SUSTAINED_LOAD_ITERATIONS"] <= 20
+    assert constants["DEFAULT_SUSTAINED_LOAD_INTERVAL_SECONDS"] <= 0.1
+    assert constants["DEFAULT_SCALABILITY_RECOVERY_SECONDS"] <= 0.1
+    assert constants["DEFAULT_RESOURCE_CLEANUP_SETTLE_SECONDS"] <= 0.1
+    assert constants["DEFAULT_MEMORY_EFFICIENCY_FILES"] <= 10
+
+    source = path.read_text()
+    assert "TSA_SUSTAINED_LOAD_ITERATIONS" in source
+    assert "TSA_SUSTAINED_LOAD_INTERVAL_SECONDS" in source
+    assert "TSA_SCALABILITY_RECOVERY_SECONDS" in source
+    assert "TSA_RESOURCE_CLEANUP_SETTLE_SECONDS" in source
+    assert "TSA_MEMORY_EFFICIENCY_FILES" in source
+    assert "while time.time() - start_time" not in source
+    assert "asyncio.sleep(1)" not in source
+
+
+def test_phase7_suite_simulated_work_stays_fast_and_configurable() -> None:
+    """Summary-style integration checks should not spend seconds sleeping."""
+    path = PROJECT_ROOT / "tests/integration/test_phase7_integration_suite.py"
+    module = ast.parse(path.read_text())
+    constants = {
+        node.targets[0].id: ast.literal_eval(node.value)
+        for node in module.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+    }
+
+    assert constants["DEFAULT_PHASE7_SUITE_SIMULATION_SECONDS"] <= 0.05
+
+    source = path.read_text()
+    assert "TSA_PHASE7_SUITE_SIMULATION_SECONDS" in source
+    assert "asyncio.sleep(0.2)" not in source
+    assert "asyncio.sleep(0.15)" not in source
+    assert "asyncio.sleep(0.1)" not in source
 
 
 def test_registered_mcp_tools_have_cli_parity() -> None:
@@ -72,6 +176,9 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "list_files": ("script", "list-files"),
         "search_content": ("script", "search-content"),
         "find_and_grep": ("script", "find-and-grep"),
+        "list_agent_skills": ("main", "--agent-skills"),
+        "get_agent_workflow": ("main", "--agent-workflow"),
+        "advise_parser_readiness": ("main", "--parser-readiness"),
         "get_project_overview": ("main", "--overview"),
         "check_project_health": ("main", "--project-health"),
         "check_file_health": ("main", "--file-health"),
@@ -100,6 +207,19 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
 
     assert missing_main_flags == []
     assert missing_scripts == []
+
+
+def test_agent_docs_require_change_impact_verification_command() -> None:
+    """Future agents should follow change-impact's verification command."""
+    docs = {
+        "AGENTS.md": (PROJECT_ROOT / "AGENTS.md").read_text(),
+        "CLAUDE.md": (PROJECT_ROOT / "CLAUDE.md").read_text(),
+    }
+
+    for path, text in docs.items():
+        assert "verification_command" in text, path
+        assert "pytest_required" in text, path
+        assert "--change-impact --format json" in text, path
 
 
 def test_warning_prone_python_api_patterns_are_blocked() -> None:

@@ -17,11 +17,6 @@ from ..models import CodeElement
 logger = logging.getLogger(__name__)
 
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
 class IFormatter(ABC):
     """
     Interface for code element formatters.
@@ -190,7 +185,6 @@ class FormatterRegistry:
         return False
 
     @classmethod
-    # Process: clear_registry
     def clear_registry(cls) -> None:
         """
         Clear all registered formatters.
@@ -332,7 +326,6 @@ class FormatterRegistry:
                 return formatter_class()
 
     @classmethod
-    # Process: get_supported_languages
     def get_supported_languages(cls) -> list[str]:
         """
         Get list of all languages with registered formatters.
@@ -343,7 +336,6 @@ class FormatterRegistry:
         return list(cls._language_formatters.keys())
 
     @classmethod
-    # Process: is_language_supported
     def is_language_supported(cls, language: str) -> bool:
         """
         Check if a language has specific formatters registered.
@@ -548,7 +540,6 @@ class CompactFormatter(IFormatter):
 
         return "\n".join(lines)
 
-    # Process: _get_visibility_symbol
     def _get_visibility_symbol(self, visibility: str) -> str:
         """Get symbol for visibility"""
         mapping = {"public": "+", "private": "-", "protected": "#", "package": "~"}

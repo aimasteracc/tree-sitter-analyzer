@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-import jsonschema
 from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
@@ -155,7 +154,72 @@ PROFILE_SCHEMA = {
 
 def validate_profile(data: dict[str, Any]) -> None:
     """Validates profile data against the schema."""
-    jsonschema.validate(instance=data, schema=PROFILE_SCHEMA)
+    try:
+        import jsonschema
+    except Exception as exc:
+        logger.debug("jsonschema unavailable for profile validation: %s", exc)
+        _validate_profile_minimal(data)
+        return
+
+    validation_error = getattr(
+        getattr(jsonschema, "exceptions", None),
+        "ValidationError",
+        None,
+    )
+    try:
+        jsonschema.validate(instance=data, schema=PROFILE_SCHEMA)
+    except Exception as exc:
+        if validation_error is not None and isinstance(exc, validation_error):
+            raise
+        logger.debug("jsonschema failed for profile validation: %s", exc)
+        _validate_profile_minimal(data)
+
+
+def _validate_profile_minimal(data: dict[str, Any]) -> None:
+    """Validate the profile shape when jsonschema cannot be imported."""
+    if not isinstance(data, dict):
+        raise ValueError("Profile data must be a JSON object")
+
+    missing = [key for key in PROFILE_SCHEMA["required"] if key not in data]
+    if missing:
+        raise ValueError(f"Profile missing required fields: {', '.join(missing)}")
+
+    if not isinstance(data["behaviors"], dict):
+        raise ValueError("Profile behaviors must be an object")
+    if not isinstance(data["adaptation_rules"], list):
+        raise ValueError("Profile adaptation_rules must be a list")
+
+    behavior_schema = PROFILE_SCHEMA["properties"]["behaviors"]["additionalProperties"]
+    required_behavior_keys = behavior_schema["required"]
+    for name, behavior in data["behaviors"].items():
+        if not isinstance(behavior, dict):
+            raise ValueError(f"Profile behavior {name!r} must be an object")
+        missing = [key for key in required_behavior_keys if key not in behavior]
+        if missing:
+            raise ValueError(
+                f"Profile behavior {name!r} missing required fields: "
+                f"{', '.join(missing)}"
+            )
+        if not isinstance(behavior["construct_id"], str):
+            raise ValueError(f"Profile behavior {name!r} construct_id must be a string")
+        if not isinstance(behavior["node_type"], str):
+            raise ValueError(f"Profile behavior {name!r} node_type must be a string")
+        if not isinstance(behavior["element_count"], int):
+            raise ValueError(f"Profile behavior {name!r} element_count must be an int")
+        if not _is_string_list(behavior["attributes"]):
+            raise ValueError(
+                f"Profile behavior {name!r} attributes must be a list of strings"
+            )
+        if not isinstance(behavior["has_error"], bool):
+            raise ValueError(f"Profile behavior {name!r} has_error must be a bool")
+        if "known_issues" in behavior and not _is_string_list(behavior["known_issues"]):
+            raise ValueError(
+                f"Profile behavior {name!r} known_issues must be a list of strings"
+            )
+
+
+def _is_string_list(value: Any) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
 
 
 def migrate_profile_schema(data: dict[str, Any]) -> dict[str, Any]:

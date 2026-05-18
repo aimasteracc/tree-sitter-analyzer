@@ -8,3 +8,10 @@ Interview me relentlessly about every aspect of this plan until we reach a share
 Ask the questions one at a time.
 
 If a question can be answered by exploring the codebase, explore the codebase instead.
+
+## Acceptance Criteria
+
+- [ ] Each question resolves one branch of the plan or design tree.
+- [ ] Every question includes the recommended answer or default position.
+- [ ] Codebase-answerable questions are answered by inspection instead of asking the user.
+- [ ] The session ends with the remaining open decisions explicitly named.

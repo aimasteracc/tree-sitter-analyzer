@@ -124,6 +124,7 @@ class LanguageDetector:
         "kotlin",
         "php",
         "ruby",
+        "swift",
         "markdown",
         "html",
         "css",

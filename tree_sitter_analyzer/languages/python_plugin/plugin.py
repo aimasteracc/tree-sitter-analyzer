@@ -161,7 +161,6 @@ class PythonPlugin(LanguagePlugin):
             return "import_statement"
         return "unknown"
 
-    # Process: get_element_categories
     def get_element_categories(self) -> dict[str, list[str]]:
         return {
             "function": ["function_definition"],

@@ -7,17 +7,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-from ...models import SQLParameter, SQLProcedure
+from ...models import Function, SQLParameter, SQLProcedure
 from ...utils import log_debug
 
 
 # Extract elements from AST: extract_sql_procedures
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
 def extract_sql_procedures(
     root_node: "tree_sitter.Node",
     traverse_nodes: Callable[..., Iterator[Any]],
@@ -207,6 +201,76 @@ def extract_procedure_parameters(
         parameters.append(parameter)
 
 
+def extract_legacy_procedures(
+    root_node: "tree_sitter.Node",
+    functions: list[Function],
+    traverse_nodes: Callable[..., Iterator[Any]],
+    get_node_text: Callable[..., str],
+) -> None:
+    """Extract CREATE PROCEDURE statements as generic Function elements."""
+    for node in traverse_nodes(root_node):
+        if node.type != "ERROR":
+            continue
+        _append_legacy_procedures_from_error_node(
+            node,
+            functions,
+            get_node_text,
+        )
+
+
+def _append_legacy_procedures_from_error_node(
+    node: "tree_sitter.Node",
+    functions: list[Function],
+    get_node_text: Callable[..., str],
+) -> None:
+    """Append legacy Function procedure elements from one ERROR node."""
+    node_text = get_node_text(node)
+    if not _has_create_keyword(node) or "PROCEDURE" not in node_text.upper():
+        return
+
+    matches = re.finditer(
+        r"CREATE\s+PROCEDURE\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+        node_text,
+        re.IGNORECASE,
+    )
+    for match in matches:
+        _append_legacy_procedure_match(node, node_text, match, functions)
+
+
+def _has_create_keyword(node: "tree_sitter.Node") -> bool:
+    """Return whether an ERROR node carries a CREATE keyword child."""
+    for child in node.children:
+        if child.type == "keyword_create":
+            return True
+    return False
+
+
+def _append_legacy_procedure_match(
+    node: "tree_sitter.Node",
+    node_text: str,
+    match: re.Match[str],
+    functions: list[Function],
+) -> None:
+    """Append one legacy procedure Function from a regex match."""
+    proc_name = match.group(1)
+    if not proc_name:
+        return
+
+    try:
+        newlines_before = node_text[: match.start()].count("\n")
+        functions.append(
+            Function(
+                name=proc_name,
+                start_line=node.start_point[0] + 1 + newlines_before,
+                end_line=node.end_point[0] + 1,
+                raw_text=node_text,
+                language="sql",
+            )
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract procedure: {e}")
+
+
 # Extract elements from AST: _extract_procedure_dependencies
 def _extract_procedure_dependencies(
     proc_node: "tree_sitter.Node",
@@ -216,13 +280,10 @@ def _extract_procedure_dependencies(
 ) -> None:
     """Extract table dependencies from procedure body."""
     for node in traverse_nodes(proc_node):
-        # Check: node.type == "object_reference"
         if node.type == "object_reference":
             # Iterate over child
             for child in node.children:
-                # Check: child.type == "identifier"
                 if child.type == "identifier":
                     table_name = get_node_text(child).strip()
-                    # Check: table_name and table_name not in depende
                     if table_name and table_name not in dependencies:
                         dependencies.append(table_name)

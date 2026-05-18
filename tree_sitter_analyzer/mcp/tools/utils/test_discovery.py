@@ -8,9 +8,34 @@ conventions (test_*.py, *Test.java, *_test.go, etc.).
 
 from pathlib import Path
 
+from .test_discovery_languages import find_language_specific_tests
+from .test_discovery_predicates import is_existing_test_file as _is_existing_test_file
+from .test_discovery_stems import (
+    fixture_test_stems,
+    module_family_test_stems,
+    python_package_test_stems,
+    related_stem_matches,
+    related_test_stems_for_path,
+)
+
+__all__ = [
+    "detect_language_from_ext",
+    "find_test_files",
+    "fixture_test_stems",
+    "module_family_test_stems",
+    "python_package_test_stems",
+    "related_stem_matches",
+    "related_test_stems_for_path",
+]
+
 # Language → test file naming patterns
 _TEST_PATTERNS: dict[str, list[str]] = {
-    "python": ["test_{stem}.py"],
+    "python": [
+        "test_{stem}.py",
+        "test_{stem}_*.py",
+        "{stem}_test.py",
+        "{stem}_tests.py",
+    ],
     "java": ["{Stem}Test.java", "{Stem}Tests.java", "Test{Stem}.java"],
     "go": ["{stem}_test.go"],
     "rust": ["{stem}_test.rs", "{stem}_tests.rs"],
@@ -82,51 +107,75 @@ def find_test_files(
     language = detect_language_from_ext(ext) or "python"
 
     results: list[str] = []
+    if _is_existing_test_file(p, root, language):
+        _add_result(results, p, root)
 
-    # Pattern-based discovery in common test directories
     patterns = _TEST_PATTERNS.get(language, ["test_{stem}.py"])
     test_dirs = _TEST_DIRS.get(language, ["tests"])
 
+    _find_pattern_tests(root, stem, patterns, test_dirs, results)
+    _find_colocated_tests(p, stem, patterns, root, results)
+    find_language_specific_tests(
+        p,
+        stem,
+        language,
+        root,
+        _TEST_DIRS.get("python", ["tests"]),
+        results,
+    )
+
+    return results[:10]
+
+
+def _find_pattern_tests(
+    root: Path,
+    stem: str,
+    patterns: list[str],
+    test_dirs: list[str],
+    results: list[str],
+) -> None:
+    """Find tests in common test directories using language patterns."""
     for pattern in patterns:
         test_filename = _format_pattern(pattern, stem)
         for test_dir in test_dirs:
-            candidate = root / test_dir / test_filename
-            if candidate.exists():
-                _add_result(results, candidate, root)
+            _add_direct_test_candidate(root / test_dir / test_filename, root, results)
+            _find_recursive_test_candidates(
+                root / test_dir, test_filename, root, results
+            )
 
-            # Also search recursively within test directories (capped)
-            dir_path = root / test_dir
-            if dir_path.is_dir():
-                for candidate in dir_path.rglob(test_filename):
-                    _add_result(results, candidate, root)
-                    if len(results) >= 10:
-                        break
 
-    # Co-located test (same directory)
+def _add_direct_test_candidate(candidate: Path, root: Path, results: list[str]) -> None:
+    """Add a candidate path when it exists."""
+    if candidate.exists():
+        _add_result(results, candidate, root)
+
+
+def _find_recursive_test_candidates(
+    test_dir: Path,
+    test_filename: str,
+    root: Path,
+    results: list[str],
+) -> None:
+    """Find matching tests recursively within a test directory."""
+    if not test_dir.is_dir():
+        return
+    for candidate in test_dir.rglob(test_filename):
+        _add_result(results, candidate, root)
+        if len(results) >= 10:
+            break
+
+
+def _find_colocated_tests(
+    source_path: Path,
+    stem: str,
+    patterns: list[str],
+    root: Path,
+    results: list[str],
+) -> None:
+    """Find tests next to the source file."""
     for pattern in patterns:
-        test_filename = _format_pattern(pattern, stem)
-        candidate = p.parent / test_filename
-        if candidate.exists():
-            _add_result(results, candidate, root)
-
-    # Language-specific: Java Maven/Gradle structure
-    if language == "java":
-        _find_java_tests(p, stem, root, results)
-
-    # Language-specific: Go tests are always co-located
-    if language == "go":
-        candidate = p.parent / f"{stem}_test.go"
-        if candidate.exists():
-            _add_result(results, candidate, root)
-
-    # Language-specific: Ruby spec files
-    if language == "ruby":
-        spec_dir = root / "spec"
-        if spec_dir.exists():
-            for spec_file in spec_dir.rglob(f"{stem}_spec.rb"):
-                _add_result(results, spec_file, root)
-
-    return results[:10]
+        candidate = source_path.parent / _format_pattern(pattern, stem)
+        _add_direct_test_candidate(candidate, root, results)
 
 
 def _format_pattern(pattern: str, stem: str) -> str:
@@ -142,39 +191,3 @@ def _add_result(results: list[str], candidate: Path, root: Path) -> None:
         rel = str(candidate)
     if rel not in results:
         results.append(rel)
-
-
-def _find_java_tests(
-    source_path: Path,
-    stem: str,
-    root: Path,
-    results: list[str],
-) -> None:
-    """Find Java test files using Maven/Gradle directory conventions."""
-    # Try mirroring the source path under test
-    try:
-        rel = source_path.relative_to(root)
-    except ValueError:
-        return
-
-    parts = list(rel.parts)
-    # Replace src/main/java → src/test/java
-    new_parts = []
-    replaced = False
-    for part in parts:
-        if part == "main" and not replaced:
-            new_parts.append("test")
-            replaced = True
-        else:
-            new_parts.append(part)
-
-    if replaced:
-        new_parts[-1] = f"{stem}Test.java"
-        candidate = root / Path(*new_parts)
-        if candidate.exists():
-            _add_result(results, candidate, root)
-
-        new_parts[-1] = f"{stem}Tests.java"
-        candidate = root / Path(*new_parts)
-        if candidate.exists():
-            _add_result(results, candidate, root)

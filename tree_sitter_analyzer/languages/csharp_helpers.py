@@ -7,13 +7,6 @@ from ..models import Class, Function, Import, Variable
 from ..utils import log_error
 
 
-# Process: determine_visibility
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
 def determine_visibility(modifiers: list[str]) -> str:
     """Determine visibility from C# modifiers."""
     if "public" in modifiers:
@@ -66,7 +59,6 @@ def extract_modifiers(
     return modifiers
 
 
-# Process: calculate_complexity
 def calculate_complexity(node: Any, traverse_fn: Callable[..., Iterator]) -> int:
     """Calculate cyclomatic complexity."""
     complexity = 1
@@ -245,9 +237,7 @@ def extract_method_declaration(
     """Extract a method declaration."""
     try:
         name_node = node.child_by_field_name("name")
-        # Check: not name_node
         if not name_node:
-            # Return result
             return None
 
         method_name = get_node_text(name_node)
@@ -265,7 +255,6 @@ def extract_method_declaration(
         raw_text = get_node_text(node)
         complexity_score = calc_complexity_fn(node)
 
-        # Return result
         return Function(
             name=method_name,
             start_line=node.start_point[0] + 1,
@@ -281,7 +270,6 @@ def extract_method_declaration(
         )
     except Exception as e:
         log_error(f"Error extracting method: {e}")
-        # Return result
         return None
 
 
@@ -296,9 +284,7 @@ def extract_constructor_declaration(
     """Extract a constructor declaration."""
     try:
         name_node = node.child_by_field_name("name")
-        # Check: not name_node
         if not name_node:
-            # Return result
             return None
 
         constructor_name = get_node_text(name_node)
@@ -311,7 +297,6 @@ def extract_constructor_declaration(
 
         raw_text = get_node_text(node)
 
-        # Return result
         return Function(
             name=constructor_name,
             start_line=node.start_point[0] + 1,
@@ -326,7 +311,6 @@ def extract_constructor_declaration(
         )
     except Exception as e:
         log_error(f"Error extracting constructor: {e}")
-        # Return result
         return None
 
 
@@ -342,9 +326,7 @@ def extract_property_declaration(
     # Error handling block
     try:
         name_node = node.child_by_field_name("name")
-        # Check: not name_node
         if not name_node:
-            # Return result
             return None
 
         property_name = get_node_text(name_node)
@@ -357,7 +339,6 @@ def extract_property_declaration(
 
         raw_text = get_node_text(node)
 
-        # Return result
         return Function(
             name=property_name,
             start_line=node.start_point[0] + 1,
@@ -372,7 +353,6 @@ def extract_property_declaration(
         )
     except Exception as e:
         log_error(f"Error extracting property: {e}")
-        # Return result
         return None
 
 
@@ -397,7 +377,6 @@ def extract_field_declaration(
         type_node = None
         # Iterate over child
         for child in node.children:
-            # Check: child.type == "variable_declaration"
             if child.type == "variable_declaration":
                 type_node = child.child_by_field_name("type")
                 break
@@ -406,14 +385,11 @@ def extract_field_declaration(
 
         # Iterate over child
         for child in node.children:
-            # Check: child.type == "variable_declaration"
             if child.type == "variable_declaration":
                 # Iterate over declarator
                 for declarator in child.children:
-                    # Check: declarator.type == "variable_declarator"
                     if declarator.type == "variable_declarator":
                         name_node = declarator.child_by_field_name("name")
-                        # Check: name_node
                         if name_node:
                             field_name = get_node_text(name_node)
                             raw_text = get_node_text(node)
@@ -434,7 +410,6 @@ def extract_field_declaration(
     except Exception as e:
         log_error(f"Error extracting field: {e}")
 
-    # Return result
     return variables
 
 
@@ -459,7 +434,6 @@ def extract_event_declaration(
         type_node = None
         # Iterate over child
         for child in node.children:
-            # Check: child.type == "variable_declaration"
             if child.type == "variable_declaration":
                 type_node = child.child_by_field_name("type")
                 break
@@ -468,14 +442,11 @@ def extract_event_declaration(
 
         # Iterate over child
         for child in node.children:
-            # Check: child.type == "variable_declaration"
             if child.type == "variable_declaration":
                 # Iterate over declarator
                 for declarator in child.children:
-                    # Check: declarator.type == "variable_declarator"
                     if declarator.type == "variable_declarator":
                         name_node = declarator.child_by_field_name("name")
-                        # Check: name_node
                         if name_node:
                             event_name = get_node_text(name_node)
                             raw_text = get_node_text(node)
@@ -495,5 +466,4 @@ def extract_event_declaration(
     except Exception as e:
         log_error(f"Error extracting event: {e}")
 
-    # Return result
     return variables

@@ -157,7 +157,6 @@ class GoElementExtractor(ElementExtractor):
         log_debug(f"Extracted {len(packages)} Go packages")
         return packages
 
-    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -192,7 +191,6 @@ class GoElementExtractor(ElementExtractor):
         for child in node.children:
             self._traverse_and_extract(child, extractors, results)
 
-    # Process: _traverse_for_types
     def _traverse_for_types(
         self, node: "tree_sitter.Node", results: list[Class]
     ) -> None:
@@ -344,7 +342,6 @@ class GoElementExtractor(ElementExtractor):
         """Extract doc comments preceding the node"""
         return _extract_docstring_standalone(node, self.content_lines)
 
-    # Process: _get_node_text
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get node text with caching using position-based keys"""
         cache_key = (node.start_byte, node.end_byte)
@@ -374,12 +371,10 @@ class GoPlugin(LanguagePlugin):
         self.supported_extensions = self.get_file_extensions()
         self._cached_language: Any | None = None
 
-    # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
         return "go"
 
-    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
         return [".go"]
@@ -389,7 +384,6 @@ class GoPlugin(LanguagePlugin):
         """Create a new element extractor instance."""
         return GoElementExtractor()
 
-    # Process: get_supported_element_types
     def get_supported_element_types(self) -> list[str]:
         """Get supported element types for Go."""
         return [
@@ -406,7 +400,6 @@ class GoPlugin(LanguagePlugin):
             "channel",
         ]
 
-    # Process: get_queries
     def get_queries(self) -> dict[str, str]:
         """Get Go-specific tree-sitter queries."""
         from ..queries.go import GO_QUERIES
@@ -493,7 +486,6 @@ class GoPlugin(LanguagePlugin):
                 success=False,
             )
 
-    # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """Recursively count nodes."""
         if node is None:
@@ -504,7 +496,6 @@ class GoPlugin(LanguagePlugin):
                 count += self._count_tree_nodes(child)
         return count
 
-    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Go."""
         if self._cached_language is not None:
@@ -576,7 +567,6 @@ class GoPlugin(LanguagePlugin):
                 "variables": [],
             }
 
-    # Process: supports_file
     def supports_file(self, file_path: str) -> bool:
         """Check if this plugin supports the given file."""
         return any(

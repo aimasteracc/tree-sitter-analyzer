@@ -17,11 +17,11 @@ from ..utils.format_helper import apply_toon_format_to_response, format_for_file
 from .base_tool import BaseMCPTool
 from .batch_executor import execute_batch
 from .read_partial_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
+from .read_partial_helpers import build_agent_summary_for_result
 
 logger = setup_logger(__name__)
 
 
-# Validate column arguments to reduce nesting depth
 def _validate_column_fields(arguments: dict[str, Any]) -> None:
     """Validate start_column and end_column fields."""
     for col_field in ["start_column", "end_column"]:
@@ -31,6 +31,32 @@ def _validate_column_fields(arguments: dict[str, Any]) -> None:
                 raise ValueError(f"{col_field} must be an integer")
             if col_value < 0:
                 raise ValueError(f"{col_field} must be >= 0")
+
+
+def _require_fields(arguments: dict[str, Any], fields: list[str]) -> None:
+    for field in fields:
+        if field not in arguments:
+            raise ValueError(f"Required field '{field}' is missing")
+
+
+def _validate_string_field(arguments: dict[str, Any], field: str) -> None:
+    val = arguments.get(field)
+    if val is not None:
+        if not isinstance(val, str):
+            raise ValueError(f"{field} must be a string")
+        if not val.strip():
+            raise ValueError(f"{field} cannot be empty")
+
+
+def _validate_int_field(
+    arguments: dict[str, Any], field: str, min_val: int = 0
+) -> None:
+    val = arguments.get(field)
+    if val is not None:
+        if not isinstance(val, int):
+            raise ValueError(f"{field} must be an integer")
+        if val < min_val:
+            raise ValueError(f"{field} must be >= {min_val}")
 
 
 class ReadPartialTool(BaseMCPTool):
@@ -239,7 +265,6 @@ class ReadPartialTool(BaseMCPTool):
         output_file: str | None,
     ) -> dict[str, Any]:
         """Build the result dict with range metadata and optional formatted content."""
-        # Build base result with range and metrics
         result: dict[str, Any] = {
             "success": True,
             "file_path": file_path,
@@ -252,15 +277,16 @@ class ReadPartialTool(BaseMCPTool):
             "content_length": len(content),
             "lines_extracted": lines_extracted,
         }
+        result["agent_summary"] = build_agent_summary_for_result(
+            result, content_format, output_file, suppress_output
+        )
 
-        # Suggest follow-up actions for multi-line extractions
         if end_line and end_line > start_line:
             result["next_steps"] = [
                 "query_code to find related elements in this file",
                 "search_content to find callers or usages of this code",
             ]
 
-        # Format content unless output is suppressed and written to file
         if not suppress_output or not output_file:
             result["partial_content_result"] = self._format_content(
                 content,
@@ -464,90 +490,42 @@ class ReadPartialTool(BaseMCPTool):
     # Validates batch vs single mode, types, and range constraints
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate tool arguments: batch vs single mode, types, ranges."""
-        # Batch mode: requests array is mutually exclusive with single-file params
         if "requests" in arguments and arguments["requests"] is not None:
-            # Check mutual exclusivity with single-file params
-            if any(
-                k in arguments
-                for k in [
-                    "file_path",
-                    "start_line",
-                    "end_line",
-                    "start_column",
-                    "end_column",
-                ]
-            ):
+            single_keys = [
+                "file_path",
+                "start_line",
+                "end_line",
+                "start_column",
+                "end_column",
+            ]
+            if any(k in arguments for k in single_keys):
                 raise ValueError(
                     "requests is mutually exclusive with file_path/start_line/end_line/start_column/end_column"
                 )
-            # Validate requests is a list
             if not isinstance(arguments["requests"], list):
                 raise ValueError("requests must be a list")
-            # Batch mode validated successfully
             return True
 
-        # Single-file mode: file_path and start_line are required
-        for field in ["file_path", "start_line"]:
-            if field not in arguments:
-                raise ValueError(f"Required field '{field}' is missing")
-
-        # Validate file_path type and non-empty
-        if "file_path" in arguments:
-            file_path = arguments["file_path"]
-            # file_path must be a non-empty string
-            if not isinstance(file_path, str):
-                raise ValueError("file_path must be a string")
-            if not file_path.strip():
-                raise ValueError("file_path cannot be empty")
-
-        # Validate start_line is positive integer
-        if "start_line" in arguments:
-            start_line = arguments["start_line"]
-            # Validate field type
-            if not isinstance(start_line, int):
-                raise ValueError("start_line must be an integer")
-            # Validate field type
-            if start_line < 1:
-                raise ValueError("start_line must be >= 1")
-
-        # Validate optional end_line if present
+        _require_fields(arguments, ["file_path", "start_line"])
+        _validate_string_field(arguments, "file_path")
+        _validate_int_field(arguments, "start_line", min_val=1)
         if "end_line" in arguments:
-            end_line = arguments["end_line"]
-            # Validate field type
-            if not isinstance(end_line, int):
-                raise ValueError("end_line must be an integer")
-            # Validate field type
-            if end_line < 1:
-                raise ValueError("end_line must be >= 1")
-            # Validate field type
-            if "start_line" in arguments and end_line < arguments["start_line"]:
+            _validate_int_field(arguments, "end_line", min_val=1)
+            if arguments["end_line"] < arguments.get("start_line", 0):
                 raise ValueError("end_line must be >= start_line")
-
-        # Validate column fields using helper to reduce nesting
         _validate_column_fields(arguments)
-
-        # Validate format enum value
         if "format" in arguments:
-            format_value = arguments["format"]
-            if not isinstance(format_value, str):
+            val = arguments["format"]
+            if not isinstance(val, str):
                 raise ValueError("format must be a string")
-            if format_value not in ["text", "json", "raw"]:
+            if val not in ("text", "json", "raw"):
                 raise ValueError("format must be 'text', 'json', or 'raw'")
-
-        # Validate output_file path
         if "output_file" in arguments:
-            output_file = arguments["output_file"]
-            if not isinstance(output_file, str):
-                raise ValueError("output_file must be a string")
-            if not output_file.strip():
-                raise ValueError("output_file cannot be empty")
-
-        # Validate suppress_output flag
-        if "suppress_output" in arguments:
-            suppress_output = arguments["suppress_output"]
-            if not isinstance(suppress_output, bool):
-                raise ValueError("suppress_output must be a boolean")
-
+            _validate_string_field(arguments, "output_file")
+        if "suppress_output" in arguments and not isinstance(
+            arguments["suppress_output"], bool
+        ):
+            raise ValueError("suppress_output must be a boolean")
         return True
 
     # MCP tool metadata - name, description, schema

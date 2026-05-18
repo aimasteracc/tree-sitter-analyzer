@@ -57,19 +57,6 @@ except ImportError:
     log_warning("tree-sitter-yaml not installed, YAML support disabled")
 
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
 class YAMLElement(CodeElement):
     """YAML-specific code element."""
 
@@ -221,7 +208,6 @@ class YAMLElementExtractor(ElementExtractor):
         """
         return self.extract_yaml_elements(tree, source_code)
 
-    # Process: _get_node_text
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get text content from a tree-sitter node."""
         try:
@@ -234,22 +220,18 @@ class YAMLElementExtractor(ElementExtractor):
             log_debug(f"Failed to extract node text: {e}")
             return ""
 
-    # Process: _calculate_nesting_level
     def _calculate_nesting_level(self, node: "tree_sitter.Node") -> int:
         """Calculate AST-based logical nesting level."""
         return _calc_nesting_standalone(node)
 
-    # Process: _get_document_index
     def _get_document_index(self, node: "tree_sitter.Node") -> int:
         """Get document index for a node."""
         return _get_doc_idx_standalone(node)
 
-    # Process: _traverse_nodes
     def _traverse_nodes(self, node: "tree_sitter.Node") -> "list[tree_sitter.Node]":
         """Traverse all nodes in the tree."""
         return _traverse_standalone(node)
 
-    # Process: _count_document_children
     def _count_document_children(self, document_node: "tree_sitter.Node") -> int:
         """Count meaningful children in a document (top-level mappings).
 
@@ -358,7 +340,6 @@ class YAMLElementExtractor(ElementExtractor):
         """Extract value information from a node."""
         return _extract_value_standalone(node, self._get_node_text)
 
-    # Process: _is_number
     def _is_number(self, text: str) -> bool:
         """Check if text represents a number."""
         from .yaml_helpers import is_number
@@ -512,12 +493,10 @@ class YAMLPlugin(LanguagePlugin):
         super().__init__()
         self.extractor = YAMLElementExtractor()
 
-    # Process: get_language_name
     def get_language_name(self) -> str:
         """Return the language name."""
         return "yaml"
 
-    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Return supported file extensions."""
         return [".yaml", ".yml"]
@@ -527,14 +506,12 @@ class YAMLPlugin(LanguagePlugin):
         """Create and return a YAML element extractor."""
         return YAMLElementExtractor()
 
-    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any:
         """Get tree-sitter language object for YAML."""
         if not YAML_AVAILABLE:
             raise ImportError("tree-sitter-yaml not installed")
         return YAML_LANGUAGE
 
-    # Process: get_supported_element_types
     def get_supported_element_types(self) -> list[str]:
         """Return supported element types."""
         return [
@@ -547,7 +524,6 @@ class YAMLPlugin(LanguagePlugin):
             "document",
         ]
 
-    # Process: get_queries
     def get_queries(self) -> dict[str, str]:
         """Return YAML-specific tree-sitter queries."""
         from ..queries.yaml import YAML_QUERIES
@@ -560,17 +536,13 @@ class YAMLPlugin(LanguagePlugin):
     ) -> str | None:
         """Execute query strategy for YAML."""
         if language != "yaml":
-            # Return result
             return None
 
         queries = self.get_queries()
-        # Return result
         return queries.get(query_key) if query_key else None
 
-    # Process: get_element_categories
     def get_element_categories(self) -> dict[str, list[str]]:
         """Return YAML element categories for query execution."""
-        # Return result
         return {
             "structure": ["document", "block_mapping", "block_sequence"],
             "mappings": ["block_mapping_pair", "flow_pair"],
@@ -603,7 +575,6 @@ class YAMLPlugin(LanguagePlugin):
         # Check if YAML support is available
         if not YAML_AVAILABLE:
             log_error("tree-sitter-yaml not available")
-            # Return result
             return AnalysisResult(
                 file_path=file_path,
                 language="yaml",
@@ -631,7 +602,6 @@ class YAMLPlugin(LanguagePlugin):
 
             log_info(f"Extracted {len(elements)} YAML elements from {file_path}")
 
-            # Return result
             return AnalysisResult(
                 file_path=file_path,
                 language="yaml",
@@ -646,7 +616,6 @@ class YAMLPlugin(LanguagePlugin):
 
         except Exception as e:
             log_error(f"Failed to analyze YAML file {file_path}: {e}")
-            # Return result
             return AnalysisResult(
                 file_path=file_path,
                 language="yaml",

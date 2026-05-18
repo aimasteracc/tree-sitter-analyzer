@@ -218,7 +218,7 @@ View coverage locally:
 
 ```bash
 # Generate coverage report
-pytest --cov=tree_sitter_analyzer --cov-report=html --cov-report=term-missing
+uv run pytest --cov=tree_sitter_analyzer --cov-report=html --cov-report=term-missing
 
 # Open HTML report
 open htmlcov/index.html  # macOS
@@ -231,75 +231,75 @@ start htmlcov/index.html  # Windows
 ### Run All Tests
 
 ```bash
-pytest
+uv run pytest -q
 ```
 
 ### Run with Coverage
 
 ```bash
-pytest --cov=tree_sitter_analyzer --cov-report=term-missing
+uv run pytest --cov=tree_sitter_analyzer --cov-report=term-missing
 ```
 
 ### Run Specific Test Files
 
 ```bash
 # Single file
-pytest tests/unit/test_exceptions_comprehensive.py
+uv run pytest tests/unit/test_exceptions_comprehensive.py
 
 # Multiple files
-pytest tests/unit/test_*.py
+uv run pytest tests/unit/test_*.py
 ```
 
 ### Run Specific Test Classes or Methods
 
 ```bash
 # Specific class
-pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError
+uv run pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError
 
 # Specific test
-pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError::test_initialization_with_all_parameters
+uv run pytest tests/unit/test_exceptions_comprehensive.py::TestAnalysisError::test_initialization_with_all_parameters
 ```
 
 ### Run Tests by Marker
 
 ```bash
 # Run only fast tests
-pytest -m fast
+uv run pytest -m fast
 
 # Skip slow tests
-pytest -m "not slow"
+uv run pytest -m "not slow"
 
 # Run integration tests
-pytest -m integration
+uv run pytest -m integration
 ```
 
 ### Run Tests in Parallel
 
 ```bash
 # The default pytest config uses pytest-xdist.
-pytest -q
+uv run pytest -q
 
 # Override worker scheduling when needed.
-pytest -q --numprocesses=auto --dist=loadfile
+uv run pytest -q --numprocesses=auto --dist=loadfile
 
 # Benchmark-only runs should disable xdist and the 5-minute session limit.
-pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
+uv run pytest tests/benchmarks/ --benchmark-enable --benchmark-only -n 0 --session-timeout=0
 ```
 
 ### Generate Coverage Reports
 
 ```bash
 # Terminal report
-pytest --cov=tree_sitter_analyzer --cov-report=term-missing
+uv run pytest --cov=tree_sitter_analyzer --cov-report=term-missing
 
 # HTML report
-pytest --cov=tree_sitter_analyzer --cov-report=html
+uv run pytest --cov=tree_sitter_analyzer --cov-report=html
 
 # XML report (for CI)
-pytest --cov=tree_sitter_analyzer --cov-report=xml
+uv run pytest --cov=tree_sitter_analyzer --cov-report=xml
 
 # JSON report
-pytest --cov=tree_sitter_analyzer --cov-report=json
+uv run pytest --cov=tree_sitter_analyzer --cov-report=json
 ```
 
 ## Best Practices

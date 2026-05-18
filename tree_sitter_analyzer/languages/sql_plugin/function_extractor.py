@@ -7,15 +7,13 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     import tree_sitter
 
-from ...models import SQLFunction, SQLParameter
+from ...models import Function, SQLFunction, SQLParameter
 from ...utils import log_debug
 from .identifier_validator import is_valid_identifier
 from .procedure_extractor import extract_procedure_parameters
 
 
 # Extract elements from AST: extract_sql_functions_enhanced
-# Section: imports and module configuration
-# Section: main class definition
 def extract_sql_functions_enhanced(
     root_node: "tree_sitter.Node",
     traverse_nodes: Callable[..., Iterator[Any]],
@@ -200,7 +198,97 @@ def _extract_function_metadata(
     )
 
 
-# Process: _traverse_nodes_default
+def extract_legacy_functions(
+    root_node: "tree_sitter.Node",
+    functions: list[Function],
+    traverse_nodes: Callable[..., Iterator[Any]],
+    get_node_text: Callable[..., str],
+    is_valid_identifier_fn: Callable[[str], bool] = is_valid_identifier,
+) -> None:
+    """Extract CREATE FUNCTION statements as generic Function elements."""
+    for node in traverse_nodes(root_node):
+        if node.type != "create_function":
+            continue
+        _append_legacy_function(
+            node,
+            functions,
+            get_node_text,
+            is_valid_identifier_fn,
+        )
+
+
+def _append_legacy_function(
+    node: "tree_sitter.Node",
+    functions: list[Function],
+    get_node_text: Callable[..., str],
+    is_valid_identifier_fn: Callable[[str], bool],
+) -> None:
+    """Append one legacy Function element when a valid name can be found."""
+    func_name = _legacy_function_name(node, get_node_text, is_valid_identifier_fn)
+    if not func_name:
+        return
+
+    try:
+        functions.append(
+            Function(
+                name=func_name,
+                start_line=node.start_point[0] + 1,
+                end_line=node.end_point[0] + 1,
+                raw_text=get_node_text(node),
+                language="sql",
+            )
+        )
+    except Exception as e:
+        log_debug(f"Failed to extract function: {e}")
+
+
+def _legacy_function_name(
+    node: "tree_sitter.Node",
+    get_node_text: Callable[..., str],
+    is_valid_identifier_fn: Callable[[str], bool],
+) -> str | None:
+    """Return a legacy function name from AST children or SQL text."""
+    from_children = _legacy_function_name_from_children(
+        node,
+        get_node_text,
+        is_valid_identifier_fn,
+    )
+    if from_children:
+        return from_children
+    return _legacy_function_name_from_text(get_node_text(node), is_valid_identifier_fn)
+
+
+def _legacy_function_name_from_children(
+    node: "tree_sitter.Node",
+    get_node_text: Callable[..., str],
+    is_valid_identifier_fn: Callable[[str], bool],
+) -> str | None:
+    """Extract a function name from object_reference children."""
+    for child in node.children:
+        if child.type != "object_reference":
+            continue
+        for subchild in child.children:
+            if subchild.type != "identifier":
+                continue
+            func_name = get_node_text(subchild).strip()
+            if func_name and is_valid_identifier_fn(func_name):
+                return func_name
+        break
+    return None
+
+
+def _legacy_function_name_from_text(
+    raw_text: str,
+    is_valid_identifier_fn: Callable[[str], bool],
+) -> str | None:
+    """Extract a function name with regex fallback."""
+    match = re.search(r"CREATE\s+FUNCTION\s+(\w+)\s*\(", raw_text, re.IGNORECASE)
+    if not match:
+        return None
+    potential_name = match.group(1).strip()
+    return potential_name if is_valid_identifier_fn(potential_name) else None
+
+
 def _traverse_nodes_default(node: Any) -> Iterator[Any]:
     """Default traverse implementation."""
     yield node

@@ -9,36 +9,21 @@ import sys
 from typing import Any
 
 from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_SQL_FUNCTION,
-    ELEMENT_TYPE_SQL_INDEX,
-    ELEMENT_TYPE_SQL_PROCEDURE,
-    ELEMENT_TYPE_SQL_TABLE,
-    ELEMENT_TYPE_SQL_TRIGGER,
-    ELEMENT_TYPE_SQL_VIEW,
-    ELEMENT_TYPE_VARIABLE,
     get_element_type,
 )
 from ...output_manager import output_error
 from .base_command import BaseCommand
+from .table_command_helpers import (
+    StructureConverters,
+    build_structure_format,
+    collect_structure_elements,
+    convert_to_toon_format,
+    get_default_package_name,
+    process_parameters,
+    resolve_structure_package_name,
+)
 
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
 class TableCommand(BaseCommand):
     """Command for generating table format output."""
 
@@ -112,94 +97,7 @@ class TableCommand(BaseCommand):
     # Format data for output: _convert_to_toon_format
     def _convert_to_toon_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to TOON-friendly format with position info."""
-        classes = []
-        methods = []
-        fields = []
-        imports = []
-
-        for element in analysis_result.elements:
-            element_type = get_element_type(element)
-
-            if element_type == ELEMENT_TYPE_CLASS:
-                classes.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "visibility": getattr(element, "visibility", "public"),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_FUNCTION:
-                methods.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "visibility": getattr(element, "visibility", "public"),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_VARIABLE:
-                fields.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "type": getattr(element, "type_annotation", ""),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_IMPORT:
-                imports.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "is_static": getattr(element, "is_static", False),
-                        "is_wildcard": getattr(element, "is_wildcard", False),
-                        "statement": getattr(element, "import_statement", ""),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-
-        # Get package info
-        packages = [
-            e
-            for e in analysis_result.elements
-            if get_element_type(e) == ELEMENT_TYPE_PACKAGE
-        ]
-        package_info = None
-        if packages:
-            pkg = packages[0]
-            package_info = {
-                "name": getattr(pkg, "name", ""),
-                "line_range": (
-                    getattr(pkg, "start_line", 0),
-                    getattr(pkg, "end_line", 0),
-                ),
-            }
-
-        return {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "package": package_info,
-            "classes": classes,
-            "methods": methods,
-            "fields": fields,
-            "imports": imports,
-            "statistics": {
-                "class_count": len(classes),
-                "method_count": len(methods),
-                "field_count": len(fields),
-                "import_count": len(imports),
-                "total_lines": analysis_result.line_count,
-            },
-        }
+        return convert_to_toon_format(analysis_result)
 
     # Format data for output: _convert_to_formatter_format
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
@@ -239,7 +137,6 @@ class TableCommand(BaseCommand):
             },
         }
 
-    # Process: _get_default_package_name
     def _get_default_package_name(self, language: str) -> str:
         """
         Get default package name for language.
@@ -253,79 +150,31 @@ class TableCommand(BaseCommand):
         Returns:
             Default package name ("unknown" for Java-like, "" for others)
         """
-        # Languages with package/namespace concept
-        PACKAGED_LANGUAGES = {"java", "kotlin", "scala", "csharp", "cpp", "c++"}
-
-        if language.lower() in PACKAGED_LANGUAGES:
-            return "unknown"
-
-        return ""  # No package for JS, TS, Python, etc.
+        return get_default_package_name(language)
 
     # Format data for output: _convert_to_structure_format
     def _convert_to_structure_format(
         self, analysis_result: Any, language: str
     ) -> dict[str, Any]:
         """Convert AnalysisResult to the format expected by table formatter."""
-        classes = []
-        methods = []
-        fields = []
-        imports = []
-
-        # Try to get package from analysis_result.package attribute first
-        package_obj = getattr(analysis_result, "package", None)
-        if package_obj and hasattr(package_obj, "name"):
-            package_name = str(package_obj.name)
-        else:
-            # Fall back to default or scanning elements
-            package_name = self._get_default_package_name(language)
-
-        # Process each element
-        for i, element in enumerate(analysis_result.elements):
-            try:
-                element_type = get_element_type(element)
-                element_name = getattr(element, "name", None)
-
-                if element_type == ELEMENT_TYPE_PACKAGE:
-                    package_name = str(element_name)
-                elif element_type == ELEMENT_TYPE_CLASS:
-                    classes.append(self._convert_class_element(element, i, language))
-                elif element_type == ELEMENT_TYPE_FUNCTION:
-                    methods.append(self._convert_function_element(element, language))
-                elif element_type == ELEMENT_TYPE_VARIABLE:
-                    fields.append(self._convert_variable_element(element, language))
-                elif element_type == ELEMENT_TYPE_IMPORT:
-                    imports.append(self._convert_import_element(element))
-                # SQL element types
-                elif element_type in [
-                    ELEMENT_TYPE_SQL_TABLE,
-                    ELEMENT_TYPE_SQL_VIEW,
-                    ELEMENT_TYPE_SQL_PROCEDURE,
-                    ELEMENT_TYPE_SQL_FUNCTION,
-                    ELEMENT_TYPE_SQL_TRIGGER,
-                    ELEMENT_TYPE_SQL_INDEX,
-                ]:
-                    methods.append(self._convert_sql_element(element, language))
-
-            except Exception as element_error:
-                output_error(f"ERROR: Element {i} processing failed: {element_error}")
-                continue
-
-        return {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "line_count": analysis_result.line_count,
-            "package": {"name": package_name},
-            "classes": classes,
-            "methods": methods,
-            "fields": fields,
-            "imports": imports,
-            "statistics": {
-                "method_count": len(methods),
-                "field_count": len(fields),
-                "class_count": len(classes),
-                "import_count": len(imports),
-            },
-        }
+        package_name = resolve_structure_package_name(analysis_result, language)
+        converters = StructureConverters(
+            class_element=self._convert_class_element,
+            function_element=self._convert_function_element,
+            variable_element=self._convert_variable_element,
+            import_element=self._convert_import_element,
+            sql_element=self._convert_sql_element,
+        )
+        package_name, classes, methods, fields, imports = collect_structure_elements(
+            analysis_result,
+            language,
+            package_name,
+            converters,
+            output_error,
+        )
+        return build_structure_format(
+            analysis_result, package_name, classes, methods, fields, imports
+        )
 
     # Convert between formats: _convert_class_element
     def _convert_class_element(
@@ -482,87 +331,22 @@ class TableCommand(BaseCommand):
                     param_list.append({"name": str(param), "type": "Any"})
             return param_list
         else:
-            # Return result
             return [{"name": str(params), "type": "Any"}]
 
     # Process data through pipeline: _process_parameters
     def _process_parameters(self, params: Any, language: str) -> list[dict[str, str]]:
         """Process parameters based on language syntax."""
-        # Check: isinstance(params, str)
-        if isinstance(params, str):
-            param_list = []
-            # Check: params.strip()
-            if params.strip():
-                param_names = [p.strip() for p in params.split(",") if p.strip()]
-                param_list = [{"name": name, "type": "Any"} for name in param_names]
-            # Return result
-            return param_list
-        elif isinstance(params, list):
-            param_list = []
-            # Iterate over param
-            for param in params:
-                # Check: isinstance(param, str)
-                if isinstance(param, str):
-                    param = param.strip()
-                    # Languages using "name: type" syntax
-                    TYPE_SUFFIX_LANGUAGES = {
-                        "python",
-                        "rust",
-                        "kotlin",
-                        "typescript",
-                        "ts",
-                        "scala",
-                    }
+        return process_parameters(params, language)
 
-                    # Check: language.lower() in TYPE_SUFFIX_LANGUAGE
-                    if language.lower() in TYPE_SUFFIX_LANGUAGES:
-                        # Format: "name: type"
-                        if ":" in param:
-                            parts = param.split(":", 1)
-                            param_name = parts[0].strip()
-                            param_type = parts[1].strip() if len(parts) > 1 else "Any"
-                            param_list.append({"name": param_name, "type": param_type})
-                        else:
-                            param_list.append({"name": param, "type": "Any"})
-                    else:
-                        # Java format: "Type name"
-                        last_space_idx = param.rfind(" ")
-                        # Check: last_space_idx != -1
-                        if last_space_idx != -1:
-                            param_type = param[:last_space_idx].strip()
-                            param_name = param[last_space_idx + 1 :].strip()
-                            # Check: param_type and param_name
-                            if param_type and param_name:
-                                param_list.append(
-                                    {"name": param_name, "type": param_type}
-                                )
-                            else:
-                                param_list.append({"name": param, "type": "Any"})
-                        else:
-                            param_list.append({"name": param, "type": "Any"})
-                elif isinstance(param, dict):
-                    param_list.append(param)
-                else:
-                    param_list.append({"name": str(param), "type": "Any"})
-            # Return result
-            return param_list
-        else:
-            # Return result
-            return []
-
-    # Process: _get_element_visibility
     def _get_element_visibility(self, element: Any) -> str:
         """Get element visibility."""
         visibility = getattr(element, "visibility", "public")
-        # Check: hasattr(element, "is_private") and getat
         if hasattr(element, "is_private") and getattr(element, "is_private", False):
             visibility = "private"
         elif hasattr(element, "is_public") and getattr(element, "is_public", False):
             visibility = "public"
-        # Return result
         return visibility
 
-    # Process: _output_table
     def _output_table(self, table_output: str) -> None:
         """Output the table with proper encoding."""
         try:

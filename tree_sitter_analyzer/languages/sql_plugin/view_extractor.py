@@ -13,12 +13,6 @@ from .identifier_validator import is_valid_identifier
 
 
 # Extract elements from AST: extract_sql_views
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
 def extract_sql_views(
     root_node: "tree_sitter.Node",
     traverse_nodes: Callable[..., Iterator[Any]],

@@ -19,6 +19,32 @@ from ..encoding_utils import extract_text_slice, safe_encode
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from ._cpp_plugin_analysis_helpers import (
+    build_cpp_analysis_result,
+    cpp_analysis_error_result,
+    create_cpp_parser,
+    empty_cpp_analysis_result,
+    load_cpp_tree_sitter_language,
+)
+from ._cpp_plugin_template_helpers import (
+    extract_template_class as _extract_template_class_standalone,
+)
+from ._cpp_plugin_template_helpers import (
+    extract_template_function as _extract_template_func_standalone,
+)
+from ._cpp_plugin_text_helpers import get_node_text_optimized as _get_cpp_node_text
+from .cpp_helpers import (
+    CppClassExtractionContext as _CppClassExtractionContext,
+)
+from .cpp_helpers import (
+    CppFieldFunctionExtractionContext as _CppFieldFunctionExtractionContext,
+)
+from .cpp_helpers import (
+    CppFunctionExtractionContext as _CppFunctionExtractionContext,
+)
+from .cpp_helpers import (
+    CppTraversalState as _CppTraversalState,
+)
 from .cpp_helpers import (
     calculate_complexity as _calc_complexity_standalone,
 )
@@ -72,19 +98,6 @@ from .cpp_helpers import (
 )
 
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
 class CppElementExtractor(ElementExtractor):
     """C++ specific element extractor with advanced analysis support"""
 
@@ -200,7 +213,6 @@ class CppElementExtractor(ElementExtractor):
 
         return _extract_namespaces_standalone(tree, self._get_node_text_optimized)
 
-    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -221,72 +233,39 @@ class CppElementExtractor(ElementExtractor):
         """Iterative node traversal and extraction with caching"""
         _traverse_standalone(
             root_node,
-            extractors,
-            results,
-            element_type,
-            self._processed_nodes,
-            self._element_cache,
+            _CppTraversalState(
+                extractors=extractors,
+                results=results,
+                element_type=element_type,
+                processed_nodes=self._processed_nodes,
+                element_cache=self._element_cache,
+            ),
         )
 
-    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-
-        if cache_key in self._node_text_cache:
-            return self._node_text_cache[cache_key]
-
-        try:
-            start_byte = node.start_byte
-            end_byte = node.end_byte
-
-            encoding = self._file_encoding or "utf-8"
-            content_bytes = safe_encode("\n".join(self.content_lines), encoding)
-            text = extract_text_slice(content_bytes, start_byte, end_byte, encoding)
-
-            self._node_text_cache[cache_key] = text
-            return text
-        except Exception as e:
-            log_error(f"Error in _get_node_text_optimized: {e}")
-            # Fallback to simple text extraction
-            try:
-                start_point = node.start_point
-                end_point = node.end_point
-
-                if start_point[0] == end_point[0]:
-                    line = self.content_lines[start_point[0]]
-                    result: str = line[start_point[1] : end_point[1]]
-                    return result
-                else:
-                    lines = []
-                    for i in range(start_point[0], end_point[0] + 1):
-                        if i < len(self.content_lines):
-                            line = self.content_lines[i]
-                            if i == start_point[0]:
-                                lines.append(line[start_point[1] :])
-                            elif i == end_point[0]:
-                                lines.append(line[: end_point[1]])
-                            else:
-                                lines.append(line)
-                    return "\n".join(lines)
-            except Exception as fallback_error:
-                log_error(f"Fallback text extraction also failed: {fallback_error}")
-                return ""
+        return _get_cpp_node_text(
+            node,
+            self.content_lines,
+            self._file_encoding,
+            self._node_text_cache,
+            extract_text_slice,
+            safe_encode,
+        )
 
     # Extract elements from AST: _extract_function_optimized
     def _extract_function_optimized(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information optimized"""
         return _extract_func_standalone(
             node,
-            self._get_node_text_optimized,
-            self.content_lines,
-            self.current_namespace,
-            self._parse_function_signature,
-            self._calculate_complexity_optimized,
-            self._is_global_scope,
-            self._determine_visibility,
-            self._extract_comment_for_line,
+            _CppFunctionExtractionContext(
+                content_lines=self.content_lines,
+                parse_function_signature=self._parse_function_signature,
+                calculate_complexity=self._calculate_complexity_optimized,
+                is_global_scope=self._is_global_scope,
+                determine_visibility=self._determine_visibility,
+                extract_comment_for_line=self._extract_comment_for_line,
+            ),
         )
 
     # Extract elements from AST: _extract_function_from_field_declaration
@@ -296,11 +275,13 @@ class CppElementExtractor(ElementExtractor):
         """Extract function from field_declaration (pure virtual, deleted, etc)."""
         return _extract_func_field_standalone(
             node,
-            self._get_node_text_optimized,
-            self._extract_parameters,
-            self._is_global_scope,
-            self._determine_visibility,
-            self._extract_comment_for_line,
+            _CppFieldFunctionExtractionContext(
+                get_node_text=self._get_node_text_optimized,
+                extract_parameters=self._extract_parameters,
+                is_global_scope=self._is_global_scope,
+                determine_visibility=self._determine_visibility,
+                extract_comment_for_line=self._extract_comment_for_line,
+            ),
         )
 
     # Extract elements from AST: _extract_function_declaration
@@ -318,20 +299,11 @@ class CppElementExtractor(ElementExtractor):
     def _extract_template_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract template function definition"""
         try:
-            # Find the actual function definition inside the template
-            for child in node.children:
-                if child.type == "function_definition":
-                    # Mark child as processed to prevent double extraction
-                    child_id = id(child)
-                    self._processed_nodes.add(child_id)
-
-                    func = self._extract_function_optimized(child)
-                    if func:
-                        func.modifiers = func.modifiers or []
-                        if "template" not in func.modifiers:
-                            func.modifiers.append("template")
-                        return func
-            return None
+            return _extract_template_func_standalone(
+                node,
+                self._processed_nodes,
+                self._extract_function_optimized,
+            )
         except Exception as e:
             log_debug(f"Failed to extract template function: {e}")
             return None
@@ -355,11 +327,13 @@ class CppElementExtractor(ElementExtractor):
         """Extract class information optimized"""
         return _extract_class_standalone(
             node,
-            self._get_node_text_optimized,
-            self.content_lines,
-            self.current_namespace,
-            self._extract_base_classes,
-            self._extract_comment_for_line,
+            _CppClassExtractionContext(
+                get_node_text=self._get_node_text_optimized,
+                content_lines=self.content_lines,
+                current_namespace=self.current_namespace,
+                extract_base_classes=self._extract_base_classes,
+                extract_comment_for_line=self._extract_comment_for_line,
+            ),
         )
 
     # Extract elements from AST: _extract_struct_optimized
@@ -390,30 +364,12 @@ class CppElementExtractor(ElementExtractor):
     def _extract_template_class(self, node: "tree_sitter.Node") -> Class | None:
         """Extract template class definition"""
         try:
-            for child in node.children:
-                if child.type == "class_specifier":
-                    # Mark child as processed to prevent double extraction
-                    child_id = id(child)
-                    self._processed_nodes.add(child_id)
-
-                    cls = self._extract_class_optimized(child)
-                    if cls:
-                        cls.modifiers = cls.modifiers or []
-                        if "template" not in cls.modifiers:
-                            cls.modifiers.append("template")
-                        return cls
-                elif child.type == "struct_specifier":
-                    # Mark child as processed to prevent double extraction
-                    child_id = id(child)
-                    self._processed_nodes.add(child_id)
-
-                    cls = self._extract_struct_optimized(child)
-                    if cls:
-                        cls.modifiers = cls.modifiers or []
-                        if "template" not in cls.modifiers:
-                            cls.modifiers.append("template")
-                        return cls
-            return None
+            return _extract_template_class_standalone(
+                node,
+                self._processed_nodes,
+                self._extract_class_optimized,
+                self._extract_struct_optimized,
+            )
         except Exception as e:
             log_debug(f"Failed to extract template class: {e}")
             return None
@@ -466,35 +422,27 @@ class CppElementExtractor(ElementExtractor):
             self.current_namespace = result.name
         return result
 
-    # Process: _is_global_scope
     def _is_global_scope(self, node: "tree_sitter.Node") -> bool:
         return _is_global_standalone(node)
 
-    # Process: _get_access_specifier
     def _get_access_specifier(self, node: "tree_sitter.Node") -> str | None:
-        # Return result
         return _get_access_standalone(node, self._get_node_text_optimized)
 
-    # Process: _determine_visibility
     def _determine_visibility(
         self,
         modifiers: list[str],
         is_global: bool = False,
         node: "tree_sitter.Node | None" = None,
     ) -> str:
-        # Return result
         return _determine_vis_standalone(
             modifiers, is_global, node, self._get_node_text_optimized
         )
 
-    # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
-        # Return result
         return _calc_complexity_standalone(node)
 
     # Extract elements from AST: _extract_comment_for_line
     def _extract_comment_for_line(self, line: int) -> str | None:
-        # Return result
         return _extract_comment_standalone(line, self.content_lines)
 
 
@@ -509,22 +457,17 @@ class CppPlugin(LanguagePlugin):
         self.supported_extensions = self.get_file_extensions()
         self._cached_language: Any | None = None
 
-    # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
-        # Return result
         return "cpp"
 
-    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
-        # Return result
         return [".cpp", ".cxx", ".cc", ".hpp", ".hxx", ".h++", ".c++"]
 
     # Extract elements from AST: create_extractor
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
-        # Return result
         return CppElementExtractor()
 
     # Analyze source code structure: analyze_file
@@ -532,148 +475,60 @@ class CppPlugin(LanguagePlugin):
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
         """Analyze C++ code and return structured results."""
-        from ..models import AnalysisResult
-
         try:
             from ..encoding_utils import read_file_safe
 
-            file_content, detected_encoding = read_file_safe(file_path)
+            file_content, _detected_encoding = read_file_safe(file_path)
 
             language = self.get_tree_sitter_language()
-            # Check: language is None
             if language is None:
-                # Return result
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="cpp",
-                    line_count=len(file_content.split("\n")),
-                    elements=[],
-                    source_code=file_content,
-                )
+                return empty_cpp_analysis_result(file_path, file_content)
 
-            import tree_sitter
-
-            parser = tree_sitter.Parser()
-
-            # Check: hasattr(parser, "set_language")
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                try:
-                    parser = tree_sitter.Parser(language)
-                except Exception as e:
-                    log_error(f"Failed to create parser with language: {e}")
-                    # Return result
-                    return AnalysisResult(
-                        file_path=file_path,
-                        language="cpp",
-                        line_count=len(file_content.split("\n")),
-                        elements=[],
-                        source_code=file_content,
-                        error_message=f"Parser creation failed: {e}",
-                        success=False,
-                    )
+            parser, failure = create_cpp_parser(language, file_path, file_content)
+            if failure is not None:
+                return failure
 
             tree = parser.parse(file_content.encode("utf-8"))
-
             elements_dict = self.extract_elements(tree, file_content)
-
-            all_elements = []
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-            all_elements.extend(elements_dict.get("imports", []))
-            all_elements.extend(elements_dict.get("packages", []))
-
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
             )
 
-            # Return result
-            return AnalysisResult(
-                file_path=file_path,
-                language="cpp",
-                line_count=len(file_content.split("\n")),
-                elements=all_elements,
-                node_count=node_count,
-                source_code=file_content,
+            return build_cpp_analysis_result(
+                file_path,
+                file_content,
+                elements_dict,
+                node_count,
             )
 
         except Exception as e:
             log_error(f"Error analyzing C++ file {file_path}: {e}")
-            # Return result
-            return AnalysisResult(
-                file_path=file_path,
-                language="cpp",
-                line_count=0,
-                elements=[],
-                source_code="",
-                error_message=str(e),
-                success=False,
-            )
+            return cpp_analysis_error_result(file_path, e)
 
-    # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """Recursively count nodes in the AST tree."""
-        # Check: node is None
         if node is None:
-            # Return result
             return 0
 
         count = 1
-        # Check: hasattr(node, "children")
         if hasattr(node, "children"):
             # Iterate over child
             for child in node.children:
                 count += self._count_tree_nodes(child)
-        # Return result
         return count
 
-    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for C++."""
-        # Check: self._cached_language is not None
         if self._cached_language is not None:
-            # Return result
             return self._cached_language
 
-        try:
-            import tree_sitter
-            import tree_sitter_cpp
-
-            caps_or_lang = tree_sitter_cpp.language()
-
-            if hasattr(caps_or_lang, "__class__") and "Language" in str(
-                type(caps_or_lang)
-            ):
-                self._cached_language = caps_or_lang
-            else:
-                try:
-                    self._cached_language = tree_sitter.Language(caps_or_lang)
-                except Exception as e:
-                    log_error(f"Failed to create Language object from PyCapsule: {e}")
-                    # Return result
-                    return None
-
-            # Return result
-            return self._cached_language
-        except ImportError as e:
-            log_error(f"tree-sitter-cpp not available: {e}")
-            # Return result
-            return None
-        except Exception as e:
-            log_error(f"Failed to load tree-sitter language for C++: {e}")
-            # Return result
-            return None
+        self._cached_language = load_cpp_tree_sitter_language()
+        return self._cached_language
 
     # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from C++ code."""
-        # Check: tree is None
         if tree is None:
-            # Return result
             return {
                 "functions": [],
                 "classes": [],
@@ -684,7 +539,6 @@ class CppPlugin(LanguagePlugin):
 
         try:
             extractor = self.create_extractor()
-            # Return result
             return {
                 "functions": extractor.extract_functions(tree, source_code),
                 "classes": extractor.extract_classes(tree, source_code),
@@ -694,7 +548,6 @@ class CppPlugin(LanguagePlugin):
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
-            # Return result
             return {
                 "functions": [],
                 "classes": [],

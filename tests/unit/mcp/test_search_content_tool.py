@@ -574,6 +574,7 @@ class TestExecute:
 
                         assert result["success"] is True
                         assert "output_file" in result
+                        assert result["agent_summary"]["suppress_output"] is True
                         # Results should not be in response when suppressed
                         assert "results" not in result
 

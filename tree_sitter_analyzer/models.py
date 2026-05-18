@@ -22,20 +22,12 @@ from .constants import (
     is_element_of_type,
 )
 
-# Check: TYPE_CHECKING
 if TYPE_CHECKING:
     pass
 
 
 # Use dataclass with slots for Python 3.10+
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
 def dataclass_with_slots(*args: Any, **kwargs: Any) -> Any:
-    # Return result
     return dataclass(*args, slots=True, **kwargs)
 
 
@@ -45,13 +37,6 @@ def dataclass_with_slots(*args: Any, **kwargs: Any) -> Any:
 
 
 @dataclass(frozen=False)
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
 class CodeElement(ABC):
     """Base class for all code elements"""
 
@@ -63,9 +48,7 @@ class CodeElement(ABC):
     docstring: str | None = None  # JavaDoc/docstring for this element
     element_type: str = "unknown"
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
-        # Return result
         return {
             "name": self.name,
             "type": self.element_type,
@@ -202,10 +185,8 @@ class MarkupElement(CodeElement):
     element_class: str = ""  # 分類システムのカテゴリ (例: 'structure', 'media', 'form')
     element_type: str = "html_element"
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
-        # Return result
         return {
             "name": self.name,
             "tag_name": self.tag_name,
@@ -229,10 +210,8 @@ class StyleElement(CodeElement):
     )
     element_type: str = "css_rule"
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
-        # Return result
         return {
             "name": self.name,
             "selector": self.selector,
@@ -257,10 +236,8 @@ class JavaAnnotation:
     end_line: int = 0
     raw_text: str = ""
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
-        # Return result
         return {
             "name": self.name,
             "type": "annotation",
@@ -288,10 +265,8 @@ class JavaMethod:
     complexity_score: int = 1
     file_path: str = ""
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
-        # Return result
         return {
             "name": self.name,
             "type": "method",
@@ -318,10 +293,8 @@ class JavaClass:
     parent_class: str | None = None
     file_path: str = ""
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
-        # Return result
         return {
             "name": self.name,
             "type": "class",
@@ -344,10 +317,8 @@ class JavaField:
     is_final: bool = False
     file_path: str = ""
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
-        # Return result
         return {
             "name": self.name,
             "type": "field",
@@ -369,10 +340,8 @@ class JavaImport:
     start_line: int = 0
     end_line: int = 0
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """要約アイテムとして辞書を返す"""
-        # Return result
         return {
             "name": self.name,
             "type": "import",
@@ -388,10 +357,8 @@ class JavaPackage:
     start_line: int = 0
     end_line: int = 0
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item"""
-        # Return result
         return {
             "name": self.name,
             "type": "package",
@@ -440,11 +407,9 @@ class AnalysisResult:
     channels: list[Any] | None = None
     defers: list[Any] | None = None
 
-    # Process: __post_init__
     def __post_init__(self) -> None:
         pass
 
-    # Process: to_dict
     def to_dict(self) -> dict[str, Any]:
         """Convert analysis result to dictionary for serialization using unified elements"""
         # Use unified elements list for consistent data structure
@@ -472,7 +437,6 @@ class AnalysisResult:
         # Iterate over e
         for e in elements:
             etype = get_element_type(e)
-            # Check: etype in grouped
             if etype in grouped:
                 grouped[etype].append(e)
 
@@ -482,7 +446,6 @@ class AnalysisResult:
         imports = grouped[ELEMENT_TYPE_IMPORT]
         packages = grouped[ELEMENT_TYPE_PACKAGE]
 
-        # Return result
         return {
             "file_path": self.file_path,
             "line_count": self.line_count,
@@ -526,13 +489,11 @@ class AnalysisResult:
             "error_message": self.error_message,
         }
 
-    # Process: to_summary_dict
     def to_summary_dict(self, types: list[str] | None = None) -> dict[str, Any]:
         """
         Return analysis summary as a dictionary using unified elements.
         Only include specified element types (e.g., 'classes', 'methods', 'fields').
         """
-        # Check: types is None
         if types is None:
             types = ["classes", "methods"]  # default
 
@@ -550,13 +511,11 @@ class AnalysisResult:
 
         # Select relevant types based on input
         target_types = set()
-        # Check: "all" in types
         if "all" in types:
             target_types = set(type_mapping.values())
         else:
             # Iterate over t
             for t in types:
-                # Check: t in type_mapping
                 if t in type_mapping:
                     target_types.add(type_mapping[t])
 
@@ -565,14 +524,11 @@ class AnalysisResult:
 
         # Iterate over element
         for element in elements:
-            # Check: get_element_type(element) in target_type
             if get_element_type(element) in target_types:
                 summary["summary_elements"].append(element.to_summary_item())
 
-        # Return result
         return summary
 
-    # Process: get_summary
     def get_summary(self) -> dict[str, Any]:
         """Get analysis summary statistics using unified elements"""
         elements = self.elements or []
@@ -586,7 +542,6 @@ class AnalysisResult:
             e for e in elements if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
         ]
 
-        # Return result
         return {
             "file_path": self.file_path,
             "line_count": self.line_count,
@@ -609,12 +564,9 @@ class AnalysisResult:
         """
         # packageの安全な処理
         package_info = None
-        # Check: self.package
         if self.package:
-            # Check: hasattr(self.package, "name")
             if hasattr(self.package, "name"):
                 package_info = {"name": self.package.name}
-            # Check: isinstance(self.package, dict)
             elif isinstance(self.package, dict):
                 package_info = self.package
             else:
@@ -622,19 +574,13 @@ class AnalysisResult:
 
         # 安全なアイテム処理ヘルパー関数
         def safe_get_attr(obj: Any, attr: str, default: Any = "") -> Any:
-            # Check: hasattr(obj, attr)
             if hasattr(obj, attr):
-                # Return result
                 return getattr(obj, attr)
-            # Check: isinstance(obj, dict)
             elif isinstance(obj, dict):
-                # Return result
                 return obj.get(attr, default)
             else:
-                # Return result
                 return default
 
-        # Return result
         return {
             "file_path": self.file_path,
             "structure": {
@@ -760,16 +706,12 @@ class AnalysisResult:
             },
         }
 
-    # Process: get_statistics
     def get_statistics(self) -> dict[str, Any]:
         """Get detailed statistics (alias for get_summary)"""
-        # Return result
         return self.get_summary()
 
-    # Process: to_json
     def to_json(self) -> dict[str, Any]:
         """Convert to JSON-serializable format (alias for to_dict)"""
-        # Return result
         return self.to_dict()
 
 
@@ -841,10 +783,8 @@ class SQLElement(CodeElement):
     trigger_event: str | None = None  # INSERT, UPDATE, DELETE
     index_type: str | None = None  # UNIQUE, CLUSTERED, etc.
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item with SQL-specific information"""
-        # Return result
         return {
             "name": self.name,
             "type": self.sql_element_type.value,
@@ -862,16 +802,12 @@ class SQLTable(SQLElement):
     sql_element_type: SQLElementType = SQLElementType.TABLE
     element_type: str = "table"
 
-    # Process: get_primary_key_columns
     def get_primary_key_columns(self) -> list[str]:
         """Get primary key column names"""
-        # Return result
         return [col.name for col in self.columns if col.is_primary_key]
 
-    # Process: get_foreign_key_columns
     def get_foreign_key_columns(self) -> list[str]:
         """Get foreign key column names"""
-        # Return result
         return [col.name for col in self.columns if col.is_foreign_key]
 
 
@@ -957,10 +893,8 @@ class YAMLElement(CodeElement):
     document_index: int = 0
     child_count: int | None = None
 
-    # Process: to_summary_item
     def to_summary_item(self) -> dict[str, Any]:
         """Return dictionary for summary item with YAML-specific information."""
-        # Return result
         return {
             "name": self.name,
             "type": self.element_type,

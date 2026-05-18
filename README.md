@@ -29,8 +29,26 @@
 
 ## 🎬 See It In Action
 
-<!-- GIF placeholder - see docs/assets/demo-placeholder.md for creation instructions -->
-*Demo GIF coming soon - showcasing AI integration with SMART workflow*
+Run the repeatable SMART workflow comparison demo:
+
+```bash
+uv run python examples/agent_workflow_comparison_demo.py
+```
+
+It compares reading all of `examples/BigService.java` with using Tree-sitter
+Analyzer to retrieve only the workflow decision surface and target method:
+
+| Scenario | Lines Read | Estimated Tokens |
+|----------|-----------:|-----------------:|
+| Without Tree-sitter Analyzer | 1419 | 11351 |
+| With SMART workflow context | 17 | 290 |
+
+**Result**: about **97.4% less context** for the same target-method task.
+
+See [demo recording notes](docs/assets/demo-placeholder.md) for turning this
+command into a GIF or regenerating the
+[asciinema v2 cast](docs/assets/agent-workflow-comparison.cast) with
+`--format cast`.
 
 ---
 

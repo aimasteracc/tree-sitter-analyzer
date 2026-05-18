@@ -89,7 +89,6 @@ _JS_BUILTIN = {
 }
 
 
-# Process: walk_imports
 def walk_imports(
     node: Any, source: str, language: str, imports: list[dict[str, Any]]
 ) -> None:
@@ -272,7 +271,6 @@ def _extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) -
     extract_js_imports(node, source, imports)
 
 
-# Process: _node_text
 def _node_text(node: Any, source: str) -> str:
     """Safely extract text from a Tree-sitter node."""
     try:

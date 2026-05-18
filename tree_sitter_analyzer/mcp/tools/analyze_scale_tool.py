@@ -150,7 +150,6 @@ class AnalyzeScaleTool(BaseMCPTool):
         """Execute code scale analysis for single or batch files."""
         # Conditional check
         if "file_paths" in arguments and arguments["file_paths"] is not None:
-            # Return result
             return await self._execute_metrics_batch(arguments)
 
         # Conditional check
@@ -188,7 +187,6 @@ class AnalyzeScaleTool(BaseMCPTool):
 
                 # Conditional check
                 if language == "json":
-                    # Return result
                     return self._create_json_file_analysis(
                         resolved, file_metrics, include_guidance, output_format
                     )
@@ -216,7 +214,6 @@ class AnalyzeScaleTool(BaseMCPTool):
                     f"~{file_metrics['estimated_tokens']} tokens"
                 )
 
-                # Return result
                 return apply_toon_format_to_response(result, output_format)
         # Language detection with argument override
 
@@ -229,7 +226,6 @@ class AnalyzeScaleTool(BaseMCPTool):
         """Detect language from file extension or argument override."""
         # Conditional check
         if language:
-            # Return result
             return language
         detected = detect_language_from_file(resolved, project_root=self.project_root)
         # Conditional check
@@ -237,7 +233,6 @@ class AnalyzeScaleTool(BaseMCPTool):
             raise ValueError(
                 f"Invalid file path: Unsupported language for file: {resolved}"
             )
-        # Return result
         return detected
 
     # _run_structural_analysis: implementation
@@ -257,7 +252,6 @@ class AnalyzeScaleTool(BaseMCPTool):
             # Conditional check
             if result is None:
                 raise RuntimeError(f"Failed to analyze file: {resolved}")
-            # Return result
             return result, self._extract_structural_overview(result)
 
         request = AnalysisRequest(
@@ -277,7 +271,6 @@ class AnalyzeScaleTool(BaseMCPTool):
                 f"Failed to analyze file with universal engine: {error_msg}"
             )
 
-        # Return result
         return universal_result, self._extract_structural_overview_universal(
             universal_result
         )
@@ -318,7 +311,6 @@ class AnalyzeScaleTool(BaseMCPTool):
                 analysis_result, file_path
             )
 
-        # Return result
         return result
 
     # _execute_metrics_batch: implementation
@@ -354,7 +346,6 @@ class AnalyzeScaleTool(BaseMCPTool):
             async with sem:
                 # Conditional check
                 if not isinstance(fp, str) or not fp.strip():
-                    # Return result
                     return {
                         "file_path": fp,
                         "error": "file_path must be a non-empty string",
@@ -363,12 +354,10 @@ class AnalyzeScaleTool(BaseMCPTool):
                 try:
                     resolved = self.resolve_and_validate_file_path(fp)
                 except ValueError as e:
-                    # Return result
                     return {"file_path": fp, "error": str(e)}
 
                 # Conditional check
                 if not Path(resolved).exists():
-                    # Return result
                     return {
                         "file_path": fp,
                         "resolved_path": resolved,
@@ -383,7 +372,6 @@ class AnalyzeScaleTool(BaseMCPTool):
                     lang = None
 
                 metrics = self._calculate_file_metrics(resolved, lang)
-                # Return result
                 return {
                     "file_path": fp,
                     "resolved_path": resolved,
@@ -403,7 +391,6 @@ class AnalyzeScaleTool(BaseMCPTool):
             "limits": {"max_files": max_files, "concurrency": 4},
             "results": per_file,
         }
-        # Return result
         return apply_toon_format_to_response(response, output_format)
 
     # Input validation - delegates to shared helper
@@ -427,7 +414,6 @@ class AnalyzeScaleTool(BaseMCPTool):
     # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
-        # Return result
         return {
             "name": "check_code_scale",
             "description": (

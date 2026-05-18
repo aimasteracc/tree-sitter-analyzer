@@ -72,7 +72,6 @@ def convert_analysis_result_to_dict(
 
     package_info = {"name": packages[0].name} if packages else None
 
-    # Return result
     return {
         "success": True,
         "file_path": result.file_path,
@@ -97,7 +96,6 @@ def convert_analysis_result_to_dict(
 
 # _convert_class: implementation
 def _convert_class(cls: Any) -> dict[str, Any]:
-    # Return result
     return {
         "name": getattr(cls, "name", "unknown"),
         "line_range": {
@@ -114,7 +112,6 @@ def _convert_class(cls: Any) -> dict[str, Any]:
 
 # _convert_method: implementation
 def _convert_method(method: Any, get_params: Any, get_mods: Any) -> dict[str, Any]:
-    # Return result
     return {
         "name": getattr(method, "name", "unknown"),
         "line_range": {
@@ -134,7 +131,6 @@ def _convert_method(method: Any, get_params: Any, get_mods: Any) -> dict[str, An
 
 # _convert_field: implementation
 def _convert_field(field: Any, get_mods: Any) -> dict[str, Any]:
-    # Return result
     return {
         "name": getattr(field, "name", "unknown"),
         "type": getattr(field, "field_type", "Object"),
@@ -150,7 +146,6 @@ def _convert_field(field: Any, get_mods: Any) -> dict[str, Any]:
 
 # _convert_import: implementation
 def _convert_import(imp: Any) -> dict[str, Any]:
-    # Return result
     return {
         "name": getattr(imp, "name", "unknown"),
         "statement": getattr(imp, "import_statement", getattr(imp, "name", "")),

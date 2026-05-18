@@ -8,296 +8,78 @@ rather than programming constructs like classes and methods.
 
 from typing import Any
 
+from ._markdown_formatter_helpers import (
+    build_advanced_result,
+    build_structure_result,
+    build_summary_result,
+    calculate_document_complexity,
+    collect_images,
+    compute_robust_counts_from_file,
+    format_advanced_text,
+    format_compact_output,
+    format_csv_output,
+    format_json_output,
+)
 from .base_formatter import BaseFormatter
 from .markdown_full_formatter import format_full
 
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
 class MarkdownFormatter(BaseFormatter):
     """Formatter specialized for Markdown documents"""
 
     def __init__(self) -> None:
         self.language = "markdown"
 
-    # Format data for output: format_summary
     def format_summary(self, analysis_result: dict[str, Any]) -> str:
         """Format summary for Markdown files"""
         file_path = analysis_result.get("file_path", "")
         elements = analysis_result.get("elements", [])
-
-        # Count different types of Markdown elements
-        headers = [e for e in elements if e.get("type") == "heading"]
-        links = [
-            e
-            for e in elements
-            if e.get("type") in ["link", "autolink", "reference_link"]
-        ]
-        images = self._collect_images(elements)
-        code_blocks = [e for e in elements if e.get("type") == "code_block"]
-        lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
-
-        # Robust adjust for link/image counts to match other commands
-        robust_counts = self._compute_robust_counts_from_file(file_path)
-        if len(links) < robust_counts.get("link_count", len(links)):
-            # If autolink was missed in elements, synthesize minimal entry
-            # Detect missing autolinks from file and append placeholders
-            missing = robust_counts.get("link_count", 0) - len(links)
-            if missing > 0:
-                # Add placeholder autolink entries to align with expected count
-                links = links + [
-                    {"text": "autolink", "url": "autolink"} for _ in range(missing)
-                ]
-
-        # Some environments under-detect reference images in elements; align summary with
-        # robust image count used elsewhere (structure/advanced) by adding placeholders
-        expected_images = robust_counts.get("image_count", 0)
-        if expected_images and len(images) < expected_images:
-            missing = expected_images - len(images)
-            # Append minimal placeholder image entries to satisfy expected count
-            images = images + ([{"alt": "", "url": ""}] * missing)
-
-        summary = {
-            "headers": [
-                {"name": h.get("text", "").strip(), "level": h.get("level", 1)}
-                for h in headers
-            ],
-            "links": [
-                {"text": link.get("text", ""), "url": link.get("url", "")}
-                for link in links
-            ],
-            "images": [
-                {"alt": i.get("alt", ""), "url": i.get("url", "")} for i in images
-            ],
-            "code_blocks": [
-                {"language": cb.get("language", ""), "lines": cb.get("line_count", 0)}
-                for cb in code_blocks
-            ],
-            "lists": [
-                {"type": lst.get("list_type", ""), "items": lst.get("item_count", 0)}
-                for lst in lists
-            ],
-        }
-
-        result = {"file_path": file_path, "language": "markdown", "summary": summary}
-
+        result = build_summary_result(
+            file_path,
+            elements,
+            self._collect_images(elements),
+            self._compute_robust_counts_from_file(file_path),
+        )
         return self._format_json_output("Summary Results", result)
 
-    # Format data for output: format_structure
     def format_structure(self, analysis_result: dict[str, Any]) -> str:
         """Format structure analysis for Markdown files"""
         file_path = analysis_result.get("file_path", "")
         elements = analysis_result.get("elements", [])
-        line_count = analysis_result.get("line_count", 0)
+        result = build_structure_result(
+            analysis_result,
+            self._collect_images(elements),
+            self._compute_robust_counts_from_file(file_path),
+        )
+        return self._format_json_output("Structure Analysis Results", result)
 
-        # Organize elements by type
-        headers = [e for e in elements if e.get("type") == "heading"]
-        links = [
-            e
-            for e in elements
-            if e.get("type") in ["link", "autolink", "reference_link"]
-        ]
-        images = self._collect_images(elements)
-        code_blocks = [e for e in elements if e.get("type") == "code_block"]
-        lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
-        tables = [e for e in elements if e.get("type") == "table"]
-
-        # Robust counts to avoid undercount due to parser variance
-        robust_counts = self._compute_robust_counts_from_file(file_path)
-
-        # Prefer robust counts only when they are non-zero; otherwise fallback to element counts
-        link_count_value = robust_counts.get("link_count", 0) or len(links)
-        image_count_value = robust_counts.get("image_count", 0) or len(images)
-
-        structure = {
-            "file_path": file_path,
-            "language": "markdown",
-            "headers": [
-                {
-                    "text": h.get("text", "").strip(),
-                    "level": h.get("level", 1),
-                    "line_range": h.get("line_range", {}),
-                }
-                for h in headers
-            ],
-            "links": [
-                {
-                    "text": link.get("text", ""),
-                    "url": link.get("url", ""),
-                    "line_range": link.get("line_range", {}),
-                }
-                for link in links
-            ],
-            "images": [
-                {
-                    "alt": i.get("alt", ""),
-                    "url": i.get("url", ""),
-                    "line_range": i.get("line_range", {}),
-                }
-                for i in images
-            ],
-            "code_blocks": [
-                {
-                    "language": cb.get("language", ""),
-                    "line_count": cb.get("line_count", 0),
-                    "line_range": cb.get("line_range", {}),
-                }
-                for cb in code_blocks
-            ],
-            "lists": [
-                {
-                    "type": lst.get("list_type", ""),
-                    "item_count": lst.get("item_count", 0),
-                    "line_range": lst.get("line_range", {}),
-                }
-                for lst in lists
-            ],
-            "tables": [
-                {
-                    "columns": t.get("column_count", 0),
-                    "rows": t.get("row_count", 0),
-                    "line_range": t.get("line_range", {}),
-                }
-                for t in tables
-            ],
-            "statistics": {
-                "header_count": len(headers),
-                # Prefer robust counts when available; else element-derived counts
-                "link_count": link_count_value,
-                "image_count": image_count_value,
-                "code_block_count": len(code_blocks),
-                "list_count": len(lists),
-                "table_count": len(tables),
-                "total_lines": line_count,
-            },
-            "analysis_metadata": analysis_result.get("analysis_metadata", {}),
-        }
-
-        return self._format_json_output("Structure Analysis Results", structure)
-
-    # Format data for output: format_advanced
     def format_advanced(
         self, analysis_result: dict[str, Any], output_format: str = "json"
     ) -> str:
         """Format advanced analysis for Markdown files"""
         file_path = analysis_result.get("file_path", "")
         elements = analysis_result.get("elements", [])
-        line_count = analysis_result.get("line_count", 0)
-        element_count = len(elements)
-
-        # Calculate Markdown-specific metrics
-        headers = [e for e in elements if e.get("type") == "heading"]
-        links = [
-            e
-            for e in elements
-            if e.get("type") in ["link", "autolink", "reference_link"]
-        ]
-        images = self._collect_images(elements)
-        code_blocks = [e for e in elements if e.get("type") == "code_block"]
-        lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
-        tables = [e for e in elements if e.get("type") == "table"]
-
-        # Calculate document structure metrics
-        header_levels = [h.get("level", 1) for h in headers]
-        max_header_level = max(header_levels) if header_levels else 0
-        avg_header_level = (
-            sum(header_levels) / len(header_levels) if header_levels else 0
+        advanced_data = build_advanced_result(
+            analysis_result,
+            self._collect_images(elements),
+            self._compute_robust_counts_from_file(file_path),
         )
-
-        # Calculate content metrics
-        total_code_lines = sum(cb.get("line_count", 0) for cb in code_blocks)
-        total_list_items = sum(lst.get("item_count", 0) for lst in lists)
-
-        # External vs internal links
-        external_links = [
-            link
-            for link in links
-            if link.get("url")
-            and link.get("url", "").startswith(("http://", "https://"))
-        ]
-        internal_links = [
-            link
-            for link in links
-            if not (
-                link.get("url")
-                and link.get("url", "").startswith(("http://", "https://"))
-            )
-        ]
-
-        # Robust counts to avoid undercount due to parser variance
-        robust_counts = self._compute_robust_counts_from_file(file_path)
-
-        # Prefer robust counts only when they are non-zero; otherwise fallback to element counts
-        link_count_value = robust_counts.get("link_count", 0) or len(links)
-        image_count_value = robust_counts.get("image_count", 0) or len(images)
-
-        advanced_data = {
-            "file_path": file_path,
-            "language": "markdown",
-            "line_count": line_count,
-            "element_count": element_count,
-            "success": True,
-            "elements": elements,
-            "document_metrics": {
-                "header_count": len(headers),
-                "max_header_level": max_header_level,
-                "avg_header_level": round(avg_header_level, 2),
-                # Prefer robust counts when available; else element-derived counts
-                "link_count": link_count_value,
-                "external_link_count": len(external_links),
-                "internal_link_count": len(internal_links),
-                "image_count": image_count_value,
-                "code_block_count": len(code_blocks),
-                "total_code_lines": total_code_lines,
-                "list_count": len(lists),
-                "total_list_items": total_list_items,
-                "table_count": len(tables),
-            },
-            "content_analysis": {
-                "has_toc": any(
-                    "table of contents" in h.get("text", "").lower() for h in headers
-                ),
-                "has_code_examples": len(code_blocks) > 0,
-                "has_images": len(images) > 0,
-                "has_external_links": len(external_links) > 0,
-                "document_complexity": self._calculate_document_complexity(
-                    headers, links, code_blocks, tables
-                ),
-            },
-        }
 
         if output_format == "text":
             return self._format_advanced_text(advanced_data)
-        else:
-            return self._format_json_output("Advanced Analysis Results", advanced_data)
+        return self._format_json_output("Advanced Analysis Results", advanced_data)
 
-    # Format data for output: format_analysis_result
     def format_analysis_result(
         self, analysis_result: Any, table_type: str = "full"
     ) -> str:
         """Format AnalysisResult directly for Markdown files"""
-        # Convert AnalysisResult to the format expected by format_table
         data = self._convert_analysis_result_to_format(analysis_result)
-        # Return result
         return self.format_table(data, table_type)
 
-    # Format data for output: _convert_analysis_result_to_format
     def _convert_analysis_result_to_format(
         self, analysis_result: Any
     ) -> dict[str, Any]:
         """Convert AnalysisResult to format expected by format_table"""
-        # Return result
         return {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
@@ -331,124 +113,28 @@ class MarkdownFormatter(BaseFormatter):
             },
         }
 
-    # Format data for output: format_table
     def format_table(
         self, analysis_result: dict[str, Any], table_type: str = "full"
     ) -> str:
         """Format table output for Markdown files"""
-        # Check: table_type == "compact"
         if table_type == "compact":
-            # Return result
             return self._format_compact(analysis_result)
-        elif table_type == "csv":
-            # Return result
+        if table_type == "csv":
             return self._format_csv(analysis_result)
-        else:
-            # Return result
-            return self._format_full(analysis_result)
+        return self._format_full(analysis_result)
 
-    # Format data for output: _format_full
     def _format_full(self, analysis_result: dict[str, Any]) -> str:
         """Format full table output for Markdown files"""
-        # Return result
         return format_full(analysis_result, self._collect_images)
 
-    # Process: _collect_images
     def _collect_images(self, elements: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Collect images including reference definitions that point to images.
+        """Collect images including reference definitions that point to images."""
+        return collect_images(elements)
 
-        Fallback: if no explicit image reference definitions are present, also
-        treat reference definitions with image-like URLs as images to keep
-        counts consistent across environments.
-        """
-        images: list[dict[str, Any]] = [
-            e
-            for e in elements
-            if e.get("type")
-            in ["image", "reference_image", "image_reference_definition"]
-        ]
-
-        # Avoid duplicates if image reference definitions already exist
-        has_image_ref_defs = any(
-            e.get("type") == "image_reference_definition" for e in elements
-        )
-        # Check: has_image_ref_defs
-        if has_image_ref_defs:
-            # Return result
-            return images
-
-        # Fallback: promote reference_definition with image-like URL
-        try:
-            import re
-
-            image_exts = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp")
-            # Iterate over e
-            for e in elements:
-                # Check: e.get("type") == "reference_definition"
-                if e.get("type") == "reference_definition":
-                    url = e.get("url") or ""
-                    alt = e.get("alt") or ""
-                    # Check: not url
-                    if not url:
-                        # Parse from raw content stored in name
-                        name_field = (e.get("name") or "").strip()
-                        m = re.match(r"^\[([^\]]+)\]:\s*([^\s]+)", name_field)
-                        # Check: m
-                        if m:
-                            alt = alt or m.group(1)
-                            url = m.group(2)
-                    # Check: url and any(url.lower().endswith(ext) fo
-                    if url and any(url.lower().endswith(ext) for ext in image_exts):
-                        images.append(
-                            {
-                                **e,
-                                "type": "image_reference_definition",
-                                "url": url,
-                                "alt": alt,
-                            }
-                        )
-        except Exception:
-            # Be conservative on any error
-            return images
-
-        # Return result
-        return images
-
-    # Format data for output: _format_advanced_text
     def _format_advanced_text(self, data: dict[str, Any]) -> str:
         """Format advanced analysis in text format"""
-        output = ["--- Advanced Analysis Results ---"]
+        return format_advanced_text(data)
 
-        # Basic info - format with quotes to match expected output
-        output.append(f'"File: {data["file_path"]}"')
-        output.append(f'"Language: {data["language"]}"')
-        output.append(f'"Lines: {data["line_count"]}"')
-        output.append(f'"Elements: {data["element_count"]}"')
-
-        # Document metrics
-        metrics = data["document_metrics"]
-        output.append(f'"Headers: {metrics["header_count"]}"')
-        output.append(f'"Max Header Level: {metrics["max_header_level"]}"')
-        output.append(f'"Links: {metrics["link_count"]}"')
-        output.append(f'"External Links: {metrics["external_link_count"]}"')
-        output.append(f'"Images: {metrics["image_count"]}"')
-        output.append(f'"Code Blocks: {metrics["code_block_count"]}"')
-        output.append(f'"Code Lines: {metrics["total_code_lines"]}"')
-        output.append(f'"Lists: {metrics["list_count"]}"')
-        output.append(f'"Tables: {metrics["table_count"]}"')
-
-        # Content analysis
-        content = data["content_analysis"]
-        output.append(f'"Has TOC: {content["has_toc"]}"')
-        output.append(f'"Has Code: {content["has_code_examples"]}"')
-        output.append(f'"Has Images: {content["has_images"]}"')
-        output.append(f'"Has External Links: {content["has_external_links"]}"')
-        output.append(f'"Document Complexity: {content["document_complexity"]}"')
-
-        # Return result
-        return "\n".join(output)
-
-    # Process: _calculate_document_complexity
     def _calculate_document_complexity(
         self,
         headers: list[dict],
@@ -457,237 +143,22 @@ class MarkdownFormatter(BaseFormatter):
         tables: list[dict],
     ) -> str:
         """Calculate document complexity based on structure and content"""
-        score = 0
+        return calculate_document_complexity(headers, links, code_blocks, tables)
 
-        # Header complexity
-        if headers:
-            header_levels = [h.get("level", 1) for h in headers]
-            max_level = max(header_levels)
-            score += len(headers) * 2  # Base score for headers
-            score += max_level * 3  # Deeper nesting increases complexity
-
-        # Content complexity
-        score += len(links) * 1  # Links add moderate complexity
-        score += len(code_blocks) * 5  # Code blocks add significant complexity
-        score += len(tables) * 3  # Tables add moderate complexity
-
-        # Classify complexity
-        if score < 20:
-            # Return result
-            return "Simple"
-        elif score < 50:
-            # Return result
-            return "Moderate"
-        elif score < 100:
-            # Return result
-            return "Complex"
-        else:
-            # Return result
-            return "Very Complex"
-
-    # Format data for output: _format_json_output
     def _format_json_output(self, title: str, data: dict[str, Any]) -> str:
         """Format JSON output with title"""
-        import json
+        return format_json_output(title, data)
 
-        output = [f"--- {title} ---"]
-        output.append(json.dumps(data, indent=2, ensure_ascii=False))
-        # Return result
-        return "\n".join(output)
-
-    # Process: _compute_robust_counts_from_file
     def _compute_robust_counts_from_file(self, file_path: str) -> dict[str, int]:
-        """Compute robust counts for links and images directly from file content.
+        """Compute robust counts for links and images directly from file content."""
+        return compute_robust_counts_from_file(file_path)
 
-        This mitigates occasional undercount from AST element extraction by
-        scanning the raw Markdown text with regex patterns.
-        """
-        import re
-
-        counts = {"link_count": 0, "image_count": 0}
-        # Check: not file_path
-        if not file_path:
-            # Return result
-            return counts
-
-        try:
-            from ..encoding_utils import read_file_safe
-
-            content, _ = read_file_safe(file_path)
-        except Exception:
-            # Return result
-            return counts
-
-        # Autolinks (URLs, mailto, and bare emails), exclude HTML tags by pattern
-        autolink_pattern = re.compile(
-            r"<(?:https?://[^>]+|mailto:[^>]+|[^@\s]+@[^@\s]+\.[^@\s]+)>"
-        )
-
-        # Count inline links (subtract image inlines later)
-        inline_links_all = re.findall(
-            r"\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", content
-        )
-        inline_images = re.findall(
-            r"!\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", content
-        )
-        inline_links = max(0, len(inline_links_all) - len(inline_images))
-
-        # Count reference links (subtract image references later)
-        ref_links_all = re.findall(r"\[[^\]]*\]\[[^\]]*\]", content)
-        ref_images = re.findall(r"!\[[^\]]*\]\[[^\]]*\]", content)
-        ref_links = max(0, len(ref_links_all) - len(ref_images))
-
-        autolinks = len(autolink_pattern.findall(content))
-
-        counts["link_count"] = inline_links + ref_links + autolinks
-
-        # Images
-        # Inline images counted already
-        inline_images_count = len(inline_images)
-        # Reference images occurrences
-        ref_images_count = len(ref_images)
-        # Image reference definitions used by images
-        used_labels = {
-            m.group(1).lower() for m in re.finditer(r"!\[[^\]]*\]\[([^\]]*)\]", content)
-        }
-        def_pattern = re.compile(
-            r"^\[([^\]]+)\]:\s*([^\s]+)(?:\s+\"([^\"]*)\")?", re.MULTILINE
-        )
-        image_ref_defs_used = 0
-        # Iterate over m
-        for m in def_pattern.finditer(content):
-            label = (m.group(1) or "").lower()
-            url = (m.group(2) or "").lower()
-            if label in used_labels or any(
-                url.endswith(ext)
-                for ext in [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp"]
-            ):
-                image_ref_defs_used += 1
-
-        counts["image_count"] = (
-            inline_images_count + ref_images_count + image_ref_defs_used
-        )
-        # Return result
-        return counts
-
-    # Format data for output: _format_compact
     def _format_compact(self, analysis_result: dict[str, Any]) -> str:
         """Format compact table output for Markdown files"""
-        file_path = analysis_result.get("file_path", "")
-        elements = analysis_result.get("elements", [])
-
-        # Count element types
-        headers = [e for e in elements if e.get("type") == "heading"]
-        links = [
-            e
-            for e in elements
-            if e.get("type") in ["link", "autolink", "reference_link"]
-        ]
-        images = self._collect_images(elements)
-        code_blocks = [e for e in elements if e.get("type") == "code_block"]
-        lists = [e for e in elements if e.get("type") in ["list", "task_list"]]
-        tables = [e for e in elements if e.get("type") == "table"]
-
-        # Extract filename from path
-        filename = file_path.split("/")[-1].split("\\")[-1]
-        # Check: filename.endswith((".md", ".markdown"))
-        if filename.endswith((".md", ".markdown")):
-            filename = filename.rsplit(".", 1)[0]
-
-        output = [f"# {filename}\n"]
-        output.append("## Summary\n")
-        output.append("| Element Type | Count |")
-        output.append("|--------------|-------|")
-        output.append(f"| Headers | {len(headers)} |")
-        output.append(f"| Links | {len(links)} |")
-        output.append(f"| Images | {len(images)} |")
-        output.append(f"| Code Blocks | {len(code_blocks)} |")
-        output.append(f"| Lists | {len(lists)} |")
-        output.append(f"| Tables | {len(tables)} |")
-        output.append(f"| **Total** | **{len(elements)}** |")
-        output.append("")
-
-        # Show headers
-        if headers:
-            output.append("## Document Structure\n")
-            output.append("| Level | Header | Line |")
-            output.append("|-------|--------|------|")
-            for header in headers[:20]:  # Limit to top 20
-                level = "#" * header.get("level", 1)
-                text = header.get("text", "").strip()[:50]  # Truncate long headers
-                line = header.get("line_range", {}).get("start", "")
-                output.append(f"| {level} | {text} | {line} |")
-            # Check: len(headers) > 20
-            if len(headers) > 20:
-                output.append(f"| ... | ({len(headers) - 20} more) | |")
-            output.append("")
-
-        # Return result
-        return "\n".join(output)
-
-    # Format data for output: _format_csv
-    def _format_csv(self, analysis_result: dict[str, Any]) -> str:
-        """Format CSV output for Markdown files"""
-        import csv
-        import io
-
-        elements = analysis_result.get("elements", [])
-
-        output = io.StringIO()
-        writer = csv.writer(output, lineterminator="\n")
-
-        # Write header
-        writer.writerow(
-            ["Type", "Text/URL/Language", "Level/Count", "Start Line", "End Line"]
+        return format_compact_output(
+            analysis_result, self._collect_images(analysis_result.get("elements", []))
         )
 
-        # Write data rows
-        for element in elements:
-            elem_type = element.get("type", "unknown")
-            start_line = element.get("line_range", {}).get("start", 0)
-            end_line = element.get("line_range", {}).get("end", 0)
-
-            # Check: elem_type == "heading"
-            if elem_type == "heading":
-                text = element.get("text", "")[:50]
-                level = element.get("level", 1)
-                writer.writerow([elem_type, text, level, start_line, end_line])
-            elif elem_type in ["link", "autolink", "reference_link"]:
-                url = element.get("url", "")
-                text = element.get("text", "")[:30]
-                writer.writerow(
-                    [elem_type, f"{text} -> {url}", "-", start_line, end_line]
-                )
-            elif elem_type == "image":
-                url = element.get("url", "")
-                alt = element.get("alt", "")[:30]
-                writer.writerow(
-                    [elem_type, f"{alt} -> {url}", "-", start_line, end_line]
-                )
-            # Check: elem_type == "code_block"
-            elif elem_type == "code_block":
-                language = element.get("language", "")
-                line_count = element.get("line_count", 0)
-                writer.writerow([elem_type, language, line_count, start_line, end_line])
-            # Check: elem_type in ["list", "task_li
-            elif elem_type in ["list", "task_list"]:
-                list_type = element.get("list_type", "")
-                item_count = element.get("item_count", 0)
-                writer.writerow(
-                    [elem_type, list_type, item_count, start_line, end_line]
-                )
-            # Check: elem_type == "table"
-            elif elem_type == "table":
-                cols = element.get("column_count", 0)
-                rows = element.get("row_count", 0)
-                writer.writerow(
-                    [elem_type, f"{cols}x{rows}", "-", start_line, end_line]
-                )
-            else:
-                name = element.get("name", "")[:50]
-                writer.writerow([elem_type, name, "-", start_line, end_line])
-
-        csv_content = output.getvalue()
-        output.close()
-        # Return result
-        return csv_content.rstrip("\n")
+    def _format_csv(self, analysis_result: dict[str, Any]) -> str:
+        """Format CSV output for Markdown files"""
+        return format_csv_output(analysis_result)

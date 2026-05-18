@@ -344,6 +344,8 @@ class TestExecute:
                 assert result["success"] is True
                 assert result["count"] == 0
                 assert result["results"] == []
+                assert result["agent_summary"]["mode"] == "empty"
+                assert result["agent_summary"]["next_step"]
 
     @pytest.mark.asyncio
     async def test_execute_total_only_mode(self, tool, sample_project_structure):
@@ -411,6 +413,8 @@ class TestExecute:
                     assert result["count_only"] is True
                     assert result["total_matches"] == 15
                     assert "file_counts" in result
+                    assert result["agent_summary"]["mode"] == "count_only"
+                    assert result["agent_summary"]["file_count"] == 2
 
     @pytest.mark.asyncio
     async def test_execute_group_by_file_mode(self, tool, sample_project_structure):
@@ -456,6 +460,8 @@ class TestExecute:
 
                         assert result["success"] is True
                         assert "files" in result
+                        assert result["agent_summary"]["mode"] == "group_by_file"
+                        assert result["agent_summary"]["file_count"] == 2
 
     @pytest.mark.asyncio
     async def test_execute_summary_only_mode(self, tool, sample_project_structure):
@@ -492,6 +498,8 @@ class TestExecute:
                         assert result["success"] is True
                         assert result["summary_only"] is True
                         assert "summary" in result
+                        assert result["agent_summary"]["mode"] == "summary"
+                        assert result["agent_summary"]["file_count"] == 1
 
     @pytest.mark.asyncio
     async def test_execute_with_file_output(self, tool, sample_project_structure):
@@ -722,7 +730,7 @@ class TestExecute:
                     return_value=[{"path": "file1.py", "line": 1}],
                 ):
                     with patch(
-                        "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.apply_toon_format_to_response"
+                        "tree_sitter_analyzer.mcp.tools.find_and_grep_response.apply_toon_format_to_response"
                     ) as mock_toon:
                         mock_toon.return_value = {"toon": "formatted"}
 

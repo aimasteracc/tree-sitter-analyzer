@@ -6,16 +6,23 @@ Combines git diff with dependency graph to provide change impact analysis.
 Tells AI agents: what changed, what's affected, what tests to run.
 """
 
-from __future__ import annotations
-
-import shlex
-import subprocess  # nosec B404
-from pathlib import Path
 from typing import Any
 
-from ...project_graph import BlastRadius, DependencyGraph
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
+from .utils.change_impact_analysis import (
+    ChangeImpactRequest,
+    _build_change_impact_result,
+)
+from .utils.change_impact_git import (
+    _get_changed_files,
+    _get_diff_stat,
+)
+from .utils.change_impact_response import (
+    attach_queue_ledger,
+    build_agent_summary_only_response,
+    build_no_changes_result,
+)
 
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -31,154 +38,25 @@ TOOL_SCHEMA: dict[str, Any] = {
             "default": True,
             "description": "Find related test files",
         },
+        "scope_paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "default": [],
+            "description": "Optional pathspecs limiting diff, impact, and test mapping to the current queue scope",
+        },
         "output_format": {
             "type": "string",
             "enum": ["json", "toon"],
             "default": "toon",
         },
+        "agent_summary_only": {
+            "type": "boolean",
+            "default": False,
+            "description": "Return only the compact agent decision surface instead of full impact details",
+        },
     },
     "additionalProperties": False,
 }
-
-
-def _run_git(args: list[str], cwd: str | None = None) -> tuple[int, str]:
-    """Run a git subprocess and return (returncode, stdout)."""
-    try:
-        result = subprocess.run(  # nosec B603
-            ["git"] + args,
-            capture_output=True,
-            text=True,
-            cwd=cwd,
-            timeout=10,
-        )
-        return result.returncode, result.stdout.strip()
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return 1, ""
-
-
-def _split_git_lines(output: str) -> list[str]:
-    """Split git output into non-empty path lines."""
-    return [line for line in output.splitlines() if line.strip()]
-
-
-def _unique_preserve_order(paths: list[str]) -> list[str]:
-    """Return paths without duplicates while preserving git output order."""
-    seen = set()
-    unique_paths = []
-    for path in paths:
-        if path in seen:
-            continue
-        seen.add(path)
-        unique_paths.append(path)
-    return unique_paths
-
-
-def _get_untracked_files(project_root: str | None) -> list[str]:
-    """Get untracked files that are not ignored by git."""
-    rc, out = _run_git(
-        ["ls-files", "--others", "--exclude-standard"],
-        cwd=project_root,
-    )
-    if rc != 0 or not out:
-        return []
-    return _split_git_lines(out)
-
-
-def _get_changed_files(mode: str, project_root: str | None) -> list[str]:
-    """Get list of changed file paths from git diff."""
-    if mode == "staged":
-        rc, out = _run_git(["diff", "--cached", "--name-only"], cwd=project_root)
-    elif mode == "branch":
-        rc, out = _run_git(["diff", "--name-only", "HEAD~1", "HEAD"], cwd=project_root)
-    else:
-        rc, out = _run_git(["diff", "--name-only"], cwd=project_root)
-
-    changed = _split_git_lines(out) if rc == 0 and out else []
-    if mode == "diff":
-        changed.extend(_get_untracked_files(project_root))
-    return _unique_preserve_order(changed)
-
-
-def _get_diff_stat(mode: str, project_root: str | None) -> str:
-    """Get diff stat summary from git."""
-    if mode == "staged":
-        rc, out = _run_git(["diff", "--cached", "--stat"], cwd=project_root)
-    elif mode == "branch":
-        rc, out = _run_git(["diff", "--stat", "HEAD~1", "HEAD"], cwd=project_root)
-    else:
-        rc, out = _run_git(["diff", "--stat"], cwd=project_root)
-        untracked = _get_untracked_files(project_root)
-        if untracked:
-            untracked_stat = "\n".join(
-                ["Untracked files:"] + [f"  {path}" for path in untracked[:20]]
-            )
-            out = f"{out}\n{untracked_stat}".strip() if out else untracked_stat
-    return out if rc == 0 else ""
-
-
-def _find_test_files(
-    changed_files: list[str],
-    graph_nodes: set[str],
-) -> dict[str, list[str]]:
-    """Map changed files to related test files using stem matching."""
-    test_dirs = {"tests/", "test/", "spec/", "__tests__/"}
-    test_suffixes = (
-        "_test.py",
-        "_test.js",
-        "_test.ts",
-        "Test.java",
-        ".test.py",
-        ".test.js",
-        ".test.ts",
-        "_spec.py",
-        "_spec.js",
-    )
-
-    all_nodes = graph_nodes
-    test_files = {
-        n
-        for n in all_nodes
-        if any(n.startswith(d) for d in test_dirs) or n.endswith(test_suffixes)
-    }
-
-    mapping: dict[str, list[str]] = {}
-    for cf in changed_files:
-        stem = Path(cf).stem
-        related = []
-        for tf in sorted(test_files):
-            tf_stem = Path(tf).stem
-            if (
-                stem in tf_stem
-                or tf_stem.replace("_test", "").replace("test_", "") == stem
-            ):
-                related.append(tf)
-        mapping[cf] = related or ["(auto-discover: run full suite)"]
-
-    return mapping
-
-
-def _assess_risk(
-    changed_files: list[str],
-    affected: set[str],
-    graph: DependencyGraph,
-) -> str:
-    """Assess change risk level based on blast radius size."""
-    if not changed_files:
-        return "none"
-    total_affected = len(affected)
-    if total_affected <= 2:
-        return "low"
-    if total_affected <= 8:
-        return "medium"
-    return "high"
-
-
-def _build_pytest_command(tests_to_run: list[str]) -> str:
-    """Build a copy-pasteable fast validation command."""
-    if not tests_to_run:
-        return "uv run pytest -q"
-    quoted_tests = shlex.join(tests_to_run)
-    return f"uv run pytest {quoted_tests} -q"
 
 
 class ChangeImpactTool(BaseMCPTool):
@@ -214,71 +92,47 @@ class ChangeImpactTool(BaseMCPTool):
         mode = arguments.get("mode", "diff")
         include_tests = arguments.get("include_tests", True)
         output_format = arguments.get("output_format", "toon")
+        scope_paths = arguments.get("scope_paths") or []
+        agent_summary_only = bool(arguments.get("agent_summary_only", False))
 
-        changed_files = _get_changed_files(mode, self.project_root)
-
-        if not changed_files:
-            result: dict[str, Any] = {
-                "success": True,
-                "mode": mode,
-                "changed_files": [],
-                "summary": "No changes detected",
-            }
-            return apply_toon_format_to_response(result, output_format)
-
-        diff_stat = _get_diff_stat(mode, self.project_root)
-
-        try:
-            graph = DependencyGraph(self.project_root or ".")
-        except Exception:
-            graph = None
-
-        affected: set[str] = set()
-        file_impacts: list[dict[str, Any]] = []
-
-        if graph:
-            blast = BlastRadius(graph)
-            for cf in changed_files:
-                fwd = blast.forward(cf)
-                affected.update(fwd)
-                file_impacts.append(
-                    {
-                        "file": cf,
-                        "direct_dependents": sorted(graph.dependents_of(cf))[:20],
-                        "total_affected": len(fwd),
-                    }
-                )
-        else:
-            file_impacts = [{"file": cf} for cf in changed_files]
-
-        risk = _assess_risk(changed_files, affected, graph) if graph else "unknown"
-
-        test_mapping = {}
-        if include_tests and graph:
-            test_mapping = _find_test_files(changed_files, set(graph.nodes()))
-
-        all_tests = sorted(
-            {
-                t
-                for tests in test_mapping.values()
-                for t in tests
-                if not t.startswith("(")
-            }
+        changed_files = _get_changed_files(mode, self.project_root, scope_paths)
+        workspace_changed_files = (
+            _get_changed_files(mode, self.project_root, []) if scope_paths else []
         )
 
-        result = {
-            "success": True,
-            "mode": mode,
-            "changed_count": len(changed_files),
-            "changed_files": changed_files[:50],
-            "affected_count": len(affected),
-            "affected_files": sorted(affected)[:50] if affected else [],
-            "risk_level": risk,
-            "file_impacts": file_impacts[:20],
-            "tests_to_run": all_tests[:30] if all_tests else [],
-            "pytest_command": _build_pytest_command(all_tests[:30]),
-            "test_mapping": test_mapping if test_mapping else {},
-            "diff_stat": diff_stat[:500] if diff_stat else "",
-        }
+        if not changed_files:
+            result = build_no_changes_result(mode, scope_paths)
+            result["scope_paths"] = scope_paths
+            result["scope_filtered"] = bool(scope_paths)
+            result = attach_queue_ledger(
+                result,
+                mode=mode,
+                scope_paths=scope_paths,
+                scoped_changed_files=changed_files,
+                workspace_changed_files=workspace_changed_files,
+            )
+            if agent_summary_only:
+                result = build_agent_summary_only_response(result)
+            return apply_toon_format_to_response(result, output_format)
 
+        diff_stat = _get_diff_stat(mode, self.project_root, scope_paths)
+        result = _build_change_impact_result(
+            ChangeImpactRequest(
+                mode=mode,
+                changed_files=changed_files,
+                diff_stat=diff_stat,
+                project_root=self.project_root,
+                include_tests=include_tests,
+                scope_paths=scope_paths,
+            )
+        )
+        result = attach_queue_ledger(
+            result,
+            mode=mode,
+            scope_paths=scope_paths,
+            scoped_changed_files=changed_files,
+            workspace_changed_files=workspace_changed_files,
+        )
+        if agent_summary_only:
+            result = build_agent_summary_only_response(result)
         return apply_toon_format_to_response(result, output_format)

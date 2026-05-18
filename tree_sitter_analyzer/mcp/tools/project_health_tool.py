@@ -6,6 +6,7 @@ Bulk health scoring for an entire project in one call.
 Returns grade distribution, F/D file list with recommendations, and top refactoring targets.
 """
 
+import shlex
 from collections import Counter
 from typing import Any
 
@@ -66,6 +67,17 @@ _EXCLUDE_DIRS = {
     ".autonomous-runtime",
 }
 
+_AGENT_BACKLOG_LIMIT = 5
+_GRADE_ORDER = {"A": 0, "B": 1, "C": 2, "D": 3, "F": 4}
+_AGENT_BACKLOG_EXCLUDED_SEGMENTS = {"examples", "golden_masters"}
+_AGENT_BACKLOG_EXCLUDED_FILENAMES = {
+    "CHANGELOG.md",
+    "GITFLOW.md",
+    "GITFLOW_ja.md",
+    "README.md",
+    "README_zh.md",
+}
+
 
 class ProjectHealthTool(BaseMCPTool):
     """MCP Tool that scores every source file and returns a project health report."""
@@ -118,71 +130,9 @@ class ProjectHealthTool(BaseMCPTool):
         max_files = arguments.get("max_files", 20)
         output_format = arguments.get("output_format", "toon")
 
-        grade_order = {"A": 0, "B": 1, "C": 2, "D": 3, "F": 4}
-        min_rank = grade_order.get(min_grade, 3)
-
         scorer = HealthScorer()
         all_scores = scorer.score_project(root)
-
-        # Grade distribution
-        grade_counts = Counter(s.grade for s in all_scores)
-
-        # Weakest dimension across project
-        dim_avgs: dict[str, float] = {}
-        for dim in DIMENSION_WEIGHTS:
-            vals = [s.dimensions.get(dim, 0) for s in all_scores if dim in s.dimensions]
-            dim_avgs[dim] = round(sum(vals) / len(vals), 1) if vals else 0.0
-
-        # Filter to files at or below min_grade
-        worst = [s for s in all_scores if grade_order.get(s.grade, 4) >= min_rank]
-        worst.sort(key=lambda s: s.total)
-
-        file_details = []
-        for s in worst[:max_files]:
-            file_details.append(
-                {
-                    "file": s.file_path,
-                    "grade": s.grade,
-                    "total_score": s.total,
-                    "signal": _build_signal(s.dimensions),
-                    "weakest_dimension": min(
-                        s.dimensions, key=lambda k: s.dimensions[k]
-                    )
-                    if s.dimensions
-                    else "",
-                    "dimensions": s.dimensions,
-                }
-            )
-
-        # Top refactoring targets: files with lowest total score
-        top_targets = [
-            {
-                "file": s.file_path,
-                "grade": s.grade,
-                "score": s.total,
-                "signal": _build_signal(s.dimensions),
-                "action": _file_action(s),
-            }
-            for s in worst[:5]
-        ]
-
-        # Weakest dimension
-        weakest_dim = min(dim_avgs, key=lambda k: dim_avgs[k]) if dim_avgs else ""
-
-        result: dict[str, Any] = {
-            "success": True,
-            "project_root": root,
-            "total_files": len(all_scores),
-            "grade_distribution": {g: grade_counts.get(g, 0) for g in "ABCDF"},
-            "signal": _build_signal(dim_avgs),
-            "average_dimensions": dim_avgs,
-            "weakest_dimension": weakest_dim,
-            "top_refactoring_targets": top_targets,
-            "files": file_details,
-            "recommendation": _build_project_recommendation(
-                grade_counts, weakest_dim, len(all_scores)
-            ),
-        }
+        result = _build_project_health_result(root, all_scores, min_grade, max_files)
 
         from ..utils.format_helper import apply_toon_format_to_response
 
@@ -193,6 +143,96 @@ _GRADE_RECOMMENDATIONS = {
     "F": "has critical issues — split or rewrite recommended",
     "D": "needs attention — refactor the weakest dimension first",
 }
+
+
+def _build_project_health_result(
+    root: str,
+    all_scores: list[Any],
+    min_grade: str,
+    max_files: int,
+) -> dict[str, Any]:
+    """Build the JSON-ready project-health response."""
+    grade_counts = Counter(score.grade for score in all_scores)
+    grade_distribution = {grade: grade_counts.get(grade, 0) for grade in "ABCDF"}
+    dim_avgs = _average_dimensions(all_scores)
+    worst = _scores_at_or_below_min_grade(all_scores, min_grade)
+    weakest_dim = _weakest_dimension(dim_avgs)
+    agent_backlog = _build_agent_backlog(all_scores)
+
+    return {
+        "success": True,
+        "project_root": root,
+        "total_files": len(all_scores),
+        "grade_distribution": grade_distribution,
+        "signal": _build_signal(dim_avgs),
+        "average_dimensions": dim_avgs,
+        "weakest_dimension": weakest_dim,
+        "top_refactoring_targets": _top_refactoring_targets(worst),
+        "agent_summary": _build_project_agent_summary(
+            root=root,
+            total_files=len(all_scores),
+            grade_distribution=grade_distribution,
+            weakest_dim=weakest_dim,
+            agent_backlog=agent_backlog,
+        ),
+        "agent_backlog": agent_backlog,
+        "files": _file_details(worst, max_files),
+        "recommendation": _build_project_recommendation(
+            grade_counts, weakest_dim, len(all_scores)
+        ),
+    }
+
+
+def _average_dimensions(scores: list[Any]) -> dict[str, float]:
+    """Average health dimensions across a scored project."""
+    dim_avgs: dict[str, float] = {}
+    for dim in DIMENSION_WEIGHTS:
+        vals = [
+            score.dimensions.get(dim, 0) for score in scores if dim in score.dimensions
+        ]
+        dim_avgs[dim] = round(sum(vals) / len(vals), 1) if vals else 0.0
+    return dim_avgs
+
+
+def _scores_at_or_below_min_grade(scores: list[Any], min_grade: str) -> list[Any]:
+    """Return files whose grade is at or below the requested detail threshold."""
+    min_rank = _GRADE_ORDER.get(min_grade, _GRADE_ORDER["D"])
+    worst = [
+        score
+        for score in scores
+        if _GRADE_ORDER.get(score.grade, _GRADE_ORDER["F"]) >= min_rank
+    ]
+    worst.sort(key=lambda score: score.total)
+    return worst
+
+
+def _file_details(scores: list[Any], max_files: int) -> list[dict[str, Any]]:
+    """Build detailed file health rows for project-health output."""
+    return [
+        {
+            "file": score.file_path,
+            "grade": score.grade,
+            "total_score": score.total,
+            "signal": _build_signal(score.dimensions),
+            "weakest_dimension": _weakest_dimension(score.dimensions),
+            "dimensions": score.dimensions,
+        }
+        for score in scores[:max_files]
+    ]
+
+
+def _top_refactoring_targets(scores: list[Any]) -> list[dict[str, Any]]:
+    """Build the compact top-refactoring target list."""
+    return [
+        {
+            "file": score.file_path,
+            "grade": score.grade,
+            "score": score.total,
+            "signal": _build_signal(score.dimensions),
+            "action": _file_action(score),
+        }
+        for score in scores[:5]
+    ]
 
 
 def _build_project_recommendation(
@@ -221,7 +261,7 @@ def _file_action(score: Any) -> str:
     """Suggest the next tool to call for a specific file."""
     grade = score.grade
     dims = score.dimensions if hasattr(score, "dimensions") else {}
-    weakest = min(dims, key=lambda k: dims[k]) if dims else ""
+    weakest = _weakest_dimension(dims)
     file_path = score.file_path
 
     if grade in ("D", "F"):
@@ -233,3 +273,162 @@ def _file_action(score: Any) -> str:
         return f"check_file_health(file_path='{file_path}')"
 
     return ""
+
+
+def _build_agent_backlog(
+    scores: list[Any],
+    limit: int = _AGENT_BACKLOG_LIMIT,
+) -> list[dict[str, Any]]:
+    """Build a machine-friendly backlog from project health scores."""
+    candidates = [score for score in scores if _is_agent_backlog_candidate(score)]
+    candidates.sort(key=lambda score: (score.total, score.file_path))
+    return [_build_agent_backlog_item(score) for score in candidates[:limit]]
+
+
+def _is_agent_backlog_candidate(score: Any) -> bool:
+    """Return whether a score should become an autonomous agent queue item."""
+    if score.grade not in {"C", "D", "F"}:
+        return False
+    return not _is_non_actionable_sample_path(score.file_path)
+
+
+def _is_non_actionable_sample_path(file_path: str) -> bool:
+    """Skip demo fixtures and docs that are intentionally poor queue heads."""
+    normalized = file_path.replace("\\", "/")
+    segments = set(normalized.split("/"))
+    if segments & _AGENT_BACKLOG_EXCLUDED_SEGMENTS:
+        return True
+    return normalized.rsplit("/", 1)[-1] in _AGENT_BACKLOG_EXCLUDED_FILENAMES
+
+
+def _build_project_agent_summary(
+    *,
+    root: str,
+    total_files: int,
+    grade_distribution: dict[str, int],
+    weakest_dim: str,
+    agent_backlog: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build a compact project-level summary for autonomous agent loops."""
+    queue_head = agent_backlog[0] if agent_backlog else None
+    risk = _project_risk(grade_distribution)
+    summary: dict[str, Any] = {
+        "risk": risk,
+        "total_files": total_files,
+        "weakest_dimension": weakest_dim,
+        "d_count": grade_distribution.get("D", 0),
+        "f_count": grade_distribution.get("F", 0),
+        "backlog_count": len(agent_backlog),
+        "verification_command": "uv run pytest -q",
+        "project_health_command": (
+            "uv run python -m tree_sitter_analyzer --project-health --format json"
+        ),
+    }
+    if not queue_head:
+        return summary | {
+            "next_step": "No project-health queue item needs action.",
+            "stop_condition": "Project health remains grade C or better with no D/F backlog.",
+        }
+
+    summary["queue_head"] = _project_queue_head(queue_head)
+    summary["next_step"] = (
+        "Run safe-to-edit for the project queue head: "
+        f"{queue_head['safety_cli_command']}"
+    )
+    summary["queue_head_command"] = queue_head["recommended_cli_command"]
+    summary["safety_command"] = queue_head["safety_cli_command"]
+    summary["stop_condition"] = (
+        "Queue head improves or leaves the project-health backlog; "
+        "run uv run pytest -q at the queue boundary."
+    )
+    if root:
+        summary["project_root"] = root
+    return summary
+
+
+def _project_queue_head(queue_head: dict[str, Any]) -> dict[str, Any]:
+    """Return the fields agents need before opening the next project item."""
+    return {
+        "file": queue_head["file"],
+        "priority": queue_head["priority"],
+        "grade": queue_head["grade"],
+        "score": queue_head["score"],
+        "signal": queue_head["signal"],
+        "weakest_dimension": queue_head["weakest_dimension"],
+    }
+
+
+def _project_risk(grade_distribution: dict[str, int]) -> str:
+    """Convert project health distribution into a compact risk label."""
+    if grade_distribution.get("F", 0) > 0:
+        return "critical"
+    if grade_distribution.get("D", 0) > 0:
+        return "high"
+    if grade_distribution.get("C", 0) > 0:
+        return "medium"
+    return "low"
+
+
+def _build_agent_backlog_item(score: Any) -> dict[str, Any]:
+    """Build one project-health backlog item with MCP and CLI parity."""
+    file_path = score.file_path
+    dims = score.dimensions if hasattr(score, "dimensions") else {}
+    weakest = _weakest_dimension(dims)
+    quoted_path = shlex.quote(file_path)
+
+    return {
+        "file": file_path,
+        "priority": _agent_backlog_priority(score.grade),
+        "grade": score.grade,
+        "score": score.total,
+        "signal": _build_signal(dims),
+        "weakest_dimension": weakest,
+        "reason": _agent_backlog_reason(score.grade, weakest),
+        "recommended_mcp_command": _file_action(score),
+        "recommended_cli_command": _recommended_cli_command(score.grade, quoted_path),
+        "safety_mcp_command": f"safe_to_edit(file_path='{file_path}')",
+        "safety_cli_command": (
+            "uv run python -m tree_sitter_analyzer "
+            f"{quoted_path} --safe-to-edit --format json"
+        ),
+        "post_edit_commands": [
+            (
+                "uv run python -m tree_sitter_analyzer "
+                f"{quoted_path} --file-health --format json"
+            ),
+            "uv run python -m tree_sitter_analyzer --change-impact --format json",
+            "uv run pytest -q",
+        ],
+    }
+
+
+def _recommended_cli_command(grade: str, quoted_path: str) -> str:
+    """Return the CLI command matching the recommended MCP action."""
+    command_flag = "--refactor" if grade in {"D", "F"} else "--file-health"
+    return (
+        "uv run python -m tree_sitter_analyzer "
+        f"{quoted_path} {command_flag} --format json"
+    )
+
+
+def _agent_backlog_priority(grade: str) -> str:
+    """Return an execution priority for autonomous project-health backlogs."""
+    if grade == "F":
+        return "critical"
+    if grade == "D":
+        return "high"
+    if grade == "C":
+        return "medium"
+    return "low"
+
+
+def _agent_backlog_reason(grade: str, weakest: str) -> str:
+    """Explain why project-health queued this file."""
+    if grade in {"D", "F"}:
+        return f"grade {grade}; run safe-to-edit, then refactor weakest dimension: {weakest}"
+    return f"grade {grade}; inspect weakest dimension before deciding whether to refactor: {weakest}"
+
+
+def _weakest_dimension(dimensions: dict[str, float]) -> str:
+    """Return the weakest dimension name, or an empty string when unavailable."""
+    return min(dimensions, key=lambda k: dimensions[k]) if dimensions else ""

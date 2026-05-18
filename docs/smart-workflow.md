@@ -25,6 +25,37 @@ Traditional approaches to AI code analysis have limitations:
 
 ## Step-by-Step Guide
 
+### Quick CLI Workflow Pack
+
+If you want the workflow as a structured, copy-pasteable command pack, ask the
+CLI before opening a new queue item:
+
+```bash
+uv run tree-sitter-analyzer agent-skills --format json
+uv run tree-sitter-analyzer parser-readiness --format json
+uv run tree-sitter-analyzer agent-workflow --format json
+uv run tree-sitter-analyzer agent-workflow examples/BigService.java --format json
+```
+
+The pack includes `current_phase`, `phase_order`, `current_step`, and
+`recommended_commands`. Without a target file the current phase is `set`; with a
+target file it starts at `analyze`, because the agent already has a queue head
+and should move straight to health, edit-risk, retrieval, and trace commands
+instead of remapping the whole project. Targeted packs also include
+`agent_summary.queue_ledger_command`, a scoped `change-impact` command that
+separates current-queue files from out-of-scope dirty files for handoffs.
+
+Use `agent-skills` before `agent-workflow` when the queue item may benefit from
+a project-local skill. It reports each skill's trigger text, read order, support
+files, scripts, context needs, side effects, completion-guidance gaps, and a
+`validation` summary that separates blocking metadata gaps from caution-level
+completion gaps and optional handoff polish.
+MCP callers can use the matching `list_agent_skills` and `get_agent_workflow`
+tools when they need the same flow without leaving the MCP surface. Use
+`parser-readiness` or `advise_parser_readiness` before starting a new language
+plugin so the queue begins with parser dependency, loader, plugin, fixture, and
+upstream parser-risk gaps already named.
+
 ### S - Set Project (First Step)
 
 **Purpose**: Establish the security boundary and project context.
@@ -285,7 +316,7 @@ For files > 500 lines:
 | Workflow Step | Primary MCP Tool | CLI Equivalent |
 |---------------|------------------|----------------|
 | Set | `set_project_path` | `TREE_SITTER_PROJECT_ROOT` or command path |
-| Map | `list_files`, `find_and_grep` | `list-files`, `find-and-grep` |
+| Map | `list_files`, `find_and_grep`, `advise_parser_readiness` | `list-files`, `find-and-grep`, `parser-readiness` |
 | Analyze | `analyze_code_structure`, `check_code_scale`, `check_file_health` | `--structure`, `--metrics-only`, `--file-health` |
 | Retrieve | `extract_code_section`, `query_code` | `--partial-read`, `--query-key` |
 | Trace | `search_content`, `analyze_dependencies`, `analyze_change_impact`, `safe_to_edit` | `search-content`, `--dependencies`, `--change-impact`, `--safe-to-edit` |

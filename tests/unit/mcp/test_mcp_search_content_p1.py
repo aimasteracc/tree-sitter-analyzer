@@ -59,6 +59,8 @@ async def test_search_content_exec_files_list(monkeypatch, tmp_path):
     )
     assert result["success"] is True
     assert result["count"] == 1
+    assert result["agent_summary"]["mode"] == "normal"
+    assert result["agent_summary"]["total_matches"] == 1
     assert result["results"][0]["line"] == 1  # Updated field name
 
 
@@ -136,6 +138,9 @@ file4.py:12
     assert result["file_counts"]["file2.py"] == 3
     assert result["file_counts"]["file4.py"] == 12
     assert "elapsed_ms" in result
+    assert result["agent_summary"]["mode"] == "count_only"
+    assert result["agent_summary"]["total_matches"] == 20
+    assert result["agent_summary"]["file_count"] == 3
 
 
 @pytest.mark.unit
@@ -188,6 +193,8 @@ async def test_search_content_summary_only(monkeypatch, tmp_path):
     assert result["summary"]["top_files"][0]["file"] == "file1.py"
     assert result["summary"]["top_files"][0]["match_count"] == 2
     assert "elapsed_ms" in result
+    assert result["agent_summary"]["mode"] == "summary"
+    assert result["agent_summary"]["file_count"] == 1
 
 
 @pytest.mark.unit
@@ -342,6 +349,8 @@ async def test_search_content_group_by_file(monkeypatch, tmp_path):
 
     assert result["success"] is True
     assert result["count"] == 3
+    assert result["agent_summary"]["mode"] == "group_by_file"
+    assert result["agent_summary"]["file_count"] == 1
     assert "files" in result
     assert len(result["files"]) == 1  # Only one file
 

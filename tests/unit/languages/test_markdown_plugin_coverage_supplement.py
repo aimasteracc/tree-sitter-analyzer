@@ -519,7 +519,7 @@ class TestMarkdownGetNodeTextOptimized:
 
         # Make the optimized path fail to reach fallback bounds check
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=RuntimeError("slice error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -541,7 +541,7 @@ class TestMarkdownGetNodeTextOptimized:
 
         # Mock safe_encode to raise an exception, forcing fallback path
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extractor.safe_encode",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.safe_encode",
             side_effect=RuntimeError("encode error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)

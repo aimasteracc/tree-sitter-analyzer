@@ -8,7 +8,9 @@ and other common vulnerabilities using regex patterns (fast, no AST needed).
 
 from __future__ import annotations
 
+import io
 import re
+import tokenize
 from typing import Any
 
 _SECRET_PATTERNS = re.compile(
@@ -52,6 +54,15 @@ _INSECURE_HASH = re.compile(
 _TLS_DISABLE = re.compile(
     r"(?:verify\s*=\s*False|CERT_NONE|check_hostname\s*=\s*False)"
 )
+
+_PYTHON_STRING_OR_COMMENT_SAFE_ISSUES = {
+    "eval_usage",
+    "pickle_usage",
+    "bare_except",
+    "tls_disabled",
+    "assert_in_prod",
+    "insecure_hash",
+}
 
 _PATTERNS_BY_LANG: dict[str, list[tuple[str, re.Pattern[str], str, str]]] = {
     "python": [
@@ -194,7 +205,25 @@ _PATTERNS_BY_LANG: dict[str, list[tuple[str, re.Pattern[str], str, str]]] = {
 }
 
 
-def detect_security_issues(source: str, language: str) -> list[dict[str, Any]]:
+def _is_test_path(file_path: str | None) -> bool:
+    """Return True for conventional test file paths."""
+    if not file_path:
+        return False
+    normalized = file_path.replace("\\", "/")
+    name = normalized.rsplit("/", 1)[-1]
+    return (
+        "/tests/" in normalized
+        or normalized.startswith("tests/")
+        or name.startswith("test_")
+        or name.endswith("_test.py")
+    )
+
+
+def detect_security_issues(
+    source: str,
+    language: str,
+    file_path: str | None = None,
+) -> list[dict[str, Any]]:
     patterns = _PATTERNS_BY_LANG.get(language, [])
     if not patterns:
         patterns = [
@@ -208,11 +237,15 @@ def detect_security_issues(source: str, language: str) -> list[dict[str, Any]]:
 
     issues: list[dict[str, Any]] = []
     lines = source.splitlines()
+    is_test_path = _is_test_path(file_path)
 
     for name, pattern, severity, description in patterns:
+        if is_test_path and name == "assert_in_prod":
+            continue
+
         matches: list[int] = []
         for i, line in enumerate(lines, 1):
-            if pattern.search(line):
+            if _line_has_security_match(line, pattern, name, language):
                 matches.append(i)
                 if len(matches) >= 10:
                     break
@@ -229,3 +262,45 @@ def detect_security_issues(source: str, language: str) -> list[dict[str, Any]]:
             )
 
     return issues
+
+
+def _line_has_security_match(
+    line: str,
+    pattern: re.Pattern[str],
+    issue_name: str,
+    language: str,
+) -> bool:
+    """Return True when a security pattern matches executable source text."""
+    for match in pattern.finditer(line):
+        if _should_ignore_match(line, match.start(), issue_name, language):
+            continue
+        return True
+    return False
+
+
+def _should_ignore_match(
+    line: str,
+    column: int,
+    issue_name: str,
+    language: str,
+) -> bool:
+    """Suppress Python false positives inside strings and comments."""
+    if language != "python" or issue_name not in _PYTHON_STRING_OR_COMMENT_SAFE_ISSUES:
+        return False
+    return _is_python_string_or_comment_position(line, column)
+
+
+def _is_python_string_or_comment_position(line: str, column: int) -> bool:
+    """Return True when a column falls inside a Python string/comment token."""
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(line).readline)
+        for token in tokens:
+            if token.type not in {tokenize.STRING, tokenize.COMMENT}:
+                continue
+            start = token.start[1]
+            end = token.end[1]
+            if start <= column < end:
+                return True
+    except tokenize.TokenError:
+        return False
+    return False

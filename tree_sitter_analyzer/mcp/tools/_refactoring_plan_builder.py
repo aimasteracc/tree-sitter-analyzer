@@ -8,17 +8,22 @@ inferred parameters/returns, and code skeletons for long functions.
 
 import ast
 import textwrap
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
+@dataclass(frozen=True)
+class ExtractionTargetContext:
+    """Shared inputs for building extraction targets."""
+
+    lines: list[str]
+    func_name: str
+    func_assigned: set[str]
+    ext: str
+
+
 # Build response or data structure: build_precise_plans
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
 def build_precise_plans(
     file_path: str,
     source: str,
@@ -66,36 +71,16 @@ def _build_plan_for_func(
         return None
 
     ext = Path(file_path).suffix.lower()
-    stem = Path(file_path).stem
-    parent = str(Path(file_path).parent)
-    helper_module = (
-        f"{parent}/_{stem}_helpers.py" if parent != "." else f"_{stem}_helpers.py"
-    )
+    helper_stem = _helper_module_stem(file_path)
+    helper_module = _helper_module_path(file_path, helper_stem)
 
     func_src = "\n".join(func_lines)
     func_assigned = _collect_assigned_names(func_src)
 
-    targets = []
-    for i, (b_start, b_end, hint) in enumerate(blocks[:3]):
-        helper_name = _suggest_helper_name(func_name, hint, i)
-        block_src = "\n".join(lines[b_start - 1 : b_end])
-        params = _infer_params_for_block(block_src, func_assigned)
-        returns = _infer_returns(block_src)
-        skeleton = _make_skeleton(
-            helper_name, params, returns, lines[b_start - 1 : b_end], ext
-        )
-        targets.append(
-            {
-                "helper_name": helper_name,
-                "extract_lines": f"{b_start}-{b_end}",
-                "params": params,
-                "returns": returns,
-                "hint": hint,
-                "skeleton": skeleton,
-            }
-        )
+    targets = _build_extraction_targets(blocks, lines, func_name, func_assigned, ext)
 
     helper_names = ", ".join(str(target["helper_name"]) for target in targets)
+    helper_import = _helper_import_statement(file_path, helper_stem, helper_names)
 
     return {
         "function": func_name,
@@ -104,11 +89,78 @@ def _build_plan_for_func(
         "extractions": targets,
         "steps": [
             f"1. Create {helper_module} with extracted helpers",
-            f"2. In {Path(file_path).name}, add: from _{stem}_helpers import {helper_names}",
+            f"2. In {Path(file_path).name}, add: {helper_import}",
             f"3. Replace lines in '{func_name}' with calls to extracted helpers",
             f"4. Re-run refactoring_suggestions(file_path='{file_path}') to verify",
         ],
     }
+
+
+def _build_extraction_targets(
+    blocks: list[tuple[int, int, str]],
+    lines: list[str],
+    func_name: str,
+    func_assigned: set[str],
+    ext: str,
+) -> list[dict[str, Any]]:
+    """Build extraction target rows for the largest logical blocks."""
+    context = ExtractionTargetContext(lines, func_name, func_assigned, ext)
+    return [
+        _build_extraction_target(index, block, context)
+        for index, block in enumerate(blocks[:3])
+    ]
+
+
+def _build_extraction_target(
+    index: int,
+    block: tuple[int, int, str],
+    context: ExtractionTargetContext,
+) -> dict[str, Any]:
+    """Build one extraction target with inferred signature details."""
+    b_start, b_end, hint = block
+    helper_name = _suggest_helper_name(context.func_name, hint, index)
+    block_lines = context.lines[b_start - 1 : b_end]
+    block_src = "\n".join(block_lines)
+    params = _infer_params_for_block(block_src, context.func_assigned)
+    returns = _infer_returns(block_src)
+    return {
+        "helper_name": helper_name,
+        "extract_lines": f"{b_start}-{b_end}",
+        "params": params,
+        "returns": returns,
+        "hint": hint,
+        "skeleton": _make_skeleton(
+            helper_name, params, returns, block_lines, context.ext
+        ),
+    }
+
+
+def _helper_module_stem(file_path: str) -> str:
+    """Return a single-underscore helper module stem for a source file."""
+    source_stem = Path(file_path).stem
+    base_stem = source_stem.lstrip("_") or source_stem
+    return f"_{base_stem}_helpers"
+
+
+def _helper_module_path(file_path: str, helper_stem: str) -> str:
+    """Return the sibling helper module path shown in extraction plans."""
+    parent = Path(file_path).parent
+    helper_file = f"{helper_stem}.py"
+    if str(parent) == ".":
+        return helper_file
+    return str(parent / helper_file)
+
+
+def _helper_import_statement(
+    file_path: str,
+    helper_stem: str,
+    helper_names: str,
+) -> str:
+    """Return a copy-pasteable sibling helper import for a source file."""
+    module_name = helper_stem
+    if (Path(file_path).parent / "__init__.py").exists():
+        module_name = f".{helper_stem}"
+    return f"from {module_name} import {helper_names}"
 
 
 # Extract elements from AST: _find_extractable_blocks
@@ -127,50 +179,72 @@ def _find_extractable_blocks(
 
     i = 0
     while i < n:
-        line = func_lines[i]
-        stripped = line.strip()
-
-        if not stripped or stripped.startswith("#"):
-            i += 1
-            continue
-
-        cur_indent = len(line) - len(line.lstrip())
-        if cur_indent < body_indent:
-            i += 1
-            continue
-
-        if cur_indent == body_indent:
-            block_start = i
-            hint = _classify_line(stripped)
-            j = i + 1
-            while j < n:
-                next_line = func_lines[j]
-                next_stripped = next_line.strip()
-                if not next_stripped:
-                    j += 1
-                    continue
-                next_indent = len(next_line) - len(next_line.lstrip())
-                if next_indent < body_indent:
-                    break
-                if next_indent == body_indent:
-                    if _is_block_continuation(next_stripped, hint):
-                        j += 1
-                        continue
-                    break
-                j += 1
-
-            block_len = j - block_start
-            if block_len >= 5:
-                blocks.append((abs_start + block_start, abs_start + j - 1, hint))
-            i = j
-        else:
-            i += 1
+        block, next_index = _next_extractable_block(func_lines, i, n, body_indent)
+        if block:
+            block_start, block_end, hint = block
+            blocks.append((abs_start + block_start, abs_start + block_end, hint))
+        i = next_index
 
     blocks.sort(key=lambda b: -(b[1] - b[0]))
     return blocks
 
 
-# Process: _body_indent
+def _next_extractable_block(
+    func_lines: list[str],
+    index: int,
+    total_lines: int,
+    body_indent: int,
+) -> tuple[tuple[int, int, str] | None, int]:
+    """Return the next extractable block and the following scan index."""
+    line = func_lines[index]
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None, index + 1
+
+    cur_indent = len(line) - len(line.lstrip())
+    if cur_indent != body_indent:
+        return None, index + 1
+
+    hint = _classify_line(stripped)
+    block_end_exclusive = _scan_block_end(
+        func_lines,
+        index + 1,
+        total_lines,
+        body_indent,
+        hint,
+    )
+    if block_end_exclusive - index < 5:
+        return None, block_end_exclusive
+    return (index, block_end_exclusive - 1, hint), block_end_exclusive
+
+
+def _scan_block_end(
+    func_lines: list[str],
+    index: int,
+    total_lines: int,
+    body_indent: int,
+    hint: str,
+) -> int:
+    """Return the exclusive end index for one top-level logical block."""
+    current = index
+    while current < total_lines:
+        next_line = func_lines[current]
+        next_stripped = next_line.strip()
+        if not next_stripped:
+            current += 1
+            continue
+
+        next_indent = len(next_line) - len(next_line.lstrip())
+        if next_indent < body_indent:
+            break
+        if next_indent == body_indent and not _is_block_continuation(
+            next_stripped, hint
+        ):
+            break
+        current += 1
+    return current
+
+
 def _body_indent(func_lines: list[str]) -> int:
     for line in func_lines[1:]:
         stripped = line.strip()
@@ -180,7 +254,6 @@ def _body_indent(func_lines: list[str]) -> int:
     return 0
 
 
-# Process: _classify_line
 def _classify_line(stripped: str) -> str:
     if stripped.startswith(("if ", "elif ", "else")):
         return "conditional"
@@ -195,7 +268,6 @@ def _classify_line(stripped: str) -> str:
     return "logic"
 
 
-# Process: _is_block_continuation
 def _is_block_continuation(next_stripped: str, hint: str) -> bool:
     if hint == "resource" and next_stripped.startswith(("except", "else:", "finally:")):
         return True
@@ -204,7 +276,6 @@ def _is_block_continuation(next_stripped: str, hint: str) -> bool:
     return False
 
 
-# Process: _suggest_helper_name
 def _suggest_helper_name(func_name: str, hint: str, index: int) -> str:
     suffix_map = {
         "conditional": "check_conditions",
@@ -215,12 +286,12 @@ def _suggest_helper_name(func_name: str, hint: str, index: int) -> str:
         "logic": "step",
     }
     suffix = suffix_map.get(hint, "step")
+    base_name = func_name.lstrip("_") or func_name
     if index == 0:
-        return f"_{func_name}_{suffix}"
-    return f"_{func_name}_{suffix}_{index + 1}"
+        return f"_{base_name}_{suffix}"
+    return f"_{base_name}_{suffix}_{index + 1}"
 
 
-# Process: _collect_assigned_names
 def _collect_assigned_names(source: str) -> set[str]:
     try:
         tree = ast.parse(textwrap.dedent(source))
@@ -271,7 +342,6 @@ _BUILTINS = {
 }
 
 
-# Process: _infer_params_for_block
 def _infer_params_for_block(
     block_src: str,
     func_assigned: set[str],
@@ -296,54 +366,85 @@ def _infer_params_for_block(
     return params[:6]
 
 
-# Process: _infer_returns
 def _infer_returns(block_src: str) -> list[str]:
     try:
         tree = ast.parse(textwrap.dedent(block_src))
     except SyntaxError:
         return []
 
-    # Process: _collect
-    def _collect(stmts: list[Any]) -> list[str]:
-        assigned: list[str] = []
-        for node in stmts:
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        assigned.append(target.id)
-                    elif isinstance(target, ast.Tuple):
-                        for elt in target.elts:
-                            if isinstance(elt, ast.Name):
-                                assigned.append(elt.id)
-            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                assigned.append(node.target.id)
-            elif isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name):
-                assigned.append(node.target.id)
-        return assigned
-
     top_assigned: list[str] = []
     for node in ast.iter_child_nodes(tree):
-        top_assigned.extend(_collect([node]))
-        if isinstance(node, ast.Try):
-            top_assigned.extend(_collect(node.body))
-        elif isinstance(node, (ast.With, ast.AsyncWith)):
-            top_assigned.extend(_collect(node.body))
-        elif isinstance(node, ast.If):
-            top_assigned.extend(_collect(node.body))
+        top_assigned.extend(_assigned_names_from_statement_and_body(node))
+    return _unique_names(top_assigned)[:4]
 
+
+def _assigned_names_from_statement_and_body(node: ast.AST) -> list[str]:
+    """Return names assigned by a statement and selected direct child bodies."""
+    assigned = _assigned_names_from_statement(node)
+    for body in _nested_bodies_for_return_inference(node):
+        assigned.extend(_assigned_names_from_statements(body))
+    return assigned
+
+
+def _assigned_names_from_statements(statements: list[ast.stmt]) -> list[str]:
+    """Return names assigned by a list of direct statements."""
+    assigned: list[str] = []
+    for statement in statements:
+        assigned.extend(_assigned_names_from_statement(statement))
+    return assigned
+
+
+def _assigned_names_from_statement(node: ast.AST) -> list[str]:
+    """Return direct assignment targets for one AST statement."""
+    if isinstance(node, ast.Assign):
+        return _assigned_names_from_targets(node.targets)
+    if isinstance(node, ast.AnnAssign):
+        return _assigned_names_from_target(node.target)
+    if isinstance(node, ast.AugAssign):
+        return _assigned_names_from_target(node.target)
+    return []
+
+
+def _assigned_names_from_targets(targets: list[ast.expr]) -> list[str]:
+    """Return assigned names from assignment targets."""
+    names: list[str] = []
+    for target in targets:
+        names.extend(_assigned_names_from_target(target))
+    return names
+
+
+def _assigned_names_from_target(target: ast.expr) -> list[str]:
+    """Return assigned names from one target expression."""
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, ast.Tuple):
+        return [elt.id for elt in target.elts if isinstance(elt, ast.Name)]
+    return []
+
+
+def _nested_bodies_for_return_inference(node: ast.AST) -> list[list[ast.stmt]]:
+    """Return direct child bodies whose assignments should become returns."""
+    if isinstance(node, ast.Try):
+        return [node.body]
+    if isinstance(node, (ast.With, ast.AsyncWith)):
+        return [node.body]
+    if isinstance(node, ast.If):
+        return [node.body]
+    return []
+
+
+def _unique_names(names: list[str]) -> list[str]:
+    """Return names without duplicates while preserving order."""
     seen: set[str] = set()
     unique: list[str] = []
-    # Iterate over a
-    for a in top_assigned:
-        # Check: a not in seen
-        if a not in seen:
-            seen.add(a)
-            unique.append(a)
-    # Return result
-    return unique[:4]
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        unique.append(name)
+    return unique
 
 
-# Process: _make_skeleton
 def _make_skeleton(
     name: str,
     params: list[str],
@@ -351,9 +452,7 @@ def _make_skeleton(
     block_lines: list[str],
     ext: str,
 ) -> str:
-    # Check: ext != ".py"
     if ext != ".py":
-        # Return result
         return f"// TODO: extract {name}({', '.join(params)})"
 
     param_str = ", ".join(params)
@@ -361,12 +460,9 @@ def _make_skeleton(
     clean = dedented.strip()
 
     lines = [f"def {name}({param_str}):"]
-    # Iterate over bl
     for bl in clean.splitlines():
         lines.append(f"    {bl}")
-    # Check: returns
     if returns:
         lines.append(f"    return {', '.join(returns)}")
 
-    # Return result
     return "\n".join(lines)

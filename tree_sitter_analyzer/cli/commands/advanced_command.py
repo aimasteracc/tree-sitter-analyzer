@@ -16,6 +16,7 @@ from ...constants import (
     is_element_of_type,
 )
 from ...output_manager import output_data, output_json, output_section
+from .advanced_command_helpers import calculate_file_metrics
 from .base_command import BaseCommand
 
 # TOON formatter for CLI output
@@ -56,98 +57,7 @@ class AdvancedCommand(BaseCommand):
         Returns:
             Dictionary containing file metrics
         """
-        try:
-            from ...encoding_utils import read_file_safe
-
-            content, _ = read_file_safe(file_path)
-
-            lines = content.split("\n")
-            total_lines = len(lines)
-
-            # Remove empty line at the end if file ends with newline
-            if lines and not lines[-1]:
-                total_lines -= 1
-
-            # Count different types of lines
-            code_lines = 0
-            comment_lines = 0
-            blank_lines = 0
-            in_multiline_comment = False
-
-            for line in lines:
-                stripped = line.strip()
-
-                # Check for blank lines first
-                if not stripped:
-                    blank_lines += 1
-                    continue
-
-                # Check if we're in a multi-line comment
-                if in_multiline_comment:
-                    comment_lines += 1
-                    # Check if this line ends the multi-line comment
-                    if "*/" in stripped:
-                        in_multiline_comment = False
-                    continue
-
-                # Check for multi-line comment start
-                if stripped.startswith("/**") or stripped.startswith("/*"):
-                    comment_lines += 1
-                    # Check if this line also ends the comment
-                    if "*/" not in stripped:
-                        in_multiline_comment = True
-                    continue
-
-                # Check for single-line comments
-                if stripped.startswith("//"):
-                    comment_lines += 1
-                    continue
-
-                # Check for JavaDoc continuation lines (lines starting with * but not */)
-                if stripped.startswith("*") and not stripped.startswith("*/"):
-                    comment_lines += 1
-                    continue
-
-                # Check for other comment types based on language
-                if (
-                    language == "python"
-                    and stripped.startswith("#")
-                    or language == "sql"
-                    and stripped.startswith("--")
-                ):
-                    comment_lines += 1
-                    continue
-                elif language in ["html", "xml"] and stripped.startswith("<!--"):
-                    comment_lines += 1
-                    if "-->" not in stripped:
-                        in_multiline_comment = True
-                    continue
-
-                # If not a comment, it's code
-                code_lines += 1
-
-            # Ensure the sum equals total_lines (handle any rounding errors)
-            calculated_total = code_lines + comment_lines + blank_lines
-            if calculated_total != total_lines:
-                # Adjust blank_lines to match total (since it's most likely to be off by 1)
-                blank_lines = total_lines - code_lines - comment_lines
-                # Ensure blank_lines is not negative
-                blank_lines = max(0, blank_lines)
-
-            return {
-                "total_lines": total_lines,
-                "code_lines": code_lines,
-                "comment_lines": comment_lines,
-                "blank_lines": blank_lines,
-            }
-        except Exception:
-            # Fallback to basic counting if file read fails
-            return {
-                "total_lines": 0,
-                "code_lines": 0,
-                "comment_lines": 0,
-                "blank_lines": 0,
-            }
+        return calculate_file_metrics(file_path, language)
 
     def _output_statistics(self, analysis_result: "AnalysisResult") -> None:
         """Output statistics only."""

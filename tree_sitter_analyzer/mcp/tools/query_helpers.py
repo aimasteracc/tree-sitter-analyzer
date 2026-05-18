@@ -105,7 +105,6 @@ def format_summary(
                 for item in items
             ],
         }
-    # Return result
     return summary
 
 
@@ -126,9 +125,7 @@ def extract_name_from_content(content: str) -> str:
         match = re.search(pattern, first_line)
         # Conditional check
         if match:
-            # Return result
             return match.group(1).strip()
-    # Return result
     return "unnamed"
 
 
@@ -139,7 +136,6 @@ def build_next_steps(
     """Build actionable next-step suggestions based on query results."""
     # Conditional check
     if not results:
-        # Return result
         return []
 
     steps: list[str] = []
@@ -171,7 +167,6 @@ def build_next_steps(
             f"search_content(query='{'|'.join(names)}') to find callers of these elements"
         )
 
-    # Return result
     return steps[:3]
 
 

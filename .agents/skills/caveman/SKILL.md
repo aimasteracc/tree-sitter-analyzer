@@ -47,3 +47,9 @@ Example -- destructive op:
 > ```
 >
 > Caveman resume. Verify backup exist first.
+
+## Acceptance Criteria
+
+- [ ] Response is materially shorter while preserving technical accuracy.
+- [ ] Code, command output, exact errors, and safety warnings remain uncompressed.
+- [ ] Mode persists until user explicitly asks to stop or return to normal style.

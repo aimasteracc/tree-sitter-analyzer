@@ -12,6 +12,22 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from ._api_query_helpers import (
+    filter_elements_by_type,
+    group_captures_by_main_node,
+    query_execution_result,
+)
+from ._api_result_helpers import (
+    code_analysis_error,
+    code_analysis_result,
+    file_analysis_error,
+    file_analysis_result,
+)
+from ._api_validation_helpers import (
+    apply_language_validation,
+    mark_validation_readable,
+    validation_result_template,
+)
 from .core.analysis_engine import AnalysisRequest, UnifiedAnalysisEngine
 from .utils import log_error
 
@@ -21,13 +37,13 @@ logger = logging.getLogger(__name__)
 _engine: UnifiedAnalysisEngine | None = None
 
 
-# Process: get_engine
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
+def _group_captures_by_main_node(
+    captures: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Backward-compatible private alias used by legacy tests and callers."""
+    return group_captures_by_main_node(captures)
+
+
 def get_engine() -> UnifiedAnalysisEngine:
     """
     Get the global analysis engine instance.
@@ -41,7 +57,31 @@ def get_engine() -> UnifiedAnalysisEngine:
     return _engine
 
 
-# Analyze source code structure: analyze_file
+def _analyze_file_sync(
+    file_path: str | Path,
+    language: str | None,
+    queries: list[str] | None,
+    include_elements: bool,
+    include_queries: bool,
+) -> dict[str, Any]:
+    engine = get_engine()
+    request = AnalysisRequest(
+        file_path=str(file_path),
+        language=language,
+        queries=queries,
+        include_elements=include_elements,
+        include_queries=include_queries,
+    )
+    analysis_result = engine.analyze_sync(request)
+    return file_analysis_result(
+        analysis_result,
+        file_path,
+        language,
+        include_elements=include_elements,
+        include_queries=include_queries,
+    )
+
+
 def analyze_file(
     file_path: str | Path,
     language: str | None = None,
@@ -69,138 +109,22 @@ def analyze_file(
         Analysis results dictionary
     """
     try:
-        engine = get_engine()
-
-        # Create analysis request
-        request = AnalysisRequest(
-            file_path=str(file_path),
-            language=language,
-            queries=queries,
-            include_elements=include_elements,
-            include_queries=include_queries,
+        return _analyze_file_sync(
+            file_path,
+            language,
+            queries,
+            include_elements,
+            include_queries,
         )
-
-        # Perform the analysis using sync method
-        analysis_result = engine.analyze_sync(request)
-
-        # Convert AnalysisResult to expected API format (same as analyze_code)
-        result = {
-            "success": analysis_result.success,
-            "file_info": {
-                "path": str(file_path),
-                "exists": True,
-            },
-            "language_info": {
-                "language": analysis_result.language,
-                "detected": language is None,  # True if language was auto-detected
-            },
-            "ast_info": {
-                "node_count": analysis_result.node_count,
-                "line_count": analysis_result.line_count,
-            },
-        }
-
-        # If analysis failed but we have a result, return it (e.g. partial results or error message)
-        if not analysis_result.success:
-            if analysis_result.error_message:
-                result["error"] = analysis_result.error_message
-            return result
-        if include_elements and hasattr(analysis_result, "elements"):
-            elements_list: list[dict[str, Any]] = []
-            result["elements"] = elements_list
-            for elem in analysis_result.elements:
-                elem_dict = {
-                    "name": elem.name,
-                    "type": type(elem).__name__.lower(),
-                    "start_line": elem.start_line,
-                    "end_line": elem.end_line,
-                    "raw_text": elem.raw_text,
-                    "language": elem.language,
-                }
-
-                # Add type-specific fields
-                if hasattr(elem, "module_path"):
-                    elem_dict["module_path"] = elem.module_path
-                if hasattr(elem, "module_name"):
-                    elem_dict["module_name"] = elem.module_name
-                if hasattr(elem, "imported_names"):
-                    elem_dict["imported_names"] = elem.imported_names
-                if hasattr(elem, "variable_type"):
-                    elem_dict["variable_type"] = elem.variable_type
-                if hasattr(elem, "initializer"):
-                    elem_dict["initializer"] = elem.initializer
-                if hasattr(elem, "is_constant"):
-                    elem_dict["is_constant"] = elem.is_constant
-                if hasattr(elem, "parameters"):
-                    elem_dict["parameters"] = elem.parameters
-                if hasattr(elem, "return_type"):
-                    elem_dict["return_type"] = elem.return_type
-                if hasattr(elem, "is_async"):
-                    elem_dict["is_async"] = elem.is_async
-                if hasattr(elem, "is_static"):
-                    elem_dict["is_static"] = elem.is_static
-                if hasattr(elem, "is_constructor"):
-                    elem_dict["is_constructor"] = elem.is_constructor
-                if hasattr(elem, "is_method"):
-                    elem_dict["is_method"] = elem.is_method
-                if hasattr(elem, "complexity_score"):
-                    elem_dict["complexity_score"] = elem.complexity_score
-                if hasattr(elem, "superclass"):
-                    elem_dict["superclass"] = elem.superclass
-                if hasattr(elem, "class_type"):
-                    elem_dict["class_type"] = elem.class_type
-
-                # For methods, try to find the class name from context
-                if elem_dict.get("is_method") and elem_dict["type"] == "function":
-                    # Look for the class this method belongs to
-                    for other_elem in analysis_result.elements:
-                        if (
-                            hasattr(other_elem, "start_line")
-                            and hasattr(other_elem, "end_line")
-                            and type(other_elem).__name__.lower() == "class"
-                            and other_elem.start_line
-                            <= elem.start_line
-                            <= other_elem.end_line
-                        ):
-                            elem_dict["class_name"] = other_elem.name
-                            break
-                    else:
-                        elem_dict["class_name"] = None
-
-                elements_list.append(elem_dict)
-
-        # Add query results if requested and available
-        if include_queries and hasattr(analysis_result, "query_results"):
-            result["query_results"] = analysis_result.query_results
-
-        # Add error message if analysis failed
-        if not analysis_result.success and analysis_result.error_message:
-            result["error"] = analysis_result.error_message
-
-        # Filter results based on options
-        if not include_elements and "elements" in result:
-            del result["elements"]
-
-        if not include_queries and "query_results" in result:
-            del result["query_results"]
-
-        return result
 
     except FileNotFoundError as e:
         # Re-raise FileNotFoundError for tests that expect it
         raise e
     except Exception as e:
         log_error(f"API analyze_file failed: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "file_info": {"path": str(file_path), "exists": False},
-            "language_info": {"language": language or "unknown", "detected": False},
-            "ast_info": {"node_count": 0, "line_count": 0},
-        }
+        return file_analysis_error(file_path, language, e)
 
 
-# Analyze source code structure: analyze_code
 def analyze_code(
     source_code: str,
     language: str,
@@ -229,119 +153,18 @@ def analyze_code(
             source_code, language, filename="string"
         )
 
-        # Convert AnalysisResult to expected API format
-        result = {
-            "success": analysis_result.success,
-            "language_info": {
-                "language": analysis_result.language,
-                "detected": False,  # Language was explicitly provided
-            },
-            "ast_info": {
-                "node_count": analysis_result.node_count,
-                "line_count": analysis_result.line_count,
-            },
-        }
-
-        # If analysis failed but we have a result, return it
-        if not analysis_result.success:
-            if analysis_result.error_message:
-                result["error"] = analysis_result.error_message
-            return result
-        if include_elements and hasattr(analysis_result, "elements"):
-            elements_list: list[dict[str, Any]] = []
-            result["elements"] = elements_list
-            for elem in analysis_result.elements:
-                elem_dict = {
-                    "name": elem.name,
-                    "type": type(elem).__name__.lower(),
-                    "start_line": elem.start_line,
-                    "end_line": elem.end_line,
-                    "raw_text": elem.raw_text,
-                    "language": elem.language,
-                }
-
-                # Add type-specific fields
-                if hasattr(elem, "module_path"):
-                    elem_dict["module_path"] = elem.module_path
-                if hasattr(elem, "module_name"):
-                    elem_dict["module_name"] = elem.module_name
-                if hasattr(elem, "imported_names"):
-                    elem_dict["imported_names"] = elem.imported_names
-                if hasattr(elem, "variable_type"):
-                    elem_dict["variable_type"] = elem.variable_type
-                if hasattr(elem, "initializer"):
-                    elem_dict["initializer"] = elem.initializer
-                if hasattr(elem, "is_constant"):
-                    elem_dict["is_constant"] = elem.is_constant
-                if hasattr(elem, "parameters"):
-                    elem_dict["parameters"] = elem.parameters
-                if hasattr(elem, "return_type"):
-                    elem_dict["return_type"] = elem.return_type
-                if hasattr(elem, "is_async"):
-                    elem_dict["is_async"] = elem.is_async
-                if hasattr(elem, "is_static"):
-                    elem_dict["is_static"] = elem.is_static
-                if hasattr(elem, "is_constructor"):
-                    elem_dict["is_constructor"] = elem.is_constructor
-                if hasattr(elem, "is_method"):
-                    elem_dict["is_method"] = elem.is_method
-                if hasattr(elem, "complexity_score"):
-                    elem_dict["complexity_score"] = elem.complexity_score
-                if hasattr(elem, "superclass"):
-                    elem_dict["superclass"] = elem.superclass
-                if hasattr(elem, "class_type"):
-                    elem_dict["class_type"] = elem.class_type
-
-                # For methods, try to find the class name from context
-                if elem_dict.get("is_method") and elem_dict["type"] == "function":
-                    # Look for the class this method belongs to
-                    for other_elem in analysis_result.elements:
-                        if (
-                            hasattr(other_elem, "start_line")
-                            and hasattr(other_elem, "end_line")
-                            and type(other_elem).__name__.lower() == "class"
-                            and other_elem.start_line
-                            <= elem.start_line
-                            <= other_elem.end_line
-                        ):
-                            elem_dict["class_name"] = other_elem.name
-                            break
-                    else:
-                        elem_dict["class_name"] = None
-
-                elements_list.append(elem_dict)
-
-        # Add query results if requested and available
-        if include_queries and hasattr(analysis_result, "query_results"):
-            result["query_results"] = analysis_result.query_results
-
-        # Add error message if analysis failed
-        if not analysis_result.success and analysis_result.error_message:
-            result["error"] = analysis_result.error_message
-
-        # Filter results based on options
-        if not include_elements and "elements" in result:
-            del result["elements"]
-
-        # Check: not include_queries and "query_results"
-        if not include_queries and "query_results" in result:
-            del result["query_results"]
-
-        # Return result
-        return result
+        return code_analysis_result(
+            analysis_result,
+            language,
+            include_elements=include_elements,
+            include_queries=include_queries,
+        )
 
     except Exception as e:
         log_error(f"API analyze_code failed: {e}")
-        # Return result
-        return {
-            "success": False,
-            "error": str(e),
-            "language_info": {"language": language or "unknown", "detected": False},
-            "ast_info": {"node_count": 0, "line_count": 0},
-        }
+        return code_analysis_error(language, e)
 
 
-# Process: get_supported_languages
 def get_supported_languages() -> list[str]:
     """
     Get list of all supported programming languages.
@@ -351,15 +174,12 @@ def get_supported_languages() -> list[str]:
     """
     try:
         engine = get_engine()
-        # Return result
         return engine.get_supported_languages()
     except Exception as e:
         log_error(f"Failed to get supported languages: {e}")
-        # Return result
         return []
 
 
-# Process: get_available_queries
 def get_available_queries(language: str) -> list[str]:
     """
     Get available queries for a specific language.
@@ -372,15 +192,12 @@ def get_available_queries(language: str) -> list[str]:
     """
     try:
         engine = get_engine()
-        # Return result
         return engine.get_available_queries(language)
     except Exception as e:
         log_error(f"Failed to get available queries for {language}: {e}")
-        # Return result
         return []
 
 
-# Process: is_language_supported
 def is_language_supported(language: str) -> bool:
     """
     Check if a programming language is supported.
@@ -393,11 +210,9 @@ def is_language_supported(language: str) -> bool:
     """
     try:
         supported_languages = get_supported_languages()
-        # Return result
         return language.lower() in [lang.lower() for lang in supported_languages]
     except Exception as e:
         log_error(f"Failed to check language support for {language}: {e}")
-        # Return result
         return False
 
 
@@ -415,7 +230,6 @@ def detect_language(file_path: str | Path) -> str:
     try:
         # Handle invalid input
         if not file_path:
-            # Return result
             return "unknown"
 
         engine = get_engine()
@@ -424,18 +238,14 @@ def detect_language(file_path: str | Path) -> str:
 
         # Ensure result is valid
         if not result or result.strip() == "":
-            # Return result
             return "unknown"
 
-        # Return result
         return str(result)
     except Exception as e:
         log_error(f"Failed to detect language for {file_path}: {e}")
-        # Return result
         return "unknown"
 
 
-# Process: get_file_extensions
 def get_file_extensions(language: str) -> list[str]:
     """
     Get file extensions for a specific language.
@@ -451,7 +261,6 @@ def get_file_extensions(language: str) -> list[str]:
         # Use language_detector to get extensions
         if hasattr(engine.language_detector, "get_extensions_for_language"):
             result = engine.language_detector.get_extensions_for_language(language)
-            # Return result
             return list(result) if result else []
         else:
             # Fallback: return common extensions
@@ -465,15 +274,12 @@ def get_file_extensions(language: str) -> list[str]:
                 "go": [".go"],
                 "rust": [".rs"],
             }
-            # Return result
             return extension_map.get(language.lower(), [])
     except Exception as e:
         log_error(f"Failed to get extensions for {language}: {e}")
-        # Return result
         return []
 
 
-# Process: validate_file
 def validate_file(file_path: str | Path) -> dict[str, Any]:
     """
     Validate a source code file without full analysis.
@@ -485,49 +291,14 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
         Validation results dictionary
     """
     file_path = Path(file_path)
-
-    result: dict[str, Any] = {
-        "valid": False,
-        "exists": file_path.exists(),
-        "readable": False,
-        "language": None,
-        "supported": False,
-        "size": 0,
-        "errors": [],
-    }
+    result = validation_result_template(file_path)
 
     try:
-        # Check if file exists
-        if not file_path.exists():
-            result["errors"].append("File does not exist")
-            # Return result
+        if not mark_validation_readable(file_path, result):
             return result
 
-        # Check if file is readable
-        try:
-            from .encoding_utils import read_file_safe
-
-            # Test file readability by reading it
-            read_file_safe(file_path)
-            result["readable"] = True
-            result["size"] = file_path.stat().st_size
-        except Exception as e:
-            result["errors"].append(f"File is not readable: {e}")
-            # Return result
-            return result
-
-        # Detect language
         language = detect_language(file_path)
-        result["language"] = language
-
-        # Check: language
-        if language:
-            result["supported"] = is_language_supported(language)
-            # Check: not result["supported"]
-            if not result["supported"]:
-                result["errors"].append(f"Language '{language}' is not supported")
-        else:
-            result["errors"].append("Could not detect programming language")
+        apply_language_validation(result, language, is_language_supported)
 
         # If we got this far with no errors, the file is valid
         result["valid"] = len(result["errors"]) == 0
@@ -535,11 +306,9 @@ def validate_file(file_path: str | Path) -> dict[str, Any]:
     except Exception as e:
         result["errors"].append(f"Validation failed: {e}")
 
-    # Return result
     return result
 
 
-# Process: get_framework_info
 def get_framework_info() -> dict[str, Any]:
     """
     Get information about the framework and its capabilities.
@@ -549,20 +318,19 @@ def get_framework_info() -> dict[str, Any]:
     """
     try:
         engine = get_engine()
+        plugin_manager = engine.plugin_manager
+        loaded_plugins = (
+            len(plugin_manager.get_supported_languages()) if plugin_manager else 0
+        )
 
-        # Return result
         return {
             "name": "tree-sitter-analyzer",
             "version": __version__,
             "supported_languages": engine.get_supported_languages(),
             "total_languages": len(engine.get_supported_languages()),
             "plugin_info": {
-                "manager_available": engine.plugin_manager is not None,
-                "loaded_plugins": (
-                    len(engine.plugin_manager.get_supported_languages())
-                    if engine.plugin_manager
-                    else 0
-                ),
+                "manager_available": plugin_manager is not None,
+                "loaded_plugins": loaded_plugins,
             },
             "core_components": [
                 "AnalysisEngine",
@@ -574,93 +342,7 @@ def get_framework_info() -> dict[str, Any]:
         }
     except Exception as e:
         log_error(f"Failed to get framework info: {e}")
-        # Return result
         return {"name": "tree-sitter-analyzer", "version": __version__, "error": str(e)}
-
-
-# Process: _group_captures_by_main_node
-def _group_captures_by_main_node(
-    captures: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """
-    Group query captures by their main nodes (e.g., @method, @class, @function).
-
-    Each group represents one match of the query pattern, with all its sub-captures.
-    Optimized version with O(N log N) complexity.
-
-    Args:
-        captures: Flat list of all captures from the query
-
-    Returns:
-        List of grouped results, where each result has a 'captures' dict mapping
-        capture names to their data.
-    """
-    # Check: not captures
-    if not captures:
-        # Return result
-        return []
-
-    # Identify the main capture type (method, class, function, etc.)
-    main_capture_types = {"method", "class", "function", "interface", "field"}
-
-    # Sort captures by start_byte (asc) and end_byte (desc) to handle nesting correctly
-    # Parents will always appear before their children
-    sorted_captures = sorted(
-        captures, key=lambda c: (c.get("start_byte", 0), -c.get("end_byte", 0))
-    )
-
-    results: list[dict[str, Any]] = []
-    main_node_stack: list[
-        tuple[dict[str, Any], dict[str, Any]]
-    ] = []  # Stack of (main_node, grouped_captures_dict)
-
-    # Iterate over capture
-    for capture in sorted_captures:
-        capture_name = capture.get("capture_name", "")
-        start = capture.get("start_byte", 0)
-        end = capture.get("end_byte", 0)
-
-        # Pop nodes from stack that don't contain the current capture
-        while main_node_stack and main_node_stack[-1][0].get("end_byte", 0) < end:
-            main_node_stack.pop()
-
-        # Check: capture_name in main_capture_types
-        if capture_name in main_capture_types:
-            # This is a main node, create a new result group
-            grouped_captures = {capture_name: capture}
-            result = {
-                "captures": grouped_captures,
-                "text": capture.get("text", ""),
-                "start_line": capture.get("line_number", 0),
-                "end_line": capture.get("line_number", 0)
-                + capture.get("text", "").count("\n"),
-                "start_byte": start,
-                "end_byte": end,
-                "node_type": capture.get("node_type", ""),
-            }
-            results.append(result)
-            # Push to stack to allow children to be grouped under it
-            main_node_stack.append((capture, grouped_captures))
-        else:
-            # This is a sub-capture. Associate it with the most recent containing main node.
-            if main_node_stack:
-                parent_grouped = main_node_stack[-1][1]
-                # Check: capture_name in parent_grouped
-                if capture_name in parent_grouped:
-                    # Collect multiple sub-captures of same name as a list
-                    existing = parent_grouped[capture_name]
-                    # Check: isinstance(existing, list)
-                    if isinstance(existing, list):
-                        existing_list = list(existing)
-                        existing_list.append(capture)
-                        parent_grouped[capture_name] = existing_list
-                    else:
-                        parent_grouped[capture_name] = [existing, capture]
-                else:
-                    parent_grouped[capture_name] = capture
-
-    # Return result
-    return results
 
 
 # Main entry point - dispatches to handler: execute_query
@@ -687,44 +369,10 @@ def execute_query(
             include_elements=False,
             include_queries=True,
         )
-
-        # Check: result["success"] and "query_results" in
-        if result["success"] and "query_results" in result:
-            query_result_dict = result["query_results"].get(query_name, {})
-
-            # Extract the captures list from the query result dictionary
-            if isinstance(query_result_dict, dict) and "captures" in query_result_dict:
-                raw_captures = query_result_dict["captures"]
-            elif isinstance(query_result_dict, list):
-                raw_captures = query_result_dict
-            else:
-                raw_captures = []
-
-            # Group captures by their main capture (e.g., @method, @class)
-            # This groups related captures together (e.g., method + its annotations + name)
-            query_results = _group_captures_by_main_node(raw_captures)
-
-            # Return result
-            return {
-                "success": True,
-                "query_name": query_name,
-                "results": query_results,
-                "count": len(query_results),
-                "language": result.get("language_info", {}).get("language"),
-                "file_path": str(file_path),
-            }
-        else:
-            # Return result
-            return {
-                "success": False,
-                "query_name": query_name,
-                "error": result.get("error", "Unknown error"),
-                "file_path": str(file_path),
-            }
+        return query_execution_result(result, query_name, file_path)
 
     except Exception as e:
         log_error(f"Query execution failed: {e}")
-        # Return result
         return {
             "success": False,
             "query_name": query_name,
@@ -756,23 +404,9 @@ def extract_elements(
             file_path, language=language, include_elements=True, include_queries=False
         )
 
-        # Check: result["success"] and "elements" in resu
         if result["success"] and "elements" in result:
-            elements = result["elements"]
+            elements = filter_elements_by_type(result["elements"], element_types)
 
-            # Filter by element types if specified
-            if element_types:
-                filtered_elements = []
-                # Iterate over element
-                for element in elements:
-                    if any(
-                        etype.lower() in element.get("type", "").lower()
-                        for etype in element_types
-                    ):
-                        filtered_elements.append(element)
-                elements = filtered_elements
-
-            # Return result
             return {
                 "success": True,
                 "elements": elements,
@@ -781,7 +415,6 @@ def extract_elements(
                 "file_path": str(file_path),
             }
         else:
-            # Return result
             return {
                 "success": False,
                 "error": result.get("error", "Unknown error"),
@@ -790,19 +423,15 @@ def extract_elements(
 
     except Exception as e:
         log_error(f"Element extraction failed: {e}")
-        # Return result
         return {"success": False, "error": str(e), "file_path": str(file_path)}
 
 
 # Convenience functions for backward compatibility
 def analyze(file_path: str | Path, **kwargs: Any) -> dict[str, Any]:
     """Convenience function that aliases to analyze_file."""
-    # Return result
     return analyze_file(file_path, **kwargs)
 
 
-# Process: get_languages
 def get_languages() -> list[str]:
     """Convenience function that aliases to get_supported_languages."""
-    # Return result
     return get_supported_languages()

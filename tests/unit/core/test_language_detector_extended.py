@@ -290,6 +290,7 @@ def test_detect_from_extension_various_files(
         "go",
         "php",
         "ruby",
+        "swift",
     ],
 )
 def test_is_supported_supported_languages(language_detector, language):
@@ -297,7 +298,7 @@ def test_is_supported_supported_languages(language_detector, language):
     assert language_detector.is_supported(language) is True
 
 
-@pytest.mark.parametrize("language", ["swift", "scala", "unknown"])
+@pytest.mark.parametrize("language", ["scala", "unknown"])
 def test_is_supported_unsupported_languages(language_detector, language):
     """Test support status for unsupported languages"""
     assert language_detector.is_supported(language) is False
@@ -329,6 +330,7 @@ def test_get_supported_languages(language_detector):
     assert "cpp" in languages
     assert "php" in languages
     assert "ruby" in languages
+    assert "swift" in languages
     # Should be sorted
     assert languages == sorted(languages)
 
@@ -360,15 +362,14 @@ def test_get_language_info_supported(language_detector):
     assert info["tree_sitter_available"] is True
 
 
-def test_get_language_info_unsupported(language_detector):
-    """Test getting language information for unsupported language"""
-    # Test for unsupported language (using swift which is not supported)
+def test_get_language_info_swift_supported(language_detector):
+    """Test getting language information for Swift."""
     info = language_detector.get_language_info("swift")
 
     assert info["name"] == "swift"
     assert ".swift" in info["extensions"]
-    assert info["supported"] is False
-    assert info["tree_sitter_available"] is False
+    assert info["supported"] is True
+    assert info["tree_sitter_available"] is True
 
 
 def test_resolve_ambiguity_non_ambiguous(language_detector):
@@ -427,7 +428,7 @@ def test_is_language_supported_global():
     """Test global is_language_supported function"""
     assert is_language_supported("java") is True
     assert is_language_supported("python") is True
-    assert is_language_supported("swift") is False
+    assert is_language_supported("swift") is True
     assert is_language_supported("unknown") is False
 
 

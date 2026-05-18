@@ -119,6 +119,7 @@ def nested_hello():
             assert "count" in result
             assert "results" in result
             assert "meta" in result
+            assert result["agent_summary"]["mode"] == "normal"
 
             # Check file output
             assert "output_file" in result
@@ -140,6 +141,7 @@ def nested_hello():
             assert "files" in saved_content
             assert "summary" in saved_content
             assert "meta" in saved_content
+            assert saved_content["agent_summary"]["mode"] == "normal"
 
     @pytest.mark.asyncio
     async def test_suppress_output_functionality(
@@ -177,6 +179,7 @@ def nested_hello():
             assert "count" in result
             assert "output_file" in result
             assert "file_saved" in result
+            assert result["agent_summary"]["suppress_output"] is True
 
             # Verify file was still created with full content
             file_path = result["file_saved"].split("Results saved to ")[1]
@@ -189,6 +192,7 @@ def nested_hello():
             # File should contain full results even when output is suppressed
             assert "results" in saved_content
             assert "files" in saved_content
+            assert saved_content["agent_summary"]["output_saved"] is True
 
     @pytest.mark.asyncio
     async def test_group_by_file_with_output(
@@ -325,6 +329,7 @@ def nested_hello():
             assert "total_matches" in result
             assert "file_counts" in result
             assert "meta" in result
+            assert result["agent_summary"]["mode"] == "count_only"
 
     @pytest.mark.asyncio
     async def test_total_only_mode(self, find_and_grep_tool, temp_project_dir):

@@ -158,7 +158,6 @@ def summarize_search_results(
 ) -> dict[str, Any]:
     """Summarize search results to reduce context size while preserving key information."""
     if not matches:
-        # Return result
         return {
             "total_matches": 0,
             "total_files": 0,
@@ -234,7 +233,6 @@ def summarize_search_results(
     else:
         summary = f"Found {total_matches} matches in {total_files} files (showing top {len(top_files)})"
 
-    # Return result
     return {
         "total_matches": total_matches,
         "total_files": total_files,
@@ -247,7 +245,6 @@ def summarize_search_results(
 # extract_file_list_from_count_data: implementation
 def extract_file_list_from_count_data(count_data: dict[str, int]) -> list[str]:
     """Extract file list from count data, excluding the special __total__ key."""
-    # Return result
     return [file_path for file_path in count_data.keys() if file_path != "__total__"]
 
 
@@ -257,7 +254,6 @@ def create_file_summary_from_count_data(count_data: dict[str, int]) -> dict[str,
     file_list = extract_file_list_from_count_data(count_data)
     total_matches = count_data.get("__total__", 0)
 
-    # Return result
     return {
         "success": True,
         "total_matches": total_matches,

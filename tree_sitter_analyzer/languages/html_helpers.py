@@ -55,7 +55,6 @@ def parse_attribute(
         return "", ""
 
 
-# Process: classify_element
 def classify_element(
     tag_name: str,
     element_categories: dict[str, list[str]],
@@ -124,7 +123,6 @@ def extract_html_attributes(
     return attributes
 
 
-# Process: create_markup_element
 def create_markup_element(
     node: Any,
     get_node_text: Callable[..., str],

@@ -11,7 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
+from tree_sitter_analyzer.mcp.tools.list_files_tool import (
+    ListFilesTool,
+    _build_agent_summary,
+)
 
 
 @pytest.fixture
@@ -474,12 +477,14 @@ class TestExecute:
                     arguments = {
                         "roots": [str(sample_project_structure)],
                         "pattern": "*.py",
+                        "output_format": "json",
                     }
 
                     result = await tool.execute(arguments)
 
                     assert result["success"] is True
-                    assert "toon_content" in result
+                    assert "agent_summary" in result
+                    assert result["agent_summary"]["suggested_tool"] == "smart_context"
                     assert "count" in result
                     assert "elapsed_ms" in result
 
@@ -512,6 +517,8 @@ class TestExecute:
 
                     assert result["success"] is True
                     assert result["count_only"] is True
+                    assert result["agent_summary"]["count_only"] is True
+                    assert result["agent_summary"]["suggested_tool"] == "list_files"
                     assert "total_count" in result
                     assert result["total_count"] == 3
 
@@ -536,7 +543,7 @@ class TestExecute:
                     "tree_sitter_analyzer.mcp.tools.list_files_tool.get_default_detector"
                 ):
                     with patch(
-                        "tree_sitter_analyzer.mcp.tools.list_files_tool.FileOutputManager"
+                        "tree_sitter_analyzer.mcp.tools.list_files_helpers.FileOutputManager"
                     ) as mock_manager_class:
                         mock_manager = MagicMock()
                         mock_manager.save_to_file.return_value = "/output/results.json"
@@ -574,7 +581,7 @@ class TestExecute:
                     "tree_sitter_analyzer.mcp.tools.list_files_tool.get_default_detector"
                 ):
                     with patch(
-                        "tree_sitter_analyzer.mcp.tools.list_files_tool.FileOutputManager"
+                        "tree_sitter_analyzer.mcp.tools.list_files_helpers.FileOutputManager"
                     ) as mock_manager_class:
                         mock_manager = MagicMock()
                         mock_manager.save_to_file.return_value = "/output/results.json"
@@ -617,7 +624,7 @@ class TestExecute:
                     "tree_sitter_analyzer.mcp.tools.list_files_tool.get_default_detector"
                 ):
                     with patch(
-                        "tree_sitter_analyzer.mcp.tools.list_files_tool.apply_toon_format_to_response"
+                        "tree_sitter_analyzer.mcp.tools.list_files_helpers.apply_toon_format_to_response"
                     ) as mock_toon:
                         mock_toon.return_value = {"toon": "formatted"}
 
@@ -796,5 +803,38 @@ class TestExecute:
 
                     # Verify results were truncated
                     assert result["truncated"] is True
+                    assert result["agent_summary"]["risk"] == "high"
+                    assert result["agent_summary"]["suggested_tool"] == "list_files"
                     # In toon format, results are in toon_content
                     assert "toon_content" in result
+
+
+class TestAgentSummary:
+    """Tests for list_files agent summary guidance."""
+
+    def test_agent_summary_for_empty_results(self):
+        summary = _build_agent_summary(
+            count=0,
+            truncated=False,
+            count_only=False,
+            limit=100,
+            no_ignore=False,
+        )
+
+        assert summary["risk"] == "low"
+        assert summary["suggested_tool"] == "search_content"
+        assert summary["next_step"].startswith("Broaden roots")
+
+    def test_agent_summary_for_limit_hit(self):
+        summary = _build_agent_summary(
+            count=100,
+            truncated=False,
+            count_only=False,
+            limit=100,
+            no_ignore=True,
+        )
+
+        assert summary["risk"] == "high"
+        assert summary["no_ignore"] is True
+        assert summary["suggested_tool"] == "list_files"
+        assert "Narrow list_files" in summary["next_step"]

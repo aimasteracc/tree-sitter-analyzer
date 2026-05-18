@@ -600,6 +600,26 @@ class TestJavaScriptPluginEdgeCases:
                 "exports": [],
             }
 
+    def test_plugin_extract_elements_includes_exports(self, plugin):
+        """Test plugin extract_elements returns exports from the extractor."""
+        mock_tree = Mock()
+        mock_tree.root_node = Mock()
+        mock_tree.root_node.children = []
+        source_code = "export { helper };"
+        expected_exports = [{"type": "named", "names": ["helper"], "is_default": False}]
+
+        with patch.object(plugin, "extractor") as mock_extractor:
+            mock_extractor.extract_functions.return_value = []
+            mock_extractor.extract_classes.return_value = []
+            mock_extractor.extract_variables.return_value = []
+            mock_extractor.extract_imports.return_value = []
+            mock_extractor.extract_exports.return_value = expected_exports
+
+            result = plugin.extract_elements(mock_tree, source_code)
+
+        assert result["exports"] == expected_exports
+        mock_extractor.extract_exports.assert_called_once_with(mock_tree, source_code)
+
     def test_extreme_file_sizes(self, extractor):
         """Test handling of extremely large files"""
         # Simulate very large file

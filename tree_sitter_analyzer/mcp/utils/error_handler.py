@@ -490,7 +490,6 @@ def handle_mcp_errors(
 
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
-        # Process: async_wrapper
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await func(*args, **kwargs)
@@ -533,7 +532,6 @@ def handle_mcp_errors(
                 raise
 
         @wraps(func)
-        # Process: sync_wrapper
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return func(*args, **kwargs)

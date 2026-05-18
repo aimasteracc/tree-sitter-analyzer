@@ -220,33 +220,28 @@ class QueryTool(BaseMCPTool):
     def _format_summary(
         self, results: list[dict[str, Any]], query_type: str, language: str
     ) -> dict[str, Any]:
-        # Return result
         return format_summary(results, query_type, language)
 
     # _extract_name_from_content: implementation
     def _extract_name_from_content(self, content: str) -> str:
         from .query_helpers import extract_name_from_content
 
-        # Return result
         return extract_name_from_content(content)
 
     # _build_next_steps: implementation
     def _build_next_steps(
         self, results: list[dict[str, Any]], file_path: str, query_used: str
     ) -> list[str]:
-        # Return result
         return build_next_steps(results, file_path, query_used)
 
     # get_available_queries: implementation
     def get_available_queries(self, language: str) -> list[str]:
         """Return available query keys for a language."""
-        # Return result
         return self.query_service.get_available_queries(language)
 
     # _execute_symbol_search: implementation
     async def _execute_symbol_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Delegate cross-file symbol search to helper."""
-        # Return result
         return await execute_symbol_search(self.project_root, arguments)
 
     # validate_arguments: delegates to shared helper
@@ -259,7 +254,6 @@ class QueryTool(BaseMCPTool):
 def _analysis_error(msg: str) -> Exception:
     from ..utils.error_handler import AnalysisError
 
-    # Return result
     return AnalysisError(msg, operation="query_code")
 
 

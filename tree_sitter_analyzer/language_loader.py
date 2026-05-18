@@ -50,6 +50,7 @@ class LanguageLoader:
         "php": "tree_sitter_php",
         "ruby": "tree_sitter_ruby",
         "kotlin": "tree_sitter_kotlin",
+        "swift": "tree_sitter_swift",
     }
 
     # TypeScript特別処理（TypeScriptとTSX）

@@ -26,7 +26,8 @@ from ..models import CodeElement
 from ..models import Function as ModelFunction
 from ..models import Import as ModelImport
 from ..models import Variable as ModelVariable
-from ..utils import log_debug, log_error
+from ..utils import log_error
+from ._base_traverse_mixin import DefaultTraverseMixin
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +332,7 @@ class LanguagePlugin(ABC):
         }
 
 
-class DefaultExtractor(ElementExtractor):
+class DefaultExtractor(DefaultTraverseMixin, ElementExtractor):
     """
     Default implementation of ElementExtractor with basic functionality.
 
@@ -344,13 +345,14 @@ class DefaultExtractor(ElementExtractor):
     ) -> list[ModelFunction]:
         """Basic function extraction implementation."""
         functions: list[ModelFunction] = []
+        root_node = self._tree_root_node(tree)
+        if root_node is None:
+            return functions
 
         try:
-            if hasattr(tree, "root_node"):
-                lines = source_code.splitlines()
-                self._traverse_for_functions(
-                    tree.root_node, functions, lines, source_code
-                )
+            self._traverse_for_functions(
+                root_node, functions, source_code.splitlines(), source_code
+            )
         except Exception as e:
             log_error(f"Error in function extraction: {e}")
 
@@ -361,11 +363,14 @@ class DefaultExtractor(ElementExtractor):
     ) -> list[ModelClass]:
         """Basic class extraction implementation."""
         classes: list[ModelClass] = []
+        root_node = self._tree_root_node(tree)
+        if root_node is None:
+            return classes
 
         try:
-            if hasattr(tree, "root_node"):
-                lines = source_code.splitlines()
-                self._traverse_for_classes(tree.root_node, classes, lines, source_code)
+            self._traverse_for_classes(
+                root_node, classes, source_code.splitlines(), source_code
+            )
         except Exception as e:
             log_error(f"Error in class extraction: {e}")
 
@@ -376,13 +381,14 @@ class DefaultExtractor(ElementExtractor):
     ) -> list[ModelVariable]:
         """Basic variable extraction implementation."""
         variables: list[ModelVariable] = []
+        root_node = self._tree_root_node(tree)
+        if root_node is None:
+            return variables
 
         try:
-            if hasattr(tree, "root_node"):
-                lines = source_code.splitlines()
-                self._traverse_for_variables(
-                    tree.root_node, variables, lines, source_code
-                )
+            self._traverse_for_variables(
+                root_node, variables, source_code.splitlines(), source_code
+            )
         except Exception as e:
             log_error(f"Error in variable extraction: {e}")
 
@@ -393,219 +399,18 @@ class DefaultExtractor(ElementExtractor):
     ) -> list[ModelImport]:
         """Basic import extraction implementation."""
         imports: list[ModelImport] = []
+        root_node = self._tree_root_node(tree)
+        if root_node is None:
+            return imports
 
         try:
-            if hasattr(tree, "root_node"):
-                lines = source_code.splitlines()
-                self._traverse_for_imports(tree.root_node, imports, lines, source_code)
+            self._traverse_for_imports(
+                root_node, imports, source_code.splitlines(), source_code
+            )
         except Exception as e:
             log_error(f"Error in import extraction: {e}")
 
         return imports
-
-    def _traverse_for_functions(
-        self,
-        node: "tree_sitter.Node",
-        functions: list[ModelFunction],
-        lines: list[str],
-        source_code: str,
-    ) -> None:
-        """Traverse tree to find function-like nodes."""
-        if hasattr(node, "type") and self._is_function_node(node.type):
-            try:
-                name = self._extract_node_name(node, source_code) or "unknown"
-                raw_text = self._extract_node_text(node, source_code)
-
-                func = ModelFunction(
-                    name=name,
-                    start_line=(
-                        node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    ),
-                    end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
-                    raw_text=raw_text,
-                    language=self._get_language_hint(),
-                )
-                functions.append(func)
-            except Exception as e:
-                log_debug(f"Failed to extract function: {e}")
-
-        if hasattr(node, "children"):
-            for child in node.children:
-                self._traverse_for_functions(child, functions, lines, source_code)
-
-    def _traverse_for_classes(
-        self,
-        node: "tree_sitter.Node",
-        classes: list[ModelClass],
-        lines: list[str],
-        source_code: str,
-    ) -> None:
-        """Traverse tree to find class-like nodes."""
-        if hasattr(node, "type") and self._is_class_node(node.type):
-            try:
-                name = self._extract_node_name(node, source_code) or "unknown"
-                raw_text = self._extract_node_text(node, source_code)
-
-                cls = ModelClass(
-                    name=name,
-                    start_line=(
-                        node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    ),
-                    end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
-                    raw_text=raw_text,
-                    language=self._get_language_hint(),
-                )
-                classes.append(cls)
-            except Exception as e:
-                log_debug(f"Failed to extract class: {e}")
-
-        if hasattr(node, "children"):
-            for child in node.children:
-                self._traverse_for_classes(child, classes, lines, source_code)
-
-    def _traverse_for_variables(
-        self,
-        node: "tree_sitter.Node",
-        variables: list[ModelVariable],
-        lines: list[str],
-        source_code: str,
-    ) -> None:
-        """Traverse tree to find variable declarations."""
-        if hasattr(node, "type") and self._is_variable_node(node.type):
-            try:
-                name = self._extract_node_name(node, source_code) or "unknown"
-                raw_text = self._extract_node_text(node, source_code)
-
-                var = ModelVariable(
-                    name=name,
-                    start_line=(
-                        node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    ),
-                    end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
-                    raw_text=raw_text,
-                    language=self._get_language_hint(),
-                )
-                variables.append(var)
-            except Exception as e:
-                log_debug(f"Failed to extract variable: {e}")
-
-        if hasattr(node, "children"):
-            for child in node.children:
-                self._traverse_for_variables(child, variables, lines, source_code)
-
-    def _traverse_for_imports(
-        self,
-        node: "tree_sitter.Node",
-        imports: list[ModelImport],
-        lines: list[str],
-        source_code: str,
-    ) -> None:
-        """Traverse tree to find import statements."""
-        if hasattr(node, "type") and self._is_import_node(node.type):
-            try:
-                name = self._extract_node_name(node, source_code) or "unknown"
-                raw_text = self._extract_node_text(node, source_code)
-
-                imp = ModelImport(
-                    name=name,
-                    start_line=(
-                        node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                    ),
-                    end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
-                    raw_text=raw_text,
-                    language=self._get_language_hint(),
-                )
-                imports.append(imp)
-            except Exception as e:
-                log_debug(f"Failed to extract import: {e}")
-
-        if hasattr(node, "children"):
-            for child in node.children:
-                self._traverse_for_imports(child, imports, lines, source_code)
-
-    def _is_function_node(self, node_type: str) -> bool:
-        """Check if a node type represents a function."""
-        function_types = [
-            "function_definition",
-            "function_declaration",
-            "method_definition",
-            "function",
-            "method",
-            "procedure",
-            "subroutine",
-        ]
-        return any(ftype in node_type.lower() for ftype in function_types)
-
-    def _is_class_node(self, node_type: str) -> bool:
-        """Check if a node type represents a class."""
-        class_types = [
-            "class_definition",
-            "class_declaration",
-            "interface_definition",
-            "class",
-            "interface",
-            "struct",
-            "enum",
-        ]
-        return any(ctype in node_type.lower() for ctype in class_types)
-
-    def _is_variable_node(self, node_type: str) -> bool:
-        """Check if a node type represents a variable."""
-        variable_types = [
-            "variable_declaration",
-            "variable_definition",
-            "field_declaration",
-            "assignment",
-            "declaration",
-            "variable",
-            "field",
-        ]
-        return any(vtype in node_type.lower() for vtype in variable_types)
-
-    def _is_import_node(self, node_type: str) -> bool:
-        """Check if a node type represents an import."""
-        import_types = [
-            "import_statement",
-            "import_declaration",
-            "include_statement",
-            "import",
-            "include",
-            "require",
-            "use",
-        ]
-        return any(itype in node_type.lower() for itype in import_types)
-
-    def _extract_node_name(
-        self, node: "tree_sitter.Node", source_code: str
-    ) -> str | None:
-        """Extract name from a tree-sitter node."""
-        try:
-            # Look for identifier children
-            if hasattr(node, "children"):
-                for child in node.children:
-                    if hasattr(child, "type") and child.type == "identifier":
-                        return self._extract_node_text(child, source_code)
-
-            # Fallback: use position-based name
-            return f"element_{node.start_point[0]}_{node.start_point[1]}"
-        except Exception:
-            return None
-
-    def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
-        """Extract text content from a tree-sitter node."""
-        try:
-            if hasattr(node, "start_byte") and hasattr(node, "end_byte"):
-                source_bytes = source_code.encode("utf-8")
-                node_bytes = source_bytes[node.start_byte : node.end_byte]
-                return node_bytes.decode("utf-8", errors="replace")
-            return ""
-        except Exception as e:
-            log_debug(f"Failed to extract node text: {e}")
-            return ""
-
-    def _get_language_hint(self) -> str:
-        """Get a hint about the language being processed."""
-        return "unknown"
 
 
 class DefaultLanguagePlugin(LanguagePlugin):

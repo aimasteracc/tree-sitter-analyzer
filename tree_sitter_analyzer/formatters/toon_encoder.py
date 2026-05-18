@@ -14,23 +14,16 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
-# Logger for TOON encoder
+from ._toon_encoder_string_helpers import escape_string, needs_quotes
+from ._toon_encoder_table_helpers import (
+    encode_array_table_lines,
+    encode_public_array_table,
+)
+from ._toon_encoder_task_helpers import build_task_handlers
+
 logger = logging.getLogger(__name__)
 
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
 class ToonEncodeError(Exception):
     """
     Exception raised when TOON encoding fails.
@@ -55,7 +48,6 @@ class ToonEncodeError(Exception):
         self.data = data
         self.cause = cause
 
-    # Process: __str__
     def __str__(self) -> str:
         """Return string representation of the error."""
         base = f"ToonEncodeError: {self.message}"
@@ -103,10 +95,8 @@ class ToonEncoder:
         - Detailed error logging
     """
 
-    # Maximum nesting depth to prevent memory exhaustion
     MAX_DEPTH = 100
 
-    # Process: __init__
     def __init__(
         self,
         use_tabs: bool = False,
@@ -130,7 +120,6 @@ class ToonEncoder:
         self.max_depth = max_depth
         self.normalize_paths = normalize_paths
 
-    # Process: encode
     def encode(self, data: Any, indent: int = 0) -> str:
         """
         Encode arbitrary data as TOON format using iterative approach.
@@ -164,7 +153,6 @@ class ToonEncoder:
                 "Failed to encode data as TOON", data=data, cause=e
             ) from e
 
-    # Process: _encode_iterative
     def _encode_iterative(self, data: Any, initial_indent: int = 0) -> str:
         """
         Iterative encoding using explicit stack.
@@ -179,16 +167,10 @@ class ToonEncoder:
         Raises:
             ToonEncodeError: On circular reference or max depth exceeded
         """
-        # Track seen object IDs for circular reference detection
         seen_ids: set[int] = set()
-
-        # Output lines
         output: list[str] = []
-
-        # Task stack (LIFO)
         stack: list[_Task] = []
 
-        # Initialize with root task
         if isinstance(data, dict):
             stack.append(_Task(_TaskType.ENCODE_DICT_START, data, initial_indent))
         elif isinstance(data, list):
@@ -196,45 +178,21 @@ class ToonEncoder:
         else:
             return self.encode_value(data, seen_ids)
 
-        # Process tasks iteratively
+        task_handlers = build_task_handlers(_TaskType, self, stack, output, seen_ids)
+
         while stack:
             task = stack.pop()
 
-            # Check depth limit
             if task.indent > self.max_depth:
                 raise ToonEncodeError(
                     f"Maximum nesting depth ({self.max_depth}) exceeded",
                     data="<truncated>",
                 )
 
-            if task.task_type == _TaskType.ENCODE_DICT_START:
-                self._handle_dict_start(task, stack, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_DICT_KEY:
-                self._handle_dict_key(task, stack, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_LIST_START:
-                self._handle_list_start(task, stack, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_LIST_ITEM:
-                self._handle_list_item(task, stack, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_ARRAY_TABLE:
-                self._handle_array_table(task, output, seen_ids)
-
-            elif task.task_type == _TaskType.ENCODE_DICT_END:
-                # Remove from seen_ids
-                obj_id = id(task.data)
-                seen_ids.discard(obj_id)
-
-            elif task.task_type == _TaskType.ENCODE_LIST_END:
-                # Remove from seen_ids
-                obj_id = id(task.data)
-                seen_ids.discard(obj_id)
+            task_handlers[task.task_type](task)
 
         return "\n".join(output)
 
-    # Handle request or event: _handle_dict_start
     def _handle_dict_start(
         self,
         task: _Task,
@@ -269,7 +227,6 @@ class ToonEncoder:
                 )
             )
 
-    # Handle request or event: _handle_dict_key
     def _handle_dict_key(
         self,
         task: _Task,
@@ -298,7 +255,6 @@ class ToonEncoder:
         else:
             output.append(f"{indent_str}{key}: {self.encode_value(value, seen_ids)}")
 
-    # Handle request or event: _handle_list_start
     def _handle_list_start(
         self,
         task: _Task,
@@ -334,7 +290,6 @@ class ToonEncoder:
 
         seen_ids.discard(obj_id)
 
-    # Handle request or event: _handle_list_item
     def _handle_list_item(
         self,
         task: _Task,
@@ -355,7 +310,6 @@ class ToonEncoder:
         else:
             output.append(f"{indent_str}{self.encode_value(item, seen_ids)}")
 
-    # Handle request or event: _handle_array_table
     def _handle_array_table(
         self,
         task: _Task,
@@ -381,49 +335,21 @@ class ToonEncoder:
         seen_ids.add(obj_id)
 
         try:
-            # Infer schema from first item
             schema = list(items[0].keys())
             indent_str = "  " * indent
-
-            # Build schema string with tuple/list type annotations
-            schema_parts = []
-            for key in schema:
-                first_value = items[0].get(key)
-                if isinstance(first_value, tuple | list) and len(first_value) == 2:
-                    # Compact tuple format: field_name(a,b)
-                    schema_parts.append(f"{key}(a,b)")
-                elif isinstance(first_value, dict):
-                    # Compact dict format: field_name{keys}
-                    dict_keys = self.delimiter.join(first_value.keys())
-                    schema_parts.append(f"{key}{{{dict_keys}}}")
-                else:
-                    schema_parts.append(key)
-
-            schema_str = self.delimiter.join(schema_parts)
-            output.append(f"{indent_str}[{len(items)}]{{{schema_str}}}:")
-
-            # Rows
-            for item in items:
-                row_values = []
-                for key in schema:
-                    value = item.get(key, "")
-                    if isinstance(value, tuple | list) and len(value) == 2:
-                        # Compact tuple: (a,b)
-                        row_values.append(f"({value[0]},{value[1]})")
-                    elif isinstance(value, dict):
-                        # Compact dict: values only
-                        dict_values = self.delimiter.join(
-                            str(self.encode_value(v, seen_ids)) for v in value.values()
-                        )
-                        row_values.append(f"({dict_values})")
-                    else:
-                        row_values.append(self.encode_value(value, seen_ids))
-                row = self.delimiter.join(row_values)
-                output.append(f"{indent_str}  {row}")
+            output.extend(
+                encode_array_table_lines(
+                    items,
+                    schema,
+                    self.delimiter,
+                    indent_str,
+                    self.encode_value,
+                    seen_ids,
+                )
+            )
         finally:
             seen_ids.discard(obj_id)
 
-    # Process: _encode_simple_list
     def _encode_simple_list(self, items: list[Any], seen_ids: set[int]) -> str:
         """
         Encode a simple list (non-homogeneous dicts) inline.
@@ -440,37 +366,30 @@ class ToonEncoder:
 
         encoded_items = []
         for item in items:
-            if isinstance(item, list):
-                obj_id = id(item)
-                if obj_id in seen_ids:
-                    raise ToonEncodeError(
-                        "Circular reference detected in nested list",
-                        data="<circular reference>",
-                    )
-                seen_ids.add(obj_id)
-                try:
-                    encoded_items.append(self._encode_simple_list(item, seen_ids))
-                finally:
-                    seen_ids.discard(obj_id)
-            elif isinstance(item, dict):
-                obj_id = id(item)
-                if obj_id in seen_ids:
-                    raise ToonEncodeError(
-                        "Circular reference detected in nested dict",
-                        data="<circular reference>",
-                    )
-                # For dicts in simple lists, use JSON-like format
-                seen_ids.add(obj_id)
-                try:
-                    encoded_items.append(self._encode_inline_dict(item, seen_ids))
-                finally:
-                    seen_ids.discard(obj_id)
-            else:
+            if not isinstance(item, list | dict):
                 encoded_items.append(self.encode_value(item, seen_ids))
+                continue
+
+            obj_id = id(item)
+            if obj_id in seen_ids:
+                kind = "list" if isinstance(item, list) else "dict"
+                raise ToonEncodeError(
+                    f"Circular reference detected in nested {kind}",
+                    data="<circular reference>",
+                )
+
+            seen_ids.add(obj_id)
+            try:
+                if isinstance(item, list):
+                    encoded_item = self._encode_simple_list(item, seen_ids)
+                else:
+                    encoded_item = self._encode_inline_dict(item, seen_ids)
+                encoded_items.append(encoded_item)
+            finally:
+                seen_ids.discard(obj_id)
 
         return f"[{self.delimiter.join(encoded_items)}]"
 
-    # Process: _encode_inline_dict
     def _encode_inline_dict(self, data: dict[str, Any], seen_ids: set[int]) -> str:
         """
         Encode a dict inline (for dicts inside simple lists).
@@ -487,36 +406,27 @@ class ToonEncoder:
 
         pairs = []
         for key, value in data.items():
-            if isinstance(value, dict):
-                obj_id = id(value)
-                if obj_id in seen_ids:
-                    pairs.append(f"{key}:<circular>")
-                else:
-                    seen_ids.add(obj_id)
-                    try:
-                        pairs.append(
-                            f"{key}:{self._encode_inline_dict(value, seen_ids)}"
-                        )
-                    finally:
-                        seen_ids.discard(obj_id)
-            elif isinstance(value, list):
-                obj_id = id(value)
-                if obj_id in seen_ids:
-                    pairs.append(f"{key}:<circular>")
-                else:
-                    seen_ids.add(obj_id)
-                    try:
-                        pairs.append(
-                            f"{key}:{self._encode_simple_list(value, seen_ids)}"
-                        )
-                    finally:
-                        seen_ids.discard(obj_id)
-            else:
+            if not isinstance(value, dict | list):
                 pairs.append(f"{key}:{self.encode_value(value, seen_ids)}")
+                continue
+
+            obj_id = id(value)
+            if obj_id in seen_ids:
+                pairs.append(f"{key}:<circular>")
+                continue
+
+            seen_ids.add(obj_id)
+            try:
+                if isinstance(value, dict):
+                    encoded_value = self._encode_inline_dict(value, seen_ids)
+                else:
+                    encoded_value = self._encode_simple_list(value, seen_ids)
+                pairs.append(f"{key}:{encoded_value}")
+            finally:
+                seen_ids.discard(obj_id)
 
         return "{" + self.delimiter.join(pairs) + "}"
 
-    # Process: _fallback_to_json
     def _fallback_to_json(self, data: Any) -> str:
         """
         Fall back to JSON encoding when TOON encoding fails.
@@ -533,7 +443,6 @@ class ToonEncoder:
             logger.error(f"JSON fallback also failed: {e}")
             return f"# Encoding failed: {e}\n{{}}"
 
-    # Process: encode_value
     def encode_value(self, value: Any, seen_ids: set[int] | None = None) -> str:
         """
         Encode single value for TOON output.
@@ -547,26 +456,22 @@ class ToonEncoder:
         """
         if value is None:
             return "null"
-        elif isinstance(value, bool):
+        if isinstance(value, bool):
             return "true" if value else "false"
-        elif isinstance(value, int | float):
+        if isinstance(value, int | float):
             return str(value)
-        elif isinstance(value, str):
+        if isinstance(value, str):
             return self._encode_string(value)
-        elif isinstance(value, dict):
-            # Encode dict inline using TOON format
+        if isinstance(value, dict):
             if seen_ids is None:
                 seen_ids = set()
             return self._encode_inline_dict(value, seen_ids)
-        elif isinstance(value, list):
-            # Encode list inline using TOON format
+        if isinstance(value, list):
             if seen_ids is None:
                 seen_ids = set()
             return self._encode_simple_list(value, seen_ids)
-        else:
-            return str(value)
+        return str(value)
 
-    # Process: _encode_string
     def _encode_string(self, s: str) -> str:
         """
         Encode string with proper escaping.
@@ -588,38 +493,8 @@ class ToonEncoder:
         if self.normalize_paths:
             s = self._normalize_path_string(s)
 
-        # Check if quoting is needed
-        needs_quotes = any(
-            c in s
-            for c in [
-                self.delimiter,
-                "\n",
-                "\r",
-                "\t",
-                "\\",
-                ":",
-                "{",
-                "}",
-                "[",
-                "]",
-                '"',
-            ]
-        )
+        return escape_string(s) if needs_quotes(s, self.delimiter) else s
 
-        if needs_quotes:
-            # Apply escape sequences (order matters: backslash first)
-            escaped = (
-                s.replace("\\", "\\\\")  # Backslash must be first
-                .replace('"', '\\"')  # Quote
-                .replace("\n", "\\n")  # Newline
-                .replace("\r", "\\r")  # Carriage return
-                .replace("\t", "\\t")
-            )  # Tab
-            return f'"{escaped}"'
-
-        return s
-
-    # Process: _normalize_path_string
     def _normalize_path_string(self, s: str) -> str:
         """
         Normalize Windows-style paths to forward slashes.
@@ -678,7 +553,6 @@ class ToonEncoder:
         """
         return self._encode_iterative(data, indent)
 
-    # Process: encode_list
     def encode_list(self, items: list[Any], indent: int = 0) -> str:
         """
         Encode list as TOON array.
@@ -694,7 +568,6 @@ class ToonEncoder:
         """
         return self._encode_iterative(items, indent)
 
-    # Process: encode_array_header
     def encode_array_header(self, count: int, schema: list[str] | None = None) -> str:
         """
         Generate array header with optional schema.
@@ -715,7 +588,6 @@ class ToonEncoder:
             return f"[{count}]{{{schema_str}}}:"
         return f"[{count}]:"
 
-    # Process: encode_array_table
     def encode_array_table(
         self,
         items: list[dict[str, Any]],
@@ -738,52 +610,15 @@ class ToonEncoder:
         Returns:
             TOON-formatted table string
         """
-        if not items:
-            return "[]"
+        return encode_public_array_table(
+            items,
+            schema,
+            indent,
+            self.delimiter,
+            self.encode_value,
+            self._infer_schema,
+        )
 
-        # Infer schema from first item if not provided
-        if schema is None:
-            schema = self._infer_schema(items)
-
-        lines = []
-        indent_str = "  " * indent
-
-        # Build schema string with tuple/list type annotations
-        schema_parts = []
-        for key in schema:
-            first_value = items[0].get(key) if items else None
-            if isinstance(first_value, tuple | list) and len(first_value) == 2:
-                schema_parts.append(f"{key}(a,b)")
-            elif isinstance(first_value, dict):
-                dict_keys = self.delimiter.join(first_value.keys())
-                schema_parts.append(f"{key}{{{dict_keys}}}")
-            else:
-                schema_parts.append(key)
-
-        schema_str = self.delimiter.join(schema_parts)
-        lines.append(f"{indent_str}[{len(items)}]{{{schema_str}}}:")
-
-        # Rows - use set() for seen_ids since this is a public API without tracking
-        seen_ids: set[int] = set()
-        for item in items:
-            row_values = []
-            for key in schema:
-                value = item.get(key, "")
-                if isinstance(value, tuple | list) and len(value) == 2:
-                    row_values.append(f"({value[0]},{value[1]})")
-                elif isinstance(value, dict):
-                    dict_values = self.delimiter.join(
-                        str(self.encode_value(v, seen_ids)) for v in value.values()
-                    )
-                    row_values.append(f"({dict_values})")
-                else:
-                    row_values.append(self.encode_value(value, seen_ids))
-            row = self.delimiter.join(row_values)
-            lines.append(f"{indent_str}  {row}")
-
-        return "\n".join(lines)
-
-    # Process: _infer_schema
     def _infer_schema(self, items: list[dict[str, Any]]) -> list[str]:
         """
         Infer common schema from array items.
@@ -796,15 +631,12 @@ class ToonEncoder:
         Returns:
             List of field names
         """
-        # Check: not items
         if not items:
-            # Return result
             return []
 
         # Use first item's keys as schema
         return list(items[0].keys())
 
-    # Process: encode_safe
     def encode_safe(self, data: Any, indent: int = 0) -> str:
         """
         Safely encode data, always returning a string.
@@ -820,23 +652,16 @@ class ToonEncoder:
             Encoded string (TOON, JSON, or error message)
         """
         try:
-            # Return result
             return self.encode(data, indent)
         except ToonEncodeError as e:
             logger.error(f"TOON encoding error: {e}")
-            # Check: self.fallback_to_json
             if self.fallback_to_json:
-                # Return result
                 return self._fallback_to_json(data)
-            # Return result
             return f"# ToonEncodeError: {e.message}\n{{}}"
         except Exception as e:
             logger.error(f"Unexpected error during TOON encoding: {e}", exc_info=True)
-            # Check: self.fallback_to_json
             if self.fallback_to_json:
-                # Return result
                 return self._fallback_to_json(data)
-            # Return result
             return f"# Encoding error: {e}\n{{}}"
 
     @staticmethod
@@ -852,7 +677,6 @@ class ToonEncoder:
         Returns:
             True if circular reference detected, False otherwise
         """
-        # Check: seen is None
         if seen is None:
             seen = set()
 
@@ -862,20 +686,15 @@ class ToonEncoder:
         while stack:
             current = stack.pop()
 
-            # Check: isinstance(current, dict | list)
             if isinstance(current, dict | list):
                 obj_id = id(current)
-                # Check: obj_id in seen
                 if obj_id in seen:
-                    # Return result
                     return True
                 seen.add(obj_id)
 
-                # Check: isinstance(current, dict)
                 if isinstance(current, dict):
                     stack.extend(current.values())
                 else:
                     stack.extend(current)
 
-        # Return result
         return False

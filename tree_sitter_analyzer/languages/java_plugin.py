@@ -234,7 +234,6 @@ class JavaElementExtractor(ElementExtractor):
             self.current_package = packages[0].name
         return packages
 
-    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -276,7 +275,6 @@ class JavaElementExtractor(ElementExtractor):
             batch, extractors, results, self._processed_nodes, self._element_cache
         )
 
-    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
@@ -428,7 +426,6 @@ class JavaElementExtractor(ElementExtractor):
         """Extract annotation information optimized"""
         return _extract_annotation_standalone(node, self._get_node_text_optimized)
 
-    # Process: _determine_visibility
     def _determine_visibility(self, modifiers: list[str]) -> str:
         """Determine visibility from modifiers"""
         return _determine_vis_standalone(modifiers)
@@ -448,7 +445,6 @@ class JavaElementExtractor(ElementExtractor):
         self._annotation_cache[line] = annotations
         return annotations
 
-    # Process: _is_nested_class
     def _is_nested_class(self, node: "tree_sitter.Node") -> bool:
         """Check if this is a nested class"""
         return _is_nested_standalone(node)
@@ -458,7 +454,6 @@ class JavaElementExtractor(ElementExtractor):
         """Find parent class name for nested classes"""
         return _find_parent_class_standalone(node, self._get_node_text_optimized)
 
-    # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity optimized"""
         return _calc_complexity_standalone(node)
@@ -487,12 +482,10 @@ class JavaPlugin(LanguagePlugin):
         )  # Add for test compatibility
         self._cached_language: Any | None = None  # Cache for tree-sitter language
 
-    # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
         return "java"
 
-    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
         return [".java", ".jsp", ".jspx"]
@@ -598,7 +591,6 @@ class JavaPlugin(LanguagePlugin):
                 success=False,
             )
 
-    # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """
         Recursively count nodes in the AST tree (Deprecated: use iterative version).
@@ -607,7 +599,6 @@ class JavaPlugin(LanguagePlugin):
 
         return count_nodes_iterative(node)
 
-    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for Java."""
         if self._cached_language is not None:
@@ -677,10 +668,8 @@ class JavaPlugin(LanguagePlugin):
                 "annotations": [],
             }
 
-    # Process: supports_file
     def supports_file(self, file_path: str) -> bool:
         """Check if this plugin supports the given file."""
-        # Return result
         return any(
             file_path.lower().endswith(ext) for ext in self.get_file_extensions()
         )

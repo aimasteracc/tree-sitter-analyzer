@@ -7,6 +7,7 @@ from typing import Any
 
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
+from .read_partial_helpers import build_batch_agent_summary
 
 BATCH_LIMITS = {
     "max_files": 20,
@@ -82,7 +83,6 @@ def _validate_file_request(
         # Conditional check
         if fail_fast:
             raise ValueError("requests[].file_path must be a non-empty string")
-        # Return result
         return (
             file_path or "",
             [],
@@ -95,7 +95,6 @@ def _validate_file_request(
         # Conditional check
         if fail_fast:
             raise ValueError("requests[].sections must be a list")
-        # Return result
         return (
             file_path,
             [],
@@ -113,7 +112,6 @@ def _validate_file_request(
                 raise ValueError(
                     f"Too many sections for file {file_path}: {len(sections)} > max_sections_per_file={BATCH_LIMITS['max_sections_per_file']}"
                 )
-            # Return result
             return (
                 file_path,
                 [],
@@ -123,7 +121,6 @@ def _validate_file_request(
         sections = sections[: BATCH_LIMITS["max_sections_per_file"]]
         truncated = True
 
-    # Return result
     return file_path, sections, None, truncated
 
 
@@ -139,7 +136,6 @@ def _resolve_file(
         # Conditional check
         if fail_fast:
             raise
-        # Return result
         return None, _make_error_result(file_path, "", str(e))
 
     p = Path(resolved)
@@ -149,7 +145,6 @@ def _resolve_file(
         # Conditional check
         if fail_fast:
             raise ValueError(msg)
-        # Return result
         return None, _make_error_result(file_path, resolved, msg)
 
     # Error handling
@@ -160,14 +155,12 @@ def _resolve_file(
             # Conditional check
             if fail_fast:
                 raise ValueError(msg)
-            # Return result
             return None, _make_error_result(file_path, resolved, msg)
     except OSError as e:
         msg = f"Could not stat file: {e}"
         # Conditional check
         if fail_fast:
             raise ValueError(msg) from e
-        # Return result
         return None, _make_error_result(file_path, resolved, msg)
 
     # Main batch execution loop
@@ -337,8 +330,13 @@ async def execute_batch(
         "truncated": truncated,
         "limits": dict(BATCH_LIMITS),
         "errors_summary": {"errors": error_count},
+        "agent_summary": build_batch_agent_summary(
+            count_files=len(results),
+            count_sections=ok_sections,
+            truncated=truncated,
+            error_count=error_count,
+        ),
         "results": results,
     }
 
-    # Return result
     return apply_toon_format_to_response(response, output_format)

@@ -15,6 +15,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from ._encoding_conversion import safe_decode_bytes, safe_encode_text
+from ._encoding_detection import detect_data_encoding
+from ._encoding_streaming import read_file_safe_streaming_context
+
 ANYIO_AVAILABLE = importlib.util.find_spec("anyio") is not None
 
 
@@ -172,28 +176,14 @@ class EncodingManager:
         Returns:
             Encoded bytes
         """
-        # Handle None input
-        if text is None:
-            return b""
-
-        target_encoding = encoding or cls.DEFAULT_ENCODING
-
-        try:
-            return text.encode(target_encoding)
-        except UnicodeEncodeError as e:
-            log_debug(f"Failed to encode with {target_encoding}, trying fallbacks: {e}")
-
-            # Try fallback encodings
-            for fallback in cls.FALLBACK_ENCODINGS:
-                if fallback != target_encoding:
-                    try:
-                        return text.encode(fallback, errors="replace")
-                    except UnicodeEncodeError:
-                        continue
-
-            # Last resort: encode with error replacement
-            log_warning(f"Using error replacement for encoding: {text[:50]}...")
-            return text.encode(cls.DEFAULT_ENCODING, errors="replace")
+        return safe_encode_text(
+            text,
+            target_encoding=encoding or cls.DEFAULT_ENCODING,
+            default_encoding=cls.DEFAULT_ENCODING,
+            fallback_encodings=cls.FALLBACK_ENCODINGS,
+            log_debug=log_debug,
+            log_warning=log_warning,
+        )
 
     @classmethod
     def safe_decode(cls, data: bytes, encoding: str | None = None) -> str:
@@ -207,32 +197,15 @@ class EncodingManager:
         Returns:
             Decoded text
         """
-        if data is None or len(data) == 0:
-            return ""
-
-        # Use provided encoding or detect
-        target_encoding = encoding
-        if not target_encoding:
-            target_encoding = cls.detect_encoding(data)
-
-        try:
-            return data.decode(target_encoding)
-        except UnicodeDecodeError as e:
-            log_debug(f"Failed to decode with {target_encoding}, trying fallbacks: {e}")
-
-            # Try fallback encodings
-            for fallback in cls.FALLBACK_ENCODINGS:
-                if fallback != target_encoding:
-                    try:
-                        return data.decode(fallback, errors="replace")
-                    except UnicodeDecodeError:
-                        continue
-
-            # Last resort: decode with error replacement
-            log_warning(
-                f"Using error replacement for decoding data (length: {len(data)})"
-            )
-            return data.decode(cls.DEFAULT_ENCODING, errors="replace")
+        return safe_decode_bytes(
+            data,
+            encoding=encoding,
+            default_encoding=cls.DEFAULT_ENCODING,
+            fallback_encodings=cls.FALLBACK_ENCODINGS,
+            detect_encoding=cls.detect_encoding,
+            log_debug=log_debug,
+            log_warning=log_warning,
+        )
 
     @classmethod
     def detect_encoding(cls, data: bytes, file_path: str | None = None) -> str:
@@ -247,57 +220,14 @@ class EncodingManager:
         Returns:
             Detected encoding name
         """
-        if not data:
-            return cls.DEFAULT_ENCODING
-
-        # Check cache first if file_path is provided
-        if file_path:
-            cached_encoding = _encoding_cache.get(file_path)
-            if cached_encoding:
-                log_debug(f"Using cached encoding for {file_path}: {cached_encoding}")
-                return cached_encoding
-
-        # Optimization: Try UTF-8 first (very fast)
-        try:
-            data.decode("utf-8")
-            detected_encoding = "utf-8"
-            if file_path:
-                _encoding_cache.set(file_path, detected_encoding)
-            return detected_encoding
-        except UnicodeDecodeError:
-            pass
-
-        # Check for BOMs (fast)
-        if data.startswith(b"\xef\xbb\xbf"):
-            detected_encoding = "utf-8-sig"
-        elif data.startswith(b"\xff\xfe"):
-            detected_encoding = "utf-16-le"
-        elif data.startswith(b"\xfe\xff"):
-            detected_encoding = "utf-16-be"
-        else:
-            detected_encoding = cls.DEFAULT_ENCODING
-
-            # If chardet is available, use it as fallback
-            if CHARDET_AVAILABLE:
-                try:
-                    # Only analyze first 32KB for performance
-                    sample = data[:32768]
-                    detection = chardet.detect(sample)
-                    if detection and detection["encoding"]:
-                        confidence = detection.get("confidence", 0)
-                        if confidence > 0.7:
-                            detected_encoding = detection["encoding"].lower()
-                            log_debug(
-                                f"Detected encoding via chardet: {detected_encoding} ({confidence:.2f})"
-                            )
-                except Exception as e:
-                    log_debug(f"Chardet detection failed: {e}")
-
-        # Cache the result if file_path is provided
-        if file_path:
-            _encoding_cache.set(file_path, detected_encoding)
-
-        return detected_encoding
+        return detect_data_encoding(
+            data,
+            default_encoding=cls.DEFAULT_ENCODING,
+            file_path=file_path,
+            cache=_encoding_cache,
+            chardet_module=chardet if CHARDET_AVAILABLE else None,
+            log_debug=log_debug,
+        )
 
     @classmethod
     def read_file_safe(cls, file_path: str | Path) -> tuple[str, str]:
@@ -522,42 +452,12 @@ def read_file_safe_streaming(file_path: str | Path) -> Any:
                     # Process line
                     pass
     """
-    import contextlib
-
-    from .utils.logging import log_warning
-
-    file_path = Path(file_path)
-
-    # First, detect encoding by reading a small sample
-    try:
-        with open(file_path, "rb") as f:
-            # Read first 8KB to detect encoding
-            sample_data = f.read(8192)
-
-        if not sample_data:
-            # Empty file, use default encoding
-            detected_encoding = EncodingManager.DEFAULT_ENCODING
-        else:
-            # Detect encoding from sample with file path for caching
-            detected_encoding = EncodingManager.detect_encoding(
-                sample_data, str(file_path)
-            )
-
-    except OSError as e:
-        log_warning(f"Failed to read file for encoding detection {file_path}: {e}")
-        raise e
-
-    # Open file with detected encoding for streaming
-    @contextlib.contextmanager
-    def _file_context() -> Any:
-        try:
-            with open(file_path, encoding=detected_encoding, errors="replace") as f:
-                yield f
-        except OSError as e:
-            log_warning(f"Failed to open file for streaming {file_path}: {e}")
-            raise e
-
-    return _file_context()
+    return read_file_safe_streaming_context(
+        file_path,
+        default_encoding=EncodingManager.DEFAULT_ENCODING,
+        detect_encoding=EncodingManager.detect_encoding,
+        log_warning=log_warning,
+    )
 
 
 def clear_encoding_cache() -> None:

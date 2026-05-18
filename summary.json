@@ -17,5 +17,19 @@
       }
     ],
     "truncated": false
+  },
+  "agent_summary": {
+    "risk": "low",
+    "mode": "summary",
+    "query": "test",
+    "count": 1,
+    "total_matches": 1,
+    "truncated": false,
+    "elapsed_ms": 0,
+    "next_step": "Run search_content in normal or group_by_file mode for the top files.",
+    "suggested_tool": "search_content",
+    "stop_condition": "The next search returns concrete line matches for the target files.",
+    "file_count": 1,
+    "output_saved": true
   }
 }

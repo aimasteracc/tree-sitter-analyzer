@@ -341,6 +341,21 @@ class TestToolDefinitions:
         definition = server.find_and_grep_tool.get_tool_definition()
         assert definition["name"] == "find_and_grep"
 
+    def test_agent_skills_tool_definition(self, server):
+        """Test agent skills tool has definition"""
+        definition = server.agent_skills_tool.get_tool_definition()
+        assert definition["name"] == "list_agent_skills"
+
+    def test_agent_workflow_tool_definition(self, server):
+        """Test agent workflow tool has definition"""
+        definition = server.agent_workflow_tool.get_tool_definition()
+        assert definition["name"] == "get_agent_workflow"
+
+    def test_parser_readiness_tool_definition(self, server):
+        """Test parser readiness tool has definition"""
+        definition = server.parser_readiness_tool.get_tool_definition()
+        assert definition["name"] == "advise_parser_readiness"
+
 
 class TestUniversalTool:
     """Test universal tool availability"""

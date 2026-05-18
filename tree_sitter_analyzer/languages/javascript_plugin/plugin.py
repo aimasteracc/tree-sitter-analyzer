@@ -276,17 +276,19 @@ class JavaScriptPlugin(LanguagePlugin):
                     "exports": [],
                 }
 
-            functions = self._extractor.extract_functions(tree, source_code)
-            classes = self._extractor.extract_classes(tree, source_code)
-            variables = self._extractor.extract_variables(tree, source_code)
-            imports = self._extractor.extract_imports(tree, source_code)
+            extractor = self.extractor
+            functions = extractor.extract_functions(tree, source_code)
+            classes = extractor.extract_classes(tree, source_code)
+            variables = extractor.extract_variables(tree, source_code)
+            imports = extractor.extract_imports(tree, source_code)
+            exports = extractor.extract_exports(tree, source_code)
 
             return {
                 "functions": functions,
                 "classes": classes,
                 "variables": variables,
                 "imports": imports,
-                "exports": [],  # TODO: Implement exports extraction
+                "exports": exports,
             }
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")

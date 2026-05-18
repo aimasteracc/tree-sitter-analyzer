@@ -179,6 +179,16 @@ DECISION_NODE_TYPES: dict[str, set[str]] = {
         "catch_block",
         "conditional_expression",
     },
+    "swift": {
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "switch_statement",
+        "case_statement",
+        "catch_clause",
+        "guard_statement",
+        "conditional_expression",
+    },
     "csharp": {
         "if_statement",
         "while_statement",
@@ -212,6 +222,7 @@ _EXT_TO_LANG: dict[str, str] = {
     ".rb": "ruby",
     ".php": "php",
     ".kt": "kotlin",
+    ".swift": "swift",
     ".cs": "csharp",
 }
 

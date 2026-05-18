@@ -120,7 +120,7 @@ safe_to_edit             → MUST call before editing: risk + deps + test files
         ↓
   ... edit code ...
         ↓
-analyze_change_impact    → git diff + dep graph → affected files, tests, risk, pytest_command
+analyze_change_impact    → git diff + dep graph → affected files, tests, risk, verification_command
         ↓
 check_file_health        → Verify improvement
 ```
@@ -129,14 +129,19 @@ check_file_health        → Verify improvement
 
 ```
 BEFORE editing:  safe_to_edit → risk_level + blast_radius + checklist
-AFTER editing:   analyze_change_impact → affected files + tests to run + pytest_command
+AFTER editing:   analyze_change_impact → affected files + tests to run + verification_command
 IF health issue: check_file_health → D/F grade files get next_action
 ```
 
-Prefer the `pytest_command` from `analyze_change_impact` for fast agent feedback.
+Run `uv run python -m tree_sitter_analyzer --change-impact --format json`
+after edits and follow its `verification_command` first. For code changes this
+is usually the targeted `test_command`; for docs-only changes `test_required`
+is false and the command may be `git diff --check`. `pytest_command` remains
+available when the detected runner is pytest, with `pytest_required` kept as a
+compatibility signal for older agent prompts.
 Use the full suite before release/PR when risk remains high. `uv run pytest -q`
 runs with pytest-xdist by default (`--numprocesses=auto --dist=loadfile`); the
-latest measured full-suite wall time is under 2 minutes on this workstation.
+latest measured full-suite wall time is about 26 seconds on this workstation.
 Default pytest also enforces a 300-second session timeout, a 180-second per-test
 timeout, and disables benchmark hooks during normal test runs. Run
 benchmark-only jobs with `--benchmark-enable -n 0 --session-timeout=0` so
@@ -171,15 +176,15 @@ query_code      → AST symbol search with wildcards and type filtering
 ## Development guardrails
 
 ### Edit discipline
-- Edit <50 lines at a time; run `pytest` after every edit that changes function signatures or method bodies
+- Edit <50 lines at a time; use `uv run python -m tree_sitter_analyzer --change-impact --format json` to choose focused verification, then run the reported `verification_command`
 - For "move to module-level" refactors: add new function → update call site → delete old method, testing between each step
 - Never replace 200+ lines in a single edit without immediate verification
 
 ### CLI-MCP parity (hard requirement)
 - Every MCP tool MUST have a CLI equivalent entry in `cli_main.py`
-- When adding/updating an MCP tool: add `--flag` to `create_argument_parser()`, handler in `handle_special_commands()`, and example in epilog
+- When adding/updating an MCP tool: add `--flag` to `create_argument_parser()`, handler in `handle_special_commands()` or `tree_sitter_analyzer/cli/commands/mcp_commands.py`, and example in epilog
 - Test: `uv run python -m tree_sitter_analyzer <file> --flag --format json`
-- Guardrail: `tests/unit/test_agent_contracts.py` must pass. It fails if a registered MCP tool loses its CLI access path.
+- Guardrails: `tests/unit/test_agent_contracts.py` fails if a registered MCP tool loses its CLI access path; `tests/unit/cli/test_mcp_commands.py` fails if MCP-equivalent CLI handlers pass the wrong arguments, require the wrong file path, or drop TOON output.
 
 ### Test runtime contract (do not weaken)
 - Keep `uv run pytest -q` parallel, benchmark-disabled, and bounded by `--session-timeout=300`.

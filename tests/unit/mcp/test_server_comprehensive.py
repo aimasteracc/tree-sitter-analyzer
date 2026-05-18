@@ -422,6 +422,9 @@ class TestTreeSitterAnalyzerMCPServerCreation:
             assert "list_files" in tool_names
             assert "search_content" in tool_names
             assert "find_and_grep" in tool_names
+            assert "list_agent_skills" in tool_names
+            assert "get_agent_workflow" in tool_names
+            assert "advise_parser_readiness" in tool_names
 
     @patch("tree_sitter_analyzer.mcp.server.MCP_AVAILABLE", True)
     @pytest.mark.asyncio

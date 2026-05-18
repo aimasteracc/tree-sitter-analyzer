@@ -60,19 +60,6 @@ from .c_helpers import (
 )
 
 
-# Section: imports and module configuration
-# Section: main class definition
-# Section: helper functions
-# Section: data processing methods
-# Section: output formatting methods
-# Section: validation and error handling
-# Section: module imports and setup
-# Section: class definitions
-# Section: public API methods
-# Section: internal helper methods
-# Section: data processing pipeline
-# Section: output formatting
-# Section: error handling
 class CElementExtractor(ElementExtractor):
     """C specific element extractor with advanced analysis support"""
 
@@ -176,7 +163,6 @@ class CElementExtractor(ElementExtractor):
             tree, source_code, self._get_node_text_optimized
         )
 
-    # Process: _reset_caches
     def _reset_caches(self) -> None:
         """Reset performance caches"""
         self._node_text_cache.clear()
@@ -203,7 +189,6 @@ class CElementExtractor(ElementExtractor):
             self._element_cache,
         )
 
-    # Process: _get_node_text_optimized
     def _get_node_text_optimized(self, node: "tree_sitter.Node") -> str:
         """Get node text with optimized caching using position-based keys"""
         # Use position-based cache key for deterministic behavior
@@ -338,7 +323,6 @@ class CElementExtractor(ElementExtractor):
         """Extract macro function definition"""
         return _extract_macro_func_standalone(node, self._get_node_text_optimized)
 
-    # Process: _calculate_complexity_optimized
     def _calculate_complexity_optimized(self, node: "tree_sitter.Node") -> int:
         """Calculate cyclomatic complexity"""
         return _calc_complexity_standalone(node)
@@ -360,12 +344,10 @@ class CPlugin(LanguagePlugin):
         self.supported_extensions = self.get_file_extensions()
         self._cached_language: Any | None = None
 
-    # Process: get_language_name
     def get_language_name(self) -> str:
         """Get the language name."""
         return "c"
 
-    # Process: get_file_extensions
     def get_file_extensions(self) -> list[str]:
         """Get supported file extensions."""
         return [".c", ".h"]
@@ -455,7 +437,6 @@ class CPlugin(LanguagePlugin):
                 success=False,
             )
 
-    # Process: _count_tree_nodes
     def _count_tree_nodes(self, node: Any) -> int:
         """Recursively count nodes in the AST tree."""
         if node is None:
@@ -467,12 +448,9 @@ class CPlugin(LanguagePlugin):
                 count += self._count_tree_nodes(child)
         return count
 
-    # Process: get_tree_sitter_language
     def get_tree_sitter_language(self) -> Any | None:
         """Get the tree-sitter language for C."""
-        # Check: self._cached_language is not None
         if self._cached_language is not None:
-            # Return result
             return self._cached_language
 
         try:
@@ -490,26 +468,20 @@ class CPlugin(LanguagePlugin):
                     self._cached_language = tree_sitter.Language(caps_or_lang)
                 except Exception as e:
                     log_error(f"Failed to create Language object from PyCapsule: {e}")
-                    # Return result
                     return None
 
-            # Return result
             return self._cached_language
         except ImportError as e:
             log_error(f"tree-sitter-c not available: {e}")
-            # Return result
             return None
         except Exception as e:
             log_error(f"Failed to load tree-sitter language for C: {e}")
-            # Return result
             return None
 
     # Extract elements from AST: extract_elements
     def extract_elements(self, tree: Any | None, source_code: str) -> dict[str, Any]:
         """Extract all elements from C code."""
-        # Check: tree is None
         if tree is None:
-            # Return result
             return {
                 "functions": [],
                 "classes": [],
@@ -519,7 +491,6 @@ class CPlugin(LanguagePlugin):
 
         try:
             extractor = self.create_extractor()
-            # Return result
             return {
                 "functions": extractor.extract_functions(tree, source_code),
                 "classes": extractor.extract_classes(tree, source_code),
@@ -528,7 +499,6 @@ class CPlugin(LanguagePlugin):
             }
         except Exception as e:
             log_error(f"Error extracting elements: {e}")
-            # Return result
             return {
                 "functions": [],
                 "classes": [],

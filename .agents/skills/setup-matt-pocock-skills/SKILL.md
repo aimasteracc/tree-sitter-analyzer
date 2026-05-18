@@ -119,3 +119,11 @@ For "other" issue trackers, write `docs/agents/issue-tracker.md` from scratch us
 ### 5. Done
 
 Tell the user the setup is complete and which engineering skills will now read from these files. Mention they can edit `docs/agents/*.md` directly later — re-running this skill is only necessary if they want to switch issue trackers or restart from scratch.
+
+## Acceptance Criteria
+
+- [ ] `AGENTS.md` or `CLAUDE.md` has exactly one current `## Agent skills` block.
+- [ ] `docs/agents/issue-tracker.md` describes where issues are tracked.
+- [ ] `docs/agents/triage-labels.md` records the five triage role labels.
+- [ ] `docs/agents/domain.md` records the domain-doc layout and consumer rules.
+- [ ] Existing surrounding user-authored guidance is preserved.

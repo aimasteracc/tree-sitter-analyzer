@@ -423,7 +423,6 @@ class YAMLFormatter(BaseFormatter):
 
         return "\n".join(output)
 
-    # Process: _calculate_complexity
     def _calculate_complexity(
         self, mappings: list[dict], sequences: list[dict], max_nesting: int
     ) -> str:

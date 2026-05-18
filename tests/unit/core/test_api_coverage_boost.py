@@ -21,6 +21,8 @@ Targets uncovered branches in:
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tree_sitter_analyzer import api
 
 # ============================================================================
@@ -598,6 +600,15 @@ class TestAnalyzeFileAdditional:
             result = api.analyze_file("test.py")
             assert result["success"] is False
             assert "error" in result
+
+    def test_file_not_found_error_is_re_raised(self) -> None:
+        """FileNotFoundError is a public API exception, not an error dict."""
+        mock_engine = MagicMock()
+        mock_engine.analyze_sync.side_effect = FileNotFoundError("missing.py")
+
+        with patch("tree_sitter_analyzer.api.get_engine", return_value=mock_engine):
+            with pytest.raises(FileNotFoundError, match="missing.py"):
+                api.analyze_file("missing.py")
 
 
 class TestAnalyzeCodeAdditional:

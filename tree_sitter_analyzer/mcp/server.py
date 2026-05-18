@@ -8,7 +8,6 @@ functionality through the Model Context Protocol.
 
 import argparse
 import asyncio
-import os
 import sys
 from pathlib import Path as PathClass
 from typing import Any
@@ -26,20 +25,10 @@ except ImportError:
     MCP_AVAILABLE = False
 
     # Fallback types for development without MCP
-    # Section: imports and module configuration
-    # Section: main class definition
-    # Section: helper functions
-    # Section: data processing methods
-    # Section: output formatting methods
-    # Section: validation and error handling
-    # Section: module imports and setup
-    # Section: class definitions
-    # Section: public API methods
     class Server:  # type: ignore
         pass
 
     class InitializationOptions:  # type: ignore
-        # Process: __init__
         def __init__(self, **kwargs: Any) -> None:
             pass
 
@@ -51,14 +40,11 @@ except ImportError:
 
     pass
 
-    # Process: _fallback_stdio_server
     def _fallback_stdio_server() -> Any:
         pass
 
     stdio_server = _fallback_stdio_server
 
-
-import contextlib
 
 from ..core.analysis_engine import get_analysis_engine
 from ..platform_compat.detector import PlatformDetector
@@ -66,11 +52,20 @@ from ..project_detector import detect_project_root
 from ..security import SecurityValidator
 from ..utils import setup_logger
 from . import MCP_INFO
+from ._server_helpers import (
+    attach_tool_aliases,
+    build_initialization_options,
+    detect_server_version,
+    init_universal_tool,
+    resolve_project_root,
+)
 from .resources import CodeFileResource, ProjectStatsResource
 from .server_utils.code_scale_handler import analyze_code_scale
 from .server_utils.prompt_registration import register_prompts
 from .server_utils.resource_registration import register_resources
 from .server_utils.tool_registration import register_tools
+from .tools.agent_skills_tool import AgentSkillsTool
+from .tools.agent_workflow_tool import AgentWorkflowTool
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.change_impact_tool import ChangeImpactTool
@@ -78,6 +73,7 @@ from .tools.dependency_analysis_tool import DependencyAnalysisTool
 from .tools.file_health_tool import FileHealthTool
 from .tools.find_and_grep_tool import FindAndGrepTool
 from .tools.list_files_tool import ListFilesTool
+from .tools.parser_readiness_tool import ParserReadinessTool
 from .tools.project_health_tool import ProjectHealthTool
 from .tools.project_overview_tool import ProjectOverviewTool
 from .tools.query_tool import QueryTool
@@ -102,7 +98,6 @@ except ImportError:
 logger = setup_logger(__name__)
 
 
-# Process: _create_tool_registry
 def _create_tool_registry(
     project_root: str | None,
 ) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
@@ -115,6 +110,9 @@ def _create_tool_registry(
         ("list_files", ListFilesTool(project_root)),
         ("search_content", SearchContentTool(project_root)),
         ("find_and_grep", FindAndGrepTool(project_root)),
+        ("list_agent_skills", AgentSkillsTool(project_root)),
+        ("get_agent_workflow", AgentWorkflowTool(project_root)),
+        ("advise_parser_readiness", ParserReadinessTool(project_root)),
         ("get_project_overview", ProjectOverviewTool(project_root)),
         ("check_project_health", ProjectHealthTool(project_root)),
         ("check_file_health", FileHealthTool(project_root)),
@@ -150,27 +148,24 @@ class TreeSitterAnalyzerMCPServer:
 
         self._tool_instances, self._tools = _create_tool_registry(project_root)
 
-        # Backward-compatible aliases for tests that access tools by attribute
-        self.analyze_scale_tool = self._tools["check_code_scale"]
-        self.analyze_code_structure_tool = self._tools["analyze_code_structure"]
-        self.table_format_tool = self.analyze_code_structure_tool
-        self.read_partial_tool = self._tools["extract_code_section"]
-        self.query_tool = self._tools["query_code"]
-        self.list_files_tool = self._tools["list_files"]
-        self.search_content_tool = self._tools["search_content"]
-        self.find_and_grep_tool = self._tools["find_and_grep"]
-        self.project_overview_tool = self._tools["get_project_overview"]
-        self.file_health_tool = self._tools["check_file_health"]
-        self.dependency_analysis_tool = self._tools["analyze_dependencies"]
+        attach_tool_aliases(self, self._tools)
 
-        self.universal_analyze_tool = self._init_universal_tool(project_root)
+        self.universal_analyze_tool = init_universal_tool(
+            project_root,
+            universal_tool_available=UNIVERSAL_TOOL_AVAILABLE,
+            universal_tool_cls=UniversalAnalyzeTool,
+        )
 
         self.code_file_resource = CodeFileResource()
         self.project_stats_resource = ProjectStatsResource()
         self.project_stats_resource.project_root = project_root
 
         self.name = MCP_INFO["name"]
-        self.version = self._detect_version()
+        self.version = detect_server_version(
+            MCP_INFO["version"],
+            platform_detector=PlatformDetector,
+            logger=logger,
+        )
 
         self._initialization_complete = True
         try:
@@ -180,42 +175,10 @@ class TreeSitterAnalyzerMCPServer:
         except Exception:  # nosec
             pass
 
-    @staticmethod
-    # Process: _init_universal_tool
-    def _init_universal_tool(project_root: str | None) -> Any:
-        """Initialize the UniversalAnalyzeTool if available."""
-        if not UNIVERSAL_TOOL_AVAILABLE or UniversalAnalyzeTool is None:
-            return None
-        try:
-            return UniversalAnalyzeTool(project_root)
-        except Exception:
-            return None
-
-    @staticmethod
-    # Detect patterns in source code: _detect_version
-    def _detect_version() -> Any:
-        """Detect version including platform info."""
-        version: Any = MCP_INFO["version"]
-        try:
-            platform_info = PlatformDetector.detect()
-            version = f"{version} ({platform_info.platform_key})"
-            try:
-                logger.info(f"Running on platform: {platform_info}")
-            except Exception:  # nosec
-                pass
-        except Exception as e:
-            try:
-                logger.warning(f"Failed to detect platform: {e}")
-            except Exception:  # nosec
-                pass
-        return version
-
-    # Process: is_initialized
     def is_initialized(self) -> bool:
         """Check if the server is fully initialized."""
         return self._initialization_complete
 
-    # Process: _ensure_initialized
     def _ensure_initialized(self) -> None:
         """Ensure the server is initialized before processing requests."""
         if not self._initialization_complete:
@@ -235,7 +198,6 @@ class TreeSitterAnalyzerMCPServer:
             path_class=PathClass,
         )
 
-    # Process: _calculate_file_metrics
     def _calculate_file_metrics(self, file_path: str, language: str) -> dict[str, Any]:
         """Legacy wrapper for file metrics calculation."""
         base_root = getattr(
@@ -247,7 +209,6 @@ class TreeSitterAnalyzerMCPServer:
             file_path, language=language, project_root=base_root
         )
 
-    # Process: _read_resource
     async def _read_resource(self, uri: str) -> dict[str, Any]:
         """
         Read a resource by URI.
@@ -272,7 +233,6 @@ class TreeSitterAnalyzerMCPServer:
         else:
             raise ValueError(f"Unknown resource URI: {uri}")
 
-    # Process: create_server
     def create_server(self) -> Server:
         """
         Create and configure the MCP server.
@@ -301,7 +261,6 @@ class TreeSitterAnalyzerMCPServer:
             pass  # Silently ignore logging errors during shutdown
         return server
 
-    # Process: set_project_path
     def set_project_path(self, project_path: str) -> None:
         """Set the project path for all components."""
         get_shared_cache().clear()
@@ -321,7 +280,6 @@ class TreeSitterAnalyzerMCPServer:
         except (ValueError, OSError):
             pass
 
-    # Process: _validate_file_path_security
     def _validate_file_path_security(self, arguments: dict[str, Any]) -> None:
         """Pre-check file_path arguments for security violations."""
         if "file_path" not in arguments:
@@ -348,14 +306,15 @@ class TreeSitterAnalyzerMCPServer:
                 resolved_candidate, cached, project_root=base_root
             )
 
-        if cached is not None:
-            is_valid, error_msg = cached
-            if not is_valid:
-                raise ValueError(
-                    f"Invalid or unsafe file path: {error_msg or file_path}"
-                )
+        if cached is None:
+            return
 
-    # Handle request or event: _handle_set_project_path
+        is_valid, error_msg = cached
+        if is_valid:
+            return
+
+        raise ValueError(f"Invalid or unsafe file path: {error_msg or file_path}")
+
     def _handle_set_project_path(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle the set_project_path tool call."""
         project_path = arguments.get("project_path")
@@ -406,26 +365,10 @@ class TreeSitterAnalyzerMCPServer:
 
         server = self.create_server()
 
-        # Initialize server options with required capabilities field
-        from mcp.server.models import ServerCapabilities
-        from mcp.types import (
-            LoggingCapability,
-            PromptsCapability,
-            ResourcesCapability,
-            ToolsCapability,
-        )
-
-        capabilities = ServerCapabilities(
-            tools=ToolsCapability(listChanged=True),
-            resources=ResourcesCapability(subscribe=True, listChanged=True),
-            prompts=PromptsCapability(listChanged=True),
-            logging=LoggingCapability(),
-        )
-
-        options = InitializationOptions(
-            server_name=self.name,
-            server_version=self.version,
-            capabilities=capabilities,
+        options = build_initialization_options(
+            self.name,
+            self.version,
+            InitializationOptions,
         )
 
         try:
@@ -476,48 +419,19 @@ Examples:
     return parser.parse_args(args)
 
 
-# Process: main
 async def main() -> None:
     """Main entry point for the MCP server."""
     try:
         # Parse command line arguments (ignore unknown so pytest flags won't crash)
         args = parse_mcp_args([] if "pytest" in sys.argv[0] else None)
 
-        # Determine project root with robust priority handling and fallbacks
-        project_root = None
-
-        # Priority 1: Command line argument
-        if args.project_root:
-            project_root = args.project_root
-        # Priority 2: Environment variable
-        elif (
-            PathClass.cwd()
-            .joinpath(os.environ.get("TREE_SITTER_PROJECT_ROOT", ""))
-            .exists()
-        ):
-            project_root = os.environ.get("TREE_SITTER_PROJECT_ROOT")
-        # Priority 3: Auto-detection from current directory
-        else:
-            project_root = detect_project_root()
-
-        # Handle unresolved placeholders from clients (e.g., "${workspaceFolder}")
-        invalid_placeholder = isinstance(project_root, str) and (
-            "${" in project_root or "}" in project_root or "$" in project_root
+        project_root = resolve_project_root(
+            args.project_root,
+            cwd_factory=PathClass.cwd,
+            path_class=PathClass,
+            detect_project_root_func=detect_project_root,
+            logger=logger,
         )
-
-        # Validate existence; if invalid, fall back to current working directory
-        if (
-            not project_root
-            or invalid_placeholder
-            or (isinstance(project_root, str) and not PathClass(project_root).is_dir())
-        ):
-            # Use current working directory as final fallback
-            fallback_root = str(PathClass.cwd())
-            with contextlib.suppress(ValueError, OSError):
-                logger.warning(
-                    f"Invalid project root '{project_root}', falling back to current directory: {fallback_root}"
-                )
-            project_root = fallback_root
 
         logger.info(f"MCP server starting with project root: {project_root}")
 
@@ -546,7 +460,6 @@ async def main() -> None:
             pass  # Silently ignore logging errors during shutdown
 
 
-# Process: main_sync
 def main_sync() -> None:
     """Synchronous entry point for setuptools scripts."""
     asyncio.run(main())

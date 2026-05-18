@@ -74,3 +74,10 @@ A description of the things that are out of scope for this PRD.
 Any further notes about the feature.
 
 </prd-template>
+
+## Acceptance Criteria
+
+- [ ] PRD uses existing conversation context and repo evidence instead of restarting discovery.
+- [ ] Problem, solution, user stories, implementation decisions, testing decisions, out of scope, and notes are all present.
+- [ ] Implementation decisions avoid brittle file paths unless a prototype snippet captures a durable decision.
+- [ ] The PRD is published to the configured issue tracker with the ready-for-agent label when available.

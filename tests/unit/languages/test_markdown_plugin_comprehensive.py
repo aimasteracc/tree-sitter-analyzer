@@ -16,6 +16,10 @@ from tree_sitter_analyzer.languages.markdown_plugin import (
     MarkdownElementExtractor,
     MarkdownPlugin,
 )
+from tree_sitter_analyzer.languages.markdown_plugin.link_image_extractor import (
+    parse_image_components,
+    parse_link_components,
+)
 from tree_sitter_analyzer.models import AnalysisResult
 
 
@@ -115,7 +119,9 @@ class TestMarkdownElementExtractor:
         result = self.extractor.extract_imports(None, "[ref]: url")
         assert result == []
 
-    @patch("tree_sitter_analyzer.languages.markdown_plugin.extractor.log_debug")
+    @patch(
+        "tree_sitter_analyzer.languages.markdown_plugin.private_extraction.log_debug"
+    )
     def test_extract_headers_with_exception(self, mock_log):
         """Test header extraction with exception handling"""
         self.mock_root_node.children = [Mock()]
@@ -160,7 +166,7 @@ class TestMarkdownElementExtractor:
 
         # Mock byte extraction to fail
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -177,7 +183,7 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Line 1", "Line 2", "Line 3"]
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -197,7 +203,7 @@ class TestMarkdownElementExtractor:
         self.extractor.content_lines = ["Hello"]
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Byte error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -205,48 +211,42 @@ class TestMarkdownElementExtractor:
 
     def test_parse_link_components_valid(self):
         """Test parsing valid link components"""
-        text, url, title = self.extractor._parse_link_components(
-            '[Text](http://example.com "Title")'
-        )
+        text, url, title = parse_link_components('[Text](http://example.com "Title")')
         assert text == "Text"
         assert url == "http://example.com"
         assert title == "Title"
 
     def test_parse_link_components_no_title(self):
         """Test parsing link components without title"""
-        text, url, title = self.extractor._parse_link_components(
-            "[Text](http://example.com)"
-        )
+        text, url, title = parse_link_components("[Text](http://example.com)")
         assert text == "Text"
         assert url == "http://example.com"
         assert title == ""
 
     def test_parse_link_components_invalid(self):
         """Test parsing invalid link components"""
-        text, url, title = self.extractor._parse_link_components("Invalid link")
+        text, url, title = parse_link_components("Invalid link")
         assert text == ""
         assert url == ""
         assert title == ""
 
     def test_parse_image_components_valid(self):
         """Test parsing valid image components"""
-        alt, url, title = self.extractor._parse_image_components(
-            '![Alt](image.jpg "Title")'
-        )
+        alt, url, title = parse_image_components('![Alt](image.jpg "Title")')
         assert alt == "Alt"
         assert url == "image.jpg"
         assert title == "Title"
 
     def test_parse_image_components_no_title(self):
         """Test parsing image components without title"""
-        alt, url, title = self.extractor._parse_image_components("![Alt](image.jpg)")
+        alt, url, title = parse_image_components("![Alt](image.jpg)")
         assert alt == "Alt"
         assert url == "image.jpg"
         assert title == ""
 
     def test_parse_image_components_invalid(self):
         """Test parsing invalid image components"""
-        alt, url, title = self.extractor._parse_image_components("Invalid image")
+        alt, url, title = parse_image_components("Invalid image")
         assert alt == ""
         assert url == ""
         assert title == ""
@@ -702,7 +702,7 @@ class TestMarkdownPluginEdgeCases:
         mock_node.end_byte = 50000
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Too long"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)
@@ -720,7 +720,7 @@ class TestMarkdownPluginEdgeCases:
         mock_node.end_point = (0, 6)
 
         with patch(
-            "tree_sitter_analyzer.languages.markdown_plugin.extractor.extract_text_slice",
+            "tree_sitter_analyzer.languages.markdown_plugin.node_text.extract_text_slice",
             side_effect=Exception("Unicode error"),
         ):
             result = self.extractor._get_node_text_optimized(mock_node)

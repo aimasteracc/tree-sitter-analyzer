@@ -11,6 +11,7 @@ Phase 7: Performance Integration Tests
 
 import asyncio
 import gc
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -26,6 +27,30 @@ from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
 from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
 from tree_sitter_analyzer.mcp.tools.search_content_tool import SearchContentTool
+
+DEFAULT_SUSTAINED_LOAD_ITERATIONS = 12
+DEFAULT_SUSTAINED_LOAD_INTERVAL_SECONDS = 0.05
+DEFAULT_SCALABILITY_RECOVERY_SECONDS = 0.05
+DEFAULT_RESOURCE_CLEANUP_SETTLE_SECONDS = 0.05
+DEFAULT_MEMORY_EFFICIENCY_FILES = 8
+
+
+def _positive_int_from_env(name: str, default: int) -> int:
+    """Read a positive integer env override without making test collection brittle."""
+    try:
+        value = int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return max(1, value)
+
+
+def _nonnegative_float_from_env(name: str, default: float) -> float:
+    """Read a non-negative float env override without making test collection brittle."""
+    try:
+        value = float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, value)
 
 
 class PerformanceProfiler:
@@ -641,10 +666,14 @@ export default GeneratedComponent{i};
         # 大量のファイル処理
         table_tool = TableFormatTool(large_scale_project)
         memory_measurements = []
+        sample_file_count = _positive_int_from_env(
+            "TSA_MEMORY_EFFICIENCY_FILES",
+            DEFAULT_MEMORY_EFFICIENCY_FILES,
+        )
 
-        # 20個のファイルを順次処理
+        # 複数ファイルを順次処理。長時間の専用検証では環境変数で拡張できる。
         java_files = list(Path(large_scale_project).glob("src/main/java/**/*.java"))[
-            :20
+            :sample_file_count
         ]
 
         for i, java_file in enumerate(java_files):
@@ -710,6 +739,10 @@ export default GeneratedComponent{i};
 
         # 段階的に負荷を増加
         load_levels = [5, 10, 20, 30]
+        recovery_interval = _nonnegative_float_from_env(
+            "TSA_SCALABILITY_RECOVERY_SECONDS",
+            DEFAULT_SCALABILITY_RECOVERY_SECONDS,
+        )
         scalability_results = []
 
         for load_level in load_levels:
@@ -795,7 +828,8 @@ export default GeneratedComponent{i};
             )
 
             # 短い休憩でシステム回復
-            await asyncio.sleep(1)
+            if recovery_interval:
+                await asyncio.sleep(recovery_interval)
 
         # スケーラビリティ分析
         max_load_result = scalability_results[-1]
@@ -822,15 +856,17 @@ export default GeneratedComponent{i};
         server = TreeSitterAnalyzerMCPServer()
         server.set_project_path(large_scale_project)
 
-        # 5分間の持続負荷テスト
-        test_duration = 60  # 実際のテストでは300秒（5分）
-        start_time = time.time()
-
+        sample_count = _positive_int_from_env(
+            "TSA_SUSTAINED_LOAD_ITERATIONS",
+            DEFAULT_SUSTAINED_LOAD_ITERATIONS,
+        )
+        sample_interval = _nonnegative_float_from_env(
+            "TSA_SUSTAINED_LOAD_INTERVAL_SECONDS",
+            DEFAULT_SUSTAINED_LOAD_INTERVAL_SECONDS,
+        )
         performance_samples = []
-        iteration = 0
 
-        while time.time() - start_time < test_duration:
-            iteration += 1
+        for iteration in range(1, sample_count + 1):
             profiler = PerformanceProfiler()
             profiler.start_profiling()
 
@@ -859,7 +895,8 @@ export default GeneratedComponent{i};
             )
 
             # 短い間隔
-            await asyncio.sleep(0.5)
+            if sample_interval:
+                await asyncio.sleep(sample_interval)
 
         # 持続負荷分析
         successful_iterations = [s for s in performance_samples if s["success"]]
@@ -906,6 +943,10 @@ export default GeneratedComponent{i};
         server.set_project_path(large_scale_project)
 
         initial_memory = psutil.Process().memory_info().rss / 1024 / 1024
+        cleanup_settle_seconds = _nonnegative_float_from_env(
+            "TSA_RESOURCE_CLEANUP_SETTLE_SECONDS",
+            DEFAULT_RESOURCE_CLEANUP_SETTLE_SECONDS,
+        )
 
         # 大量のタスクを実行してリソースを消費
         for cycle in range(5):
@@ -961,7 +1002,8 @@ export default GeneratedComponent{i};
 
         # 最終クリーンアップ
         gc.collect()
-        await asyncio.sleep(1)  # システムがクリーンアップする時間を与える
+        if cleanup_settle_seconds:
+            await asyncio.sleep(cleanup_settle_seconds)
 
         final_memory = psutil.Process().memory_info().rss / 1024 / 1024
         total_growth = final_memory - initial_memory

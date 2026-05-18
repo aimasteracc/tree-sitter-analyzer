@@ -5,8 +5,19 @@ from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer.mcp.tools._refactoring_plan_builder import (
+    _build_plan_for_func,
+    _infer_returns,
+)
 from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
     RefactoringSuggestionsTool,
+)
+from tree_sitter_analyzer.mcp.tools.utils.refactoring_suggestions_classes import (
+    find_class_extractions,
+    group_methods_by_responsibility,
+)
+from tree_sitter_analyzer.mcp.tools.utils.refactoring_suggestions_helpers import (
+    make_agent_summary,
 )
 
 # Use project files for testing (within project boundary)
@@ -15,6 +26,17 @@ SAMPLE_PYTHON = str(
     PROJECT_ROOT / "tree_sitter_analyzer" / "languages" / "java_plugin.py"
 )
 SAMPLE_GENERIC = str(PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "server.py")
+SAMPLE_CLI_MAIN = str(PROJECT_ROOT / "tree_sitter_analyzer" / "cli_main.py")
+SAMPLE_PLAN_BUILDER = str(
+    PROJECT_ROOT
+    / "tree_sitter_analyzer"
+    / "mcp"
+    / "tools"
+    / "_refactoring_plan_builder.py"
+)
+SAMPLE_SAFE_TO_EDIT = str(
+    PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "tools" / "safe_to_edit_tool.py"
+)
 
 
 @pytest.fixture
@@ -26,6 +48,12 @@ def tool():
 
 def _run(coro):
     return asyncio.run(coro)
+
+
+def _first_precise_plan(result):
+    plans = [s["precise_plan"] for s in result["suggestions"] if "precise_plan" in s]
+    assert plans
+    return plans[0]
 
 
 class TestRefactoringSuggestionsTool:
@@ -44,9 +72,22 @@ class TestRefactoringSuggestionsTool:
 
     def test_python_analysis_works(self, tool):
         result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
+        assert result["success"] is True
         assert "total_suggestions" in result
         assert "summary" in result
         assert "suggestions" in result
+
+    def test_success_result_preserves_refactor_output_fields(self, tool):
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
+        assert result["success"] is True
+        assert "file" in result
+        assert "total_suggestions" in result
+        assert "summary" in result
+        assert "agent_summary" in result
+        assert "suggestions" in result
+        assert isinstance(result["suggestions"], list)
 
     def test_python_detects_long_function(self, tool):
         result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
@@ -65,6 +106,8 @@ class TestRefactoringSuggestionsTool:
         suggestions = result["suggestions"]
         large_classes = [s for s in suggestions if s["name"] == "reduce_class_size"]
         assert len(large_classes) >= 1
+        assert "recipe" in large_classes[0]
+        assert "move_methods" in large_classes[0]["recipe"]
 
     def test_max_suggestions_limit(self, tool):
         result = _run(tool.execute({"file_path": SAMPLE_PYTHON, "max_suggestions": 3}))
@@ -79,6 +122,22 @@ class TestRefactoringSuggestionsTool:
         summary = result["summary"]
         assert isinstance(summary, str)
         assert len(summary) > 0
+
+    def test_agent_summary_surfaces_next_action(self, tool):
+        result = _run(
+            tool.execute({"file_path": SAMPLE_PYTHON, "output_format": "json"})
+        )
+
+        agent_summary = result["agent_summary"]
+
+        assert agent_summary["risk"] == "medium"
+        assert "analyze_file" in agent_summary["next_step"]
+        assert agent_summary["target_owner"] == "analyze_file"
+        assert agent_summary["target_module"].endswith("_java_plugin_helpers.py")
+        assert any(
+            "--change-impact-scope" in command
+            for command in agent_summary["suggested_tests"]
+        )
 
     def test_suggestions_have_priority(self, tool):
         result = _run(tool.execute({"file_path": SAMPLE_PYTHON}))
@@ -177,6 +236,239 @@ class TestRefactoringSuggestionsTool:
         helper_mod = with_plans[0]["precise_plan"]["helper_module"]
         assert helper_mod.endswith("_helpers.py")
         assert "_java_plugin_helpers.py" in helper_mod
+
+    def test_precise_plan_uses_relative_import_for_package_module(self, tmp_path):
+        source = (
+            "def sample(flag):\n"
+            "    total = 0\n"
+            "    if flag:\n"
+            "        total += 1\n"
+            "        total += 2\n"
+            "        total += 3\n"
+            "        total += 4\n"
+            "    return total\n"
+        )
+        lines = source.splitlines()
+        package = tmp_path / "pkg"
+        package.mkdir()
+        (package / "__init__.py").write_text("", encoding="utf-8")
+        file_path = str(package / "sample_module.py")
+
+        plan = _build_plan_for_func(
+            file_path,
+            lines,
+            {"line": 1, "end_line": len(lines), "name": "sample"},
+            source,
+        )
+
+        assert plan is not None
+        assert "from ._sample_module_helpers import " in plan["steps"][1]
+
+    def test_precise_plan_normalizes_private_module_helper_names(self, tmp_path):
+        source = (
+            "def _main(flag):\n"
+            "    total = 0\n"
+            "    if flag:\n"
+            "        total += 1\n"
+            "        total += 2\n"
+            "        total += 3\n"
+            "        total += 4\n"
+            "    return total\n"
+        )
+        lines = source.splitlines()
+        package = tmp_path / "pkg"
+        package.mkdir()
+        (package / "__init__.py").write_text("", encoding="utf-8")
+
+        plan = _build_plan_for_func(
+            str(package / "_private_module.py"),
+            lines,
+            {"line": 1, "end_line": len(lines), "name": "_main"},
+            source,
+        )
+
+        assert plan is not None
+        assert "__private_module_helpers.py" not in plan["helper_module"]
+        assert plan["helper_module"].endswith("_private_module_helpers.py")
+        assert all(
+            not extraction["helper_name"].startswith("__")
+            for extraction in plan["extractions"]
+        )
+        assert "from ._private_module_helpers import " in plan["steps"][1]
+
+    def test_precise_plan_keeps_absolute_import_for_non_package_file(self, tmp_path):
+        source = (
+            "def main(flag):\n"
+            "    total = 0\n"
+            "    if flag:\n"
+            "        total += 1\n"
+            "        total += 2\n"
+            "        total += 3\n"
+            "        total += 4\n"
+            "    return total\n"
+        )
+        lines = source.splitlines()
+
+        plan = _build_plan_for_func(
+            str(tmp_path / "standalone.py"),
+            lines,
+            {"line": 1, "end_line": len(lines), "name": "main"},
+            source,
+        )
+
+        assert plan is not None
+        assert "from _standalone_helpers import " in plan["steps"][1]
+        assert "from ._standalone_helpers import " not in plan["steps"][1]
+
+    def test_mcp_tool_hooks_are_not_move_to_helpers(self, tool):
+        result = _run(tool.execute({"file_path": SAMPLE_SAFE_TO_EDIT}))
+
+        messages = [suggestion["message"] for suggestion in result["suggestions"]]
+
+        assert not any("get_tool_schema" in message for message in messages)
+        assert not any("validate_arguments" in message for message in messages)
+
+    def test_class_recipe_groups_private_methods_by_responsibility(self):
+        groups = group_methods_by_responsibility(
+            [
+                "_extract_import_info",
+                "_parse_import_statement",
+                "_extract_export_info",
+                "_parse_export_statement",
+                "_calculate_complexity",
+            ]
+        )
+
+        assert groups[:2] == [
+            {
+                "responsibility": "import",
+                "methods": ["_extract_import_info", "_parse_import_statement"],
+                "count": 2,
+            },
+            {
+                "responsibility": "export",
+                "methods": ["_extract_export_info", "_parse_export_statement"],
+                "count": 2,
+            },
+        ]
+
+    def test_large_class_suggestion_includes_agent_recipe(self, tmp_path):
+        source = tmp_path / "extractor.py"
+        source.write_text("", encoding="utf-8")
+        suggestions = find_class_extractions(
+            [
+                {
+                    "name": "WidgetExtractor",
+                    "line": 1,
+                    "end_line": 200,
+                    "method_count": 18,
+                    "method_names": [
+                        "_extract_import_info",
+                        "_parse_import_statement",
+                        "_extract_export_info",
+                        "_parse_export_statement",
+                        "_calculate_complexity",
+                        "_calculate_score",
+                    ],
+                }
+            ],
+            {"id": "E004", "name": "reduce_class_size", "threshold": 5, "message": ""},
+            {
+                "id": "E002",
+                "name": "extract_class",
+                "message": "Methods {methods} in '{class_name}' share prefix '{prefix}'. Extract a new class.",
+            },
+            str(source),
+        )
+
+        recipe = suggestions[0]["recipe"]
+        assert recipe["target_owner"] == "WidgetImportMixin"
+        assert recipe["target_module"].endswith("_extractor_import_mixin.py")
+        assert recipe["move_methods"] == [
+            "_extract_import_info",
+            "_parse_import_statement",
+        ]
+        assert "import_update" in recipe
+        assert recipe["candidate_groups"][0]["responsibility"] == "import"
+
+    def test_agent_summary_can_summarize_class_recipe(self):
+        summary = make_agent_summary(
+            "pkg/extractor.py",
+            [
+                {
+                    "name": "reduce_class_size",
+                    "priority_score": 50,
+                    "recipe": {
+                        "target_owner": "WidgetImportMixin",
+                        "move_methods": [
+                            "_extract_import_info",
+                            "_parse_import_statement",
+                        ],
+                        "tests": [
+                            "uv run python -m tree_sitter_analyzer <file> --refactor --format json"
+                        ],
+                        "stop_condition": "WidgetExtractor is below the class-size threshold.",
+                    },
+                    "line_range": {"start": 10, "end": 80},
+                }
+            ],
+        )
+
+        assert summary["next_step"] == (
+            "Extract _extract_import_info, _parse_import_statement "
+            "into WidgetImportMixin."
+        )
+        assert summary["target_owner"] == "WidgetImportMixin"
+        assert summary["move_methods"] == [
+            "_extract_import_info",
+            "_parse_import_statement",
+        ]
+        assert summary["target_lines"] == "10-80"
+        assert summary["stop_condition"] == (
+            "WidgetExtractor is below the class-size threshold."
+        )
+
+    def test_prefix_group_skips_existing_responsibility_mixin(self, tmp_path):
+        source = tmp_path / "find_and_grep_response.py"
+        source.write_text("", encoding="utf-8")
+        suggestions = find_class_extractions(
+            [
+                {
+                    "name": "FindAndGrepRespondMixin",
+                    "line": 1,
+                    "end_line": 90,
+                    "method_count": 3,
+                    "method_names": [
+                        "_respond_grouped",
+                        "_respond_summary",
+                        "_respond_full",
+                    ],
+                }
+            ],
+            {"id": "E004", "name": "reduce_class_size", "threshold": 5, "message": ""},
+            {
+                "id": "E002",
+                "name": "extract_class",
+                "message": "Methods {methods} in '{class_name}' share prefix '{prefix}'. Extract a new class.",
+            },
+            str(source),
+        )
+
+        assert suggestions == []
+
+    def test_infer_returns_collects_direct_and_guard_body_assignments(self):
+        block = """
+        total = 0
+        left, right = pair
+        if flag:
+            guarded = total + left
+        try:
+            loaded = read()
+        except OSError:
+            ignored = None
+        """
+
+        assert _infer_returns(block) == ["total", "left", "right", "guarded"]
 
     def test_precise_plan_skeleton_is_valid_python(self, tool):
         result = _run(

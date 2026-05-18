@@ -28,3 +28,10 @@ The two branches produce very different artifacts — getting this wrong wastes 
 ## When done
 
 The *answer* is the only thing worth keeping from a prototype. Capture it somewhere durable (commit message, ADR, issue, or a `NOTES.md` next to the prototype) along with the question it was answering. If the user is around, that capture is a quick conversation; if not, leave the placeholder so they (or you, on the next pass) can fill in the verdict before deleting the prototype.
+
+## Acceptance Criteria
+
+- [ ] Prototype answers one explicit question and is clearly marked throwaway.
+- [ ] There is one documented command to run it.
+- [ ] Relevant state is visible after each action or variant switch.
+- [ ] The learned answer is captured before the prototype is deleted or absorbed.

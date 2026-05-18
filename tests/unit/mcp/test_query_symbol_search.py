@@ -97,10 +97,35 @@ class TestBuildTypeFilter:
 
 class TestSymbolSearchIntegration:
     @pytest.fixture
-    def tool_with_project(self):
+    def tool_with_project(self, tmp_path):
         from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 
-        tool = QueryTool(str(PROJECT_ROOT))
+        sample = tmp_path / "symbols.py"
+        sample.write_text(
+            """
+class HealthScorer:
+    def score_file(self):
+        return 100
+
+
+class QueryTool:
+    pass
+
+
+class SearchContentTool:
+    pass
+
+
+class RefactoringTool:
+    pass
+
+
+def analyze_file():
+    return HealthScorer()
+""".strip()
+        )
+
+        tool = QueryTool(str(tmp_path))
         return tool
 
     def test_exact_search_finds_symbol(self, tool_with_project):

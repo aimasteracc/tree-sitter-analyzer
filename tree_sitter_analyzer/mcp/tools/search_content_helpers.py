@@ -6,6 +6,8 @@ Extracted from the monolithic tool file to reduce duplication.
 """
 
 import logging
+import time
+from pathlib import Path
 from typing import Any
 
 from ..utils.format_helper import (
@@ -88,6 +90,121 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+async def run_search(
+    path_resolver: Any,
+    arguments: dict[str, Any],
+    rg_args: dict[str, Any],
+    roots: list[str] | None,
+    files: list[str] | None,
+    max_count: int | None,
+    fd_rg_utils: Any,
+) -> tuple[int, bytes, bytes, int]:
+    """Execute ripgrep in file, single-root, or parallel-root mode."""
+    search_roots = _prepare_search_roots(
+        path_resolver, arguments, rg_args, roots, files
+    )
+    count_only_matches = bool(arguments.get("count_only_matches", False)) or bool(
+        arguments.get("total_only", False)
+    )
+    timeout_ms = arguments.get("timeout_ms")
+    use_parallel = should_use_parallel(arguments, search_roots)
+
+    started = time.time()
+    if use_parallel and search_roots is not None:
+        rc, out, err = await _run_parallel_search(
+            search_roots,
+            count_only_matches,
+            timeout_ms,
+            max_count,
+            rg_args,
+            fd_rg_utils,
+        )
+    else:
+        rc, out, err = await _run_single_search(
+            search_roots, count_only_matches, timeout_ms, rg_args, fd_rg_utils
+        )
+
+    elapsed_ms = int((time.time() - started) * 1000)
+    return rc, out, err, elapsed_ms
+
+
+def should_use_parallel(
+    arguments: dict[str, Any], search_roots: list[str] | None
+) -> bool:
+    """Return whether the search should fan out across root chunks."""
+    return (
+        search_roots is not None
+        and len(search_roots) > 1
+        and arguments.get("enable_parallel", True)
+    )
+
+
+def _prepare_search_roots(
+    path_resolver: Any,
+    arguments: dict[str, Any],
+    rg_args: dict[str, Any],
+    roots: list[str] | None,
+    files: list[str] | None,
+) -> list[str] | None:
+    """Convert explicit files into parent search roots and include globs."""
+    if not files:
+        return roots
+
+    parent_dirs: set[str] = set()
+    file_globs: list[str] = []
+    for file_path in files:
+        resolved = path_resolver.resolve(file_path)
+        parent_dirs.add(str(Path(resolved).parent))
+        escaped = Path(resolved).name.replace("[", "[[]").replace("]", "[]]")
+        file_globs.append(escaped)
+
+    if not arguments.get("include_globs"):
+        arguments["include_globs"] = []
+    arguments["include_globs"].extend(file_globs)
+    rg_args["include_globs"] = arguments["include_globs"]
+    return list(parent_dirs)
+
+
+async def _run_parallel_search(
+    search_roots: list[str],
+    count_only_matches: bool,
+    timeout_ms: int | None,
+    max_count: int | None,
+    rg_args: dict[str, Any],
+    fd_rg_utils: Any,
+) -> tuple[int, bytes, bytes]:
+    """Execute rg against root chunks and merge results."""
+    root_chunks = fd_rg_utils.split_roots_for_parallel_processing(
+        search_roots, max_chunks=4
+    )
+    commands = [
+        fd_rg_utils.build_rg_command(
+            roots=chunk, count_only_matches=count_only_matches, **rg_args
+        )
+        for chunk in root_chunks
+    ]
+    results = await fd_rg_utils.run_parallel_rg_searches(
+        commands, timeout_ms=timeout_ms, max_concurrent=4
+    )
+    return fd_rg_utils.merge_rg_results(results, count_only_matches)
+
+
+async def _run_single_search(
+    search_roots: list[str] | None,
+    count_only_matches: bool,
+    timeout_ms: int | None,
+    rg_args: dict[str, Any],
+    fd_rg_utils: Any,
+) -> tuple[int, bytes, bytes]:
+    """Execute rg once and return raw process output."""
+    cmd = fd_rg_utils.build_rg_command(
+        roots=search_roots,
+        count_only_matches=count_only_matches,
+        **rg_args,
+    )
+    return await fd_rg_utils.run_command_capture(cmd, timeout_ms=timeout_ms)
+
+
 # handle_output_and_cache: implementation
 def handle_output_and_cache(
     result: dict[str, Any],
@@ -149,6 +266,8 @@ def _handle_file_output(
                 "output_file": output_file,
                 "file_saved": f"Results saved to {saved_path}",
             }
+            if "agent_summary" in result:
+                minimal["agent_summary"] = result["agent_summary"]
             if output_format == "toon":
                 return attach_toon_content_to_response(minimal)
             return minimal
@@ -187,7 +306,9 @@ def _make_minimal(result: dict[str, Any]) -> dict[str, Any]:
     # Conditional check
     if "elapsed_ms" in result:
         minimal["elapsed_ms"] = result["elapsed_ms"]
-    # Return result
+    # Conditional check
+    if "agent_summary" in result:
+        minimal["agent_summary"] = result["agent_summary"]
     return minimal
 
 
@@ -212,6 +333,7 @@ def save_enriched_output(
             "count": len(matches),
             "truncated": result.get("truncated", False),
             "elapsed_ms": result.get("elapsed_ms", 0),
+            "agent_summary": result.get("agent_summary"),
             "results": matches,
             "summary": fd_rg_utils.summarize_search_results(matches),
             "grouped_by_file": (
@@ -258,5 +380,4 @@ def build_next_steps(matches: list[dict[str, Any]]) -> list[str]:
     # Conditional check
     if len(matches) > 5:
         steps.append("Add query filters or narrower patterns to reduce matches")
-    # Return result
     return steps

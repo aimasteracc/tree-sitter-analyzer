@@ -108,6 +108,9 @@ yaml = ["tree-sitter-yaml>=0.7.0"]  # YAML language support for configuration fi
 kotlin = [
     "tree-sitter-kotlin>=0.3.0",
 ]  # Kotlin language support for Android and JVM applications
+swift = [
+    "tree-sitter-swift>=0.7.2",
+]  # Swift language support for Apple platform applications
 
 # Language bundles for convenience
 web = [
@@ -140,6 +143,7 @@ all-languages = [
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-kotlin>=0.3.0",  # Kotlin language support for Android and JVM applications
+    "tree-sitter-swift>=0.7.2",  # Swift language support for Apple platform applications
     "tree-sitter-markdown>=0.3.1",
     "tree-sitter-html>=0.23.0,<0.25.0",
     "tree-sitter-css>=0.23.0,<0.25.0",
@@ -227,6 +231,7 @@ full = [
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-swift>=0.7.2",
     "mcp>=1.12.2",
     "anyio>=4.0.0",
     "httpx>=0.27.0,<1.0.0",
@@ -259,6 +264,7 @@ all = [
     "tree-sitter-rust>=0.20.0,<0.25.0",
     "tree-sitter-go>=0.20.0,<0.25.0",
     "tree-sitter-markdown>=0.3.1",
+    "tree-sitter-swift>=0.7.2",
     "tree-sitter-html>=0.23.0,<0.25.0",
     "tree-sitter-css>=0.23.0,<0.25.0",
     "tree-sitter-sql>=0.3.11,<0.4.0",  # SQL language support for database schema analysis
@@ -282,10 +288,6 @@ all = [
     "psutil>=5.9.6,<6",
     "pre-commit>=3.0.0",
 ]
-swift = [
-    "tree-sitter-swift>=0.7.2",
-]
-
 [project.scripts]
 # Main CLI entry point
 tree-sitter-analyzer = "tree_sitter_analyzer.cli_main:main"
@@ -317,6 +319,7 @@ rust = "tree_sitter_analyzer.languages.rust_plugin:RustPlugin"
 kotlin = "tree_sitter_analyzer.languages.kotlin_plugin:KotlinPlugin"
 c = "tree_sitter_analyzer.languages.c_plugin:CPlugin"
 cpp = "tree_sitter_analyzer.languages.cpp_plugin:CppPlugin"
+swift = "tree_sitter_analyzer.languages.swift_plugin:SwiftPlugin"
 
 [project.urls]
 Homepage = "https://github.com/aimasteracc/tree-sitter-analyzer"
@@ -443,8 +446,8 @@ markers = [
     "requires_java: marks tests that require tree-sitter-java",
 ]
 filterwarnings = [
-    "ignore::DeprecationWarning",
-    "ignore::PendingDeprecationWarning",
+    "error",
+    "ignore::UserWarning:tree_sitter.*",
 ]
 
 [tool.coverage.run]

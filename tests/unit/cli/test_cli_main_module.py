@@ -12,6 +12,7 @@ import pytest
 
 from tree_sitter_analyzer.cli_main import (
     CLICommandFactory,
+    _normalize_agent_command_aliases,
     create_argument_parser,
     handle_special_commands,
     main,
@@ -235,6 +236,46 @@ class TestCreateArgumentParser:
         assert parser is not None
         assert isinstance(parser, argparse.ArgumentParser)
 
+    def test_parser_accepts_agent_summary_only_for_change_impact(self):
+        """Change-impact can request a compact agent-only response."""
+        parser = create_argument_parser()
+        args = parser.parse_args(["--change-impact", "--agent-summary-only"])
+
+        assert args.change_impact is True
+        assert args.agent_summary_only is True
+
+    def test_parser_accepts_agent_workflow_pack(self):
+        """Agent workflow can be requested without a target file."""
+        parser = create_argument_parser()
+        args = parser.parse_args(["--agent-workflow"])
+
+        assert args.agent_workflow is True
+        assert args.file_path is None
+
+    def test_parser_accepts_agent_skills_inventory(self):
+        """Agent skills inventory can be requested without a target file."""
+        parser = create_argument_parser()
+        args = parser.parse_args(["--agent-skills"])
+
+        assert args.agent_skills is True
+        assert args.file_path is None
+
+    def test_parser_accepts_change_impact_mode_and_test_toggle(self):
+        """Change-impact CLI exposes the MCP mode and include_tests controls."""
+        parser = create_argument_parser()
+        args = parser.parse_args(
+            [
+                "--change-impact",
+                "--change-impact-mode",
+                "staged",
+                "--change-impact-no-tests",
+            ]
+        )
+
+        assert args.change_impact is True
+        assert args.change_impact_mode == "staged"
+        assert args.change_impact_include_tests is False
+
     def test_parser_has_file_path_argument(self):
         """Test that parser has file_path argument."""
         parser = create_argument_parser()
@@ -392,6 +433,96 @@ class TestCreateArgumentParser:
         args = parser.parse_args(["--list-queries"])
         assert args.file_path is None
 
+    def test_parser_has_safe_to_edit_edit_type_argument(self):
+        """Test that --edit-type supports MCP safe_to_edit schema values."""
+        parser = create_argument_parser()
+        args = parser.parse_args(["test.py", "--safe-to-edit", "--edit-type", "rename"])
+        assert args.safe_to_edit is True
+        assert args.edit_type == "rename"
+
+    @pytest.mark.parametrize(
+        ("argv", "expected_mode", "expected_file_path"),
+        [
+            (["--dependencies"], "summary", None),
+            (["--dependencies", "summary"], "summary", None),
+            (["--dependencies", "cycles"], "cycles", None),
+            (["target.py", "--dependencies", "file_deps"], "file_deps", "target.py"),
+            (["--dependencies", "full"], "full", None),
+        ],
+    )
+    def test_parser_dependencies_supports_mcp_modes_and_legacy_full(
+        self,
+        argv: list[str],
+        expected_mode: str,
+        expected_file_path: str | None,
+    ):
+        """Dependency CLI accepts MCP modes and the legacy full alias."""
+        parser = create_argument_parser()
+        args = parser.parse_args(argv)
+        assert args.dependencies == expected_mode
+        assert args.file_path == expected_file_path
+
+    @pytest.mark.parametrize(
+        ("argv", "expected"),
+        [
+            (
+                ["file-health", "target.py", "--format", "json"],
+                ["target.py", "--file-health", "--format", "json"],
+            ),
+            (
+                ["agent-skills", "--format", "json"],
+                ["--agent-skills", "--format", "json"],
+            ),
+            (
+                ["agent-workflow", "target.py", "--format", "json"],
+                ["--agent-workflow", "target.py", "--format", "json"],
+            ),
+            (
+                ["parser-readiness", "swift", "--format", "json"],
+                ["--parser-readiness", "swift", "--format", "json"],
+            ),
+            (
+                ["safe-to-edit", "target.py", "--edit-type", "rename"],
+                ["target.py", "--safe-to-edit", "--edit-type", "rename"],
+            ),
+            (
+                ["refactor", "target.py"],
+                ["target.py", "--refactor"],
+            ),
+            (
+                ["smart-context", "target.py", "--format", "toon"],
+                ["target.py", "--smart-context", "--format", "toon"],
+            ),
+            (
+                ["project-health", "--format", "json"],
+                ["--project-health", "--format", "json"],
+            ),
+            (
+                ["change-impact", "--agent-summary-only"],
+                ["--change-impact", "--agent-summary-only"],
+            ),
+            (
+                ["target.py", "--file-health"],
+                ["target.py", "--file-health"],
+            ),
+        ],
+    )
+    def test_agent_command_aliases_normalize_to_existing_flags(
+        self, argv: list[str], expected: list[str]
+    ):
+        """Agent-friendly command aliases reuse the existing flag CLI."""
+        assert _normalize_agent_command_aliases(argv) == expected
+
+    def test_agent_file_scoped_alias_without_path_keeps_existing_error_path(self):
+        """Missing file paths still flow to MCP command validation."""
+        assert _normalize_agent_command_aliases(
+            ["file-health", "--format", "json"]
+        ) == [
+            "--file-health",
+            "--format",
+            "json",
+        ]
+
 
 class TestHandleSpecialCommandsBranchCoverage:
     """Tests for handle_special_commands function."""
@@ -412,6 +543,65 @@ class TestHandleSpecialCommandsBranchCoverage:
         result = handle_special_commands(args)
         assert result == 0
         mock_output_list.assert_called()
+
+    @patch("tree_sitter_analyzer.output_manager.output_json")
+    def test_handle_agent_skills_outputs_inventory(self, mock_output_json, tmp_path):
+        """Agent skills returns project-local skill metadata and gaps."""
+        skill_dir = tmp_path / ".agents" / "skills" / "demo"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: demo\n"
+            "description: Use when demonstrating project-local skills.\n"
+            "---\n\n"
+            "# Demo Skill\n\n"
+            "## Acceptance Criteria\n\n"
+            "- Inventory includes this skill.\n",
+            encoding="utf-8",
+        )
+        args = argparse.Namespace(
+            agent_skills=True,
+            agent_skills_root=None,
+            agent_workflow=False,
+            file_path=None,
+            project_root=str(tmp_path),
+            format="json",
+        )
+
+        result = handle_special_commands(args)
+
+        assert result == 0
+        payload = mock_output_json.call_args.args[0]
+        assert payload["success"] is True
+        assert payload["inventory"] == "project agent skills"
+        assert payload["skill_count"] == 1
+        assert payload["skills"][0]["name"] == "demo"
+        assert payload["skills"][0]["acceptance_criteria_present"] is True
+
+    @patch("tree_sitter_analyzer.output_manager.output_json")
+    def test_handle_agent_workflow_outputs_pack(self, mock_output_json):
+        """Agent workflow returns a structured SMART command pack."""
+        args = argparse.Namespace(
+            agent_workflow=True,
+            file_path="target.py",
+            project_root="/repo",
+            format="json",
+        )
+
+        result = handle_special_commands(args)
+
+        assert result == 0
+        payload = mock_output_json.call_args.args[0]
+        assert payload["success"] is True
+        assert payload["workflow"] == "SMART agent workflow pack"
+        assert payload["target_path"] == "target.py"
+        assert payload["agent_summary"]["next_step"].startswith(
+            "uv run tree-sitter-analyzer safe-to-edit target.py"
+        )
+        assert payload["agent_summary"]["queue_ledger_command"] == (
+            "uv run tree-sitter-analyzer change-impact "
+            "--change-impact-scope target.py --agent-summary-only --format json"
+        )
 
     @patch("tree_sitter_analyzer.cli_main.output_list")
     def test_handle_show_common_queries(self, mock_output_list):
@@ -1059,7 +1249,7 @@ class TestHandleSpecialCommands:
 
     @patch("tree_sitter_analyzer.platform_compat.recorder.BehaviorRecorder")
     @patch("tree_sitter_analyzer.cli_main.output_info")
-    @patch("pathlib.Path")
+    @patch("tree_sitter_analyzer.cli.commands.sql_platform_helpers.pathlib.Path")
     def test_record_sql_profile_success(
         self, mock_path_cls, mock_output_info, mock_recorder_cls
     ):
@@ -1115,7 +1305,7 @@ class TestHandleSpecialCommands:
 
     # --- compare_sql_profiles ---
 
-    @patch("pathlib.Path")
+    @patch("tree_sitter_analyzer.cli.commands.sql_platform_helpers.pathlib.Path")
     @patch("tree_sitter_analyzer.cli_main.output_error")
     def test_compare_sql_profiles_missing_first(self, mock_output_error, mock_path_cls):
         """compare_sql_profiles when first profile doesn't exist."""
@@ -1140,7 +1330,7 @@ class TestHandleSpecialCommands:
         assert result == 1
         mock_output_error.assert_called_once()
 
-    @patch("pathlib.Path")
+    @patch("tree_sitter_analyzer.cli.commands.sql_platform_helpers.pathlib.Path")
     @patch("tree_sitter_analyzer.cli_main.output_error")
     def test_compare_sql_profiles_missing_second(
         self, mock_output_error, mock_path_cls
@@ -1167,7 +1357,7 @@ class TestHandleSpecialCommands:
         assert result == 1
         mock_output_error.assert_called_once()
 
-    @patch("pathlib.Path")
+    @patch("tree_sitter_analyzer.cli.commands.sql_platform_helpers.pathlib.Path")
     @patch("tree_sitter_analyzer.platform_compat.compare.compare_profiles")
     @patch("tree_sitter_analyzer.platform_compat.compare.generate_diff_report")
     @patch("builtins.print")
@@ -1226,7 +1416,7 @@ class TestHandleSpecialCommands:
             mock_generate_diff.assert_called_once_with(mock_comparison)
             mock_print.assert_called_once_with("Diff report content")
 
-    @patch("pathlib.Path")
+    @patch("tree_sitter_analyzer.cli.commands.sql_platform_helpers.pathlib.Path")
     @patch("tree_sitter_analyzer.cli_main.output_error")
     def test_compare_sql_profiles_error(self, mock_output_error, mock_path_cls):
         """compare_sql_profiles when comparison raises."""
