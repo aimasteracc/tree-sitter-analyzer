@@ -7,6 +7,7 @@ Analyzes code structure and generates detailed overview tables
 (classes, methods, fields) with line positions for large files.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,17 @@ from .analyze_code_structure_helpers import (
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
+
+
+@dataclass(frozen=True)
+class _ExecutionOptions:
+    file_path: str
+    resolved_path: str
+    format_type: str
+    language: str
+    output_file: str | None
+    suppress_output: bool
+    output_format: str
 
 
 def _format_table(
@@ -154,6 +166,28 @@ def _convert_analysis_result(result: Any) -> dict[str, Any]:
     )
 
 
+def _build_success_response(
+    options: _ExecutionOptions,
+    metadata: dict[str, Any],
+    table_output: str,
+    next_steps: list[str],
+) -> dict[str, Any]:
+    """Build the successful tool response before optional file persistence."""
+    response: dict[str, Any] = {
+        "success": True,
+        "format_type": options.format_type,
+        "file_path": options.file_path,
+        "language": options.language,
+        "metadata": metadata,
+        "table_output": table_output,
+    }
+    if next_steps:
+        response["next_steps"] = next_steps
+    if options.suppress_output and options.output_file:
+        del response["table_output"]
+    return response
+
+
 class AnalyzeCodeStructureTool(BaseMCPTool):
     """MCP Tool for code structure analysis and table formatting."""
 
@@ -220,99 +254,100 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
     async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
         """Execute AST structure analysis and return formatted results."""
         try:
-            self.validate_arguments(args)
-
-            file_path = args["file_path"]
-            format_type = args.get("format_type", "full")
-            language = args.get("language")
-            output_file = args.get("output_file")
-            suppress_output = args.get("suppress_output", False)
-            output_format = args.get("output_format", "toon")
-
-            resolved = self.resolve_and_validate_file_path(file_path)
-
-            if format_type:
-                format_type = self.security_validator.sanitize_input(
-                    # Process analysis result into structured output
-                    format_type,
-                    max_length=50,
-                )
-            if language:
-                language = self.security_validator.sanitize_input(
-                    language, max_length=50
-                )
-            if output_file:
-                output_file = self.security_validator.sanitize_input(
-                    output_file, max_length=255
-                )
-
-            if not Path(resolved).exists():
-                raise ValueError(f"Invalid file path: File not found: {file_path}")
-
-            if not language:
-                language = detect_language_from_file(
-                    resolved, project_root=self.project_root
-                )
-
-            monitor = get_performance_monitor()
-            with monitor.measure_operation("code_structure_analysis"):
-                request = AnalysisRequest(
-                    file_path=resolved,
-                    language=language,
-                    include_complexity=True,
-                    include_details=True,
-                )
-                result = await self.analysis_engine.analyze(request)
-                if result is None:
-                    raise RuntimeError(
-                        f"Failed to analyze structure for file: {file_path}"
-                    )
-
-                structure_dict = self._convert_analysis_result_to_dict(result)
-
-                table_output = _format_table(
-                    structure_dict, result, language, format_type
-                )
-                metadata = extract_metadata(structure_dict)
-
-                response: dict[str, Any] = {
-                    "success": True,
-                    "format_type": format_type,
-                    "file_path": file_path,
-                    "language": language,
-                    # Build tool routing suggestions for AI agents
-                    "metadata": metadata,
-                    "table_output": table_output,
-                }
-
-                steps = _build_next_steps(structure_dict, file_path)
-                if steps:
-                    response["next_steps"] = steps
-
-                if suppress_output and output_file:
-                    del response["table_output"]
-
-                if output_file:
-                    try:
-                        base_name = (
-                            output_file
-                            if output_file.strip()
-                            else Path(file_path).stem + "_analysis"
-                        )
-                        saved = self.file_output_manager.save_to_file(
-                            content=table_output, base_name=base_name
-                        )
-                        response["output_file_path"] = saved
-                        response["file_saved"] = True
-                    except Exception as e:
-                        self.logger.error(f"Failed to save output to file: {e}")
-                        response["file_save_error"] = str(e)
-                        response["file_saved"] = False
-
-                return apply_toon_format_to_response(response, output_format)
+            options = self._prepare_execution_options(args)
+            result = await self._analyze_structure(options)
+            structure_dict = self._convert_analysis_result_to_dict(result)
+            table_output = _format_table(
+                structure_dict, result, options.language, options.format_type
+            )
+            response = _build_success_response(
+                options,
+                extract_metadata(structure_dict),
+                table_output,
+                _build_next_steps(structure_dict, options.file_path),
+            )
+            if options.output_file:
+                self._save_output(response, table_output, options)
+            return apply_toon_format_to_response(response, options.output_format)
         except Exception as e:
             self.logger.error(f"Error in code structure analysis tool: {e}")
             raise
+
+    def _prepare_execution_options(self, args: dict[str, Any]) -> _ExecutionOptions:
+        """Validate, sanitize, and resolve execute arguments."""
+        self.validate_arguments(args)
+        file_path = args["file_path"]
+        format_type = args.get("format_type", "full")
+        language = args.get("language")
+        output_file = args.get("output_file")
+        resolved = self.resolve_and_validate_file_path(file_path)
+
+        if format_type:
+            format_type = self.security_validator.sanitize_input(
+                format_type, max_length=50
+            )
+        if language:
+            language = self.security_validator.sanitize_input(language, max_length=50)
+        if output_file:
+            output_file = self.security_validator.sanitize_input(
+                output_file, max_length=255
+            )
+        if not Path(resolved).exists():
+            raise ValueError(f"Invalid file path: File not found: {file_path}")
+        if not language:
+            language = detect_language_from_file(
+                resolved, project_root=self.project_root
+            )
+
+        return _ExecutionOptions(
+            file_path=file_path,
+            resolved_path=resolved,
+            format_type=format_type,
+            language=language,
+            output_file=output_file,
+            suppress_output=args.get("suppress_output", False),
+            output_format=args.get("output_format", "toon"),
+        )
+
+    async def _analyze_structure(self, options: _ExecutionOptions) -> Any:
+        """Run the analysis engine for the resolved input file."""
+        monitor = get_performance_monitor()
+        with monitor.measure_operation("code_structure_analysis"):
+            request = AnalysisRequest(
+                file_path=options.resolved_path,
+                language=options.language,
+                include_complexity=True,
+                include_details=True,
+            )
+            result = await self.analysis_engine.analyze(request)
+        if result is None:
+            raise RuntimeError(
+                f"Failed to analyze structure for file: {options.file_path}"
+            )
+        return result
+
+    def _save_output(
+        self,
+        response: dict[str, Any],
+        table_output: str,
+        options: _ExecutionOptions,
+    ) -> None:
+        """Persist table output and annotate the response with save status."""
+        try:
+            base_name = (
+                options.output_file
+                if options.output_file and options.output_file.strip()
+                else Path(options.file_path).stem + "_analysis"
+            )
+            saved = self.file_output_manager.save_to_file(
+                content=table_output, base_name=base_name
+            )
+            response["output_file_path"] = saved
+            response["file_saved"] = True
+        except Exception as e:
+            self.logger.error(f"Failed to save output to file: {e}")
+            response["file_save_error"] = str(e)
+            response["file_saved"] = False
 
     def _convert_analysis_result_to_dict(self, result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to a JSON-serializable dict."""
