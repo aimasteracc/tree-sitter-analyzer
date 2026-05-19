@@ -3,11 +3,16 @@
 
 from tree_sitter_analyzer.import_extractors import (
     _extract_cpp_imports,
+    _extract_csharp_imports,
     _extract_go_imports,
     _extract_java_imports,
     _extract_js_imports,
+    _extract_kotlin_imports,
+    _extract_php_imports,
     _extract_python_imports,
+    _extract_ruby_imports,
     _extract_rust_imports,
+    _extract_swift_imports,
     _node_text,
     _parse_rust_use_path,
     extract_python_import_from,
@@ -385,7 +390,7 @@ class TestWalkImports:
     def test_unsupported_language_no_error(self):
         node = MockNode("module", "", children=[])
         imports: list[dict] = []
-        walk_imports(node, "", "ruby", imports)
+        walk_imports(node, "", "perl", imports)
         assert imports == []
 
     def test_walks_children_recursively(self):
@@ -393,4 +398,261 @@ class TestWalkImports:
         outer = MockNode("module", "", children=[inner])
         imports: list[dict] = []
         walk_imports(outer, "import app", "python", imports)
-        # Should traverse children; actual extraction depends on node text
+
+    def test_csharp_dispatch(self):
+        inner = MockNode("using_directive", "using Foo;", children=[MockNode("identifier", "Foo")])
+        inner.children[0].start_byte = 6
+        inner.children[0].end_byte = 9
+        outer = MockNode("compilation_unit", "", children=[inner])
+        imports: list[dict] = []
+        walk_imports(outer, "using Foo;", "csharp", imports)
+        assert len(imports) == 1
+
+    def test_kotlin_dispatch(self):
+        inner = MockNode("import", "import com.foo.Bar", children=[])
+        inner.start_byte = 0
+        inner.end_byte = 18
+        outer = MockNode("source_file", "", children=[inner])
+        imports: list[dict] = []
+        walk_imports(outer, "import com.foo.Bar", "kotlin", imports)
+        assert len(imports) == 1
+
+    def test_swift_dispatch(self):
+        inner = MockNode("import_declaration", "import MyKit", children=[MockNode("identifier", "MyKit")])
+        inner.children[0].start_byte = 7
+        inner.children[0].end_byte = 12
+        outer = MockNode("source_file", "", children=[inner])
+        imports: list[dict] = []
+        walk_imports(outer, "import MyKit", "swift", imports)
+        assert len(imports) == 1
+
+    def test_ruby_dispatch(self):
+        string_node = MockNode("string", "'my_lib'")
+        string_node.start_byte = 8
+        string_node.end_byte = 16
+        args_node = MockNode("argument_list", "", children=[string_node])
+        func_node = MockNode("identifier", "require")
+        func_node.start_byte = 0
+        func_node.end_byte = 7
+        inner = MockNode("call", "require 'my_lib'", children=[])
+        inner._fields = {"function": func_node, "arguments": args_node}
+        outer = MockNode("program", "", children=[inner])
+        imports: list[dict] = []
+        walk_imports(outer, "require 'my_lib'", "ruby", imports)
+        assert len(imports) == 1
+
+    def test_php_dispatch(self):
+        inner = MockNode("namespace_use_declaration", "use App\\Foo;", children=[])
+        inner.start_byte = 0
+        inner.end_byte = 12
+        outer = MockNode("program", "", children=[inner])
+        imports: list[dict] = []
+        walk_imports(outer, "use App\\Foo;", "php", imports)
+        assert len(imports) == 1
+
+
+# ---------------------------------------------------------------------------
+# _extract_csharp_imports
+# ---------------------------------------------------------------------------
+
+
+class TestExtractCSharpImports:
+    def test_skips_stdlib_system(self):
+        node = MockNode("using_directive", "using System;", children=[MockNode("identifier", "System")])
+        node.children[0].start_byte = 6
+        node.children[0].end_byte = 12
+        imports: list[dict] = []
+        _extract_csharp_imports(node, "using System;", imports)
+        assert imports == []
+
+    def test_extracts_third_party(self):
+        ident = MockNode("identifier", "MyApp")
+        ident.start_byte = 6
+        ident.end_byte = 11
+        ident2 = MockNode("identifier", "Services")
+        ident2.start_byte = 12
+        ident2.end_byte = 20
+        qn = MockNode("qualified_name", "MyApp.Services", children=[ident, ident2])
+        node = MockNode("using_directive", "using MyApp.Services;", children=[qn])
+        imports: list[dict] = []
+        _extract_csharp_imports(node, "using MyApp.Services;", imports)
+        assert len(imports) == 1
+        assert imports[0]["module_name"] == "MyApp.Services"
+        assert imports[0]["language"] == "csharp"
+
+    def test_non_using_directive_skipped(self):
+        node = MockNode("namespace_declaration", "namespace Foo {}", children=[])
+        imports: list[dict] = []
+        _extract_csharp_imports(node, "namespace Foo {}", imports)
+        assert imports == []
+
+
+# ---------------------------------------------------------------------------
+# _extract_kotlin_imports
+# ---------------------------------------------------------------------------
+
+
+class TestExtractKotlinImports:
+    def test_skips_kotlin_stdlib(self):
+        node = MockNode("import", "import kotlin.collections.List")
+        node.start_byte = 0
+        node.end_byte = 29
+        imports: list[dict] = []
+        _extract_kotlin_imports(node, "import kotlin.collections.List", imports)
+        assert imports == []
+
+    def test_extracts_third_party(self):
+        node = MockNode("import", "import com.example.app.Data")
+        node.start_byte = 0
+        node.end_byte = 27
+        imports: list[dict] = []
+        _extract_kotlin_imports(node, "import com.example.app.Data", imports)
+        assert len(imports) == 1
+        assert imports[0]["module_name"] == "com.example.app.Data"
+        assert imports[0]["language"] == "kotlin"
+
+    def test_wildcard_import(self):
+        node = MockNode("import", "import com.example.utils.*")
+        node.start_byte = 0
+        node.end_byte = 26
+        imports: list[dict] = []
+        _extract_kotlin_imports(node, "import com.example.utils.*", imports)
+        assert len(imports) == 1
+        assert ".*" not in imports[0]["module_name"]
+
+    def test_non_import_skipped(self):
+        node = MockNode("class_declaration", "class Foo")
+        imports: list[dict] = []
+        _extract_kotlin_imports(node, "class Foo", imports)
+        assert imports == []
+
+
+# ---------------------------------------------------------------------------
+# _extract_swift_imports
+# ---------------------------------------------------------------------------
+
+
+class TestExtractSwiftImports:
+    def test_skips_stdlib_foundation(self):
+        ident = MockNode("identifier", "Foundation")
+        ident.start_byte = 7
+        ident.end_byte = 17
+        node = MockNode("import_declaration", "import Foundation", children=[ident])
+        imports: list[dict] = []
+        _extract_swift_imports(node, "import Foundation", imports)
+        assert imports == []
+
+    def test_extracts_custom_framework(self):
+        ident = MockNode("identifier", "MyFramework")
+        ident.start_byte = 7
+        ident.end_byte = 18
+        node = MockNode("import_declaration", "import MyFramework", children=[ident])
+        imports: list[dict] = []
+        _extract_swift_imports(node, "import MyFramework", imports)
+        assert len(imports) == 1
+        assert imports[0]["module_name"] == "MyFramework"
+        assert imports[0]["language"] == "swift"
+
+    def test_non_import_skipped(self):
+        node = MockNode("class_declaration", "class Foo {}")
+        imports: list[dict] = []
+        _extract_swift_imports(node, "class Foo {}", imports)
+        assert imports == []
+
+
+# ---------------------------------------------------------------------------
+# _extract_ruby_imports
+# ---------------------------------------------------------------------------
+
+
+class TestExtractRubyImports:
+    def test_require_extracts_gem(self):
+        string_node = MockNode("string", "'my_gem'")
+        string_node.start_byte = 8
+        string_node.end_byte = 16
+        args_node = MockNode("argument_list", "", children=[string_node])
+        func_node = MockNode("identifier", "require")
+        func_node.start_byte = 0
+        func_node.end_byte = 7
+        node = MockNode("call", "require 'my_gem'", children=[])
+        node._fields = {"function": func_node, "arguments": args_node}
+        imports: list[dict] = []
+        _extract_ruby_imports(node, "require 'my_gem'", imports)
+        assert len(imports) == 1
+        assert imports[0]["module_name"] == "my_gem"
+        assert imports[0]["is_relative"] is False
+
+    def test_require_relative_extracts(self):
+        string_node = MockNode("string", "'my_lib'")
+        string_node.start_byte = 17
+        string_node.end_byte = 25
+        args_node = MockNode("argument_list", "", children=[string_node])
+        func_node = MockNode("identifier", "require_relative")
+        func_node.start_byte = 0
+        func_node.end_byte = 16
+        node = MockNode("call", "require_relative 'my_lib'", children=[])
+        node._fields = {"function": func_node, "arguments": args_node}
+        imports: list[dict] = []
+        _extract_ruby_imports(node, "require_relative 'my_lib'", imports)
+        assert len(imports) == 1
+        assert imports[0]["is_relative"] is True
+
+    def test_require_skips_stdlib(self):
+        string_node = MockNode("string", "'json'")
+        string_node.start_byte = 8
+        string_node.end_byte = 14
+        args_node = MockNode("argument_list", "", children=[string_node])
+        func_node = MockNode("identifier", "require")
+        func_node.start_byte = 0
+        func_node.end_byte = 7
+        node = MockNode("call", "require 'json'", children=[])
+        node._fields = {"function": func_node, "arguments": args_node}
+        imports: list[dict] = []
+        _extract_ruby_imports(node, "require 'json'", imports)
+        assert imports == []
+
+    def test_non_call_skipped(self):
+        node = MockNode("method_def", "def foo")
+        imports: list[dict] = []
+        _extract_ruby_imports(node, "def foo", imports)
+        assert imports == []
+
+
+# ---------------------------------------------------------------------------
+# _extract_php_imports
+# ---------------------------------------------------------------------------
+
+
+class TestExtractPhpImports:
+    def test_extracts_use_declaration(self):
+        node = MockNode("namespace_use_declaration", "use App\\Services\\UserService;")
+        node.start_byte = 0
+        node.end_byte = 28
+        imports: list[dict] = []
+        _extract_php_imports(node, "use App\\Services\\UserService;", imports)
+        assert len(imports) == 1
+        assert imports[0]["module_name"] == "App/Services/UserService"
+        assert imports[0]["language"] == "php"
+
+    def test_function_use(self):
+        node = MockNode("namespace_use_declaration", "use function App\\Utils\\helper;")
+        node.start_byte = 0
+        node.end_byte = 30
+        imports: list[dict] = []
+        _extract_php_imports(node, "use function App\\Utils\\helper;", imports)
+        assert len(imports) == 1
+
+    def test_aliased_use(self):
+        node = MockNode("namespace_use_declaration", "use App\\Models\\User as UserModel;")
+        node.start_byte = 0
+        node.end_byte = 33
+        imports: list[dict] = []
+        _extract_php_imports(node, "use App\\Models\\User as UserModel;", imports)
+        assert len(imports) == 1
+        assert "as" not in imports[0]["module_name"]
+
+    def test_non_use_skipped(self):
+        node = MockNode("function_definition", "function foo() {}")
+        imports: list[dict] = []
+        _extract_php_imports(node, "function foo() {}", imports)
+        assert imports == []
