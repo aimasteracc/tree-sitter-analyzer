@@ -434,3 +434,118 @@ def test_find_test_files_maps_find_and_grep_execution_to_family_tests():
         "tests/unit/mcp/test_mcp_find_and_grep_p1.py",
         "tests/unit/mcp/test_mcp_find_and_grep_p2.py",
     ]
+
+
+def test_validate_arguments_rejects_invalid_mode():
+    """validate_arguments must raise ValueError for unknown modes."""
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    raised = False
+    try:
+        tool.validate_arguments({"mode": "invalid_mode"})
+    except ValueError as exc:
+        raised = True
+        assert "mode must be diff|staged|branch" in str(exc)
+    assert raised, "Expected ValueError for invalid mode"
+
+
+def test_validate_arguments_accepts_valid_modes():
+    """validate_arguments must accept diff, staged, and branch."""
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    for mode in ("diff", "staged", "branch"):
+        assert tool.validate_arguments({"mode": mode}) is True
+
+
+def test_validate_arguments_accepts_missing_mode():
+    """validate_arguments must pass when mode key is absent."""
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    assert tool.validate_arguments({}) is True
+
+
+def test_execute_no_changes_returns_no_changes_result(monkeypatch):
+    """execute should return no-changes result when nothing is dirty."""
+    monkeypatch.setattr(
+        tool_module,
+        "_get_changed_files",
+        lambda mode, project_root, scope_paths=None: [],
+    )
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    result = asyncio.run(tool.execute({"output_format": "json"}))
+
+    assert result["success"] is True
+    assert result["summary"] == "No changes detected"
+    assert result["scope_filtered"] is False
+    assert result["scope_paths"] == []
+    assert result["changed_files"] == []
+    assert result["agent_summary"]["changed_count"] == 0
+
+
+def test_execute_no_changes_with_scope_paths(monkeypatch):
+    """No-changes result should reflect scope filtering when scope_paths given."""
+    monkeypatch.setattr(
+        tool_module,
+        "_get_changed_files",
+        lambda mode, project_root, scope_paths=None: [],
+    )
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    result = asyncio.run(
+        tool.execute(
+            {
+                "output_format": "json",
+                "scope_paths": ["tree_sitter_analyzer/mcp"],
+            }
+        )
+    )
+
+    assert result["scope_paths"] == ["tree_sitter_analyzer/mcp"]
+    assert result["scope_filtered"] is True
+    assert result["queue_ledger"]["scoped_changed_count"] == 0
+    assert result["queue_ledger"]["out_of_scope_changed_count"] == 0
+
+
+def test_execute_no_changes_with_agent_summary_only(monkeypatch):
+    """No-changes agent-summary-only should omit full details."""
+    monkeypatch.setattr(
+        tool_module,
+        "_get_changed_files",
+        lambda mode, project_root, scope_paths=None: [],
+    )
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    result = asyncio.run(
+        tool.execute(
+            {"output_format": "json", "agent_summary_only": True}
+        )
+    )
+
+    assert result["agent_summary_only"] is True
+    assert result["agent_summary"]["risk"] == "none"
+    assert result["agent_summary"]["changed_count"] == 0
+    assert "changed_files" not in result
+    assert "affected_files" not in result
+
+
+def test_execute_no_changes_with_scope_and_agent_summary(monkeypatch):
+    """Combined scope + agent-summary-only on empty diff should work."""
+    monkeypatch.setattr(
+        tool_module,
+        "_get_changed_files",
+        lambda mode, project_root, scope_paths=None: [],
+    )
+
+    tool = tool_module.ChangeImpactTool(project_root="/repo")
+    result = asyncio.run(
+        tool.execute(
+            {
+                "output_format": "json",
+                "scope_paths": ["tree_sitter_analyzer/cli"],
+                "agent_summary_only": True,
+            }
+        )
+    )
+
+    assert result["scope_filtered"] is True
+    assert result["agent_summary_only"] is True
+    assert result["queue_ledger"]["scoped_changed_count"] == 0
+    assert result["queue_ledger"]["out_of_scope_changed_count"] == 0

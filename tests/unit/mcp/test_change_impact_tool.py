@@ -5,6 +5,10 @@ from test_change_impact_tool_execute_and_mapping import (  # noqa: F401
     test_execute_adds_queue_ledger_for_scoped_dirty_worktree,
     test_execute_exposes_verification_fields_for_agents,
     test_execute_forwards_scope_paths_to_git_readers,
+    test_execute_no_changes_returns_no_changes_result,
+    test_execute_no_changes_with_agent_summary_only,
+    test_execute_no_changes_with_scope_and_agent_summary,
+    test_execute_no_changes_with_scope_paths,
     test_execute_supports_agent_summary_only,
     test_find_test_files_does_not_treat_source_test_prefix_as_test,
     test_find_test_files_excludes_conftest_from_runnable_targets,
@@ -15,6 +19,9 @@ from test_change_impact_tool_execute_and_mapping import (  # noqa: F401
     test_find_test_files_maps_python_plugin_internals_to_package_tests,
     test_find_test_files_maps_refactoring_plan_builder_to_family_tests,
     test_find_test_files_marks_docs_as_diff_check_only,
+    test_validate_arguments_accepts_missing_mode,
+    test_validate_arguments_accepts_valid_modes,
+    test_validate_arguments_rejects_invalid_mode,
 )
 from test_change_impact_tool_git_and_verification import (  # noqa: F401
     test_build_pytest_command_falls_back_to_full_suite,
