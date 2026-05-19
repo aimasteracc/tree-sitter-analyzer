@@ -396,3 +396,13 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果:
   - 关键门禁恢复：`tests/unit/mcp/_test_query_tool_test_mixin.py` 重新满足行数上限（0 oversized 文件）。
   - 全链路回归未见回归，当前队列继续推进下一批 test 结构切片。
+
+## 2026-05-19: test_cpp_plugin_text_helpers 断言修复
+
+- 目标: 修复新增的 `tests/unit/test_cpp_plugin_text_helpers.py` 中错误断言，避免误判与静态检查失败。
+- 动作: 将 `test_extraction_success` 的断言从不成立的 `result.__class__` 检查改为真实缓存校验，并为 `get_node_text_optimized` 提供可复用的 `cache`。
+- 验证:
+  - `uv run ruff check tests/unit/test_cpp_plugin_text_helpers.py`
+  - `uv run pytest tests/unit/test_cpp_plugin_text_helpers.py -q`（10 passed）
+- 结果:
+  - 本文件静态检查和回归测试通过，测试语义保持不变。
