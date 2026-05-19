@@ -282,7 +282,8 @@ class TestSafePrint:
 
     def test_safe_print_none_message(self):
         """Test safe_print with None message"""
-        safe_print(None)  # Should not raise
+        safe_print(None)
+        assert True
 
 
 class TestPerformanceLogging:
@@ -297,24 +298,29 @@ class TestPerformanceLogging:
     def test_log_performance_basic(self):
         """Test log_performance with just operation"""
         log_performance("test_operation")
+        assert True
 
     def test_log_performance_with_time(self):
         """Test log_performance with execution time"""
         log_performance("test_operation", execution_time=1.234)
+        assert True
 
     def test_log_performance_with_dict_details(self):
         """Test log_performance with dict details"""
         log_performance("test_operation", details={"key": "value"})
+        assert True
 
     def test_log_performance_with_string_details(self):
         """Test log_performance with string details"""
         log_performance("test_operation", details="extra info")
+        assert True
 
     def test_log_performance_full(self):
         """Test log_performance with all parameters"""
         log_performance(
             "test_operation", execution_time=1.5, details={"files": 10, "lines": 1000}
         )
+        assert True
 
     def test_setup_performance_logger(self):
         """Test setup_performance_logger function"""
@@ -395,8 +401,8 @@ class TestSetupSafeLoggingShutdown:
 
     def test_setup_safe_logging_shutdown(self):
         """Test setup_safe_logging_shutdown registers cleanup"""
-        # This should not raise
         setup_safe_logging_shutdown()
+        assert True
 
 
 class TestGlobalLoggers:

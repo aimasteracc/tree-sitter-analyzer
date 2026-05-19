@@ -153,12 +153,14 @@ class TestQueryCompat:
 
     def test_modern_exception(self):
         q = MagicMock()
-        q.matches.side_effect = Exception()
-        with pytest.raises(Exception):  # noqa: B017
+        q.matches.side_effect = Exception("boom")
+        with pytest.raises(Exception, match="boom"):  # noqa: B017
             TreeSitterQueryCompat._execute_modern_api(q, MagicMock())
+        assert q.matches.called
 
     def test_legacy_exception(self):
         q = MagicMock()
-        q.captures.side_effect = Exception()
-        with pytest.raises(Exception):  # noqa: B017
+        q.captures.side_effect = Exception("fail")
+        with pytest.raises(Exception, match="fail"):  # noqa: B017
             TreeSitterQueryCompat._execute_legacy_api(q, MagicMock())
+        assert q.captures.called
