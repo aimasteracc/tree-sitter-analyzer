@@ -1,6 +1,8 @@
 """Tests for the pre-indexed AST cache (ast_cache module)."""
 
 
+import sqlite3
+
 import pytest
 
 from tree_sitter_analyzer.ast_cache import (
@@ -8,6 +10,7 @@ from tree_sitter_analyzer.ast_cache import (
     ASTCache,
     _content_hash,
     _extract_symbols,
+    _has_fts5,
 )
 
 
@@ -181,3 +184,85 @@ class TestDbPersistence:
         stats2 = c2.get_stats()
         assert stats2["total_files"] == stats1["total_files"]
         c2.close()
+
+
+class TestHasFts5:
+    def test_detects_fts5(self):
+        conn = sqlite3.connect(":memory:")
+        result = _has_fts5(conn)
+        conn.close()
+        assert isinstance(result, bool)
+
+
+@pytest.mark.skipif(not _has_fts5(sqlite3.connect(":memory:")), reason="FTS5 not available")
+class TestFtsSearch:
+    def test_fts_search_basic(self, cache, tmp_project):
+        cache.index_project()
+        results = cache.fts_search("hello")
+        assert len(results) >= 1
+        assert any(r["name"] == "hello" for r in results)
+
+    def test_fts_search_by_language(self, cache, tmp_project):
+        cache.index_project()
+        results = cache.fts_search("add", language="javascript")
+        assert len(results) >= 1
+        assert all(r["language"] == "javascript" for r in results)
+
+    def test_fts_search_no_results(self, cache, tmp_project):
+        cache.index_project()
+        results = cache.fts_search("zzz_nonexistent_xyz")
+        assert len(results) == 0
+
+    def test_fts_search_multi_term(self, cache, tmp_project):
+        cache.index_project()
+        results = cache.fts_search("hello foo")
+        assert len(results) >= 1
+
+    def test_fts_search_with_limit(self, cache, tmp_project):
+        cache.index_project()
+        results = cache.fts_search("hello", limit=1)
+        assert len(results) <= 1
+
+    def test_fts_search_returns_ranked(self, cache, tmp_project):
+        cache.index_project()
+        results = cache.fts_search("hello")
+        assert len(results) >= 1
+        for r in results:
+            assert "file" in r
+            assert "name" in r
+            assert "kind" in r
+            assert "line" in r
+
+    def test_search_symbols_uses_fts5_when_available(self, cache, tmp_project):
+        cache.index_project()
+        results = cache.search_symbols("hello")
+        assert len(results) >= 1
+        if cache._fts5_available:
+            assert any(r["name"] == "hello" for r in results)
+
+    def test_fts_indexed_symbols_in_stats(self, cache, tmp_project):
+        cache.index_project()
+        stats = cache.get_stats()
+        if cache._fts5_available:
+            assert stats["fts5_available"] is True
+            assert "fts_indexed_symbols" in stats
+            assert stats["fts_indexed_symbols"] > 0
+
+    def test_invalidate_removes_fts_rows(self, cache, tmp_project):
+        f = str(tmp_project / "src" / "main.py")
+        cache.index_file(f)
+        if cache._fts5_available:
+            results_before = cache.fts_search("hello")
+            assert len(results_before) >= 1
+            cache.invalidate(f)
+            results_after = cache.fts_search("hello")
+            assert len(results_after) == 0
+
+    def test_fts_search_after_reindex(self, cache, tmp_project):
+        f = str(tmp_project / "src" / "main.py")
+        cache.index_file(f)
+        if cache._fts5_available:
+            cache.invalidate(f)
+            cache.index_file(f)
+            results = cache.fts_search("hello")
+            assert len(results) >= 1

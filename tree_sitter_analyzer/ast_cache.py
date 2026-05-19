@@ -45,6 +45,43 @@ CREATE INDEX IF NOT EXISTS idx_ast_language
     ON ast_index(language);
 """
 
+_SCHEMA_V2_FTS = """
+CREATE VIRTUAL TABLE IF NOT EXISTS ast_symbols_fts
+    USING fts5(
+        name,
+        kind,
+        file_path,
+        language,
+        content=''
+    );
+
+CREATE TABLE IF NOT EXISTS ast_symbol_rows (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name      TEXT NOT NULL,
+        kind      TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        language  TEXT NOT NULL,
+        line      INTEGER NOT NULL DEFAULT 0,
+        end_line  INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path
+    ON ast_symbol_rows(file_path);
+"""
+
+
+def _has_fts5(conn: sqlite3.Connection) -> bool:
+    try:
+        conn.execute("SELECT fts5 FROM pragma_compile_options WHERE fts5 = 'ENABLE_FTS5'")
+        return True
+    except sqlite3.OperationalError:
+        try:
+            conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS _fts5_probe USING fts5(x)")
+            conn.execute("DROP TABLE IF EXISTS _fts5_probe")
+            return True
+        except sqlite3.OperationalError:
+            return False
+
 _EXCLUDE_DIRS = frozenset({
     "node_modules",
     ".git",
@@ -265,6 +302,7 @@ class ASTCache:
         self._local = threading.local()
         self._parser = Parser()
         self._index_lock = threading.Lock()
+        self._fts5_available: bool | None = None
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._init_db()
 
@@ -281,6 +319,14 @@ class ASTCache:
     def _init_db(self) -> None:
         conn = self._get_conn()
         conn.executescript(_SCHEMA_V1)
+        if self._fts5_available is None:
+            self._fts5_available = _has_fts5(conn)
+        if self._fts5_available:
+            try:
+                conn.executescript(_SCHEMA_V2_FTS)
+                conn.commit()
+            except sqlite3.OperationalError:
+                self._fts5_available = False
         conn.commit()
 
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
@@ -348,6 +394,33 @@ class ASTCache:
                 indexed_at,
             ),
         )
+
+        if self._fts5_available:
+            conn.execute(
+                "DELETE FROM ast_symbol_rows WHERE file_path = ?",
+                (rel_path,),
+            )
+            conn.execute(
+                "DELETE FROM ast_symbols_fts WHERE file_path = ?",
+                (rel_path,),
+            )
+            for sym in symbols.get("symbols", []):
+                sym_name = sym.get("name", sym.get("text", ""))
+                sym_kind = sym.get("kind", "unknown")
+                sym_line = sym.get("line", 0)
+                sym_end = sym.get("end_line", 0)
+                row_id = conn.execute(
+                    """INSERT INTO ast_symbol_rows
+                       (name, kind, file_path, language, line, end_line)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (sym_name, sym_kind, rel_path, language, sym_line, sym_end),
+                ).lastrowid
+                conn.execute(
+                    """INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (row_id, sym_name, sym_kind, rel_path, language),
+                )
+
         conn.commit()
         return {
             "file": rel_path,
@@ -409,6 +482,58 @@ class ASTCache:
         }
 
     def search_symbols(self, query: str, language: str | None = None) -> list[dict[str, Any]]:
+        if self._fts5_available:
+            return self.fts_search(query, language=language)
+        return self._search_symbols_linear(query, language)
+
+    def fts_search(
+        self,
+        query: str,
+        language: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        if not self._fts5_available:
+            return self._search_symbols_linear(query, language)
+
+        conn = self._get_conn()
+        fts_query = " OR ".join(f'"{term}"' for term in query.split() if term)
+        if not fts_query:
+            fts_query = f'"{query}"'
+
+        if language:
+            sql = """
+                SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line
+                FROM ast_symbols_fts f
+                JOIN ast_symbol_rows r ON f.rowid = r.id
+                WHERE ast_symbols_fts MATCH ? AND r.language = ?
+                ORDER BY rank
+                LIMIT ?
+            """
+            rows = conn.execute(sql, (fts_query, language, limit)).fetchall()
+        else:
+            sql = """
+                SELECT r.name, r.kind, r.file_path, r.language, r.line, r.end_line
+                FROM ast_symbols_fts f
+                JOIN ast_symbol_rows r ON f.rowid = r.id
+                WHERE ast_symbols_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            """
+            rows = conn.execute(sql, (fts_query, limit)).fetchall()
+
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            results.append({
+                "name": row["name"],
+                "kind": row["kind"],
+                "file": row["file_path"],
+                "language": row["language"],
+                "line": row["line"],
+                "end_line": row["end_line"],
+            })
+        return results
+
+    def _search_symbols_linear(self, query: str, language: str | None = None) -> list[dict[str, Any]]:
         conn = self._get_conn()
         if language:
             rows = conn.execute(
@@ -444,16 +569,33 @@ class ASTCache:
         for row in conn.execute("SELECT symbols_json FROM ast_index").fetchall():
             syms = json.loads(row["symbols_json"])
             total_symbols += len(syms.get("symbols", []))
-        return {
+        stats: dict[str, Any] = {
             "total_files": total,
             "total_symbols": total_symbols,
             "by_language": {r["language"]: r["c"] for r in by_lang},
             "db_path": self.db_path,
+            "fts5_available": bool(self._fts5_available),
         }
+        if self._fts5_available:
+            try:
+                fts_count = conn.execute(
+                    "SELECT COUNT(*) as c FROM ast_symbol_rows"
+                ).fetchone()["c"]
+                stats["fts_indexed_symbols"] = fts_count
+            except sqlite3.OperationalError:
+                pass
+        return stats
 
     def invalidate(self, file_path: str) -> bool:
         rel = os.path.relpath(os.path.abspath(file_path), self.project_root)
         conn = self._get_conn()
+        if self._fts5_available:
+            conn.execute(
+                "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel,)
+            )
+            conn.execute(
+                "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel,)
+            )
         cursor = conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel,))
         conn.commit()
         return cursor.rowcount > 0

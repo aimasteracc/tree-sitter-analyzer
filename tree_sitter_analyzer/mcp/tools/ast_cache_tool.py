@@ -40,10 +40,11 @@ class ASTCacheTool(BaseMCPTool):
         return {
             "name": "ast_cache",
             "description": (
-                "Pre-indexed AST cache (CodeGraph parity). Modes: "
+                "Pre-indexed AST cache with FTS5 full-text search (CodeGraph parity). Modes: "
                 "index (index project or single file), "
                 "lookup (get cached parse data for a file), "
-                "search (search symbols across indexed files), "
+                "search (FTS5 full-text symbol search across indexed files), "
+                "fts_search (ranked FTS5 search with multi-term support), "
                 "stats (cache statistics), "
                 "invalidate (remove cached entry). "
                 "No other tool provides persistent cross-session AST caching."
@@ -57,7 +58,7 @@ class ASTCacheTool(BaseMCPTool):
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["index", "lookup", "search", "stats", "invalidate"],
+                    "enum": ["index", "lookup", "search", "fts_search", "stats", "invalidate"],
                     "description": "Operation mode",
                 },
                 "file_path": {
@@ -66,11 +67,15 @@ class ASTCacheTool(BaseMCPTool):
                 },
                 "language": {
                     "type": "string",
-                    "description": "Language filter (optional, for search)",
+                    "description": "Language filter (optional, for search/fts_search)",
                 },
                 "query": {
                     "type": "string",
-                    "description": "Symbol search query (for search mode)",
+                    "description": "Symbol search query (for search/fts_search mode)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results for fts_search (default: 100)",
                 },
                 "max_files": {
                     "type": "integer",
@@ -87,13 +92,13 @@ class ASTCacheTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "stats")
-        valid_modes = {"index", "lookup", "search", "stats", "invalidate"}
+        valid_modes = {"index", "lookup", "search", "fts_search", "stats", "invalidate"}
         if mode not in valid_modes:
             raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
         if mode in ("lookup", "invalidate") and not arguments.get("file_path"):
             raise ValueError(f"file_path is required for mode '{mode}'")
-        if mode == "search" and not arguments.get("query"):
-            raise ValueError("query is required for search mode")
+        if mode in ("search", "fts_search") and not arguments.get("query"):
+            raise ValueError(f"query is required for {mode} mode")
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -130,6 +135,20 @@ class ASTCacheTool(BaseMCPTool):
                 "query": query,
                 "results": results,
                 "count": len(results),
+            }
+
+        elif mode == "fts_search":
+            query = arguments.get("query", "")
+            language = arguments.get("language")
+            limit = arguments.get("limit", 100)
+            results = cache.fts_search(query, language=language, limit=limit)
+            return {
+                "success": True,
+                "mode": "fts_search",
+                "query": query,
+                "results": results,
+                "count": len(results),
+                "fts5_available": cache._fts5_available,
             }
 
         elif mode == "stats":
