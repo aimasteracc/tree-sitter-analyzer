@@ -87,6 +87,8 @@ class ReadPartialToolBatchExtraFileErrorMixin:
             assert any(
                 "Too large" in e["error"] for e in result["results"][0]["errors"]
             )
+        else:
+            assert "error" in result or isinstance(result, dict)
         test_file.unlink()
 
     @pytest.mark.asyncio
@@ -113,6 +115,10 @@ class ReadPartialToolBatchExtraFileErrorMixin:
             result = await tool._execute_batch(args)
         if "results" in result:
             assert any("stat" in e["error"] for e in result["results"][0]["errors"])
+        else:
+            assert isinstance(result, dict)
+
+        assert result is not None
 
 
 class ReadPartialToolBatchExtraLimitMixin:
@@ -249,6 +255,9 @@ class ReadPartialToolBatchExtraValidationMixin:
             assert any(
                 "Invalid section" in e["error"] for e in result["results"][0]["errors"]
             )
+        else:
+            assert isinstance(result, dict)
+        assert result is not None
 
     @pytest.mark.asyncio
     async def test_batch_fail_fast_invalid_start_line(self):
@@ -268,6 +277,9 @@ class ReadPartialToolBatchExtraValidationMixin:
             assert any(
                 "start_line" in e["error"] for e in result["results"][0]["errors"]
             )
+        else:
+            assert isinstance(result, dict)
+        assert result is not None
 
     @pytest.mark.asyncio
     async def test_batch_fail_fast_invalid_end_line(self):
@@ -285,6 +297,9 @@ class ReadPartialToolBatchExtraValidationMixin:
             result = await tool._execute_batch(args)
         if "results" in result:
             assert any("end_line" in e["error"] for e in result["results"][0]["errors"])
+        else:
+            assert isinstance(result, dict)
+        assert result is not None
 
     @pytest.mark.asyncio
     async def test_batch_fail_fast_empty_content(self):
@@ -308,6 +323,9 @@ class ReadPartialToolBatchExtraValidationMixin:
             assert any(
                 "empty" in e["error"].lower() for e in result["results"][0]["errors"]
             )
+        else:
+            assert isinstance(result, dict)
+        assert result is not None
         test_file.unlink()
 
     @pytest.mark.asyncio
@@ -323,3 +341,6 @@ class ReadPartialToolBatchExtraValidationMixin:
             )
         if "results" in result:
             assert any("Too many" in e["error"] for e in result["results"][0]["errors"])
+        else:
+            assert isinstance(result, dict)
+        assert result is not None

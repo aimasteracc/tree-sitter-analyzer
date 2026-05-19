@@ -25,6 +25,12 @@ class TestParseMcpArgs:
         args = parse_mcp_args([])
         assert args.project_root is None
 
+    def test_unknown_args_raises(self):
+        from tree_sitter_analyzer.mcp.server import parse_mcp_args
+
+        with pytest.raises(SystemExit):
+            parse_mcp_args(["--unknown-arg"])
+
     def test_with_project_root(self):
         from tree_sitter_analyzer.mcp.server import parse_mcp_args
 
@@ -142,6 +148,17 @@ class TestCalculateFileMetrics:
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         metrics = server._calculate_file_metrics(str(tmp_path / "missing.py"), "python")
         assert isinstance(metrics, dict)
+        assert "total_lines" in metrics
+
+    def test_calculate_metrics_empty_file(self, tmp_path):
+        from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
+        file = tmp_path / "empty.py"
+        file.write_text("")
+        server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
+        metrics = server._calculate_file_metrics(str(file), "python")
+        assert isinstance(metrics, dict)
+        assert metrics["total_lines"] >= 0
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +236,13 @@ class TestCreateServerToolHandlers:
 
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         assert str(tmp_path) in str(server.analysis_engine) or server.analysis_engine is not None
+
+    def test_set_project_path_reinit(self, tmp_path):
+        from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
+        server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
+        server.set_project_path(str(tmp_path))
+        assert server.analysis_engine is not None
 
 
 # ---------------------------------------------------------------------------

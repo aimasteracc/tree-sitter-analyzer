@@ -91,7 +91,7 @@ def finalize_test_suite_results(
         results.success_rate = results.passed_tests / results.total_tests * 100
 
 
-def test_suite_results_to_dict(results: TestSuiteResults) -> dict[str, Any]:
+def suite_results_to_dict(results: TestSuiteResults) -> dict[str, Any]:
     """Convert result dataclass to JSON-serializable dictionary."""
     return {
         "total_tests": results.total_tests,

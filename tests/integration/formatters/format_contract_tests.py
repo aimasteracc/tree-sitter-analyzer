@@ -335,6 +335,8 @@ class TestFormatContracts:
         tool = TableFormatTool(project_root=temp_dir)
         outputs = await collect_format_outputs(tool, file_path, format_types=("csv",))
         assert_csv_parameter_encoding(outputs["csv"], contract_validator)
+        assert "csv" in outputs
+        assert len(outputs["csv"]) > 0
 
     @pytest.mark.asyncio
     async def test_access_modifier_consistency_contract(
@@ -349,6 +351,9 @@ class TestFormatContracts:
             contract_validator, outputs
         )
         assert_access_modifier_consistency(full_info, compact_info, csv_info)
+        assert full_info is not None
+        assert compact_info is not None
+        assert csv_info is not None
 
     @pytest.mark.asyncio
     async def test_line_number_consistency_contract(
@@ -363,6 +368,9 @@ class TestFormatContracts:
             contract_validator, outputs
         )
         assert_line_number_consistency(full_info, compact_info, csv_info)
+        assert isinstance(full_info, dict)
+        assert isinstance(compact_info, dict)
+        assert isinstance(csv_info, dict)
 
     @pytest.mark.asyncio
     @pytest.mark.skip(

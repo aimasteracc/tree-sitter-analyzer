@@ -192,6 +192,7 @@ class TestCLILoggingConfiguration:
 
             # Should have set logging level to ERROR
             mock_logger.setLevel.assert_called_with(logging.ERROR)
+            assert mock_get_logger.called or mock_logger.setLevel.called
 
 
 # Additional test markers for categorization

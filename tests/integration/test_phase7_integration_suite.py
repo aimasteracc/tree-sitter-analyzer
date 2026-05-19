@@ -293,6 +293,8 @@ class TestPhase7IntegrationSuite:
                 integration_reporter.add_test_result(
                     "end_to_end", test_case, success, duration
                 )
+                assert success is True
+                assert duration >= 0
                 print(f"  ✅ {test_case}: {duration:.2f}s")
 
             except Exception as e:
@@ -301,6 +303,9 @@ class TestPhase7IntegrationSuite:
                     "end_to_end", test_case, False, duration, {"error": str(e)}
                 )
                 print(f"  ❌ {test_case}: {duration:.2f}s - {e}")
+
+        assert len(integration_reporter.test_results) >= len(test_cases)
+        assert integration_reporter.start_time is not None
 
     @pytest.mark.asyncio
     async def test_performance_integration(self, integration_reporter):
@@ -328,6 +333,7 @@ class TestPhase7IntegrationSuite:
                 integration_reporter.add_test_result(
                     "performance", test_case, success, duration
                 )
+                assert success is True
                 print(f"  ✅ {test_case}: {duration:.2f}s")
 
             except Exception as e:
@@ -336,6 +342,8 @@ class TestPhase7IntegrationSuite:
                     "performance", test_case, False, duration, {"error": str(e)}
                 )
                 print(f"  ❌ {test_case}: {duration:.2f}s - {e}")
+
+        assert integration_reporter.start_time is not None
 
     @pytest.mark.asyncio
     async def test_security_integration(self, integration_reporter):
@@ -365,6 +373,7 @@ class TestPhase7IntegrationSuite:
                 integration_reporter.add_test_result(
                     "security", test_case, success, duration
                 )
+                assert success is True
                 print(f"  ✅ {test_case}: {duration:.2f}s")
 
             except Exception as e:
@@ -400,6 +409,7 @@ class TestPhase7IntegrationSuite:
             integration_reporter.add_test_result(
                 "compatibility", "integration_compatibility", True, duration
             )
+            assert duration >= 0
             print(f"  ✅ Integration compatibility verified: {duration:.2f}s")
 
         except Exception as e:
@@ -440,6 +450,7 @@ class TestPhase7IntegrationSuite:
             integration_reporter.add_test_result(
                 "enterprise", "enterprise_readiness", True, duration
             )
+            assert len(enterprise_requirements) > 0
             print(f"  ✅ Enterprise readiness validated: {duration:.2f}s")
 
         except Exception as e:

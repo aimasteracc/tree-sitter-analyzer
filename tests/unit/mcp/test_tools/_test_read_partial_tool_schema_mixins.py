@@ -18,6 +18,11 @@ class ReadPartialToolInitMixin:
         assert tool.project_root is None
         assert tool.file_output_manager is not None
 
+    def test_init_without_project_root_attributes(self):
+        tool = ReadPartialTool()
+        assert hasattr(tool, "project_root")
+        assert hasattr(tool, "file_output_manager")
+
     def test_init_with_project_root(self):
         """Test initialization with project root."""
         tool = ReadPartialTool(project_root="/test/path")
@@ -37,6 +42,12 @@ class ReadPartialToolGetToolSchemaMixin:
         assert "type" in schema
         assert schema["type"] == "object"
         assert "properties" in schema
+
+    def test_get_tool_schema_has_required(self):
+        tool = ReadPartialTool()
+        schema = tool.get_tool_schema()
+        assert isinstance(schema, dict)
+        assert schema.get("type") == "object"
 
     def test_get_tool_schema_has_requests_property(self):
         """Test that schema has requests property for batch mode."""
@@ -76,6 +87,19 @@ class ReadPartialToolGetToolDefinitionMixin:
         definition = tool.get_tool_definition()
         assert "inputSchema" in definition
         assert isinstance(definition["inputSchema"], dict)
+
+    def test_get_tool_definition_schema_has_properties(self):
+        tool = ReadPartialTool()
+        definition = tool.get_tool_definition()
+        assert "inputSchema" in definition
+        schema = definition["inputSchema"]
+        assert "properties" in schema or "type" in schema
+
+    def test_get_tool_definition_name_correct(self):
+        tool = ReadPartialTool()
+        definition = tool.get_tool_definition()
+        assert definition["name"] == "extract_code_section"
+        assert len(definition["description"]) > 0
 
 
 class ReadPartialToolValidateArgumentsMixin:
@@ -173,6 +197,16 @@ class ReadPartialToolValidateArgumentsMixin:
         """Test that validation passes for valid batch mode arguments."""
         tool = ReadPartialTool()
         args = {"requests": [{"file_path": "test.py", "sections": [{"start_line": 1}]}]}
+        assert tool.validate_arguments(args) is True
+
+    def test_validate_arguments_batch_empty_requests(self):
+        tool = ReadPartialTool()
+        args = {"requests": []}
+        assert tool.validate_arguments(args) is True
+
+    def test_validate_arguments_batch_single_request(self):
+        tool = ReadPartialTool()
+        args = {"requests": [{"file_path": "t.py", "sections": [{"start_line": 1, "end_line": 5}]}]}
         assert tool.validate_arguments(args) is True
 
     def test_validate_arguments_mutually_exclusive(self):

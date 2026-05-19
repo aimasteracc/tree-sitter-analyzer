@@ -8,7 +8,7 @@ from typing import Any
 from ._comprehensive_suite_models import (
     FormatTestSuiteConfig,
     TestSuiteResults,
-    test_suite_results_to_dict,
+    suite_results_to_dict,
 )
 
 
@@ -32,7 +32,7 @@ async def save_comprehensive_results(
     )
 
     with open(results_file, "w") as output_file:
-        json.dump(test_suite_results_to_dict(results), output_file, indent=2)
+        json.dump(suite_results_to_dict(results), output_file, indent=2)
 
     print(f"💾 Detailed results saved to: {results_file}")
 
