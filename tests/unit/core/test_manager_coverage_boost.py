@@ -18,13 +18,12 @@ from tree_sitter_analyzer.plugins.manager import (
 class TestPrewarmPluginImports:
     def test_prewarm_called_during_init(self):
         """__init__ calls _prewarm_plugin_imports unconditionally"""
-        # import is done at module level via 'import importlib' — we need
-        # to patch at the module's importlib reference
         with patch(
             "tree_sitter_analyzer.plugins.manager.importlib.import_module",
             side_effect=ImportError("no module"),
         ):
-            PluginManager()  # should not crash — _prewarm catches ImportError
+            mgr = PluginManager()
+        assert isinstance(mgr._plugin_modules, dict)
 
     def test_prewarm_non_import_error(self):
         """languages import_module raises RuntimeError → log_debug path"""
@@ -32,7 +31,8 @@ class TestPrewarmPluginImports:
             "tree_sitter_analyzer.plugins.manager.importlib.import_module",
             side_effect=RuntimeError("unexpected"),
         ):
-            PluginManager()  # hits line 61 then 71 (outer except on languages)
+            mgr = PluginManager()
+        assert isinstance(mgr._plugin_modules, dict)
 
 
 # ---------------------------------------------------------------------------

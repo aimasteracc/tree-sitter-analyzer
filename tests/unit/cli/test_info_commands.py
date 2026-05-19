@@ -132,6 +132,8 @@ class TestShowLanguagesCommand:
             cmd = ShowLanguagesCommand(args)
             result = cmd.execute()
             assert result == 0
+            mock_det.get_supported_languages.assert_called_once()
+            assert mock_det.get_language_info.call_count == 2
 
 
 class TestShowExtensionsCommand:
@@ -156,3 +158,4 @@ class TestShowExtensionsCommand:
             cmd = ShowExtensionsCommand(args)
             result = cmd.execute()
             assert result == 0
+            mock_det.get_supported_extensions.assert_called_once()

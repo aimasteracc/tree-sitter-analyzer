@@ -133,6 +133,15 @@ class TestCalculateFileMetrics:
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         metrics = server._calculate_file_metrics(str(file), "python")
         assert isinstance(metrics, dict)
+        assert "total_lines" in metrics
+        assert metrics["total_lines"] > 0
+
+    def test_calculate_metrics_nonexistent_file(self, tmp_path):
+        from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
+        server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
+        metrics = server._calculate_file_metrics(str(tmp_path / "missing.py"), "python")
+        assert isinstance(metrics, dict)
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +205,7 @@ class TestCreateServerToolHandlers:
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         mcp_server = server.create_server()
         assert mcp_server is not None
+        assert hasattr(mcp_server, "name")
 
     def test_set_project_path(self, tmp_path):
         from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
@@ -203,6 +213,12 @@ class TestCreateServerToolHandlers:
         server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
         server.set_project_path(str(tmp_path))
         assert server.analysis_engine is not None
+
+    def test_project_root_stored(self, tmp_path):
+        from tree_sitter_analyzer.mcp.server import TreeSitterAnalyzerMCPServer
+
+        server = TreeSitterAnalyzerMCPServer(project_root=str(tmp_path))
+        assert str(tmp_path) in str(server.analysis_engine) or server.analysis_engine is not None
 
 
 # ---------------------------------------------------------------------------

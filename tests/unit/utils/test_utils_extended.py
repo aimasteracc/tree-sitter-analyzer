@@ -9,8 +9,6 @@ import unittest.mock
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from tree_sitter_analyzer.utils import (
     LoggingContext,
     create_performance_logger,
@@ -41,65 +39,43 @@ class TestUtilsExtended:
     def test_setup_logger_with_custom_level(self):
         """Test setup_logger with custom log level."""
         logger = setup_logger("test_logger", level="DEBUG")
-        # The logger level might be different due to parent logger inheritance
         assert logger is not None
+        assert "test_logger" in logger.name
 
     def test_setup_logger_with_custom_format(self):
         """Test setup_logger with custom format."""
-        # setup_logger doesn't support custom format, so just test basic functionality
         logger = setup_logger("test_logger")
         assert logger is not None
+        assert isinstance(logger, logging.Logger)
 
     def test_setup_logger_with_file_handler(self):
         """Test setup_logger with file handler."""
-        # setup_logger doesn't support custom log_file, so just test basic functionality
         logger = setup_logger("test_logger")
         assert logger is not None
 
     def test_logging_functions_with_kwargs(self):
         """Test logging functions with keyword arguments."""
-        # Test that functions exist and can be called without errors
-        try:
-            log_info("test message", extra={"key": "value"})
-            log_warning("test warning", extra={"key": "value"})
-            log_error("test error", extra={"key": "value"})
-            log_debug("test debug", extra={"key": "value"})
-            # If no exception is raised, the test passes
-            assert True
-        except Exception as e:
-            pytest.fail(f"Logging functions failed with kwargs: {e}")
+        log_info("test message", extra={"key": "value"})
+        log_warning("test warning", extra={"key": "value"})
+        log_error("test error", extra={"key": "value"})
+        log_debug("test debug", extra={"key": "value"})
 
     def test_log_performance_with_details(self):
         """Test log_performance with details."""
-        # Test that function exists and can be called without errors
-        try:
-            log_performance("test operation", 1.5, details={"lines": 100, "files": 5})
-            assert True
-        except Exception as e:
-            pytest.fail(f"log_performance with details failed: {e}")
+        log_performance("test operation", 1.5, details={"lines": 100, "files": 5})
+        assert True
 
     def test_log_performance_without_details(self):
         """Test log_performance without details."""
-        # Test that function exists and can be called without errors
-        try:
-            log_performance("test operation", 1.5)
-            assert True
-        except Exception as e:
-            pytest.fail(f"log_performance without details failed: {e}")
+        log_performance("test operation", 1.5)
+        assert True
 
     def test_safe_print_functions(self):
         """Test safe print functions."""
-        # Test that safe_print calls the appropriate logging functions
-        # We'll test by checking if the function executes without errors
-        try:
-            safe_print("test info", level="info")
-            safe_print("test debug", level="debug")
-            safe_print("test error", level="error")
-            safe_print("test warning", level="warning")
-            # If no exception is raised, the test passes
-            assert True
-        except Exception as e:
-            pytest.fail(f"safe_print functions failed: {e}")
+        safe_print("test info", level="info")
+        safe_print("test debug", level="debug")
+        safe_print("test error", level="error")
+        safe_print("test warning", level="warning")
 
     def test_safe_print_with_none_message(self):
         """Test safe print functions with None message."""
@@ -125,13 +101,7 @@ class TestUtilsExtended:
 
     def test_safe_print_with_invalid_level(self):
         """Test safe print with invalid level."""
-        # Test that safe_print handles invalid levels gracefully (defaults to info)
-        try:
-            safe_print("test", level="INVALID")
-            # If no exception is raised, the test passes
-            assert True
-        except Exception as e:
-            pytest.fail(f"safe_print with invalid level failed: {e}")
+        safe_print("test", level="INVALID")
 
     def test_safe_print_quiet_mode(self):
         """Test safe print in quiet mode."""
@@ -143,75 +113,45 @@ class TestUtilsExtended:
         """Test get_performance_monitor function."""
         monitor = create_performance_logger("test")
         assert monitor is not None
+        assert isinstance(monitor, logging.Logger)
 
     def test_is_testing_mode(self):
         """Test is_testing_mode function."""
-        # Test when running in test environment
-        with patch("sys.argv", ["pytest"]):
-            # This test would need the actual function to exist
-            pass
-
-        # Test when not running in test environment
-        with patch("sys.argv", ["python", "script.py"]):
-            # This test would need the actual function to exist
-            pass
+        pass
 
     def test_logging_with_exception(self):
         """Test logging with exception."""
-        # Test that function exists and can be called without errors
         try:
-            try:
-                raise ValueError("test exception")
-            except ValueError:
-                log_error("Error occurred", exc_info=True)
-            assert True
-        except Exception as e:
-            pytest.fail(f"Logging with exception failed: {e}")
+            raise ValueError("test exception")
+        except ValueError:
+            log_error("Error occurred", exc_info=True)
 
     def test_logging_with_unicode(self):
         """Test logging with unicode characters."""
         unicode_message = "测试消息 with unicode 🚀"
-        # Test that function exists and can be called without errors
-        try:
-            log_info(unicode_message)
-            assert True
-        except Exception as e:
-            pytest.fail(f"Logging with unicode failed: {e}")
+        log_info(unicode_message)
+        assert True
 
     def test_logging_context_manager(self):
         """Test logging context manager."""
         with LoggingContext(level=logging.DEBUG):
-            # Test that function exists and can be called without errors
-            try:
-                log_debug("test debug message")
-                assert True
-            except Exception as e:
-                pytest.fail(f"Logging context manager failed: {e}")
+            log_debug("test debug message")
 
     def test_logging_context_nesting(self):
         """Test nested logging contexts."""
         with LoggingContext(level=logging.INFO):
             with LoggingContext(level=logging.DEBUG):
-                # Test that function exists and can be called without errors
-                try:
-                    log_debug("test debug message")
-                    assert True
-                except Exception as e:
-                    pytest.fail(f"Logging context nesting failed: {e}")
+                log_debug("test debug message")
 
     def test_logging_context_level_change(self):
         """Test logging context level change."""
-        # This test is complex due to logger hierarchy, so we'll simplify it
         with LoggingContext(level=logging.WARNING):
-            # Just verify the context manager works
-            pass
+            assert True
 
     def test_logging_context_enable_disable(self):
         """Test logging context enable/disable."""
-        # This test is complex due to logger hierarchy, so we'll simplify it
         with LoggingContext(enabled=False):
-            # Just verify the context manager works
-            pass
+            assert True
 
     def test_performance_logger_setup(self):
         """Test performance logger setup."""
@@ -225,70 +165,35 @@ class TestUtilsExtended:
 
     def test_logging_with_safe_print_integration(self):
         """Test integration between logging and safe print."""
-        # Test that functions exist and can be called without errors
-        try:
-            log_info("test message")
-            safe_print("test message", level="info")
-            assert True
-        except Exception as e:
-            pytest.fail(f"Logging with safe_print integration failed: {e}")
+        log_info("test message")
+        safe_print("test message", level="info")
 
     def test_all_logging_functions_work_together(self):
         """Test that all logging functions work together."""
-        # Test that functions exist and can be called without errors
-        try:
-            log_info("info message")
-            log_warning("warning message")
-            log_error("error message")
-            log_debug("debug message")
-            assert True
-        except Exception as e:
-            pytest.fail(f"All logging functions together failed: {e}")
+        log_info("info message")
+        log_warning("warning message")
+        log_error("error message")
+        log_debug("debug message")
+        assert True
 
     def test_logging_context_with_safe_print(self):
         """Test logging context with safe print."""
-        # Test that safe_print works within a logging context
-        try:
-            with LoggingContext(level=logging.INFO):
-                safe_print("test message", level="info")
-            # If no exception is raised, the test passes
-            assert True
-        except Exception as e:
-            pytest.fail(f"safe_print within logging context failed: {e}")
+        with LoggingContext(level=logging.INFO):
+            safe_print("test message", level="info")
 
     def test_edge_cases(self):
         """Test various edge cases."""
-        # Test that functions exist and can be called without errors
-        try:
-            # Test with empty string
-            log_info("")
-
-            # Test with very long message
-            long_message = "a" * 10000
-            log_info(long_message)
-
-            # Test with special characters
-            special_message = "test@#$%^&*()_+-=[]{}|;':\",./<>?`~"
-            log_info(special_message)
-
-            assert True
-        except Exception as e:
-            pytest.fail(f"Edge cases failed: {e}")
+        log_info("")
+        long_message = "a" * 10000
+        log_info(long_message)
+        special_message = "test@#$%^&*()_+-=[]{}|;':\",./<>?`~"
+        log_info(special_message)
+        assert True
 
     def test_error_handling(self):
         """Test error handling in various scenarios."""
-        # Test that functions exist and can be called without errors
-        try:
-            # Test with None message
-            log_info(None)
-
-            # Test with non-string message
-            log_info(123)
-
-            # Test with object message
-            test_obj = object()
-            log_info(test_obj)
-
-            assert True
-        except Exception as e:
-            pytest.fail(f"Error handling failed: {e}")
+        log_info(None)
+        log_info(123)
+        test_obj = object()
+        log_info(test_obj)
+        assert True
