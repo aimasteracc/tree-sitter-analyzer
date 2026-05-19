@@ -132,6 +132,10 @@ class TestYAMLElementMetadataProperties:
         """
         elements, source_lines = parse_yaml_elements_and_lines(yaml_content)
         assert_element_line_number_properties(elements, source_lines)
+        assert len(elements) > 0
+        for elem in elements:
+            assert elem.start_line >= 1
+            assert elem.end_line >= elem.start_line
 
     @settings(max_examples=100)
     @given(yaml_content=yaml_simple_mapping())
@@ -149,6 +153,9 @@ class TestYAMLElementMetadataProperties:
         assert_raw_text_matches_source(elements, source_lines)
         assert_mapping_raw_text_contains_key(elements)
         assert_scalar_raw_text_non_empty(elements)
+        for elem in elements:
+            assert elem.raw_text is not None
+            assert len(elem.raw_text) > 0
 
     @settings(max_examples=100)
     @given(yaml_content=yaml_simple_sequence())
@@ -181,6 +188,9 @@ class TestYAMLElementMetadataProperties:
         sequences = [e for e in elements if e.element_type == "sequence"]
 
         assert_sequence_metadata(sequences)
+        for seq in sequences:
+            assert seq.start_line >= 1
+            assert seq.end_line >= seq.start_line
 
     @settings(max_examples=50)
     @given(yaml_content=yaml_with_comments())
@@ -213,6 +223,10 @@ class TestYAMLElementMetadataProperties:
         source_lines = yaml_content.split("\n")
 
         assert_comment_elements(elements, source_lines)
+        comments = [e for e in elements if e.element_type == "comment"]
+        for c in comments:
+            assert c.start_line >= 1
+            assert c.raw_text is not None
 
     @settings(max_examples=100)
     @given(
@@ -248,6 +262,9 @@ class TestYAMLElementMetadataProperties:
 
         source_lines = yaml_content.split("\n")
         assert_consistent_mappings(elements, source_lines, num_keys)
+        assert len(elements) > 0
+        for elem in elements:
+            assert elem.start_line >= 1
 
     @settings(max_examples=50)
     @given(
@@ -284,3 +301,7 @@ class TestYAMLElementMetadataProperties:
         assert_mixed_structures_complete_metadata(elements)
         assert_mixed_structures_mapping_raw_text(mappings, yaml_content)
         assert_mixed_structures_nesting(elements)
+        assert len(elements) > 0
+        for m in mappings:
+            assert m.raw_text is not None
+            assert m.start_line >= 1

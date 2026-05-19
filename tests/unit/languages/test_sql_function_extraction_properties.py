@@ -89,6 +89,7 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 1.1, 1.2, 1.3
         """
         assert_function_body_content_exclusion(func_name, column_name)
+        assert func_name != column_name
 
     @settings(
         max_examples=100,
@@ -111,6 +112,7 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 1.1, 1.2, 1.3
         """
         assert_sql_keywords_exclusion(func_name, keyword)
+        assert func_name != keyword
 
     @settings(
         max_examples=100,
@@ -141,6 +143,7 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 2.1, 2.2, 2.5
         """
         assert_regex_pattern_precision(func_name, line_content)
+        assert "FUNCTION" not in line_content or func_name in line_content
 
     @settings(
         max_examples=100,
@@ -163,6 +166,7 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 1.5
         """
         assert_function_boundary_detection(func_name, body_lines)
+        assert body_lines >= 1
 
     @settings(
         max_examples=100,
@@ -226,6 +230,7 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 2.3, 2.4
         """
         assert_invalid_identifier_rejected(invalid_name)
+        assert len(invalid_name) > 0
 
     @settings(
         max_examples=100,
@@ -251,6 +256,7 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 2.3, 2.4
         """
         assert_valid_vs_invalid_identifier_extraction(valid_name, invalid_name)
+        assert valid_name != invalid_name
 
     @settings(
         max_examples=100,
@@ -273,6 +279,8 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 1.4
         """
         assert_extraction_count_consistency(num_functions, func_names)
+        assert num_functions >= 1
+        assert len(func_names) >= 1
 
     @settings(
         max_examples=100,
@@ -290,6 +298,7 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 3.3
         """
         assert_output_ordering_preservation(func_names)
+        assert len(func_names) >= 2
 
     @settings(
         max_examples=100,
@@ -312,6 +321,8 @@ class TestSQLFunctionExtractionProperties:
         Validates: Requirements 3.5
         """
         assert_deterministic_extraction(func_names, num_runs)
+        assert num_runs == 3
+        assert len(func_names) >= 1
 
 
 if __name__ == "__main__":

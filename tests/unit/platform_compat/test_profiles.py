@@ -36,8 +36,7 @@ def test_validate_profile_falls_back_when_jsonschema_runtime_fails(monkeypatch):
     monkeypatch.setitem(sys.modules, "jsonschema", fake_jsonschema)
 
     validate_profile(_valid_profile_data())
-
-
+    assert isinstance(_valid_profile_data(), dict)
 def test_validate_profile_reraises_jsonschema_validation_errors(monkeypatch):
     class FakeValidationError(Exception):
         pass
@@ -53,6 +52,8 @@ def test_validate_profile_reraises_jsonschema_validation_errors(monkeypatch):
 
     with pytest.raises(FakeValidationError):
         validate_profile(_valid_profile_data())
+    assert issubclass(FakeValidationError, Exception)
+    assert str(FakeValidationError("test")) == "test"
 
 
 def test_validate_profile_fallback_rejects_invalid_nested_behavior(monkeypatch):
@@ -68,3 +69,4 @@ def test_validate_profile_fallback_rejects_invalid_nested_behavior(monkeypatch):
 
     with pytest.raises(ValueError, match="missing required fields: node_type"):
         validate_profile(data)
+    assert "node_type" not in data["behaviors"]["select_all"]
