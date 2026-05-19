@@ -12,6 +12,7 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
     find_selected_mcp_command,
     validate_mcp_command_args,
 )
+from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
 from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import CodePatternsTool
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
@@ -177,6 +178,18 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="call_graph",
+        tool_attr="CodeGraphCallTool",
+        label="Function-level call graph (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "call_graph_mode", "summary") or "summary",
+            "function_name": getattr(args, "call_graph_function", None),
+            "file_path": getattr(args, "call_graph_file", None),
+            "depth": getattr(args, "call_graph_depth", 5),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -229,6 +242,8 @@ def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
         return SymbolLineageTool
     if tool_attr == "CodePatternsTool":
         return CodePatternsTool
+    if tool_attr == "CodeGraphCallTool":
+        return CodeGraphCallTool
     raise KeyError(f"Unknown MCP tool: {tool_attr}")
 
 

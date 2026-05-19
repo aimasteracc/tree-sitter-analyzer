@@ -415,6 +415,27 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Detect anti-patterns, code smells, and security issues in a file",
     )
     parser.add_argument(
+        "--call-graph",
+        nargs="?",
+        const="summary",
+        choices=["summary", "callers", "callees", "chain", "all_functions"],
+        help="Function-level call graph analysis (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--call-graph-function",
+        help="Target function name for --call-graph callers/callees/chain modes",
+    )
+    parser.add_argument(
+        "--call-graph-file",
+        help="File path to disambiguate for --call-graph",
+    )
+    parser.add_argument(
+        "--call-graph-depth",
+        type=int,
+        default=5,
+        help="Max depth for --call-graph chain mode (default: 5)",
+    )
+    parser.add_argument(
         "--min-grade",
         default="D",
         choices=["A", "B", "C", "D", "F"],

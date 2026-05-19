@@ -68,6 +68,7 @@ from .tools.agent_skills_tool import AgentSkillsTool
 from .tools.agent_workflow_tool import AgentWorkflowTool
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
+from .tools.call_graph_tool import CodeGraphCallTool
 from .tools.change_impact_tool import ChangeImpactTool
 from .tools.code_patterns_tool import CodePatternsTool
 from .tools.dependency_analysis_tool import DependencyAnalysisTool
@@ -119,6 +120,7 @@ def _create_tool_registry(
         ("check_project_health", ProjectHealthTool(project_root)),
         ("check_file_health", FileHealthTool(project_root)),
         ("analyze_dependencies", DependencyAnalysisTool(project_root)),
+        ("codegraph_call_graph", CodeGraphCallTool(project_root)),
         ("analyze_change_impact", ChangeImpactTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
         ("safe_to_edit", SafeToEditTool(project_root)),
