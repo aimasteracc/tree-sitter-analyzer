@@ -826,3 +826,157 @@ class TestJavaScriptTableFormatterCore:
 
         # Should not end with blank lines
         assert not result.endswith("\n\n")
+
+
+class TestJavaScriptCompactMixinCoverage:
+    """Cover uncovered branches in _javascript_formatter_compact_mixin.py."""
+
+    @pytest.fixture
+    def formatter(self) -> JavaScriptTableFormatter:
+        return JavaScriptTableFormatter()
+
+    def test_create_compact_signature_dict_params(self, formatter):
+        method = {
+            "parameters": [
+                {"name": "a", "type": "string"},
+                {"name": "b", "type": "number"},
+            ],
+            "return_type": "void",
+        }
+        result = formatter._create_compact_signature(method)
+        assert result == "(string,number):void"
+
+    def test_create_compact_signature_non_dict_params(self, formatter):
+        method = {
+            "parameters": ["not_a_dict", 42],
+            "return_type": "unknown",
+        }
+        result = formatter._create_compact_signature(method)
+        assert result == "(Any,Any):unknown"
+
+    def test_create_compact_signature_empty_params(self, formatter):
+        method = {"parameters": [], "return_type": "Promise"}
+        result = formatter._create_compact_signature(method)
+        assert result == "():unknown"
+
+    def test_create_compact_signature_string_params(self, formatter):
+        method = {"parameters": "not_a_list", "return_type": "bool"}
+        result = formatter._create_compact_signature(method)
+        assert result == "():unknown"
+
+    def test_create_compact_signature_no_params_key(self, formatter):
+        method = {"return_type": "number"}
+        result = formatter._create_compact_signature(method)
+        assert result == "():unknown"
+
+    def test_create_compact_signature_dict_without_type(self, formatter):
+        method = {
+            "parameters": [{"name": "x"}],
+            "return_type": "void",
+        }
+        result = formatter._create_compact_signature(method)
+        assert result == "(Any):void"
+
+    def test_create_compact_signature_default_return_type(self, formatter):
+        method = {
+            "parameters": [{"name": "a", "type": "int"}],
+        }
+        result = formatter._create_compact_signature(method)
+        assert result == "(int):unknown"
+
+    def test_format_compact_table_with_methods(self, formatter):
+        data = {
+            "file_path": "app.js",
+            "classes": [{"name": "App"}],
+            "methods": [
+                {
+                    "name": "init",
+                    "parameters": [{"name": "cfg", "type": "Config"}],
+                    "return_type": "void",
+                    "line_range": {"start": 10, "end": 20},
+                    "complexity_score": 3,
+                },
+                {
+                    "name": "render",
+                    "parameters": [],
+                    "return_type": "VNode",
+                    "line_range": {"start": 25, "end": 40},
+                    "complexity_score": 5,
+                },
+            ],
+            "functions": [],
+            "exports": [],
+            "statistics": {"function_count": 2, "variable_count": 0},
+        }
+        result = formatter._format_compact_table(data)
+        assert "## Methods" in result
+        assert "| init |" in result
+        assert "| render |" in result
+        assert "(Config):void" in result
+        assert "():unknown" in result
+        assert "10-20" in result
+        assert "25-40" in result
+
+    def test_format_compact_table_no_methods(self, formatter):
+        data = {
+            "file_path": "empty.js",
+            "classes": [],
+            "methods": [],
+            "functions": [],
+            "exports": [],
+            "statistics": {"function_count": 0, "variable_count": 0},
+        }
+        result = formatter._format_compact_table(data)
+        assert "## Info" in result
+        assert "## Methods" not in result
+
+    def test_format_compact_table_method_row_content(self, formatter):
+        data = {
+            "file_path": "svc.js",
+            "classes": [],
+            "methods": [
+                {
+                    "name": "fetch",
+                    "parameters": [{"name": "url", "type": "string"}],
+                    "return_type": "Promise",
+                    "line_range": {"start": 5, "end": 15},
+                    "complexity_score": 7,
+                },
+            ],
+            "functions": [],
+            "exports": [],
+            "statistics": {"function_count": 1, "variable_count": 0},
+        }
+        result = formatter._format_compact_table(data)
+        assert "| fetch | (string):Promise | + | 5-15 | 7 | - |" in result
+
+    def test_format_compact_info_section_method_count(self, formatter):
+        data = {
+            "file_path": "mod.js",
+            "classes": [],
+            "methods": [
+                {"name": "a", "parameters": [], "return_type": "void"},
+                {"name": "b", "parameters": [], "return_type": "void"},
+                {"name": "c", "parameters": [], "return_type": "void"},
+            ],
+            "functions": [],
+            "exports": [],
+            "statistics": {"function_count": 3, "variable_count": 0},
+        }
+        result = formatter._format_compact_table(data)
+        assert "| Methods | 3 |" in result
+
+    def test_format_compact_method_missing_line_range(self, formatter):
+        data = {
+            "file_path": "x.js",
+            "classes": [],
+            "methods": [
+                {"name": "op", "parameters": [], "return_type": "void"},
+            ],
+            "functions": [],
+            "exports": [],
+            "statistics": {"function_count": 1, "variable_count": 0},
+        }
+        result = formatter._format_compact_table(data)
+        assert "| op |" in result
+        assert "0-0" in result
