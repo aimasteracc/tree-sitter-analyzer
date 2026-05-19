@@ -29,6 +29,15 @@ def _language_from_ext(file_path: str) -> str | None:
         ".jsx": "javascript",
         ".tsx": "typescript",
         ".java": "java",
+        ".go": "go",
+        ".rs": "rust",
+        ".c": "c",
+        ".cpp": "cpp",
+        ".cc": "cpp",
+        ".cxx": "cpp",
+        ".h": "c",
+        ".hpp": "cpp",
+        ".hxx": "cpp",
     }
     ext = Path(file_path).suffix.lower()
     return ext_map.get(ext)
@@ -185,7 +194,10 @@ class DependencyGraph:
 
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""
-        supported_exts = {".py", ".js", ".ts", ".jsx", ".tsx", ".java"}
+        supported_exts = {
+            ".py", ".js", ".ts", ".jsx", ".tsx", ".java",
+            ".go", ".rs", ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx",
+        }
 
         # Collect all source files (excluding generated/dependency dirs)
         all_files: list[Path] = []
@@ -257,6 +269,47 @@ class DependencyGraph:
                 # Also try without extension
                 if candidate_raw in self._nodes:
                     return candidate_raw
+            return None
+
+        elif language == "go":
+            if not is_relative:
+                return None
+            source_dir = Path(source_rel).parent
+            candidate_raw = str(source_dir / module)
+            if candidate_raw in self._nodes:
+                return candidate_raw
+            for ext in (".go", "/index.go"):
+                candidate = candidate_raw + ext
+                if candidate in self._nodes:
+                    return candidate
+            return None
+
+        elif language == "rust":
+            if not is_relative:
+                return None
+            path_parts = module.replace("crate::", "").replace("super::", "").replace("self::", "")
+            path = path_parts.replace("::", "/")
+            source_dir = Path(source_rel).parent
+            candidate = str(source_dir / path)
+            if candidate in self._nodes:
+                return candidate
+            for ext in (".rs", "/mod.rs", "/lib.rs"):
+                candidate_with_ext = candidate + ext
+                if candidate_with_ext in self._nodes:
+                    return candidate_with_ext
+            return None
+
+        elif language in ("c", "cpp"):
+            source_dir = Path(source_rel).parent
+            candidate = str(source_dir / module)
+            if candidate in self._nodes:
+                return candidate
+            return None
+
+        elif language == "java":
+            candidate = module.replace(".", "/") + ".java"
+            if candidate in self._nodes:
+                return candidate
             return None
 
         return None

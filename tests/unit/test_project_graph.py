@@ -14,6 +14,10 @@ import pytest
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "project_graph"
 PY_PROJECT = FIXTURES_DIR / "python_project"
 JS_PROJECT = FIXTURES_DIR / "js_project"
+GO_PROJECT = FIXTURES_DIR / "go_project"
+RUST_PROJECT = FIXTURES_DIR / "rust_project"
+CPP_PROJECT = FIXTURES_DIR / "cpp_project"
+JAVA_PROJECT = FIXTURES_DIR / "java_project"
 
 
 # ============================================================
@@ -75,6 +79,59 @@ class TestImportExtraction:
 
         imports = extract_imports_from_file(str(PY_PROJECT / "main.py"), "brainfuck")
         assert imports == []
+
+    def test_extract_go_imports_from_main(self):
+        """main.go should yield imports to internal packages, not stdlib."""
+        from tree_sitter_analyzer.project_graph import extract_imports_from_file
+
+        imports = extract_imports_from_file(str(GO_PROJECT / "main.go"), "go")
+        modules = {i["module_name"] for i in imports}
+        assert all("internal" in m for m in modules), (
+            f"Expected internal imports only, got {modules}"
+        )
+        assert "fmt" not in modules, "stdlib fmt should be filtered"
+
+    def test_extract_rust_imports_from_main(self):
+        """main.rs should yield crate-local imports, not std."""
+        from tree_sitter_analyzer.project_graph import extract_imports_from_file
+
+        imports = extract_imports_from_file(
+            str(RUST_PROJECT / "src" / "main.rs"), "rust"
+        )
+        modules = {i["module_name"] for i in imports}
+        assert any("crate::" in m for m in modules), (
+            f"Expected crate:: imports, got {modules}"
+        )
+        assert not any("std::" in m for m in modules), (
+            f"std should be filtered, got {modules}"
+        )
+
+    def test_extract_cpp_imports_from_main(self):
+        """main.cpp should yield local includes, not system includes."""
+        from tree_sitter_analyzer.project_graph import extract_imports_from_file
+
+        imports = extract_imports_from_file(str(CPP_PROJECT / "main.cpp"), "cpp")
+        modules = {i["module_name"] for i in imports}
+        assert "handler.h" in modules, f"Expected handler.h in {modules}"
+        assert "model.h" in modules, f"Expected model.h in {modules}"
+        assert all(not m.startswith("<") for m in modules), (
+            f"System includes should not have angle brackets: {modules}"
+        )
+
+    def test_extract_java_imports_from_main(self):
+        """Main.java should yield com.example imports, not java.util."""
+        from tree_sitter_analyzer.project_graph import extract_imports_from_file
+
+        imports = extract_imports_from_file(
+            str(JAVA_PROJECT / "com" / "example" / "Main.java"), "java"
+        )
+        modules = {i["module_name"] for i in imports}
+        assert any("com.example" in m for m in modules), (
+            f"Expected com.example imports, got {modules}"
+        )
+        assert not any("java.util" in m for m in modules), (
+            f"java.util stdlib should be filtered, got {modules}"
+        )
 
 
 # ============================================================

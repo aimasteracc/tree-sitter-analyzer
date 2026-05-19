@@ -1,6 +1,54 @@
-"""Import extraction functions for Python and JS/TS — extracted from project_graph.py."""
+"""Import extraction functions for Python, JS/TS, Go, Rust, C/C++, Java — extracted from project_graph.py."""
 
 from typing import Any
+
+_GO_STD = {
+    "fmt",
+    "os",
+    "io",
+    "strings",
+    "strconv",
+    "math",
+    "time",
+    "net",
+    "net/http",
+    "encoding/json",
+    "encoding/xml",
+    "encoding/csv",
+    "path",
+    "path/filepath",
+    "log",
+    "errors",
+    "context",
+    "sync",
+    "bufio",
+    "bytes",
+    "regexp",
+    "sort",
+    "crypto",
+    "crypto/md5",
+    "crypto/sha256",
+    "database/sql",
+    "html/template",
+    "text/template",
+    "testing",
+    "runtime",
+    "reflect",
+    "unicode",
+    "unicode/utf8",
+    "flag",
+    "runtime/debug",
+    "archive/zip",
+    "compress/gzip",
+}
+
+_RUST_STD_CRATES = {
+    "std",
+    "core",
+    "alloc",
+    "proc_macro",
+    "test",
+}
 
 _STDLIB_TOP_LEVEL = {
     "os",
@@ -98,11 +146,17 @@ def walk_imports(
             _extract_python_imports(node, source, imports)
         elif language in ("javascript", "typescript"):
             _extract_js_imports(node, source, imports)
+        elif language == "go":
+            _extract_go_imports(node, source, imports)
+        elif language == "rust":
+            _extract_rust_imports(node, source, imports)
+        elif language in ("c", "cpp"):
+            _extract_cpp_imports(node, source, imports)
+        elif language == "java":
+            _extract_java_imports(node, source, imports)
     except Exception:  # nosec B110
         pass
 
-    # Recurse into real tree-sitter child lists. Mock objects can synthesize async
-    # attributes here, which creates unawaited coroutine warnings during tests.
     children = getattr(node, "children", None)
     if isinstance(children, (list, tuple)):
         for child in children:
@@ -287,3 +341,212 @@ def _node_text(node: Any, source: str) -> str:
         return ""
     except Exception:
         return ""
+
+
+def _extract_go_imports(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
+    """Extract Go import declarations.
+
+    Handles:
+        import "fmt"
+        import . "pkg"
+        import alias "pkg"
+        import (
+            "fmt"
+            "os"
+        )
+    """
+    node_type = getattr(node, "type", None)
+    if node_type != "import_declaration":
+        return
+
+    specs: list[Any] = []
+    for child in node.children:
+        ct = getattr(child, "type", None)
+        if ct == "import_spec":
+            specs.append(child)
+        elif ct == "import_spec_list":
+            for sub in child.children:
+                if getattr(sub, "type", None) == "import_spec":
+                    specs.append(sub)
+
+    for spec in specs:
+        path = None
+        for ch in spec.children:
+            ct = getattr(ch, "type", None)
+            if ct == "interpreted_string_literal":
+                raw = _node_text(ch, source).strip('"')
+                if raw.split("/")[-1] not in _GO_STD and raw not in _GO_STD:
+                    path = raw
+        if path:
+            imports.append(
+                {
+                    "module_name": path,
+                    "resolved_path": path + ".go" if not path.endswith(".go") else path,
+                    "names": [],
+                    "is_relative": path.startswith("./") or path.startswith("../"),
+                    "language": "go",
+                }
+            )
+
+
+def _extract_rust_imports(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
+    """Extract Rust use declarations.
+
+    Handles:
+        use std::collections::HashMap;
+        use crate::module::Item;
+        use super::sibling;
+        use mod::{Item1, Item2};
+    """
+    node_type = getattr(node, "type", None)
+    if node_type != "use_declaration":
+        return
+
+    raw = _node_text(node, source)
+    path = _parse_rust_use_path(raw)
+    if not path:
+        return
+
+    root_crate = path.split("::")[0]
+    if root_crate in _RUST_STD_CRATES:
+        return
+
+    is_local = root_crate in ("crate", "super", "self")
+    imports.append(
+        {
+            "module_name": path,
+            "resolved_path": path.replace("::", "/"),
+            "names": [],
+            "is_relative": is_local,
+            "language": "rust",
+        }
+    )
+
+
+def _parse_rust_use_path(raw: str) -> str | None:
+    """Parse the module path from a Rust use statement."""
+    stripped = raw.strip()
+    if stripped.startswith("use "):
+        stripped = stripped[4:]
+    stripped = stripped.rstrip(";").strip()
+
+    if "{" in stripped:
+        stripped = stripped[: stripped.index("{")].strip()
+        if stripped.endswith("::"):
+            stripped = stripped[:-2]
+    if not stripped:
+        return None
+
+    for prefix in ("crate::", "super::", "self::"):
+        if stripped.startswith(prefix):
+            return stripped
+
+    parts = stripped.split("::")
+    if len(parts) >= 1 and parts[0].isidentifier():
+        return stripped
+    return None
+
+
+def _extract_cpp_imports(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
+    """Extract C/C++ #include directives.
+
+    Handles:
+        #include <stdio.h>
+        #include "myheader.h"
+        #include <vector>
+    """
+    node_type = getattr(node, "type", None)
+    if node_type != "preproc_include":
+        return
+
+    for child in node.children:
+        ct = getattr(child, "type", None)
+        if ct == "string_literal":
+            raw = _node_text(child, source).strip('"')
+            if raw:
+                imports.append(
+                    {
+                        "module_name": raw,
+                        "resolved_path": raw,
+                        "names": [],
+                        "is_relative": True,
+                        "language": "cpp",
+                    }
+                )
+                return
+        if ct == "system_lib_string":
+            raw = _node_text(child, source).strip("<>")
+            if raw:
+                imports.append(
+                    {
+                        "module_name": raw,
+                        "resolved_path": raw,
+                        "names": [],
+                        "is_relative": False,
+                        "language": "cpp",
+                    }
+                )
+                return
+
+
+def _extract_java_imports(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
+    """Extract Java import declarations.
+
+    Handles:
+        import java.util.List;
+        import static org.junit.Assert.*;
+        import com.example.MyClass;
+    """
+    node_type = getattr(node, "type", None)
+    if node_type != "import_declaration":
+        return
+
+    raw = _node_text(node, source).strip()
+    if not raw.startswith("import"):
+        return
+
+    path = raw
+    path = path.rstrip(";").strip()
+    if path.startswith("import static "):
+        path = path[len("import static ") :]
+    elif path.startswith("import "):
+        path = path[len("import ") :]
+
+    path = path.strip()
+    if not path:
+        return
+
+    if path.endswith(".*"):
+        path = path[:-2]
+
+    root_pkg = path.split(".")[0]
+    _JAVA_STD_ROOTS = {
+        "java",
+        "javax",
+        "sun",
+        "com.sun",
+        "org.w3c",
+        "org.xml",
+        "org.ietf",
+        "org.omg",
+    }
+    if any(root_pkg == r or path.startswith(r + ".") for r in _JAVA_STD_ROOTS):
+        return
+
+    imports.append(
+        {
+            "module_name": path,
+            "resolved_path": path.replace(".", "/") + ".java",
+            "names": [],
+            "is_relative": False,
+            "language": "java",
+        }
+    )
