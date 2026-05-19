@@ -334,3 +334,11 @@ tests/debug_artifacts/
 .agents/
 coverage.json
 coverage.json
+
+# Ruflo runtime
+.claude-flow/
+.swarm/
+.claude/memory.db
+.claude/helpers/
+ruvector.db
+.query_cache.json
