@@ -442,7 +442,7 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--ast-cache-mode",
-        choices=["index", "lookup", "search", "stats", "invalidate"],
+        choices=["index", "lookup", "search", "sync", "changes", "stats", "invalidate"],
         default="stats",
         help="AST cache operation mode (default: stats)",
     )
