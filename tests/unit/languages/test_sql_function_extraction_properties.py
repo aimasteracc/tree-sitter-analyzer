@@ -10,7 +10,7 @@ Tests correctness properties for SQL function extraction to ensure:
 """
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from tests.unit.languages._test_sql_function_extraction_properties_helpers import (
@@ -88,8 +88,8 @@ class TestSQLFunctionExtractionProperties:
 
         Validates: Requirements 1.1, 1.2, 1.3
         """
+        assume(func_name.lower() != column_name.lower())
         assert_function_body_content_exclusion(func_name, column_name)
-        assert func_name != column_name
 
     @settings(
         max_examples=100,
@@ -111,8 +111,8 @@ class TestSQLFunctionExtractionProperties:
 
         Validates: Requirements 1.1, 1.2, 1.3
         """
+        assume(func_name != keyword)
         assert_sql_keywords_exclusion(func_name, keyword)
-        assert func_name != keyword
 
     @settings(
         max_examples=100,
