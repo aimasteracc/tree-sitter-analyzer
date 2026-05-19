@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Find and grep CLI tests — main function and edge cases."""
+"""Tests for find_and_grep_cli main() entry point and edge cases."""
 
 from __future__ import annotations
 

@@ -1,12 +1,16 @@
-#!/usr/bin/env python3
-"""Rust plugin tests — element extractor unit and coverage boost tests."""
+"""
+Comprehensive tests for RustElementExtractor.
+
+Covers unit-level extractor tests with mocked nodes
+and additional coverage boost tests for uncovered branches.
+"""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from tree_sitter_analyzer.languages.rust_plugin import RustElementExtractor, RustPlugin
-from tree_sitter_analyzer.models import Class, Import, Variable
+from tree_sitter_analyzer.models import Import, Variable
 
 
 @pytest.fixture
@@ -19,6 +23,11 @@ def rust_extractor():
     return RustElementExtractor()
 
 
+# ---------------------------------------------------------------------------
+# Mock node helpers
+# ---------------------------------------------------------------------------
+
+
 def _mock_node(
     type_name,
     start_byte=0,
@@ -29,6 +38,7 @@ def _mock_node(
     text="mock",
     field_children=None,
 ):
+    """Create a mock tree-sitter Node."""
     node = MagicMock()
     node.type = type_name
     node.start_byte = start_byte
@@ -41,6 +51,12 @@ def _mock_node(
     )
     node.text = text.encode("utf-8") if isinstance(text, str) else text
     return node
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for RustElementExtractor with mocked nodes
+# ---------------------------------------------------------------------------
+
 
 class TestRustElementExtractorUnit:
     """Unit-level tests using mocked tree-sitter nodes."""
@@ -85,22 +101,36 @@ class TestRustElementExtractorUnit:
         with patch.object(
             rust_extractor,
             "_extract_type_def",
-            return_value=Class(name="MyEnum", start_line=1, end_line=3),
+            return_value=MagicMock(name="MyEnum", start_line=1, end_line=3),
         ):
-            result = rust_extractor._extract_enum(node)
-            assert result is not None
-            assert result.name == "MyEnum"
+            from tree_sitter_analyzer.models import Class
+
+            with patch.object(
+                rust_extractor,
+                "_extract_type_def",
+                return_value=Class(name="MyEnum", start_line=1, end_line=3),
+            ):
+                result = rust_extractor._extract_enum(node)
+                assert result is not None
+                assert result.name == "MyEnum"
 
     def test_extract_trait(self, rust_extractor):
         node = _mock_node("trait_item")
         with patch.object(
             rust_extractor,
             "_extract_type_def",
-            return_value=Class(name="MyTrait", start_line=1, end_line=3),
+            return_value=MagicMock(name="MyTrait", start_line=1, end_line=3),
         ):
-            result = rust_extractor._extract_trait(node)
-            assert result is not None
-            assert result.name == "MyTrait"
+            from tree_sitter_analyzer.models import Class
+
+            with patch.object(
+                rust_extractor,
+                "_extract_type_def",
+                return_value=Class(name="MyTrait", start_line=1, end_line=3),
+            ):
+                result = rust_extractor._extract_trait(node)
+                assert result is not None
+                assert result.name == "MyTrait"
 
     def test_extract_type_def_no_name(self, rust_extractor):
         node = _mock_node("struct_item", field_children={})

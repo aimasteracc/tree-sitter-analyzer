@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Search content CLI tests — main function and edge cases."""
+"""Tests for main() and edge cases in search_content_cli module."""
 
 from __future__ import annotations
 
