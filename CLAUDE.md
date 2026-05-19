@@ -170,6 +170,8 @@ Any string works as a custom agent type.
 
 - ALWAYS run tests after code changes
 - ALWAYS verify build succeeds before committing
+- After edits, run `uv run python -m tree_sitter_analyzer --change-impact --format json` and follow its `verification_command`
+- If `pytest_required` is `false`, do not run tests just to look busy
 
 ```bash
 npm run build && npm test

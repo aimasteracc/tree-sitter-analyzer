@@ -3,54 +3,11 @@
 
 import contextlib
 import sys
-import tempfile
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from tree_sitter_analyzer.cli_main import main
-
-
-@pytest.fixture
-def sample_java_file():
-    java_code = """
-package com.example.test;
-
-import java.util.List;
-
-/**
- * Sample class for testing
- */
-public class TestClass {
-    private String field1;
-
-    /**
-     * Constructor
-     */
-    public TestClass(String field1) {
-        this.field1 = field1;
-    }
-
-    /**
-     * Public method
-     */
-    public String getField1() {
-        return field1;
-    }
-}
-"""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".java", delete=False, encoding="utf-8"
-    ) as f:
-        f.write(java_code)
-        temp_path = f.name
-
-    yield temp_path
-
-    if Path(temp_path).exists():
-        Path(temp_path).unlink()
 
 
 class TestCLIAdvancedOptions:
