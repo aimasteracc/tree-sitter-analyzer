@@ -1,6 +1,7 @@
 """YAML mapping, sequence, and utility helpers — extracted from yaml_plugin.py."""
 
 from collections.abc import Callable
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ..encoding_utils import read_file_safe
@@ -11,42 +12,106 @@ from ..utils import log_debug, log_error, log_info
 class YAMLElement(CodeElement):
     """YAML-specific code element."""
 
+    @dataclass(frozen=False)
+    class _Config:
+        """Configuration carrier for YAMLElement construction."""
+
+        name: str
+        start_line: int
+        end_line: int
+        raw_text: str
+        language: str = "yaml"
+        element_type: str = "yaml"
+        key: str | None = None
+        value: str | None = None
+        value_type: str | None = None
+        anchor_name: str | None = None
+        alias_target: str | None = None
+        nesting_level: int = 0
+        document_index: int = 0
+        child_count: int | None = None
+        docstring: str | None = None
+
+        @classmethod
+        def from_kwargs(cls, **kwargs: Any) -> "YAMLElement._Config":
+            return cls(
+                name=kwargs.pop("name"),
+                start_line=kwargs.pop("start_line"),
+                end_line=kwargs.pop("end_line"),
+                raw_text=kwargs.pop("raw_text"),
+                language=kwargs.pop("language", "yaml"),
+                element_type=kwargs.pop("element_type", "yaml"),
+                key=kwargs.pop("key", None),
+                value=kwargs.pop("value", None),
+                value_type=kwargs.pop("value_type", None),
+                anchor_name=kwargs.pop("anchor_name", None),
+                alias_target=kwargs.pop("alias_target", None),
+                nesting_level=kwargs.pop("nesting_level", 0),
+                document_index=kwargs.pop("document_index", 0),
+                child_count=kwargs.pop("child_count", None),
+                docstring=kwargs.pop("docstring", None),
+            )
+
     def __init__(
         self,
-        name: str,
-        start_line: int,
-        end_line: int,
-        raw_text: str,
-        language: str = "yaml",
-        element_type: str = "yaml",
-        key: str | None = None,
-        value: str | None = None,
-        value_type: str | None = None,
-        anchor_name: str | None = None,
-        alias_target: str | None = None,
-        nesting_level: int = 0,
-        document_index: int = 0,
-        child_count: int | None = None,
+        *args: Any,
         **kwargs: Any,
     ) -> None:
-        """Initialize a YAML element with YAML-specific metadata."""
+        """Initialize a YAML element with YAML-specific metadata.
+
+        Supports both legacy constructor style:
+        - ``YAMLElement(name=..., start_line=..., ...)``
+        - internal ``YAMLElement(YAMLElement._Config(...), ...)``
+        """
+        if len(args) > 1:
+            raise TypeError(
+                "YAMLElement accepts at most 1 positional argument: YAMLElement._Config"
+            )
+
+        if args:
+            config = args[0]
+            if not isinstance(config, YAMLElement._Config):
+                raise TypeError(
+                    "Expected YAMLElement._Config when passing positional argument"
+                )
+            if kwargs:
+                config = replace(config, **kwargs)
+        else:
+            config = YAMLElement._Config.from_kwargs(**kwargs)
+
         super().__init__(
-            name=name,
-            start_line=start_line,
-            end_line=end_line,
-            raw_text=raw_text,
-            language=language,
-            **kwargs,
+            name=config.name,
+            start_line=config.start_line,
+            end_line=config.end_line,
+            raw_text=config.raw_text,
+            language=config.language,
+            docstring=config.docstring,
         )
-        self.element_type = element_type
-        self.key = key
-        self.value = value
-        self.value_type = value_type
-        self.anchor_name = anchor_name
-        self.alias_target = alias_target
-        self.nesting_level = nesting_level
-        self.document_index = document_index
-        self.child_count = child_count
+        self.element_type = config.element_type
+        self.key = config.key
+        self.value = config.value
+        self.value_type = config.value_type
+        self.anchor_name = config.anchor_name
+        self.alias_target = config.alias_target
+        self.nesting_level = config.nesting_level
+        self.document_index = config.document_index
+        self.child_count = config.child_count
+
+    @classmethod
+    def from_legacy_kwargs(cls, **kwargs: Any) -> "YAMLElement":
+        """Build a YAMLElement from the historical named-argument constructor."""
+        return cls(**kwargs)
+
+
+@dataclass
+class _MappingNodeContext:
+    """State carried when assigning flow or block mapping nodes."""
+
+    found_colon: bool
+    key_node: Any | None
+    value_node: Any | None
+    anchor_name: str | None
+    get_node_text: Callable[..., str]
 
 
 def extract_node_text(node: Any, source_code: str) -> str:
@@ -531,13 +596,16 @@ def _extract_mapping_nodes(
             found_colon = True
             continue
         if child.type in ("flow_node", "block_node"):
+            mapping_state = _MappingNodeContext(
+                found_colon=found_colon,
+                key_node=key_node,
+                value_node=value_node,
+                anchor_name=anchor_name,
+                get_node_text=get_node_text,
+            )
             key_node, value_node, anchor_name = _assign_flow_or_block_mapping_node(
                 child,
-                found_colon,
-                key_node,
-                value_node,
-                anchor_name,
-                get_node_text,
+                mapping_state,
             )
             continue
         if child.type == "key":
@@ -557,16 +625,14 @@ def _extract_mapping_nodes(
 
 def _assign_flow_or_block_mapping_node(
     child: Any,
-    found_colon: bool,
-    key_node: Any | None,
-    value_node: Any | None,
-    anchor_name: str | None,
-    get_node_text: Callable[..., str],
+    state: _MappingNodeContext,
 ) -> tuple[Any | None, Any | None, str | None]:
-    if not found_colon:
-        return child, value_node, anchor_name
-    anchor_name = _find_anchor_name(child.children, get_node_text) or anchor_name
-    return key_node, child, anchor_name
+    if not state.found_colon:
+        return child, state.value_node, state.anchor_name
+    anchor_name = (
+        _find_anchor_name(child.children, state.get_node_text) or state.anchor_name
+    )
+    return state.key_node, child, anchor_name
 
 
 def _extract_mapping_value_info(

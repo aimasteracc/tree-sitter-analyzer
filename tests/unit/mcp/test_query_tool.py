@@ -12,7 +12,6 @@ import pytest
 
 from tests.unit.mcp._test_query_tool_test_mixin import (
     TestBuildNextStepsTestMixin,
-    TestCategorizeQueriesCoverageTestMixin,
     TestCategorizeQueriesTestMixin,
     TestExecuteAdditionalCoverageTestMixin,
     TestExecuteCoverageBoostTestMixin,
@@ -31,6 +30,9 @@ from tests.unit.mcp._test_query_tool_test_mixin import (
     TestValidateArgumentsAdditionalTestMixin,
     TestValidateArgumentsCoverageBoostTestMixin,
     TestValidateArgumentsTestMixin,
+)
+from tests.unit.mcp._test_query_tool_test_mixin_coverage import (
+    TestCategorizeQueriesCoverageTestMixin,
 )
 from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
 

@@ -60,6 +60,22 @@
 
 Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 
+## 2026-05-19: YAML helpers 兼容性修复（队头）
+
+- 目标: 修复 `tree_sitter_analyzer/languages/yaml_helpers.py` 中 `YAMLElement` 最近重构导致的构造器兼容性回归，并保持既有测试通过。
+- 动作:
+  - 为 `YAMLElement` 引入 `YAMLElement._Config`，将构造参数标准化。
+  - 修复 `__init__` 参数适配逻辑，支持：
+    - 传统关键字构造（`YAMLElement(name=..., start_line=...)`）
+    - 内部 `YAMLElement._Config` 直接构造（含可选覆写 kwargs）
+  - 同步 `from_legacy_kwargs` 到兼容旧行为。
+- 验证:
+  - `uv run pytest tests/unit/languages/test_yaml_plugin.py tests/unit/languages/test_yaml_element_properties.py -q`（17 passed）
+  - `uv run python -m tree_sitter_analyzer tree_sitter_analyzer/languages/yaml_helpers.py --file-health --format json`
+  - `uv run python -m tree_sitter_analyzer tree_sitter_analyzer/languages/yaml_helpers.py --refactor --format json`
+- 结果:
+  - 接口兼容性已恢复；未见回归；`yaml_helpers.py` 文件健康仍为 D，主异味仍是 `oversized_file`（801 行）与深层复杂度，仅剩少量改动，下一步继续切片。
+
 ## 2026-05-18: 自主运行层 tick 入口修复
 
 - 新增 `.autonomous-runtime/tick.sh`，作为 5 分钟 heartbeat 的幂等入口:
@@ -364,3 +380,19 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结论：
   - 管理器测试职责在文件层面完成收口，行为未变更、回归通过。
   - 当前可继续按同队列向 `test_engine.py` 其余职责或下一目标 oversized 文件推进。
+
+## 2026-05-19: test_query_tool.mcp 责任切片（覆盖分离）
+
+- 目标: 继续 `tests/unit/mcp/test_query_tool.py` 的可维护性治理，消除 `oversized_file` 门禁。
+- 动作:
+  - 将 `TestCategorizeQueriesCoverageTestMixin` 从 `tests/unit/mcp/_test_query_tool_test_mixin.py` 移到新建文件
+    `tests/unit/mcp/_test_query_tool_test_mixin_coverage.py`。
+  - 在 `tests/unit/mcp/test_query_tool.py` 的 `TestCategorizeQueriesCoverage` 改为继承新文件中的 mixin。
+  - 清理原文件尾部大块，主 mixin 文件从 1853 行降到 1749 行（未触及测试语义）。
+- 验证:
+  - `uv run ruff check tests/unit/mcp/_test_query_tool_test_mixin.py tests/unit/mcp/_test_query_tool_test_mixin_coverage.py tests/unit/mcp/test_query_tool.py`
+  - `uv run pytest tests/unit/mcp/test_query_tool.py -q`（302 passed）
+  - `uv run python scripts/test_mastery_scan.py --gates`（ALL GATES PASSED）
+- 结果:
+  - 关键门禁恢复：`tests/unit/mcp/_test_query_tool_test_mixin.py` 重新满足行数上限（0 oversized 文件）。
+  - 全链路回归未见回归，当前队列继续推进下一批 test 结构切片。
