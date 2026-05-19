@@ -410,6 +410,11 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Max dependency graph depth for --symbol-lineage (1-5, default: 3)",
     )
     parser.add_argument(
+        "--code-patterns",
+        action="store_true",
+        help="Detect anti-patterns, code smells, and security issues in a file",
+    )
+    parser.add_argument(
         "--min-grade",
         default="D",
         choices=["A", "B", "C", "D", "F"],

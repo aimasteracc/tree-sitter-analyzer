@@ -69,6 +69,7 @@ from .tools.agent_workflow_tool import AgentWorkflowTool
 from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
 from .tools.analyze_scale_tool import AnalyzeScaleTool
 from .tools.change_impact_tool import ChangeImpactTool
+from .tools.code_patterns_tool import CodePatternsTool
 from .tools.dependency_analysis_tool import DependencyAnalysisTool
 from .tools.file_health_tool import FileHealthTool
 from .tools.find_and_grep_tool import FindAndGrepTool
@@ -123,6 +124,7 @@ def _create_tool_registry(
         ("safe_to_edit", SafeToEditTool(project_root)),
         ("smart_context", SmartContextTool(project_root)),
         ("symbol_lineage", SymbolLineageTool(project_root)),
+        ("code_patterns", CodePatternsTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 

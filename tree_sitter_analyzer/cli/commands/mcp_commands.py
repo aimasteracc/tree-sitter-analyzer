@@ -13,6 +13,7 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
     validate_mcp_command_args,
 )
 from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+from tree_sitter_analyzer.mcp.tools.code_patterns_tool import CodePatternsTool
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,
 )
@@ -164,6 +165,18 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="code_patterns",
+        tool_attr="CodePatternsTool",
+        label="Code pattern and anti-pattern detection",
+        required_file_error="--code-patterns requires a file path",
+        build_tool_args=lambda args, output_format: {
+            "file_path": args.file_path,
+            "categories": getattr(args, "code_patterns_categories", None) or ["all"],
+            "severity_threshold": getattr(args, "severity_threshold", "info") or "info",
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -214,6 +227,8 @@ def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
         return SmartContextTool
     if tool_attr == "SymbolLineageTool":
         return SymbolLineageTool
+    if tool_attr == "CodePatternsTool":
+        return CodePatternsTool
     raise KeyError(f"Unknown MCP tool: {tool_attr}")
 
 
