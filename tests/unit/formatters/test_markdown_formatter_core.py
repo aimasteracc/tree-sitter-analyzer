@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-"""Core Markdown formatter tests — initialization, summary, structure, advanced."""
-
 import json
 from unittest.mock import patch
 
@@ -8,15 +5,12 @@ from tree_sitter_analyzer.formatters.markdown_formatter import MarkdownFormatter
 
 
 class TestMarkdownFormatterInitialization:
-    """Test MarkdownFormatter initialization"""
 
     def test_init(self):
-        """Test basic initialization"""
         formatter = MarkdownFormatter()
         assert formatter.language == "markdown"
 
     def test_inherits_from_base(self):
-        """Test that MarkdownFormatter inherits from BaseFormatter"""
         from tree_sitter_analyzer.formatters.base_formatter import BaseFormatter
 
         formatter = MarkdownFormatter()
@@ -24,10 +18,8 @@ class TestMarkdownFormatterInitialization:
 
 
 class TestFormatSummary:
-    """Test format_summary method"""
 
     def test_format_summary_basic(self):
-        """Test basic summary formatting"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "test.md",
@@ -43,7 +35,6 @@ class TestFormatSummary:
         assert "Summary Results" in result
         assert "test.md" in result
         assert "markdown" in result
-        # Check JSON structure
         json_start = result.find("{")
         json_data = json.loads(result[json_start:])
         assert json_data["language"] == "markdown"
@@ -52,7 +43,6 @@ class TestFormatSummary:
         assert len(json_data["summary"]["code_blocks"]) == 1
 
     def test_format_summary_empty_elements(self):
-        """Test summary with no elements"""
         formatter = MarkdownFormatter()
         analysis_result = {"file_path": "empty.md", "elements": []}
 
@@ -65,7 +55,6 @@ class TestFormatSummary:
         assert json_data["summary"]["images"] == []
 
     def test_format_summary_multiple_link_types(self):
-        """Test summary with different link types"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "links.md",
@@ -87,7 +76,6 @@ class TestFormatSummary:
         assert len(json_data["summary"]["links"]) == 3
 
     def test_format_summary_with_images(self):
-        """Test summary with images"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "images.md",
@@ -108,7 +96,6 @@ class TestFormatSummary:
         assert len(json_data["summary"]["images"]) == 2
 
     def test_format_summary_with_lists(self):
-        """Test summary with different list types"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "lists.md",
@@ -127,7 +114,6 @@ class TestFormatSummary:
 
     @patch.object(MarkdownFormatter, "_compute_robust_counts_from_file")
     def test_format_summary_with_robust_counts_links(self, mock_robust):
-        """Test summary with robust link count adjustment"""
         formatter = MarkdownFormatter()
         mock_robust.return_value = {"link_count": 5, "image_count": 0}
 
@@ -142,12 +128,10 @@ class TestFormatSummary:
 
         json_start = result.find("{")
         json_data = json.loads(result[json_start:])
-        # Should add placeholder links to match robust count
         assert len(json_data["summary"]["links"]) == 5
 
     @patch.object(MarkdownFormatter, "_compute_robust_counts_from_file")
     def test_format_summary_with_robust_counts_images(self, mock_robust):
-        """Test summary with robust image count adjustment"""
         formatter = MarkdownFormatter()
         mock_robust.return_value = {"link_count": 0, "image_count": 3}
 
@@ -160,15 +144,12 @@ class TestFormatSummary:
 
         json_start = result.find("{")
         json_data = json.loads(result[json_start:])
-        # Should add placeholder images to match robust count
         assert len(json_data["summary"]["images"]) == 3
 
 
 class TestFormatStructure:
-    """Test format_structure method"""
 
     def test_format_structure_basic(self):
-        """Test basic structure formatting"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "test.md",
@@ -201,7 +182,6 @@ class TestFormatStructure:
         assert json_data["analysis_metadata"]["version"] == "2.0.0"
 
     def test_format_structure_all_element_types(self):
-        """Test structure with all element types"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "test.md",
@@ -259,7 +239,6 @@ class TestFormatStructure:
 
     @patch.object(MarkdownFormatter, "_compute_robust_counts_from_file")
     def test_format_structure_with_robust_counts(self, mock_robust):
-        """Test structure with robust counts"""
         formatter = MarkdownFormatter()
         mock_robust.return_value = {"link_count": 10, "image_count": 5}
 
@@ -273,13 +252,11 @@ class TestFormatStructure:
 
         json_start = result.find("{")
         json_data = json.loads(result[json_start:])
-        # Should use robust counts when non-zero
         assert json_data["statistics"]["link_count"] == 10
         assert json_data["statistics"]["image_count"] == 5
 
     @patch.object(MarkdownFormatter, "_compute_robust_counts_from_file")
     def test_format_structure_robust_fallback(self, mock_robust):
-        """Test structure fallback to element counts when robust is zero"""
         formatter = MarkdownFormatter()
         mock_robust.return_value = {"link_count": 0, "image_count": 0}
 
@@ -296,15 +273,12 @@ class TestFormatStructure:
 
         json_start = result.find("{")
         json_data = json.loads(result[json_start:])
-        # Should fall back to element count when robust count is 0
         assert json_data["statistics"]["link_count"] == 2
 
 
 class TestFormatAdvanced:
-    """Test format_advanced method"""
 
     def test_format_advanced_json(self):
-        """Test advanced formatting in JSON format"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "test.md",
@@ -328,7 +302,6 @@ class TestFormatAdvanced:
         assert "content_analysis" in json_data
 
     def test_format_advanced_text(self):
-        """Test advanced formatting in text format"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "test.md",
@@ -347,7 +320,6 @@ class TestFormatAdvanced:
         assert '"Lines: 50"' in result
 
     def test_format_advanced_document_metrics(self):
-        """Test document metrics calculation"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "test.md",
@@ -387,7 +359,6 @@ class TestFormatAdvanced:
         assert metrics["table_count"] == 1
 
     def test_format_advanced_content_analysis(self):
-        """Test content analysis features"""
         formatter = MarkdownFormatter()
         analysis_result = {
             "file_path": "test.md",
@@ -418,7 +389,6 @@ class TestFormatAdvanced:
         ]
 
     def test_format_advanced_no_headers(self):
-        """Test advanced with no headers"""
         formatter = MarkdownFormatter()
         analysis_result = {"file_path": "test.md", "line_count": 10, "elements": []}
 
@@ -433,7 +403,6 @@ class TestFormatAdvanced:
 
     @patch.object(MarkdownFormatter, "_compute_robust_counts_from_file")
     def test_format_advanced_with_robust_counts(self, mock_robust):
-        """Test advanced with robust counts"""
         formatter = MarkdownFormatter()
         mock_robust.return_value = {"link_count": 15, "image_count": 8}
 
@@ -447,8 +416,5 @@ class TestFormatAdvanced:
 
         json_start = result.find("{")
         json_data = json.loads(result[json_start:])
-        # Should use robust counts when available
         assert json_data["document_metrics"]["link_count"] == 15
         assert json_data["document_metrics"]["image_count"] == 8
-
-
