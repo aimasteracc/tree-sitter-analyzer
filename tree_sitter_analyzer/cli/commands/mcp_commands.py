@@ -12,6 +12,7 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
     find_selected_mcp_command,
     validate_mcp_command_args,
 )
+from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
 from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import CodePatternsTool
@@ -190,6 +191,19 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="ast_cache",
+        tool_attr="ASTCacheTool",
+        label="Pre-indexed AST cache (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "ast_cache_mode", "stats") or "stats",
+            "file_path": getattr(args, "file_path", None),
+            "query": getattr(args, "ast_cache_query", None),
+            "language": getattr(args, "ast_cache_language", None),
+            "max_files": getattr(args, "ast_cache_max_files", 5000),
+            "force": bool(getattr(args, "ast_cache_force", False)),
+        },
+    ),
 )
 
 
@@ -244,6 +258,8 @@ def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
         return CodePatternsTool
     if tool_attr == "CodeGraphCallTool":
         return CodeGraphCallTool
+    if tool_attr == "ASTCacheTool":
+        return ASTCacheTool
     raise KeyError(f"Unknown MCP tool: {tool_attr}")
 
 

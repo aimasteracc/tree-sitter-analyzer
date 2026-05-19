@@ -436,6 +436,36 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Max depth for --call-graph chain mode (default: 5)",
     )
     parser.add_argument(
+        "--ast-cache",
+        action="store_true",
+        help="Pre-indexed AST cache (CodeGraph parity). Index project for instant re-analysis",
+    )
+    parser.add_argument(
+        "--ast-cache-mode",
+        choices=["index", "lookup", "search", "stats", "invalidate"],
+        default="stats",
+        help="AST cache operation mode (default: stats)",
+    )
+    parser.add_argument(
+        "--ast-cache-query",
+        help="Symbol search query for --ast-cache search mode",
+    )
+    parser.add_argument(
+        "--ast-cache-language",
+        help="Language filter for --ast-cache search mode",
+    )
+    parser.add_argument(
+        "--ast-cache-max-files",
+        type=int,
+        default=5000,
+        help="Max files to index with --ast-cache (default: 5000)",
+    )
+    parser.add_argument(
+        "--ast-cache-force",
+        action="store_true",
+        help="Force full re-index with --ast-cache",
+    )
+    parser.add_argument(
         "--min-grade",
         default="D",
         choices=["A", "B", "C", "D", "F"],
