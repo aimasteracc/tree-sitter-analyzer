@@ -26,7 +26,7 @@
 - [x] 4.1 `api.py` 新增 `analyze_project_deps()` 函数
 - [x] 4.2 `api.py` 新增 `analyze_health()` 函数
 - [x] 4.3 `api.py` 新增 `analyze_blast_radius()` 函数
-- [ ] 4.4 MCP server 注册新工具（可选，后续）
+- [x] 4.4 MCP server 注册新工具（analyze_dependencies, check_project_health — both already registered）
 
 ## 切片 5: 质量门禁
 - [x] 5.1 ruff check 通过

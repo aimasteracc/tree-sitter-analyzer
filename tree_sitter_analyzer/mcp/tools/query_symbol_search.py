@@ -268,3 +268,159 @@ def _build_type_filter(symbol_type: str | None) -> Any:
         return any(a in etype_lower for a in allowed)
 
     return type_check
+
+
+async def execute_find_references(
+    project_root: str | None,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    """Find all references (call sites / usages) of a symbol across the project.
+
+    Unlike execute_symbol_search which finds definitions, this finds every
+    location where the symbol is used — call expressions, attribute access,
+    type annotations, decorators, etc.
+    """
+    symbol = arguments.get("symbol", "").strip()
+    if not symbol:
+        raise ValueError("symbol must be a non-empty string")
+
+    output_format = arguments.get("output_format", "toon")
+
+    if not project_root:
+        raise ValueError("Project root not set. Call set_project_path first.")
+
+    root = Path(project_root).resolve()
+    if not root.is_dir():
+        raise ValueError(f"Project root is not a directory: {root}")
+
+    bare_name = symbol.split(".")[-1] if "." in symbol else symbol
+
+    source_files: list[Path] = []
+    for ext in _SYMBOL_SEARCH_EXTS:
+        for f in root.rglob(f"*{ext}"):
+            if any(part in _SYMBOL_SEARCH_EXCLUDE for part in f.parts):
+                continue
+            source_files.append(f)
+
+    max_files = 500
+    if len(source_files) > max_files:
+        source_files = source_files[:max_files]
+
+    import asyncio
+
+    from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
+    from ...language_detector import detect_language_from_file
+
+    engine = get_analysis_engine(str(root))
+    references: list[dict[str, Any]] = []
+    definitions: list[dict[str, Any]] = []
+    seen_refs: set[tuple[str, int]] = set()
+
+    async def _scan_file(fp: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        refs: list[dict[str, Any]] = []
+        defs: list[dict[str, Any]] = []
+        lang = detect_language_from_file(str(fp))
+        if lang == "unknown":
+            return refs, defs
+
+        try:
+            req = AnalysisRequest(
+                file_path=str(fp), language=lang, include_details=False
+            )
+            result = await engine.analyze(req)
+            if not result or not result.success:
+                return refs, defs
+
+            rel = str(fp.relative_to(root))
+
+            for e in result.elements:
+                name = getattr(e, "name", "")
+                etype = getattr(e, "element_type", "")
+                start = getattr(e, "start_line", 0)
+                end = getattr(e, "end_line", 0)
+
+                if name == bare_name:
+                    is_definition = any(
+                        kw in etype.lower()
+                        for kw in ("definition", "declaration", "class", "struct")
+                    )
+                    if is_definition:
+                        defs.append(
+                            {
+                                "name": name,
+                                "type": etype,
+                                "file": rel,
+                                "start_line": start,
+                                "end_line": end,
+                                "role": "definition",
+                            }
+                        )
+                    else:
+                        key = (rel, start)
+                        if key not in seen_refs:
+                            seen_refs.add(key)
+                            refs.append(
+                                {
+                                    "name": name,
+                                    "type": etype,
+                                    "file": rel,
+                                    "start_line": start,
+                                    "end_line": end,
+                                    "role": "reference",
+                                }
+                            )
+
+                if name != bare_name and bare_name in name:
+                    for part in name.replace("_", " ").split():
+                        if part == bare_name:
+                            key = (rel, start)
+                            if key not in seen_refs:
+                                seen_refs.add(key)
+                                refs.append(
+                                    {
+                                        "name": name,
+                                        "type": etype,
+                                        "file": rel,
+                                        "start_line": start,
+                                        "end_line": end,
+                                        "role": "related",
+                                    }
+                                )
+                            break
+        except Exception:  # nosec B110
+            pass
+        return refs, defs
+
+    batch_size = 50
+    for i in range(0, len(source_files), batch_size):
+        batch = source_files[i : i + batch_size]
+        batch_results = await asyncio.gather(*[_scan_file(fp) for fp in batch])
+        for file_refs, file_defs in batch_results:
+            references.extend(file_refs)
+            definitions.extend(file_defs)
+
+    total = len(references) + len(definitions)
+
+    caller_refs = [r for r in references if r.get("role") == "reference"]
+
+    response: dict[str, Any] = {
+        "success": True,
+        "symbol": symbol,
+        "files_searched": min(len(source_files), max_files),
+        "total_usages": total,
+        "definitions": definitions[:20],
+        "references": references[:50],
+        "callers_count": len(caller_refs),
+        "smart_workflow_hint": (
+            f"Found {len(definitions)} definition(s) and {len(references)} "
+            f"reference(s) for '{symbol}'. "
+            "Use extract_code_section to read any reference in context, "
+            "or analyze_dependencies mode=blast_radius for file-level impact."
+        )
+        if total > 0
+        else f"No usages found for '{symbol}'. Try a different name.",
+    }
+
+    from ..utils.format_helper import apply_toon_format_to_response
+
+    return apply_toon_format_to_response(response, output_format)

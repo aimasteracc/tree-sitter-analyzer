@@ -20,7 +20,7 @@ TOOL_SCHEMA: dict[str, Any] = {
         # Symbol search with wildcards and fuzzy matching
         "symbol": {
             "type": "string",
-            "description": "Symbol to find project-wide. Supports wildcards: *Service, handle_*, *test*. Prefix ~ for fuzzy: ~analyz.",
+            "description": "Symbol to find project-wide. Supports wildcards: *Service, handle_*, *test*. Prefix ~ for fuzzy: ~analyz. Use find_references=true to find call sites instead of just definitions.",
         },
         # Filter by symbol type
         "symbol_type": {
@@ -63,6 +63,11 @@ TOOL_SCHEMA: dict[str, Any] = {
         "output_file": {
             "type": "string",
             "description": "Optional filename to save output to file",
+        },
+        "find_references": {
+            "type": "boolean",
+            "default": False,
+            "description": "Find all call sites / usages of the symbol (not just definitions). Requires symbol parameter.",
         },
         "suppress_output": {
             "type": "boolean",

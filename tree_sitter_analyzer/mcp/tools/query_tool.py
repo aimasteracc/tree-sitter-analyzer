@@ -20,7 +20,11 @@ from .query_helpers import (
     handle_query_output,
     validate_query_arguments,
 )
-from .query_symbol_search import categorize_queries, execute_symbol_search
+from .query_symbol_search import (
+    categorize_queries,
+    execute_find_references,
+    execute_symbol_search,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +66,8 @@ class QueryTool(BaseMCPTool):
             # Cross-file symbol search
             symbol = arguments.get("symbol")
             if symbol and not arguments.get("file_path"):
+                if arguments.get("find_references"):
+                    return await self._execute_find_references(arguments)
                 return await self._execute_symbol_search(arguments)
 
             return await self._execute_file_query(arguments)
@@ -243,6 +249,10 @@ class QueryTool(BaseMCPTool):
     async def _execute_symbol_search(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Delegate cross-file symbol search to helper."""
         return await execute_symbol_search(self.project_root, arguments)
+
+    async def _execute_find_references(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Delegate cross-file reference search to helper."""
+        return await execute_find_references(self.project_root, arguments)
 
     # validate_arguments: delegates to shared helper
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:

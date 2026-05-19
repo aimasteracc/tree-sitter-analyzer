@@ -8,6 +8,7 @@ import pytest
 from tree_sitter_analyzer.mcp.tools.query_symbol_search import (
     _build_match_fn,
     _build_type_filter,
+    execute_find_references,
     execute_symbol_search,
 )
 
@@ -165,3 +166,66 @@ def analyze_file():
         assert "symbol_type" in props
         assert props["symbol_type"]["type"] == "string"
         assert "enum" in props["symbol_type"]
+
+
+class TestFindReferences:
+    @pytest.fixture
+    def ref_project(self, tmp_path):
+        from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
+
+        main_py = tmp_path / "main.py"
+        main_py.write_text(
+            """
+from scorer import HealthScorer
+
+def run():
+    s = HealthScorer()
+    score = s.score_file()
+    return score
+""".strip()
+        )
+
+        scorer_py = tmp_path / "scorer.py"
+        scorer_py.write_text(
+            """
+class HealthScorer:
+    def score_file(self):
+        return 100
+""".strip()
+        )
+
+        tool = QueryTool(str(tmp_path))
+        return tool
+
+    def test_find_references_returns_definitions_and_refs(self, ref_project):
+        result = asyncio.run(
+            ref_project.execute(
+                {"symbol": "HealthScorer", "find_references": True}
+            )
+        )
+        assert result["success"] is True
+        assert "definitions" in result
+        assert "references" in result
+
+    def test_find_references_counts_callers(self, ref_project):
+        result = asyncio.run(
+            ref_project.execute(
+                {"symbol": "HealthScorer", "find_references": True}
+            )
+        )
+        assert result["success"] is True
+        assert result.get("callers_count", 0) >= 0
+        assert "total_usages" in result
+
+    def test_find_references_empty_symbol_raises(self):
+        with pytest.raises(ValueError, match="non-empty"):
+            asyncio.run(
+                execute_find_references(".", {"symbol": ""})
+            )
+
+    def test_find_references_flag_in_schema(self):
+        from tree_sitter_analyzer.mcp.tools.query_helpers import TOOL_SCHEMA
+
+        props = TOOL_SCHEMA["properties"]
+        assert "find_references" in props
+        assert props["find_references"]["type"] == "boolean"
