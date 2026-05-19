@@ -115,6 +115,7 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         label="Change impact analysis",
         build_tool_args=lambda args, output_format: {
             "mode": getattr(args, "change_impact_mode", "diff") or "diff",
+            "pr_url": getattr(args, "pr_url", "") or "",
             "include_tests": bool(getattr(args, "change_impact_include_tests", True)),
             "output_format": output_format,
             "scope_paths": getattr(args, "change_impact_scope", None) or [],

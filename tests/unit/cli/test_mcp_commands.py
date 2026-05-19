@@ -81,6 +81,7 @@ def _args(**overrides: Any) -> Namespace:
             "ChangeImpactTool",
             {
                 "mode": "diff",
+                "pr_url": "",
                 "include_tests": True,
                 "output_format": "json",
                 "scope_paths": [],
@@ -411,6 +412,7 @@ def test_change_impact_cli_does_not_require_file_path(monkeypatch) -> None:
         "project_root": "/repo",
         "arguments": {
             "mode": "diff",
+            "pr_url": "",
             "include_tests": True,
             "output_format": "json",
             "scope_paths": [],
@@ -450,6 +452,7 @@ def test_change_impact_cli_forwards_scope_paths(monkeypatch) -> None:
         "project_root": "/repo",
         "arguments": {
             "mode": "diff",
+            "pr_url": "",
             "include_tests": True,
             "output_format": "json",
             "scope_paths": [
@@ -486,6 +489,7 @@ def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
         "project_root": "/repo",
         "arguments": {
             "mode": "diff",
+            "pr_url": "",
             "include_tests": True,
             "output_format": "json",
             "scope_paths": [],
@@ -523,6 +527,7 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
         "project_root": "/repo",
         "arguments": {
             "mode": "staged",
+            "pr_url": "",
             "include_tests": False,
             "output_format": "json",
             "scope_paths": [],

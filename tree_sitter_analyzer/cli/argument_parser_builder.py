@@ -338,8 +338,14 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--change-impact-mode",
         default="diff",
-        choices=["diff", "staged", "branch"],
-        help="Change-impact source: diff=unstaged, staged=index, branch=HEAD~1..HEAD",
+        choices=["diff", "staged", "branch", "pr"],
+        help="Change-impact source: diff=unstaged, staged=index, branch=HEAD~1..HEAD, pr=from GitHub PR",
+    )
+    parser.add_argument(
+        "--pr-url",
+        default="",
+        metavar="URL",
+        help="GitHub PR URL for change-impact analysis (e.g. https://github.com/owner/repo/pull/123)",
     )
     parser.add_argument(
         "--change-impact-scope",

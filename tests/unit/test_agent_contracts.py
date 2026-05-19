@@ -189,6 +189,8 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "smart_context": ("main", "--smart-context"),
         "symbol_lineage": ("main", "--symbol-lineage"),
         "code_patterns": ("main", "--code-patterns"),
+        "codegraph_call_graph": ("main", "--call-graph"),
+        "ast_cache": ("main", "--ast-cache"),
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}
