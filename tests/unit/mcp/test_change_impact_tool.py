@@ -1,3 +1,35 @@
 """Re-export aggregator for split test modules."""
-from test_change_impact_tool_execute_and_mapping import *
-from test_change_impact_tool_git_and_verification import *
+from test_change_impact_tool_execute_and_mapping import (  # noqa: F401
+    test_agent_summary_warns_for_unscoped_large_dirty_worktree,
+    test_change_impact_result_uses_complete_mapped_tests_for_verification,
+    test_execute_adds_queue_ledger_for_scoped_dirty_worktree,
+    test_execute_exposes_verification_fields_for_agents,
+    test_execute_forwards_scope_paths_to_git_readers,
+    test_execute_supports_agent_summary_only,
+    test_find_test_files_does_not_treat_source_test_prefix_as_test,
+    test_find_test_files_excludes_conftest_from_runnable_targets,
+    test_find_test_files_maps_extracted_analysis_modules_to_family_tests,
+    test_find_test_files_maps_extracted_search_content_modules_to_family_tests,
+    test_find_test_files_maps_find_and_grep_execution_to_family_tests,
+    test_find_test_files_maps_fixture_files_to_related_tests,
+    test_find_test_files_maps_python_plugin_internals_to_package_tests,
+    test_find_test_files_maps_refactoring_plan_builder_to_family_tests,
+    test_find_test_files_marks_docs_as_diff_check_only,
+)
+from test_change_impact_tool_git_and_verification import (  # noqa: F401
+    test_build_pytest_command_falls_back_to_full_suite,
+    test_build_pytest_command_quotes_paths,
+    test_code_change_verification_plan_falls_back_to_default_suite,
+    test_code_change_verification_plan_uses_targeted_tests,
+    test_code_change_with_runtime_fallback_uses_default_suite,
+    test_diff_mode_accepts_scope_pathspecs,
+    test_diff_mode_deduplicates_untracked_paths,
+    test_diff_mode_includes_untracked_files,
+    test_diff_stat_mentions_untracked_files,
+    test_docs_only_verification_plan_skips_pytest,
+    test_non_pytest_default_verification_plan_uses_detected_runner,
+    test_requirements_txt_is_not_treated_as_docs_only,
+    test_staged_mode_keeps_staged_semantics,
+    test_verification_strategy_avoids_huge_focused_commands,
+    test_verification_strategy_recommends_focused_then_default_for_dirty_worktree,
+)
