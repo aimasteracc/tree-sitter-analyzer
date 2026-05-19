@@ -399,6 +399,17 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="One-call file profile: health, exports, structure, deps, edit risk",
     )
     parser.add_argument(
+        "--symbol-lineage",
+        metavar="SYMBOL",
+        help="Trace symbol lineage: definitions, callers, downstream impact, risk",
+    )
+    parser.add_argument(
+        "--max-depth",
+        type=int,
+        default=3,
+        help="Max dependency graph depth for --symbol-lineage (1-5, default: 3)",
+    )
+    parser.add_argument(
         "--min-grade",
         default="D",
         choices=["A", "B", "C", "D", "F"],

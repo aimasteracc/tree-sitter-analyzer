@@ -82,6 +82,7 @@ from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
 from .tools.safe_to_edit_tool import SafeToEditTool
 from .tools.search_content_tool import SearchContentTool
 from .tools.smart_context_tool import SmartContextTool
+from .tools.symbol_lineage_tool import SymbolLineageTool
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
 
@@ -121,6 +122,7 @@ def _create_tool_registry(
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
         ("safe_to_edit", SafeToEditTool(project_root)),
         ("smart_context", SmartContextTool(project_root)),
+        ("symbol_lineage", SymbolLineageTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 

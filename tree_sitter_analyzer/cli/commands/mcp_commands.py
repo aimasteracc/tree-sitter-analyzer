@@ -25,6 +25,7 @@ from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
 from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
+from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import SymbolLineageTool
 
 _DEPENDENCY_FILE_SCOPED_MODES = {"blast_radius", "file_deps"}
 _DEPENDENCY_MODE_ALIASES = {"full": "summary"}
@@ -153,6 +154,16 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="symbol_lineage",
+        tool_attr="SymbolLineageTool",
+        label="Symbol lineage and impact preview",
+        build_tool_args=lambda args, output_format: {
+            "symbol": getattr(args, "symbol_lineage", "") or "",
+            "max_depth": getattr(args, "max_depth", 3),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -201,6 +212,8 @@ def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
         return RefactoringSuggestionsTool
     if tool_attr == "SmartContextTool":
         return SmartContextTool
+    if tool_attr == "SymbolLineageTool":
+        return SymbolLineageTool
     raise KeyError(f"Unknown MCP tool: {tool_attr}")
 
 
