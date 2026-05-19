@@ -445,3 +445,23 @@ Phase 8 Slice 3+: 拆分 11 个 oversized 测试文件（> 1200 lines）
 - 结果：
   - `test_mastery_scan.py` 统计更准确，队列决策误报减少。
   - 可直接支持下一轮切片任务减少“无效待修复”项。
+
+## 2026-05-19: test_engine.py 最终责任切片收口
+
+- 目标：继续清理 `tests/unit/core/test_engine.py` 剩余异味，完成 `TestAnalysisEngine*`/`TestUnifiedAnalysisEngine*` 剩余测试的混杂收口。
+- 动作：
+  - 再次读取 `tests/unit/core/test_engine.py` 中 `TestAnalysisEngine` 与 `TestUnified*` 全量测试；
+  - 在 `tests/unit/core` 新增两个文件进行二次切片：
+    - `tests/unit/core/_test_engine_unified_mixin.py`
+    - `tests/unit/core/_test_engine_analysis_mixin.py`
+  - `tests/unit/core/_test_engine_test_mixin.py` 改为兼容转发 shim（`from ... import *`），保留现有导入路径。
+  - `tests/unit/core/test_engine.py` 只保留测试类壳与 fixture，改为按两类 mixin import。
+- 验证：
+  - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_unified_mixin.py tests/unit/core/_test_engine_analysis_mixin.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_unified_mixin.py tests/unit/core/_test_engine_analysis_mixin.py tests/unit/core/_test_engine_test_mixin.py`
+  - `uv run pytest tests/unit/core/test_engine.py -q`（87 passed, 1 skipped）
+  - `uv run pytest -q`（10409 passed, 32 skipped）
+  - `uv run python -m tree_sitter_analyzer --file-health --format json tests/unit/core/test_engine.py`
+- 结果：
+  - `test_engine.py` 文件级健康恢复到 `A(96.0)`（无可行动 `code_smells`）。
+  - 队列可将 `test_engine.py` 关闭为当前目标，转到其他 oversized 优先级文件。

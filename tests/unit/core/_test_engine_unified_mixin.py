@@ -1,0 +1,690 @@
+#!/usr/bin/env python3
+"""Shared mixins for oversized core analysis test file."""
+
+import os
+import tempfile
+
+import pytest
+
+from tree_sitter_analyzer.api import get_engine
+from tree_sitter_analyzer.core.analysis_engine import (
+    AnalysisRequest,
+    MockLanguagePlugin,
+    UnifiedAnalysisEngine,
+    UnsupportedLanguageError,
+)
+from tree_sitter_analyzer.models import AnalysisResult
+
+
+class TestAnalysisEngineTestMixin:
+    """Shared tests for core `AnalysisEngine` initialization and file/code APIs."""
+
+    __test__ = False
+
+    def test_initialization(self, engine):
+        """Test that the AnalysisEngine initializes correctly."""
+        assert engine.parser is not None
+        assert engine.query_executor is not None
+        assert engine.language_detector is not None
+        assert engine.plugin_manager is not None
+
+    @pytest.mark.asyncio
+    async def test_analyze_java_file(self, engine):
+        """Test analyzing a simple Java file."""
+        java_code = """
+        package com.example;
+        public class MyClass {
+            public void myMethod() {
+                System.out.println("Hello");
+            }
+        }
+        """
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".java", delete=False) as f:
+            f.write(java_code)
+            temp_file = f.name
+
+        try:
+            result = await engine.analyze_file(temp_file)
+            assert isinstance(result, AnalysisResult)
+            assert result.success
+            assert result.language == "java"
+            assert result.file_path == temp_file
+            assert len(result.elements) > 0
+        finally:
+            os.unlink(temp_file)
+
+    @pytest.mark.asyncio
+    async def test_analyze_python_code(self, engine):
+        """Test analyzing a Python code string."""
+        python_code = """
+import os
+
+def greet(name):
+    print(f"Hello, {name}")
+
+class Greeter:
+    def __init__(self, greeting):
+        self.greeting = greeting
+
+    def greet(self, name):
+        return f"{self.greeting}, {name}"
+"""
+        result = await engine.analyze_code(python_code, language="python")
+        assert isinstance(result, AnalysisResult)
+        assert result.success
+        assert result.language == "python"
+        assert result.file_path == "string"  # Default filename for code analysis
+        assert len(result.elements) > 0
+
+        element_types = [elem.element_type for elem in result.elements]
+        assert "import" in element_types
+        assert "function" in element_types
+        assert "class" in element_types
+
+    @pytest.mark.asyncio
+    async def test_analyze_nonexistent_file(self, engine):
+        """Test analysis of a file that does not exist."""
+        with pytest.raises(FileNotFoundError):
+            await engine.analyze_file("nonexistent_file.java")
+
+    @pytest.mark.asyncio
+    async def test_analyze_unsupported_language(self, engine):
+        """Test analysis with an unsupported language."""
+        code = "let x = 1;"
+        # The engine raises UnsupportedLanguageError for unsupported languages
+        with pytest.raises(UnsupportedLanguageError):
+            await engine.analyze_code(code, language="unsupportedlang")
+
+    @pytest.mark.asyncio
+    async def test_language_detection(self, engine):
+        """Test automatic language detection from file extension."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("print('hello')")
+            temp_file = f.name
+
+        try:
+            result = await engine.analyze_file(temp_file)
+            assert result.language == "python"
+        finally:
+            os.unlink(temp_file)
+
+    @pytest.mark.asyncio
+    async def test_malformed_code_handling(self, engine):
+        """Test that the engine handles malformed code gracefully."""
+        malformed_code = "public class MyClass { void myMethod() { "
+        result = await engine.analyze_code(malformed_code, language="java")
+        # Parsing might partially succeed or fail gracefully
+        assert isinstance(result, AnalysisResult)
+        # Depending on the severity, it might be a success with errors or a failure
+        # For now, we just check it doesn't crash
+
+    def test_get_supported_languages(self, engine):
+        """Test retrieving the list of supported languages."""
+        supported_languages = engine.get_supported_languages()
+        assert isinstance(supported_languages, list)
+        assert "java" in supported_languages
+        assert "python" in supported_languages
+
+
+class TestUnifiedEngineSingletonTestMixin:
+    """Shared tests for `UnifiedAnalysisEngine` singleton behavior."""
+
+    __test__ = False
+
+    def test_unified_engine_singleton(self):
+        """Verify that UnifiedAnalysisEngine acts as a singleton."""
+        engine1 = UnifiedAnalysisEngine()
+        engine2 = UnifiedAnalysisEngine()
+        assert engine1 is engine2
+
+
+class TestUnifiedEngineSyncAnalysisTestMixin:
+    """Shared tests for synchronous file analysis."""
+
+    __test__ = False
+
+    def test_unified_engine_sync_analysis(self, tmp_path):
+        """Verify synchronous analysis of a file."""
+        # Create a dummy Java file
+        java_file = tmp_path / "Test.java"
+        java_file.write_text("public class Test { public void hello() {} }")
+
+        engine = get_engine()
+        request = AnalysisRequest(file_path=str(java_file), language="java")
+
+        result = engine.analyze_sync(request)
+        assert result.success is True
+        assert result.language == "java"
+        assert len(result.elements) >= 2  # Class and Method
+
+
+class TestUnifiedEngineAnalyzeCodeTestMixin:
+    """Shared tests for synchronous code-string analysis."""
+
+    __test__ = False
+
+    def test_unified_engine_analyze_code(self):
+        """Verify code string analysis."""
+        code = "def hello(): print('world')"
+        engine = get_engine()
+
+        result = engine.analyze_code_sync(code, language="python")
+        assert result.success is True
+        assert result.language == "python"
+        assert any(el.name == "hello" for el in result.elements)
+
+
+class TestUnifiedEngineQueryExecutionTestMixin:
+    """Shared tests for synchronous query execution."""
+
+    __test__ = False
+
+    def test_unified_engine_query_execution(self, tmp_path):
+        """Verify post-processing query execution."""
+        py_file = tmp_path / "test.py"
+        py_file.write_text("def my_func(): pass")
+
+        engine = get_engine()
+        request = AnalysisRequest(
+            file_path=str(py_file),
+            language="python",
+            queries=["function"],
+            include_queries=True,
+        )
+
+        result = engine.analyze_sync(request)
+        assert result.success is True
+        assert "function" in result.query_results
+        assert len(result.query_results["function"]) > 0
+
+
+class TestUnifiedEngineNonexistentFileTestMixin:
+    """Shared tests for missing-file handling."""
+
+    __test__ = False
+
+    def test_unified_engine_nonexistent_file(self):
+        """Verify FileNotFoundError is raised for missing files."""
+        engine = get_engine()
+        request = AnalysisRequest(file_path="nonexistent_file.java", language="java")
+
+        with pytest.raises(FileNotFoundError):
+            engine.analyze_sync(request)
+
+
+class TestUnifiedEngineCompatibilityPropertiesTestMixin:
+    """Shared tests for API/MCP compatibility surface checks."""
+
+    __test__ = False
+
+    def test_unified_engine_compatibility_properties(self):
+        """Verify compatibility properties for API/MCP layer."""
+        engine = get_engine()
+
+        # Check properties
+        assert hasattr(engine, "language_detector")
+        assert hasattr(engine, "plugin_manager")
+        assert hasattr(engine, "parser")
+        assert hasattr(engine, "query_executor")
+
+        # Check methods
+        assert hasattr(engine, "get_available_queries")
+        assert hasattr(engine, "get_supported_languages")
+        assert hasattr(engine, "analyze_sync")
+
+
+class TestUnifiedAnalysisEngineInitTestMixin:
+    """Shared tests for `UnifiedAnalysisEngine` initialization lifecycle."""
+
+    __test__ = False
+
+    def test_singleton_pattern_same_project_root(self):
+        """Test that same project root returns same instance."""
+        from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+        engine1 = get_analysis_engine(project_root="/test")
+        engine2 = get_analysis_engine(project_root="/test")
+        assert engine1 is engine2
+
+    def test_singleton_pattern_different_project_root(self):
+        """Test that different project roots return different instances."""
+        from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+        engine1 = get_analysis_engine(project_root="/test1")
+        engine2 = get_analysis_engine(project_root="/test2")
+        assert engine1 is not engine2
+
+    def test_singleton_pattern_default_project_root(self):
+        """Test that default project root returns same instance."""
+        from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+        engine1 = get_analysis_engine()
+        engine2 = get_analysis_engine()
+        assert engine1 is engine2
+
+    def test_lazy_initialization(self):
+        """Test that heavy components are lazily initialized."""
+        from tree_sitter_analyzer.core.analysis_engine import UnifiedAnalysisEngine
+
+        engine = UnifiedAnalysisEngine()
+        # Before ensure_initialized, components should be None
+        assert engine._cache_service is None
+        assert engine._parser is None
+
+        # After ensure_initialized, components should be initialized
+        engine._ensure_initialized()
+        assert engine._cache_service is not None
+        assert engine._parser is not None
+
+    def test_get_analysis_engine_function(self):
+        """Test get_analysis_engine convenience function."""
+        from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+
+        engine1 = get_analysis_engine(project_root="/test")
+        engine2 = get_analysis_engine(project_root="/test")
+        assert engine1 is engine2
+
+
+class TestUnifiedAnalysisEnginePluginManagementTestMixin:
+    """Shared tests for `UnifiedAnalysisEngine` plugin management."""
+
+    __test__ = False
+
+    def test_register_plugin(self):
+        """Test registering a language plugin."""
+        engine = UnifiedAnalysisEngine()
+        plugin = MockLanguagePlugin("python")
+        engine.register_plugin("python", plugin)
+        # Plugin should be registered without error
+        assert True
+
+    def test_get_supported_languages(self):
+        """Test getting list of supported languages."""
+        engine = UnifiedAnalysisEngine()
+        languages = engine.get_supported_languages()
+        assert isinstance(languages, list)
+        # Should at least have some languages
+        assert len(languages) > 0
+
+    def test_plugin_manager_property(self):
+        """Test accessing plugin manager property."""
+        engine = UnifiedAnalysisEngine()
+        plugin_manager = engine.plugin_manager
+        assert plugin_manager is not None
+
+
+class TestUnifiedAnalysisEngineCacheManagementTestMixin:
+    """Shared tests for `UnifiedAnalysisEngine` cache management."""
+
+    __test__ = False
+
+    def test_clear_cache(self):
+        """Test clearing the analysis cache."""
+        engine = UnifiedAnalysisEngine()
+        engine.clear_cache()
+        # Should complete without error
+        assert True
+
+    def test_get_cache_stats(self):
+        """Test getting cache statistics."""
+        engine = UnifiedAnalysisEngine()
+        stats = engine.get_cache_stats()
+        assert isinstance(stats, dict)
+        # Should have at least some stats keys
+        assert len(stats) > 0
+
+    def test_cache_service_property(self):
+        """Test accessing cache service property."""
+        engine = UnifiedAnalysisEngine()
+        cache_service = engine.cache_service
+        assert cache_service is not None
+
+    def test_cache_key_generation(self):
+        """Test cache key generation for different requests."""
+        engine = UnifiedAnalysisEngine()
+        request1 = AnalysisRequest(
+            file_path="test.py", language="python", include_complexity=True
+        )
+        request2 = AnalysisRequest(
+            file_path="test.py", language="python", include_complexity=False
+        )
+
+        key1 = engine._generate_cache_key(request1)
+        key2 = engine._generate_cache_key(request2)
+
+        # Different requests should generate different keys
+        assert key1 != key2
+
+
+class TestUnifiedAnalysisEngineLanguageDetectionTestMixin:
+    """Shared tests for language detection behavior."""
+
+    __test__ = False
+
+    def test_detect_language_from_extension(self):
+        """Test detecting language from file extension."""
+        engine = UnifiedAnalysisEngine()
+        language = engine._detect_language("test.py")
+        assert language == "python"
+
+    def test_detect_language_unknown_extension(self):
+        """Test detecting language with unknown extension."""
+        engine = UnifiedAnalysisEngine()
+        language = engine._detect_language("test.unknown")
+        assert language == "unknown"
+
+    def test_language_detector_property(self):
+        """Test accessing language detector property."""
+        engine = UnifiedAnalysisEngine()
+        detector = engine.language_detector
+        assert detector is not None
+
+
+class TestUnifiedAnalysisEngineAnalysisTestMixin:
+    """Shared tests for file and code analysis operations."""
+
+    __test__ = False
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_success(self):
+        """Test successful file analysis."""
+        engine = UnifiedAnalysisEngine()
+
+        # Create a temporary Python file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write("def hello():\n    pass\n")
+            temp_path = tf.name
+
+        try:
+            result = await engine.analyze_file(temp_path)
+            assert result is not None
+            assert result.success is True
+            assert result.language == "python"
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_not_found(self):
+        """Test analyzing non-existent file."""
+        engine = UnifiedAnalysisEngine()
+        # Use a relative path that doesn't exist
+        with pytest.raises(FileNotFoundError):
+            await engine.analyze_file("nonexistent_file.py")
+
+    @pytest.mark.asyncio
+    async def test_analyze_unsupported_language(self):
+        """Test analyzing file with unsupported language."""
+        engine = UnifiedAnalysisEngine()
+
+        # Create a temporary file with unknown extension
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".unknown", delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write("some content\n")
+            temp_path = tf.name
+
+        try:
+            with pytest.raises(UnsupportedLanguageError):
+                await engine.analyze_file(temp_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    @pytest.mark.asyncio
+    async def test_analyze_code_success(self):
+        """Test analyzing code string directly."""
+        engine = UnifiedAnalysisEngine()
+        code = "def hello():\n    pass\n"
+        result = await engine.analyze_code(code, language="python")
+        assert result is not None
+        assert result.success is True
+        assert result.language == "python"
+
+    @pytest.mark.asyncio
+    async def test_analyze_code_with_filename(self):
+        """Test analyzing code with custom filename."""
+        engine = UnifiedAnalysisEngine()
+        code = "def hello():\n    pass\n"
+        result = await engine.analyze_code(
+            code, language="python", filename="custom.py"
+        )
+        assert result is not None
+        assert result.file_path == "custom.py"
+
+    def test_analyze_code_sync(self):
+        """Test synchronous version of analyze_code."""
+        engine = UnifiedAnalysisEngine()
+        code = "def hello():\n    pass\n"
+        result = engine.analyze_code_sync(code, language="python")
+        assert result is not None
+        assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_analyze_with_request(self):
+        """Test analyzing with AnalysisRequest object."""
+        engine = UnifiedAnalysisEngine()
+
+        # Create a temporary Python file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write("def hello():\n    pass\n")
+            temp_path = tf.name
+
+        try:
+            request = AnalysisRequest(
+                file_path=temp_path,
+                language="python",
+                include_elements=True,
+                include_complexity=True,
+            )
+            result = await engine.analyze(request)
+            assert result is not None
+            assert result.success is True
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    def test_analyze_sync(self):
+        """Test synchronous version of analyze."""
+        engine = UnifiedAnalysisEngine()
+
+        # Create a temporary Python file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write("def hello():\n    pass\n")
+            temp_path = tf.name
+
+        try:
+            request = AnalysisRequest(file_path=temp_path, language="python")
+            result = engine.analyze_sync(request)
+            assert result is not None
+            assert result.success is True
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_async_compatibility(self):
+        """Test analyze_file_async compatibility alias."""
+        engine = UnifiedAnalysisEngine()
+
+        # Create a temporary Python file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write("def hello():\n    pass\n")
+            temp_path = tf.name
+
+        try:
+            result = await engine.analyze_file_async(temp_path)
+            assert result is not None
+            assert result.success is True
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+
+class TestUnifiedAnalysisEngineSecurityTestMixin:
+    """Shared tests for security validation behavior."""
+
+    __test__ = False
+
+    @pytest.mark.asyncio
+    async def test_security_validation_invalid_path(self):
+        """Test security validation with invalid path."""
+        engine = UnifiedAnalysisEngine()
+        # Try to access path outside project root
+        with pytest.raises(ValueError, match="Invalid file path"):
+            await engine.analyze_file("../../../etc/passwd")
+
+    @pytest.mark.asyncio
+    async def test_security_validator_property(self):
+        """Test accessing security validator property."""
+        engine = UnifiedAnalysisEngine()
+        validator = engine.security_validator
+        assert validator is not None
+
+
+class TestUnifiedAnalysisEngineQueriesTestMixin:
+    """Shared tests for query execution behavior."""
+
+    __test__ = False
+
+    def test_get_available_queries(self):
+        """Test getting available queries for a language."""
+        engine = UnifiedAnalysisEngine()
+        queries = engine.get_available_queries("python")
+        assert isinstance(queries, list)
+
+    def test_query_executor_property(self):
+        """Test accessing query executor property."""
+        engine = UnifiedAnalysisEngine()
+        executor = engine.query_executor
+        assert executor is not None
+
+    @pytest.mark.asyncio
+    async def test_analyze_with_queries(self):
+        """Test analyzing with query execution."""
+        engine = UnifiedAnalysisEngine()
+
+        # Create a temporary Python file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False, encoding="utf-8"
+        ) as tf:
+            tf.write("def hello():\n    pass\n")
+            temp_path = tf.name
+
+        try:
+            request = AnalysisRequest(
+                file_path=temp_path,
+                language="python",
+                queries=["functions"],
+                include_queries=True,
+            )
+            result = await engine.analyze(request)
+            assert result is not None
+            assert result.success is True
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+
+class TestUnifiedAnalysisEngineCleanupTestMixin:
+    """Shared tests for resource cleanup behavior."""
+
+    __test__ = False
+
+    def test_cleanup(self):
+        """Test cleaning up engine resources."""
+        engine = UnifiedAnalysisEngine()
+        engine.cleanup()
+        # Should complete without error
+        assert True
+
+
+class TestUnifiedAnalysisEnginePerformanceTestMixin:
+    """Shared tests for performance monitoring behavior."""
+
+    __test__ = False
+
+    def test_measure_operation(self):
+        """Test measuring an operation."""
+        engine = UnifiedAnalysisEngine()
+        with engine.measure_operation("test_operation"):
+            # Simulate some work
+            sum(range(100))
+        # Should complete without error
+        assert True
+
+    def test_performance_monitor_property(self):
+        """Test accessing performance monitor property."""
+        engine = UnifiedAnalysisEngine()
+        # Ensure initialization first
+        engine._ensure_initialized()
+        monitor = engine._performance_monitor
+        assert monitor is not None
+
+
+class TestUnifiedAnalysisEnginePropertiesTestMixin:
+    """Shared tests for UnifiedAnalysisEngine property accessors."""
+
+    __test__ = False
+
+    def test_parser_property(self):
+        """Test accessing parser property."""
+        engine = UnifiedAnalysisEngine()
+        parser = engine.parser
+        assert parser is not None
+
+    def test_all_properties_accessible(self):
+        """Test that all properties are accessible."""
+        engine = UnifiedAnalysisEngine()
+        assert engine.cache_service is not None
+        assert engine.parser is not None
+        assert engine.query_executor is not None
+        assert engine.language_detector is not None
+        assert engine.security_validator is not None
+        assert engine.plugin_manager is not None
+
+
+class TestMockLanguagePluginTestMixin:
+    """Shared tests for `MockLanguagePlugin` behavior."""
+
+    __test__ = False
+
+    def test_mock_plugin_initialization(self):
+        """Test mock plugin initialization."""
+        plugin = MockLanguagePlugin("python")
+        assert plugin.language == "python"
+
+    def test_mock_plugin_get_language_name(self):
+        """Test mock plugin get_language_name method."""
+        plugin = MockLanguagePlugin("python")
+        assert plugin.get_language_name() == "python"
+
+    def test_mock_plugin_get_file_extensions(self):
+        """Test mock plugin get_file_extensions method."""
+        plugin = MockLanguagePlugin("python")
+        extensions = plugin.get_file_extensions()
+        assert ".python" in extensions
+
+    def test_mock_plugin_create_extractor(self):
+        """Test mock plugin create_extractor method."""
+        plugin = MockLanguagePlugin("python")
+        extractor = plugin.create_extractor()
+        assert extractor is None
+
+    @pytest.mark.asyncio
+    async def test_mock_plugin_analyze_file(self):
+        """Test mock plugin analyze_file method."""
+        plugin = MockLanguagePlugin("python")
+        request = AnalysisRequest(file_path="test.py", language="python")
+        result = await plugin.analyze_file("test.py", request)
+        assert result is not None
+        assert result.language == "python"
+        assert result.success is True

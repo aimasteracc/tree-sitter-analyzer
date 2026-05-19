@@ -187,3 +187,19 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
   - 结果:
     - `test_engine.py` 已从单文件承载中移出 `EngineManager` 相关边界，健康分回升到 `A(96.4)`，风险下降。
     - 当前队列建议：继续检查是否有剩余的 `test_engine.py` 相关类可进一步按文件边界拆分；如无明显动作，则在下一步评估是否回到其他 top-5 oversized 文件。
+
+- 2026-05-19 Tick: test_engine.py 最终责任切片收口
+  - 触发：继续队头任务，`test_engine.py` 仍有 `TestAnalysisEngine*` 与 `TestUnifiedAnalysisEngine*` 结构异味，适合按职责进一步切片。
+  - 动作：
+    - 新建 `tests/unit/core/_test_engine_unified_mixin.py`（统一引擎测试切片）与 `tests/unit/core/_test_engine_analysis_mixin.py`（分析引擎测试切片）。
+    - `tests/unit/core/_test_engine_test_mixin.py` 保持兼容 shim（`from ... import *`）。
+    - `tests/unit/core/test_engine.py` 收敛为测试壳类与 fixture，仅保留 mixin 继承。
+  - 验证：
+    - `uv run ruff check --fix tests/unit/core/test_engine.py tests/unit/core/_test_engine_unified_mixin.py tests/unit/core/_test_engine_analysis_mixin.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run ruff check tests/unit/core/test_engine.py tests/unit/core/_test_engine_unified_mixin.py tests/unit/core/_test_engine_analysis_mixin.py tests/unit/core/_test_engine_test_mixin.py`
+    - `uv run pytest tests/unit/core/test_engine.py -q`（87 passed, 1 skipped）
+    - `uv run python -m tree_sitter_analyzer --file-health --format json tests/unit/core/test_engine.py`（A, 96.0）
+    - `uv run pytest -q`（10409 passed, 32 skipped）
+  - 结果：
+    - `test_engine.py` 文件级 health 回到 `A(96.0)`，无可行动 code smell。
+    - 该文件在本轮可视为当前目标收口完成，队列可继续转向其余 oversized 文件。

@@ -16,7 +16,7 @@ Total: 103 tests
 
 import pytest
 
-from tests.unit.core._test_engine_test_mixin import (
+from tests.unit.core._test_engine_analysis_mixin import (
     TestAnalysisEngineAnalyzeCodeComprehensiveTestMixin,
     TestAnalysisEngineAnalyzeFileComprehensiveTestMixin,
     TestAnalysisEngineConcurrencyTestMixin,
@@ -27,6 +27,8 @@ from tests.unit.core._test_engine_test_mixin import (
     TestAnalysisEngineInitComprehensiveTestMixin,
     TestAnalysisEnginePerformanceExtendedTestMixin,
     TestAnalysisEnginePublicAPITestMixin,
+)
+from tests.unit.core._test_engine_unified_mixin import (
     TestAnalysisEngineTestMixin,
     TestMockLanguagePluginTestMixin,
     TestUnifiedAnalysisEngineAnalysisTestMixin,
