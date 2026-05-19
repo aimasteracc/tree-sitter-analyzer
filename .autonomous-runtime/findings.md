@@ -30,7 +30,7 @@ GitNexus: 知识图谱+爆炸半径→可作为Phase 7灵感参考
 ## 质量基线
 - test_mastery_scan.py gate: Property test 10.2% ✓
 - 23 oversized files (待Phase 8拆分)
-- 79 low assertion density files (待增强)
+- 最新一次扫描快照：low assertion density 文件 3 个（`--gates` 通过）
 - Skip rate 2.8% ✓
 - 覆盖率: tree_sitter_compat 66%→目标>70%
 

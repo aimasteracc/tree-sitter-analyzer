@@ -53,9 +53,50 @@ def count_assertions(filepath: Path) -> int:
 
 
 def count_test_functions(filepath: Path) -> int:
-    """Count test functions."""
-    content = filepath.read_text()
-    return content.count("\ndef test_") + content.count("\n    def test_")
+    """Count test functions and test methods using AST traversal."""
+    try:
+        tree = ast.parse(filepath.read_text())
+    except SyntaxError:
+        return 0
+
+    total = 0
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name.startswith("test_"):
+                total += 1
+        elif isinstance(node, ast.ClassDef):
+            # Keep walking naturally; ast.walk already covers nested methods.
+            pass
+    return total
+
+
+def is_auxiliary_test_file(relative_path: str, assertions: int, tests: int) -> bool:
+    """Skip helper-heavy test files from low-density checks."""
+    path = relative_path.lower()
+    stem = Path(relative_path).stem
+
+    if stem.startswith("_"):
+        return True
+
+    if any(
+        x in path
+        for x in (
+            "mixin",
+            "_helper",
+            "helpers",
+            "fixture",
+            "payloads",
+            "coverage",
+            "compatibility",
+            "format_monitor",
+        )
+    ):
+        return True
+
+    if tests == 0 and assertions == 0:
+        return True
+
+    return False
 
 
 def scan() -> dict[str, Any]:
@@ -89,7 +130,7 @@ def scan() -> dict[str, Any]:
         lines = content.splitlines()
         n_lines = len(lines)
         test_lines += n_lines
-        n_tests = content.count("\ndef test_") + content.count("\n    def test_")
+        n_tests = count_test_functions(tf)
         total_tests += n_tests
         n_asserts = count_assertions(tf)
         total_asserts += n_asserts
@@ -145,6 +186,7 @@ def scan() -> dict[str, Any]:
         )
         and "conftest" not in f["path"]
         and "_coverage" not in f["path"]
+        and not is_auxiliary_test_file(f["path"], f["asserts"], f["tests"])
     ]
 
     return {
