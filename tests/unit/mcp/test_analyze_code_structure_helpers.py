@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""AnalyzeCodeStructureTool helper tests — formatting, next steps, helpers."""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_helpers import (
+    extract_metadata,
+)
+from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+    _build_next_steps,
+    _format_table,
+)
+
+
+class TestAnalyzeCodeStructureHelpers:
+    """Tests for module-level analyze_code_structure helpers."""
+
+    def test_extract_metadata_coerces_non_int_statistics_to_zero(self):
+        """Non-integer statistics should not leak into response metadata."""
+        metadata = extract_metadata(
+            {
+                "statistics": {
+                    "class_count": 2,
+                    "method_count": "3",
+                    "field_count": None,
+                    "total_lines": 42,
+                }
+            }
+        )
+
+        assert metadata == {
+            "classes_count": 2,
+            "methods_count": 0,
+            "fields_count": 0,
+            "total_lines": 42,
+        }
+
+    def test_extract_metadata_defaults_missing_statistics_to_zero(self):
+        """Missing statistics should produce stable zero counts."""
+        assert extract_metadata({}) == {
+            "classes_count": 0,
+            "methods_count": 0,
+            "fields_count": 0,
+            "total_lines": 0,
+        }
+
+
+class TestAnalyzeCodeStructureFormatting:
+    """Tests for module-level structure table formatting."""
+
+    def test_format_table_uses_language_formatter_and_normalizes_newlines(self):
+        """Language-backed formats should return stable LF-only text."""
+        formatter = MagicMock()
+        formatter.format_structure.return_value = "line1\r\nline2\r\n"
+
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FormatterRegistry.get_formatter_for_language",
+            return_value=formatter,
+        ) as get_formatter:
+            output = _format_table({}, MagicMock(), "python", "full")
+
+        assert output == "line1\nline2"
+        get_formatter.assert_called_once_with("python", "full")
+
+    def test_format_table_raises_for_unsupported_format(self):
+        """Unsupported formats should fail before formatter lookup."""
+        with patch(
+            "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.FormatterRegistry.is_format_supported",
+            return_value=False,
+        ):
+            with pytest.raises(ValueError, match="Unsupported format type"):
+                _format_table({}, MagicMock(elements=[]), "python", "unsupported")
+
+
+class TestAnalyzeCodeStructureNextSteps:
+    """Tests for next-step suggestions exposed to agents."""
+
+    def test_build_next_steps_prefers_complex_method(self):
+        """Complex methods should route agents to focused section extraction."""
+        structure = {
+            "methods": [
+                {
+                    "name": "simple",
+                    "complexity_score": 1,
+                    "line_range": {"start": 10, "end": 12},
+                },
+                {
+                    "name": "hard_part",
+                    "complexity_score": 11,
+                    "line_range": {"start": 40, "end": 80},
+                },
+            ],
+            "classes": [],
+            "statistics": {"total_lines": 120},
+        }
+
+        steps = _build_next_steps(structure, "example.py")
+
+        assert steps == [
+            "extract_code_section(start_line=40, end_line=80) "
+            "to read complex method 'hard_part' (complexity=11)"
+        ]
+
+    def test_build_next_steps_handles_invalid_collections(self):
+        """Invalid structure shapes should not produce noisy suggestions."""
+        steps = _build_next_steps(
+            {
+                "methods": "not-a-list",
+                "classes": None,
+                "statistics": {"total_lines": "many"},
+            },
+            "example.py",
+        )
+
+        assert steps == []
+
+    def test_build_next_steps_adds_query_navigation_steps(self):
+        """Larger method and class sets should route agents to query tools."""
+        methods = [
+            {"name": f"method_{index}", "complexity_score": 1} for index in range(6)
+        ]
+        structure = {
+            "methods": methods,
+            "classes": [{"name": "One"}, {"name": "Two"}],
+            "statistics": {"total_lines": 120},
+        }
+
+        steps = _build_next_steps(structure, "example.py")
+
+        assert steps == [
+            "query_code(query_key='methods') to get detailed method list with filters",
+            "query_code(query_key='classes') to examine class relationships",
+        ]
+
+    def test_build_next_steps_uses_large_file_fallback(self):
+        """Large files without complex methods should suggest a first read slice."""
+        structure = {
+            "methods": [
+                {
+                    "name": "entrypoint",
+                    "complexity_score": 2,
+                    "line_range": {"start": 25, "end": 40},
+                }
+            ],
+            "classes": [],
+            "statistics": {"total_lines": 800},
+        }
+
+        steps = _build_next_steps(structure, "example.py")
+
+        assert steps == [
+            "extract_code_section(start_line=25, end_line=40) to read 'entrypoint'"
+        ]
+
+    def test_build_next_steps_caps_to_three_suggestions(self):
+        """The agent-facing response should stay compact even for busy files."""
+        methods = [
+            {
+                "name": "hard_part",
+                "complexity_score": 12,
+                "line_range": {"start": 5, "end": 55},
+            },
+            *[{"name": f"method_{index}", "complexity_score": 1} for index in range(6)],
+        ]
+        structure = {
+            "methods": methods,
+            "classes": [{"name": "One"}, {"name": "Two"}],
+            "statistics": {"total_lines": 900},
+        }
+
+        steps = _build_next_steps(structure, "example.py")
+
+        assert len(steps) == 3
+        assert steps[0].startswith("extract_code_section(start_line=5, end_line=55)")
+
+
