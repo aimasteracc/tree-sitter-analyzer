@@ -338,6 +338,10 @@ class ModificationGuardTool(BaseMCPTool):
             "total_callers": total_callers,
             "callers_by_file": callers_by_file,
             "safety_verdict": safety_verdict,
+            # ``verdict`` is a canonical alias used across all safety tools
+            # (safe_to_edit, modification_guard). Same value, shorter key
+            # — discoverable by callers that don't know our exact name.
+            "verdict": safety_verdict,
             "required_actions": required_actions,
             "proceed_recommendation": proceed_recommendation,
         }
@@ -358,9 +362,10 @@ class ModificationGuardTool(BaseMCPTool):
                 )
                 # Boost verdict for top-10 architecture nodes
                 if rank <= 10:
-                    result["safety_verdict"] = _VERDICT_BOOST.get(
-                        safety_verdict, safety_verdict
-                    )
+                    boosted = _VERDICT_BOOST.get(safety_verdict, safety_verdict)
+                    result["safety_verdict"] = boosted
+                    # Keep the ``verdict`` alias in sync with the boosted value.
+                    result["verdict"] = boosted
                 break
 
         # Unified summary line: one line to see everything
