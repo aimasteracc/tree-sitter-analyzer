@@ -221,12 +221,20 @@ def _scores_at_or_below_min_grade(scores: list[Any], min_grade: str) -> list[Any
 
 
 def _file_details(scores: list[Any], max_files: int) -> list[dict[str, Any]]:
-    """Build detailed file health rows for project-health output."""
+    """Build detailed file health rows for project-health output.
+
+    Both ``file`` and ``file_path`` keys hold the path; ``total_score`` and
+    ``health_score`` hold the numeric score. The dual-key layout matches
+    ``file_health_tool`` (which emits ``file_path`` / ``health_score``) so
+    callers can use either tool's vocabulary without checking the source.
+    """
     return [
         {
             "file": score.file_path,
+            "file_path": score.file_path,
             "grade": score.grade,
             "total_score": score.total,
+            "health_score": score.total,
             "signal": _build_signal(score.dimensions),
             "weakest_dimension": _weakest_dimension(score.dimensions),
             "dimensions": score.dimensions,
@@ -244,8 +252,10 @@ def _top_refactoring_targets(
     return [
         {
             "file": score.file_path,
+            "file_path": score.file_path,
             "grade": score.grade,
             "score": score.total,
+            "health_score": score.total,
             "signal": _build_signal(score.dimensions),
             "action": _file_action(score),
         }

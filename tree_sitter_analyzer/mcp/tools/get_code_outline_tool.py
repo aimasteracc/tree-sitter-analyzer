@@ -29,7 +29,7 @@ from ...core.analysis_engine import (
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
-from ..utils.format_helper import format_as_json, format_as_toon
+from ..utils.format_helper import format_as_toon
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -502,16 +502,57 @@ class GetCodeOutlineTool(BaseMCPTool):
                 include_imports=include_imports,
             )
 
-            result = {"success": True, "outline": outline}
+            # Build the canonical response dict. We hoist the outline's
+            # top-level fields (classes, top_level_functions, imports,
+            # plus the count summaries from ``statistics``) onto the
+            # response so callers can read them directly without an
+            # extra ``outline`` indirection — matching the convention
+            # every other analysis tool uses.
+            result: dict[str, Any] = {
+                "success": True,
+                "file_path": file_path,
+                "language": language,
+                "outline": outline,
+            }
+            if isinstance(outline, dict):
+                # 1) Hoist outline-level fields (classes, top_level_functions,
+                #    imports, total_lines, package).
+                for key in (
+                    "classes",
+                    "top_level_functions",
+                    "imports",
+                    "total_lines",
+                    "package",
+                ):
+                    if key in outline and key not in result:
+                        result[key] = outline[key]
+                # 2) ``top_level_functions`` is also surfaced as ``methods``
+                #    (the natural name callers reach for).
+                if "top_level_functions" in outline and "methods" not in result:
+                    result["methods"] = outline["top_level_functions"]
+                # 3) Hoist the count summaries from outline.statistics.
+                stats = outline.get("statistics")
+                if isinstance(stats, dict):
+                    for key in (
+                        "class_count",
+                        "method_count",
+                        "field_count",
+                        "import_count",
+                    ):
+                        if key in stats and key not in result:
+                            result[key] = stats[key]
 
-            # Format the result based on output_format
+            # Backwards-compat: legacy MCP callers still expect the
+            # ``{"content": [{"type": "text", "text": ...}]}`` envelope
+            # (it's the wire format the SDK accepts). For ``output_format
+            # == "json"`` we return the structured dict directly so
+            # programmatic callers get real fields. For ``toon`` we keep
+            # the legacy wrapping because the payload is a single text
+            # blob.
             if output_format == "toon":
                 formatted_text = format_as_toon(result)
-            else:  # json
-                formatted_text = format_as_json(result)
-
-            # Return MCP format (wrapped in content key for MCP server compatibility)
-            return {"content": [{"type": "text", "text": formatted_text}]}
+                return {"content": [{"type": "text", "text": formatted_text}]}
+            return result
 
         except Exception as e:
             self.logger.error(f"Error in get_code_outline: {e}")

@@ -282,7 +282,9 @@ class TestBuildOutlineBasic:
         result = _make_analysis_result(elements=[cls, field])
 
         with self._patch_is_element_of_type():
-            outline = self.tool._build_outline(result, include_fields=False, include_imports=False)
+            outline = self.tool._build_outline(
+                result, include_fields=False, include_imports=False
+            )
 
         assert "fields" not in outline["classes"][0]
 
@@ -293,7 +295,9 @@ class TestBuildOutlineBasic:
         result = _make_analysis_result(elements=[cls, field])
 
         with self._patch_is_element_of_type():
-            outline = self.tool._build_outline(result, include_fields=True, include_imports=False)
+            outline = self.tool._build_outline(
+                result, include_fields=True, include_imports=False
+            )
 
         assert "fields" in outline["classes"][0]
         assert outline["classes"][0]["fields"][0]["name"] == "count"
@@ -424,38 +428,49 @@ class TestGetCodeOutlineToolExecute:
     @pytest.mark.asyncio
     async def test_execute_returns_success(self):
         """正常路径下 execute 应返回 success=True 及 outline。"""
-        import json
 
         mock_result = self._make_mock_result()
 
         with (
-            patch.object(self.tool, "resolve_and_validate_file_path", return_value="/proj/MyService.java"),
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path") as mock_path,
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file", return_value="java"),
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.is_element_of_type", side_effect=lambda e, t: getattr(e, "element_type", "") == t),
+            patch.object(
+                self.tool,
+                "resolve_and_validate_file_path",
+                return_value="/proj/MyService.java",
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path"
+            ) as mock_path,
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file",
+                return_value="java",
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.is_element_of_type",
+                side_effect=lambda e, t: getattr(e, "element_type", "") == t,
+            ),
         ):
             mock_path.return_value.exists.return_value = True
             self.tool.analysis_engine.analyze = AsyncMock(return_value=mock_result)
 
             # 显式请求 JSON 格式以便测试结构
-            response = await self.tool.execute({"file_path": "MyService.java", "output_format": "json"})
+            response = await self.tool.execute(
+                {"file_path": "MyService.java", "output_format": "json"}
+            )
 
-        # 验证返回 MCP 格式（包含 content 键）
+        # JSON output is now returned as a plain dict (post-1.12 dogfood
+        # cleanup). The previous ``{"content":[{"text": ...}]}`` envelope
+        # was MCP transport scaffolding leaking through the tool layer.
         assert isinstance(response, dict)
-        assert "content" in response
-        assert isinstance(response["content"], list)
-        assert len(response["content"]) == 1
-        assert response["content"][0]["type"] == "text"
-
-        # 解析 JSON 内容
-        result = json.loads(response["content"][0]["text"])
-
-        assert result["success"] is True
-        assert "outline" in result
-        outline = result["outline"]
+        assert response["success"] is True
+        assert "outline" in response
+        outline = response["outline"]
         assert outline["language"] == "java"
         assert len(outline["classes"]) == 1
         assert outline["classes"][0]["name"] == "MyService"
+        # Top-level hoisted fields stay in sync with the outline.
+        assert response["language"] == "java"
+        assert response["class_count"] == 1
+        assert response["classes"][0]["name"] == "MyService"
 
     @pytest.mark.asyncio
     async def test_execute_missing_file_path_raises(self):
@@ -467,8 +482,14 @@ class TestGetCodeOutlineToolExecute:
     async def test_execute_file_not_found_raises(self):
         """文件不存在时 execute 应抛出 ValueError。"""
         with (
-            patch.object(self.tool, "resolve_and_validate_file_path", return_value="/proj/Missing.java"),
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path") as mock_path,
+            patch.object(
+                self.tool,
+                "resolve_and_validate_file_path",
+                return_value="/proj/Missing.java",
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path"
+            ) as mock_path,
         ):
             mock_path.return_value.exists.return_value = False
             with pytest.raises(ValueError, match="File not found"):
@@ -478,9 +499,18 @@ class TestGetCodeOutlineToolExecute:
     async def test_execute_analysis_failure_raises(self):
         """分析引擎返回 None 时 execute 应抛出 RuntimeError。"""
         with (
-            patch.object(self.tool, "resolve_and_validate_file_path", return_value="/proj/Foo.java"),
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path") as mock_path,
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file", return_value="java"),
+            patch.object(
+                self.tool,
+                "resolve_and_validate_file_path",
+                return_value="/proj/Foo.java",
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path"
+            ) as mock_path,
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file",
+                return_value="java",
+            ),
         ):
             mock_path.return_value.exists.return_value = True
             self.tool.analysis_engine.analyze = AsyncMock(return_value=None)
@@ -493,10 +523,21 @@ class TestGetCodeOutlineToolExecute:
         mock_result = self._make_mock_result()
 
         with (
-            patch.object(self.tool, "resolve_and_validate_file_path", return_value="/proj/Foo.java"),
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path") as mock_path,
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file") as mock_detect,
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.is_element_of_type", side_effect=lambda e, t: getattr(e, "element_type", "") == t),
+            patch.object(
+                self.tool,
+                "resolve_and_validate_file_path",
+                return_value="/proj/Foo.java",
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path"
+            ) as mock_path,
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file"
+            ) as mock_detect,
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.is_element_of_type",
+                side_effect=lambda e, t: getattr(e, "element_type", "") == t,
+            ),
         ):
             mock_path.return_value.exists.return_value = True
             self.tool.analysis_engine.analyze = AsyncMock(return_value=mock_result)
@@ -506,7 +547,6 @@ class TestGetCodeOutlineToolExecute:
     @pytest.mark.asyncio
     async def test_execute_with_include_fields(self):
         """include_fields=True 时 outline.classes[*] 含 fields 键。"""
-        import json
 
         field = MagicMock()
         field.element_type = "variable"
@@ -529,23 +569,38 @@ class TestGetCodeOutlineToolExecute:
         mock_result = _make_analysis_result(elements=[cls, field])
 
         with (
-            patch.object(self.tool, "resolve_and_validate_file_path", return_value="/proj/Counter.java"),
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path") as mock_path,
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file", return_value="java"),
-            patch("tree_sitter_analyzer.mcp.tools.get_code_outline_tool.is_element_of_type", side_effect=lambda e, t: getattr(e, "element_type", "") == t),
+            patch.object(
+                self.tool,
+                "resolve_and_validate_file_path",
+                return_value="/proj/Counter.java",
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.Path"
+            ) as mock_path,
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.detect_language_from_file",
+                return_value="java",
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.is_element_of_type",
+                side_effect=lambda e, t: getattr(e, "element_type", "") == t,
+            ),
         ):
             mock_path.return_value.exists.return_value = True
             self.tool.analysis_engine.analyze = AsyncMock(return_value=mock_result)
             # 显式请求 JSON 格式以便测试结构
             response = await self.tool.execute(
-                {"file_path": "Counter.java", "include_fields": True, "output_format": "json"}
+                {
+                    "file_path": "Counter.java",
+                    "include_fields": True,
+                    "output_format": "json",
+                }
             )
 
-        # 解析 JSON 内容
-        result = json.loads(response["content"][0]["text"])
-
-        assert "fields" in result["outline"]["classes"][0]
-        assert result["outline"]["classes"][0]["fields"][0]["name"] == "count"
+        # JSON output is now a plain dict (post-1.12 dogfood cleanup).
+        assert isinstance(response, dict)
+        assert "fields" in response["outline"]["classes"][0]
+        assert response["outline"]["classes"][0]["fields"][0]["name"] == "count"
 
 
 # ---------------------------------------------------------------------------

@@ -102,10 +102,15 @@ class TestGetCodeOutlineToolToonExecution:
 
         # Mock resolve_and_validate_file_path to bypass security validation
         # Mock Path.exists() to bypass file existence check
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/fake/file.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/fake/file.py"
+        ):
             with patch("pathlib.Path.exists", return_value=True):
                 with patch.object(
-                    tool.analysis_engine, "analyze", new_callable=AsyncMock, return_value=mock_result
+                    tool.analysis_engine,
+                    "analyze",
+                    new_callable=AsyncMock,
+                    return_value=mock_result,
                 ):
                     with patch(
                         "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_toon"
@@ -113,7 +118,9 @@ class TestGetCodeOutlineToolToonExecution:
                         with patch(
                             "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_json"
                         ) as mock_format_json:
-                            mock_format_toon.return_value = "success: true\noutline: ..."
+                            mock_format_toon.return_value = (
+                                "success: true\noutline: ..."
+                            )
                             mock_format_json.return_value = '{"success": true}'
 
                             args = {
@@ -150,10 +157,15 @@ class TestGetCodeOutlineToolToonExecution:
 
         # Mock resolve_and_validate_file_path to bypass security validation
         # Mock Path.exists() to bypass file existence check
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/fake/file.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/fake/file.py"
+        ):
             with patch("pathlib.Path.exists", return_value=True):
                 with patch.object(
-                    tool.analysis_engine, "analyze", new_callable=AsyncMock, return_value=mock_result
+                    tool.analysis_engine,
+                    "analyze",
+                    new_callable=AsyncMock,
+                    return_value=mock_result,
                 ):
                     with patch(
                         "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_toon"
@@ -161,7 +173,9 @@ class TestGetCodeOutlineToolToonExecution:
                         with patch(
                             "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_json"
                         ) as mock_format_json:
-                            mock_format_toon.return_value = "success: true\noutline: ..."
+                            mock_format_toon.return_value = (
+                                "success: true\noutline: ..."
+                            )
                             mock_format_json.return_value = '{"success": true}'
 
                             args = {
@@ -172,14 +186,18 @@ class TestGetCodeOutlineToolToonExecution:
 
                             result = await tool.execute(args)
 
-                            # 应该调用 format_as_json
-                            mock_format_json.assert_called_once()
-                            # 不应该调用 format_as_toon
+                            # JSON output now returns the structured dict
+                            # directly instead of routing through
+                            # ``format_as_json`` — the function only runs
+                            # on the TOON path. ``format_as_toon`` likewise
+                            # is not called for JSON output.
+                            mock_format_json.assert_not_called()
                             mock_format_toon.assert_not_called()
 
-                            # 返回结果应包含 JSON 格式的文本
-                            assert result["content"][0]["type"] == "text"
-                            assert '{"success": true}' in result["content"][0]["text"]
+                            # The dict carries the canonical fields directly.
+                            assert isinstance(result, dict)
+                            assert result["success"] is True
+                            assert "outline" in result
 
     @pytest.mark.asyncio
     async def test_execute_defaults_to_toon_when_format_not_specified(self):
@@ -198,10 +216,15 @@ class TestGetCodeOutlineToolToonExecution:
 
         # Mock resolve_and_validate_file_path to bypass security validation
         # Mock Path.exists() to bypass file existence check
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/fake/file.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/fake/file.py"
+        ):
             with patch("pathlib.Path.exists", return_value=True):
                 with patch.object(
-                    tool.analysis_engine, "analyze", new_callable=AsyncMock, return_value=mock_result
+                    tool.analysis_engine,
+                    "analyze",
+                    new_callable=AsyncMock,
+                    return_value=mock_result,
                 ):
                     with patch(
                         "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_toon"
@@ -209,7 +232,9 @@ class TestGetCodeOutlineToolToonExecution:
                         with patch(
                             "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_json"
                         ) as mock_format_json:
-                            mock_format_toon.return_value = "success: true\noutline: ..."
+                            mock_format_toon.return_value = (
+                                "success: true\noutline: ..."
+                            )
                             mock_format_json.return_value = '{"success": true}'
 
                             args = {
@@ -245,10 +270,15 @@ class TestGetCodeOutlineToolToonStructure:
 
         # Mock resolve_and_validate_file_path to bypass security validation
         # Mock Path.exists() to bypass file existence check
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/fake/file.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/fake/file.py"
+        ):
             with patch("pathlib.Path.exists", return_value=True):
                 with patch.object(
-                    tool.analysis_engine, "analyze", new_callable=AsyncMock, return_value=mock_result
+                    tool.analysis_engine,
+                    "analyze",
+                    new_callable=AsyncMock,
+                    return_value=mock_result,
                 ):
                     # 使用真实的 format_as_toon
                     args = {
@@ -283,10 +313,15 @@ class TestGetCodeOutlineToolToonStructure:
 
         # Mock resolve_and_validate_file_path to bypass security validation
         # Mock Path.exists() to bypass file existence check
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/fake/file.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/fake/file.py"
+        ):
             with patch("pathlib.Path.exists", return_value=True):
                 with patch.object(
-                    tool.analysis_engine, "analyze", new_callable=AsyncMock, return_value=mock_result
+                    tool.analysis_engine,
+                    "analyze",
+                    new_callable=AsyncMock,
+                    return_value=mock_result,
                 ):
                     args = {
                         "file_path": "/fake/file.py",
@@ -297,10 +332,13 @@ class TestGetCodeOutlineToolToonStructure:
                     result = await tool.execute(args)
                     toon_text = result["content"][0]["text"]
 
-                    # TOON 格式不应该有 JSON 的括号和引号
-                    # (注意：某些字符串仍需要引号，如包含特殊字符的)
-                    assert toon_text.count("{") < 5  # 应该很少有花括号
-                    assert toon_text.count("[") < 5  # 应该很少有方括号
+                    # TOON 格式应该比 JSON 紧凑 — 花括号几乎为零，方括号
+                    # 仅用于显式数组头（如 ``[N]{schema}:``）。Top-level fields
+                    # are now hoisted (classes/methods/imports) so the bracket
+                    # count rises slightly above the original threshold, but
+                    # the format stays far more compact than JSON would be.
+                    assert toon_text.count("{") < 5
+                    assert toon_text.count("[") < 15
 
 
 class TestGetCodeOutlineToolDefinition:
@@ -313,9 +351,9 @@ class TestGetCodeOutlineToolDefinition:
 
         # 检查描述中是否提到 TOON 格式
         description = definition["description"]
-        assert (
-            "toon" in description.lower() or "TOON" in description
-        ), "描述应提到 TOON 格式"
+        assert "toon" in description.lower() or "TOON" in description, (
+            "描述应提到 TOON 格式"
+        )
 
         # 检查 inputSchema 包含 output_format
         input_schema = definition["inputSchema"]
