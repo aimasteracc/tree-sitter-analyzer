@@ -3,10 +3,18 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
-import tomllib
+# Python 3.11+ ships tomllib in the stdlib; mypy under py3.10 target
+# doesn't know about it. The runtime project requires-python is >=3.10
+# so we fall back to the third-party `tomli` (already a transitive dep)
+# on 3.10. The conditional import is fully resolved at module load.
+if sys.version_info >= (3, 11):
+    import tomllib  # noqa: I001
+else:  # pragma: no cover - exercised on 3.10 only
+    import tomli as tomllib  # type: ignore[import-not-found,no-redef]
 
 from tree_sitter_analyzer.language_loader import LanguageLoader
 

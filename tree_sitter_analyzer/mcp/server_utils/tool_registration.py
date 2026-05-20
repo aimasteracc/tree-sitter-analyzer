@@ -32,7 +32,10 @@ _SET_PROJECT_PATH_TOOL = {
 
 def register_tools(server: Any, server_instance: Any) -> None:
     """Register tool list and call handlers on the MCP server."""
-    if Tool is Any:
+    # ``Tool`` is set to ``typing.Any`` as a sentinel when the optional `mcp`
+    # package isn't importable. mypy can't see that identity check through
+    # its narrowing because typing.Any has no fixed runtime identity.
+    if Tool is Any:  # type: ignore[comparison-overlap]
         return
 
     @server.list_tools()  # type: ignore[untyped-decorator]

@@ -3,7 +3,7 @@ import logging
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from cachetools import TTLCache
 
@@ -189,7 +189,12 @@ def _validate_profile_minimal(data: dict[str, Any]) -> None:
     if not isinstance(data["adaptation_rules"], list):
         raise ValueError("Profile adaptation_rules must be a list")
 
-    behavior_schema = PROFILE_SCHEMA["properties"]["behaviors"]["additionalProperties"]
+    # mypy can't refine the nested dict shape from a module-level constant,
+    # so help it with a cast — the schema is hand-authored just above.
+    behavior_schema = cast(
+        "dict[str, Any]",
+        PROFILE_SCHEMA["properties"]["behaviors"]["additionalProperties"],  # type: ignore[index]
+    )
     required_behavior_keys = behavior_schema["required"]
     for name, behavior in data["behaviors"].items():
         if not isinstance(behavior, dict):
