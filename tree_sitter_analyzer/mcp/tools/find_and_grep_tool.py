@@ -47,13 +47,11 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize with optional project root for path resolution."""
+        self.file_output_manager: FileOutputManager | None = None
         super().__init__(project_root)
-        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
-    def set_project_path(self, project_path: str) -> None:
-        """Update project path and reinitialize file output manager."""
-        super().set_project_path(project_path)
-        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""

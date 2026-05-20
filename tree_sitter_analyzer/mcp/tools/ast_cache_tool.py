@@ -23,12 +23,11 @@ class ASTCacheTool(BaseMCPTool):
     """MCP Tool for pre-indexed AST cache operations."""
 
     def __init__(self, project_root: str | None = None) -> None:
-        super().__init__(project_root)
         self._cache: ASTCache | None = None
         self._sync: IncrementalSync | None = None
+        super().__init__(project_root)
 
-    def set_project_path(self, project_path: str) -> None:
-        super().set_project_path(project_path)
+    def _on_project_root_changed(self, project_root: str | None) -> None:
         self._cache = None
         self._sync = None
 
@@ -47,18 +46,18 @@ class ASTCacheTool(BaseMCPTool):
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "ast_cache",
-                "description": (
-                    "Pre-indexed AST cache with FTS5 search and incremental sync (CodeGraph parity). Modes: "
-                    "index (index project or single file), "
-                    "lookup (get cached parse data for a file), "
-                    "search (FTS5 full-text symbol search across indexed files), "
-                    "fts_search (ranked FTS5 search with multi-term support), "
-                    "sync (incremental sync — detect changed/new/deleted files via content hash), "
-                    "changes (preview changes without re-indexing), "
-                    "stats (cache statistics), "
-                    "invalidate (remove cached entry). "
-                    "No other tool provides persistent cross-session AST caching."
-                ),
+            "description": (
+                "Pre-indexed AST cache with FTS5 search and incremental sync (CodeGraph parity). Modes: "
+                "index (index project or single file), "
+                "lookup (get cached parse data for a file), "
+                "search (FTS5 full-text symbol search across indexed files), "
+                "fts_search (ranked FTS5 search with multi-term support), "
+                "sync (incremental sync — detect changed/new/deleted files via content hash), "
+                "changes (preview changes without re-indexing), "
+                "stats (cache statistics), "
+                "invalidate (remove cached entry). "
+                "No other tool provides persistent cross-session AST caching."
+            ),
             "inputSchema": self.get_tool_schema(),
         }
 
@@ -68,7 +67,16 @@ class ASTCacheTool(BaseMCPTool):
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["index", "lookup", "search", "fts_search", "sync", "changes", "stats", "invalidate"],
+                    "enum": [
+                        "index",
+                        "lookup",
+                        "search",
+                        "fts_search",
+                        "sync",
+                        "changes",
+                        "stats",
+                        "invalidate",
+                    ],
                     "description": "Operation mode",
                 },
                 "file_path": {
@@ -102,7 +110,16 @@ class ASTCacheTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "stats")
-        valid_modes = {"index", "lookup", "search", "fts_search", "sync", "changes", "stats", "invalidate"}
+        valid_modes = {
+            "index",
+            "lookup",
+            "search",
+            "fts_search",
+            "sync",
+            "changes",
+            "stats",
+            "invalidate",
+        }
         if mode not in valid_modes:
             raise ValueError(f"Invalid mode: {mode}. Must be one of {valid_modes}")
         if mode in ("lookup", "invalidate") and not arguments.get("file_path"):

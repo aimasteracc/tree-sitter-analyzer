@@ -21,11 +21,12 @@ class RouteDetectorTool(BaseMCPTool):
     """MCP Tool for framework route detection."""
 
     def __init__(self, project_root: str | None = None) -> None:
-        super().__init__(project_root)
         self._detector: RouteDetector | None = None
+        super().__init__(project_root)
 
-    def set_project_path(self, project_path: str) -> None:
-        super().set_project_path(project_path)
+    # ARCH-A4: hook fires from both __init__ and set_project_path, so the
+    # one-line reset covers both lifecycles without a separate override.
+    def _on_project_root_changed(self, project_root: str | None) -> None:
         self._detector = None
 
     def _get_detector(self) -> RouteDetector:

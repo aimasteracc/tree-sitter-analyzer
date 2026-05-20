@@ -53,13 +53,10 @@ class FileHealthTool(BaseMCPTool):
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize with optional project root for path resolution."""
-        super().__init__(project_root)
         self._scorer: HealthScorer | None = None
+        super().__init__(project_root)
 
-    # Update project root and reset cached resources
-    def set_project_path(self, project_path: str) -> None:
-        """Reset scorer when project path changes."""
-        super().set_project_path(project_path)
+    def _on_project_root_changed(self, project_root: str | None) -> None:
         self._scorer = None
 
     # Get or create the HealthScorer instance

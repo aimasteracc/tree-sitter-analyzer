@@ -55,13 +55,11 @@ class SafeToEditTool(BaseMCPTool):
     """MCP Tool that assesses how safe it is to edit a specific file."""
 
     def __init__(self, project_root: str | None = None) -> None:
-        super().__init__(project_root)
         self._graph: DependencyGraph | None = None
         self._scorer: HealthScorer | None = None
+        super().__init__(project_root)
 
-    # set_project_path: implementation
-    def set_project_path(self, project_path: str) -> None:
-        super().set_project_path(project_path)
+    def _on_project_root_changed(self, project_root: str | None) -> None:
         self._graph = None
         self._scorer = None
 

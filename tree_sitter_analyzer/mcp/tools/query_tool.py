@@ -7,7 +7,7 @@ Supports both predefined query keys and custom query strings.
 """
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
@@ -34,15 +34,17 @@ class QueryTool(BaseMCPTool):
     """MCP query tool providing tree-sitter query functionality"""
 
     def __init__(self, project_root: str | None = None) -> None:
+        # ARCH-A4: super().__init__() calls _on_project_root_changed which
+        # populates these fields synchronously. The None placeholder is
+        # never observable from outside __init__, so cast to the real
+        # type to spare every call site a None-check.
+        self.query_service: QueryService = cast("QueryService", None)
+        self.file_output_manager: FileOutputManager = cast("FileOutputManager", None)
         super().__init__(project_root)
+
+    def _on_project_root_changed(self, project_root: str | None) -> None:
         self.query_service = QueryService(project_root)
         self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
-
-    # set_project_path: implementation
-    def set_project_path(self, project_path: str) -> None:
-        super().set_project_path(project_path)
-        self.query_service = QueryService(project_path)
-        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
 
     # get_tool_definition: implementation
     def get_tool_definition(self) -> dict[str, Any]:
@@ -251,7 +253,9 @@ class QueryTool(BaseMCPTool):
         """Delegate cross-file symbol search to helper."""
         return await execute_symbol_search(self.project_root, arguments)
 
-    async def _execute_find_references(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    async def _execute_find_references(
+        self, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
         """Delegate cross-file reference search to helper."""
         return await execute_find_references(self.project_root, arguments)
 

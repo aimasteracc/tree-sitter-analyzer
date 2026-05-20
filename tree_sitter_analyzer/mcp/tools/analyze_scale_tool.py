@@ -69,17 +69,13 @@ class AnalyzeScaleTool(BaseMCPTool):
 
     def __init__(self, project_root: str | None = None) -> None:
         """Initialize the analyze scale tool."""
-        # Use unified analysis engine instead of deprecated AdvancedAnalyzer
+        self.analysis_engine: Any = None  # set by the hook below
         super().__init__(project_root)
-        self.analysis_engine = get_analysis_engine(project_root)
         logger.info("AnalyzeScaleTool initialized with security validation")
 
-    # set_project_path: implementation
-    def set_project_path(self, project_path: str) -> None:
-        """Reset analysis engine when project path changes."""
-        super().set_project_path(project_path)
-        self.analysis_engine = get_analysis_engine(project_path)
-        logger.info(f"AnalyzeScaleTool project path updated to: {project_path}")
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        # Use unified analysis engine instead of deprecated AdvancedAnalyzer.
+        self.analysis_engine = get_analysis_engine(project_root)
 
     # _calculate_file_metrics: implementation
     def _calculate_file_metrics(

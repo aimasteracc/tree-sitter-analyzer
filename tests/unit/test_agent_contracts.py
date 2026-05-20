@@ -278,7 +278,6 @@ def _discover_plugin_files() -> list[tuple[str, Path]]:
 
 def test_every_plugin_class_inherits_language_plugin() -> None:
     """All XxxPlugin classes must inherit from LanguagePlugin (not ElementExtractor)."""
-    from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
     violations = []
     for _lang, path in _discover_plugin_files():
@@ -320,7 +319,12 @@ def test_extract_elements_returns_dict() -> None:
 
 def test_plugin_has_required_abstract_methods() -> None:
     """Each plugin must implement: get_language_name, get_file_extensions, create_extractor, analyze_file."""
-    REQUIRED = {"get_language_name", "get_file_extensions", "create_extractor", "analyze_file"}
+    REQUIRED = {
+        "get_language_name",
+        "get_file_extensions",
+        "create_extractor",
+        "analyze_file",
+    }
     violations = []
     for _lang, path in _discover_plugin_files():
         source = path.read_text(encoding="utf-8")
@@ -394,12 +398,52 @@ def test_analyze_file_uses_create_extractor() -> None:
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "analyze_file":
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "analyze_file"
+            ):
                 body = ast.get_source_segment(source, node)
                 if body and "self.extractor" in body and "create_extractor" not in body:
                     violations.append(f"{path.name}:{node.lineno}")
     assert not violations, (
         f"analyze_file uses self.extractor without create_extractor in: {violations}"
+    )
+
+
+def test_no_mcp_tool_overrides_set_project_path() -> None:
+    """ARCH-A4 regression: ``BaseMCPTool.set_project_path`` is final by
+    convention; tools that need to react to a project-root rebind must
+    override :meth:`_on_project_root_changed` instead, so the dual-track
+    init / rebind paths can't drift apart again.
+
+    Each pattern this test catches has bitten the project at least once:
+      * a subclass overriding set_project_path but forgetting to call
+        super() (silently leaves base attributes pointing at the old root)
+      * a subclass overriding both ``__init__`` AND ``set_project_path``
+        with different init logic (constructor-built tools observe
+        different state than rebound ones)
+    """
+    tools_dir = PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "tools"
+    offenders: list[str] = []
+    for path in sorted(tools_dir.glob("*.py")):
+        if path.name == "base_tool.py":
+            continue  # the base class itself is allowed to define it
+        source = path.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                for item in node.body:
+                    if (
+                        isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                        and item.name == "set_project_path"
+                    ):
+                        offenders.append(f"{path.name}::{node.name}.set_project_path")
+    assert offenders == [], (
+        "These tools override BaseMCPTool.set_project_path. Move the body "
+        "into _on_project_root_changed instead (ARCH-A4):\n  " + "\n  ".join(offenders)
     )
 
 
@@ -433,9 +477,9 @@ def test_mcp_server_module_does_not_eagerly_import_tools() -> None:
     ``_create_tool_registry`` so callers that only touch the server module's
     surface (e.g. for help-text introspection) don't pay the cold-start tax.
     """
-    source = (
-        PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "server.py"
-    ).read_text(encoding="utf-8")
+    source = (PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "server.py").read_text(
+        encoding="utf-8"
+    )
     tree = ast.parse(source)
     offending: list[str] = []
     for node in ast.walk(tree):

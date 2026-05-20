@@ -48,16 +48,14 @@ class SearchContentTool(BaseMCPTool):
         self, project_root: str | None = None, enable_cache: bool = True
     ) -> None:
         """Initialize with optional project root and cache toggle."""
-        super().__init__(project_root)
+        # Pre-declare attributes the hook will touch — super().__init__()
+        # invokes _on_project_root_changed before this body finishes.
         self.cache = get_default_cache() if enable_cache else None
-        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
+        self.file_output_manager: FileOutputManager | None = None
+        super().__init__(project_root)
 
-    # Update project root and reset cached resources
-    def set_project_path(self, project_path: str) -> None:
-        """Update project path and reinitialize file output manager."""
-        super().set_project_path(project_path)
-        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
-        logger.info(f"SearchContentTool project path updated to: {project_path}")
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
     # MCP tool metadata - name, description, schema
     def get_tool_definition(self) -> dict[str, Any]:

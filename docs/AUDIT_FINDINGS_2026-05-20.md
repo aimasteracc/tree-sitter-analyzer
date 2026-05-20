@@ -123,7 +123,51 @@ of near-identical `analyze_file` across c/java/cpp/ruby/php/etc.
 **Effort:** large — touches all 18 plugins; best paired with KI-4 package
 migration.
 
-### ARCH-A4 — Dual-track project-root configuration 🟡 deferred
+### ARCH-A4 — Dual-track project-root configuration ✅ fixed
+
+**Original problem.** `BaseMCPTool.__init__` and
+`BaseMCPTool.set_project_path` re-implemented each other's wiring,
+and 9 subclasses overrode `set_project_path` to also reset lazy
+caches — but their `__init__` did NOT call the same reset path, so a
+fresh tool initialised via `Tool(project_root=…)` exercised a
+different lifecycle than the same tool rebound at runtime via
+`set_project_path()`.
+
+**Fix landed.**
+[base_tool.py](../tree_sitter_analyzer/mcp/tools/base_tool.py) now
+funnels both paths through one internal `_apply_project_root` helper.
+`set_project_path` is final by convention; subclasses override the
+new `_on_project_root_changed(project_root)` hook instead. The hook
+fires from BOTH lifecycles, so a tool that needs to (re)create a
+lazy resource on rebind also gets the initial creation for free —
+no more "constructor-built tools have different state than rebound
+ones" drift.
+
+Migrated 9 subclasses to the hook pattern:
+
+* `route_detector_tool.py` (resets `_detector`)
+* `call_graph_tool.py` (resets `_call_graph`)
+* `ast_cache_tool.py` (resets `_cache`, `_sync`)
+* `smart_context_tool.py` (resets `_graph`, `_scorer`)
+* `file_health_tool.py` (resets `_scorer`)
+* `dependency_analysis_tool.py` (resets `_graph`)
+* `safe_to_edit_tool.py` (resets `_graph`, `_scorer`)
+* `search_content_tool.py` (rebuilds `file_output_manager`)
+* `find_and_grep_tool.py` (rebuilds `file_output_manager`)
+* `query_tool.py` (rebuilds `query_service` + `file_output_manager`)
+* `analyze_scale_tool.py` (rebuilds `analysis_engine`)
+* `universal_analyze_tool.py` (rebuilds `analysis_engine`)
+* `analyze_code_structure_tool.py` (rebuilds both)
+
+Regression coverage:
+`test_no_mcp_tool_overrides_set_project_path` in
+[test_agent_contracts.py](../tests/unit/test_agent_contracts.py) AST-
+walks `mcp/tools/*.py` at collection time and fails if any tool
+re-introduces a `set_project_path` override. This catches both the
+"forget super()" and the "different __init__ vs rebind logic" failure
+modes the audit named.
+
+mypy clean across 436 source files. 3915/3915 MCP unit tests pass.
 
 **Severity:** MEDIUM.
 [BaseMCPTool.__init__](../tree_sitter_analyzer/mcp/tools/base_tool.py)
@@ -743,7 +787,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **20** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P3, TEST-P5, ARCH-A2 partial, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
+| ✅ fixed in this audit pass | **21** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P3, TEST-P5, ARCH-A2 partial, ARCH-A4, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |

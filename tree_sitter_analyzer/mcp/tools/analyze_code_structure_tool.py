@@ -340,18 +340,17 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
     """MCP Tool for code structure analysis and table formatting."""
 
     def __init__(self, project_root: str | None = None) -> None:
-        # Analysis engine cache for performance
         """Initialize with optional project root for path resolution."""
+        # ARCH-A4: super().__init__() drives _on_project_root_changed which
+        # populates these synchronously. None placeholder never observable.
+        self.analysis_engine: Any = None
+        self.file_output_manager: FileOutputManager = cast("FileOutputManager", None)
         super().__init__(project_root)
-        self.analysis_engine = get_analysis_engine(project_root)
-        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
         self.logger = logger
 
-    def set_project_path(self, project_path: str) -> None:
-        """Reset analysis engine when project path changes."""
-        super().set_project_path(project_path)
-        self.analysis_engine = get_analysis_engine(project_path)
-        self.file_output_manager = FileOutputManager.get_managed_instance(project_path)
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        self.analysis_engine = get_analysis_engine(project_root)
+        self.file_output_manager = FileOutputManager.get_managed_instance(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         """Return the MCP tool name, description, and input schema."""
