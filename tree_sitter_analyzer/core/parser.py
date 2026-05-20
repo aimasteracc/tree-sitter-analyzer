@@ -21,6 +21,18 @@ from ..language_loader import get_loader
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# PERF-2: parser cache sizing
+#   - LRU(100) was the original default, which thrashes on any project with
+#     >100 source files (the analyzer's own repo has ~1280).
+#   - Tree objects are tree-sitter C objects and cannot be pickled, so we
+#     cannot persist them across processes — the cache stays in-memory only.
+#   - The new default (2000) covers the common medium-project case
+#     (Django/Flask app: ~3000 files, but only the actively-scanned subset
+#     ends up in cache). Each cached entry holds a Tree (~10-50 KB) so the
+#     memory ceiling is ~100 MB on the worst case — acceptable for an AI
+#     analysis daemon, configurable via TSA_PARSER_CACHE_SIZE.
+_PARSER_CACHE_SIZE = int(os.environ.get("TSA_PARSER_CACHE_SIZE", "2000"))
+
 
 class ParseResult(NamedTuple):
     """
@@ -51,14 +63,46 @@ class Parser:
     using Tree-sitter parsers with proper error handling and encoding support.
     """
 
-    # Class-level cache to share across all Parser instances
-    _cache: LRUCache = LRUCache(maxsize=100)
+    # Class-level cache shared across all Parser instances. Sized for medium
+    # projects (see PERF-2 in docs/AUDIT_FINDINGS_2026-05-20.md).
+    _cache: LRUCache = LRUCache(maxsize=_PARSER_CACHE_SIZE)
+    # Stat-only fast path: maps file_path → (mtime_ns, size, language,
+    # cache_key) so a hot warm pass can skip the SHA-256 entirely when
+    # mtime+size are unchanged. Falls back to the SHA-256 path on any miss.
+    _stat_cache: dict[str, tuple[int, int, str, str]] = {}
+    # Hit/miss counters — used by tests and by `cache_info()`.
+    _hits = 0
+    _misses = 0
+    _stat_hits = 0
 
     def __init__(self) -> None:
         """Initialize the Parser with language loader."""
         self._loader = get_loader()
         self._encoding_manager = EncodingManager()
         logger.info("Parser initialized successfully")
+
+    @classmethod
+    def cache_info(cls) -> dict[str, Any]:
+        """Return cache occupancy and hit/miss counters for diagnostics."""
+        return {
+            "size": len(cls._cache),
+            "maxsize": cls._cache.maxsize,
+            "hits": cls._hits,
+            "misses": cls._misses,
+            "stat_hits": cls._stat_hits,
+            "stat_cache_size": len(cls._stat_cache),
+        }
+
+    @classmethod
+    def cache_clear(cls) -> None:
+        """Clear the parser cache. Used by tests and by tooling that knows
+        files on disk have changed in ways the mtime-based fast path
+        cannot detect."""
+        cls._cache.clear()
+        cls._stat_cache.clear()
+        cls._hits = 0
+        cls._misses = 0
+        cls._stat_hits = 0
 
     def parse_file(self, file_path: str | Path, language: str) -> ParseResult:
         """
@@ -90,16 +134,40 @@ class Parser:
             cache_key = None
             try:
                 stat = os.stat(file_path_str)
-                # Key: path + mtime + size + language
-                key_string = (
-                    f"{file_path_str}:{stat.st_mtime}:{stat.st_size}:{language}"
-                )
-                cache_key = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
+                mtime_ns = int(stat.st_mtime_ns)
+                size = int(stat.st_size)
+
+                # Fast path: if we've seen this (path, mtime_ns, size, lang)
+                # before, reuse the cache_key without re-hashing.
+                stat_entry = Parser._stat_cache.get(file_path_str)
+                if (
+                    stat_entry is not None
+                    and stat_entry[0] == mtime_ns
+                    and stat_entry[1] == size
+                    and stat_entry[2] == language
+                ):
+                    cache_key = stat_entry[3]
+                    cached = Parser._cache.get(cache_key)
+                    if cached is not None:
+                        Parser._hits += 1
+                        Parser._stat_hits += 1
+                        return cached  # type: ignore[no-any-return]
+                else:
+                    key_string = f"{file_path_str}:{mtime_ns}:{size}:{language}"
+                    cache_key = hashlib.sha256(key_string.encode("utf-8")).hexdigest()
+                    Parser._stat_cache[file_path_str] = (
+                        mtime_ns,
+                        size,
+                        language,
+                        cache_key,
+                    )
 
                 cached = Parser._cache.get(cache_key)
-                if cached:
+                if cached is not None:
+                    Parser._hits += 1
                     logger.debug(f"Parser cache hit for {file_path_str}")
                     return cached  # type: ignore[no-any-return]
+                Parser._misses += 1
             except (OSError, TypeError) as e:
                 logger.debug(f"Could not check parser cache for {file_path_str}: {e}")
 

@@ -602,7 +602,13 @@ class TestRouteCachePersistence:
         primed = RouteDetector(str(project)).detect_all()
         assert len(primed) == 60 * 3
 
+        from tree_sitter_analyzer.core.parser import Parser as _Parser
+
         def trial() -> tuple[float, float]:
+            # Clear Parser._cache so the "cold" path actually pays the parse
+            # cost. Otherwise PERF-2's class-level parser cache makes both
+            # cold and warm fast, and the ratio collapses.
+            _Parser.cache_clear()
             d_cold = RouteDetector(str(project), cache_enabled=False)
             t0 = time.perf_counter()
             d_cold.detect_all()
