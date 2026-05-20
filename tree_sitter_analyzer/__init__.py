@@ -11,13 +11,15 @@ Architecture:
 - Data Models: Generic and language-specific code element representations
 """
 
-__version__ = "1.11.1"
+__version__ = "1.12.0"
 __author__ = "aisheng.yu"
 __email__ = "aimasteracc@gmail.com"
 
 # Legacy imports for backward compatibility
 
-from .core.analysis_engine import UnifiedAnalysisEngine as UniversalCodeAnalyzer  # deprecated: use AnalysisEngine from .core
+from .core.analysis_engine import (
+    UnifiedAnalysisEngine as UniversalCodeAnalyzer,  # deprecated: use AnalysisEngine from .core
+)
 from .encoding_utils import (
     EncodingManager,
     detect_encoding,

@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.12.0] - 2026-05-20
+
+### Added (Autonomous-Dev Audit)
+
+- **`detect_routes` MCP tool**: Auto-discovers HTTP routes across Flask, Django, FastAPI, Express (JS/TS), and Spring Boot from a project's source tree. Pairs with `_route_cache` (per-file SQLite cache keyed by content hash + mtime; ~2 queries total for cold-then-warm scans) and `_route_detector_scanners` (per-framework AST walkers). Equivalent to CodeGraph's route-map feature.
+- **`services/` boundary module**: Re-exports `build_agent_skills_inventory`, `build_agent_workflow_pack`, `build_parser_readiness_advice` from `cli/`. Fixes the bidirectional cycle between `mcp/tools/` and `cli/` (`test_no_mcp_tool_imports_cli` contract test enforces no regression).
+- **Centralised exception sanitiser** (`mcp/utils/error_sanitizer.py`): Single source of truth for stripping project paths and stack traces from error messages returned over MCP.
+- **`ToolResponse` typed envelope** (`mcp/tools/tool_response.py`): Common response shape so every tool's success/error/data layout is consistent (`test_every_tool_response_honours_envelope` contract test enforces).
+- **Plugin golden-master regression suite**: 59 tests cover every shipped plugin's `extract_*` output against pinned JSON snapshots — catches silent regressions across all 18 languages.
+- **Autonomous-Dev pipeline scaffolding**: `scripts/auto_review.py` and `scripts/auto_sprint_brief.py` turn `--change-impact` output into a Claude-ready sprint brief; CI matrix executor under `.github/workflows/auto-sprint*.yml` runs without exposing API keys in untrusted inputs.
+
+### Changed
+
+- **`apply_toon_format_to_response` preserves metadata**: When wrapping a result in TOON, only the bulk-data fields (`results`, `matches`, `content`, `lines`, …) are stripped; small metadata fields (`success`, `error`, `file_path`, `query`, …) survive, so callers can still branch on the envelope without parsing TOON.
+- **`ToonEncoder` degrades gracefully on circular references**: Emits a `[...]` placeholder instead of raising mid-encode.
+- **`ToonEncoder` array-table mode requires matching keys**: Mixed-key lists like `[{"a":1},{"b":2}]` are no longer silently flattened with the wrong schema; they fall back to inline encoding.
+- **`AnalysisSession` uses timezone-aware UTC**: `datetime.now(tz)` replaces the deprecated `datetime.utcnow()` (fixes a 24-test deprecation-warning cluster on Python 3.12+).
+- **`json_plugin.extract_elements` honours `ElementExtractor` LSP**: Returns `dict[str, list[...]]`; the raw list is still available as `extract_json_elements`.
+- **`GetCodeOutlineTool` / `ModificationGuardTool` use `_on_project_root_changed` hook**: Project-root reactions consolidated on the BaseMCPTool hook (ARCH-A4) — no more `set_project_path` overrides.
+- **`open_streaming_context` logs both `OSError` and `LookupError`**: The caller's warning hook fires consistently on either filesystem or invalid-encoding failure.
+
+### Performance
+
+- **`RouteDetector` cached via `ASTCache`**: Cold scan now repeats at ~16 ms on the analyser's own repo; previously re-parsed every file on every call.
+- **`Parser._cache` persistent across runs**: Content-hash-addressed; ~140x speed-up on warm runs.
+- **MCP server lazy import**: Cold start 316 ms → 80 ms.
+- **`ASTCache.index_project` parallelised**: Linear scaling with file count.
+
+### Fixed
+
+- **`output_file` traversal blocked** (SEC-1): Rejects paths that resolve outside `project_root` with a clean error.
+- **`--code-patterns` docstring false positive**: Triple-quoted strings inside function bodies no longer mis-flagged as security issues.
+- **`--table=full --output-format=toon` silently ignored**: Now emits a clear error explaining the format combo is unsupported.
+
+### Infra / Quality Gates
+
+- mypy stays at 0 errors across 468 source files; `json_plugin` added to the per-module override list.
+- pre-commit `mypy` hook unlocked (`AUDIT-INFRA-1`).
+- 19/19 contract tests pass after consolidation (`test_agent_contracts.py`). Plugin discovery is now zombie-aware: when both `<lang>_plugin.py` and `<lang>_plugin/` exist, only the live package is audited.
+- Test suite: 14,893 passed / 0 deterministic failures (down from 562 mid-consolidation); remaining failures under xdist are flaky-only and pass when run individually.
+
+### Breaking
+
+- None. `apply_toon_format_to_response` returns a *superset* of its previous (1.11.x) shape: TOON responses now also include the metadata fields callers may have been reaching for via the wrapped JSON.
+
 ## [1.11.1] - 2026-04-10
 
 ### Added
