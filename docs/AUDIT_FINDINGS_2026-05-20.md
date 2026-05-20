@@ -180,7 +180,48 @@ because the constructor accepts the same value.
 **Fix sketch:** pick one model. Preferred: constructor-only, immutable. Server
 rebinds by rebuilding the registry. Effort: small.
 
-### ARCH-A5 — `AnalysisRequest`/`AnalysisResult` is a nominal boundary, bypassed in practice 🟡 deferred
+### ARCH-A5 — `AnalysisRequest`/`AnalysisResult` is a nominal boundary, bypassed in practice ✅ fixed (contract level)
+
+**Original problem.** MCP tools returned ad-hoc dicts. `success` and
+`error` were keys-by-convention, not schema. Any tool quietly changing
+its shape — or returning `"error": SomeException(...)` instead of
+`str` — could silently break Claude Code / Cursor / Cline parsers.
+
+**Fix landed.** New
+[tree_sitter_analyzer/mcp/tools/tool_response.py](../tree_sitter_analyzer/mcp/tools/tool_response.py)
+defines `ToolResponse` as a `TypedDict` documenting the recommended
+envelope plus `validate_tool_response(payload, tool_name)` that
+asserts the minimum runtime invariants:
+
+* response is a `dict`
+* `success` key is present and is a `bool`
+* if `success is False` then `error` is present and is a `str`
+* if `success is True` then `error` is absent
+
+Contract test
+[`tests/unit/mcp/tools/test_tool_response_contract.py`](../tests/unit/mcp/tools/test_tool_response_contract.py)
+(14 tests):
+
+* 4 tests cover the recommended success path on real tools
+  (`project_overview`, `detect_routes` summary, `check_project_health`,
+  `ast_cache` stats)
+* 1 test cover the failure-envelope path (path-traversal-rejected)
+* 7 tests cover the validator's own contract (rejects missing keys,
+  wrong types, etc.) — pure unit tests
+* `TestExecuteAcrossAllTools::test_every_tool_response_honours_envelope`
+  iterates the full MCP tool registry from `_create_tool_registry`,
+  invokes each `execute()` with a per-tool sample arg dict, and runs
+  `validate_tool_response` on the result. A new tool that lands
+  without a per-tool args row also fails the assertion at the bottom
+  of the test, so coverage stays current.
+
+**Why "contract level" and not full envelope refactor.** The
+TypedDict is intentionally permissive (allows extra keys) so we
+don't break the 23 existing tool consumers that already depend on
+top-level keys like `routes`, `health`, `toon_content`, etc. The
+invariants this enforces — that `success` is bool and `error` is
+str when present — were the actual silent-killer cases the audit
+named.
 
 **Severity:** MEDIUM (silent killer for public API stability).
 MCP tools build ad-hoc dicts (`{"success": ..., "mode": ..., ...}`) rather
@@ -821,7 +862,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **22** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P3, TEST-P4, TEST-P5, ARCH-A2 partial, ARCH-A4, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
+| ✅ fixed in this audit pass | **23** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P3, TEST-P4, TEST-P5, ARCH-A2 partial, ARCH-A4, ARCH-A5, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |
