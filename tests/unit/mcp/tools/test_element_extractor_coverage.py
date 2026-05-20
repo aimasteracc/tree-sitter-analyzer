@@ -89,7 +89,15 @@ class TestGetFunctions:
         assert get_functions(result) == []
 
     def test_function_attributes(self):
-        elem = _make_element("method", "function", 5, 15, parameters=["x", "y"], is_static=True, visibility="private")
+        elem = _make_element(
+            "method",
+            "function",
+            5,
+            15,
+            parameters=["x", "y"],
+            is_static=True,
+            visibility="private",
+        )
         result = _make_result([elem])
         funcs = get_functions(result)
         assert funcs[0]["parameters"] == ["x", "y"]
@@ -148,7 +156,13 @@ class TestGetImports:
 class TestGetAllExports:
     def test_exports_classes_functions_constants(self):
         elems = [
-            _make_element("MyClass", "class", 1, 10, methods=[_make_element("m", "function", 2, 5)]),
+            _make_element(
+                "MyClass",
+                "class",
+                1,
+                10,
+                methods=[_make_element("m", "function", 2, 5)],
+            ),
             _make_element("public_func", "function", 15, 20),
             _make_element("_private_func", "function", 22, 25),
             _make_element("MAX_SIZE", "variable", 12, 12),

@@ -1,6 +1,5 @@
 """Unit tests for mcp/tools/utils/change_impact_response — response assembly."""
 
-
 from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
     AgentSummaryContext,
     ChangeImpactResponseContext,

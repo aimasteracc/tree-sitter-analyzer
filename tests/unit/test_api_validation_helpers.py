@@ -51,7 +51,10 @@ class TestMarkValidationReadable:
         f = tmp_path / "secret.py"
         f.write_text("secret")
         result = validation_result_template(f)
-        with patch("tree_sitter_analyzer._api_validation_helpers.read_file_safe", side_effect=PermissionError("denied")):
+        with patch(
+            "tree_sitter_analyzer._api_validation_helpers.read_file_safe",
+            side_effect=PermissionError("denied"),
+        ):
             assert mark_validation_readable(f, result) is False
             assert any("not readable" in e for e in result["errors"])
 
@@ -60,7 +63,10 @@ class TestMarkValidationReadable:
         f.write_text("x")
         result = validation_result_template(f)
         result["errors"].append("prior error")
-        with patch("tree_sitter_analyzer._api_validation_helpers.read_file_safe", side_effect=OSError("boom")):
+        with patch(
+            "tree_sitter_analyzer._api_validation_helpers.read_file_safe",
+            side_effect=OSError("boom"),
+        ):
             mark_validation_readable(f, result)
             assert len(result["errors"]) == 2
 

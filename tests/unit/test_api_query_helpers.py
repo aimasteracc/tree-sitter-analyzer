@@ -1,6 +1,5 @@
 """Unit tests for _api_query_helpers — capture grouping and element filtering."""
 
-
 from tree_sitter_analyzer._api_query_helpers import (
     filter_elements_by_type,
     group_captures_by_main_node,
@@ -168,20 +167,12 @@ class TestQueryCapturesForResult:
     """Tests for query_captures_for_result."""
 
     def test_dict_captures_key(self):
-        result = {
-            "query_results": {
-                "functions": {"captures": [{"name": "foo"}]}
-            }
-        }
+        result = {"query_results": {"functions": {"captures": [{"name": "foo"}]}}}
         captures = query_captures_for_result(result, "functions")
         assert len(captures) == 1
 
     def test_list_query_result(self):
-        result = {
-            "query_results": {
-                "functions": [{"name": "foo"}]
-            }
-        }
+        result = {"query_results": {"functions": [{"name": "foo"}]}}
         captures = query_captures_for_result(result, "functions")
         assert len(captures) == 1
 

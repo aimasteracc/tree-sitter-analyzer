@@ -83,7 +83,9 @@ class TestLanguageNotSupportedError:
         assert exc.context["language"] == "brainfuck"
 
     def test_message_includes_supported_list(self):
-        exc = LanguageNotSupportedError("brainfuck", supported_languages=["python", "java"])
+        exc = LanguageNotSupportedError(
+            "brainfuck", supported_languages=["python", "java"]
+        )
         assert "python" in str(exc)
         assert "java" in str(exc)
 
@@ -141,7 +143,9 @@ class TestValidationError:
     """Tests for ValidationError."""
 
     def test_with_validation_type(self):
-        exc = ValidationError("invalid", validation_type="path", invalid_value="../../../etc/passwd")
+        exc = ValidationError(
+            "invalid", validation_type="path", invalid_value="../../../etc/passwd"
+        )
         assert exc.context["validation_type"] == "path"
         assert exc.context["invalid_value"] == "../../../etc/passwd"
 
@@ -150,7 +154,9 @@ class TestMCPError:
     """Tests for MCPError."""
 
     def test_with_tool_and_resource(self):
-        exc = MCPError("tool error", tool_name="analyze", resource_uri="file:///test.py")
+        exc = MCPError(
+            "tool error", tool_name="analyze", resource_uri="file:///test.py"
+        )
         assert exc.context["tool_name"] == "analyze"
         assert exc.context["resource_uri"] == "file:///test.py"
 

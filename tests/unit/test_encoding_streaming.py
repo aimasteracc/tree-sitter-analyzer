@@ -70,7 +70,10 @@ class TestDetectStreamingEncoding:
         log_fn = MagicMock()
         with pytest.raises(OSError):
             detect_streaming_encoding(
-                f, default_encoding="utf-8", detect_encoding=detect_fn, log_warning=log_fn
+                f,
+                default_encoding="utf-8",
+                detect_encoding=detect_fn,
+                log_warning=log_fn,
             )
         log_fn.assert_called_once()
         assert "Failed to read" in log_fn.call_args[0][0]
@@ -92,7 +95,7 @@ class TestOpenStreamingContext:
         f.write_text("hello")
         log_fn = MagicMock()
         with pytest.raises(LookupError):
-            with open_streaming_context(f, "invalid-encoding-xyz", log_fn) as handle:
+            with open_streaming_context(f, "invalid-encoding-xyz", log_fn):
                 pass
         log_fn.assert_called_once()
 
@@ -127,7 +130,10 @@ class TestReadFileSafeStreamingContext:
         detect_fn = MagicMock(return_value="utf-8")
         log_fn = MagicMock()
         ctx = read_file_safe_streaming_context(
-            str(f), default_encoding="utf-8", detect_encoding=detect_fn, log_warning=log_fn
+            str(f),
+            default_encoding="utf-8",
+            detect_encoding=detect_fn,
+            log_warning=log_fn,
         )
         with ctx as handle:
             assert handle.read() == "content"

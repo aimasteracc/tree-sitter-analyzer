@@ -70,7 +70,14 @@ class TestGetToolSchema:
         tool = ASTCacheTool()
         schema = tool.get_tool_schema()
         modes = schema["properties"]["mode"]["enum"]
-        assert set(modes) == {"index", "lookup", "search", "fts_search", "stats", "invalidate"}
+        assert set(modes) == {
+            "index",
+            "lookup",
+            "search",
+            "fts_search",
+            "stats",
+            "invalidate",
+        }
 
 
 class TestValidateArguments:
@@ -107,7 +114,9 @@ class TestValidateArguments:
 
     def test_valid_lookup_with_file_path(self):
         tool = ASTCacheTool()
-        assert tool.validate_arguments({"mode": "lookup", "file_path": "test.py"}) is True
+        assert (
+            tool.validate_arguments({"mode": "lookup", "file_path": "test.py"}) is True
+        )
 
     def test_valid_search_with_query(self):
         tool = ASTCacheTool()
@@ -137,7 +146,9 @@ class TestExecute:
     async def test_lookup_found(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
         mock_cache.lookup.return_value = {"symbols": [{"name": "foo"}]}
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/abs/test.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/abs/test.py"
+        ):
             result = await tool.execute({"mode": "lookup", "file_path": "test.py"})
         assert result["success"] is True
         assert result["mode"] == "lookup"
@@ -146,7 +157,9 @@ class TestExecute:
     async def test_lookup_not_found(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
         mock_cache.lookup.return_value = None
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/abs/test.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/abs/test.py"
+        ):
             result = await tool.execute({"mode": "lookup", "file_path": "test.py"})
         assert result["status"] == "not_found"
 
@@ -162,14 +175,18 @@ class TestExecute:
     async def test_fts_search_mode(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
         mock_cache.fts_search.return_value = [{"name": "MyClass", "rank": -1.0}]
-        result = await tool.execute({"mode": "fts_search", "query": "MyClass", "limit": 10})
+        result = await tool.execute(
+            {"mode": "fts_search", "query": "MyClass", "limit": 10}
+        )
         assert result["count"] == 1
 
     @pytest.mark.asyncio
     async def test_index_single_file(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
         mock_cache.index_file.return_value = {"indexed": True}
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/abs/test.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/abs/test.py"
+        ):
             result = await tool.execute({"mode": "index", "file_path": "test.py"})
         assert result["success"] is True
         mock_cache.index_file.assert_called_once()
@@ -186,6 +203,8 @@ class TestExecute:
     async def test_invalidate_mode(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
         mock_cache.invalidate.return_value = True
-        with patch.object(tool, "resolve_and_validate_file_path", return_value="/abs/test.py"):
+        with patch.object(
+            tool, "resolve_and_validate_file_path", return_value="/abs/test.py"
+        ):
             result = await tool.execute({"mode": "invalidate", "file_path": "test.py"})
         assert result["invalidated"] is True

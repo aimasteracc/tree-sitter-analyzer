@@ -14,8 +14,13 @@ from tree_sitter_analyzer.languages.python_plugin._import_helpers import (
 )
 
 
-def _mock_node(source_code: str, node_type="import_statement",
-               start_point=(0, 0), end_point=None, children=None):
+def _mock_node(
+    source_code: str,
+    node_type="import_statement",
+    start_point=(0, 0),
+    end_point=None,
+    children=None,
+):
     if end_point is None:
         end_point = (0, len(source_code))
     node = MagicMock()

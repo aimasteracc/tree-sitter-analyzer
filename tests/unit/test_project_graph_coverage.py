@@ -132,9 +132,7 @@ class TestDependencyGraphResolvePaths:
     def test_go_absolute_import_no_resolve(self, tmp_path):
         proj = tmp_path / "go_proj2"
         proj.mkdir()
-        (proj / "main.go").write_text(
-            'package main\nimport "fmt"\nfunc main() {}\n'
-        )
+        (proj / "main.go").write_text('package main\nimport "fmt"\nfunc main() {}\n')
         graph = DependencyGraph(str(proj))
         assert len(graph.edges()) == 0
 

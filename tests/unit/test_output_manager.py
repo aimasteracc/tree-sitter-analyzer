@@ -146,13 +146,16 @@ class TestOutputManagerQueryResult:
 
     def test_displays_result(self, capsys):
         om = OutputManager()
-        om.query_result(1, {
-            "capture_name": "function",
-            "node_type": "function_definition",
-            "start_line": 5,
-            "end_line": 10,
-            "content": "def foo(): pass",
-        })
+        om.query_result(
+            1,
+            {
+                "capture_name": "function",
+                "node_type": "function_definition",
+                "start_line": 5,
+                "end_line": 10,
+                "content": "def foo(): pass",
+            },
+        )
         out = capsys.readouterr().out
         assert "function" in out
         assert "5-10" in out

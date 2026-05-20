@@ -1,6 +1,5 @@
 """Unit tests for _exceptions_security — security exception hierarchy."""
 
-
 from tree_sitter_analyzer._exceptions_core import TreeSitterAnalyzerError
 from tree_sitter_analyzer._exceptions_security import (
     FileRestrictionError,
@@ -49,7 +48,9 @@ class TestPathTraversalError:
     """Tests for PathTraversalError."""
 
     def test_with_attempted_path(self):
-        exc = PathTraversalError("traversal detected", attempted_path="../../../etc/passwd")
+        exc = PathTraversalError(
+            "traversal detected", attempted_path="../../../etc/passwd"
+        )
         assert exc.attempted_path == "../../../etc/passwd"
         assert exc.security_type == "path_traversal"
         assert exc.context["attempted_path"] == "../../../etc/passwd"
