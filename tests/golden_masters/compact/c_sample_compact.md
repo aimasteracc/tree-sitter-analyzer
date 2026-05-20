@@ -3,15 +3,13 @@
 ## Info
 | Property | Value |
 |----------|-------|
-| Methods | 11 |
+| Methods | 9 |
 | Fields | 15 |
 
 ## Methods
 | Method | Sig | V | L | Cx | Doc |
 |--------|-----|---|---|----|----|
 | SQUARE | (x):macro | + | 12-13 | 1 | - |
-| LOG | (msg):macro | + | 16-17 | 1 | - |
-| LOG | (msg):macro | + | 18-19 | 1 | - |
 | add | (i,i):i | + | 86-88 | 1 | - |
 | multiply | (i,i):i | + | 91-93 | 1 | - |
 | process_array | (int[],size_t):void | + | 96-100 | 2 | - |

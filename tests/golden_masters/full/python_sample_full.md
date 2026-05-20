@@ -19,7 +19,7 @@ from functools import reduce
 ## Person (14-28)
 ### Public Methods
 | Method | Signature | Vis | Lines | Cx | Doc |
-|--------|-----------|-----|-------|----|----|
+|--------|-----------|-----|-------|----|----| 
 | __post_init__ | (self:Any):Any | + | 21-24 | 2 | Validate the person data after initialization. |
 | greet | (self:Any):str | + | 26-28 | 2 | Return a greeting message. |
 
