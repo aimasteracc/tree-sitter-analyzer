@@ -102,7 +102,7 @@ def extract_django_handler(text: str) -> str:
     text = text.strip()
     dot_idx = text.rfind(".")
     if dot_idx != -1 and not text.startswith('"') and not text.startswith("'"):
-        return text[dot_idx + 1:]
+        return text[dot_idx + 1 :]
     if text.startswith(("views.", ".")):
         return text.split(".")[-1]
     return text.strip("'\"")
@@ -110,10 +110,7 @@ def extract_django_handler(text: str) -> str:
 
 def extract_js_handler(args_node) -> str:
     """Extract the handler reference from an Express call's `arguments` node."""
-    children = [
-        c for c in args_node.children
-        if c.type not in (",", "(", ")")
-    ]
+    children = [c for c in args_node.children if c.type not in (",", "(", ")")]
     if len(children) >= 2:
         second = children[1]
         if second.type == "identifier":
@@ -122,8 +119,16 @@ def extract_js_handler(args_node) -> str:
             return "<anonymous>"
         if second.type == "call_expression":
             return second.text.decode()[:80]
+        if second.type == "string":
+            # Express occasionally takes a string handler (rare, but legal).
+            # Strip surrounding quotes so callers don't get ``"'/save'"``.
+            return second.text.decode().strip("\"'`")[:80]
     if len(children) >= 1:
-        return children[0].text.decode()[:80]
+        text = children[0].text.decode()[:80]
+        # First arg is the URL pattern; if we fell through to it as the
+        # handler, strip its quotes too — better to surface the bare URL
+        # than the source-literal-with-quotes which is unusable.
+        return text.strip("\"'`")
     return "<unknown>"
 
 

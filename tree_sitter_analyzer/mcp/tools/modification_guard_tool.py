@@ -344,6 +344,11 @@ class ModificationGuardTool(BaseMCPTool):
             "verdict": safety_verdict,
             "required_actions": required_actions,
             "proceed_recommendation": proceed_recommendation,
+            # ``recommendation`` mirrors ``proceed_recommendation`` so this
+            # tool's response carries the same field name every other
+            # safety tool exposes (safe_to_edit, file_health). One key,
+            # one source of truth.
+            "recommendation": proceed_recommendation,
         }
 
         # --- PageRank architecture check ---

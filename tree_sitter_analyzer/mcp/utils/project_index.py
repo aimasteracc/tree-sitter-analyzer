@@ -908,11 +908,18 @@ class ProjectIndexManager:
             top = filtered[:top_n]
             return [
                 {
+                    # ``rank`` is the 1-based ordinal (matches the
+                    # ``architecture_rank`` field used by
+                    # modification_guard's summary line). ``symbol`` is
+                    # an alias for ``name`` so callers using either
+                    # vocabulary find the node.
+                    "rank": idx,
                     "name": name,
+                    "symbol": name,
                     "pagerank": round(score, 4),
                     "inbound_refs": inbound.get(name, 0),
                 }
-                for name, score in top
+                for idx, (name, score) in enumerate(top, 1)
             ]
         except Exception as exc:  # noqa: BLE001
             logger.debug("PageRank computation failed: %s", exc)

@@ -64,6 +64,7 @@ def _build_result(
             "agent_summary": agent_summary,
         }
     )
+    _ensure_no_gap_consistency(result)
     result["toon_content"] = _build_toon_content(result)
     return result
 
@@ -103,6 +104,30 @@ def _status_distribution(records: list[dict[str, Any]]) -> dict[str, int]:
         status = record["status"]
         distribution[status] = distribution.get(status, 0) + 1
     return distribution
+
+
+def _ensure_no_gap_consistency(result: dict[str, Any]) -> None:
+    """When no gaps are reported, populate empty fields with explicit
+    "all-ready" markers so callers don't read ``reported_language_count=0
+    implemented_language_count=19`` as a contradiction.
+
+    Mutates ``result`` in place; safe to call after the main assembly.
+    """
+    if result.get("reported_language_count", 0) > 0:
+        return
+    implemented_count = result.get("implemented_language_count", 0)
+    if implemented_count <= 0:
+        return
+    # Mirror the implemented inventory into the reported fields so the
+    # summary line "X languages ready" works without special-casing.
+    result["reported_language_count"] = implemented_count
+    distribution = result.get("status_distribution") or {}
+    if not distribution:
+        result["status_distribution"] = {"ready": implemented_count}
+    agent_summary = result.get("agent_summary")
+    if isinstance(agent_summary, dict):
+        if agent_summary.get("reported_language_count", 0) <= 0:
+            agent_summary["reported_language_count"] = implemented_count
 
 
 def _high_priority_languages(recommendations: list[dict[str, Any]]) -> list[str]:

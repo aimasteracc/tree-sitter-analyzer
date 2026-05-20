@@ -36,6 +36,25 @@ def resolve_fd_no_ignore(
     return True
 
 
+def _looks_like_glob(pattern: Any) -> bool:
+    """Return True if ``pattern`` looks like a filename glob (``*.py``,
+    ``**/test_*.py``, ``foo?.txt``) rather than a regex.
+
+    fd treats unspecified patterns as regex by default; users routinely
+    pass ``*.py`` expecting glob, which crashes fd's regex parser. Auto-
+    detect the common cases so the tool DTRT without surprising regex
+    users (real regex starts with ``^``, ``.``, ``\\``, ``[``, ``(``).
+    """
+    if not isinstance(pattern, str) or not pattern:
+        return False
+    # Heuristics: contains ``*``/``?`` but no regex anchors and no escapes
+    if "*" not in pattern and "?" not in pattern:
+        return False
+    if pattern.startswith(("^", "(", "[")) or "\\" in pattern:
+        return False
+    return True
+
+
 def build_fd_command_from_arguments(
     arguments: dict[str, Any],
     roots: list[str],
@@ -44,9 +63,15 @@ def build_fd_command_from_arguments(
     no_ignore: bool,
 ) -> list[str]:
     """Build the fd command from validated find_and_grep arguments."""
+    pattern = arguments.get("pattern")
+    # Auto-set glob=True when the pattern obviously means glob.
+    glob_explicit = arguments.get("glob")
+    glob = (
+        bool(glob_explicit) if glob_explicit is not None else _looks_like_glob(pattern)
+    )
     return fd_rg_utils.build_fd_command(
-        pattern=arguments.get("pattern"),
-        glob=bool(arguments.get("glob", False)),
+        pattern=pattern,
+        glob=glob,
         types=arguments.get("types"),
         extensions=arguments.get("extensions"),
         exclude=arguments.get("exclude"),

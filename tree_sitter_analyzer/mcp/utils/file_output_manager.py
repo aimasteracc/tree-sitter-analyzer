@@ -103,9 +103,14 @@ class FileOutputManager:
             logger.info(f"Using project root as output path: {self._output_path}")
             return
 
-        # Priority 3: Current working directory as fallback
+        # Priority 3: Current working directory as fallback.
+        # This is reached when the manager is constructed for tools that may
+        # never actually write a file (e.g. ``ReadPartialTool``); demoting
+        # this to DEBUG removes ~4 noisy WARNING lines per tool construction
+        # that confused agents during dogfooding. The output path is still
+        # logged — just at a level you can ignore unless debugging.
         self._output_path = str(Path.cwd())
-        logger.warning(f"Using current directory as output path: {self._output_path}")
+        logger.debug("Using current directory as output path: %s", self._output_path)
 
     def get_output_path(self) -> str:
         """
