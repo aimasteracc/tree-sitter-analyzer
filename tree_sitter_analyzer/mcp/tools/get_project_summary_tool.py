@@ -100,7 +100,9 @@ def _format_toon(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
                 break
             sname = sub["name"]
             rel_key = f"{name}/{sname}"
-            sub_desc = index.module_descriptions.get(rel_key, "") if has_descriptions else ""
+            sub_desc = (
+                index.module_descriptions.get(rel_key, "") if has_descriptions else ""
+            )
             if not sub_desc:
                 continue  # skip undescribed subdirs — noise without signal
             sub_label = sname + "/"
@@ -171,9 +173,9 @@ class GetProjectSummaryTool(BaseMCPTool):
                 "WHEN TO USE:\n"
                 "- At the START of any session before exploring a codebase — avoids "
                 "re-analyzing what is already known\n"
-                "- When you need a quick orientation: \"what languages does this "
-                "project use?\", \"where are the entry points?\", \"what's the "
-                "top-level structure?\"\n"
+                '- When you need a quick orientation: "what languages does this '
+                'project use?", "where are the entry points?", "what\'s the '
+                'top-level structure?"\n'
                 "- Before calling list_files — this gives the big picture in one call\n"
                 "\n"
                 "WHEN NOT TO USE:\n"
@@ -207,7 +209,7 @@ class GetProjectSummaryTool(BaseMCPTool):
                         ),
                         "default": True,
                     },
-                    "format": {
+                    "output_format": {
                         "type": "string",
                         "enum": ["toon", "json"],
                         "description": (
@@ -217,6 +219,15 @@ class GetProjectSummaryTool(BaseMCPTool):
                             "structured object."
                         ),
                         "default": "toon",
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["toon", "json"],
+                        "description": (
+                            "Deprecated alias for ``output_format`` — kept for "
+                            "backward compatibility with pre-1.12.1 callers. "
+                            "Prefer ``output_format``."
+                        ),
                     },
                 },
                 "additionalProperties": False,
@@ -235,7 +246,11 @@ class GetProjectSummaryTool(BaseMCPTool):
         """
         force_refresh: bool = bool(arguments.get("force_refresh", False))
         include_notes: bool = bool(arguments.get("include_notes", True))
-        output_format: str = str(arguments.get("format", "toon"))
+        # Prefer ``output_format`` (standardised across all 23 MCP tools in
+        # v1.12.0+); fall back to legacy ``format`` for pre-1.12.1 callers.
+        output_format: str = str(
+            arguments.get("output_format", arguments.get("format", "toon"))
+        )
 
         project_root = self.project_root or "."
         manager = ProjectIndexManager(project_root)
