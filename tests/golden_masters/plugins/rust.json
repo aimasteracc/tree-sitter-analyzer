@@ -1,0 +1,44 @@
+{
+  "counts_by_type": {
+    "Class": 5,
+    "Function": 8,
+    "Import": 1,
+    "Variable": 6
+  },
+  "element_total": 20,
+  "names_by_type": {
+    "Class": [
+      "BorrowedItem",
+      "Container",
+      "Displayable",
+      "User",
+      "UserRole"
+    ],
+    "Function": [
+      "deactivate",
+      "display",
+      "fetch_user_data",
+      "is_active",
+      "main",
+      "new",
+      "summary"
+    ],
+    "Import": [
+      "use std::collections::HashMap;"
+    ],
+    "Variable": [
+      "active",
+      "email",
+      "id",
+      "item",
+      "name",
+      "username"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Variable"
+  ]
+}

@@ -245,7 +245,30 @@ Top slowest "unit" tests are integration-class:
 tests sleeping for real. **Fix:** relocate to `tests/integration/` + inject
 `freezegun` clock for cache TTL tests.
 
-### TEST-P5 — Regression layer is essentially empty 🟡 deferred
+### TEST-P5 — Regression layer was essentially empty ✅ fixed
+
+**What landed.**
+[tests/regression/test_plugin_golden_masters.py](../tests/regression/test_plugin_golden_masters.py)
+adds one parametrised regression case per supported language (18 in total).
+Each case loads the plugin via `PluginManager.get_plugin(lang)`, runs
+`analyze_file()` against the corresponding fixture under `examples/`, and
+diffs a **stable summary** against `tests/golden_masters/plugins/<lang>.json`.
+
+The summary records `(element_total, types, counts_by_type, names_by_type)` —
+deliberately NOT raw AST geometry, byte offsets, or line numbers, all of
+which churn on grammar upgrades and produce noisy false positives.
+
+To accept an intentional change, set `TSA_UPDATE_GOLDEN=1` and re-run
+the test once. New snapshots get committed alongside the motivating code
+change.
+
+A second test `test_all_supported_languages_have_a_fixture_row` fails if
+PluginManager grows a language that the matrix doesn't cover, keeping
+the net current as new plugins land.
+
+19 tests / ~1.3 s. Closed.
+
+### TEST-P5 (original framing, kept for context) 🟡 deferred — historical
 
 `tests/regression/` has 2 files for 15k+ tests. The recent 18-plugin
 unification (commit e1a024c) has no golden-master tests despite the cross-cutting
@@ -491,7 +514,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **12** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, PERF-1, PERF-2, PERF-3, PERF-5, DOG-1) |
+| ✅ fixed in this audit pass | **13** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P5, PERF-1, PERF-2, PERF-3, PERF-5, DOG-1) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |

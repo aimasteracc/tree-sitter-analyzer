@@ -1,0 +1,70 @@
+{
+  "counts_by_type": {
+    "Class": 1,
+    "Function": 32,
+    "Import": 2,
+    "Variable": 13
+  },
+  "element_total": 48,
+  "names_by_type": {
+    "Class": [
+      "ModernComponent"
+    ],
+    "Function": [
+      "<anonymous>",
+      "FunctionalComponent",
+      "blockArrow",
+      "constructor",
+      "createCounter",
+      "createInstance",
+      "createMessage",
+      "displayTitle",
+      "fetchAndProcess",
+      "fetchData",
+      "fetchUserData",
+      "fibonacciSequence",
+      "generateSequence",
+      "get",
+      "getHeaders",
+      "getToken",
+      "handleAction",
+      "handleResponse",
+      "html",
+      "loadModule",
+      "multiParamArrow",
+      "processData",
+      "processUser",
+      "render",
+      "setupEventListeners",
+      "simpleArrow",
+      "traditionalFunction",
+      "useCounter",
+      "validateProps"
+    ],
+    "Import": [
+      "debounce",
+      "useCallback"
+    ],
+    "Variable": [
+      "API_BASE_URL",
+      "AppModule",
+      "apiClient",
+      "arrayData",
+      "contentType",
+      "globalCounter",
+      "legacyVariable",
+      "options",
+      "response",
+      "result",
+      "url",
+      "user",
+      "userProfile"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Variable"
+  ]
+}
