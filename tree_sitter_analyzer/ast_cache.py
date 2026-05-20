@@ -131,6 +131,68 @@ _EXT_TO_LANG: dict[str, str] = {
 }
 
 
+def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
+    """Worker function used by ``ASTCache.index_project`` when running with
+    a process pool. Must be module-level so it is picklable across spawn.
+
+    Returns a dict with:
+      * ``status`` in {"ok", "parse_failed", "io_error"}
+      * ``abs_path``, ``rel_path``, ``language``
+      * pre-serialised ``symbols_json`` / ``imports_json`` / ``structure_json``
+      * ``content_hash`` / ``mtime_ns`` / ``file_size``
+      * ``symbol_rows``: list of (name, kind, line, end_line) for FTS5 insert
+    Tree-sitter ``Tree`` objects are NEVER returned — they are C objects
+    that cannot be pickled. The worker discards them after extraction.
+    """
+    abs_path, project_root, language = args
+    rel_path = os.path.relpath(abs_path, project_root)
+    try:
+        stat = os.stat(abs_path)
+        with open(abs_path, encoding="utf-8", errors="replace") as f:
+            source_code = f.read()
+    except OSError as exc:
+        return {
+            "status": "io_error",
+            "rel_path": rel_path,
+            "abs_path": abs_path,
+            "reason": str(exc),
+        }
+    parser = Parser()
+    result = parser.parse_file(abs_path, language)
+    if not result.success:
+        return {
+            "status": "parse_failed",
+            "rel_path": rel_path,
+            "abs_path": abs_path,
+            "reason": result.error_message or "parse failed",
+        }
+    symbols = _extract_symbols(result.tree, source_code, language)
+    imports = _extract_imports(symbols)
+    structure = _extract_structure(symbols)
+    return {
+        "status": "ok",
+        "rel_path": rel_path,
+        "abs_path": abs_path,
+        "language": language,
+        "content_hash": _content_hash(source_code),
+        "mtime_ns": int(stat.st_mtime_ns),
+        "file_size": int(stat.st_size),
+        "symbols_count": len(symbols.get("symbols", [])),
+        "symbols_json": json.dumps(symbols, ensure_ascii=False),
+        "imports_json": json.dumps(imports, ensure_ascii=False),
+        "structure_json": json.dumps(structure, ensure_ascii=False),
+        "symbol_rows": [
+            (
+                sym.get("name", sym.get("text", "")),
+                sym.get("kind", "unknown"),
+                sym.get("line", 0),
+                sym.get("end_line", 0),
+            )
+            for sym in symbols.get("symbols", [])
+        ],
+    }
+
+
 def _content_hash(source: str | bytes) -> str:
     if isinstance(source, str):
         source = source.encode("utf-8", errors="replace")
@@ -433,34 +495,196 @@ class ASTCache:
         self,
         max_files: int = 5000,
         force: bool = False,
+        *,
+        workers: int | None = None,
     ) -> dict[str, Any]:
+        """Index every source file under ``self.project_root``.
+
+        PERF-4: when there are enough files to amortise the spawn cost,
+        we farm parse + extract out to a process pool. Workers return
+        already-serialised JSON; this thread does the SQLite write.
+        Workers never return tree-sitter ``Tree`` objects (C objects,
+        not picklable).
+
+        ``workers``:
+          * ``None`` (default): pick a sensible value — 0 if files < 64
+            (serial path, no spawn cost), otherwise
+            ``max(2, (os.cpu_count() or 4) - 1)``.
+          * ``0`` or ``1``: force serial path.
+          * ``>=2``: use that many worker processes.
+          Configurable per-call; overridden by ``TSA_INDEX_WORKERS`` env var.
+        """
         if force:
             conn = self._get_conn()
             conn.execute("DELETE FROM ast_index")
             conn.commit()
 
-        stats = {"indexed": 0, "cached": 0, "errors": 0, "skipped": 0, "files": []}
+        # Pass 1: enumerate candidate files and partition into
+        # (already-cached, needs-parse). The "already-cached" partition
+        # is handled inline because it is one SQL lookup per file with
+        # no parsing — cheaper than dispatching to workers.
+        candidates: list[tuple[str, str]] = []  # (abs_path, language)
+        already_cached: list[dict[str, Any]] = []
+        stats: dict[str, Any] = {
+            "indexed": 0,
+            "cached": 0,
+            "errors": 0,
+            "skipped": 0,
+            "files": [],
+        }
         count = 0
+        conn = self._get_conn()
         for abs_path in _walk_source_files(self.project_root):
             if count >= max_files:
                 break
+            count += 1
             lang = _language_from_ext(abs_path)
             if lang is None:
                 stats["skipped"] += 1
                 continue
-            result = self.index_file(abs_path, lang)
-            if result["status"] == "indexed":
-                stats["indexed"] += 1
-            elif result["status"] == "cached":
-                stats["cached"] += 1
-            elif result["status"] == "error":
+            rel_path = os.path.relpath(abs_path, self.project_root)
+            try:
+                stat = os.stat(abs_path)
+            except OSError as e:
                 stats["errors"] += 1
+                stats["files"].append(
+                    {"file": rel_path, "status": "error", "reason": str(e)}
+                )
+                continue
+            row = conn.execute(
+                "SELECT mtime_ns, file_size FROM ast_index WHERE file_path = ?",
+                (rel_path,),
+            ).fetchone()
+            if (
+                row is not None
+                and row["mtime_ns"] == int(stat.st_mtime_ns)
+                and row["file_size"] == stat.st_size
+            ):
+                already_cached.append(
+                    {"file": rel_path, "status": "cached", "reason": "unchanged"}
+                )
+                continue
+            candidates.append((abs_path, lang))
+
+        stats["cached"] += len(already_cached)
+        stats["files"].extend(already_cached)
+
+        # Pass 2: process the parse-needed list. Decide serial vs parallel.
+        env_workers = os.environ.get("TSA_INDEX_WORKERS")
+        if env_workers is not None:
+            try:
+                workers = int(env_workers)
+            except ValueError:
+                pass
+        if workers is None:
+            if len(candidates) < 64:
+                workers = 0  # serial — spawn overhead not worth it on tiny sets
             else:
-                stats["skipped"] += 1
-            stats["files"].append(result)
-            count += 1
+                workers = max(2, (os.cpu_count() or 4) - 1)
+
+        if workers and workers >= 2 and len(candidates) >= 2:
+            results = self._index_parallel(candidates, workers)
+        else:
+            results = [_worker_index_file((p, self.project_root, l)) for p, l in candidates]
+
+        # Pass 3: single-writer SQLite insert wrapped in one transaction.
+        # Batching avoids the per-insert fsync/commit cost that dominated
+        # the post-parallel timing on medium projects (~1 ms per file).
+        indexed_at = datetime.now(timezone.utc).isoformat()
+        conn.execute("BEGIN")
+        try:
+            for r in results:
+                if r["status"] == "io_error":
+                    stats["errors"] += 1
+                    stats["files"].append(
+                        {"file": r["rel_path"], "status": "error", "reason": r["reason"]}
+                    )
+                    continue
+                if r["status"] == "parse_failed":
+                    stats["errors"] += 1
+                    stats["files"].append(
+                        {"file": r["rel_path"], "status": "error", "reason": r["reason"]}
+                    )
+                    continue
+                self._insert_index_row(r, indexed_at)
+                stats["indexed"] += 1
+                stats["files"].append(
+                    {
+                        "file": r["rel_path"],
+                        "status": "indexed",
+                        "symbols": r["symbols_count"],
+                        "content_hash": r["content_hash"][:16],
+                    }
+                )
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
         stats["total_files"] = count
+        stats["workers"] = workers
         return stats
+
+    def _index_parallel(
+        self, candidates: list[tuple[str, str]], workers: int
+    ) -> list[dict[str, Any]]:
+        """Dispatch parse+extract to a process pool. Spawn context so the
+        behaviour is identical on macOS and Linux (fork inherits SQLite
+        handles in a way SQLite does not like)."""
+        from multiprocessing import get_context
+
+        ctx = get_context("spawn")
+        args_iter = [(p, self.project_root, l) for p, l in candidates]
+        results: list[dict[str, Any]] = []
+        with ctx.Pool(processes=workers) as pool:
+            for r in pool.imap_unordered(_worker_index_file, args_iter, chunksize=8):
+                results.append(r)
+        return results
+
+    def _insert_index_row(
+        self, r: dict[str, Any], indexed_at: str
+    ) -> None:
+        """Write one worker result to SQLite (main table + optional FTS5)."""
+        conn = self._get_conn()
+        rel_path = r["rel_path"]
+        conn.execute(
+            """INSERT OR REPLACE INTO ast_index
+               (file_path, content_hash, language, mtime_ns, file_size,
+                symbols_json, imports_json, structure_json, indexed_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                rel_path,
+                r["content_hash"],
+                r["language"],
+                r["mtime_ns"],
+                r["file_size"],
+                r["symbols_json"],
+                r["imports_json"],
+                r["structure_json"],
+                indexed_at,
+            ),
+        )
+        if not self._fts5_available:
+            return
+        conn.execute(
+            "DELETE FROM ast_symbol_rows WHERE file_path = ?",
+            (rel_path,),
+        )
+        conn.execute(
+            "DELETE FROM ast_symbols_fts WHERE file_path = ?",
+            (rel_path,),
+        )
+        for sym_name, sym_kind, sym_line, sym_end in r["symbol_rows"]:
+            row_id = conn.execute(
+                """INSERT INTO ast_symbol_rows
+                   (name, kind, file_path, language, line, end_line)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (sym_name, sym_kind, rel_path, r["language"], sym_line, sym_end),
+            ).lastrowid
+            conn.execute(
+                """INSERT INTO ast_symbols_fts (rowid, name, kind, file_path, language)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (row_id, sym_name, sym_kind, rel_path, r["language"]),
+            )
 
     def lookup(self, file_path: str) -> dict[str, Any] | None:
         rel = os.path.relpath(os.path.abspath(file_path), self.project_root)

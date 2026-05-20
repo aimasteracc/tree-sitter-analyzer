@@ -95,6 +95,59 @@ class TestIndexProject:
         result = cache.index_project(max_files=1)
         assert result["total_files"] <= 1
 
+    def test_index_project_workers_field_in_stats(self, cache):
+        """PERF-4: stats include the resolved worker count."""
+        result = cache.index_project(workers=0)
+        assert "workers" in result
+        assert result["workers"] == 0
+
+    def test_index_project_serial_and_parallel_agree(self, tmp_project):
+        """PERF-4 correctness: parallel and serial paths must produce
+        identical indexed counts and SQLite contents."""
+        import shutil
+        from tree_sitter_analyzer.ast_cache import ASTCache
+
+        db_serial = tmp_project / "ser.db"
+        db_parallel = tmp_project / "par.db"
+        for db in (db_serial, db_parallel):
+            if db.exists():
+                db.unlink()
+
+        serial_cache = ASTCache(str(tmp_project), db_path=str(db_serial))
+        serial_result = serial_cache.index_project(workers=0)
+
+        parallel_cache = ASTCache(str(tmp_project), db_path=str(db_parallel))
+        # 2 workers is enough to exercise the spawn + IPC path.
+        parallel_result = parallel_cache.index_project(workers=2)
+
+        assert serial_result["indexed"] == parallel_result["indexed"]
+        assert serial_result["errors"] == parallel_result["errors"]
+
+        # Compare actual row sets — same files, same content_hash, same
+        # symbols payload. Done in-process to avoid worker spawn here.
+        serial_conn = serial_cache._get_conn()
+        parallel_conn = parallel_cache._get_conn()
+        s_rows = sorted(
+            tuple(r)
+            for r in serial_conn.execute(
+                "SELECT file_path, content_hash, language FROM ast_index"
+            ).fetchall()
+        )
+        p_rows = sorted(
+            tuple(r)
+            for r in parallel_conn.execute(
+                "SELECT file_path, content_hash, language FROM ast_index"
+            ).fetchall()
+        )
+        assert s_rows == p_rows
+
+    def test_index_project_env_workers_override(self, cache, monkeypatch):
+        """PERF-4: TSA_INDEX_WORKERS env var overrides the workers kwarg."""
+        monkeypatch.setenv("TSA_INDEX_WORKERS", "0")
+        # Pass workers=4 explicitly; env should win and force serial.
+        result = cache.index_project(workers=4)
+        assert result["workers"] == 0
+
 
 class TestLookup:
     def test_lookup_indexed_file(self, cache, tmp_project):

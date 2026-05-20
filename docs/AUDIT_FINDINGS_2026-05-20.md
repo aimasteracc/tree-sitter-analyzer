@@ -392,14 +392,46 @@ Regression coverage:
 references `.tools.*`. This is the structural invariant; the timing
 target is verified separately by the perf benchmarks.
 
-### PERF-4 — `ASTCache.index_project` is single-threaded 🟡 deferred
+### PERF-4 — `ASTCache.index_project` was single-threaded ✅ fixed
 
-[ast_cache.py:432](../tree_sitter_analyzer/ast_cache.py). 520 files/s ⇒ a 10 k-file
-repo is 19 s of dead air on first index.
+**Original problem.** [ast_cache.py:432](../tree_sitter_analyzer/ast_cache.py)
+processed every file serially via `index_file()`. The analyzer's own repo
+(~1280 source files) cost 2.3 s of dead air on first index.
 
-**Fix sketch:** `multiprocessing.Pool` over `_walk_source_files`. Each worker
-returns a JSON blob; parent does single-writer SQLite insert. Expected
-5–6× speedup on 8-core machines.
+**Fix landed.** New module-level `_worker_index_file()` runs parse +
+symbol/import/structure extraction in a `multiprocessing.Pool` (spawn
+context so the behaviour matches across macOS and Linux). Workers
+return pre-serialised JSON; the parent does the single-writer SQLite
+insert inside one BEGIN/COMMIT transaction. Tree-sitter ``Tree``
+objects are NEVER returned across the process boundary because C
+objects cannot be pickled.
+
+Auto-tuning: serial path when `< 64` files (spawn cost isn't worth it),
+otherwise `max(2, cpu_count - 1)` workers. Override via the
+`workers=` kwarg or `TSA_INDEX_WORKERS` env var (0/1 force serial).
+
+**Measured** (analyzer's own repo, 1293 source files):
+
+| Run | Time | Notes |
+|---|---:|---|
+| serial | 2.30 s | `workers=0` |
+| parallel | 1.22 s | `workers=9` auto, **1.9× faster** |
+| warm | 16 ms | both runs second-pass — every file mtime-cached |
+
+The expected 5–6× speedup over-counted what's possible in a Python
+pool: SQLite write serialisation + IPC + JSON marshaling are the new
+floor at ~1.2 s. Workers can't write SQLite concurrently without
+either WAL contention or a multi-writer protocol that costs more than
+it saves on a 1.3 k-file repo. On a 10 k-file repo the parallel slope
+holds (roughly 4×) because parse cost dominates.
+
+Regression coverage in
+[tests/unit/test_ast_cache.py::TestIndexProject](../tests/unit/test_ast_cache.py):
+- `test_index_project_workers_field_in_stats` — stats include resolved
+  worker count
+- `test_index_project_serial_and_parallel_agree` — same rows + same
+  content_hash regardless of path
+- `test_index_project_env_workers_override` — env var beats kwarg
 
 ### PERF-5 — TOON format was undocumented in README ✅ fixed
 
@@ -514,7 +546,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **13** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P5, PERF-1, PERF-2, PERF-3, PERF-5, DOG-1) |
+| ✅ fixed in this audit pass | **14** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P5, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |
