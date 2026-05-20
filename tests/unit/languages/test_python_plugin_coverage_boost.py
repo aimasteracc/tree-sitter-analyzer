@@ -440,7 +440,7 @@ class TestPluginInfo:
 class TestExtractElementsErrorHandling:
     def test_with_bad_tree(self, plugin):
         result = plugin.extract_elements(None, "def f(): pass")
-        assert isinstance(result, list)
+        assert isinstance(result, dict)
 
 
 class TestSupportedQueries:

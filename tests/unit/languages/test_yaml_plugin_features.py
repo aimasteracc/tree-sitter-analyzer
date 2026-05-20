@@ -270,7 +270,7 @@ class TestYAMLComplexStructures:
         """Test extraction of complex YAML structure."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMPLEX_YAML_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMPLEX_YAML_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMPLEX_YAML_CODE)
 
         assert len(elements) >= 10
 
@@ -278,7 +278,7 @@ class TestYAMLComplexStructures:
         """Test extraction of services structure."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMPLEX_YAML_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMPLEX_YAML_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMPLEX_YAML_CODE)
 
         services_element = next((e for e in elements if e.key == "services"), None)
         if services_element:
@@ -288,7 +288,7 @@ class TestYAMLComplexStructures:
         """Test extraction of nested services."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMPLEX_YAML_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMPLEX_YAML_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMPLEX_YAML_CODE)
 
         service_keys = [
             e.key for e in elements if e.key in ["web", "database", "cache"]
@@ -299,7 +299,7 @@ class TestYAMLComplexStructures:
         """Test extraction of environment variables."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMPLEX_YAML_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMPLEX_YAML_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMPLEX_YAML_CODE)
 
         env_elements = [e for e in elements if e.key == "environment"]
         assert len(env_elements) >= 1
@@ -308,7 +308,7 @@ class TestYAMLComplexStructures:
         """Test extraction of volumes."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMPLEX_YAML_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMPLEX_YAML_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMPLEX_YAML_CODE)
 
         volumes_element = next((e for e in elements if e.key == "volumes"), None)
         if volumes_element:
@@ -318,7 +318,7 @@ class TestYAMLComplexStructures:
         """Test extraction of networks."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMPLEX_YAML_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMPLEX_YAML_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMPLEX_YAML_CODE)
 
         networks_element = next((e for e in elements if e.key == "networks"), None)
         if networks_element:
@@ -333,7 +333,7 @@ class TestYAMLMultiDocument:
         """Test extraction of multiple documents."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(MULTI_DOCUMENT_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, MULTI_DOCUMENT_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, MULTI_DOCUMENT_CODE)
 
         document_elements = [e for e in elements if e.element_type == "document"]
         assert len(document_elements) >= 2
@@ -342,7 +342,7 @@ class TestYAMLMultiDocument:
         """Test extraction of document content."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(MULTI_DOCUMENT_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, MULTI_DOCUMENT_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, MULTI_DOCUMENT_CODE)
 
         assert len(elements) >= 3
 
@@ -350,7 +350,7 @@ class TestYAMLMultiDocument:
         """Test that document indices are captured."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(MULTI_DOCUMENT_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, MULTI_DOCUMENT_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, MULTI_DOCUMENT_CODE)
 
         multi_doc_elements = [e for e in elements if e.document_index > 0]
         assert len(multi_doc_elements) >= 1
@@ -364,7 +364,7 @@ class TestYAMLScalarTypes:
         """Test extraction of string scalar."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         string_element = next((e for e in elements if e.key == "string_value"), None)
         if string_element:
@@ -374,7 +374,7 @@ class TestYAMLScalarTypes:
         """Test extraction of integer scalar."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         integer_element = next((e for e in elements if e.key == "integer_value"), None)
         if integer_element:
@@ -384,7 +384,7 @@ class TestYAMLScalarTypes:
         """Test extraction of float scalar."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         float_element = next((e for e in elements if e.key == "float_value"), None)
         if float_element:
@@ -394,7 +394,7 @@ class TestYAMLScalarTypes:
         """Test extraction of boolean scalar."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         boolean_elements = [
             e for e in elements if e.key in ["boolean_true", "boolean_false"]
@@ -405,7 +405,7 @@ class TestYAMLScalarTypes:
         """Test extraction of null scalar."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         null_element = next((e for e in elements if e.key == "null_value"), None)
         if null_element:
@@ -415,7 +415,7 @@ class TestYAMLScalarTypes:
         """Test extraction of scientific notation."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         scientific_element = next((e for e in elements if e.key == "scientific"), None)
         if scientific_element:
@@ -425,7 +425,7 @@ class TestYAMLScalarTypes:
         """Test extraction of hexadecimal value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         hex_element = next((e for e in elements if e.key == "hex"), None)
         if hex_element:
@@ -435,7 +435,7 @@ class TestYAMLScalarTypes:
         """Test extraction of timestamp value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         timestamp_element = next((e for e in elements if e.key == "timestamp"), None)
         if timestamp_element:
@@ -450,7 +450,7 @@ class TestYAMLCommentRecognition:
         """Test extraction of comment."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMMENT_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMMENT_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMMENT_CODE)
 
         comment_elements = [e for e in elements if e.element_type == "comment"]
         assert len(comment_elements) >= 1
@@ -459,7 +459,7 @@ class TestYAMLCommentRecognition:
         """Test extraction of inline comment."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMMENT_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMMENT_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMMENT_CODE)
 
         comment_elements = [e for e in elements if e.element_type == "comment"]
         assert len(comment_elements) >= 1
@@ -468,7 +468,7 @@ class TestYAMLCommentRecognition:
         """Test extraction of block comment."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(COMMENT_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, COMMENT_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, COMMENT_CODE)
 
         comment_elements = [e for e in elements if e.element_type == "comment"]
         assert len(comment_elements) >= 1
@@ -482,7 +482,7 @@ class TestYAMLQueryAccuracy:
         """Test that key-value query accurately identifies pairs."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         for element in elements:
             if element.element_type == "mapping":
@@ -493,7 +493,7 @@ class TestYAMLQueryAccuracy:
         """Test that list query accurately identifies lists."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(LIST_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, LIST_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         sequence_elements = [e for e in elements if e.element_type == "sequence"]
         assert len(sequence_elements) >= 1
@@ -502,7 +502,7 @@ class TestYAMLQueryAccuracy:
         """Test that nested structure query is accurate."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, NESTED_STRUCTURE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         nested_elements = [e for e in elements if e.nesting_level > 0]
         assert len(nested_elements) >= 1
@@ -511,7 +511,7 @@ class TestYAMLQueryAccuracy:
         """Test that anchor/alias query is accurate."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(ANCHOR_ALIAS_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, ANCHOR_ALIAS_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         anchor_elements = [e for e in elements if e.element_type == "anchor"]
         alias_elements = [e for e in elements if e.element_type == "alias"]
@@ -521,7 +521,7 @@ class TestYAMLQueryAccuracy:
         """Test that multi-document query is accurate."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(MULTI_DOCUMENT_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, MULTI_DOCUMENT_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, MULTI_DOCUMENT_CODE)
 
         document_elements = [e for e in elements if e.element_type == "document"]
         assert len(document_elements) >= 2
@@ -530,7 +530,7 @@ class TestYAMLQueryAccuracy:
         """Test that scalar type query is accurate."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         scalar_types = {e.value_type for e in elements if e.value_type}
         assert "string" in scalar_types
@@ -540,7 +540,7 @@ class TestYAMLQueryAccuracy:
         """Test that queries don't produce false positives."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         for element in elements:
             if element.element_type == "mapping":
@@ -551,7 +551,7 @@ class TestYAMLQueryAccuracy:
         """Test that queries don't miss elements."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         keys = [e.key for e in elements if e.key]
         assert "name" in keys
@@ -562,7 +562,7 @@ class TestYAMLQueryAccuracy:
         """Test that line numbers are accurate."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         for element in elements:
             assert element.start_line > 0
@@ -572,7 +572,7 @@ class TestYAMLQueryAccuracy:
         """Test that value types are accurately identified."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(SCALAR_TYPES_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, SCALAR_TYPES_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, SCALAR_TYPES_CODE)
 
         string_element = next((e for e in elements if e.key == "string_value"), None)
         if string_element:

@@ -165,6 +165,23 @@ class ElementExtractor(ABC):
 
         return elements
 
+    def extract_elements(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> dict[str, list[Any]]:
+        """
+        Extract elements grouped by type.
+
+        Returns:
+            Dict with keys 'functions', 'classes', 'variables', 'imports'.
+            Subclasses may add extra keys (e.g. 'packages', 'elements').
+        """
+        return {
+            "functions": self.extract_functions(tree, source_code),
+            "classes": self.extract_classes(tree, source_code),
+            "variables": self.extract_variables(tree, source_code),
+            "imports": self.extract_imports(tree, source_code),
+        }
+
     def extract_html_elements(
         self, tree: "tree_sitter.Tree", source_code: str
     ) -> list[Any]:

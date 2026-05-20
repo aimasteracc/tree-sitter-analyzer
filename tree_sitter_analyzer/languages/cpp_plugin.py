@@ -20,7 +20,6 @@ from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 from ._cpp_plugin_analysis_helpers import (
-    build_cpp_analysis_result,
     cpp_analysis_error_result,
     create_cpp_parser,
     empty_cpp_analysis_result,
@@ -489,16 +488,26 @@ class CppPlugin(LanguagePlugin):
                 return failure
 
             tree = parser.parse(file_content.encode("utf-8"))
-            elements_dict = self.extract_elements(tree, file_content)
+            extractor = self.create_extractor()
+            all_elements: list[Any] = []
+            all_elements.extend(extractor.extract_functions(tree, file_content))
+            all_elements.extend(extractor.extract_classes(tree, file_content))
+            all_elements.extend(extractor.extract_variables(tree, file_content))
+            all_elements.extend(extractor.extract_imports(tree, file_content))
+            all_elements.extend(extractor.extract_packages(tree, file_content))
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
             )
 
-            return build_cpp_analysis_result(
-                file_path,
-                file_content,
-                elements_dict,
-                node_count,
+            from ..models import AnalysisResult as _AnalysisResult
+
+            return _AnalysisResult(
+                file_path=file_path,
+                language="cpp",
+                line_count=len(file_content.split("\n")),
+                elements=all_elements,
+                node_count=node_count,
+                source_code=file_content,
             )
 
         except Exception as e:

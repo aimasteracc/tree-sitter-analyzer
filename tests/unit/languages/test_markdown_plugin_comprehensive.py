@@ -519,9 +519,11 @@ class TestMarkdownPlugin:
 
         # extract_elements uses create_extractor(), not get_extractor()
         with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
-            elements = self.plugin.extract_elements(mock_tree, "test content")
+            result = self.plugin.extract_elements(mock_tree, "test content")
 
-            assert len(elements) == 12  # All extraction methods called
+            assert isinstance(result, dict)
+            assert "elements" in result
+            assert len(result["elements"]) == 12  # All extraction methods called
             mock_extractor.extract_headers.assert_called_once()
             mock_extractor.extract_code_blocks.assert_called_once()
             mock_extractor.extract_links.assert_called_once()
@@ -543,8 +545,9 @@ class TestMarkdownPlugin:
 
         # extract_elements uses create_extractor(), not get_extractor()
         with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
-            elements = self.plugin.extract_elements(mock_tree, "test content")
-            assert elements == []
+            result = self.plugin.extract_elements(mock_tree, "test content")
+            assert isinstance(result, dict)
+            assert result.get("elements", []) == []
 
     def test_legacy_compatibility_methods(self):
         """Test legacy compatibility methods"""

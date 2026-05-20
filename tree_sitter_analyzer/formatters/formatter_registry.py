@@ -565,7 +565,7 @@ def _register_language_formatters_safe() -> None:
     """Register language-specific formatters safely to avoid circular imports"""
     try:
         # Import language-specific formatters
-        from ..legacy_table_formatter import LegacyTableFormatter
+        from ..default_table_formatter import DefaultTableFormatter
         from .cpp_formatter import CppTableFormatter
         from .csharp_formatter import CSharpTableFormatter
         from .css_formatter import CSSFormatter
@@ -583,8 +583,8 @@ def _register_language_formatters_safe() -> None:
         from .typescript_formatter import TypeScriptTableFormatter
         from .yaml_formatter import YAMLFormatter
 
-        # Set LegacyTableFormatter as default for unsupported languages
-        FormatterRegistry.set_default_language_formatter(LegacyTableFormatter)
+        # Set DefaultTableFormatter as default for unsupported languages
+        FormatterRegistry.set_default_language_formatter(DefaultTableFormatter)
 
         # Language to formatter mapping
         language_formatters = {

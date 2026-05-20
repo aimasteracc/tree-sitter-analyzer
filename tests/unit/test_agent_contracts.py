@@ -251,3 +251,122 @@ def test_warning_prone_python_api_patterns_are_blocked() -> None:
                 )
 
     assert violations == []
+
+
+# ---------------------------------------------------------------------------
+# Plugin Architecture Contracts
+# ---------------------------------------------------------------------------
+
+PLUGINS_DIR = PROJECT_ROOT / "tree_sitter_analyzer" / "languages"
+
+
+def _discover_plugin_files() -> list[tuple[str, Path]]:
+    """Return [(language_name, path), ...] for all plugin files."""
+    result = []
+    for p in sorted(PLUGINS_DIR.iterdir()):
+        if p.name.startswith("_") or p.name.startswith(".") or p.name == "__init__.py":
+            continue
+        if p.is_file() and p.suffix == ".py" and p.name.endswith("_plugin.py"):
+            result.append((p.stem.replace("_plugin", ""), p))
+        elif p.is_dir() and p.name.endswith("_plugin"):
+            plugin_py = p / "plugin.py"
+            if plugin_py.exists():
+                result.append((p.stem.replace("_plugin", ""), plugin_py))
+    return result
+
+
+def test_every_plugin_class_inherits_language_plugin() -> None:
+    """All XxxPlugin classes must inherit from LanguagePlugin (not ElementExtractor)."""
+    from tree_sitter_analyzer.plugins.base import LanguagePlugin
+
+    violations = []
+    for lang, path in _discover_plugin_files():
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and "Plugin" in node.name:
+                base_names = [
+                    b.id if isinstance(b, ast.Name) else getattr(b, "attr", "?")
+                    for b in node.bases
+                ]
+                if "ElementExtractor" in base_names:
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT)}:{node.lineno} "
+                        f"{node.name} inherits ElementExtractor (should only inherit LanguagePlugin)"
+                    )
+    assert violations == [], "\n".join(violations)
+
+
+def test_extract_elements_returns_dict() -> None:
+    """extract_elements on any class must return dict[str, list[Any]], not list."""
+    violations = []
+    for lang, path in _discover_plugin_files():
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name == "extract_elements":
+                ret = node.returns
+                if ret is None:
+                    continue
+                ret_str = ast.unparse(ret)
+                if ret_str.startswith("list") and "dict" not in ret_str:
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT)}:{node.lineno} "
+                        f"extract_elements returns {ret_str} (must be dict[str, list[...]])"
+                    )
+    assert violations == [], "\n".join(violations)
+
+
+def test_plugin_has_required_abstract_methods() -> None:
+    """Each plugin must implement: get_language_name, get_file_extensions, create_extractor, analyze_file."""
+    REQUIRED = {"get_language_name", "get_file_extensions", "create_extractor", "analyze_file"}
+    violations = []
+    for lang, path in _discover_plugin_files():
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef) and "Plugin" in node.name:
+                methods = {
+                    n.name
+                    for n in node.body
+                    if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                }
+                missing = REQUIRED - methods
+                if missing:
+                    violations.append(
+                        f"{path.relative_to(PROJECT_ROOT)}:{node.lineno} "
+                        f"{node.name} missing methods: {missing}"
+                    )
+    assert violations == [], "\n".join(violations)
+
+
+def test_no_new_single_file_plugins_in_languages_root() -> None:
+    """Prevent adding new single-file plugins. New languages must use package structure.
+
+    Existing single-file plugins are grandfathered; this test only blocks NEW ones.
+    """
+    GRANDFATHERED = {
+        "c_plugin.py",
+        "cpp_plugin.py",
+        "csharp_plugin.py",
+        "css_plugin.py",
+        "go_plugin.py",
+        "html_plugin.py",
+        "java_plugin.py",
+        "kotlin_plugin.py",
+        "php_plugin.py",
+        "ruby_plugin.py",
+        "rust_plugin.py",
+        "swift_plugin.py",
+        "yaml_plugin.py",
+    }
+    single_file_plugins = {
+        p.name
+        for p in PLUGINS_DIR.iterdir()
+        if p.is_file() and p.suffix == ".py" and p.name.endswith("_plugin.py")
+    }
+    new_plugins = single_file_plugins - GRANDFATHERED
+    assert not new_plugins, (
+        f"New single-file plugins detected: {new_plugins}. "
+        f"Use languages/<lang>_plugin/ package structure instead."
+    )

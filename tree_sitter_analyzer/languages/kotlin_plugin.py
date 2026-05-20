@@ -280,8 +280,6 @@ class KotlinPlugin(LanguagePlugin):
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
-        """Analyze Kotlin code and return structured results."""
-
         from ..models import AnalysisResult
 
         try:
@@ -289,7 +287,6 @@ class KotlinPlugin(LanguagePlugin):
 
             file_content, detected_encoding = read_file_safe(file_path)
 
-            # Get tree-sitter language and parse
             language = self.get_tree_sitter_language()
             if language is None:
                 return AnalysisResult(
@@ -304,7 +301,6 @@ class KotlinPlugin(LanguagePlugin):
 
             parser = tree_sitter.Parser()
 
-            # Set language
             if hasattr(parser, "set_language"):
                 parser.set_language(language)
             elif hasattr(parser, "language"):
@@ -314,26 +310,20 @@ class KotlinPlugin(LanguagePlugin):
 
             tree = parser.parse(file_content.encode("utf-8"))
 
-            # Extract elements
-            elements_dict = self.extract_elements(tree, file_content)
-
-            all_elements = []
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-            all_elements.extend(elements_dict.get("imports", []))
-            all_elements.extend(elements_dict.get("packages", []))
+            extractor = self.create_extractor()
+            all_elements: list[Any] = []
+            all_elements.extend(extractor.extract_functions(tree, file_content))
+            all_elements.extend(extractor.extract_classes(tree, file_content))
+            all_elements.extend(extractor.extract_variables(tree, file_content))
+            all_elements.extend(extractor.extract_imports(tree, file_content))
+            packages = extractor.extract_packages(tree, file_content)
+            all_elements.extend(packages)
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
             )
 
-            # Get package
-            package = (
-                elements_dict.get("packages", [])[0]
-                if elements_dict.get("packages")
-                else None
-            )
+            package = packages[0] if packages else None
 
             return AnalysisResult(
                 file_path=file_path,

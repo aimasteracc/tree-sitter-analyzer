@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Markdown Language Plugin — wrapper class and query definitions."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -339,11 +339,11 @@ class MarkdownPlugin(LanguagePlugin):
             log_error(f"Query execution failed: {e}")
             return {"error": str(e)}
 
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
-        """Extract elements from source code using tree-sitter AST"""
-        # CRITICAL: Always create a NEW extractor to avoid state pollution between calls
+    def extract_elements(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> dict[str, list[Any]]:
         extractor = self.create_extractor()
-        elements = []
+        elements: list[Any] = []
 
         try:
             if isinstance(extractor, MarkdownElementExtractor):
@@ -360,7 +360,6 @@ class MarkdownPlugin(LanguagePlugin):
                 elements.extend(extractor.extract_text_formatting(tree, source_code))
                 elements.extend(extractor.extract_footnotes(tree, source_code))
 
-                # Sort by line number and element type for fully deterministic output
                 elements.sort(
                     key=lambda e: (
                         getattr(e, "start_line", 0),
@@ -372,7 +371,7 @@ class MarkdownPlugin(LanguagePlugin):
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
 
-        return elements
+        return {"elements": elements}
 
     def execute_query_strategy(
         self, query_key: str | None, language: str

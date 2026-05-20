@@ -160,7 +160,7 @@ class TestYAMLKeyPairRecognition:
         """Test extraction of simple key-value pairs."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         mapping_elements = [e for e in elements if e.element_type == "mapping"]
         assert len(mapping_elements) >= 1
@@ -169,7 +169,7 @@ class TestYAMLKeyPairRecognition:
         """Test extraction of string value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         name_element = next((e for e in elements if e.key == "name"), None)
         if name_element:
@@ -180,7 +180,7 @@ class TestYAMLKeyPairRecognition:
         """Test extraction of integer value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         age_element = next((e for e in elements if e.key == "age"), None)
         if age_element:
@@ -191,7 +191,7 @@ class TestYAMLKeyPairRecognition:
         """Test extraction of float value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         salary_element = next((e for e in elements if e.key == "salary"), None)
         if salary_element:
@@ -202,7 +202,7 @@ class TestYAMLKeyPairRecognition:
         """Test extraction of boolean true value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         active_element = next((e for e in elements if e.key == "active"), None)
         if active_element:
@@ -213,7 +213,7 @@ class TestYAMLKeyPairRecognition:
         """Test extraction of boolean false value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         verified_element = next((e for e in elements if e.key == "verified"), None)
         if verified_element:
@@ -224,7 +224,7 @@ class TestYAMLKeyPairRecognition:
         """Test extraction of null value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         middle_name_element = next(
             (e for e in elements if e.key == "middle_name"), None
@@ -237,7 +237,7 @@ class TestYAMLKeyPairRecognition:
         """Test extraction of quoted string value."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(KEY_VALUE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, KEY_VALUE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, KEY_VALUE_CODE)
 
         description_element = next(
             (e for e in elements if e.key == "description"), None
@@ -254,7 +254,7 @@ class TestYAMLListRecognition:
         """Test extraction of simple list."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(LIST_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, LIST_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         sequence_elements = [e for e in elements if e.element_type == "sequence"]
         assert len(sequence_elements) >= 1
@@ -263,7 +263,7 @@ class TestYAMLListRecognition:
         """Test extraction of list of strings."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(LIST_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, LIST_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         fruits_element = next((e for e in elements if e.key == "fruits"), None)
         if fruits_element:
@@ -273,7 +273,7 @@ class TestYAMLListRecognition:
         """Test extraction of list of numbers."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(LIST_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, LIST_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         numbers_element = next((e for e in elements if e.key == "numbers"), None)
         if numbers_element:
@@ -283,7 +283,7 @@ class TestYAMLListRecognition:
         """Test extraction of list of objects."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(LIST_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, LIST_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         users_element = next((e for e in elements if e.key == "users"), None)
         if users_element:
@@ -293,7 +293,7 @@ class TestYAMLListRecognition:
         """Test extraction of nested list."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(LIST_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, LIST_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         matrix_element = next((e for e in elements if e.key == "matrix"), None)
         if matrix_element:
@@ -303,7 +303,7 @@ class TestYAMLListRecognition:
         """Test extraction of inline list."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(LIST_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, LIST_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, LIST_CODE)
 
         colors_element = next((e for e in elements if e.key == "colors"), None)
         if colors_element:
@@ -318,7 +318,7 @@ class TestYAMLNestedStructureRecognition:
         """Test extraction of nested mapping."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, NESTED_STRUCTURE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         assert len(elements) >= 5
 
@@ -326,7 +326,7 @@ class TestYAMLNestedStructureRecognition:
         """Test extraction of person structure."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, NESTED_STRUCTURE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         person_element = next((e for e in elements if e.key == "person"), None)
         if person_element:
@@ -336,7 +336,7 @@ class TestYAMLNestedStructureRecognition:
         """Test extraction of address structure."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, NESTED_STRUCTURE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         address_element = next((e for e in elements if e.key == "address"), None)
         if address_element:
@@ -346,7 +346,7 @@ class TestYAMLNestedStructureRecognition:
         """Test extraction of deeply nested structure."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, NESTED_STRUCTURE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         assert len(elements) >= 10
 
@@ -354,7 +354,7 @@ class TestYAMLNestedStructureRecognition:
         """Test extraction of config structure."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, NESTED_STRUCTURE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         config_element = next((e for e in elements if e.key == "config"), None)
         if config_element:
@@ -364,7 +364,7 @@ class TestYAMLNestedStructureRecognition:
         """Test that nesting levels are captured."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(NESTED_STRUCTURE_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, NESTED_STRUCTURE_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, NESTED_STRUCTURE_CODE)
 
         nested_elements = [e for e in elements if e.nesting_level > 0]
         assert len(nested_elements) >= 1
@@ -378,7 +378,7 @@ class TestYAMLAnchorAliasRecognition:
         """Test extraction of anchor."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(ANCHOR_ALIAS_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, ANCHOR_ALIAS_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         anchor_elements = [e for e in elements if e.element_type == "anchor"]
         assert len(anchor_elements) >= 1
@@ -387,7 +387,7 @@ class TestYAMLAnchorAliasRecognition:
         """Test extraction of alias."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(ANCHOR_ALIAS_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, ANCHOR_ALIAS_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         alias_elements = [e for e in elements if e.element_type == "alias"]
         assert len(alias_elements) >= 1
@@ -396,7 +396,7 @@ class TestYAMLAnchorAliasRecognition:
         """Test extraction of defaults anchor."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(ANCHOR_ALIAS_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, ANCHOR_ALIAS_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         defaults_element = next((e for e in elements if e.key == "defaults"), None)
         if defaults_element:
@@ -406,7 +406,7 @@ class TestYAMLAnchorAliasRecognition:
         """Test extraction of alias usage."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(ANCHOR_ALIAS_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, ANCHOR_ALIAS_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         alias_usage_elements = [e for e in elements if e.alias_target is not None]
         assert len(alias_usage_elements) >= 1
@@ -415,7 +415,7 @@ class TestYAMLAnchorAliasRecognition:
         """Test extraction of merge key (<<)."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(ANCHOR_ALIAS_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, ANCHOR_ALIAS_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         merge_elements = [e for e in elements if "<<" in str(e.raw_text)]
         assert len(merge_elements) >= 1
@@ -424,7 +424,7 @@ class TestYAMLAnchorAliasRecognition:
         """Test extraction of multiple anchors."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(ANCHOR_ALIAS_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, ANCHOR_ALIAS_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         anchor_elements = [e for e in elements if e.element_type == "anchor"]
         assert len(anchor_elements) >= 2
@@ -433,7 +433,7 @@ class TestYAMLAnchorAliasRecognition:
         """Test extraction of anchor in list."""
         plugin = YAMLPlugin()
         tree = get_tree_for_code(ANCHOR_ALIAS_CODE, plugin)
-        elements = plugin.extractor.extract_elements(tree, ANCHOR_ALIAS_CODE)
+        elements = plugin.extractor.extract_yaml_elements(tree, ANCHOR_ALIAS_CODE)
 
         anchor_elements = [e for e in elements if e.element_type == "anchor"]
         assert len(anchor_elements) >= 1

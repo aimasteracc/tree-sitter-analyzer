@@ -382,10 +382,11 @@ class TestMarkdownPluginNewElementsIntegration:
 
         # extract_elements uses create_extractor(), not get_extractor()
         with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
-            elements = self.plugin.extract_elements(mock_tree, "test content")
+            result = self.plugin.extract_elements(mock_tree, "test content")
 
-            # Should include all element types that return results
-            assert len(elements) >= 12  # All 12 extraction methods
+            assert isinstance(result, dict)
+            assert "elements" in result
+            assert len(result["elements"]) >= 12  # All 12 extraction methods
 
             # Verify all extraction methods were called
             mock_extractor.extract_headers.assert_called_once()

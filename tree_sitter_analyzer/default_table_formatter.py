@@ -79,12 +79,12 @@ from ._legacy_table_formatter_helpers import (
 )
 
 
-class LegacyTableFormatter:
+class DefaultTableFormatter:
     """
-    Legacy table formatter — renamed to DefaultTableFormatter.
+    Default table formatter for code analysis results.
 
-    This class is kept for backward compatibility. New code should use
-    ``default_table_formatter.DefaultTableFormatter`` instead.
+    This class restores the exact v1.6.1.4 behavior for the analyze_code_structure
+    tool, ensuring backward compatibility and specification compliance.
     """
 
     def __init__(

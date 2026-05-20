@@ -404,13 +404,12 @@ class CPlugin(LanguagePlugin):
 
             tree = parser.parse(file_content.encode("utf-8"))
 
-            elements_dict = self.extract_elements(tree, file_content)
-
-            all_elements = []
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-            all_elements.extend(elements_dict.get("imports", []))
+            extractor = self.create_extractor()
+            all_elements: list[Any] = []
+            all_elements.extend(extractor.extract_functions(tree, file_content))
+            all_elements.extend(extractor.extract_classes(tree, file_content))
+            all_elements.extend(extractor.extract_variables(tree, file_content))
+            all_elements.extend(extractor.extract_imports(tree, file_content))
 
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0

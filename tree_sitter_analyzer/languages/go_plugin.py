@@ -444,16 +444,14 @@ class GoPlugin(LanguagePlugin):
             tree = parser.parse(file_content.encode("utf-8"))
 
             # Extract elements
-            elements_dict = self.extract_elements(tree, file_content)
+            extractor = self.extractor
+            all_elements: list[Any] = []
+            all_elements.extend(extractor.extract_packages(tree, file_content))
+            all_elements.extend(extractor.extract_imports(tree, file_content))
+            all_elements.extend(extractor.extract_functions(tree, file_content))
+            all_elements.extend(extractor.extract_classes(tree, file_content))
+            all_elements.extend(extractor.extract_variables(tree, file_content))
 
-            all_elements = []
-            all_elements.extend(elements_dict.get("packages", []))
-            all_elements.extend(elements_dict.get("imports", []))
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-
-            # Count nodes
             node_count = (
                 self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
             )
@@ -467,7 +465,6 @@ class GoPlugin(LanguagePlugin):
                 source_code=file_content,
             )
 
-            # Attach Go-specific metadata
             result.goroutines = self.extractor.goroutines
             result.channels = self.extractor.channels
             result.defers = self.extractor.defers

@@ -168,17 +168,9 @@ class YAMLElementExtractor(ElementExtractor):
     # Extract elements from AST: extract_elements
     def extract_elements(
         self, tree: "tree_sitter.Tree | None", source_code: str
-    ) -> list[YAMLElement]:
-        """Alias for extract_yaml_elements for compatibility with tests.
-
-        Args:
-            tree: Parsed tree-sitter tree
-            source_code: Original source code
-
-        Returns:
-            List of YAMLElement objects
-        """
-        return self.extract_yaml_elements(tree, source_code)
+    ) -> dict[str, list[Any]]:
+        elements = self.extract_yaml_elements(tree, source_code)
+        return {"elements": elements}
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get text content from a tree-sitter node."""

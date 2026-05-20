@@ -46,16 +46,29 @@ class SwiftPlugin(LanguagePlugin):
     async def analyze_file(
         self, file_path: str, request: AnalysisRequest
     ) -> AnalysisResult:
-        """Analyze Swift code and return structured results."""
         try:
+            from ..models import AnalysisResult as _AR
+
             file_content, _detected_encoding = read_file_safe(file_path)
             language = self.get_tree_sitter_language()
             if language is None:
                 return _empty_analysis_result(file_path, file_content)
 
             tree = _parse_swift_source(language, file_content)
-            elements_dict = self.extract_elements(tree, file_content)
-            return _analysis_result(file_path, file_content, tree, elements_dict)
+            extractor = self.create_extractor()
+            elements: list[Any] = []
+            elements.extend(extractor.extract_functions(tree, file_content))
+            elements.extend(extractor.extract_classes(tree, file_content))
+            elements.extend(extractor.extract_variables(tree, file_content))
+            elements.extend(extractor.extract_imports(tree, file_content))
+            return _AR(
+                file_path=file_path,
+                language="swift",
+                line_count=len(file_content.splitlines()),
+                elements=elements,
+                node_count=_count_tree_nodes(tree.root_node),
+                source_code=file_content,
+            )
         except Exception as e:
             log_error(f"Error analyzing Swift file {file_path}: {e}")
             return _analysis_error_result(file_path, str(e))

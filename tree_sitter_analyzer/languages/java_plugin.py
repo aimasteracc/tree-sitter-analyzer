@@ -540,22 +540,17 @@ class JavaPlugin(LanguagePlugin):
 
                 tree = parser.parse(file_content.encode("utf-8"))
 
-                # Extract elements using our extractor
-                elements_dict = self.extract_elements(tree, file_content)
+                extractor = self.create_extractor()
+                all_elements: list[Any] = []
+                all_elements.extend(extractor.extract_functions(tree, file_content))
+                all_elements.extend(extractor.extract_classes(tree, file_content))
+                all_elements.extend(extractor.extract_variables(tree, file_content))
+                all_elements.extend(extractor.extract_imports(tree, file_content))
+                packages = extractor.extract_packages(tree, file_content)
+                all_elements.extend(packages)
 
-                # Combine all elements into a single list
-                all_elements = []
-                all_elements.extend(elements_dict.get("functions", []))
-                all_elements.extend(elements_dict.get("classes", []))
-                all_elements.extend(elements_dict.get("variables", []))
-                all_elements.extend(elements_dict.get("imports", []))
-                all_elements.extend(elements_dict.get("packages", []))
-
-                # Extract packages and annotations if available
-                packages = elements_dict.get("packages", [])
                 package = packages[0] if packages else None
 
-                # Count nodes in the AST tree
                 from ..utils.tree_sitter_compat import count_nodes_iterative
 
                 node_count = 0

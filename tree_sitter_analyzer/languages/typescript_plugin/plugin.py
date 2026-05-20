@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """TypeScript Language Plugin — wrapper class and query definitions."""
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     import tree_sitter
@@ -196,18 +196,25 @@ class TypeScriptPlugin(LanguagePlugin):
 
     def extract_elements(
         self, tree: "tree_sitter.Tree", source_code: str
-    ) -> list[CodeElement]:
-        """Legacy method for backward compatibility with tests"""
+    ) -> dict[str, list[Any]]:
         extractor = self.create_extractor()
-        all_elements: list[CodeElement] = []
-
-        # Extract all types of elements
-        all_elements.extend(extractor.extract_functions(tree, source_code))
-        all_elements.extend(extractor.extract_classes(tree, source_code))
-        all_elements.extend(extractor.extract_variables(tree, source_code))
-        all_elements.extend(extractor.extract_imports(tree, source_code))
-
-        return all_elements
+        functions: list[Any] = []
+        classes: list[Any] = []
+        variables: list[Any] = []
+        imports: list[Any] = []
+        try:
+            functions = extractor.extract_functions(tree, source_code)
+            classes = extractor.extract_classes(tree, source_code)
+            variables = extractor.extract_variables(tree, source_code)
+            imports = extractor.extract_imports(tree, source_code)
+        except Exception as e:
+            log_error(f"Failed to extract elements: {e}")
+        return {
+            "functions": functions,
+            "classes": classes,
+            "variables": variables,
+            "imports": imports,
+        }
 
     def execute_query_strategy(
         self, query_key: str | None, language: str

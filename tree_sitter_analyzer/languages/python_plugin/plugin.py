@@ -317,14 +317,24 @@ class PythonPlugin(LanguagePlugin):
             return {"error": str(e)}
 
     # Extract elements from AST: extract_elements
-    def extract_elements(self, tree: "tree_sitter.Tree", source_code: str) -> list:
+    def extract_elements(
+        self, tree: "tree_sitter.Tree", source_code: str
+    ) -> dict[str, list[Any]]:
         extractor = self.get_extractor()
-        elements: list[CodeElement] = []
+        functions: list[Any] = []
+        classes: list[Any] = []
+        variables: list[Any] = []
+        imports: list[Any] = []
         try:
-            elements.extend(extractor.extract_functions(tree, source_code))
-            elements.extend(extractor.extract_classes(tree, source_code))
-            elements.extend(extractor.extract_variables(tree, source_code))
-            elements.extend(extractor.extract_imports(tree, source_code))
+            functions = extractor.extract_functions(tree, source_code)
+            classes = extractor.extract_classes(tree, source_code)
+            variables = extractor.extract_variables(tree, source_code)
+            imports = extractor.extract_imports(tree, source_code)
         except Exception as e:
             log_error(f"Failed to extract elements: {e}")
-        return elements
+        return {
+            "functions": functions,
+            "classes": classes,
+            "variables": variables,
+            "imports": imports,
+        }
