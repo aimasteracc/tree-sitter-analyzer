@@ -14,10 +14,20 @@ def mock_external_commands(monkeypatch):
 
 @pytest.mark.unit
 def test_list_files_validation_requires_roots(tmp_path):
-    """Test that ListFilesTool validation fails when roots parameter is missing."""
-    tool = ListFilesTool(str(tmp_path))
+    """``roots`` is required when no project_root is configured.
+
+    Post-1.12 dogfood UX fix: when the tool *does* have a project_root,
+    missing ``roots`` is now allowed (the tool falls back to
+    ``[self.project_root]``). The hard error only surfaces when both
+    ``roots`` and ``project_root`` are absent.
+    """
+    tool = ListFilesTool(None)
     with pytest.raises(ValueError):
         tool.validate_arguments({})
+
+    # Fallback path: tool with project_root + no roots succeeds.
+    tool_with_root = ListFilesTool(str(tmp_path))
+    tool_with_root.validate_arguments({})
 
 
 @pytest.mark.unit
@@ -418,4 +428,3 @@ def test_list_files_validation_comprehensive(tmp_path):
     for invalid_args, expected_error in invalid_cases:
         with pytest.raises(ValueError, match=expected_error):
             tool.validate_arguments(invalid_args)
-

@@ -64,9 +64,18 @@ class ListFilesTool(BaseMCPTool):
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """Validate roots and all option types."""
-        if "roots" not in arguments:
-            raise ValueError("roots is required")
+        """Validate roots and all option types.
+
+        ``roots`` is optional: when omitted (or empty), the tool falls
+        back to ``self.project_root`` so callers don't have to repeat
+        the project path they already configured on the tool instance.
+        """
+        if "roots" not in arguments or arguments["roots"] in (None, [], ""):
+            if not self.project_root:
+                raise ValueError(
+                    "roots is required when the tool has no project_root configured"
+                )
+            arguments["roots"] = [self.project_root]
         roots = arguments["roots"]
         if not isinstance(roots, list):
             raise ValueError("roots must be an array")

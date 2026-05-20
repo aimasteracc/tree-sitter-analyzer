@@ -76,8 +76,24 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
         return validated
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """Validate roots and query arguments."""
-        if "roots" not in arguments or not isinstance(arguments["roots"], list):
+        """Validate roots and query arguments.
+
+        ``roots`` is optional: when omitted or empty (``None``, ``[]``,
+        ``""``), the tool falls back to ``self.project_root`` so callers
+        don't have to repeat the project path they already configured on
+        the tool instance.
+
+        Passing a non-list value (e.g. a bare string) is still an error —
+        the fallback only triggers when ``roots`` is genuinely absent or
+        empty, never when the caller meant to pass something invalid.
+        """
+        if "roots" not in arguments or arguments["roots"] in (None, [], ""):
+            if not self.project_root:
+                raise ValueError(
+                    "roots is required when the tool has no project_root configured"
+                )
+            arguments["roots"] = [self.project_root]
+        if not isinstance(arguments["roots"], list):
             raise ValueError("roots is required and must be an array")
         if (
             "query" not in arguments

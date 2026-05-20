@@ -112,33 +112,31 @@ class TestGetCodeOutlineToolToonExecution:
                     new_callable=AsyncMock,
                     return_value=mock_result,
                 ):
+                    # ``format_as_json`` is no longer imported by the tool
+                    # (JSON output returns the structured dict directly),
+                    # so we only patch ``format_as_toon``.
                     with patch(
                         "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_toon"
                     ) as mock_format_toon:
-                        with patch(
-                            "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_json"
-                        ) as mock_format_json:
-                            mock_format_toon.return_value = (
-                                "success: true\noutline: ..."
-                            )
-                            mock_format_json.return_value = '{"success": true}'
+                        mock_format_toon.return_value = "success: true\noutline: ..."
+                        mock_format_json = MagicMock()  # local stand-in (never called)
 
-                            args = {
-                                "file_path": "/fake/file.py",
-                                "language": "python",
-                                "output_format": "toon",
-                            }
+                        args = {
+                            "file_path": "/fake/file.py",
+                            "language": "python",
+                            "output_format": "toon",
+                        }
 
-                            result = await tool.execute(args)
+                        result = await tool.execute(args)
 
-                            # 应该调用 format_as_toon
-                            mock_format_toon.assert_called_once()
-                            # 不应该调用 format_as_json
-                            mock_format_json.assert_not_called()
+                        # 应该调用 format_as_toon
+                        mock_format_toon.assert_called_once()
+                        # 不应该调用 format_as_json
+                        mock_format_json.assert_not_called()
 
-                            # 返回结果应包含 TOON 格式的文本
-                            assert result["content"][0]["type"] == "text"
-                            assert "success: true" in result["content"][0]["text"]
+                        # 返回结果应包含 TOON 格式的文本
+                        assert result["content"][0]["type"] == "text"
+                        assert "success: true" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
     async def test_execute_with_json_format_calls_format_as_json(self):
@@ -167,37 +165,35 @@ class TestGetCodeOutlineToolToonExecution:
                     new_callable=AsyncMock,
                     return_value=mock_result,
                 ):
+                    # ``format_as_json`` is no longer imported by the tool
+                    # (JSON output returns the structured dict directly),
+                    # so we only patch ``format_as_toon``.
                     with patch(
                         "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_toon"
                     ) as mock_format_toon:
-                        with patch(
-                            "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_json"
-                        ) as mock_format_json:
-                            mock_format_toon.return_value = (
-                                "success: true\noutline: ..."
-                            )
-                            mock_format_json.return_value = '{"success": true}'
+                        mock_format_toon.return_value = "success: true\noutline: ..."
+                        mock_format_json = MagicMock()  # local stand-in (never called)
 
-                            args = {
-                                "file_path": "/fake/file.py",
-                                "language": "python",
-                                "output_format": "json",
-                            }
+                        args = {
+                            "file_path": "/fake/file.py",
+                            "language": "python",
+                            "output_format": "json",
+                        }
 
-                            result = await tool.execute(args)
+                        result = await tool.execute(args)
 
-                            # JSON output now returns the structured dict
-                            # directly instead of routing through
-                            # ``format_as_json`` — the function only runs
-                            # on the TOON path. ``format_as_toon`` likewise
-                            # is not called for JSON output.
-                            mock_format_json.assert_not_called()
-                            mock_format_toon.assert_not_called()
+                        # JSON output now returns the structured dict
+                        # directly instead of routing through
+                        # ``format_as_json`` — the function only runs
+                        # on the TOON path. ``format_as_toon`` likewise
+                        # is not called for JSON output.
+                        mock_format_json.assert_not_called()
+                        mock_format_toon.assert_not_called()
 
-                            # The dict carries the canonical fields directly.
-                            assert isinstance(result, dict)
-                            assert result["success"] is True
-                            assert "outline" in result
+                        # The dict carries the canonical fields directly.
+                        assert isinstance(result, dict)
+                        assert result["success"] is True
+                        assert "outline" in result
 
     @pytest.mark.asyncio
     async def test_execute_defaults_to_toon_when_format_not_specified(self):
@@ -226,28 +222,26 @@ class TestGetCodeOutlineToolToonExecution:
                     new_callable=AsyncMock,
                     return_value=mock_result,
                 ):
+                    # ``format_as_json`` is no longer imported by the tool
+                    # (JSON output returns the structured dict directly),
+                    # so we only patch ``format_as_toon``.
                     with patch(
                         "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_toon"
                     ) as mock_format_toon:
-                        with patch(
-                            "tree_sitter_analyzer.mcp.tools.get_code_outline_tool.format_as_json"
-                        ) as mock_format_json:
-                            mock_format_toon.return_value = (
-                                "success: true\noutline: ..."
-                            )
-                            mock_format_json.return_value = '{"success": true}'
+                        mock_format_toon.return_value = "success: true\noutline: ..."
+                        mock_format_json = MagicMock()  # local stand-in (never called)
 
-                            args = {
-                                "file_path": "/fake/file.py",
-                                "language": "python",
-                                # 不指定 output_format
-                            }
+                        args = {
+                            "file_path": "/fake/file.py",
+                            "language": "python",
+                            # 不指定 output_format
+                        }
 
-                            await tool.execute(args)
+                        await tool.execute(args)
 
-                            # 应该默认调用 format_as_toon
-                            mock_format_toon.assert_called_once()
-                            mock_format_json.assert_not_called()
+                        # 应该默认调用 format_as_toon
+                        mock_format_toon.assert_called_once()
+                        mock_format_json.assert_not_called()
 
 
 class TestGetCodeOutlineToolToonStructure:

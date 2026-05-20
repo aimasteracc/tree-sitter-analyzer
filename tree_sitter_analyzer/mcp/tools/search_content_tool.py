@@ -105,7 +105,15 @@ class SearchContentTool(BaseMCPTool):
 
     # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        """Validate query, roots/files, and all option types."""
+        """Validate query, roots/files, and all option types.
+
+        If neither ``roots`` nor ``files`` was provided but the tool has
+        a ``project_root`` configured, default ``roots`` to that root
+        so callers don't have to repeat the project path they already
+        configured at construction time.
+        """
+        if "roots" not in arguments and "files" not in arguments and self.project_root:
+            arguments["roots"] = [self.project_root]
         return validate_search_arguments(
             arguments,
             self._validate_roots,

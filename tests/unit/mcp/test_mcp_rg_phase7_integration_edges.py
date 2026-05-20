@@ -324,9 +324,12 @@ async def test_rg_91_search_content_total_only_then_normal_cache(monkeypatch, tm
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_rg_92_search_content_roots_validation(tmp_path):
-    tool = SearchContentTool(str(tmp_path))
+    # roots missing → only raises when no project_root configured
+    no_root_tool = SearchContentTool(None)
     with pytest.raises(ValueError):
-        tool.validate_arguments({"query": "x"})
+        no_root_tool.validate_arguments({"query": "x"})
+    # empty query → always raises
+    tool = SearchContentTool(str(tmp_path))
     with pytest.raises(ValueError):
         tool.validate_arguments({"roots": [str(tmp_path)], "query": ""})
 
@@ -334,9 +337,12 @@ async def test_rg_92_search_content_roots_validation(tmp_path):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_rg_93_find_and_grep_roots_validation(tmp_path):
-    tool = FindAndGrepTool(str(tmp_path))
+    # roots missing AND no project_root → ValueError
+    no_root_tool = FindAndGrepTool(None)
     with pytest.raises(ValueError):
-        tool.validate_arguments({"query": "x"})
+        no_root_tool.validate_arguments({"query": "x"})
+    # invalid roots type still rejected even with project_root
+    tool = FindAndGrepTool(str(tmp_path))
     with pytest.raises(ValueError):
         tool.validate_arguments({"roots": "not-an-array", "query": "x"})
 

@@ -44,12 +44,18 @@ def _mock_find_and_grep_json_run(monkeypatch, file_path, line_text, match_text):
 @pytest.mark.unit
 @pytest.mark.unit
 def test_find_and_grep_validation_requires_roots_and_query(tmp_path):
-    """Test that FindAndGrepTool validation fails when either roots or query parameter is missing."""
+    """``query`` is always required; ``roots`` is required only when no
+    project_root is configured (post-1.12 fallback)."""
     tool = FindAndGrepTool(str(tmp_path))
+    # query missing → ValueError (regardless of roots / fallback)
     with pytest.raises(ValueError):
         tool.validate_arguments({"roots": [str(tmp_path)]})
+    # No-project-root + missing roots → ValueError
+    no_root_tool = FindAndGrepTool(None)
     with pytest.raises(ValueError):
-        tool.validate_arguments({"query": "foo"})
+        no_root_tool.validate_arguments({"query": "foo"})
+    # Tool with project_root + missing roots → succeeds via fallback
+    tool.validate_arguments({"query": "foo"})
 
 
 @pytest.mark.unit

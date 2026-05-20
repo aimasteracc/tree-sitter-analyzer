@@ -223,9 +223,11 @@ def test_search_content_validation_invalid_types(tmp_path):
     """Test SearchContentTool validation with invalid parameter types."""
     tool = SearchContentTool(str(tmp_path))
 
-    # Test missing query and roots/files
+    # Test missing query and roots/files — only raises when the tool has
+    # no project_root to fall back on (post-1.12 dogfood UX fix).
+    no_root_tool = SearchContentTool(None)
     with pytest.raises(ValueError, match="Either roots or files must be provided"):
-        tool.validate_arguments({"query": "test"})
+        no_root_tool.validate_arguments({"query": "test"})
 
     # Test invalid boolean parameters
     with pytest.raises(ValueError, match="count_only_matches must be a boolean"):
@@ -599,12 +601,18 @@ async def test_search_content_with_timeout_and_max_count(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_search_content_validation_comprehensive(tmp_path):
-    """Test comprehensive parameter validation for SearchContentTool."""
-    tool = SearchContentTool(str(tmp_path))
+    """Test comprehensive parameter validation for SearchContentTool.
 
-    # Test all invalid parameter types
+    Post-1.12 dogfood UX fix: a tool with a configured project_root
+    falls back to that root when ``roots`` is missing — so the "Either
+    roots or files" assertion below uses a project_root-less tool.
+    """
+    tool = SearchContentTool(str(tmp_path))
+    no_root_tool = SearchContentTool(None)
+
+    # The "missing roots" case needs the no-project-root tool to surface
+    # the validation error; the remaining cases reuse the configured tool.
     invalid_cases = [
-        ({"query": "test"}, "Either roots or files must be provided"),
         ({"roots": [str(tmp_path)]}, "query is required"),
         ({"roots": [str(tmp_path)], "query": ""}, "query is required"),
         (
@@ -660,3 +668,7 @@ def test_search_content_validation_comprehensive(tmp_path):
     for invalid_args, expected_error in invalid_cases:
         with pytest.raises(ValueError, match=expected_error):
             tool.validate_arguments(invalid_args)
+
+    # Separately: the missing-roots branch needs the no-project-root tool
+    with pytest.raises(ValueError, match="Either roots or files must be provided"):
+        no_root_tool.validate_arguments({"query": "test"})
