@@ -65,6 +65,12 @@ db.sqlite3-journal
 .autonomous-runtime/autonomous-loop.log
 .autonomous-runtime/last-tick.json
 
+# Local autonomous-dev helper scripts — never commit (use opencode/CLI flags that
+# bypass safety gates like --dangerously-skip-permissions and --no-verify).
+# The safe, committed equivalent lives in scripts/auto_review.py.
+autonomous_sprint_loop.sh
+autonomous_*.sh
+
 # Flask stuff:
 instance/
 .webassets-cache
