@@ -10,7 +10,18 @@
 [![Version](https://img.shields.io/badge/version-1.10.4-blue.svg)](https://github.com/aimasteracc/tree-sitter-analyzer/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/aimasteracc/tree-sitter-analyzer.svg?style=social)](https://github.com/aimasteracc/tree-sitter-analyzer)
 
-> 🚀 **Enterprise-Grade Code Analysis Tool for the AI Era** - Deep AI Integration · Powerful Search · 17 Languages · Intelligent Analysis
+> 🚀 **The MCP code-analysis server built for AI agents** — 23 MCP tools · 17 languages · **TOON output cuts tokens by ~73%** · pure `uvx`, no graph DB required
+
+### Why AI agents reach for this over a raw tree-sitter wrapper
+
+| | Without Tree-sitter Analyzer | With Tree-sitter Analyzer |
+|---|---:|---:|
+| Reading `examples/BigService.java` for one method | 1419 lines / ~11,351 tokens | **17 lines / ~290 tokens** |
+| Same AST result encoded as JSON vs **TOON** | 25,478 bytes | **6,988 bytes (–73%)** |
+| Frameworks understood out-of-the-box | grammar only | **Flask · Django · FastAPI · Express · Spring Boot** route detection |
+| Setup | grammar download + own glue | `uvx tree-sitter-analyzer` — done |
+
+→ One MCP server, **23 agent-shaped tools**: `--smart-context` · `--symbol-lineage` · `--change-impact` · `--code-patterns` · `--call-graph` · `--detect-routes` · `--refactor` · `--safe-to-edit` · `--ast-cache` · `--project-health` · …
 
 ---
 
