@@ -121,18 +121,27 @@ class ModificationGuardTool(BaseMCPTool):
         Args:
             project_root: Optional project root directory
         """
-        super().__init__(project_root)
+        # Create the inner trace_impact_tool BEFORE ``super().__init__`` so
+        # the project-root hook that fires inside the parent constructor
+        # can find the attribute. Otherwise it logs a noisy warning on
+        # every construction.
         self._trace_impact_tool = TraceImpactTool(project_root)
+        super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         """Propagate the project-root change to the inner trace_impact tool.
 
         ARCH-A4: tools react via this hook; ``BaseMCPTool.set_project_path``
         stays the single entrypoint. Forwarding to the inner tool uses its
-        public ``set_project_path`` so its own hook fires too.
+        public ``set_project_path`` so its own hook fires too. Guard with
+        ``hasattr`` because the hook may fire during ``super().__init__``
+        before the inner tool is set (defence-in-depth).
         """
-        if project_root is not None:
-            self._trace_impact_tool.set_project_path(project_root)
+        if project_root is None:
+            return
+        inner = getattr(self, "_trace_impact_tool", None)
+        if inner is not None:
+            inner.set_project_path(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         """
