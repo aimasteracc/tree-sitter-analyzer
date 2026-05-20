@@ -113,10 +113,20 @@ def _format_safe_to_edit_result(
         project_root=context.project_root,
     )
     workflow = build_agent_workflow(workflow_context)
+    # ``risk_level`` is the canonical field; ``verdict`` mirrors it for
+    # symmetry with modification_guard's API (both tools answer the
+    # same question — "is this safe to edit?"). ``recommendation`` is
+    # the one-line human-readable next step distilled from the
+    # workflow's first ``next_step``.
+    risk = facts.risk
+    verdict = _risk_to_verdict(risk)
+    recommendation = _format_recommendation(risk, facts, workflow)
     return {
         "success": True,
         "file_path": context.file_path,
-        "risk_level": facts.risk,
+        "risk_level": risk,
+        "verdict": verdict,
+        "recommendation": recommendation,
         "agent_summary": build_agent_summary(workflow_context, workflow),
         "risk_factors": facts.risk_factors,
         "health_grade": facts.health.grade,
@@ -130,6 +140,44 @@ def _format_safe_to_edit_result(
         "pre_edit_checklist": facts.pre_edit_checklist,
         "agent_workflow": workflow,
     }
+
+
+def _risk_to_verdict(risk: str) -> str:
+    """Map ``risk_level`` to the modification_guard verdict vocabulary.
+
+    safe → SAFE; caution → CAUTION; dangerous / high → UNSAFE.
+    """
+    risk_lower = (risk or "").lower()
+    if risk_lower in ("dangerous", "high", "unsafe"):
+        return "UNSAFE"
+    if risk_lower in ("caution", "medium"):
+        return "CAUTION"
+    return "SAFE"
+
+
+def _format_recommendation(
+    risk: str,
+    facts: SafeToEditFacts,
+    workflow: dict[str, Any],
+) -> str:
+    """One-line agent-readable summary of what to do next."""
+    grade = facts.health.grade
+    downstream = len(facts.dependents)
+    verdict = _risk_to_verdict(risk).lower()
+    if verdict == "unsafe":
+        return (
+            f"UNSAFE to edit: health grade {grade}, {downstream} downstream "
+            f"file(s) depend on this. Refactor in stages with tests after each."
+        )
+    if verdict == "caution":
+        return (
+            f"CAUTION: health grade {grade}, {downstream} downstream file(s). "
+            "Run tests in the affected scope before and after the edit."
+        )
+    return (
+        f"SAFE to edit (health {grade}, {downstream} downstream). "
+        "Standard test pass after the edit is sufficient."
+    )
 
 
 def build_agent_summary(
