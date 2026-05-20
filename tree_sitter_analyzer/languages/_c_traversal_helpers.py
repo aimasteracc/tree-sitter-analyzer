@@ -13,6 +13,17 @@ _C_CONTAINER_NODE_TYPES = frozenset(
         "field_declaration_list",
         "declaration_list",
         "type_definition",
+        # Preprocessor conditional branches — without these the traversal
+        # stops at ``#ifdef`` / ``#if`` boundaries and silently skips every
+        # macro definition (and any other declaration) inside them. See
+        # ``examples/sample.c`` lines 14–18 (the ``LOG(msg)`` macros).
+        # tree-sitter-c uses ``preproc_ifdef`` for both ``#ifdef`` and
+        # ``#ifndef``; ``preproc_else``/``preproc_elif`` are nested
+        # under their parent conditional.
+        "preproc_if",
+        "preproc_ifdef",
+        "preproc_else",
+        "preproc_elif",
     }
 )
 

@@ -52,6 +52,8 @@
 | Method | Signature | Vis | Lines | Cols | Cx | Doc |
 |--------|-----------|-----|-------|------|----|----|
 | SQUARE | (param:x):macro | + | 12-13 | 5-6 | 1 | - |
+| LOG | (param:msg):macro | + | 16-17 | 5-6 | 1 | - |
+| LOG | (param:msg):macro | + | 18-19 | 5-6 | 1 | - |
 | add | (a:int, b:int):int | + | 86-88 | 5-6 | 1 | - |
 | multiply | (a:int, b:int):int [static] | + | 91-93 | 5-6 | 1 | - |
 | process_array | (arr:int[], len:size_t):void | + | 96-100 | 5-6 | 2 | - |

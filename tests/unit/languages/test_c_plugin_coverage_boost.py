@@ -293,6 +293,54 @@ def test_extract_macro_function_with_variadic(plugin):
     assert macro_fns[0].name == "LOG"
 
 
+def test_extract_macros_inside_ifdef_branches(plugin):
+    """Regression: macros defined inside ``#ifdef`` / ``#else`` / ``#elif``
+    branches must still be extracted. The traversal helper previously
+    treated ``preproc_ifdef`` / ``preproc_if`` / ``preproc_else`` /
+    ``preproc_elif`` as non-container nodes and stopped descending,
+    silently dropping every macro inside a conditional block.
+    """
+    code = """
+#define BASE 1
+
+#ifdef DEBUG
+#define LOG(msg) printf("[DEBUG] %s\\n", msg)
+#else
+#define LOG(msg)
+#endif
+
+#ifndef GUARD
+#define GUARD_VALUE 42
+#endif
+
+#if defined(FAST)
+#define MODE 1
+#elif defined(SLOW)
+#define MODE 0
+#endif
+"""
+    tree = _parse(plugin, code)
+    elements = plugin.extract_elements(tree, code)
+    variables = elements["variables"]
+    funcs = elements["functions"]
+
+    var_names = {v.name for v in variables}
+    fn_names = {f.name for f in funcs if "macro" in f.modifiers}
+
+    # Object-like macros from each conditional branch
+    assert "BASE" in var_names
+    assert "GUARD_VALUE" in var_names, "#ifndef branch was skipped"
+    assert "MODE" in var_names, "#if/#elif branches were skipped"
+
+    # Function-like macros from #ifdef and #else branches — both should
+    # be picked up (tree-sitter parses both branches of a conditional).
+    assert "LOG" in fn_names, "#ifdef/#else macro_function branches were skipped"
+    log_macros = [f for f in funcs if f.name == "LOG"]
+    assert len(log_macros) == 2, (
+        f"expected two LOG definitions (#ifdef and #else), got {len(log_macros)}"
+    )
+
+
 def test_extract_anonymous_struct(plugin):
     code = """struct { int a; int b; } instance;
 """

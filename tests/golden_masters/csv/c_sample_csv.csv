@@ -15,6 +15,8 @@ Field,static_value,static_value:int,private,64-64,,-
 Field,CONSTANT_VALUE,CONSTANT_VALUE:int,public,65-65,,-
 Field,external_value,external_value:int,public,66-66,,-
 Method,SQUARE,(param:x):macro,public,12-13,1,-
+Method,LOG,(param:msg):macro,public,16-17,1,-
+Method,LOG,(param:msg):macro,public,18-19,1,-
 Method,add,"(a:int, b:int):int",public,86-88,1,-
 Method,multiply,"(a:int, b:int):int [static]",public,91-93,1,-
 Method,process_array,"(arr:int[], len:size_t):void",public,96-100,2,-

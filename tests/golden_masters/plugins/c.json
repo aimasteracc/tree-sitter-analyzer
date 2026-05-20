@@ -1,11 +1,11 @@
 {
   "counts_by_type": {
     "Class": 6,
-    "Function": 9,
+    "Function": 11,
     "Import": 3,
     "Variable": 15
   },
-  "element_total": 33,
+  "element_total": 35,
   "names_by_type": {
     "Class": [
       "Color",
@@ -16,6 +16,7 @@
       "Status"
     ],
     "Function": [
+      "LOG",
       "SQUARE",
       "add",
       "calculate_distance",

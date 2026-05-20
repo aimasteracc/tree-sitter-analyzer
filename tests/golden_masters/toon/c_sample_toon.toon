@@ -10,8 +10,10 @@ classes:
     Number,public,(46,50)
     Person,public,(53,56)
 methods:
-  [9]{name,visibility,line_range(a,b)}:
+  [11]{name,visibility,line_range(a,b)}:
     SQUARE,public,(12,13)
+    LOG,public,(16,17)
+    LOG,public,(18,19)
     add,public,(86,88)
     multiply,public,(91,93)
     process_array,public,(96,100)
@@ -44,7 +46,7 @@ imports:
     local_header.h,false,false,"#include \"local_header.h\"\n",(9,9)
 statistics:
   class_count: 6
-  method_count: 9
+  method_count: 11
   field_count: 15
   import_count: 3
   total_lines: 162
