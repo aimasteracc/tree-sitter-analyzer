@@ -64,7 +64,7 @@ class Parser:
     """
 
     # Class-level cache shared across all Parser instances. Sized for medium
-    # projects (see PERF-2 in docs/AUDIT_FINDINGS_2026-05-20.md).
+    # projects.
     _cache: LRUCache = LRUCache(maxsize=_PARSER_CACHE_SIZE)
     # Stat-only fast path: maps file_path → (mtime_ns, size, language,
     # cache_key) so a hot warm pass can skip the SHA-256 entirely when

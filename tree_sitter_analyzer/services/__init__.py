@@ -1,8 +1,7 @@
 """Service layer — pure functions shared between cli/ and mcp/tools/.
 
-ARCH-A1 (docs/AUDIT_FINDINGS_2026-05-20.md). Before this package
-existed, three MCP tools reached up into ``cli/`` for builder
-functions:
+Before this package existed, three MCP tools reached up into ``cli/``
+for builder functions:
 
   * mcp/tools/parser_readiness_tool.py  -> cli/parser_readiness
   * mcp/tools/agent_skills_tool.py      -> cli/agent_skills

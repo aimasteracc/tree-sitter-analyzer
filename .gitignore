@@ -71,6 +71,14 @@ db.sqlite3-journal
 autonomous_sprint_loop.sh
 autonomous_*.sh
 
+# Internal docs (audit findings, narrative reports, promotion strategy).
+# Stays out of the public repo so the user-facing surface is the README,
+# CHANGELOG, and RELEASE_NOTES — not the internal-quality-tracking
+# paperwork. Engineering decisions remain visible via commit history
+# and AUTONOMOUS_DEV.md (which IS public, because it documents how the
+# project is run).
+docs/internal/
+
 # Flask stuff:
 instance/
 .webassets-cache

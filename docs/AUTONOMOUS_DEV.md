@@ -41,11 +41,10 @@ Level 0 ─ Discover only         agent never writes code; produces a daily back
 Across **every layer**, agents must:
 
 1. **Never** pass `--no-verify`, `--dangerously-skip-permissions`, or any
-   flag that bypasses the project's pre-commit hooks. If hooks fail
-   because of [AUDIT-INFRA-1](AUDIT_FINDINGS_2026-05-20.md#audit-infra-1)
-   pre-existing mypy errors, the agent stops and surfaces a diagnosis.
-   Only humans may use `--no-verify`, and only with a `Note on --no-verify`
-   commit-message section explaining why.
+   flag that bypasses the project's pre-commit hooks. If a hook fails,
+   the agent stops and surfaces a diagnosis. Only humans may use
+   `--no-verify`, and only with a `Note on --no-verify` commit-message
+   section explaining why.
 2. **Never** push to `main` or `master`. Only to feature branches.
 3. **Never** auto-merge. Even at Level 3 the merge is gated on a
    classifier-confirmed `risk: trivial` label AND on three green gates
@@ -158,7 +157,7 @@ trade that away. Level 4 makes more sense for closed/private projects.
 | Let an agent do it end-to-end | Add `ANTHROPIC_API_KEY` secret, Actions → mode=claude-code |
 | Stop everything | Actions → disable the workflow, or revoke `ANTHROPIC_API_KEY` |
 | Accept a deliberate golden-master change | `TSA_UPDATE_GOLDEN=1 uv run pytest tests/regression/test_plugin_golden_masters.py` |
-| Find pre-existing issues to triage | `docs/AUDIT_FINDINGS_2026-05-20.md` |
+| Find pre-existing issues to triage | Run `uv run python scripts/auto_review.py --max-items 20` to surface the current backlog. |
 
 ## Pattern memory (ruflo)
 

@@ -1,163 +1,207 @@
 {
-  "timestamp": "2026-05-18T15:45:03.724Z",
+  "timestamp": "2026-05-20T05:21:39.565Z",
   "mode": "headless",
   "workerType": "optimize",
   "model": "sonnet",
-  "durationMs": 219882,
-  "executionId": "optimize_1779118883842_o6ierf",
+  "durationMs": 191472,
+  "executionId": "optimize_1779254308093_ru7s1q",
   "success": true,
   "findings": {
     "sections": [
       {
-        "title": "Performance Optimization Analysis",
-        "content": "\nThis is a Python codebase (tree-sitter-analyzer) — a code analysis tool using Tree-sitter AST parsing. Since there's no React frontend, I'll focus on Python-specific performance issues that map to the original categories.\n\n---\n\n",
+        "title": "Performance Analysis: tree-sitter-analyzer",
+        "content": "\nThis is a Python codebase (not React), so I'll cover the Python-equivalent of your requested categories: N+1 patterns, caching opportunities, memory leaks, and redundant computations.\n\n---\n\n",
         "level": 2
       },
       {
-        "title": "1. Redundant Computation: `to_mcp_format()` iterates `self.elements` 9 times",
-        "content": "\n**File:** `models.py:558-707`\n\nThe `to_mcp_format()` method filters `self.elements` separately for each element type — classes, methods, fields, imports, annotations — then counts them all again for metadata. That's **9 full passes** over the same list.\n\n**Current code (repeated 9 times):**\n```python\n\"imports\": [\n    {...}\n    for imp in [e for e in (self.elements or []) if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]\n],\n\"classes\": [...],\n\"methods\": [...],\n",
+        "title": "1. N+1 Parsing Pattern in `health_scorer.py`",
+        "content": "\n**Severity: HIGH** — Every file is parsed 2-3 times during health scoring.\n\n`score_file()` at `health_scorer.py:330` calls `score_complexity()` and `score_structure()`, which each create a new `Parser()` and call `parse_file()` independently on the same file.\n\n```python\n",
         "level": 3
       },
       {
-        "title": "... same pattern for metadata counts",
-        "content": "```\n\n**Fix — single-pass grouping:**\n```python\ndef to_mcp_format(self) -> dict[str, Any]:\n    grouped = _group_elements_by_type(self.elements or [])\n    return _build_mcp_structure(self, grouped)\n```\n\nWhere `_group_elements_by_type` does one pass (as already done in `to_dict()`), then reuses the grouped dicts for both the structure and metadata sections.\n\n---\n\n",
+        "title": "health_scorer.py:528 — score_complexity",
+        "content": "parser = Parser()                       # NEW instance per call\nresult = parser.parse_file(file_path, language)\n\n",
         "level": 1
       },
       {
-        "title": "2. Redundant Computation: `get_summary()` iterates elements 5 times",
-        "content": "\n**File:** `models.py:532-555`\n\n```python\nclasses = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]\nmethods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]\nfields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]\nimports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]\nannotations = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)]\n```\n\n5 list comprehensions over the same elements. Fix with a single `collections.Counter` pass:\n\n```python\nfrom collections import Counter\n\ndef get_summary(self) -> dict[str, Any]:\n    counts = Counter(get_element_type(e) for e in (self.elements or []))\n    return {\n        \"file_path\": self.file_path,\n        \"line_count\": self.line_count,\n        \"class_count\": counts.get(ELEMENT_TYPE_CLASS, 0),\n        \"method_count\": counts.get(ELEMENT_TYPE_FUNCTION, 0),\n        \"field_count\": counts.get(ELEMENT_TYPE_VARIABLE, 0),\n        \"import_count\": counts.get(ELEMENT_TYPE_IMPORT, 0),\n        \"annotation_count\": counts.get(ELEMENT_TYPE_ANNOTATION, 0),\n        \"success\": self.success,\n        \"analysis_time\": self.analysis_time,\n    }\n```\n\n---\n\n",
+        "title": "health_scorer.py:694 — score_structure",
+        "content": "parser = Parser()                       # ANOTHER new instance per call\nresult = parser.parse_file(file_path, language)\n```\n\nAnd `score_dependencies()` at line 624 creates a full `DependencyGraph(project_root)` per file:\n\n```python\n",
+        "level": 1
+      },
+      {
+        "title": "health_scorer.py:632 — called for EVERY file in score_project()",
+        "content": "graph = DependencyGraph(str(project_root))  # rebuilds entire dep graph\n```\n\n**Fix:** Parse once per file, share the tree:\n\n```python\ndef _score_dimensions(self, file_path, source, language):\n    tree = None\n    if language:\n        parser = Parser()\n        result = parser.parse_file(file_path, language)\n        if result.success:\n            tree = result.tree\n\n    return {\n        \"size\": score_size(len(source.splitlines())),\n        \"complexity\": score_complexity_from_tree(tree, language),\n        \"structure\": score_structure_from_tree(tree, language),\n        \"dependencies\": self._score_dependencies_cached(file_path),\n        ...\n    }\n```\n\nFor dependencies, build the `DependencyGraph` once in `score_project()` and pass it down:\n\n```python\ndef score_project(self, project_root: str) -> list[HealthScore]:\n    dep_graph = DependencyGraph(project_root)  # ONCE\n    for f in source_files:\n        results.append(self.score_file(str(f), dep_graph=dep_graph))\n```\n\n---\n\n",
+        "level": 1
+      },
+      {
+        "title": "2. 10-Pass Iteration in `AnalysisResult.to_mcp_format()`",
+        "content": "\n**Severity: MEDIUM** — `models.py:558-707` iterates `self.elements` up to 10 times.\n\n```python\n",
         "level": 3
       },
       {
-        "title": "3. Redundant Computation: YAML formatter filters the same 6 categories repeatedly",
-        "content": "\n**File:** `formatters/yaml_formatter.py`\n\nThe same 6 filter comprehensions (documents, mappings, sequences, anchors, aliases, comments) are duplicated across at least 5 methods (`format_full`, `format_compact`, `format_csv`, `format_detail`, `format_json`). That's **30 filter passes** where 6 would suffice.\n\n**Fix — extract a helper:**\n```python\ndef _categorize_yaml_elements(elements: list) -> dict[str, list]:\n    return {\n        cat: [e for e in elements if e.get(\"element_type\") == cat]\n        for cat in (\"document\", \"mapping\", \"sequence\", \"anchor\", \"alias\", \"comment\")\n    }\n```\n\nCall once at the start of each format method, then use the dict.\n\n---\n\n",
+        "title": "models.py:600 — filter imports",
+        "content": "[e for e in (self.elements or []) if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]\n",
+        "level": 1
+      },
+      {
+        "title": "models.py:614 — filter classes",
+        "content": "[e for e in (self.elements or []) if is_element_of_type(e, ELEMENT_TYPE_CLASS)]\n",
+        "level": 1
+      },
+      {
+        "title": "... 8 more list comprehensions on the same elements list",
+        "content": "```\n\nMeanwhile, `to_dict()` at line 413 already does a single-pass grouping. `to_mcp_format()` ignores it.\n\n**Fix:** Reuse the grouped data from `to_dict()`, or do a single-pass grouping:\n\n```python\ndef to_mcp_format(self) -> dict[str, Any]:\n    elements = self.elements or []\n    grouped = defaultdict(list)\n    counts = defaultdict(int)\n    for e in elements:\n        t = get_element_type(e)\n        grouped[t].append(e)\n        counts[t] += 1\n    # Now use grouped[ELEMENT_TYPE_IMPORT], counts[ELEMENT_TYPE_CLASS], etc.\n```\n\nSame issue in `get_summary()` at line 537 — 5 separate list comprehensions instead of one pass.\n\n---\n\n",
+        "level": 1
+      },
+      {
+        "title": "3. Redundant `Parser()` Instantiation (20+ Sites)",
+        "content": "\n**Severity: MEDIUM** — `Parser()` is constructed at 20+ call sites across the codebase, each triggering `get_loader()` and `EncodingManager()` initialization.\n\nKey offenders:\n- `health_scorer.py:528,694` — per-file, per-dimension\n- `project_graph.py:96` — inside `extract_imports_from_file()`, called per-file in `_build()`\n- `call_graph.py:421` — at least only once per `build()`\n\n**Fix:** The engine already has a singleton pattern. Add a shared parser accessor:\n\n```python\n",
         "level": 3
       },
       {
-        "title": "4. Cache Serialization Overhead: `pickle.dumps()` on every `set()`",
-        "content": "\n**File:** `core/cache_service.py:188-194`\n\nEvery `cache.set()` call serializes the value with `pickle.dumps()` just to verify serializability — then discards the bytes. For large AST results, this is wasteful.\n\n```python\nimport pickle\ntry:\n    pickle.dumps(value)  # <-- throws away the result\nexcept Exception as e:\n    raise TypeError(f\"Value is not serializable: {e}\") from e\n```\n\n**Fix — remove the check or cache the serialized bytes:**\n\nOption A (remove validation, trust the caller):\n```python\nasync def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:\n    if not key:\n        raise ValueError(\"Cache key cannot be empty or None\")\n    # Skip serialization check — CacheService is internal; let errors surface on read\n    ...\n```\n\nOption B (store serialized bytes for later retrieval):\n```python\nasync def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:\n    serialized = pickle.dumps(value)\n    # store serialized bytes directly\n```\n\n---\n\n",
+        "title": "In a shared module like utils.py",
+        "content": "_shared_parser: Parser | None = None\n\ndef get_shared_parser() -> Parser:\n    global _shared_parser\n    if _shared_parser is None:\n        _shared_parser = Parser()\n    return _shared_parser\n```\n\nThen replace ad-hoc `parser = Parser()` calls with `parser = get_shared_parser()`. The `Parser` class already uses class-level caches (`_cache`, `_stat_cache`), so sharing instances is safe.\n\n---\n\n",
+        "level": 1
+      },
+      {
+        "title": "4. Duplicated Extension/Exclude-Dir Constants (7 Copies)",
+        "content": "\n**Severity: LOW** — `_EXCLUDE_DIRS` is defined identically in 7 files, and `_EXT_TO_LANG` in 5 files. Any fix to one requires manual sync across all.\n\n**Fix:** Consolidate into `constants.py` (which already exists):\n\n```python\n",
         "level": 3
       },
       {
-        "title": "5. N+1 Pattern: Double file parsing in `_run_queries()`",
-        "content": "\n**File:** `core/_analysis_engine_analysis_mixin.py:80-103`\n\nThe `analyze()` method parses the file at line 30, then `_run_queries()` parses it **again** at line 91:\n\n```python\nasync def analyze(self, request):\n    parse_result = self._parser.parse_file(request.file_path, language)  # 1st parse\n    ...\n    result = await self._run_plugin_analysis(request, plugin, language)\n    if request.queries and request.include_queries:\n        await self._run_queries(request, result, plugin, language)  # calls parse_file AGAIN\n\nasync def _run_queries(self, request, result, plugin, language):\n    parse_result = self._parser.parse_file(request.file_path, language)  # 2nd parse!\n```\n\nWhile the Parser has a cache (`LRUCache(maxsize=100)`), the second call still does `os.stat()` + SHA256 hash computation + cache lookup on every invocation.\n\n**Fix — pass the parse result through:**\n```python\nasync def analyze(self, request):\n    parse_result = self._parser.parse_file(request.file_path, language)\n    if not parse_result.success:\n        return self._create_empty_result(...)\n    result = await self._run_plugin_analysis(request, plugin, language)\n    if request.queries and request.include_queries:\n        await self._run_queries(request, result, plugin, language, parse_result)\n\nasync def _run_queries(self, request, result, plugin, language, parse_result):\n    # Use the parse_result already obtained\n    if not (parse_result.success and parse_result.tree):\n        return\n    ...\n```\n\n---\n\n",
+        "title": "constants.py",
+        "content": "SOURCE_EXCLUDE_DIRS = frozenset({\"node_modules\", \".git\", \"__pycache__\", ...})\nEXT_TO_LANG: dict[str, str] = {\".py\": \"python\", \".js\": \"javascript\", ...}\n```\n\nThen import everywhere. This also ensures `_language_from_ext` is defined once instead of duplicated in `project_graph.py` and `ast_cache.py`.\n\n---\n\n",
+        "level": 1
+      },
+      {
+        "title": "5. `is_language_supported()` N+1 in `api.py`",
+        "content": "\n**Severity: MEDIUM** — `api.py:201-216` calls `get_supported_languages()` (which instantiates the engine) then builds a new list every call:\n\n```python\ndef is_language_supported(language: str) -> bool:\n    supported_languages = get_supported_languages()  # engine call\n    return language.lower() in [lang.lower() for lang in supported_languages]\n    #                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    #                            new list allocation every call\n```\n\n**Fix:** Use a set for O(1) lookup and cache the result:\n\n```python\n_supported_cache: set[str] | None = None\n\ndef is_language_supported(language: str) -> bool:\n    global _supported_cache\n    if _supported_cache is None:\n        _supported_cache = {lang.lower() for lang in get_supported_languages()}\n    return language.lower() in _supported_cache\n```\n\n---\n\n",
         "level": 3
       },
       {
-        "title": "6. N+1 Pattern: `is_supported()` creates a new `PluginManager()` on every call",
-        "content": "\n**File:** `language_detector.py:247-253` and `language_detector.py:449-458`\n\n```python\ndef is_supported(self, language: str) -> bool:\n    if language in self.SUPPORTED_LANGUAGES:\n        return True\n    plugin_manager = PluginManager()  # <-- NEW instance every call\n    plugin_manager.load_plugins()      # <-- Re-discovers plugins every call\n    supported_languages = plugin_manager.get_supported_languages()\n    return language in supported_languages\n```\n\nThis creates a fresh `PluginManager`, scans entry points, and discovers local plugins on every call that falls through the static check.\n\n**Fix — use the engine's shared PluginManager or cache at module level:**\n```python\n_cached_plugin_manager = None\n\ndef _get_shared_plugin_manager():\n    global _cached_plugin_manager\n    if _cached_plugin_manager is None:\n        from .plugins.manager import PluginManager\n        _cached_plugin_manager = PluginManager()\n        _cached_plugin_manager.load_plugins()\n    return _cached_plugin_manager\n```\n\n---\n\n",
+        "title": "6. `ASTCache.get_stats()` Loads All `symbols_json`",
+        "content": "\n**Severity: LOW-MEDIUM** — `ast_cache.py:792-795` deserializes JSON for every indexed file just to count symbols:\n\n```python\nfor row in conn.execute(\"SELECT symbols_json FROM ast_index\").fetchall():\n    syms = json.loads(row[\"symbols_json\"])       # parse JSON for every file\n    total_symbols += len(syms.get(\"symbols\", []))\n```\n\n**Fix:** Store a `symbol_count INTEGER` column, or use a single SQL expression:\n\n```python\ntotal_symbols = conn.execute(\n    \"SELECT SUM(json_array_length(json_extract(symbols_json, '$.symbols'))) \"\n    \"FROM ast_index\"\n).fetchone()[0] or 0\n```\n\n---\n\n",
         "level": 3
       },
       {
-        "title": "7. Memory: Singleton engine instances never evicted",
-        "content": "\n**File:** `core/analysis_engine.py:49`\n\n```python\nclass UnifiedAnalysisEngine:\n    _instances: dict[str, \"UnifiedAnalysisEngine\"] = {}\n    _lock: threading.Lock = threading.Lock()\n```\n\nEvery unique `project_root` creates a new engine instance stored in `_instances` (a class-level dict). These are never cleaned up — each instance holds a `CacheService` (3 caches), `Parser`, `QueryExecutor`, `PluginManager`, etc. In long-running MCP server scenarios with many projects, this leaks memory.\n\n**Fix — add TTL-based eviction or limit instance count:**\n```python\nfrom collections import OrderedDict\n\nclass UnifiedAnalysisEngine:\n    _instances: OrderedDict[str, \"UnifiedAnalysisEngine\"] = OrderedDict()\n    _max_instances = 10\n    _lock = threading.Lock()\n\n    def __new__(cls, project_root=None):\n        instance_key = project_root or \"default\"\n        with cls._lock:\n            if instance_key in cls._instances:\n                cls._instances.move_to_end(instance_key)\n                return cls._instances[instance_key]\n            if len(cls._instances) >= cls._max_instances:\n                cls._instances.popitem(last=False)  # evict oldest\n            instance = object.__new__(cls)\n            cls._instances[instance_key] = instance\n            instance._initialized = False\n            return instance\n```\n\n---\n\n",
+        "title": "7. Unbounded Class-Level Caches (Memory Leak Risk)",
+        "content": "\n**Severity: MEDIUM** — Three class-level caches grow without bounds:\n\n| Cache | Location | Issue |\n|-------|----------|-------|\n| `UnifiedAnalysisEngine._instances` | `analysis_engine.py:49` | Never evicted — accumulates per project_root |\n| `DependencyGraph._global_cache` | `project_graph.py:135` | Only keyed by `project_root:mtime`, stale entries never pruned |\n| `Parser._stat_cache` | `parser.py:72` | Grows with every file parsed, only cleared explicitly |\n\n**Fix:** Add TTL or LRU eviction:\n\n```python\nfrom cachetools import LRUCache\n\nclass UnifiedAnalysisEngine:\n    _instances: LRUCache = LRUCache(maxsize=16)  # max 16 projects\n```\n\nFor `DependencyGraph._global_cache`, validate that the project still exists before returning cached entries.\n\n---\n\n",
         "level": 3
       },
       {
-        "title": "8. Memory: `AnalysisResult` holds `source_code` string indefinitely",
-        "content": "\n**File:** `models.py:382`\n\n```python\n@dataclass\nclass AnalysisResult:\n    source_code: str = \"\"  # Can be entire file contents\n```\n\nWhen cached in `CacheService`, the full source code string is retained alongside the parsed elements. For a 10K-line file, that's 300KB+ per cache entry. Combined with the 3-tier cache (L1+L2+L3), a single analysis result is stored **3 times**.\n\n**Fix — exclude `source_code` from cache storage or use `__slots__`:**\n\nIn `cache_service.py`, before storing:\n```python\nasync def set(self, key, value, ttl_seconds=None):\n    # Strip large fields before caching\n    if hasattr(value, 'source_code') and len(value.source_code) > 1000:\n        value = copy.copy(value)\n        value.source_code = \"\"  # Already parsed; not needed on cache hit\n```\n\n---\n\n",
+        "title": "8. `_find_enclosing_func()` Linear Scan Per Call Site",
+        "content": "\n**Severity: LOW** — `call_graph.py:476-486` scans all functions in a file for every call site:\n\n```python\ndef _find_enclosing_func(self, file_funcs, call_line):\n    best = None\n    for ref in file_funcs.values():    # O(n) per call\n        if ref.start_line <= call_line:\n            if best is None or ref.start_line > best.start_line:\n                best = ref\n    return best\n```\n\n**Fix:** Sort functions by `start_line` once, then binary search:\n\n```python\n",
         "level": 3
       },
       {
-        "title": "9. Cache Opportunity: `get_supported_languages()` recalculates on every call",
-        "content": "\n**File:** `language_loader.py:230-243`\n\n```python\ndef get_supported_languages(self) -> list:\n    return [\n        lang for lang in self.LANGUAGE_MODULES.keys()\n        if lang not in self._unavailable_languages\n        and self.is_language_available(lang)  # <-- importlib check each time\n    ]\n```\n\nThis calls `is_language_available()` which may call `importlib.import_module()` for each language on every invocation.\n\n**Fix — cache the result and invalidate on `clear_cache()`:**\n```python\ndef __init__(self):\n    self._supported_languages_cache: list[str] | None = None\n\ndef get_supported_languages(self) -> list:\n    if self._supported_languages_cache is not None:\n        return self._supported_languages_cache\n    self._supported_languages_cache = [\n        lang for lang in self.LANGUAGE_MODULES.keys()\n        if lang not in self._unavailable_languages\n        and self.is_language_available(lang)\n    ]\n    return self._supported_languages_cache\n\ndef clear_cache(self):\n    ...\n    self._supported_languages_cache = None\n```\n\n---\n\n",
+        "title": "Build once per file",
+        "content": "sorted_funcs = sorted(file_funcs.values(), key=lambda f: f.start_line)\n\nimport bisect\ndef _find_enclosing_func(self, sorted_funcs, call_line):\n    idx = bisect.bisect_right([f.start_line for f in sorted_funcs], call_line) - 1\n    return sorted_funcs[idx] if idx >= 0 else None\n```\n\n---\n\n",
+        "level": 1
+      },
+      {
+        "title": "9. `walk_imports()` Dispatches Language Extractor on Every Node",
+        "content": "\n**Severity: LOW** — `import_extractors.py:264-297` calls `_extract_python_imports(node, ...)` for every AST node, even though most nodes are not import statements:\n\n```python\ndef walk_imports(node, source, language, imports):\n    try:\n        if language in (\"python\",):\n            _extract_python_imports(node, source, imports)  # called for EVERY node\n    ...\n    for child in getattr(node, \"children\", []):\n        walk_imports(child, source, language, imports)\n```\n\n**Fix:** Check node type before dispatching:\n\n```python\n_IMPORT_NODE_TYPES = {\n    \"python\": {\"import_statement\", \"import_from_statement\"},\n    \"javascript\": {\"import_statement\", \"call_expression\"},\n    ...\n}\n\ndef walk_imports(node, source, language, imports):\n    node_type = getattr(node, \"type\", None)\n    if node_type in _IMPORT_NODE_TYPES.get(language, set()):\n        _extract_by_language(node, source, language, imports)\n    for child in getattr(node, \"children\", []):\n        walk_imports(child, source, language, imports)\n```\n\n---\n\n",
         "level": 3
       },
       {
-        "title": "10. Cache Opportunity: `QueryLoader.list_supported_languages()` is also uncached",
-        "content": "\n**File:** `query_loader.py:159-192`\n\nSame pattern — `importlib.import_module()` for every known language on each call. Apply the same caching strategy.\n\n---\n\n",
+        "title": "10. `import_extractors._node_text()` Redundant Encode/Decode",
+        "content": "\n**Severity: LOW** — `import_extractors.py:462-477` encodes the entire source string to bytes, slices, then decodes back for every text extraction:\n\n```python\ndef _node_text(node, source):\n    return source.encode(\"utf-8\", errors=\"replace\")[start:end].decode(\"utf-8\", errors=\"replace\")\n```\n\nWhile `call_graph._node_text` does it efficiently with string slicing:\n```python\ndef _node_text(node, source):\n    return source[start:end]\n```\n\n**Fix:** Use the simpler string-slicing version (tree-sitter byte offsets map to UTF-8 bytes, so the encode/decode is technically more correct, but for most source code the direct slice works and is ~5x faster). At minimum, pre-encode once per file:\n\n```python\nsource_bytes = source.encode(\"utf-8\", errors=\"replace\")\n",
         "level": 3
       },
       {
-        "title": "11. Redundant Import: Duplicate `loader` assignment at module level",
-        "content": "\n**File:** `core/parser.py:310-312`\n\n```python\nloader = get_loader()\nloader = get_loader()  # <-- duplicate\n```\n\nMinor, but `get_loader()` acquires a lock. Remove the duplicate.\n\n---\n\n",
-        "level": 3
+        "title": "Then pass source_bytes to walk_imports and slice directly",
+        "content": "```\n\n---\n\n",
+        "level": 1
       },
       {
-        "title": "Summary of Impact",
-        "content": "| # | Issue | Category | Impact |\n|---|-------|----------|--------|\n| 1 | `to_mcp_format()` 9 passes | Redundant computation | **High** — hot MCP path |\n| 2 | `get_summary()` 5 passes | Redundant computation | **Medium** |\n| 3 | YAML formatter 30 passes | Redundant computation | **Medium** |\n| 4 | `pickle.dumps()` validation | Wasted CPU | **Medium** — every cache write |\n| 5 | Double file parse | N+1 pattern | **High** — every analysis with queries |\n| 6 | `PluginManager()` per call | N+1 pattern | **High** — every `is_supported()` miss |\n| 7 | Engine instances never evicted | Memory leak | **High** — long-running MCP servers |\n| 8 | `source_code` in cache | Memory waste | **High** — 3x storage per entry |\n| 9 | `get_supported_languages()` uncached | Missing cache | **Medium** |\n| 10 | `list_supported_languages()` uncached | Missing cache | **Medium** |\n| 11 | Duplicate `loader` assignment | Minor waste | **Low** |\n\nThe highest-impact fixes are **#5** (double parse), **#6** (recreated PluginManager), **#1** (9-pass iteration on the MCP hot path), and **#7/#8** (memory accumulation in long-running servers).",
+        "title": "Summary by Impact",
+        "content": "| Priority | Issue | Estimated Impact |\n|----------|-------|-----------------|\n| **HIGH** | N+1 parsing in `health_scorer` (2-3x parse per file) | 2-3x speedup on health scoring |\n| **HIGH** | `DependencyGraph` rebuilt per file in `score_dependencies` | Nx speedup on project scoring |\n| **MEDIUM** | 10-pass iteration in `to_mcp_format` / `get_summary` | 5-10x reduction in element iteration |\n| **MEDIUM** | 20+ redundant `Parser()` instantiations | Reduced init overhead |\n| **MEDIUM** | Unbounded class-level caches | Memory stability on long-running processes |\n| **MEDIUM** | `is_language_supported` list rebuild per call | O(1) vs O(n) per call |\n| **LOW** | Duplicated `_EXCLUDE_DIRS`/`_EXT_TO_LANG` constants | Maintenance, correctness |\n| **LOW** | `get_stats()` JSON deserialization per file | SQL-only fix |\n| **LOW** | `_find_enclosing_func` linear scan | Binary search on large files |\n| **LOW** | `walk_imports` dispatch on every node | Fewer function calls |\n\n**Note:** \"N+1 query patterns\" in this Python codebase manifest as N+1 parse/IO patterns — the same file is parsed or read multiple times when once would suffice. There's no React/JSX layer, so re-render concerns don't apply.",
         "level": 3
       }
     ],
     "codeBlocks": [
       {
         "language": "python",
-        "code": "\"imports\": [\n    {...}\n    for imp in [e for e in (self.elements or []) if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]\n],\n\"classes\": [...],\n\"methods\": [...],\n# ... same pattern for metadata counts"
+        "code": "# health_scorer.py:528 — score_complexity\nparser = Parser()                       # NEW instance per call\nresult = parser.parse_file(file_path, language)\n\n# health_scorer.py:694 — score_structure\nparser = Parser()                       # ANOTHER new instance per call\nresult = parser.parse_file(file_path, language)"
       },
       {
         "language": "python",
-        "code": "def to_mcp_format(self) -> dict[str, Any]:\n    grouped = _group_elements_by_type(self.elements or [])\n    return _build_mcp_structure(self, grouped)"
+        "code": "# health_scorer.py:632 — called for EVERY file in score_project()\ngraph = DependencyGraph(str(project_root))  # rebuilds entire dep graph"
       },
       {
         "language": "python",
-        "code": "classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]\nmethods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]\nfields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]\nimports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]\nannotations = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)]"
+        "code": "def _score_dimensions(self, file_path, source, language):\n    tree = None\n    if language:\n        parser = Parser()\n        result = parser.parse_file(file_path, language)\n        if result.success:\n            tree = result.tree\n\n    return {\n        \"size\": score_size(len(source.splitlines())),\n        \"complexity\": score_complexity_from_tree(tree, language),\n        \"structure\": score_structure_from_tree(tree, language),\n        \"dependencies\": self._score_dependencies_cached(file_path),\n        ...\n    }"
       },
       {
         "language": "python",
-        "code": "from collections import Counter\n\ndef get_summary(self) -> dict[str, Any]:\n    counts = Counter(get_element_type(e) for e in (self.elements or []))\n    return {\n        \"file_path\": self.file_path,\n        \"line_count\": self.line_count,\n        \"class_count\": counts.get(ELEMENT_TYPE_CLASS, 0),\n        \"method_count\": counts.get(ELEMENT_TYPE_FUNCTION, 0),\n        \"field_count\": counts.get(ELEMENT_TYPE_VARIABLE, 0),\n        \"import_count\": counts.get(ELEMENT_TYPE_IMPORT, 0),\n        \"annotation_count\": counts.get(ELEMENT_TYPE_ANNOTATION, 0),\n        \"success\": self.success,\n        \"analysis_time\": self.analysis_time,\n    }"
+        "code": "def score_project(self, project_root: str) -> list[HealthScore]:\n    dep_graph = DependencyGraph(project_root)  # ONCE\n    for f in source_files:\n        results.append(self.score_file(str(f), dep_graph=dep_graph))"
       },
       {
         "language": "python",
-        "code": "def _categorize_yaml_elements(elements: list) -> dict[str, list]:\n    return {\n        cat: [e for e in elements if e.get(\"element_type\") == cat]\n        for cat in (\"document\", \"mapping\", \"sequence\", \"anchor\", \"alias\", \"comment\")\n    }"
+        "code": "# models.py:600 — filter imports\n[e for e in (self.elements or []) if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]\n# models.py:614 — filter classes\n[e for e in (self.elements or []) if is_element_of_type(e, ELEMENT_TYPE_CLASS)]\n# ... 8 more list comprehensions on the same elements list"
       },
       {
         "language": "python",
-        "code": "import pickle\ntry:\n    pickle.dumps(value)  # <-- throws away the result\nexcept Exception as e:\n    raise TypeError(f\"Value is not serializable: {e}\") from e"
+        "code": "def to_mcp_format(self) -> dict[str, Any]:\n    elements = self.elements or []\n    grouped = defaultdict(list)\n    counts = defaultdict(int)\n    for e in elements:\n        t = get_element_type(e)\n        grouped[t].append(e)\n        counts[t] += 1\n    # Now use grouped[ELEMENT_TYPE_IMPORT], counts[ELEMENT_TYPE_CLASS], etc."
       },
       {
         "language": "python",
-        "code": "async def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:\n    if not key:\n        raise ValueError(\"Cache key cannot be empty or None\")\n    # Skip serialization check — CacheService is internal; let errors surface on read\n    ..."
+        "code": "# In a shared module like utils.py\n_shared_parser: Parser | None = None\n\ndef get_shared_parser() -> Parser:\n    global _shared_parser\n    if _shared_parser is None:\n        _shared_parser = Parser()\n    return _shared_parser"
       },
       {
         "language": "python",
-        "code": "async def set(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:\n    serialized = pickle.dumps(value)\n    # store serialized bytes directly"
+        "code": "# constants.py\nSOURCE_EXCLUDE_DIRS = frozenset({\"node_modules\", \".git\", \"__pycache__\", ...})\nEXT_TO_LANG: dict[str, str] = {\".py\": \"python\", \".js\": \"javascript\", ...}"
       },
       {
         "language": "python",
-        "code": "async def analyze(self, request):\n    parse_result = self._parser.parse_file(request.file_path, language)  # 1st parse\n    ...\n    result = await self._run_plugin_analysis(request, plugin, language)\n    if request.queries and request.include_queries:\n        await self._run_queries(request, result, plugin, language)  # calls parse_file AGAIN\n\nasync def _run_queries(self, request, result, plugin, language):\n    parse_result = self._parser.parse_file(request.file_path, language)  # 2nd parse!"
+        "code": "def is_language_supported(language: str) -> bool:\n    supported_languages = get_supported_languages()  # engine call\n    return language.lower() in [lang.lower() for lang in supported_languages]\n    #                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    #                            new list allocation every call"
       },
       {
         "language": "python",
-        "code": "async def analyze(self, request):\n    parse_result = self._parser.parse_file(request.file_path, language)\n    if not parse_result.success:\n        return self._create_empty_result(...)\n    result = await self._run_plugin_analysis(request, plugin, language)\n    if request.queries and request.include_queries:\n        await self._run_queries(request, result, plugin, language, parse_result)\n\nasync def _run_queries(self, request, result, plugin, language, parse_result):\n    # Use the parse_result already obtained\n    if not (parse_result.success and parse_result.tree):\n        return\n    ..."
+        "code": "_supported_cache: set[str] | None = None\n\ndef is_language_supported(language: str) -> bool:\n    global _supported_cache\n    if _supported_cache is None:\n        _supported_cache = {lang.lower() for lang in get_supported_languages()}\n    return language.lower() in _supported_cache"
       },
       {
         "language": "python",
-        "code": "def is_supported(self, language: str) -> bool:\n    if language in self.SUPPORTED_LANGUAGES:\n        return True\n    plugin_manager = PluginManager()  # <-- NEW instance every call\n    plugin_manager.load_plugins()      # <-- Re-discovers plugins every call\n    supported_languages = plugin_manager.get_supported_languages()\n    return language in supported_languages"
+        "code": "for row in conn.execute(\"SELECT symbols_json FROM ast_index\").fetchall():\n    syms = json.loads(row[\"symbols_json\"])       # parse JSON for every file\n    total_symbols += len(syms.get(\"symbols\", []))"
       },
       {
         "language": "python",
-        "code": "_cached_plugin_manager = None\n\ndef _get_shared_plugin_manager():\n    global _cached_plugin_manager\n    if _cached_plugin_manager is None:\n        from .plugins.manager import PluginManager\n        _cached_plugin_manager = PluginManager()\n        _cached_plugin_manager.load_plugins()\n    return _cached_plugin_manager"
+        "code": "total_symbols = conn.execute(\n    \"SELECT SUM(json_array_length(json_extract(symbols_json, '$.symbols'))) \"\n    \"FROM ast_index\"\n).fetchone()[0] or 0"
       },
       {
         "language": "python",
-        "code": "class UnifiedAnalysisEngine:\n    _instances: dict[str, \"UnifiedAnalysisEngine\"] = {}\n    _lock: threading.Lock = threading.Lock()"
+        "code": "from cachetools import LRUCache\n\nclass UnifiedAnalysisEngine:\n    _instances: LRUCache = LRUCache(maxsize=16)  # max 16 projects"
       },
       {
         "language": "python",
-        "code": "from collections import OrderedDict\n\nclass UnifiedAnalysisEngine:\n    _instances: OrderedDict[str, \"UnifiedAnalysisEngine\"] = OrderedDict()\n    _max_instances = 10\n    _lock = threading.Lock()\n\n    def __new__(cls, project_root=None):\n        instance_key = project_root or \"default\"\n        with cls._lock:\n            if instance_key in cls._instances:\n                cls._instances.move_to_end(instance_key)\n                return cls._instances[instance_key]\n            if len(cls._instances) >= cls._max_instances:\n                cls._instances.popitem(last=False)  # evict oldest\n            instance = object.__new__(cls)\n            cls._instances[instance_key] = instance\n            instance._initialized = False\n            return instance"
+        "code": "def _find_enclosing_func(self, file_funcs, call_line):\n    best = None\n    for ref in file_funcs.values():    # O(n) per call\n        if ref.start_line <= call_line:\n            if best is None or ref.start_line > best.start_line:\n                best = ref\n    return best"
       },
       {
         "language": "python",
-        "code": "@dataclass\nclass AnalysisResult:\n    source_code: str = \"\"  # Can be entire file contents"
+        "code": "# Build once per file\nsorted_funcs = sorted(file_funcs.values(), key=lambda f: f.start_line)\n\nimport bisect\ndef _find_enclosing_func(self, sorted_funcs, call_line):\n    idx = bisect.bisect_right([f.start_line for f in sorted_funcs], call_line) - 1\n    return sorted_funcs[idx] if idx >= 0 else None"
       },
       {
         "language": "python",
-        "code": "async def set(self, key, value, ttl_seconds=None):\n    # Strip large fields before caching\n    if hasattr(value, 'source_code') and len(value.source_code) > 1000:\n        value = copy.copy(value)\n        value.source_code = \"\"  # Already parsed; not needed on cache hit"
+        "code": "def walk_imports(node, source, language, imports):\n    try:\n        if language in (\"python\",):\n            _extract_python_imports(node, source, imports)  # called for EVERY node\n    ...\n    for child in getattr(node, \"children\", []):\n        walk_imports(child, source, language, imports)"
       },
       {
         "language": "python",
-        "code": "def get_supported_languages(self) -> list:\n    return [\n        lang for lang in self.LANGUAGE_MODULES.keys()\n        if lang not in self._unavailable_languages\n        and self.is_language_available(lang)  # <-- importlib check each time\n    ]"
+        "code": "_IMPORT_NODE_TYPES = {\n    \"python\": {\"import_statement\", \"import_from_statement\"},\n    \"javascript\": {\"import_statement\", \"call_expression\"},\n    ...\n}\n\ndef walk_imports(node, source, language, imports):\n    node_type = getattr(node, \"type\", None)\n    if node_type in _IMPORT_NODE_TYPES.get(language, set()):\n        _extract_by_language(node, source, language, imports)\n    for child in getattr(node, \"children\", []):\n        walk_imports(child, source, language, imports)"
       },
       {
         "language": "python",
-        "code": "def __init__(self):\n    self._supported_languages_cache: list[str] | None = None\n\ndef get_supported_languages(self) -> list:\n    if self._supported_languages_cache is not None:\n        return self._supported_languages_cache\n    self._supported_languages_cache = [\n        lang for lang in self.LANGUAGE_MODULES.keys()\n        if lang not in self._unavailable_languages\n        and self.is_language_available(lang)\n    ]\n    return self._supported_languages_cache\n\ndef clear_cache(self):\n    ...\n    self._supported_languages_cache = None"
+        "code": "def _node_text(node, source):\n    return source.encode(\"utf-8\", errors=\"replace\")[start:end].decode(\"utf-8\", errors=\"replace\")"
       },
       {
         "language": "python",
-        "code": "loader = get_loader()\nloader = get_loader()  # <-- duplicate"
+        "code": "def _node_text(node, source):\n    return source[start:end]"
+      },
+      {
+        "language": "python",
+        "code": "source_bytes = source.encode(\"utf-8\", errors=\"replace\")\n# Then pass source_bytes to walk_imports and slice directly"
       }
     ]
   },
-  "rawOutputPreview": "I now have a comprehensive understanding of the codebase. Here's my performance analysis.\n\n---\n\n## Performance Optimization Analysis\n\nThis is a Python codebase (tree-sitter-analyzer) — a code analysis tool using Tree-sitter AST parsing. Since there's no React frontend, I'll focus on Python-specific performance issues that map to the original categories.\n\n---\n\n### 1. Redundant Computation: `to_mcp_format()` iterates `self.elements` 9 times\n\n**File:** `models.py:558-707`\n\nThe `to_mcp_format()` method filters `self.elements` separately for each element type — classes, methods, fields, imports, annotations — then counts them all again for metadata. That's **9 full passes** over the same list.\n\n**Current code (repeated 9 times):**\n```python\n\"imports\": [\n    {...}\n    for imp in [e for e in (self.elements or []) if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]\n],\n\"classes\": [...],\n\"methods\": [...],\n# ... same pattern for metadata counts\n```\n\n**Fix — single-pass grouping:**\n```python\ndef to_mcp_format(self) -> dict[str, Any]:\n    grouped = _group_elements_by_type(self.elements or [])\n    return _build_mcp_structure(self, grouped)\n```\n\nWhere `_group_elements_by_type` does one pass (as already done in `to_dict()`), then reuses the grouped dicts for both the structure and metadata sections.\n\n---\n\n### 2. Redundant Computation: `get_summary()` iterates elements 5 times\n\n**File:** `models.py:532-555`\n\n```python\nclasses = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]\nmethods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]\nfields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]\nimports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]\nannotations = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)]\n```\n\n5 list comprehensions over the same elements. Fix with a single `collections.Counter` pass:\n\n```python\nfrom collections import Counter\n\ndef get_summary(self) -> dict[str, Any]",
-  "rawOutputLength": 12028
+  "rawOutputPreview": "I now have a comprehensive picture. Here's the analysis.\n\n---\n\n## Performance Analysis: tree-sitter-analyzer\n\nThis is a Python codebase (not React), so I'll cover the Python-equivalent of your requested categories: N+1 patterns, caching opportunities, memory leaks, and redundant computations.\n\n---\n\n### 1. N+1 Parsing Pattern in `health_scorer.py`\n\n**Severity: HIGH** — Every file is parsed 2-3 times during health scoring.\n\n`score_file()` at `health_scorer.py:330` calls `score_complexity()` and `score_structure()`, which each create a new `Parser()` and call `parse_file()` independently on the same file.\n\n```python\n# health_scorer.py:528 — score_complexity\nparser = Parser()                       # NEW instance per call\nresult = parser.parse_file(file_path, language)\n\n# health_scorer.py:694 — score_structure\nparser = Parser()                       # ANOTHER new instance per call\nresult = parser.parse_file(file_path, language)\n```\n\nAnd `score_dependencies()` at line 624 creates a full `DependencyGraph(project_root)` per file:\n\n```python\n# health_scorer.py:632 — called for EVERY file in score_project()\ngraph = DependencyGraph(str(project_root))  # rebuilds entire dep graph\n```\n\n**Fix:** Parse once per file, share the tree:\n\n```python\ndef _score_dimensions(self, file_path, source, language):\n    tree = None\n    if language:\n        parser = Parser()\n        result = parser.parse_file(file_path, language)\n        if result.success:\n            tree = result.tree\n\n    return {\n        \"size\": score_size(len(source.splitlines())),\n        \"complexity\": score_complexity_from_tree(tree, language),\n        \"structure\": score_structure_from_tree(tree, language),\n        \"dependencies\": self._score_dependencies_cached(file_path),\n        ...\n    }\n```\n\nFor dependencies, build the `DependencyGraph` once in `score_project()` and pass it down:\n\n```python\ndef score_project(self, project_root: str) -> list[HealthScore]:\n    dep_graph = DependencyGraph(project_root)  # ONCE\n    for f i",
+  "rawOutputLength": 11116
 }

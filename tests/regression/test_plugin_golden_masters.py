@@ -9,7 +9,7 @@ Why this exists: commit e1a024c unified all 18 language plugins, and
 ``KI-R5`` later showed how easy it is for a single-line change in one
 plugin to silently break others' byte-level extraction. These tests
 catch the next regression before it ships. See TEST-P5 in
-``docs/AUDIT_FINDINGS_2026-05-20.md``.
+the project's internal quality tracker.
 
 To accept a deliberate change (e.g. you added a new element category),
 set ``TSA_UPDATE_GOLDEN=1`` and run the test once; the new JSON snapshot
@@ -78,10 +78,7 @@ def _summary(elements: list[Any]) -> dict[str, Any]:
         )
         by_type.setdefault(type_label, []).append(str(name))
     counts = {t: len(names) for t, names in by_type.items()}
-    names = {
-        t: sorted(set(filter(lambda n: n, names)))
-        for t, names in by_type.items()
-    }
+    names = {t: sorted(set(filter(lambda n: n, names))) for t, names in by_type.items()}
     return {
         "element_total": len(elements),
         "types": sorted(by_type),
@@ -139,7 +136,7 @@ def test_plugin_golden_master(language: str, fixture_name: str) -> None:
         pytest.fail(
             f"{language} plugin output drifted from golden master:\n"
             + "\n".join(diffs)
-            + f"\n\nAccept with TSA_UPDATE_GOLDEN=1 if intentional."
+            + "\n\nAccept with TSA_UPDATE_GOLDEN=1 if intentional."
         )
 
 

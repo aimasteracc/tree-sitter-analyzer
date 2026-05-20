@@ -94,7 +94,7 @@ diff <(jq '.summary' /tmp/pre.json) <(jq '.summary' /tmp/post.json) || true
 
 ## When done
 
-Update `docs/AUDIT_FINDINGS_2026-05-20.md` to mark this finding ✅ fixed
+Update the project's internal quality tracker to mark this finding ✅ fixed
 with a short measured-after block. Then stop. Do NOT pick up the next
 work item.
 """
@@ -142,9 +142,7 @@ def _render(item: dict[str, Any], plan: dict[str, Any]) -> str:
 
     safety = " ".join(item.get("safety_command", []) or ["(none)"])
     refactor = " ".join(item.get("refactor_command", []) or ["(none)"])
-    post_edit_lines = [
-        " ".join(c) for c in (item.get("post_edit_commands", []) or [])
-    ]
+    post_edit_lines = [" ".join(c) for c in (item.get("post_edit_commands", []) or [])]
     post_edit_block = "\n".join(post_edit_lines) or "(none specified)"
 
     diff_impact = plan.get("diff_impact", {}) or {}

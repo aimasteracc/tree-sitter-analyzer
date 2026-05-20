@@ -34,7 +34,7 @@
 - **C++ Formatter**: Dedicated formatter with Bandit security scanning
 - **8,409 tests** with 100% pass rate and 80.33% coverage
 
-📖 **[Full Changelog](CHANGELOG.md)** for complete version history.
+📖 **[v1.11 Release Notes](docs/RELEASE_NOTES_v1.11.md)** · **[Full Changelog](CHANGELOG.md)** · **[Autonomous Dev Architecture](docs/AUTONOMOUS_DEV.md)**
 
 ---
 

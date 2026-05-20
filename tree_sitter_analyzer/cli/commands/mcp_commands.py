@@ -15,7 +15,7 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
 
 # These imports look unused — they're consumed via ``globals()`` inside
 # :func:`_get_tool_class` so that tests can monkeypatch the names at
-# module level (see TEST-P4 notes in docs/AUDIT_FINDINGS_2026-05-20.md).
+# module level — see ``tests/unit/cli/test_mcp_commands.py``.
 # noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
