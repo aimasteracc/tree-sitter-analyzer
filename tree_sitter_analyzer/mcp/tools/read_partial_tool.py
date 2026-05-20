@@ -285,6 +285,11 @@ class ReadPartialTool(BaseMCPTool):
             },
             "content_length": len(content),
             "lines_extracted": lines_extracted,
+            # Top-level ``content`` exposes the raw extracted slice. The
+            # accompanying ``partial_content_result`` field below adds the
+            # human-readable metadata header for display; callers that
+            # just want the text read this field directly.
+            "content": content,
         }
         result["agent_summary"] = build_agent_summary_for_result(
             result, content_format, output_file, suppress_output

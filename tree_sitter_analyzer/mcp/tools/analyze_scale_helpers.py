@@ -550,6 +550,10 @@ def build_analysis_result(
 ) -> dict[str, Any]:
     """Build the main analysis result dict."""
     elements = analysis_result.elements if analysis_result else []
+    class_count = count_elements_fn(elements, ELEMENT_TYPE_CLASS, "class")
+    method_count = count_elements_fn(elements, ELEMENT_TYPE_FUNCTION, "function")
+    field_count = count_elements_fn(elements, ELEMENT_TYPE_VARIABLE, "variable")
+    import_count = count_elements_fn(elements, ELEMENT_TYPE_IMPORT, "import")
     # Build result with metrics, element summary, and structural overview
     return {
         "success": True,
@@ -558,10 +562,10 @@ def build_analysis_result(
         "file_metrics": file_metrics,
         # Determine if file needs structural review
         "summary": {
-            "classes": count_elements_fn(elements, ELEMENT_TYPE_CLASS, "class"),
-            "methods": count_elements_fn(elements, ELEMENT_TYPE_FUNCTION, "function"),
-            "fields": count_elements_fn(elements, ELEMENT_TYPE_VARIABLE, "variable"),
-            "imports": count_elements_fn(elements, ELEMENT_TYPE_IMPORT, "import"),
+            "classes": class_count,
+            "methods": method_count,
+            "fields": field_count,
+            "imports": import_count,
             "annotations": len(
                 getattr(analysis_result, "annotations", []) if analysis_result else []
             ),
@@ -572,6 +576,15 @@ def build_analysis_result(
             ),
         },
         "structural_overview": structural_overview,
+        # Top-level count aliases — match the field names used by
+        # ``get_code_outline`` / ``file_health`` so callers reading any
+        # tool's output find the same vocabulary. ``line_count`` is
+        # hoisted from ``file_metrics`` for the same reason.
+        "class_count": class_count,
+        "method_count": method_count,
+        "field_count": field_count,
+        "import_count": import_count,
+        "line_count": file_metrics.get("total_lines") if file_metrics else None,
     }
 
 
