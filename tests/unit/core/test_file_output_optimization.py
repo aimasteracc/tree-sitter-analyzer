@@ -1,12 +1,14 @@
-"""
-Test file output optimization features — re-export aggregator.
+"""File-output optimisation test entry point — placeholder.
 
-Split from 841 lines into focused modules:
-- test_file_output_search_content.py: SearchContentTool output tests (229 lines)
-- test_file_output_find_and_grep.py: FindAndGrepTool output tests (282 lines)
-- test_file_output_list_files.py: ListFilesTool output tests (263 lines)
-"""
+The split modules (``test_file_output_search_content.py``,
+``test_file_output_find_and_grep.py``, ``test_file_output_list_files.py``)
+are picked up directly by pytest. This file used to ``import *`` from
+each split module, which made every test class get collected twice under
+xdist's ``--dist=loadfile`` and caused flaky cross-worker collisions on
+shared module-level state.
 
-from tests.unit.core.test_file_output_find_and_grep import *  # noqa: F401,F403
-from tests.unit.core.test_file_output_list_files import *  # noqa: F401,F403
-from tests.unit.core.test_file_output_search_content import *  # noqa: F401,F403
+The re-imports were removed so each test class is collected exactly
+once. To run all file-output-optimisation tests, use::
+
+    uv run pytest tests/unit/core/test_file_output_*.py
+"""

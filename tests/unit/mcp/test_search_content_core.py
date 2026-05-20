@@ -1,12 +1,15 @@
-#!/usr/bin/env python3
-"""SearchContentTool core tests — re-export aggregator.
+"""SearchContentTool core test entry point — placeholder.
 
-Split from 846 lines into focused modules:
-- test_search_content_init_and_def.py: init, path, definition, format (228 lines)
-- test_search_content_validation.py: roots, files, arguments validation (155 lines)
-- test_search_content_execute.py: async execute paths (442 lines)
+Split into:
+- test_search_content_init_and_def.py:    init, path, definition, format
+- test_search_content_validation.py:      roots, files, arguments validation
+- test_search_content_execute.py:         async execute paths
+
+Pytest collects them directly; the ``import *`` re-exports that used to
+live here caused every test class to be collected twice under xdist's
+``--dist=loadfile`` and produced flaky cross-worker collisions.
+
+Run the full SearchContent suite with::
+
+    uv run pytest tests/unit/mcp/test_search_content_*.py
 """
-
-from tests.unit.mcp.test_search_content_execute import *  # noqa: F401,F403
-from tests.unit.mcp.test_search_content_init_and_def import *  # noqa: F401,F403
-from tests.unit.mcp.test_search_content_validation import *  # noqa: F401,F403

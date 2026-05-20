@@ -1,27 +1,19 @@
 #!/usr/bin/env python3
-"""
-Comprehensive tests for JavaScript formatter — split into focused modules.
+"""Comprehensive JavaScript-formatter test entry point — placeholder.
 
-All test classes are imported from the split modules below so this file
-remains a single entry point for running the full suite.
-"""
+Historically this file re-imported every ``TestJavaScript*`` class from the
+split modules so the full JS-formatter suite could be run with one path.
+Pytest's xdist (``--dist=loadfile``) then collected the same test classes
+*twice* — once from this aggregator and once from the source module —
+producing flaky cross-worker shared-state collisions on tests like
+``TestJavaScriptFormatterRobustness::test_memory_usage_with_repeated_calls``.
 
-from tests.unit.formatters.test_javascript_formatter_integration import (  # noqa: F401
-    TestJavaScriptFormatterIntegration,
-)
-from tests.unit.formatters.test_javascript_formatter_robustness import (  # noqa: F401
-    TestJavaScriptFormatterRobustness,
-)
-from tests.unit.formatters.test_js_formatter_init_and_types import (  # noqa: F401
-    TestJavaScriptFormatterInit,
-    TestJavaScriptFunctionTypes,
-    TestJavaScriptMethodHelpers,
-    TestJavaScriptParamCreation,
-    TestJavaScriptTypeInference,
-)
-from tests.unit.formatters.test_js_formatter_table_output import (  # noqa: F401
-    TestJavaScriptCompactSignatureMixin,
-    TestJavaScriptCompactTableFormatting,
-    TestJavaScriptFullTableFormatting,
-    TestJavaScriptSectionAbsence,
-)
+The re-imports were removed so each test class is collected exactly once
+from its source file. To run the full JS-formatter suite, use::
+
+    uv run pytest tests/unit/formatters/test_javascript_formatter_*.py \\
+                  tests/unit/formatters/test_js_formatter_*.py
+
+This file is intentionally empty (no ``test_*`` defs, no re-exports). It
+stays in the repo for backwards-compatible path references.
+"""
