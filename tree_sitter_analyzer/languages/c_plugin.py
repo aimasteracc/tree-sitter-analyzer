@@ -405,11 +405,11 @@ class CPlugin(LanguagePlugin):
             tree = parser.parse(file_content.encode("utf-8"))
 
             extractor = self.create_extractor()
-            # KI-R5: byte-level slicing in _get_node_text_optimized() needs the
-            # source's real encoding. create_extractor() returns the typed
-            # base, so use setattr to avoid mypy complaining about a subclass
-            # attribute on the base ElementExtractor.
-            setattr(extractor, "_file_encoding", detected_encoding)  # noqa: B010
+            # ARCH-A3: standardised on ElementExtractor.set_file_encoding so
+            # this propagation is part of the documented public surface,
+            # not a copy-paste setattr trick. KI-R5 originally fixed the
+            # silent-encoding-loss bug with a raw setattr.
+            extractor.set_file_encoding(detected_encoding)
             all_elements: list[Any] = []
             all_elements.extend(extractor.extract_functions(tree, file_content))
             all_elements.extend(extractor.extract_classes(tree, file_content))

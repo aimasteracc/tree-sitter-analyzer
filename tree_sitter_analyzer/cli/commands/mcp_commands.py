@@ -18,23 +18,43 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
 # module level (see TEST-P4 notes in docs/AUDIT_FINDINGS_2026-05-20.md).
 # noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.code_patterns_tool import CodePatternsTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
+    CodeGraphCallTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
+    ChangeImpactTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+    CodePatternsTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import ParserReadinessTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.project_health_tool import ProjectHealthTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.project_overview_tool import ProjectOverviewTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import (
+    ParserReadinessTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.project_health_tool import (
+    ProjectHealthTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+    ProjectOverviewTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
     RefactoringSuggestionsTool,  # noqa: F401
 )
-from tree_sitter_analyzer.mcp.tools.route_detector_tool import RouteDetectorTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool  # noqa: F401
-from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import SymbolLineageTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+    RouteDetectorTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
+    SafeToEditTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
+    SmartContextTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
+    SymbolLineageTool,  # noqa: F401
+)
 
 _DEPENDENCY_FILE_SCOPED_MODES = {"blast_radius", "file_deps"}
 _DEPENDENCY_MODE_ALIASES = {"full": "summary"}

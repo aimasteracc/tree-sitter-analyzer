@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ...cli.agent_skills import build_agent_skills_inventory
+from ...services import build_agent_skills_inventory  # ARCH-A1: was ...cli.agent_skills
 from .base_tool import BaseMCPTool
 
 TOOL_SCHEMA: dict[str, Any] = {

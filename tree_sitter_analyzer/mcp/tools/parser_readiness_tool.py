@@ -5,7 +5,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ...cli.parser_readiness import build_parser_readiness_advice
+from ...services import (
+    build_parser_readiness_advice,  # ARCH-A1: was ...cli.parser_readiness
+)
 from .base_tool import BaseMCPTool
 
 TOOL_SCHEMA: dict[str, Any] = {

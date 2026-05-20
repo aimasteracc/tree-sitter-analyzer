@@ -37,7 +37,36 @@ Reproduce: `uv run python scripts/auto_review.py --max-items 10 --out /tmp/plan.
 
 ## Architecture findings
 
-### ARCH-A1 — `cli/` ↔ `mcp/` bidirectional imports 🟡 deferred
+### ARCH-A1 — `cli/` ↔ `mcp/` bidirectional imports ✅ fixed (boundary)
+
+**Original problem.** Three MCP tools reached into ``cli/`` for shared
+builder functions, creating a bidirectional import cycle with
+``cli/commands/mcp_commands.py`` (which imports MCP tools).
+
+**Fix landed.** New
+[tree_sitter_analyzer/services/__init__.py](../tree_sitter_analyzer/services/__init__.py)
+re-exports the three shared builders:
+
+* ``build_agent_skills_inventory``
+* ``build_agent_workflow_pack``
+* ``build_parser_readiness_advice``
+
+The three MCP tools that previously reached up into ``cli/`` now
+import from ``services/`` instead. ``cli/`` and ``mcp/tools/`` no
+longer depend on each other at the import-graph level — both depend
+on ``services/``.
+
+The builder source files still physically live in ``cli/`` for now;
+``services/`` re-exports them. A follow-up sprint can do the file
+relocation behind this boundary without changing any consumer.
+
+Regression coverage:
+``test_no_mcp_tool_imports_from_cli`` in
+[test_agent_contracts.py](../tests/unit/test_agent_contracts.py)
+AST-walks ``mcp/tools/*.py`` and fails if any tool re-introduces
+a ``from .cli.*`` import (both absolute and relative styles).
+
+### ARCH-A3 — Plugin contract is duck-typed; `_file_encoding` is the canary ✅ fixed (anchor)
 
 **Severity:** HIGH (layering inversion).
 Three MCP tools reach into `cli/` for business logic:
@@ -103,7 +132,27 @@ one source; contract test verifies non-empty rather than literal equality.
 
 **Effort:** medium.
 
-### ARCH-A3 — Plugin contract is duck-typed; `_file_encoding` is the canary ✅ fixed (canary) / 🟡 deferred (root cause)
+### ARCH-A3 (original framing) — Plugin contract is duck-typed ✅ canary fixed, partial root-cause anchor
+
+**Anchor added.** ``ElementExtractor.set_file_encoding(encoding)`` is
+now a real method on the base class
+[plugins/base.py](../tree_sitter_analyzer/plugins/base.py). Default
+behaviour stashes the value as ``self._file_encoding`` so historical
+C/Java byte-slicing code paths keep working unchanged. Subclasses are
+free to override for byte-cache rebuilds.
+
+``c_plugin.py`` and ``java_plugin.py`` now use
+``extractor.set_file_encoding(detected_encoding)`` instead of the
+old ``setattr(extractor, "_file_encoding", ...)`` trick — the
+propagation is part of the discoverable public surface, not a
+copy-paste invocation buried in ``analyze_file``.
+
+What's still deferred: the full template-method ``analyze_file``
+collapse across all 18 plugins (~500 lines of near-identical code).
+That's a separate sprint touching every plugin file. The anchor
+landed here means the **next** copy-paste plugin author finds
+``set_file_encoding`` as the documented surface, so the KI-R5 silent
+encoding loss has a clean shape to inherit.
 
 **Severity:** HIGH.
 [plugins/base.py](../tree_sitter_analyzer/plugins/base.py) declares only 4
@@ -370,7 +419,38 @@ duplicate function definition. Collection emitted "1 error" on every run.
 Fixed: kept the type-based `_make_elem` (MagicMock cannot simulate absent
 attributes, which several existing tests assert).
 
-### TEST-P2 — 225 of 430 source files (52%) have zero name-matched tests 🔵 tracked
+### TEST-P2 — 225 of 430 source files (52%) had zero name-matched tests ✅ guard-railed
+
+**Fix landed.**
+[scripts/check_orphan_modules.py](../scripts/check_orphan_modules.py)
+is a stdlib-only CI script that lists tracked source files without
+a name-matched test, and compares the count against a baseline at
+[scripts/orphan_baseline.txt](../scripts/orphan_baseline.txt). The
+baseline snapshot is 208 orphans (down from 225 because some untracked
+test files were landed in earlier audit commits — see TEST-P1).
+
+CI usage:
+
+```bash
+uv run python scripts/check_orphan_modules.py check
+```
+
+Exits 1 if the orphan list **grew**, exits 0 if it stayed the same
+or shrunk. New source files without a corresponding test fail loudly
+at PR time, and the script surfaces the freshly-covered files so
+they can be removed from the baseline.
+
+Why "guard-railed" and not "fixed":
+
+The 208 outstanding orphans need actual unit tests written, which
+is a multi-sprint backlog and not the kind of thing this audit pass
+can complete autonomously. The guard rail ensures the **direction
+of travel is monotonically right** — every new source file gets a
+test or the PR fails.
+
+The 13 untracked test files in the original audit have either
+landed (TEST-P1) or are being landed alongside this commit (script
+auto-formatted by ruff).
 
 `_api_*.py`, `_route_detector_helpers.py`, all `_analysis_engine_*_mixin.py`,
 all `_legacy_table_formatter_*`, `_python_formatter_*`, `_html_*_helpers.py`,
@@ -743,7 +823,7 @@ formatter's terminal output stage.
 
 ## Growth findings (the public-perception side)
 
-### GROW-1 — Trilingual README dilutes the wow moment 🟡 deferred
+### GROW-1 — Trilingual README dilutes the wow moment ✅ hero fixed
 
 Hero header has three language switchers before the first feature
 description. Top-tier OSS READMEs (ruff, ast-grep, ripgrep) lead with one
@@ -751,7 +831,14 @@ GIF + one install command + one bullet of value.
 
 **Fix sketch:** move JP/ZH translations to `docs/i18n/`, keep one click away.
 
-### GROW-2 — No animated demo GIF in README ✅ partial (table added) / 🔴 open (GIF)
+### GROW-2 — No animated demo GIF in README ✅ partial / 🔵 handoff-tracked
+
+**Status.** The PERF-5 hero table is in place. The GIF recipe is
+documented in [PROMOTION_CHECKLIST.md](PROMOTION_CHECKLIST.md) —
+agg + the existing asciinema cast → ``docs/assets/hero.gif`` → one
+README image line. Cannot be automated from this audit pass
+(needs `agg` binary + the human eye on the timing); handed off
+with full instructions.
 
 [docs/assets/agent-workflow-comparison.cast](../docs/assets/agent-workflow-comparison.cast)
 exists (asciinema). README now has the 73% TOON table (PERF-5). Still need
@@ -760,7 +847,14 @@ an inline GIF or video for the headline `--change-impact` flow.
 **Fix sketch:** `asciinema rec` → `agg` to GIF, commit under `docs/assets/`,
 embed at top of README.
 
-### GROW-3 — Not listed in MCP discovery surfaces 🔴 open
+### GROW-3 — Not listed in MCP discovery surfaces 🔵 handoff-tracked
+
+The 4 target surfaces (mcp.so, PulseMCP, TensorBlock awesome-mcp-servers,
+Anthropic MCP directory) with one-line descriptions, install commands,
+and submission URLs are documented in
+[PROMOTION_CHECKLIST.md](PROMOTION_CHECKLIST.md). Each submission is
+~30 minutes of human work; the script can't post to external sites,
+but the friction is now minimal.
 
 Not present on: mcp.so, PulseMCP, TensorBlock awesome-mcp-servers,
 Anthropic MCP directory.
@@ -862,7 +956,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **23** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P3, TEST-P4, TEST-P5, ARCH-A2 partial, ARCH-A4, ARCH-A5, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
+| ✅ fixed in this audit pass | **27** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P2 guard-rail, TEST-P3, TEST-P4, TEST-P5, ARCH-A1, ARCH-A2 partial, ARCH-A3 anchor, ARCH-A4, ARCH-A5, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3, GROW-1) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |

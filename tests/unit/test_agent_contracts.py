@@ -410,6 +410,44 @@ def test_analyze_file_uses_create_extractor() -> None:
     )
 
 
+def test_no_mcp_tool_imports_from_cli() -> None:
+    """ARCH-A1 regression: ``mcp/tools/*.py`` must not import from
+    ``tree_sitter_analyzer.cli.*``. The dependency arrow goes one way:
+    ``cli/`` may use ``mcp/`` tools, but ``mcp/tools/`` reaches shared
+    builders via ``tree_sitter_analyzer.services`` instead.
+
+    The shared builders live (physically) in ``cli/`` for now and are
+    re-exported from ``services/``; a future sprint can do the file
+    move under that boundary without changing any consumer.
+    """
+    tools_dir = PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "tools"
+    offenders: list[str] = []
+    for path in sorted(tools_dir.glob("*.py")):
+        source = path.read_text(encoding="utf-8")
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                # Catch both absolute and relative styles:
+                #   from tree_sitter_analyzer.cli.X import …
+                #   from ...cli.X import …
+                if (
+                    node.module.startswith("tree_sitter_analyzer.cli.")
+                    or node.module.startswith("cli.")
+                    or (node.level >= 1 and node.module.startswith("cli."))
+                ):
+                    offenders.append(f"{path.name}:{node.lineno}: from {node.module}")
+                # Relative imports like ``from ...cli.X import Y`` have
+                # module='cli.X' and level=3 — the .startswith check above
+                # already catches them, but be explicit for readability.
+    assert offenders == [], (
+        "mcp/tools/* must not import from cli/* (ARCH-A1). Reach via "
+        "tree_sitter_analyzer.services instead:\n  " + "\n  ".join(offenders)
+    )
+
+
 def test_no_mcp_tool_overrides_set_project_path() -> None:
     """ARCH-A4 regression: ``BaseMCPTool.set_project_path`` is final by
     convention; tools that need to react to a project-root rebind must

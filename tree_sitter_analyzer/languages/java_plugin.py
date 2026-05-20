@@ -541,10 +541,8 @@ class JavaPlugin(LanguagePlugin):
                 tree = parser.parse(file_content.encode("utf-8"))
 
                 extractor = self.create_extractor()
-                # KI-R5: byte-level slicing needs the source's real encoding.
-                # create_extractor() returns the typed base, so use setattr
-                # to avoid mypy complaining about a subclass attribute.
-                setattr(extractor, "_file_encoding", detected_encoding)  # noqa: B010
+                # ARCH-A3: use the standardised ElementExtractor hook.
+                extractor.set_file_encoding(detected_encoding)
                 all_elements: list[Any] = []
                 all_elements.extend(extractor.extract_functions(tree, file_content))
                 all_elements.extend(extractor.extract_classes(tree, file_content))

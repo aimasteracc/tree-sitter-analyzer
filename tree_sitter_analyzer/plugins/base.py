@@ -45,6 +45,27 @@ class ElementExtractor(ABC):
         self.current_file: str = ""  # Current file being processed
         self.platform_info: PlatformInfo | None = None
 
+    def set_file_encoding(self, encoding: str | None) -> None:
+        """Tell the extractor the detected encoding of the source it's about
+        to process. Plugins that do byte-level slicing in their
+        ``_get_node_text_optimized`` (currently C and Java) must set
+        ``self._file_encoding`` here so non-UTF-8 source files produce
+        correct node text. Plugins that work on the decoded string only
+        (Python, Ruby, PHP, JS, …) can ignore the call entirely — the
+        default is a no-op that simply stashes the value so subclasses
+        can read it later if they grow the requirement.
+
+        Promoting this from ad-hoc ``setattr(extractor, "_file_encoding", …)``
+        in C/Java's ``analyze_file`` (see KI-R5) into a real method on the
+        base class is ARCH-A3's behavioural anchor: the next time someone
+        copy-pastes a plugin, the encoding propagation is part of the
+        public surface they can find and rely on.
+        """
+        # Default behaviour: stash so subclasses can read via the same
+        # attribute the historical C/Java code uses. Subclasses are free
+        # to override with byte-cache rebuilds, etc.
+        self._file_encoding = encoding  # type: ignore[attr-defined]
+
     @abstractmethod
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
