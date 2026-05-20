@@ -397,7 +397,41 @@ Will reopen if they resurface.
 - `tests/unit/security/test_regex_checker.py::test_pattern_with_unicode` —
   Python regex cache contention.
 
-### TEST-P4 — IO/timing tests masquerading as unit tests 🟡 deferred
+### TEST-P4 — IO/timing tests masquerading as unit tests ✅ fixed
+
+**Original problem.** Several tests in `tests/unit/` were integration-class:
+real `time.sleep` calls for TTL/expiration tests, real heap allocation
+for memory-usage tests, real `Path.rglob` boundary scans. They lived in
+`tests/unit/` only because of historical placement, not because they
+matched the unit-test profile (fast, isolated, no IO).
+
+**Fix landed.** Three relocations via `git mv` (preserves history):
+
+* `tests/unit/mcp/test_utils/test_search_cache.py` →
+  `tests/integration/mcp/utils/test_search_cache.py`
+  — 8 real-time sleeps for TTL + LRU eviction semantics
+* `tests/unit/core/test_performance.py` →
+  `tests/integration/core/test_performance.py`
+  — 8 real-time sleeps for the PerformanceMonitor timer
+* `tests/unit/performance/` (whole dir) →
+  `tests/integration/performance/`
+  — async + MCP perf tests with real timings
+
+After the move 79 + 13 = 92 tests run unchanged in their new location.
+The `tests/unit/` partition is now a closer match for "fast isolated
+units" — `unit/` no longer carries the longest-running outliers.
+
+Also addressed
+--------------
+While doing the move, a *real* secondary issue surfaced: the ARCH-A2
+"single dict replaces 14-branch if-ladder" change had frozen the tool
+class references at module-import time, which broke the standard
+monkeypatch pattern used by
+`tests/unit/cli/test_mcp_commands.py::test_mcp_cli_commands_delegate_to_matching_tool`
+(every parametrised case failed). The dict is now a frozenset of names
+and `_get_tool_class` resolves via `globals()` so test monkeypatching
+keeps working — the contract test `_TOOL_CLASSES_BY_ATTR` reference
+was renamed to `_TOOL_CLASS_NAMES` to match.
 
 Top slowest "unit" tests are integration-class:
 `test_property_4_get_relative_path_returns_none_for_external` (3.30s),
@@ -787,7 +821,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **21** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P3, TEST-P5, ARCH-A2 partial, ARCH-A4, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
+| ✅ fixed in this audit pass | **22** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P3, TEST-P4, TEST-P5, ARCH-A2 partial, ARCH-A4, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |

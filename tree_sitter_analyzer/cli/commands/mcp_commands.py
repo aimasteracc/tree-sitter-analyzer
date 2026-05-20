@@ -12,24 +12,29 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
     find_selected_mcp_command,
     validate_mcp_command_args,
 )
-from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
-from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
-from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
-from tree_sitter_analyzer.mcp.tools.code_patterns_tool import CodePatternsTool
+
+# These imports look unused — they're consumed via ``globals()`` inside
+# :func:`_get_tool_class` so that tests can monkeypatch the names at
+# module level (see TEST-P4 notes in docs/AUDIT_FINDINGS_2026-05-20.md).
+# noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
+from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.code_patterns_tool import CodePatternsTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
-    DependencyAnalysisTool,
+    DependencyAnalysisTool,  # noqa: F401
 )
-from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
-from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import ParserReadinessTool
-from tree_sitter_analyzer.mcp.tools.project_health_tool import ProjectHealthTool
-from tree_sitter_analyzer.mcp.tools.project_overview_tool import ProjectOverviewTool
+from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import ParserReadinessTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.project_health_tool import ProjectHealthTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.project_overview_tool import ProjectOverviewTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
-    RefactoringSuggestionsTool,
+    RefactoringSuggestionsTool,  # noqa: F401
 )
-from tree_sitter_analyzer.mcp.tools.route_detector_tool import RouteDetectorTool
-from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
-from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
-from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import SymbolLineageTool
+from tree_sitter_analyzer.mcp.tools.route_detector_tool import RouteDetectorTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import SymbolLineageTool  # noqa: F401
 
 _DEPENDENCY_FILE_SCOPED_MODES = {"blast_radius", "file_deps"}
 _DEPENDENCY_MODE_ALIASES = {"full": "summary"}
@@ -256,35 +261,49 @@ def _run_tool(
         return 1
 
 
-# ARCH-A2: single dict replaces the 14-branch if-ladder. Adding a new tool
-# now means appending one entry here + one McpCommandSpec above + (if the
-# tool is MCP-exposed) one entry in mcp/server.py's _create_tool_registry.
-# That's still 3 places, but each is now O(1) lookup instead of a linear
-# branch chain, and the contract test below catches drift on the first run.
-_TOOL_CLASSES_BY_ATTR: dict[str, Callable[..., Any]] = {
-    "FileHealthTool": FileHealthTool,
-    "ParserReadinessTool": ParserReadinessTool,
-    "ProjectHealthTool": ProjectHealthTool,
-    "ProjectOverviewTool": ProjectOverviewTool,
-    "SafeToEditTool": SafeToEditTool,
-    "ChangeImpactTool": ChangeImpactTool,
-    "DependencyAnalysisTool": DependencyAnalysisTool,
-    "RefactoringSuggestionsTool": RefactoringSuggestionsTool,
-    "SmartContextTool": SmartContextTool,
-    "SymbolLineageTool": SymbolLineageTool,
-    "CodePatternsTool": CodePatternsTool,
-    "CodeGraphCallTool": CodeGraphCallTool,
-    "ASTCacheTool": ASTCacheTool,
-    "RouteDetectorTool": RouteDetectorTool,
-}
+# ARCH-A2: declare which tool-class names this module exposes for the
+# CLI. The set is used by the contract test to verify every
+# MCP_COMMAND_SPECS entry resolves. Lookup itself goes through the
+# module namespace (``globals()``) so monkeypatching at module level —
+# the standard pattern used by tests in tests/unit/cli/test_mcp_commands.py
+# — keeps working. A snapshot dict would freeze references at import
+# time and quietly break those tests.
+_TOOL_CLASS_NAMES: frozenset[str] = frozenset(
+    {
+        "FileHealthTool",
+        "ParserReadinessTool",
+        "ProjectHealthTool",
+        "ProjectOverviewTool",
+        "SafeToEditTool",
+        "ChangeImpactTool",
+        "DependencyAnalysisTool",
+        "RefactoringSuggestionsTool",
+        "SmartContextTool",
+        "SymbolLineageTool",
+        "CodePatternsTool",
+        "CodeGraphCallTool",
+        "ASTCacheTool",
+        "RouteDetectorTool",
+    }
+)
 
 
 def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
-    """Resolve a tool class by its command spec attribute name."""
-    try:
-        return _TOOL_CLASSES_BY_ATTR[tool_attr]
-    except KeyError as exc:
-        raise KeyError(f"Unknown MCP tool: {tool_attr}") from exc
+    """Resolve a tool class by its command spec attribute name.
+
+    Looks the class up in the module's own namespace (``globals()``) so
+    tests that monkeypatch ``mcp_commands.FileHealthTool`` etc. see the
+    substituted class — a frozen dict would defeat that pattern.
+    """
+    if tool_attr not in _TOOL_CLASS_NAMES:
+        raise KeyError(f"Unknown MCP tool: {tool_attr}")
+    cls = globals().get(tool_attr)
+    if cls is None:
+        raise KeyError(
+            f"Tool name {tool_attr!r} is declared in _TOOL_CLASS_NAMES but "
+            "is not bound in this module."
+        )
+    return cls  # type: ignore[no-any-return]
 
 
 def handle_mcp_commands(
