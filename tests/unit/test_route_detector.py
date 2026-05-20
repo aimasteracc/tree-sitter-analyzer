@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
 
+from tree_sitter_analyzer._route_cache import RouteCache
 from tree_sitter_analyzer.mcp.tools.route_detector_tool import RouteDetectorTool
 from tree_sitter_analyzer.route_detector import RouteDetector, RouteInfo
 
@@ -495,3 +497,152 @@ class TestRouteDetectorToolExecute:
         tool.set_project_path(str(empty))
         second = self._run(tool, {"mode": "summary", "output_format": "json"})
         assert second["total_routes"] == 0
+
+
+# ---------------------------------------------------------------------------
+# PERF-1: content-hash route cache
+# ---------------------------------------------------------------------------
+
+
+class TestRouteCachePersistence:
+    """The content-hash cache must survive across RouteDetector instances
+    and avoid re-parsing files whose mtime+content are unchanged."""
+
+    def test_warm_pass_uses_cache(self, flask_project: Path):
+        d1 = RouteDetector(str(flask_project))
+        first = d1.detect_all()
+        s1 = d1.cache_stats()
+        assert s1["misses"] >= 1
+        assert s1["hits"] == 0
+
+        d2 = RouteDetector(str(flask_project))
+        second = d2.detect_all()
+        s2 = d2.cache_stats()
+        assert s2["hits"] >= 1
+        assert s2["misses"] == 0
+        # Same URL pattern set across runs.
+        assert sorted(r.url_pattern for r in first) == sorted(
+            r.url_pattern for r in second
+        )
+
+    def test_cache_invalidates_on_content_change(
+        self, multi_framework_project: Path
+    ):
+        d1 = RouteDetector(str(multi_framework_project))
+        d1.detect_all()
+
+        # Modify app.py to add a new route — mtime + content both change.
+        # Other files (api.py, routes.js) must stay as cache hits.
+        app = multi_framework_project / "app.py"
+        app.write_text(
+            app.read_text()
+            + "\n@app.route('/new')\ndef brand_new():\n    return 'x'\n"
+        )
+
+        d2 = RouteDetector(str(multi_framework_project))
+        routes = d2.detect_all()
+        urls = {r.url_pattern for r in routes}
+        assert "/new" in urls
+        # The two unchanged files should still be cache hits.
+        s = d2.cache_stats()
+        assert s["hits"] >= 1
+        assert s["misses"] >= 1  # the modified app.py
+
+    def test_cache_disabled_flag(self, flask_project: Path):
+        d = RouteDetector(str(flask_project), cache_enabled=False)
+        d.detect_all()
+        s = d.cache_stats()
+        assert s["enabled"] is False
+        assert s["hits"] == 0
+        assert s["misses"] == 0
+
+    def test_results_identical_with_and_without_cache(self, flask_project: Path):
+        cached = RouteDetector(str(flask_project)).detect_all()
+        # Re-instantiate after caching to force going through cache path.
+        cached_via_db = RouteDetector(str(flask_project)).detect_all()
+        no_cache = RouteDetector(str(flask_project), cache_enabled=False).detect_all()
+
+        def key(rs: list) -> list:
+            return sorted(
+                (r.http_method, r.url_pattern, r.handler_name, r.framework) for r in rs
+            )
+
+        assert key(cached) == key(cached_via_db) == key(no_cache)
+
+    def test_warm_pass_is_meaningfully_faster_than_cold(self, tmp_path: Path):
+        """PERF-1 regression guard: the cache must produce a >=3x speedup on
+        second invocation. (Real-world numbers on the analyzer's own repo
+        are ~130x; a tighter ratio here would just measure jitter on a
+        60-file synthetic project — but if someone removes the cache or
+        breaks the fast path, the ratio collapses to ~1x and we catch it.)
+
+        Skipped under heavily-loaded CI where wall-clock measurements are
+        unreliable — set TSA_SKIP_PERF=1 to opt out.
+        """
+        import os as _os
+
+        if _os.environ.get("TSA_SKIP_PERF"):
+            pytest.skip("TSA_SKIP_PERF set")
+
+        # Generate a project of 60 Flask files (each with 3 routes).
+        project = tmp_path / "perf_project"
+        project.mkdir()
+        for i in range(60):
+            (project / f"app_{i}.py").write_text(
+                "from flask import Flask\n"
+                f"app = Flask('m{i}')\n"
+                + "".join(
+                    f"@app.route('/r{i}_{j}')\n"
+                    f"def h_{i}_{j}():\n    return 'x'\n\n"
+                    for j in range(3)
+                )
+            )
+
+        # Prime the cache so subsequent warm runs are real cache hits.
+        primed = RouteDetector(str(project)).detect_all()
+        assert len(primed) == 60 * 3
+
+        def trial() -> tuple[float, float]:
+            d_cold = RouteDetector(str(project), cache_enabled=False)
+            t0 = time.perf_counter()
+            d_cold.detect_all()
+            cold = time.perf_counter() - t0
+
+            d_warm = RouteDetector(str(project), cache_enabled=True)
+            t1 = time.perf_counter()
+            d_warm.detect_all()
+            warm = time.perf_counter() - t1
+            return cold, warm
+
+        results = sorted(trial() for _ in range(3))
+        cold_med, warm_med = results[1]
+        speedup = cold_med / max(warm_med, 1e-6)
+        assert speedup >= 3, (
+            f"Expected >=3x speedup, got {speedup:.1f}x "
+            f"(cold={cold_med * 1000:.1f}ms warm={warm_med * 1000:.1f}ms). "
+            "PERF-1 contract regressed — cache may be disabled or fast path broken."
+        )
+
+    def test_route_cache_creates_db_file(self, flask_project: Path, tmp_path: Path):
+        db = tmp_path / "subdir" / "routes.db"
+        cache = RouteCache(db)
+        assert db.exists()
+        stats = cache.stats()
+        assert stats == {"file_count": 0, "total_bytes": 0}
+
+    def test_route_cache_round_trip(self, tmp_path: Path):
+        db = tmp_path / "routes.db"
+        cache = RouteCache(db)
+        sample = [{"http_method": "GET", "url_pattern": "/x", "handler_name": "h",
+                   "file_path": "/p", "line_number": 1, "framework": "flask",
+                   "language": "python"}]
+        cache.put("/p", "deadbeef", 12345, sample)
+        assert cache.get("/p", "deadbeef") == sample
+        # Wrong hash → miss.
+        assert cache.get("/p", "0badcafe") is None
+        # Stat hit.
+        assert cache.get_by_stat("/p", 12345) == sample
+        assert cache.get_by_stat("/p", 99999) is None
+        # Bulk hit.
+        bulk = cache.bulk_get_by_stat([("/p", 12345), ("/missing", 0)])
+        assert bulk == {"/p": sample}

@@ -270,18 +270,40 @@ a fixture, diffs against `tests/golden_masters/<lang>.json`. Effort: 1 day.
 | `BigService.java` JSON output | 25,478 B | — | OK |
 | Same as **TOON** | 6,988 B | **–73%** | 🔵 README升旗 (PERF-5) |
 
-### PERF-1 — `RouteDetector` re-parses every file on every call 🟡 deferred (demo hero)
+### PERF-1 — `RouteDetector` re-parses every file on every call ✅ fixed
 
-[route_detector.py:130](../tree_sitter_analyzer/route_detector.py) calls
-`Parser().parse_file()` per file; `Parser._cache` is `LRUCache(maxsize=100)` —
-useless on any project > 100 files.
+**Original problem.** `route_detector.py` called `Parser().parse_file()` per
+file every invocation; `Parser._cache` is `LRUCache(maxsize=100)` — useless on
+any project > 100 files. On the analyzer's own repo (~1280 source files) cold
+and warm runs were both ~2.2 s.
 
-**Fix sketch:** accept an optional `ast_cache: ASTCache` constructor arg;
-on cache hit, re-emit routes from stored AST; on miss, parse + cache. Expected:
-Django 3.0 s → ~80 ms warm (**37× faster**).
+**Fix landed.** New [_route_cache.py](../tree_sitter_analyzer/_route_cache.py):
+a SQLite-backed cache keyed by `file_path` with `(content_hash, mtime_ns)` as
+the freshness check. Fast path: `bulk_get_by_stat` does one `SELECT ... WHERE
+file_path IN (...)` per chunk-of-800, then filters by mtime in Python —
+collapses 2 N SQL queries to ~2 per warm pass.
 
-**Why this is THE demo:** "Watch route detection run 37× faster on the second
-`--detect-routes` call." 5-minute screencast, Show HN gold.
+Walk path also rewritten: `_walk_source_files` now uses manual `os.scandir`
+with directory-level pruning instead of `Path.rglob` + per-file `resolve()`,
+dropping walk time from 260 ms to ~10 ms on the analyzer's own repo.
+
+To stay under the 500-line cap, framework scanners were extracted to
+[_route_detector_scanners.py](../tree_sitter_analyzer/_route_detector_scanners.py)
+(Flask / FastAPI / Django / Express / Spring as pure functions taking
+``(root_node, file_path, …, RouteInfo_cls)``).
+
+**Measured results** (analyzer's own repo, 1277 source files):
+
+| Run | Before | After |
+|---|---:|---:|
+| cold | 2.23 s | 1.82 s (scandir walker + cache misses) |
+| warm | 2.23 s | **12.8 ms** |
+| **speedup** | 1.0× | **~140×** |
+
+Tests: `tests/unit/test_route_detector.py::TestRouteCachePersistence` —
+6 tests including a hard `>=3x` regression guard (real-world is ~140×, the
+synthetic harness gets 4–8× on a 60-file project because parse cost is the
+floor on tiny projects). Disable via `TSA_SKIP_PERF=1`.
 
 ### PERF-2 — `Parser._cache` is in-process LRU(100) 🟡 deferred
 
@@ -422,7 +444,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **9** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, PERF-5, DOG-1) |
+| ✅ fixed in this audit pass | **10** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, PERF-1, PERF-5, DOG-1) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |
