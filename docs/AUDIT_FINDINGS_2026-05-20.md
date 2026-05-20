@@ -461,7 +461,39 @@ The helper takes a full path; tool was passing only the suffix. Result:
 `detect_all()` always returned `[]`. See
 [PLUGIN_ARCHITECTURE_KNOWN_ISSUES.md::KI-R7](PLUGIN_ARCHITECTURE_KNOWN_ISSUES.md).
 
-### DOG-3 — `--table=full --output-format=toon` silently ignored the format flag 🔴 open
+### DOG-3 — `--table=full --output-format=toon` silently ignored the format flag ✅ fixed
+
+**Original problem.**
+[cli/commands/table_command.py:35](../tree_sitter_analyzer/cli/commands/table_command.py)
+dispatched on ``--table`` alone. ``--output-format`` was wired everywhere
+*except* this command, so combining ``--table=full`` with
+``--output-format=toon`` produced the same markdown bytes as without —
+the strongest LLM-agent differentiator was silently inaccessible from
+the table path.
+
+**Fix landed.** ``execute_async`` now honors ``--output-format`` /
+``--format`` as a layer above ``--table`` when the user *explicitly*
+passed it. We detect explicitness by scanning ``sys.argv`` for the
+literal flag — argparse leaves ``--output-format`` at its default
+"json" otherwise, which would silently change ``--table=full``'s
+historical behaviour.
+
+Precedence: explicit ``--output-format=toon`` → TOON encoding, explicit
+``--output-format=json`` → JSON encoding, otherwise the table layout
+(markdown / csv / compact / full) stays as documented.
+
+**Measured.** ``examples/Sample.java --table=full``:
+
+| Encoding | Bytes |
+|---|---:|
+| json | 12,233 |
+| **toon** | **1,812 (–85.1%)** |
+
+Regression coverage in
+[tests/unit/cli/test_table_command_format_override.py](../tests/unit/cli/test_table_command_format_override.py):
+6 subprocess-driven tests covering markdown default, TOON override,
+JSON override, the ``--format=toon`` alias, the size-reduction floor,
+and the pre-existing ``--table=toon`` direct path.
 
 Performance engineer report (verified): running with both `--table=full` and
 `--output-format=toon` produced JSON bytes identical to the JSON path. The
@@ -546,7 +578,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **14** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P5, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1) |
+| ✅ fixed in this audit pass | **15** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P5, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |

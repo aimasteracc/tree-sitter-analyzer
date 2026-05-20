@@ -42,6 +42,27 @@ class TableCommand(BaseCommand):
 
             table_type = getattr(self.args, "table", "full")
 
+            # DOG-3 fix: --output-format used to be silently ignored when
+            # --table was also set. The global format flag now wins for the
+            # encoding choice — but only when the user *explicitly* provided
+            # it. Argparse leaves --output-format at its default ("json") for
+            # every invocation, so checking the value alone would silently
+            # break "--table=full" without --output-format. Instead we
+            # inspect sys.argv: only honor --output-format / --format when
+            # the literal flag appears.
+            output_format = ""
+            argv_tokens = " ".join(sys.argv[1:])
+            if "--output-format" in argv_tokens or "--format" in argv_tokens:
+                output_format = (
+                    getattr(self.args, "format", None)
+                    or getattr(self.args, "output_format", None)
+                    or ""
+                ).lower()
+            if output_format == "toon" and table_type != "toon":
+                table_type = "toon"
+            elif output_format == "json" and table_type != "json":
+                table_type = "json"
+
             if table_type == "json":
                 formatted_data = self._convert_to_structure_format(
                     analysis_result, language
