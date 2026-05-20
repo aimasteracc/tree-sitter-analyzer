@@ -113,9 +113,13 @@ class CodePatternsTool(BaseMCPTool):
             all_patterns.extend(_detect_anti_patterns(resolved, language))
 
         filtered = [
-            p for p in all_patterns if _SEVERITY_ORDER.get(p.get("severity"), 0) >= min_sev
+            p
+            for p in all_patterns
+            if _SEVERITY_ORDER.get(p.get("severity"), 0) >= min_sev
         ]
-        filtered.sort(key=lambda p: _SEVERITY_ORDER.get(p.get("severity"), 0), reverse=True)
+        filtered.sort(
+            key=lambda p: _SEVERITY_ORDER.get(p.get("severity"), 0), reverse=True
+        )
 
         by_category: dict[str, list[dict[str, Any]]] = {}
         for p in filtered:
@@ -145,25 +149,39 @@ class CodePatternsTool(BaseMCPTool):
 
 
 def _detect_smells(file_path: str, language: str) -> list[dict[str, Any]]:
+    # ``detect_code_smells`` signature is (file_path, dimensions, analysis,
+    # language=None). The wrapper here only has the file path and language,
+    # so pass empty placeholders for the unused contextual inputs — the
+    # smell detector falls back to source-only heuristics.
     try:
-        smells = detect_code_smells(file_path, language)
+        smells = detect_code_smells(file_path, {}, None, language=language)
     except Exception:
         return []
 
     patterns: list[dict[str, Any]] = []
     for smell in smells:
-        sev = "info"
-        if smell.get("critical"):
-            sev = "critical"
-        elif smell.get("severity") in ("warning", "major"):
-            sev = "warning"
+        # ``detect_code_smells`` emits ``smell``/``detail``/``severity``;
+        # also accept the older ``type``/``message`` shape for forward
+        # compatibility.
+        smell_id = smell.get("smell") or smell.get("type") or smell.get("id", "unknown")
+        detail = smell.get("detail") or smell.get("message", "")
+        fix_hint = smell.get("fix", "")
+        message = (
+            f"{detail} ({fix_hint})" if fix_hint and detail else (detail or fix_hint)
+        )
+        sev_raw = smell.get("severity", "info")
+        sev = (
+            "critical"
+            if sev_raw == "critical" or smell.get("critical")
+            else ("warning" if sev_raw in ("warning", "major") else "info")
+        )
         patterns.append(
             {
-                "id": smell.get("id", smell.get("type", "unknown")),
+                "id": smell_id,
                 "category": "smells",
-                "type": smell.get("type", ""),
+                "type": smell_id,
                 "severity": sev,
-                "message": smell.get("message", ""),
+                "message": message,
                 "line": smell.get("line"),
             }
         )
@@ -171,23 +189,37 @@ def _detect_smells(file_path: str, language: str) -> list[dict[str, Any]]:
 
 
 def _detect_security(file_path: str, language: str) -> list[dict[str, Any]]:
+    # ``detect_security_issues`` wants the file *content* as ``source``;
+    # passing the path string would silently match nothing. Read with
+    # ``errors="replace"`` so binary noise can't crash the call.
     try:
-        issues = detect_security_issues(file_path, language)
+        source = Path(file_path).read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return []
+    try:
+        issues = detect_security_issues(source, language, file_path=file_path)
     except Exception:
         return []
 
     patterns: list[dict[str, Any]] = []
     for issue in issues:
+        # ``detect_security_issues`` returns ``issue``/``description``/``lines``;
+        # normalize to the same shape the rest of code_patterns emits.
+        issue_name = (
+            issue.get("issue") or issue.get("type") or issue.get("id", "unknown")
+        )
+        lines = issue.get("lines") or []
+        first_line = lines[0] if lines else issue.get("line")
+        severity_raw = issue.get("severity", "warning")
+        severity = "critical" if severity_raw == "critical" else "warning"
         patterns.append(
             {
-                "id": issue.get("id", issue.get("type", "unknown")),
+                "id": issue_name,
                 "category": "security",
-                "type": issue.get("type", ""),
-                "severity": "critical" if issue.get("type") in (
-                    "hardcoded_secret", "sql_injection", "shell_injection",
-                ) else "warning",
-                "message": issue.get("message", ""),
-                "line": issue.get("line"),
+                "type": issue_name,
+                "severity": severity,
+                "message": issue.get("description", issue.get("message", "")),
+                "line": first_line,
             }
         )
     return patterns
@@ -258,8 +290,7 @@ def _check_python_anti_patterns(
         stripped = line.strip()
 
         if "=" in stripped and any(
-            f"={t}" in stripped
-            for t in ("[]", "{},", "set()", "[],")
+            f"={t}" in stripped for t in ("[]", "{},", "set()", "[],")
         ):
             if "def " in lines[max(0, i - 5) : i][-1] or any(
                 "def " in ln for ln in lines[max(0, i - 10) : i]
@@ -288,9 +319,7 @@ def _check_python_anti_patterns(
             )
 
         if "print(" in stripped and not stripped.startswith("#"):
-            in_def = any(
-                "def " in ln for ln in lines[max(0, i - 30) : i]
-            )
+            in_def = any("def " in ln for ln in lines[max(0, i - 30) : i])
             if in_def:
                 patterns.append(
                     {
@@ -304,9 +333,7 @@ def _check_python_anti_patterns(
                 )
 
 
-def _check_js_anti_patterns(
-    lines: list[str], patterns: list[dict[str, Any]]
-) -> None:
+def _check_js_anti_patterns(lines: list[str], patterns: list[dict[str, Any]]) -> None:
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
         if "var " in stripped and not stripped.startswith("//"):
@@ -334,9 +361,7 @@ def _check_js_anti_patterns(
                 )
 
 
-def _check_java_anti_patterns(
-    lines: list[str], patterns: list[dict[str, Any]]
-) -> None:
+def _check_java_anti_patterns(lines: list[str], patterns: list[dict[str, Any]]) -> None:
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
         if "System.out.println" in stripped and not stripped.startswith("//"):
