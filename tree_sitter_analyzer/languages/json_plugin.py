@@ -155,17 +155,15 @@ class JSONElementExtractor(ElementExtractor):
 
     def extract_elements(
         self, tree: "tree_sitter.Tree | None", source_code: str
-    ) -> list[JSONElement]:
-        """Alias for extract_json_elements for compatibility with tests.
+    ) -> dict[str, list[Any]]:
+        """Return JSON elements grouped under the ``json_elements`` key.
 
-        Args:
-            tree: Parsed tree-sitter tree
-            source_code: Original source code
-
-        Returns:
-            List of JSONElement objects
+        The signature matches ``ElementExtractor.extract_elements`` (LSP),
+        while the actual collected elements live under a JSON-specific key
+        so downstream consumers can branch on it. Callers that want the
+        bare list should call :py:meth:`extract_json_elements` directly.
         """
-        return self.extract_json_elements(tree, source_code)
+        return {"json_elements": list(self.extract_json_elements(tree, source_code))}
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:
         """Get text content from a tree-sitter node."""
@@ -268,11 +266,7 @@ class JSONElementExtractor(ElementExtractor):
 
             # Count items in array (exclude brackets and commas)
             child_count = len(
-                [
-                    c
-                    for c in node.children
-                    if c.type not in ("[", "]", ",", "ERROR")
-                ]
+                [c for c in node.children if c.type not in ("[", "]", ",", "ERROR")]
             )
 
             nesting_level = self._calculate_nesting_level(node)

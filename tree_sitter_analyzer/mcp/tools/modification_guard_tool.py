@@ -124,15 +124,15 @@ class ModificationGuardTool(BaseMCPTool):
         super().__init__(project_root)
         self._trace_impact_tool = TraceImpactTool(project_root)
 
-    def set_project_path(self, project_path: str) -> None:
-        """
-        Update project path for this tool and the inner trace_impact tool.
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        """Propagate the project-root change to the inner trace_impact tool.
 
-        Args:
-            project_path: New project root directory
+        ARCH-A4: tools react via this hook; ``BaseMCPTool.set_project_path``
+        stays the single entrypoint. Forwarding to the inner tool uses its
+        public ``set_project_path`` so its own hook fires too.
         """
-        super().set_project_path(project_path)
-        self._trace_impact_tool.set_project_path(project_path)
+        if project_root is not None:
+            self._trace_impact_tool.set_project_path(project_root)
 
     def get_tool_definition(self) -> dict[str, Any]:
         """
@@ -220,10 +220,18 @@ class ModificationGuardTool(BaseMCPTool):
         """
         symbol = arguments.get("symbol")
         if not symbol or not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol parameter is required and must be a non-empty string")
+            raise ValueError(
+                "symbol parameter is required and must be a non-empty string"
+            )
 
         modification_type = arguments.get("modification_type")
-        valid_types = {"rename", "signature_change", "delete", "behavior_change", "refactor"}
+        valid_types = {
+            "rename",
+            "signature_change",
+            "delete",
+            "behavior_change",
+            "refactor",
+        }
         if not modification_type or modification_type not in valid_types:
             raise ValueError(
                 f"modification_type must be one of: {', '.join(sorted(valid_types))}"
@@ -348,8 +356,16 @@ class ModificationGuardTool(BaseMCPTool):
 
         # Unified summary line: one line to see everything
         final_verdict = result["safety_verdict"]
-        rank_str = f"rank=#{result['architecture_rank']}" if "architecture_rank" in result else "rank=-"
-        pr_str = f"pr={result['architecture_score']:.4f}" if "architecture_score" in result else ""
+        rank_str = (
+            f"rank=#{result['architecture_rank']}"
+            if "architecture_rank" in result
+            else "rank=-"
+        )
+        pr_str = (
+            f"pr={result['architecture_score']:.4f}"
+            if "architecture_score" in result
+            else ""
+        )
         parts = [
             symbol,
             rank_str,

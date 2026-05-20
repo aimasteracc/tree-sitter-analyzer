@@ -204,12 +204,14 @@ class ToonEncoder:
         data = task.data
         obj_id = id(data)
 
-        # Check for circular reference
+        # Circular reference — degrade gracefully so the encoder still
+        # produces a valid (truncated) TOON string instead of raising and
+        # taking down the whole response. Callers that need the strict
+        # behavior can still see ``"[...]"`` in the output.
         if obj_id in seen_ids:
-            raise ToonEncodeError(
-                "Circular reference detected",
-                data="<circular reference>",
-            )
+            indent_str = "  " * task.indent
+            output.append(f"{indent_str}[...]")
+            return
         seen_ids.add(obj_id)
 
         # Add end task first (will be processed last)
@@ -269,19 +271,22 @@ class ToonEncoder:
             output.append("[]")
             return
 
-        # Check if homogeneous array of dicts
-        if all(isinstance(item, dict) for item in items):
-            stack.append(_Task(_TaskType.ENCODE_ARRAY_TABLE, items, task.indent))
-            return
+        # Use the array-table format ONLY for *homogeneous* dict arrays
+        # (every item is a dict AND shares the same key set). A mixed-key
+        # list like ``[{"a": 1}, {"b": 2}]`` would silently drop entries
+        # under the table schema, so encode those inline instead.
+        if items and all(isinstance(item, dict) for item in items):
+            first_keys = tuple(items[0].keys())
+            if all(tuple(item.keys()) == first_keys for item in items):
+                stack.append(_Task(_TaskType.ENCODE_ARRAY_TABLE, items, task.indent))
+                return
 
         obj_id = id(items)
 
-        # Check for circular reference
+        # Circular list — degrade gracefully (see _handle_dict_start).
         if obj_id in seen_ids:
-            raise ToonEncodeError(
-                "Circular reference detected in list",
-                data="<circular reference>",
-            )
+            output.append("[...]")
+            return
         seen_ids.add(obj_id)
 
         # For simple lists, encode inline
@@ -326,12 +331,11 @@ class ToonEncoder:
 
         obj_id = id(items)
 
-        # Check for circular reference
+        # Circular array-table — degrade gracefully (see _handle_dict_start).
         if obj_id in seen_ids:
-            raise ToonEncodeError(
-                "Circular reference detected in array table",
-                data="<circular reference>",
-            )
+            indent_str = "  " * indent
+            output.append(f"{indent_str}[...]")
+            return
         seen_ids.add(obj_id)
 
         try:
@@ -372,11 +376,9 @@ class ToonEncoder:
 
             obj_id = id(item)
             if obj_id in seen_ids:
-                kind = "list" if isinstance(item, list) else "dict"
-                raise ToonEncodeError(
-                    f"Circular reference detected in nested {kind}",
-                    data="<circular reference>",
-                )
+                # Degrade gracefully on nested cycles (see _handle_dict_start).
+                encoded_items.append("[...]")
+                continue
 
             seen_ids.add(obj_id)
             try:

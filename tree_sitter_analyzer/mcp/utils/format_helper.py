@@ -153,17 +153,18 @@ def apply_toon_format_to_response(
     """
     Apply TOON format to MCP tool response if requested.
 
-    When output_format is 'toon', formats the result as TOON text without
-    duplicating any fields. All data is contained in toon_content only,
-    maximizing token savings by eliminating field duplication.
+    When output_format is 'toon', formats the result as TOON and removes
+    redundant data fields (results, matches, content, etc.) to maximize
+    token savings. Only metadata fields are preserved alongside toon_content
+    so callers can still inspect ``success``/``error``/``file_path`` without
+    parsing the TOON blob.
 
     Args:
         result: Original result dictionary from MCP tool
         output_format: Output format ('json' or 'toon')
 
     Returns:
-        Minimal response with only format marker and toon_content if TOON requested,
-        otherwise original result
+        Modified result dict with TOON content if requested, otherwise original
     """
     if output_format != "toon":
         return result
@@ -172,13 +173,35 @@ def apply_toon_format_to_response(
         # Format the full result as TOON
         toon_content = format_as_toon(result)
 
-        # Return minimal response with only TOON content
-        # DO NOT copy any fields from result - they're already in toon_content
-        # Copying fields creates duplication and wastes tokens
+        # Drop only the redundant *data* fields — these are already present in
+        # toon_content and would duplicate tokens. Metadata fields (success,
+        # error, file_path, agent_summary, ...) stay so callers can branch on
+        # status without parsing the TOON payload.
+        redundant_fields = {
+            "results",  # Search/query results
+            "matches",  # Search matches
+            "content",  # File content
+            "partial_content_result",  # Partial read results
+            "analysis_result",  # Code analysis results
+            "data",  # Generic data field
+            "items",  # List items
+            "files",  # File listings
+            "lines",  # Line content
+            "table_output",  # Formatted table output
+        }
+
         toon_response: dict[str, Any] = {
             "format": "toon",
             "toon_content": toon_content,
         }
+
+        # Preserve metadata, but never stomp the format/toon_content keys.
+        for key, value in result.items():
+            if key in redundant_fields:
+                continue
+            if key in {"format", "toon_content"}:
+                continue
+            toon_response[key] = value
 
         return toon_response
 

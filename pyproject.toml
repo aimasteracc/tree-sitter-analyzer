@@ -484,6 +484,7 @@ module = [
     "tree_sitter_analyzer.languages._java_traversal_helpers",
     "tree_sitter_analyzer.languages._swift_plugin_nodes",
     "tree_sitter_analyzer.languages.cpp_plugin",
+    "tree_sitter_analyzer.languages.json_plugin",
     "tree_sitter_analyzer.languages.javascript_plugin._function_mixin",
     "tree_sitter_analyzer.languages.javascript_plugin._import_export_mixin",
     "tree_sitter_analyzer.languages.javascript_plugin._public_extraction_mixin",

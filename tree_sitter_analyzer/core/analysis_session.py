@@ -15,9 +15,9 @@ Features:
 
 import hashlib
 import json
-import subprocess
+import subprocess  # nosec
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -89,13 +89,18 @@ class AnalysisSession:
             raise ValueError("Token counts cannot be negative")
 
         # 生成 session ID: YYYYMMDD-HHMMSS-uuid4
-        now = datetime.utcnow()
+        # Use a timezone-aware UTC datetime (deprecation-clean on Python
+        # 3.12+) and strip the offset for the backwards-compatible
+        # ``...Z`` ISO 8601 timestamp used by older session readers.
+        # ``timezone.utc`` is the cross-version-safe form (``datetime.UTC``
+        # is Python 3.11+ only).
+        now = datetime.now(timezone.utc)
         timestamp_part = now.strftime("%Y%m%d-%H%M%S")
         uuid_part = str(uuid4())
         self.session_id = f"{timestamp_part}-{uuid_part}"
 
-        # ISO 8601 timestamp
-        self.timestamp = now.isoformat() + "Z"
+        # ISO 8601 timestamp (with explicit "Z" suffix for back-compat)
+        self.timestamp = now.replace(tzinfo=None).isoformat() + "Z"
 
         # 基本信息
         self.input_files = input_files
@@ -202,7 +207,10 @@ class AnalysisSession:
                 return cached_hash
 
         try:
-            result = subprocess.run(
+            # ``git`` is resolved via $PATH (standard project tooling); the
+            # argument list is static and no shell expansion happens, so
+            # this is safe even without a fully-qualified executable path.
+            result = subprocess.run(  # nosec
                 ["git", "rev-parse", "HEAD"],
                 capture_output=True,
                 text=True,

@@ -54,11 +54,15 @@ class GetCodeOutlineTool(BaseMCPTool):
         self.analysis_engine = get_analysis_engine(project_root)
         self.logger = logger
 
-    def set_project_path(self, project_path: str) -> None:
-        """更新项目路径。"""
-        super().set_project_path(project_path)
-        self.analysis_engine = get_analysis_engine(project_path)
-        logger.info(f"GetCodeOutlineTool project path updated to: {project_path}")
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        """Hook fired by ``BaseMCPTool.set_project_path`` (ARCH-A4).
+
+        Single source of truth for project-root reactions — do NOT override
+        ``set_project_path`` itself. Refresh the analysis engine so it is
+        scoped to the new root.
+        """
+        self.analysis_engine = get_analysis_engine(project_root)
+        logger.info(f"GetCodeOutlineTool project path updated to: {project_root}")
 
     def get_tool_schema(self) -> dict[str, Any]:
         """返回 MCP tool JSON Schema。"""
@@ -174,8 +178,12 @@ class GetCodeOutlineTool(BaseMCPTool):
         packages = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)]
         imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
         classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
-        all_methods = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)]
-        all_fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
+        all_methods = [
+            e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+        ]
+        all_fields = [
+            e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+        ]
 
         # 构建 class 行号区间集合，用于区分类方法与顶层函数
         class_ranges: list[tuple[int, int]] = [
@@ -261,9 +269,7 @@ class GetCodeOutlineTool(BaseMCPTool):
         class_outlines.sort(key=lambda x: x["line_start"])
 
         # 顶层函数（不属于任何类）
-        top_level_fns = [
-            _method_entry(m) for m in all_methods if not _in_class(m)
-        ]
+        top_level_fns = [_method_entry(m) for m in all_methods if not _in_class(m)]
         top_level_fns.sort(key=lambda x: x["line_start"])
 
         outline: dict[str, Any] = {
@@ -419,8 +425,12 @@ class GetCodeOutlineTool(BaseMCPTool):
 
         # JSON: document root + top-level properties (nesting_level == 1)
         json_doc = next(
-            (e for e in elements if getattr(e, "element_type", "") == "document"
-             and getattr(e, "language", "") == "json"),
+            (
+                e
+                for e in elements
+                if getattr(e, "element_type", "") == "document"
+                and getattr(e, "language", "") == "json"
+            ),
             None,
         )
         json_props = [

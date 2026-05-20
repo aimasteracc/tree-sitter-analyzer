@@ -53,10 +53,15 @@ def read_encoding_sample(file_path: Path) -> bytes:
 def open_streaming_context(
     file_path: Path, detected_encoding: str, log_warning: Callable[[str], None]
 ) -> Iterator[Any]:
-    """Open a detected-encoding file handle for line-by-line reading."""
+    """Open a detected-encoding file handle for line-by-line reading.
+
+    Both filesystem errors (``OSError``) and bad encoding names
+    (``LookupError`` from ``codecs.lookup``) are logged before being
+    re-raised so the caller's warning hook always fires on failure.
+    """
     try:
         with open(file_path, encoding=detected_encoding, errors="replace") as handle:
             yield handle
-    except OSError as exc:
+    except (OSError, LookupError) as exc:
         log_warning(f"Failed to open file for streaming {file_path}: {exc}")
         raise
