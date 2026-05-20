@@ -16,6 +16,46 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 
+def _maybe_bare_name_hint(
+    graph: CallGraph, func_name: str, hit_count: int, mode: str
+) -> str | None:
+    """Return a hint string when a qualified ``Class.method`` lookup returns
+    zero hits but the bare ``method`` name would have matched something.
+
+    Returns ``None`` when there's no useful hint (already non-zero hits,
+    or func_name is not qualified, or the bare name also has zero hits).
+    """
+    if hit_count > 0:
+        return None
+    if (
+        "." not in func_name
+        or ":" in func_name
+        or "/" in func_name
+        or "\\" in func_name
+    ):
+        return None
+    _, _, suffix = func_name.rpartition(".")
+    if not suffix:
+        return None
+    try:
+        if mode == "callers":
+            alt = graph.callers_of(suffix)
+        elif mode == "callees":
+            alt = graph.callees_of(suffix)
+        else:  # chain
+            alt = graph.call_chain(suffix)
+    except Exception:
+        return None
+    if not alt:
+        return None
+    return (
+        f"0 hits for qualified name '{func_name}'. The bare name '{suffix}' "
+        f"would match {len(alt)} {mode} (across all classes). Re-run with "
+        f"function_name='{suffix}' to see them, or pass file_path= to "
+        f"disambiguate."
+    )
+
+
 class CodeGraphCallTool(BaseMCPTool):
     """MCP Tool for function-level call graph analysis."""
 
@@ -121,6 +161,9 @@ class CodeGraphCallTool(BaseMCPTool):
                 "caller_count": len(callers),
                 "callers": callers,
             }
+            hint = _maybe_bare_name_hint(graph, func_name, len(callers), "callers")
+            if hint:
+                result["hint"] = hint
         elif mode == "callees":
             func_name = arguments["function_name"]
             file_path = arguments.get("file_path")
@@ -132,6 +175,9 @@ class CodeGraphCallTool(BaseMCPTool):
                 "callee_count": len(callees),
                 "callees": callees,
             }
+            hint = _maybe_bare_name_hint(graph, func_name, len(callees), "callees")
+            if hint:
+                result["hint"] = hint
         elif mode == "chain":
             func_name = arguments["function_name"]
             file_path = arguments.get("file_path")
@@ -145,6 +191,9 @@ class CodeGraphCallTool(BaseMCPTool):
                 "edge_count": len(chain),
                 "chain": chain,
             }
+            hint = _maybe_bare_name_hint(graph, func_name, len(chain), "chain")
+            if hint:
+                result["hint"] = hint
         else:
             raise ValueError(f"Unknown mode: {mode}")
 

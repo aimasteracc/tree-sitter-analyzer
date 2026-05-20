@@ -389,11 +389,7 @@ class TestFindParentClassPython:
 
 class TestFindParentClassJava:
     def test_finds_parent_class(self):
-        source = (
-            "public class Main {\n"
-            "    public void foo() {}\n"
-            "}\n"
-        )
+        source = "public class Main {\n    public void foo() {}\n}\n"
         root, _ = _parse_source(source, "java")
         _find_first_node(root, "method_declaration", result := [])
         if result:
@@ -669,3 +665,40 @@ class TestCallGraphInternalMethods:
         cg = CallGraph(str(PY_PROJECT))
         result = cg._resolve_targets("nonexistent")
         assert result == []
+
+    def test_resolve_targets_qualified_class_method(self):
+        """``Class.method`` resolves to refs whose receiver matches the class."""
+        cg = CallGraph(str(PY_PROJECT))
+        cg.build()
+        # UserService.get_user exists in the fixture project.
+        qualified = cg._resolve_targets("UserService.get_user")
+        assert len(qualified) >= 1
+        assert all(r.receiver == "UserService" for r in qualified)
+        # Bare form returns the same set (only one class defines get_user here).
+        bare = cg._resolve_targets("get_user")
+        assert {(r.file_path, r.name, r.start_line) for r in qualified} == {
+            (r.file_path, r.name, r.start_line) for r in bare
+        }
+
+    def test_resolve_targets_qualified_no_match_falls_back(self):
+        """When the qualified receiver doesn't match, fall back to bare name."""
+        cg = CallGraph(str(PY_PROJECT))
+        cg.build()
+        # WrongClass doesn't define get_user, so qualified lookup falls back
+        # to the bare name. Better than silently returning [].
+        bare = cg._resolve_targets("get_user")
+        fallback = cg._resolve_targets("WrongClass.get_user")
+        assert {(r.file_path, r.name, r.start_line) for r in fallback} == {
+            (r.file_path, r.name, r.start_line) for r in bare
+        }
+
+    def test_resolve_targets_qualified_callers(self):
+        """``callers_of('Class.method')`` matches ``callers_of('method')``
+        when only one class defines that method."""
+        cg = CallGraph(str(PY_PROJECT))
+        cg.build()
+        qualified = cg.callers_of("UserService._fetch")
+        bare = cg.callers_of("_fetch")
+        # In the fixture, _fetch is only defined on UserService.
+        assert len(qualified) == len(bare)
+        assert len(qualified) > 0

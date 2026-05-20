@@ -207,6 +207,11 @@ class UniversalAnalyzeTool(BaseMCPTool):
             raise RuntimeError(f"Failed to analyze file: {file_path} - {msg}")
 
         analysis_dict = result.to_dict()
+        # Inject typed elements so extractors can count via element_type.
+        # AnalysisResult.to_dict() splits into classes/methods/fields/imports
+        # buckets and does NOT expose an `elements` key — without this,
+        # count_dict_elements_by_type sees an empty list and returns zeros.
+        analysis_dict["elements"] = result.elements or []
         base: dict[str, Any] = {
             "file_path": file_path,
             "language": language,
@@ -316,9 +321,25 @@ class UniversalAnalyzeTool(BaseMCPTool):
     def _extract_universal_structure_info(
         self, analysis_dict: dict[str, Any]
     ) -> dict[str, Any]:
-        """Extract structure info using universal tree-sitter path."""
+        """Extract structure info using universal tree-sitter path.
+
+        AnalysisResult.to_dict() exposes ``classes``/``methods``/``fields``/
+        ``imports``/``annotations`` at the top level, so build the structure
+        envelope from those buckets rather than the non-existent
+        ``structure`` key.
+        """
+        structure_payload = analysis_dict.get("structure")
+        if not isinstance(structure_payload, dict) or not structure_payload:
+            structure_payload = {
+                "package": analysis_dict.get("package"),
+                "classes": analysis_dict.get("classes", []),
+                "methods": analysis_dict.get("methods", []),
+                "fields": analysis_dict.get("fields", []),
+                "imports": analysis_dict.get("imports", []),
+                "annotations": analysis_dict.get("annotations", []),
+            }
         return {
-            "structure": analysis_dict.get("structure", {}),
+            "structure": structure_payload,
             "queries_executed": analysis_dict.get("queries_executed", []),
         }
 

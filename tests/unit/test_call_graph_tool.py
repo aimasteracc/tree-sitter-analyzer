@@ -162,11 +162,13 @@ class TestCodeGraphCallToolAllFunctions:
 class TestCodeGraphCallToolCallers:
     @pytest.mark.asyncio
     async def test_callers_of_existing_function(self, tool):
-        result = await tool.execute({
-            "mode": "callers",
-            "function_name": "load_data",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "mode": "callers",
+                "function_name": "load_data",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
         assert result["mode"] == "callers"
         assert result["function"] == "load_data"
@@ -174,23 +176,99 @@ class TestCodeGraphCallToolCallers:
 
     @pytest.mark.asyncio
     async def test_callers_of_nonexistent(self, tool):
-        result = await tool.execute({
-            "mode": "callers",
-            "function_name": "nonexistent",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "mode": "callers",
+                "function_name": "nonexistent",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
         assert result["caller_count"] == 0
 
     @pytest.mark.asyncio
     async def test_callers_with_file_path(self, tool):
-        result = await tool.execute({
-            "mode": "callers",
-            "function_name": "load_data",
-            "file_path": "main.py",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "mode": "callers",
+                "function_name": "load_data",
+                "file_path": "main.py",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_callers_qualified_class_method_resolves(self, tool):
+        """Qualified ``Class.method`` form should resolve, not silently return 0."""
+        result = await tool.execute(
+            {
+                "mode": "callers",
+                "function_name": "UserService._fetch",
+                "output_format": "json",
+            }
+        )
+        assert result["success"] is True
+        # Same number of callers as the bare form.
+        bare = await tool.execute(
+            {
+                "mode": "callers",
+                "function_name": "_fetch",
+                "output_format": "json",
+            }
+        )
+        assert result["caller_count"] == bare["caller_count"]
+        assert result["caller_count"] > 0
+        # No hint needed when qualified form matched.
+        assert "hint" not in result
+
+    @pytest.mark.asyncio
+    async def test_callers_qualified_zero_hits_with_hint(self, tmp_path):
+        """When a qualified ``Class.method`` lookup resolves but yields 0
+        callers, and the bare name has callers via inherited/super calls,
+        the response must include a ``hint`` field pointing to the bare name."""
+        # Build a synthetic project where Base.method is defined but its
+        # only callers reference it via super().method() (which resolves
+        # only to the bare name, not to Base.method).
+        project = tmp_path
+        (project / "base.py").write_text(
+            "class Base:\n    def method(self):\n        return 1\n"
+        )
+        (project / "child.py").write_text(
+            "from base import Base\n"
+            "class Child(Base):\n"
+            "    def method(self):\n"
+            "        return super().method() + 1\n"
+            "    def other(self):\n"
+            "        return self.method()\n"
+        )
+        t = CodeGraphCallTool(str(project))
+        # Qualified — Base.method has 0 direct callers (super() resolves to
+        # bare 'method', not 'Base.method').
+        qualified = await t.execute(
+            {
+                "mode": "callers",
+                "function_name": "Base.method",
+                "output_format": "json",
+            }
+        )
+        assert qualified["success"] is True
+        assert qualified["caller_count"] == 0
+        # Bare 'method' has callers.
+        bare = await t.execute(
+            {
+                "mode": "callers",
+                "function_name": "method",
+                "output_format": "json",
+            }
+        )
+        assert bare["caller_count"] > 0
+        # Hint must be present on the qualified zero-hit response.
+        assert "hint" in qualified
+        assert "method" in qualified["hint"]
+        assert str(bare["caller_count"]) in qualified["hint"]
+        # No hint when bare form already returned results.
+        assert "hint" not in bare
 
 
 # ============================================================
@@ -201,11 +279,13 @@ class TestCodeGraphCallToolCallers:
 class TestCodeGraphCallToolCallees:
     @pytest.mark.asyncio
     async def test_callees_of_main(self, tool):
-        result = await tool.execute({
-            "mode": "callees",
-            "function_name": "main",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "mode": "callees",
+                "function_name": "main",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
         assert result["function"] == "main"
         assert isinstance(result["callees"], list)
@@ -214,11 +294,13 @@ class TestCodeGraphCallToolCallees:
 
     @pytest.mark.asyncio
     async def test_callees_leaf_function(self, tool):
-        result = await tool.execute({
-            "mode": "callees",
-            "function_name": "save",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "mode": "callees",
+                "function_name": "save",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
         assert result["callee_count"] == 0
 
@@ -231,11 +313,13 @@ class TestCodeGraphCallToolCallees:
 class TestCodeGraphCallToolChain:
     @pytest.mark.asyncio
     async def test_chain_from_main(self, tool):
-        result = await tool.execute({
-            "mode": "chain",
-            "function_name": "main",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "mode": "chain",
+                "function_name": "main",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
         assert result["mode"] == "chain"
         assert isinstance(result["chain"], list)
@@ -243,22 +327,26 @@ class TestCodeGraphCallToolChain:
 
     @pytest.mark.asyncio
     async def test_chain_custom_depth(self, tool):
-        result = await tool.execute({
-            "mode": "chain",
-            "function_name": "main",
-            "depth": 1,
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "mode": "chain",
+                "function_name": "main",
+                "depth": 1,
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
         assert result["depth"] == 1
 
     @pytest.mark.asyncio
     async def test_chain_nonexistent(self, tool):
-        result = await tool.execute({
-            "mode": "chain",
-            "function_name": "nonexistent",
-            "output_format": "json",
-        })
+        result = await tool.execute(
+            {
+                "mode": "chain",
+                "function_name": "nonexistent",
+                "output_format": "json",
+            }
+        )
         assert result["success"] is True
         assert result["edge_count"] == 0
 

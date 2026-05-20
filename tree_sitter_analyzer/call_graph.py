@@ -156,12 +156,14 @@ def _extract_recursive(
             elif language in ("java",):
                 parent_class = _find_parent_class_java(node) or enclosing_class
 
-            definitions.append({
-                "name": func_name,
-                "start_line": node.start_point[0] + 1,
-                "end_line": node.end_point[0] + 1,
-                "class": parent_class,
-            })
+            definitions.append(
+                {
+                    "name": func_name,
+                    "start_line": node.start_point[0] + 1,
+                    "end_line": node.end_point[0] + 1,
+                    "class": parent_class,
+                }
+            )
 
             for child in node.children:
                 _extract_recursive(
@@ -185,22 +187,30 @@ def _get_func_name(node: Any, language: str) -> str | None:
             for child in node.children:
                 if child.type == "identifier":
                     text = child.text
-                    return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
         elif language in ("javascript", "typescript"):
             for child in node.children:
                 if child.type in ("identifier", "property_identifier"):
                     text = child.text
-                    return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
         elif language == "java":
             for child in node.children:
                 if child.type == "identifier":
                     text = child.text
-                    return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
         elif language == "go":
             for child in node.children:
                 if child.type == "identifier":
                     text = child.text
-                    return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
         elif language in ("c", "cpp"):
             for child in node.children:
                 if child.type in (
@@ -209,7 +219,9 @@ def _get_func_name(node: Any, language: str) -> str | None:
                     "destructor_name",
                 ):
                     text = child.text
-                    return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    return (
+                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
+                    )
                 if child.type == "function_declarator":
                     for sub in child.children:
                         if sub.type in ("identifier", "field_identifier"):
@@ -219,7 +231,7 @@ def _get_func_name(node: Any, language: str) -> str | None:
                                 if isinstance(text, bytes)
                                 else str(text)
                             )
-    except Exception:
+    except Exception:  # nosec B110 - best-effort AST walk; missing field is non-fatal
         pass
     return None
 
@@ -320,7 +332,7 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
                 "line": node.start_point[0] + 1,
                 "receiver": None,
             }
-    except Exception:
+    except Exception:  # nosec B110 - best-effort AST walk; missing field is non-fatal
         pass
     return None
 
@@ -400,8 +412,17 @@ class CallGraph:
             return
 
         supported_exts = {
-            ".py", ".js", ".ts", ".jsx", ".tsx", ".java",
-            ".go", ".c", ".cpp", ".cc", ".cxx",
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".go",
+            ".c",
+            ".cpp",
+            ".cc",
+            ".cxx",
         }
 
         all_files: list[Path] = []
@@ -450,22 +471,16 @@ class CallGraph:
                 file_funcs[defn["name"]] = ref
 
             for call in calls:
-                caller_ref = self._find_enclosing_func(
-                    file_funcs, call["line"]
-                )
+                caller_ref = self._find_enclosing_func(file_funcs, call["line"])
                 if caller_ref is None:
                     continue
 
-                callee_refs = self._resolve_callee(
-                    call, rel_path, rel_to_abs
-                )
+                callee_refs = self._resolve_callee(call, rel_path, rel_to_abs)
 
                 for callee_ref in callee_refs:
                     self._callees[caller_ref].append(callee_ref)
                     self._callers[callee_ref].append(caller_ref)
-                    self._call_edges.append(
-                        (caller_ref, callee_ref, call["line"])
-                    )
+                    self._call_edges.append((caller_ref, callee_ref, call["line"]))
 
         self._built = True
 
@@ -570,9 +585,7 @@ class CallGraph:
         targets = self._resolve_targets(func_name, file_path)
         result: list[dict[str, Any]] = []
         visited: set[str] = set()
-        queue: deque[tuple[FunctionRef, int]] = deque(
-            (t, 0) for t in targets
-        )
+        queue: deque[tuple[FunctionRef, int]] = deque((t, 0) for t in targets)
 
         while queue:
             current, d = queue.popleft()
@@ -582,11 +595,13 @@ class CallGraph:
                 key = f"{current.qualified_name()}->{callee.qualified_name()}"
                 if key not in visited:
                     visited.add(key)
-                    result.append({
-                        "caller": current.to_dict(),
-                        "callee": callee.to_dict(),
-                        "depth": d + 1,
-                    })
+                    result.append(
+                        {
+                            "caller": current.to_dict(),
+                            "callee": callee.to_dict(),
+                            "depth": d + 1,
+                        }
+                    )
                     queue.append((callee, d + 1))
         return result
 
@@ -607,14 +622,43 @@ class CallGraph:
     def _resolve_targets(
         self, func_name: str, file_path: str | None = None
     ) -> list[FunctionRef]:
-        """Resolve a function name (and optional file) to FunctionRef(s)."""
+        """Resolve a function name (and optional file) to FunctionRef(s).
+
+        Accepts three forms:
+        - bare name (e.g. ``foo``) — returns all functions with that name.
+        - ``Class.method`` (e.g. ``BaseMCPTool.__init__``) — splits on the
+          last ``.``, looks up ``method``, and filters by ``receiver == Class``.
+          When the qualified form matches no definitions, falls back to the
+          bare name so partial qualifiers (e.g. a stale class prefix) still
+          yield results instead of a silent zero.
+        - file-qualified name via the explicit ``file_path`` argument.
+        """
         if file_path:
             qname = f"{file_path}:{func_name}"
             ref = self._func_by_qualified.get(qname)
             if ref:
                 return [ref]
 
-        candidates = self._func_by_name.get(func_name, [])
+        # Class.method form — split off the receiver prefix.
+        if (
+            "." in func_name
+            and ":" not in func_name
+            and "/" not in func_name
+            and "\\" not in func_name
+        ):
+            receiver, _, suffix = func_name.rpartition(".")
+            suffix_candidates = self._func_by_name.get(suffix, [])
+            qualified = [c for c in suffix_candidates if c.receiver == receiver]
+            if qualified:
+                if file_path:
+                    same = [c for c in qualified if c.file_path == file_path]
+                    return same if same else qualified
+                return qualified
+            # Receiver filter found nothing — fall back to bare suffix below.
+            candidates = suffix_candidates
+        else:
+            candidates = self._func_by_name.get(func_name, [])
+
         if file_path:
             same = [c for c in candidates if c.file_path == file_path]
             return same if same else candidates
