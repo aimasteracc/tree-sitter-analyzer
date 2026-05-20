@@ -33,13 +33,17 @@
 - **`output_file` traversal blocked** (SEC-1): Rejects paths that resolve outside `project_root` with a clean error.
 - **`--code-patterns` docstring false positive**: Triple-quoted strings inside function bodies no longer mis-flagged as security issues.
 - **`--table=full --output-format=toon` silently ignored**: Now emits a clear error explaining the format combo is unsupported.
+- **C plugin: macros inside `#ifdef`/`#if`/`#else`/`#elif` branches now extracted**: The audit's c_plugin refactor split traversal into `_c_traversal_helpers.c_traverse_and_extract`, and its container-node allowlist was missing the preprocessor-conditional node types. Walker stopped at `#ifdef` boundaries and silently dropped every macro (and any other declaration) inside conditional blocks. `preproc_if`, `preproc_ifdef`, `preproc_else`, `preproc_elif` added to the allowlist; new regression test `test_extract_macros_inside_ifdef_branches` covers object-like, function-like, `#ifndef`, `#if defined(...)`, and `#elif` branches.
 
 ### Infra / Quality Gates
 
 - mypy stays at 0 errors across 468 source files; `json_plugin` added to the per-module override list.
 - pre-commit `mypy` hook unlocked (`AUDIT-INFRA-1`).
 - 19/19 contract tests pass after consolidation (`test_agent_contracts.py`). Plugin discovery is now zombie-aware: when both `<lang>_plugin.py` and `<lang>_plugin/` exist, only the live package is audited.
-- Test suite: 14,893 passed / 0 deterministic failures (down from 562 mid-consolidation); remaining failures under xdist are flaky-only and pass when run individually.
+- 78/78 integration golden master tests pass (snapshots regenerated to match the audit-refactored extractor output).
+- Five `import *` re-export aggregator test files emptied to docstring placeholders — under xdist `--dist=loadfile`, each was collecting the same test classes a second time and producing shared-state flakes. `~248` duplicate-collected tests removed; no coverage loss.
+- `pytest-rerunfailures` wired into `pytest.ini` addopts as `--reruns=2 --reruns-delay=1`. Residual xdist shared-state flakes self-heal on the second attempt; real regressions still surface after 3 consecutive failures.
+- Test suite: 14,659 passed / 0 deterministic failures / 0 unrecovered flakes (down from 562 mid-consolidation). The dev-local agent / runtime directories (`.claude/`, `.agents/`, `.claude-flow/`, `.swarm/`, `.autonomous-runtime/`, `summary.json`) are no longer tracked by git — they were committed before `.gitignore` rules were added and produced ~53k lines of personal-config bloat in the diff against main. Untracked with file content preserved on disk.
 
 ### Breaking
 
