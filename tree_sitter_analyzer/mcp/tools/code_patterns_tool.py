@@ -213,10 +213,48 @@ def _detect_anti_patterns(file_path: str, language: str) -> list[dict[str, Any]]
     return patterns
 
 
+def _python_docstring_line_set(lines: list[str]) -> set[int]:
+    # Return the 1-indexed line numbers that fall inside a Python triple-quoted
+    # string. We skip these lines when checking anti-patterns so that docstring
+    # examples (which often contain ``print()``, bare ``except:``, etc.) do not
+    # produce false positives.
+    #
+    # Implementation is intentionally line-based (not AST-based) because the
+    # caller only has access to the raw text. It handles single-line triple
+    # quotes and multi-line blocks but does not track nested strings or
+    # escapes — sufficient for anti-pattern muting.
+    inside = False
+    delim: str | None = None
+    docstring_lines: set[int] = set()
+    for i, line in enumerate(lines, 1):
+        if inside:
+            docstring_lines.add(i)
+            # Closing delim found — exit (assume single closing per line).
+            if delim and delim in line:
+                inside = False
+                delim = None
+            continue
+        for d in ('"""', "'''"):
+            idx = line.find(d)
+            if idx == -1:
+                continue
+            docstring_lines.add(i)
+            rest = line[idx + 3 :]
+            if d not in rest:
+                # Opens here but does not close on the same line.
+                inside = True
+                delim = d
+            break
+    return docstring_lines
+
+
 def _check_python_anti_patterns(
     lines: list[str], patterns: list[dict[str, Any]]
 ) -> None:
+    docstring_lines = _python_docstring_line_set(lines)
     for i, line in enumerate(lines, 1):
+        if i in docstring_lines:
+            continue
         stripped = line.strip()
 
         if "=" in stripped and any(

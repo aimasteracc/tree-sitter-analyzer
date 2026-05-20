@@ -98,6 +98,61 @@ class TestCheckPythonAntiPatterns:
         _check_python_anti_patterns(lines, patterns)
         assert not any(p["type"] == "print_in_production" for p in patterns)
 
+    def test_print_in_multiline_docstring_ignored(self):
+        """Dogfood regression: --code-patterns previously flagged docstring
+        example `print()` calls as production smells. The fix is to skip lines
+        that fall inside a triple-quoted string."""
+        lines = [
+            "def example():",
+            '    """Show how to use this thing.',
+            "",
+            "    Example:",
+            "        result = thing.run()",
+            "        print(result)",
+            '    """',
+            "    return 42",
+        ]
+        patterns: list[dict] = []
+        _check_python_anti_patterns(lines, patterns)
+        assert not any(p["type"] == "print_in_production" for p in patterns)
+
+    def test_print_in_single_line_docstring_ignored(self):
+        lines = [
+            "def f():",
+            '    """Like: print("ok")."""',
+            "    return 1",
+        ]
+        patterns: list[dict] = []
+        _check_python_anti_patterns(lines, patterns)
+        assert not any(p["type"] == "print_in_production" for p in patterns)
+
+    def test_print_outside_docstring_still_flagged(self):
+        """Don't over-correct: real print() in a function body must still flag."""
+        lines = [
+            "def do_thing():",
+            '    """Doc."""',
+            "    print('still bad')",
+        ]
+        patterns: list[dict] = []
+        _check_python_anti_patterns(lines, patterns)
+        assert any(p["type"] == "print_in_production" for p in patterns)
+
+    def test_bare_except_in_docstring_ignored(self):
+        lines = [
+            "def f():",
+            '    """Bad pattern example:',
+            "",
+            "        try:",
+            "            x()",
+            "        except:",
+            "            pass",
+            '    """',
+            "    return 1",
+        ]
+        patterns: list[dict] = []
+        _check_python_anti_patterns(lines, patterns)
+        assert not any(p["type"] == "bare_except" for p in patterns)
+
 
 # ---------------------------------------------------------------------------
 # _check_js_anti_patterns
