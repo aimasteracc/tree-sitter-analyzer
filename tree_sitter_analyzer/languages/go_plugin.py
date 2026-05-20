@@ -444,7 +444,7 @@ class GoPlugin(LanguagePlugin):
             tree = parser.parse(file_content.encode("utf-8"))
 
             # Extract elements
-            extractor = self.extractor
+            extractor = self.create_extractor()
             all_elements: list[Any] = []
             all_elements.extend(extractor.extract_packages(tree, file_content))
             all_elements.extend(extractor.extract_imports(tree, file_content))
@@ -465,9 +465,10 @@ class GoPlugin(LanguagePlugin):
                 source_code=file_content,
             )
 
-            result.goroutines = self.extractor.goroutines
-            result.channels = self.extractor.channels
-            result.defers = self.extractor.defers
+            if isinstance(extractor, GoElementExtractor):
+                result.goroutines = extractor.goroutines
+                result.channels = extractor.channels
+                result.defers = extractor.defers
 
             return result
 
@@ -545,12 +546,6 @@ class GoPlugin(LanguagePlugin):
                 "classes": extractor.extract_classes(tree, source_code),
                 "variables": extractor.extract_variables(tree, source_code),
             }
-
-            # Capture Go-specific metadata
-            if isinstance(extractor, GoElementExtractor):
-                self.extractor.goroutines = extractor.goroutines
-                self.extractor.channels = extractor.channels
-                self.extractor.defers = extractor.defers
 
             return result
 

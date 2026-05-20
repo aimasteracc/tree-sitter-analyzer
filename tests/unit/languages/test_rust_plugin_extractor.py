@@ -640,7 +640,7 @@ class TestRustExtractorCoverageBoost:
             assert result == ""
 
     def test_extract_elements_captures_side_effects(self, rust_plugin):
-        """Cover lines 659-661: extract_elements captures modules/impls."""
+        """Verify extract_elements no longer copies side-effects to self.extractor."""
         mock_tree = MagicMock()
         mock_extractor = MagicMock(spec=RustElementExtractor)
         mock_extractor.extract_functions.return_value = []
@@ -650,9 +650,11 @@ class TestRustExtractorCoverageBoost:
         mock_extractor.modules = [{"name": "test_mod"}]
         mock_extractor.impl_blocks = [{"type": "Foo"}]
         with patch.object(rust_plugin, "create_extractor", return_value=mock_extractor):
-            rust_plugin.extract_elements(mock_tree, "code")
-            assert rust_plugin.extractor.modules == [{"name": "test_mod"}]
-            assert rust_plugin.extractor.impl_blocks == [{"type": "Foo"}]
+            result = rust_plugin.extract_elements(mock_tree, "code")
+            assert result["functions"] == []
+            assert result["classes"] == []
+            assert result["variables"] == []
+            assert result["imports"] == []
 
     def test_extract_type_def_no_name_returns_none(self, rust_extractor):
         """Cover line 316: type_def with no name node."""

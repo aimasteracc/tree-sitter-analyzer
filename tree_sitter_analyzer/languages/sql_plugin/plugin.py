@@ -129,7 +129,12 @@ class SQLPlugin(LanguagePlugin):
 
     def create_extractor(self) -> ElementExtractor:
         """Create a new element extractor instance."""
-        return SQLElementExtractor()
+        ext = SQLElementExtractor(diagnostic_mode=self.diagnostic_mode)
+        if self.platform_info is not None:
+            ext.platform_info = self.platform_info
+        if self.adapter is not None:
+            ext.set_adapter(self.adapter)
+        return ext
 
     def extract_elements(self, tree: Any, source_code: str) -> dict[str, list[Any]]:
         """
@@ -143,7 +148,7 @@ class SQLPlugin(LanguagePlugin):
         Returns:
             Dictionary with keys 'functions', 'classes', 'variables', 'imports'
         """
-        elements = self.extractor.extract_sql_elements(tree, source_code)
+        elements = self.create_extractor().extract_sql_elements(tree, source_code)
 
         result: dict[str, Any] = {
             "functions": [],
@@ -209,7 +214,8 @@ class SQLPlugin(LanguagePlugin):
             # Extract elements
             elements = []
             if parse_result.tree:
-                elements = self.extractor.extract_sql_elements(
+                extractor = self.create_extractor()
+                elements = extractor.extract_sql_elements(
                     parse_result.tree, source_code
                 )
 

@@ -137,6 +137,7 @@ def check_analyze_file_delegation(lang: str, path: Path) -> list[str]:
     tree = ast.parse(source)
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "analyze_file":
+            body_src = ast.get_source_segment(source, node)
             for child in ast.walk(node):
                 if isinstance(child, ast.Call):
                     func = child.func
@@ -150,6 +151,11 @@ def check_analyze_file_delegation(lang: str, path: Path) -> list[str]:
                             f"  {path.name}:{child.lineno} analyze_file calls "
                             f"self.extract_elements() (must use extractor.extract_xxx delegation)"
                         )
+            if "self.extractor" in body_src and "create_extractor" not in body_src:
+                violations.append(
+                    f"  {path.name}:{node.lineno} analyze_file uses self.extractor "
+                    f"instead of create_extractor()"
+                )
     return violations
 
 

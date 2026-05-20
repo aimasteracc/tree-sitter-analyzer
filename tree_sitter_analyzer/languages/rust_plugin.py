@@ -535,7 +535,7 @@ class RustPlugin(LanguagePlugin):
             tree = parser.parse(file_content.encode("utf-8"))
 
             # Extract elements
-            extractor = self.extractor
+            extractor = self.create_extractor()
             all_elements: list[Any] = []
             all_elements.extend(extractor.extract_functions(tree, file_content))
             all_elements.extend(extractor.extract_classes(tree, file_content))
@@ -555,8 +555,9 @@ class RustPlugin(LanguagePlugin):
                 source_code=file_content,
             )
 
-            result.modules = self.extractor.modules
-            result.impls = self.extractor.impl_blocks
+            if isinstance(extractor, RustElementExtractor):
+                result.modules = extractor.modules
+                result.impls = extractor.impl_blocks
 
             return result
 
@@ -618,18 +619,7 @@ class RustPlugin(LanguagePlugin):
             return {"functions": [], "classes": [], "variables": []}
 
         try:
-            # Reset extractor state
-            # We need to ensure we use the same extractor instance to collect side-effects like modules/impls
-            # But create_extractor() creates a new one.
-            # Here we use self.extractor which is initialized in __init__
-            # Wait, `analyze_file` calls `extract_elements` which calls `create_extractor` in Java plugin...
-            # In JavaPlugin.extract_elements: `extractor = self.create_extractor()`
-            # This means new extractor every time.
-            # So if we want to access `modules` and `impls` after extraction, we need to get them from THAT extractor instance.
-
-            extractor = (
-                self.create_extractor()
-            )  # Create new instance for thread safety / isolation
+            extractor = self.create_extractor()
 
             result = {
                 "functions": extractor.extract_functions(tree, source_code),
@@ -637,11 +627,6 @@ class RustPlugin(LanguagePlugin):
                 "variables": extractor.extract_variables(tree, source_code),
                 "imports": extractor.extract_imports(tree, source_code),
             }
-
-            # Capture side-effects
-            if isinstance(extractor, RustElementExtractor):
-                self.extractor.modules = extractor.modules
-                self.extractor.impl_blocks = extractor.impl_blocks
 
             return result
 

@@ -280,7 +280,7 @@ def test_every_plugin_class_inherits_language_plugin() -> None:
     from tree_sitter_analyzer.plugins.base import LanguagePlugin
 
     violations = []
-    for lang, path in _discover_plugin_files():
+    for _lang, path in _discover_plugin_files():
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):
@@ -300,7 +300,7 @@ def test_every_plugin_class_inherits_language_plugin() -> None:
 def test_extract_elements_returns_dict() -> None:
     """extract_elements on any class must return dict[str, list[Any]], not list."""
     violations = []
-    for lang, path in _discover_plugin_files():
+    for _lang, path in _discover_plugin_files():
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):
@@ -321,7 +321,7 @@ def test_plugin_has_required_abstract_methods() -> None:
     """Each plugin must implement: get_language_name, get_file_extensions, create_extractor, analyze_file."""
     REQUIRED = {"get_language_name", "get_file_extensions", "create_extractor", "analyze_file"}
     violations = []
-    for lang, path in _discover_plugin_files():
+    for _lang, path in _discover_plugin_files():
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)
         for node in ast.walk(tree):
@@ -369,4 +369,34 @@ def test_no_new_single_file_plugins_in_languages_root() -> None:
     assert not new_plugins, (
         f"New single-file plugins detected: {new_plugins}. "
         f"Use languages/<lang>_plugin/ package structure instead."
+    )
+
+
+def test_analyze_file_uses_create_extractor() -> None:
+    """All analyze_file methods must use create_extractor(), not self.extractor.
+
+    self.extractor creates hidden side-effect coupling. create_extractor()
+    ensures each analysis gets a fresh, isolated extractor instance.
+    """
+    violations = []
+    plugin_paths = []
+    for p in sorted(PLUGINS_DIR.iterdir()):
+        if p.name.startswith("_") or p.name.startswith(".") or p.name == "__init__.py":
+            continue
+        if p.is_file() and p.suffix == ".py" and p.name.endswith("_plugin.py"):
+            plugin_paths.append(p)
+        elif p.is_dir() and p.name.endswith("_plugin"):
+            pp = p / "plugin.py"
+            if pp.exists():
+                plugin_paths.append(pp)
+    for path in plugin_paths:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "analyze_file":
+                body = ast.get_source_segment(source, node)
+                if body and "self.extractor" in body and "create_extractor" not in body:
+                    violations.append(f"{path.name}:{node.lineno}")
+    assert not violations, (
+        f"analyze_file uses self.extractor without create_extractor in: {violations}"
     )

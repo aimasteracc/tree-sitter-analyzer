@@ -66,6 +66,14 @@ from .csharp_helpers import (
 )
 
 
+def _traverse_nodes(root_node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
+    stack = [root_node]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(reversed(list(node.children)))
+
+
 class CSharpElementExtractor(ElementExtractor):
     """
     C#-specific element extractor.
@@ -101,7 +109,6 @@ class CSharpElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
         self._processed_nodes: set[tuple[int, int]] = set()
         self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
         self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:
@@ -182,21 +189,7 @@ class CSharpElementExtractor(ElementExtractor):
     def _traverse_iterative(
         self, root_node: "tree_sitter.Node"
     ) -> Iterator["tree_sitter.Node"]:
-        """
-        Iteratively traverse AST nodes to avoid stack overflow on large files.
-
-        Args:
-            root_node: Root node to start traversal from
-
-        Yields:
-            Tree-sitter nodes in depth-first order
-        """
-        stack = [root_node]
-        while stack:
-            node = stack.pop()
-            yield node
-            # Add children in reverse order to maintain left-to-right traversal
-            stack.extend(reversed(list(node.children)))
+        yield from _traverse_nodes(root_node)
 
     def extract_classes(
         self, tree: "tree_sitter.Tree | None", source_code: str
@@ -575,11 +568,8 @@ class CSharpPlugin(LanguagePlugin):
         from ..models import AnalysisResult
 
         try:
-            # Read file content
             source_code, encoding = read_file_safe(file_path)
-            self.extractor._file_encoding = encoding
 
-            # Get tree-sitter language
             language = self.get_tree_sitter_language()
             if not language:
                 log_error("Failed to load C# language")
@@ -591,10 +581,7 @@ class CSharpPlugin(LanguagePlugin):
                     error_message="Failed to load C# language",
                 )
 
-            # Parse the source code
             parser = tree_sitter.Parser()
-
-            # Set language using the appropriate method
             if hasattr(parser, "set_language"):
                 parser.set_language(language)
             elif hasattr(parser, "language"):
@@ -604,25 +591,14 @@ class CSharpPlugin(LanguagePlugin):
 
             tree = parser.parse(source_code.encode("utf-8"))
 
-            # Extract all elements
-            classes = self.extractor.extract_classes(tree, source_code)
-            functions = self.extractor.extract_functions(tree, source_code)
-            variables = self.extractor.extract_variables(tree, source_code)
-            imports = self.extractor.extract_imports(tree, source_code)
-
-            # Combine all elements into a single list
+            extractor = self.create_extractor()
             elements: list[Any] = []
-            elements.extend(classes)
-            elements.extend(functions)
-            elements.extend(variables)
-            elements.extend(imports)
+            elements.extend(extractor.extract_classes(tree, source_code))
+            elements.extend(extractor.extract_functions(tree, source_code))
+            elements.extend(extractor.extract_variables(tree, source_code))
+            elements.extend(extractor.extract_imports(tree, source_code))
 
-            # Count AST nodes
-            node_count = sum(
-                1 for _ in self.extractor._traverse_iterative(tree.root_node)
-            )
-
-            # Count lines
+            node_count = sum(1 for _ in _traverse_nodes(tree.root_node))
             line_count = len(source_code.split("\n"))
 
             return AnalysisResult(
