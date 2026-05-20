@@ -64,29 +64,10 @@ from .server_utils.code_scale_handler import analyze_code_scale
 from .server_utils.prompt_registration import register_prompts
 from .server_utils.resource_registration import register_resources
 from .server_utils.tool_registration import register_tools
-from .tools.agent_skills_tool import AgentSkillsTool
-from .tools.agent_workflow_tool import AgentWorkflowTool
-from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
-from .tools.analyze_scale_tool import AnalyzeScaleTool
-from .tools.ast_cache_tool import ASTCacheTool
-from .tools.call_graph_tool import CodeGraphCallTool
-from .tools.change_impact_tool import ChangeImpactTool
-from .tools.code_patterns_tool import CodePatternsTool
-from .tools.dependency_analysis_tool import DependencyAnalysisTool
-from .tools.file_health_tool import FileHealthTool
-from .tools.find_and_grep_tool import FindAndGrepTool
-from .tools.list_files_tool import ListFilesTool
-from .tools.parser_readiness_tool import ParserReadinessTool
-from .tools.project_health_tool import ProjectHealthTool
-from .tools.project_overview_tool import ProjectOverviewTool
-from .tools.query_tool import QueryTool
-from .tools.read_partial_tool import ReadPartialTool
-from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
-from .tools.route_detector_tool import RouteDetectorTool
-from .tools.safe_to_edit_tool import SafeToEditTool
-from .tools.search_content_tool import SearchContentTool
-from .tools.smart_context_tool import SmartContextTool
-from .tools.symbol_lineage_tool import SymbolLineageTool
+# PERF-3: tool classes are imported lazily inside _create_tool_registry().
+# At module load time we ship only the module-level Server entry points;
+# importing the 23 individual tool modules eagerly cost ~316 ms cold start
+# even when the caller never built a server (e.g. cli/commands/mcp_commands).
 from .utils.file_metrics import compute_file_metrics
 from .utils.shared_cache import get_shared_cache
 
@@ -106,7 +87,40 @@ logger = setup_logger(__name__)
 def _create_tool_registry(
     project_root: str | None,
 ) -> tuple[list[tuple[str, Any]], dict[str, Any]]:
-    """Create the tool registry with all MCP tools."""
+    """Create the tool registry with all MCP tools.
+
+    PERF-3: tool classes are imported here, not at module top level. A caller
+    that imports tree_sitter_analyzer.mcp.server but never builds a server
+    (e.g. tests that only touch _create_tool_registry's signature) pays
+    ~zero of the per-tool import cost.
+    """
+    # Imports inlined so they are only paid when a registry is actually built.
+    # Keep this list alphabetised — the tuple order below is the public
+    # registration order, not the import order.
+    from .tools.agent_skills_tool import AgentSkillsTool
+    from .tools.agent_workflow_tool import AgentWorkflowTool
+    from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
+    from .tools.analyze_scale_tool import AnalyzeScaleTool
+    from .tools.ast_cache_tool import ASTCacheTool
+    from .tools.call_graph_tool import CodeGraphCallTool
+    from .tools.change_impact_tool import ChangeImpactTool
+    from .tools.code_patterns_tool import CodePatternsTool
+    from .tools.dependency_analysis_tool import DependencyAnalysisTool
+    from .tools.file_health_tool import FileHealthTool
+    from .tools.find_and_grep_tool import FindAndGrepTool
+    from .tools.list_files_tool import ListFilesTool
+    from .tools.parser_readiness_tool import ParserReadinessTool
+    from .tools.project_health_tool import ProjectHealthTool
+    from .tools.project_overview_tool import ProjectOverviewTool
+    from .tools.query_tool import QueryTool
+    from .tools.read_partial_tool import ReadPartialTool
+    from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
+    from .tools.route_detector_tool import RouteDetectorTool
+    from .tools.safe_to_edit_tool import SafeToEditTool
+    from .tools.search_content_tool import SearchContentTool
+    from .tools.smart_context_tool import SmartContextTool
+    from .tools.symbol_lineage_tool import SymbolLineageTool
+
     tool_instances: list[tuple[str, Any]] = [
         ("check_code_scale", AnalyzeScaleTool(project_root)),
         ("analyze_code_structure", AnalyzeCodeStructureTool(project_root)),

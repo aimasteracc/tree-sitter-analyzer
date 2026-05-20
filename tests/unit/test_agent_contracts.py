@@ -401,3 +401,26 @@ def test_analyze_file_uses_create_extractor() -> None:
     assert not violations, (
         f"analyze_file uses self.extractor without create_extractor in: {violations}"
     )
+
+
+def test_mcp_server_module_does_not_eagerly_import_tools() -> None:
+    """PERF-3 regression: ``tree_sitter_analyzer.mcp.server`` must not import
+    the 23 individual tool modules at module load. Tool imports belong inside
+    ``_create_tool_registry`` so callers that only touch the server module's
+    surface (e.g. for help-text introspection) don't pay the cold-start tax.
+    """
+    source = (
+        PROJECT_ROOT / "tree_sitter_analyzer" / "mcp" / "server.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    offending: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Module):
+            for stmt in node.body:
+                if isinstance(stmt, ast.ImportFrom) and stmt.module:
+                    if stmt.module.startswith(".tools."):
+                        offending.append(stmt.module)
+    assert offending == [], (
+        "Top-level imports of .tools.* are forbidden in mcp/server.py "
+        f"(PERF-3). Move them inside _create_tool_registry. Offenders: {offending}"
+    )

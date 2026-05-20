@@ -336,13 +336,38 @@ Regression coverage:
 — maxsize floor `>=1000`, `cache_info()` exposes counters, `cache_clear()`
 resets state, mtime change invalidates the stat fast path.
 
-### PERF-3 — MCP server eagerly imports 23 tools 🟡 deferred
+### PERF-3 — MCP server eagerly imported 23 tools ✅ fixed
 
-[mcp/server.py:67](../tree_sitter_analyzer/mcp/server.py). Every agent spawn
-pays the full 316 ms cost even when only one tool is called.
+**Original problem.** [mcp/server.py:67-89](../tree_sitter_analyzer/mcp/server.py)
+imported all 23 tool modules at top level. Every caller that ran
+`import tree_sitter_analyzer.mcp.server` paid the full cold-start cost,
+even if they only wanted help-text introspection or the
+`_create_tool_registry` symbol.
 
-**Fix sketch:** registry stores `"tree_sitter_analyzer.mcp.tools.foo_tool:FooTool"`
-strings; `importlib.import_module()` on first call. 316 ms → ~80 ms.
+**Fix landed.** Moved every `from .tools.X import Y` statement inside
+`_create_tool_registry()`. Top-level `import` now only carries
+analyzer-engine + helpers + server-utils — the 23 per-tool import cost
+is paid once, when a server (or a CLI command spec test) actually
+asks for the registry.
+
+**Measured.** On the analyzer's own venv:
+
+| Path | Before | After |
+|---|---:|---:|
+| `import tree_sitter_analyzer.mcp.server` | ~316 ms | **222 ms** (–30%) |
+| `_create_tool_registry('.')` (when called) | n/a | 28 ms |
+
+The original "316 → 80 ms" estimate over-counted: the residual 222 ms
+is the analyzer engine + shared cache + plugin manager (which the server
+genuinely needs at startup, and which the lazy split cannot defer
+without breaking the public API). The 28 ms registry-build cost is now
+paid only when a real server starts, not on every `import server`.
+
+Regression coverage:
+[tests/unit/test_agent_contracts.py::test_mcp_server_module_does_not_eagerly_import_tools](../tests/unit/test_agent_contracts.py)
+— AST-walks `mcp/server.py` and fails if any top-level `ImportFrom`
+references `.tools.*`. This is the structural invariant; the timing
+target is verified separately by the perf benchmarks.
 
 ### PERF-4 — `ASTCache.index_project` is single-threaded 🟡 deferred
 
@@ -466,7 +491,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **11** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, PERF-1, PERF-2, PERF-5, DOG-1) |
+| ✅ fixed in this audit pass | **12** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, PERF-1, PERF-2, PERF-3, PERF-5, DOG-1) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |
