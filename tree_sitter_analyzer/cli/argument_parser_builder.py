@@ -26,6 +26,8 @@ CLI_EPILOG = (
     "  tree-sitter-analyzer --dependencies summary           Project dependency summary\n"
     "  tree-sitter-analyzer file.py --dependencies file_deps  File dependency graph\n"
     "  tree-sitter-analyzer --change-impact                 Git diff impact analysis\n"
+    "  tree-sitter-analyzer --detect-routes                 URL→handler routes (Flask/Django/FastAPI/Express/Spring)\n"
+    "  tree-sitter-analyzer detect-routes --detect-routes-mode all\n"
     "  tree-sitter-analyzer --project-health                Score ALL project files\n"
     "  tree-sitter-analyzer --overview                      Project portrait + health summary\n"
     "  tree-sitter-analyzer --list-queries                  Show available query keys\n"
@@ -476,4 +478,29 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default="D",
         choices=["A", "B", "C", "D", "F"],
         help="Minimum grade for --project-health detail list (default: D)",
+    )
+    parser.add_argument(
+        "--detect-routes",
+        action="store_true",
+        help="Detect HTTP routes (Flask, Django, FastAPI, Express, Spring) — CodeGraph parity",
+    )
+    parser.add_argument(
+        "--detect-routes-mode",
+        choices=["all", "summary", "lookup", "prefix", "file"],
+        default="summary",
+        help="Mode for --detect-routes (default: summary)",
+    )
+    parser.add_argument(
+        "--detect-routes-url",
+        help="URL or prefix for --detect-routes lookup/prefix modes",
+    )
+    parser.add_argument(
+        "--detect-routes-file",
+        help="File path for --detect-routes file mode",
+    )
+    parser.add_argument(
+        "--detect-routes-framework",
+        choices=["flask", "django", "fastapi", "express", "spring", "all"],
+        default="all",
+        help="Framework filter for --detect-routes (default: all)",
     )

@@ -26,6 +26,7 @@ from tree_sitter_analyzer.mcp.tools.project_overview_tool import ProjectOverview
 from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
     RefactoringSuggestionsTool,
 )
+from tree_sitter_analyzer.mcp.tools.route_detector_tool import RouteDetectorTool
 from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
 from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import SymbolLineageTool
@@ -53,6 +54,22 @@ def _build_dependency_tool_args(args: Any, output_format: str) -> dict[str, Any]
     }
     if mode in _DEPENDENCY_FILE_SCOPED_MODES:
         tool_args["file_path"] = args.file_path
+    return tool_args
+
+
+def _build_detect_routes_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """Build tool args for --detect-routes, omitting empty optional keys."""
+    tool_args: dict[str, Any] = {
+        "mode": getattr(args, "detect_routes_mode", "summary") or "summary",
+        "framework": getattr(args, "detect_routes_framework", "all") or "all",
+        "output_format": output_format,
+    }
+    url_pattern = getattr(args, "detect_routes_url", None)
+    if url_pattern:
+        tool_args["url_pattern"] = url_pattern
+    file_path = getattr(args, "detect_routes_file", None)
+    if file_path:
+        tool_args["file_path"] = file_path
     return tool_args
 
 
@@ -205,6 +222,12 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "force": bool(getattr(args, "ast_cache_force", False)),
         },
     ),
+    McpCommandSpec(
+        flag_name="detect_routes",
+        tool_attr="RouteDetectorTool",
+        label="Framework route detection (CodeGraph parity)",
+        build_tool_args=_build_detect_routes_tool_args,
+    ),
 )
 
 
@@ -261,6 +284,8 @@ def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
         return CodeGraphCallTool
     if tool_attr == "ASTCacheTool":
         return ASTCacheTool
+    if tool_attr == "RouteDetectorTool":
+        return RouteDetectorTool
     raise KeyError(f"Unknown MCP tool: {tool_attr}")
 
 

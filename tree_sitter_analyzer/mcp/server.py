@@ -82,6 +82,7 @@ from .tools.project_overview_tool import ProjectOverviewTool
 from .tools.query_tool import QueryTool
 from .tools.read_partial_tool import ReadPartialTool
 from .tools.refactoring_suggestions_tool import RefactoringSuggestionsTool
+from .tools.route_detector_tool import RouteDetectorTool
 from .tools.safe_to_edit_tool import SafeToEditTool
 from .tools.search_content_tool import SearchContentTool
 from .tools.smart_context_tool import SmartContextTool
@@ -129,6 +130,7 @@ def _create_tool_registry(
         ("smart_context", SmartContextTool(project_root)),
         ("symbol_lineage", SymbolLineageTool(project_root)),
         ("code_patterns", CodePatternsTool(project_root)),
+        ("detect_routes", RouteDetectorTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 

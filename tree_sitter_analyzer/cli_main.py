@@ -40,6 +40,7 @@ _PROJECT_SCOPED_AGENT_COMMANDS = {
     "agent-skills": "--agent-skills",
     "agent-workflow": "--agent-workflow",
     "change-impact": "--change-impact",
+    "detect-routes": "--detect-routes",
     "overview": "--overview",
     "parser-readiness": "--parser-readiness",
     "project-health": "--project-health",
