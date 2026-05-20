@@ -17,6 +17,7 @@ from ...constants import (
 from ...core.analysis_engine import AnalysisRequest, get_analysis_engine
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
+from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_metrics import compute_file_metrics
 from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_scale_helpers import (
@@ -354,7 +355,10 @@ class AnalyzeScaleTool(BaseMCPTool):
                 try:
                     resolved = self.resolve_and_validate_file_path(fp)
                 except ValueError as e:
-                    return {"file_path": fp, "error": str(e)}
+                    return {
+                        "file_path": fp,
+                        "error": safe_error_message(e, self.project_root),
+                    }
 
                 # Conditional check
                 if not Path(resolved).exists():

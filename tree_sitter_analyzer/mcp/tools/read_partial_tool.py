@@ -12,6 +12,7 @@ from typing import Any
 
 from ...file_handler import read_file_partial
 from ...utils import setup_logger
+from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import apply_toon_format_to_response, format_for_file_output
 from .base_tool import BaseMCPTool
@@ -126,7 +127,11 @@ class ReadPartialTool(BaseMCPTool):
         except Exception as e:
             # Return error response for any unexpected failures
             logger.error(f"Error reading partial content from {file_path}: {e}")
-            return {"success": False, "error": str(e), "file_path": file_path}
+            return {
+                "success": False,
+                "error": safe_error_message(e, self.project_root),
+                "file_path": file_path,
+            }
 
     # Core read + format pipeline extracted to reduce nesting depth
     def _read_and_format(
@@ -210,7 +215,11 @@ class ReadPartialTool(BaseMCPTool):
         try:
             self.resolve_and_validate_file_path(file_path)
         except ValueError as e:
-            return {"success": False, "error": str(e), "file_path": file_path}
+            return {
+                "success": False,
+                "error": safe_error_message(e, self.project_root),
+                "file_path": file_path,
+            }
 
         # Resolve path and check file exists on disk
         resolved = self.resolve_and_validate_file_path(file_path)

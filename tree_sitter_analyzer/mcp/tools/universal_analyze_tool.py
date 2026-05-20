@@ -21,6 +21,7 @@ from ...language_detector import detect_language_from_file, is_language_supporte
 from ...mcp.utils import get_performance_monitor
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
+from ..utils.error_sanitizer import safe_error_message
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 from .universal_analyze_helpers import (
@@ -344,4 +345,8 @@ class UniversalAnalyzeTool(BaseMCPTool):
             return {"language": language, "queries": queries, "count": len(queries)}
         except Exception as e:
             logger.warning(f"Failed to get queries for {language}: {e}")
-            return {"language": language, "queries": [], "error": str(e)}
+            return {
+                "language": language,
+                "queries": [],
+                "error": safe_error_message(e, self.project_root),
+            }

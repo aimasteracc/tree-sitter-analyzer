@@ -68,9 +68,15 @@ class TestBuildAgentFriendlyError:
         assert "suggested_tool" not in result
 
     def test_error_message_preserved(self):
+        # SEC-2: absolute paths are redacted to <external-path>, but the
+        # rest of the message + the exception class name are preserved so
+        # the agent can still reason about the failure.
         err = FileNotFoundError("file not found: /tmp/test.py")
         result = build_agent_friendly_error("analyze_file", err)
-        assert result["error"] == "file not found: /tmp/test.py"
+        assert "FileNotFoundError" in result["error"]
+        assert "file not found" in result["error"]
+        assert "/tmp/test.py" not in result["error"]
+        assert "<external-path>" in result["error"]
 
     def test_error_type_preserved(self):
         err = MemoryError("out of memory")

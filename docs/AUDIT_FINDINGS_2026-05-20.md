@@ -126,7 +126,61 @@ call `execute({})` against a fixture, assert `ToolResponse.model_validate()`.
 
 ## Security findings
 
-### SEC-1 — Path-traversal write via `output_file` parameter 🟡 deferred
+### SEC-1 — Path-traversal write via `output_file` parameter ✅ fixed
+
+**Original problem.**
+[file_output_manager.py:305](../tree_sitter_analyzer/mcp/utils/file_output_manager.py)
+joined an agent-supplied `output_file` / `filename` directly onto
+`_output_path`. The `output_file.parent.mkdir(parents=True, exist_ok=True)`
++ write would happily plant a file at `../../etc/cron.d/backdoor` or any
+absolute path the process could touch.
+
+**Fix landed.** Before `mkdir + write`, `save_to_file()` now resolves
+both ends and requires `output_file_resolved.relative_to(output_root_resolved)`
+to succeed. On any escape — symlinks, `..` segments, absolute paths — it
+raises `ValueError("Refusing to write outside the output directory: …")`
+and never touches the filesystem.
+
+Regression coverage in
+[tests/unit/mcp/utils/test_error_sanitizer.py::TestFileOutputManagerPathTraversal](../tests/unit/mcp/utils/test_error_sanitizer.py):
+parent-traversal, absolute-path-outside, and "legitimate sub-directory
+still allowed".
+
+### SEC-2 — Raw exception strings leaked to MCP callers ✅ fixed
+
+**Original problem.** Five tool/utility sites returned `{"error": str(e)}`
+directly to the MCP transport, leaking absolute paths
+(`/home/alice/proj/.env`), arbitrary library frame strings, and other
+deployment-mapping signal to whatever agent is connected.
+
+**Fix landed.** New
+[tree_sitter_analyzer/mcp/utils/error_sanitizer.py](../tree_sitter_analyzer/mcp/utils/error_sanitizer.py)
+provides `safe_error_message(exc, project_root)` and the lower-level
+`sanitize_exception` / `sanitize_message`. Behaviour:
+
+* Paths whose resolved form is inside `project_root` are kept as
+  `./<rel>` so the error stays actionable.
+* Paths whose resolved form is **outside** `project_root` (or any
+  `project_root=None` call) collapse to `<external-path>`.
+* The exception class name is preserved as `ClassName:` prefix so debug
+  paths and tests still get type signal.
+
+Applied at all five known leakage sites:
+
+* `mcp/server_utils/error_recovery.py:75`
+* `mcp/tools/read_partial_tool.py` (two returns)
+* `mcp/tools/query_tool.py`
+* `mcp/tools/universal_analyze_tool.py`
+* `mcp/tools/analyze_scale_tool.py`
+
+`build_agent_friendly_error` is the central response builder, so this
+single chokepoint also covers anything that funnels through it.
+
+Regression coverage: 15 tests in
+[tests/unit/mcp/utils/test_error_sanitizer.py](../tests/unit/mcp/utils/test_error_sanitizer.py).
+The existing `test_error_message_preserved` was updated to assert the
+new (redacting) contract — its old assertion of literal path preservation
+*was* the bug.
 
 **Severity:** HIGH.
 [file_output_manager.py:305](../tree_sitter_analyzer/mcp/utils/file_output_manager.py)
@@ -578,7 +632,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **15** (KI-R5, KI-R6, KI-R7, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P5, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
+| ✅ fixed in this audit pass | **17** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P5, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |

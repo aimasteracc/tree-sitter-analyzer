@@ -11,6 +11,7 @@ from typing import Any
 
 from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
+from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_output_manager import FileOutputManager
 from .base_tool import BaseMCPTool
 from .query_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
@@ -80,7 +81,7 @@ class QueryTool(BaseMCPTool):
             logger.error(f"Query execution failed: {e}")
             return {
                 "success": False,
-                "error": str(e),
+                "error": safe_error_message(e, self.project_root),
                 "file_path": arguments.get("file_path", "unknown"),
                 "language": arguments.get("language", "unknown"),
             }

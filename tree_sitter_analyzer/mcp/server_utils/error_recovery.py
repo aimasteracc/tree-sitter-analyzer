@@ -2,6 +2,11 @@
 
 from typing import Any
 
+from ..utils.error_sanitizer import (
+    project_root_from_env,
+    safe_error_message,
+)
+
 _ERROR_RECOVERY_HINTS: list[tuple[str, str, str, str]] = [
     (
         "not found",
@@ -72,7 +77,7 @@ def build_agent_friendly_error(tool_name: str, error: Exception) -> dict[str, An
 
     body: dict[str, Any] = {
         "success": False,
-        "error": str(error),
+        "error": safe_error_message(error, project_root_from_env()),
         "error_type": error_type,
         "error_category": category,
         "recovery_hint": recovery_hint,
