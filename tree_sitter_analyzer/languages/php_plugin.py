@@ -88,7 +88,6 @@ class PHPElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
         self._processed_nodes: set[tuple[int, int]] = set()
         self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
         self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:

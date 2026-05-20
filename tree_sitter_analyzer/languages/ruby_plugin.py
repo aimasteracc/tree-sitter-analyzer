@@ -66,7 +66,6 @@ class RubyElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
         self._processed_nodes: set[tuple[int, int]] = set()
         self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
 
     def _reset_caches(self) -> None:
         """Reset all internal caches for a new file analysis."""
