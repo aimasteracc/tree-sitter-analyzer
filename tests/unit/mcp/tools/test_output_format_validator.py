@@ -22,14 +22,18 @@ class TestOutputFormatValidatorDetectLanguage:
     """Tests for _detect_language method"""
 
     def test_detect_language_japanese_locale(self):
-        """Detect Japanese from locale setting (lines 43-48)"""
+        """``_detect_language`` is intentionally hard-coded to ``"en"``
+        post-consolidation: MCP error strings need to be deterministic
+        for Claude regardless of the developer's system locale. A JA
+        locale still returns ``"en"``. The Japanese-message path is
+        still reachable via direct ``_get_error_message`` patching."""
         validator = OutputFormatValidator()
         with patch.dict(os.environ, {}, clear=True):
             with patch.object(
                 locale, "getlocale", return_value=("ja_JP.UTF-8", "UTF-8")
             ):
                 result = validator._detect_language()
-                assert result == "ja"
+                assert result == "en"
 
     def test_detect_language_english_fallback(self):
         """Detect English as default when no Japanese indicators (line 51)"""

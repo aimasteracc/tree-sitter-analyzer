@@ -262,12 +262,29 @@ PLUGINS_DIR = PROJECT_ROOT / "tree_sitter_analyzer" / "languages"
 
 
 def _discover_plugin_files() -> list[tuple[str, Path]]:
-    """Return [(language_name, path), ...] for all plugin files."""
+    """Return [(language_name, path), ...] for all *live* plugin files.
+
+    When both ``<lang>_plugin.py`` and ``<lang>_plugin/`` exist
+    side-by-side, Python imports the package and the bare ``.py`` becomes
+    dead code. The package's ``plugin.py`` is the source of truth for the
+    loaded behaviour, so we skip the zombie wrapper when scanning for
+    contract violations.
+    """
+    # First pass: which package-form plugins are present?
+    package_langs: set[str] = set()
+    for p in PLUGINS_DIR.iterdir():
+        if p.is_dir() and p.name.endswith("_plugin"):
+            if (p / "plugin.py").exists():
+                package_langs.add(p.name)
+
     result = []
     for p in sorted(PLUGINS_DIR.iterdir()):
         if p.name.startswith("_") or p.name.startswith(".") or p.name == "__init__.py":
             continue
         if p.is_file() and p.suffix == ".py" and p.name.endswith("_plugin.py"):
+            if p.stem in package_langs:
+                # Zombie wrapper — Python imports the package over this file.
+                continue
             result.append((p.stem.replace("_plugin", ""), p))
         elif p.is_dir() and p.name.endswith("_plugin"):
             plugin_py = p / "plugin.py"
@@ -364,6 +381,22 @@ def test_no_new_single_file_plugins_in_languages_root() -> None:
         "rust_plugin.py",
         "swift_plugin.py",
         "yaml_plugin.py",
+        # Post-consolidation grandfathered: true single-file plugins
+        # present on main before this contract was introduced. New
+        # languages still go through the package structure; refactor of
+        # these is tracked as a follow-up.
+        "bash_plugin.py",
+        "scala_plugin.py",
+        "json_plugin.py",
+        # Zombie wrapper files left from the package refactor: Python
+        # imports the matching ``<lang>_plugin/`` package over these
+        # files, so they are effectively dead code. Allowlisted here
+        # until the cleanup PR physically removes them.
+        "javascript_plugin.py",
+        "markdown_plugin.py",
+        "python_plugin.py",
+        "sql_plugin.py",
+        "typescript_plugin.py",
     }
     single_file_plugins = {
         p.name
@@ -384,16 +417,8 @@ def test_analyze_file_uses_create_extractor() -> None:
     ensures each analysis gets a fresh, isolated extractor instance.
     """
     violations = []
-    plugin_paths = []
-    for p in sorted(PLUGINS_DIR.iterdir()):
-        if p.name.startswith("_") or p.name.startswith(".") or p.name == "__init__.py":
-            continue
-        if p.is_file() and p.suffix == ".py" and p.name.endswith("_plugin.py"):
-            plugin_paths.append(p)
-        elif p.is_dir() and p.name.endswith("_plugin"):
-            pp = p / "plugin.py"
-            if pp.exists():
-                plugin_paths.append(pp)
+    # Reuse the zombie-aware discovery so we only audit live plugin code.
+    plugin_paths = [path for _lang, path in _discover_plugin_files()]
     for path in plugin_paths:
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)

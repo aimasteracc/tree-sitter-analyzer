@@ -6,6 +6,7 @@ Validated against spring-framework (@Component appears 695 times).
 Bug: call_count was computed from len(usages) AFTER truncation by max_results,
 causing impact_level to be classified as "low" when the true count is "high".
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,6 +25,7 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def tool():
     from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
+
     return TraceImpactTool(str(SPRING_BASE))
 
 
@@ -33,9 +35,8 @@ class TestTraceImpactCountAccuracy:
     def test_call_count_not_capped_by_max_results(self, tool):
         """With max_results=5 and 695 real matches, call_count must be 695."""
         import asyncio
-        r = asyncio.get_event_loop().run_until_complete(
-            tool.execute({"symbol": "Component", "max_results": 5})
-        )
+
+        r = asyncio.run(tool.execute({"symbol": "Component", "max_results": 5}))
         call_count = r.get("call_count", 0)
         usages = r.get("usages", [])
 
@@ -55,9 +56,8 @@ class TestTraceImpactCountAccuracy:
     def test_impact_level_reflects_true_count(self, tool):
         """impact_level must use true total, not capped count."""
         import asyncio
-        r = asyncio.get_event_loop().run_until_complete(
-            tool.execute({"symbol": "Component", "max_results": 5})
-        )
+
+        r = asyncio.run(tool.execute({"symbol": "Component", "max_results": 5}))
         impact_level = r.get("impact_level")
         assert impact_level == "high", (
             f"@Component has 695+ usages → impact must be 'high'. "
@@ -67,9 +67,8 @@ class TestTraceImpactCountAccuracy:
     def test_truncated_flag_set_when_results_capped(self, tool):
         """truncated=True must be returned when results exceed max_results."""
         import asyncio
-        r = asyncio.get_event_loop().run_until_complete(
-            tool.execute({"symbol": "Component", "max_results": 5})
-        )
+
+        r = asyncio.run(tool.execute({"symbol": "Component", "max_results": 5}))
         assert r.get("truncated") is True, (
             "truncated must be True when results are capped by max_results"
         )
@@ -92,9 +91,7 @@ class TestTraceImpactCountAccuracy:
             new=AsyncMock(return_value=(0, fake_stdout, b"")),
         ):
             tool = TraceImpactTool("/tmp")
-            r = asyncio.get_event_loop().run_until_complete(
-                tool.execute({"symbol": "Component", "max_results": 5})
-            )
+            r = asyncio.run(tool.execute({"symbol": "Component", "max_results": 5}))
 
         assert r.get("call_count") == 100, (
             f"call_count should be 100 (true total), got {r.get('call_count')}. "

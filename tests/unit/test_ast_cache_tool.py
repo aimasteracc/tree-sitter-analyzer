@@ -70,11 +70,15 @@ class TestGetToolSchema:
         tool = ASTCacheTool()
         schema = tool.get_tool_schema()
         modes = schema["properties"]["mode"]["enum"]
+        # ``changes`` and ``sync`` were added post-consolidation for the
+        # incremental-sync workflow.
         assert set(modes) == {
             "index",
             "lookup",
             "search",
             "fts_search",
+            "sync",
+            "changes",
             "stats",
             "invalidate",
         }

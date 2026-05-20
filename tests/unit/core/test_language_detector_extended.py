@@ -298,9 +298,14 @@ def test_is_supported_supported_languages(language_detector, language):
     assert language_detector.is_supported(language) is True
 
 
-@pytest.mark.parametrize("language", ["scala", "unknown"])
+@pytest.mark.parametrize("language", ["unknown", "klingon", "made-up-lang"])
 def test_is_supported_unsupported_languages(language_detector, language):
-    """Test support status for unsupported languages"""
+    """Test support status for unsupported languages.
+
+    Note: ``scala`` used to live here as an example unsupported language,
+    but post-consolidation it ships as a real plugin
+    (``languages/scala_plugin.py``). Use truly unknown placeholders.
+    """
     assert language_detector.is_supported(language) is False
 
 

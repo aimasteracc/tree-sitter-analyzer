@@ -80,9 +80,13 @@ class TestOutputManagerData:
         assert parsed["key"] == "value"
 
     def test_json_string_passthrough(self, capsys):
+        """``JsonFormatter`` deliberately passes strings through as-is so
+        already-formatted JSON (or TOON) blobs aren't double-encoded by
+        the output manager. The name is literal: "passthrough", not
+        "re-encode"."""
         om = OutputManager()
         om.data("plain text")
-        assert capsys.readouterr().out.strip() == '"plain text"'
+        assert capsys.readouterr().out.strip() == "plain text"
 
     def test_toon_mcp_response_passthrough(self, capsys):
         om = OutputManager(output_format="toon")
