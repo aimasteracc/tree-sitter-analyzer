@@ -74,18 +74,14 @@ async def test_agent_workflow_tool_returns_full_json_pack(tmp_path):
         check["name"] == "queue_ledger"
         for check in result["sprint_contract"]["evaluator_checks"]
     )
-    for step in result["steps"]:
-        handoff = step["handoff"]
-        handoff_line = (
-            f"  - {step['step']} -> {handoff['to']} when {handoff['condition']} "
-            f"via {handoff['transition_command']}"
-        )
-        assert handoff_line in result["toon_content"]
-    assert (
-        "workflow_mode: SMART-SET-MAP-ANALYZE-RETRIEVE-TRACE" in result["toon_content"]
+    # ``toon_content`` is stripped from JSON-format responses (it duplicates
+    # the structured fields and wastes ~2 KB per call). Each step's
+    # ``handoff`` is still asserted via the structured ``steps`` list
+    # above; we only need to confirm the strip here.
+    assert "toon_content" not in result, (
+        "JSON-format responses should not carry toon_content (duplicates "
+        "structured fields). See agent_workflow_tool.execute() docstring."
     )
-    assert "handoffs:" in result["toon_content"]
-    assert "sprint_contract_mode: single_queue_item" in result["toon_content"]
 
 
 @pytest.mark.asyncio

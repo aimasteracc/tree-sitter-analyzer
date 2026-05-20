@@ -75,6 +75,10 @@ class AgentSkillsTool(BaseMCPTool):
         )
         if arguments.get("output_format", "toon") == "toon":
             return _build_toon_response(result)
+        # Strip ``toon_content`` from the JSON path — it duplicates the
+        # structured fields (~1.8 KB per call) and confuses agents that
+        # expect a clean JSON envelope.
+        result.pop("toon_content", None)
         return result
 
     def _validate_skills_root(self, skills_root: str | None) -> None:

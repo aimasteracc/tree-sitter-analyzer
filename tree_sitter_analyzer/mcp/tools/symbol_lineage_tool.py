@@ -55,7 +55,9 @@ class SymbolLineageTool(BaseMCPTool):
             "description": (
                 "Symbol lineage: definition → callers → downstream files → risk. "
                 "Shows what breaks if you change a symbol. "
-                "Combines AST references with file dependency graph."
+                "Combines AST references with file dependency graph. "
+                "SLOW: traverses AST references plus the full dependency graph "
+                "(5-15s per symbol on medium repos). Cache via project_index."
             ),
             "inputSchema": self.get_tool_schema(),
         }
@@ -122,9 +124,7 @@ class SymbolLineageTool(BaseMCPTool):
         )
 
         test_files = sorted(
-            f
-            for f in (all_downstream_files | all_symbol_files)
-            if _is_test_file(f)
+            f for f in (all_downstream_files | all_symbol_files) if _is_test_file(f)
         )
 
         response: dict[str, Any] = {

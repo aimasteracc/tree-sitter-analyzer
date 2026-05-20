@@ -336,6 +336,9 @@ class ModificationGuardTool(BaseMCPTool):
             "impact_badge": impact["badge"],
             "impact_guidance": impact["guidance"],
             "total_callers": total_callers,
+            # ``count`` is the cross-tool canonical alias (every search/
+            # scan tool exposes a top-level ``count`` integer).
+            "count": total_callers,
             "callers_by_file": callers_by_file,
             "safety_verdict": safety_verdict,
             # ``verdict`` is a canonical alias used across all safety tools

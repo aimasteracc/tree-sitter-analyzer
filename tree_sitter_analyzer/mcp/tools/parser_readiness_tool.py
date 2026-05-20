@@ -83,6 +83,10 @@ class ParserReadinessTool(BaseMCPTool):
         )
         if arguments.get("output_format", "toon") == "toon":
             return _build_toon_response(result)
+        # Strip ``toon_content`` from the JSON path — it duplicates the
+        # structured fields and wastes ~350 bytes per call. Callers asking
+        # for JSON want JSON, not a TOON-formatted dump alongside it.
+        result.pop("toon_content", None)
         return result
 
 

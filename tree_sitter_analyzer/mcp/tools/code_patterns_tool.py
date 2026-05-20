@@ -131,6 +131,13 @@ class CodePatternsTool(BaseMCPTool):
             "file_path": file_path,
             "language": language,
             "total_patterns": len(filtered),
+            # ``count`` and ``results`` are cross-tool canonical aliases —
+            # every search/scan tool emits a top-level ``count`` (int) and
+            # a list under ``results``. Mirror the same names here so an
+            # agent walking generic envelopes doesn't have to know each
+            # tool's nickname.
+            "count": len(filtered),
+            "results": filtered[:50],
             "patterns": filtered[:50],
             "by_category": {k: len(v) for k, v in by_category.items()},
             "summary": _build_summary(filtered),

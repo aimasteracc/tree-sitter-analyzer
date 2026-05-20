@@ -55,10 +55,23 @@ def _build_base_health_result(
     action: dict[str, Any],
 ) -> dict[str, Any]:
     """Build the common file-health response fields."""
+    # ``verdict`` mirrors ``grade`` mapped to the safe_to_edit /
+    # modification_guard vocabulary (A/B → SAFE, C → CAUTION, D/F →
+    # UNSAFE). Same value, cross-tool canonical key — agents that
+    # consume any safety tool's output can branch on ``verdict``.
+    verdict_map = {
+        "A": "SAFE",
+        "B": "SAFE",
+        "C": "CAUTION",
+        "D": "UNSAFE",
+        "F": "UNSAFE",
+    }
+    verdict = verdict_map.get(health.grade, "CAUTION")
     return {
         "success": True,
         "file_path": file_path,
         "grade": health.grade,
+        "verdict": verdict,
         # ``total_score`` is the canonical name; ``health_score`` and
         # ``overall_score`` are documented aliases so callers that follow
         # the more common naming conventions still find the value

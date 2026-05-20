@@ -62,7 +62,10 @@ class ProjectHealthTool(BaseMCPTool):
             "name": "check_project_health",
             "description": (
                 "Score ALL files: grade distribution (A-F), worst files, smells, "
-                "top refactoring targets. First call on any project."
+                "top refactoring targets. First call on any project. "
+                "SLOW: scans every source file. Expect 30s–3min on 1k+ file "
+                "projects on first call; ``max_files`` only caps display, "
+                "not scan scope."
             ),
             "inputSchema": self.get_tool_schema(),
         }

@@ -396,14 +396,16 @@ class TraceImpactTool(BaseMCPTool):
             truncated = False
 
         # 转换为用户友好的格式
-        # ``line`` is the integer line number (1-based). ``line_number`` is
-        # an explicit alias to remove ambiguity — naive callers reading the
-        # field name ``line`` sometimes assume it contains the line *text*.
+        # Each usage carries every common field name an agent might reach
+        # for: ``file`` + ``file_path``, ``line`` + ``line_number``,
+        # ``context`` (the matched line text). Avoids cross-tool guessing.
         usages = []
         for match in matches:
             line_no = match["line"]
+            file_path_val = match["file"]
             usage = {
-                "file": match["file"],
+                "file": file_path_val,
+                "file_path": file_path_val,
                 "line": line_no,
                 "line_number": line_no,
                 "context": match["text"],  # 匹配行的文本
@@ -415,14 +417,20 @@ class TraceImpactTool(BaseMCPTool):
         impact = _get_impact_level(total_count)
 
         # 构建响应
+        # ``count`` mirrors ``call_count`` (cross-tool canonical name).
+        # ``verdict`` mirrors ``impact_level`` uppercased — same value,
+        # same vocabulary as safe_to_edit / modification_guard.
         result: dict[str, Any] = {
             "success": True,
             "symbol": symbol,
             "call_count": total_count,
+            "count": total_count,
             "impact_level": impact["level"],
+            "verdict": impact["level"].upper(),
             "impact_badge": impact["badge"],
             "impact_guidance": impact["guidance"],
             "usages": usages,
+            "results": usages,
         }
 
         # 高影响时加入醒目 warning

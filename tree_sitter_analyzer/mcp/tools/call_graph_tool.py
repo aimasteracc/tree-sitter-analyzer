@@ -41,7 +41,9 @@ class CodeGraphCallTool(BaseMCPTool):
                 "callers (who calls X), callees (what does X call), "
                 "chain (transitive call chain), summary (stats), "
                 "all_functions (list all discovered functions). "
-                "No other built-in tool provides function-level call tracking."
+                "No other built-in tool provides function-level call tracking. "
+                "First call on a project builds the full graph (2-5s on "
+                "medium repos); subsequent calls within the session are fast."
             ),
             "inputSchema": self.get_tool_schema(),
         }

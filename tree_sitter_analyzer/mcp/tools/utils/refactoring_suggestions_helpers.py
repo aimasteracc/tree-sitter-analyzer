@@ -191,8 +191,16 @@ def build_success_response(
     finalized = finalize_suggestions(suggestions, max_suggestions, include_skeleton)
     return {
         "success": True,
+        # ``file_path`` is the canonical field used across every other
+        # tool; ``file`` is kept as a backward-compat alias.
         "file": file_path,
+        "file_path": file_path,
         "total_suggestions": len(finalized),
+        # ``count``/``results`` are cross-tool canonical aliases so an
+        # agent walking a generic envelope finds the data without
+        # learning this tool's specific vocabulary.
+        "count": len(finalized),
+        "results": finalized,
         "summary": make_summary(finalized),
         "agent_summary": make_agent_summary(file_path, finalized),
         "suggestions": finalized,
@@ -224,7 +232,15 @@ def strip_precise_plan_skeletons(suggestions: list[dict[str, Any]]) -> None:
 
 def error_response(file_path: str, error: str) -> dict[str, Any]:
     """Return a standardized error response."""
-    return {"file": file_path, "error": error, "suggestions": []}
+    return {
+        "success": False,
+        "file": file_path,
+        "file_path": file_path,
+        "error": error,
+        "suggestions": [],
+        "results": [],
+        "count": 0,
+    }
 
 
 def _add_line_range(result: dict[str, Any], kwargs: dict[str, Any]) -> None:

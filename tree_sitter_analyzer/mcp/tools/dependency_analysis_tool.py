@@ -38,7 +38,9 @@ class DependencyAnalysisTool(BaseMCPTool):
             "name": "analyze_dependencies",
             "description": (
                 "Dependency graph + blast radius. Modes: blast_radius (impact), "
-                "file_deps, cycles, summary. No built-in tool provides this."
+                "file_deps, cycles, summary. No built-in tool provides this. "
+                "First call builds the full dep graph (2-5s on medium repos); "
+                "subsequent calls within the session reuse the cached graph."
             ),
             "inputSchema": self.get_tool_schema(),
         }

@@ -75,6 +75,9 @@ class AgentWorkflowTool(BaseMCPTool):
         )
         if arguments.get("output_format", "toon") == "toon":
             return _build_toon_response(result)
+        # Strip ``toon_content`` from the JSON path — wastes ~2 KB per
+        # call and duplicates fields already in the JSON envelope.
+        result.pop("toon_content", None)
         return result
 
     def _validate_target_path(self, target_path: str | None) -> None:
