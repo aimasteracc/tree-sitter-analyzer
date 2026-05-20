@@ -1,0 +1,70 @@
+{
+  "tasks": {
+    "task-1779117644135-1i3z59": {
+      "taskId": "task-1779117644135-1i3z59",
+      "type": "refactoring",
+      "description": "Phase 1: Refactor top 5 high_cc D-grade files to reduce complexity. Targets: languages/python_plugin/extractor.py (CC=51.0), languages/typescript_plugin/extractor.py (CC=52.3), languages/javascript_plugin/extractor.py (CC=53.3), languages/cpp_helpers.py (CC=55.4), formatters/toon_encoder.py (CC=58.8). Extract helper functions, flatten conditionals, use guard clauses. Use safe_to_edit before each change, analyze_change_impact after.",
+      "priority": "normal",
+      "status": "pending",
+      "progress": 0,
+      "assignedTo": [],
+      "tags": [],
+      "createdAt": "2026-05-18T15:20:44.135Z",
+      "startedAt": null,
+      "completedAt": null
+    },
+    "task-1779117655767-wyij7j": {
+      "taskId": "task-1779117655767-wyij7j",
+      "type": "testing",
+      "description": "Phase 2: Write tests for top 5 coverage=0 files to eliminate F/D grades. These files have zero test coverage but are otherwise healthy. Write unit tests using pytest with mocking for external dependencies. Follow existing test patterns in tests/unit/.",
+      "priority": "normal",
+      "status": "pending",
+      "progress": 0,
+      "assignedTo": [],
+      "tags": [],
+      "createdAt": "2026-05-18T15:20:55.767Z",
+      "startedAt": null,
+      "completedAt": null
+    },
+    "task-1779117665832-fc8ywe": {
+      "taskId": "task-1779117665832-fc8ywe",
+      "type": "refactoring",
+      "description": "Phase 3: Refactor next 5 high_cc files. Targets: formatters/python_formatter.py (CC=55.3), formatters/javascript_formatter.py (CC=56.1), formatters/html_formatter.py (CC=56.3), languages/java_helpers.py (CC=57.8), core/analysis_engine.py (CC=58.2). Same approach: extract helpers, flatten nesting, guard clauses.",
+      "priority": "normal",
+      "status": "pending",
+      "progress": 0,
+      "assignedTo": [],
+      "tags": [],
+      "createdAt": "2026-05-18T15:21:05.832Z",
+      "startedAt": null,
+      "completedAt": null
+    },
+    "task-1779117683839-40tsbm": {
+      "taskId": "task-1779117683839-40tsbm",
+      "type": "implementation",
+      "description": "Phase 4: Implement pending MCP tools. Task #43: symbol lineage / impact preview tool - show symbol dependencies and change impact before editing. Task #45: code_patterns tool - detect anti-patterns, code smells, and suggest improvements. Follow CLI-MCP parity requirement.",
+      "priority": "normal",
+      "status": "pending",
+      "progress": 0,
+      "assignedTo": [],
+      "tags": [],
+      "createdAt": "2026-05-18T15:21:23.839Z",
+      "startedAt": null,
+      "completedAt": null
+    },
+    "task-1779117694608-zbago3": {
+      "taskId": "task-1779117694608-zbago3",
+      "type": "optimization",
+      "description": "Phase 5: Performance and token optimization. Review all MCP tool schemas for token efficiency. Ensure TOON format is default on all tools. Compress descriptions. Remove unused parameters. Target: reduce total tool definition tokens below 4000.",
+      "priority": "normal",
+      "status": "pending",
+      "progress": 0,
+      "assignedTo": [],
+      "tags": [],
+      "createdAt": "2026-05-18T15:21:34.608Z",
+      "startedAt": null,
+      "completedAt": null
+    }
+  },
+  "version": "3.0.0"
+}

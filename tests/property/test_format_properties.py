@@ -5,7 +5,7 @@
 
 from typing import Any
 
-from hypothesis import given, settings
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
@@ -25,7 +25,7 @@ class TestFormatProperties:
     """格式属性测试类。"""
 
     @given(format_type=st.sampled_from(["full", "json", "compact", "csv"]))
-    @settings(max_examples=50)
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     def test_valid_format_types(self, format_type: str) -> None:
         """测试有效格式类型的属性。
 
@@ -81,7 +81,7 @@ class TestFormatProperties:
             max_size=10,
         )
     )
-    @settings(max_examples=50)
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.too_slow])
     def test_empty_elements_list(self, elements: list[dict[str, Any]]) -> None:
         """测试空元素列表的属性。
 
@@ -433,7 +433,7 @@ class TestFormatProperties:
         assert original_types == formatted_types
 
 
-class TestFormatStateful(RuleBasedStateMachine):
+class FormatStatefulMachine(RuleBasedStateMachine):
     """格式状态机测试。"""
 
     def __init__(self) -> None:
@@ -471,7 +471,7 @@ class TestFormatStateful(RuleBasedStateMachine):
             assert len(formatted) > 0
 
 
-TestFormatStateful.TestCase.settings = settings(max_examples=100)
+FormatStatefulMachine.TestCase.settings = settings(max_examples=100)
 
 
 class TestFormatEdgeCases:

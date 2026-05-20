@@ -1,0 +1,17 @@
+21:def test_list_files_validation_requires_roots(tmp_path):
+29:def test_search_content_validation_requires_query():
+37:def test_find_and_grep_validation_requires_roots_and_query(tmp_path):
+46:class DummyProc:
+290:def test_parse_rg_count_output():
+395:def test_build_rg_command_with_count_only():
+457:def test_summarize_search_results():
+701:def test_list_files_validation_invalid_types(tmp_path):
+723:def test_search_content_validation_invalid_types(tmp_path):
+745:def test_build_fd_command():
+814:def test_parse_rg_count_output_edge_cases():
+846:def test_summarize_search_results_edge_cases():
+1104:# ============================================================================
+1106:# ============================================================================
+1632:def test_list_files_validation_comprehensive(tmp_path):
+1689:def test_search_content_validation_comprehensive(tmp_path):
+1817:def test_fd_rg_utils_edge_cases():

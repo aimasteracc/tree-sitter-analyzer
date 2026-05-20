@@ -14,10 +14,25 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import pytest  # noqa: E402
+from hypothesis import settings as hypothesis_settings  # noqa: E402
+
+# TEST-P3 root-cause fix: under pytest-xdist's load balancer, multiple
+# worker processes share the on-disk Hypothesis example database
+# (.hypothesis/examples), which produces flaky failures on text-generative
+# `@given` tests (notably test_invalid_query_name and
+# test_property_1_analysis_result_to_json_roundtrip) when shrinking races
+# across workers. Setting database=None makes example generation purely
+# in-process and removes the contention entirely. The trade-off — losing
+# cross-run shrink replay — is acceptable in CI; local debuggers can opt
+# back in via HYPOTHESIS_DATABASE=… if needed.
+hypothesis_settings.register_profile(
+    "tree_sitter_analyzer", deadline=None, database=None
+)
+hypothesis_settings.load_profile("tree_sitter_analyzer")
 
 
 def pytest_configure(config):
-    """Configure pytest with custom markers."""
+    """Configure pytest with custom markers and safety checks."""
     config.addinivalue_line(
         "markers", "requires_ripgrep: mark test as requiring ripgrep (rg) command"
     )
@@ -26,6 +41,22 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "performance: mark test as performance test")
     config.addinivalue_line("markers", "regression: mark test as regression test")
     config.addinivalue_line("markers", "property: mark test as property-based test")
+
+    # HARD BLOCK: detect duplicate --cov arguments that cause memory blowup.
+    # Only count --cov and --cov= (NOT --cov-report, --cov-fail-under, etc.)
+    import re
+
+    cli_cov_count = 0
+    for arg in config.invocation_params.args:
+        arg_str = str(arg)
+        if re.match(r"^--cov(=|$)", arg_str):
+            cli_cov_count += 1
+    if cli_cov_count > 1:
+        raise SystemExit(
+            "FATAL: --cov specified multiple times on the command line. "
+            "This causes double coverage tracking and can exhaust system memory. "
+            "Use --cov exactly once. Example: uv run pytest --cov=tree_sitter_analyzer --cov-report=json"
+        )
 
 
 def pytest_collection_modifyitems(config, items):
@@ -139,45 +170,68 @@ def pytest_sessionfinish(session, exitstatus):
     gc.collect()
 
 
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Warn if memory usage is dangerously high at end of session."""
+    try:
+        import os
+
+        import psutil
+
+        process = psutil.Process(os.getpid())
+        rss_gb = process.memory_info().rss / (1024**3)
+        system_total_gb = psutil.virtual_memory().total / (1024**3)
+        usage_pct = process.memory_info().rss / psutil.virtual_memory().total * 100
+
+        if rss_gb > 2.0:
+            terminalreporter.write_sep(
+                "!",
+                f"MEMORY WARNING: pytest RSS = {rss_gb:.1f} GB "
+                f"({usage_pct:.0f}% of {system_total_gb:.0f} GB system RAM). "
+                f"Consider running fewer tests or using -x.",
+            )
+        if rss_gb > 4.0:
+            terminalreporter.write_sep(
+                "!",
+                f"MEMORY CRITICAL: pytest RSS = {rss_gb:.1f} GB! "
+                f"This can crash the system. Reduce test batch size.",
+            )
+    except ImportError:
+        pass
+
+
 @pytest.fixture(autouse=True)
-async def cleanup_asyncio_tasks():
+def cleanup_asyncio_tasks():
     """
     Clean up asyncio tasks after each test to prevent 'NoneType' object has no attribute '_PENDING'
     error on Python 3.10 during shutdown.
     """
     yield
 
-    # Get all tasks
     import asyncio
+    import contextlib
 
     try:
-        # Get running loop if possible
-        loop = asyncio.get_running_loop()
+        loop = asyncio.get_event_loop()
     except RuntimeError:
-        # No event loop running
         return
 
-    tasks = asyncio.all_tasks(loop)
+    if loop.is_closed() or loop.is_running():
+        return
 
-    # Cancel all tasks except current one
-    current_task = asyncio.current_task(loop)
-    tasks = [t for t in tasks if t is not current_task]
+    tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
 
     if not tasks:
         return
 
-    # Cancel tasks
     for task in tasks:
         task.cancel()
 
-    # Wait for tasks to complete
-    # We use a timeout to avoid hanging if a task ignores cancellation
-    try:
-        await asyncio.wait_for(
-            asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
+    with contextlib.suppress(asyncio.TimeoutError):
+        loop.run_until_complete(
+            asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True), timeout=2.0
+            )
         )
-    except asyncio.TimeoutError:
-        pass
 
 
 def _reset_all_singletons():
@@ -277,12 +331,12 @@ def reset_global_singletons():
     _reset_all_singletons()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def cleanup_test_databases():
-    """Clean up test databases after each test."""
+    """Clean up test databases once per session instead of per-test."""
     yield
 
-    # Clean up any test databases
+    import glob
     import os
     import tempfile
 
@@ -297,15 +351,10 @@ def cleanup_test_databases():
     ]
 
     for pattern in test_db_patterns:
-        import glob
-
-        db_files = glob.glob(os.path.join(temp_dir, pattern))
-        for db_file in db_files:
+        for db_file in glob.glob(os.path.join(temp_dir, pattern)):
             try:
-                if os.path.exists(db_file):
-                    os.remove(db_file)
+                os.remove(db_file)
             except (OSError, PermissionError):
-                # Ignore permission errors or file not found
                 pass
 
 

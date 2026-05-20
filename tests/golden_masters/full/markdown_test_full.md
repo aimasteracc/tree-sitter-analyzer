@@ -7,7 +7,7 @@
 | File | examples/test_markdown.md |
 | Language | markdown |
 | Total Lines | 160 |
-| Total Elements | 64 |
+| Total Elements | 68 |
 
 ## Document Structure
 
@@ -48,6 +48,9 @@
 |------|-----|------|------|
 | Inline link | https://example.com | External | 22 |
 | Link with title | https://example.com | External | 23 |
+| Reference link |  | Internal | 24 |
+| https://autolink.example.com | https://autolink.example.com | External | 25 |
+| mailto:test@example.com | mailto:test@example.com | Internal | 26 |
 
 ## Images
 
@@ -55,6 +58,7 @@
 |----------|-----|------|
 | Alt text | image.png | 32 |
 | Image with title | image.png | 32 |
+| Reference image | None | 34 |
 | img1 | reference-image.png | 36 |
 
 ## Code Blocks

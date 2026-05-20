@@ -25,6 +25,53 @@ except ImportError:
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from .csharp_helpers import (
+    calculate_complexity as _calc_complexity_standalone,
+)
+from .csharp_helpers import (
+    determine_visibility as _determine_vis_standalone,
+)
+from .csharp_helpers import (
+    extract_attributes as _extract_attrs_standalone,
+)
+from .csharp_helpers import (
+    extract_class_declaration as _extract_class_standalone,
+)
+from .csharp_helpers import (
+    extract_constructor_declaration as _extract_ctor_standalone,
+)
+from .csharp_helpers import (
+    extract_event_declaration as _extract_event_standalone,
+)
+from .csharp_helpers import (
+    extract_field_declaration as _extract_field_standalone,
+)
+from .csharp_helpers import (
+    extract_method_declaration as _extract_method_standalone,
+)
+from .csharp_helpers import (
+    extract_modifiers as _extract_mods_standalone,
+)
+from .csharp_helpers import (
+    extract_parameters as _extract_params_standalone,
+)
+from .csharp_helpers import (
+    extract_property_declaration as _extract_prop_standalone,
+)
+from .csharp_helpers import (
+    extract_type_name as _extract_type_standalone,
+)
+from .csharp_helpers import (
+    extract_using_directive as _extract_using_standalone,
+)
+
+
+def _traverse_nodes(root_node: "tree_sitter.Node") -> Iterator["tree_sitter.Node"]:
+    stack = [root_node]
+    while stack:
+        node = stack.pop()
+        yield node
+        stack.extend(reversed(list(node.children)))
 
 
 class CSharpElementExtractor(ElementExtractor):
@@ -62,7 +109,6 @@ class CSharpElementExtractor(ElementExtractor):
         self._node_text_cache: dict[tuple[int, int], str] = {}
         self._processed_nodes: set[tuple[int, int]] = set()
         self._element_cache: dict[tuple[tuple[int, int], str], Any] = {}
-        self._file_encoding: str | None = None
         self._attribute_cache: dict[tuple[int, int], list[dict[str, Any]]] = {}
 
     def _reset_caches(self) -> None:
@@ -117,136 +163,33 @@ class CSharpElementExtractor(ElementExtractor):
                 self._extract_namespace(child)
 
     def _extract_modifiers(self, node: "tree_sitter.Node") -> list[str]:
-        """
-        Extract modifiers from a declaration node.
-
-        Args:
-            node: Declaration node (class, method, field, etc.)
-
-        Returns:
-            List of modifier strings (e.g., ["public", "static", "async"])
-        """
-        modifiers: list[str] = []
-        for child in node.children:
-            if child.type == "modifier":
-                modifier_text = self._get_node_text_optimized(child)
-                modifiers.append(modifier_text)
-        return modifiers
+        """Extract modifiers from a declaration node."""
+        return _extract_mods_standalone(node, self._get_node_text_optimized)
 
     def _determine_visibility(self, modifiers: list[str]) -> str:
-        """
-        Determine visibility from modifiers.
-
-        Args:
-            modifiers: List of modifier strings
-
-        Returns:
-            Visibility string ("public", "private", "protected", "internal")
-        """
-        if "public" in modifiers:
-            return "public"
-        elif "private" in modifiers:
-            return "private"
-        elif "protected" in modifiers:
-            return "protected"
-        elif "internal" in modifiers:
-            return "internal"
-        else:
-            return "private"  # Default to private in C#
+        """Determine visibility from modifiers."""
+        return _determine_vis_standalone(modifiers)
 
     def _extract_attributes(self, node: "tree_sitter.Node") -> list[dict[str, Any]]:
-        """
-        Extract attributes (annotations) from a node.
-
-        Args:
-            node: Node that may have attributes
-
-        Returns:
-            List of attribute dictionaries with name, line, and text
-        """
-        # Use position-based cache key for deterministic behavior
-        cache_key = (node.start_byte, node.end_byte)
-        if cache_key in self._attribute_cache:
-            return self._attribute_cache[cache_key]
-
-        attributes: list[dict[str, Any]] = []
-
-        # Look for attribute_list nodes before the declaration
-        prev_sibling = node.prev_sibling
-        while prev_sibling:
-            if prev_sibling.type == "attribute_list":
-                attr_text = self._get_node_text_optimized(prev_sibling)
-                attributes.append(
-                    {
-                        "name": attr_text.strip("[]"),
-                        "line": prev_sibling.start_point[0] + 1,
-                        "text": attr_text,
-                    }
-                )
-            elif prev_sibling.type not in ["comment", "line_comment", "block_comment"]:
-                break
-            prev_sibling = prev_sibling.prev_sibling
-
-        attributes.reverse()  # Restore original order
-        self._attribute_cache[cache_key] = attributes
-        return attributes
+        """Extract attributes (annotations) from a node."""
+        return _extract_attrs_standalone(
+            node, self._get_node_text_optimized, self._attribute_cache
+        )
 
     def _extract_type_name(self, type_node: Optional["tree_sitter.Node"]) -> str:
-        """
-        Extract type name from a type node, handling generic types and nullable types.
-
-        Args:
-            type_node: Type node from the AST
-
-        Returns:
-            Type name as string (e.g., "int", "List<string>", "string?")
-        """
-        if not type_node:
-            return "void"
-
-        return self._get_node_text_optimized(type_node)
+        """Extract type name from a type node."""
+        return _extract_type_standalone(type_node, self._get_node_text_optimized)
 
     def _extract_parameters(
         self, params_node: Optional["tree_sitter.Node"]
     ) -> list[str]:
-        """
-        Extract method parameters.
-
-        Args:
-            params_node: Parameter list node
-
-        Returns:
-            List of parameter strings (e.g., ["int id", "string name"])
-        """
-        if not params_node:
-            return []
-
-        parameters: list[str] = []
-        for child in params_node.children:
-            if child.type == "parameter":
-                param_text = self._get_node_text_optimized(child)
-                parameters.append(param_text)
-
-        return parameters
+        """Extract method parameters."""
+        return _extract_params_standalone(params_node, self._get_node_text_optimized)
 
     def _traverse_iterative(
         self, root_node: "tree_sitter.Node"
     ) -> Iterator["tree_sitter.Node"]:
-        """
-        Iteratively traverse AST nodes to avoid stack overflow on large files.
-
-        Args:
-            root_node: Root node to start traversal from
-
-        Yields:
-            Tree-sitter nodes in depth-first order
-        """
-        stack = [root_node]
-        while stack:
-            node = stack.pop()
-            yield node
-            # Add children in reverse order to maintain left-to-right traversal
-            stack.extend(reversed(list(node.children)))
+        yield from _traverse_nodes(root_node)
 
     def extract_classes(
         self, tree: "tree_sitter.Tree | None", source_code: str
@@ -292,86 +235,14 @@ class CSharpElementExtractor(ElementExtractor):
         return classes
 
     def _extract_class_declaration(self, node: "tree_sitter.Node") -> Class | None:
-        """
-        Extract a single class declaration.
-
-        Args:
-            node: Class declaration node
-
-        Returns:
-            Class object or None if extraction fails
-        """
-        try:
-            # Get class name
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                return None
-
-            class_name = self._get_node_text_optimized(name_node)
-
-            # Get modifiers and visibility
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-
-            # Get attributes
-            attributes = self._extract_attributes(node)
-
-            # Get base class and interfaces
-            base_list_node = node.child_by_field_name("bases")
-            superclass = None
-            interfaces: list[str] = []
-
-            if base_list_node:
-                base_items = [
-                    self._get_node_text_optimized(child)
-                    for child in base_list_node.children
-                    if child.type
-                    in ["type_identifier", "generic_name", "qualified_name"]
-                ]
-                if base_items:
-                    if node.type == "interface_declaration":
-                        interfaces = base_items
-                    else:
-                        superclass = base_items[0]
-                        interfaces = base_items[1:] if len(base_items) > 1 else []
-
-            # Get full qualified name
-            full_name = (
-                f"{self.current_namespace}.{class_name}"
-                if self.current_namespace
-                else class_name
-            )
-
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
-            # Determine class type
-            class_type_map = {
-                "class_declaration": "class",
-                "interface_declaration": "interface",
-                "record_declaration": "record",
-                "enum_declaration": "enum",
-                "struct_declaration": "struct",
-            }
-            class_type = class_type_map.get(node.type, "class")
-
-            return Class(
-                name=class_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
-                full_qualified_name=full_name,
-                superclass=superclass,
-                interfaces=interfaces,
-                modifiers=modifiers,
-                visibility=visibility,
-                annotations=attributes,
-                class_type=class_type,
-            )
-
-        except Exception as e:
-            log_error(f"Error extracting class declaration: {e}")
-            return None
+        """Extract a single class declaration."""
+        return _extract_class_standalone(
+            node,
+            self.current_namespace,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+            self._extract_attributes,
+        )
 
     def extract_functions(
         self, tree: "tree_sitter.Tree | None", source_code: str
@@ -419,203 +290,40 @@ class CSharpElementExtractor(ElementExtractor):
         return functions
 
     def _extract_method(self, node: "tree_sitter.Node") -> Function | None:
-        """
-        Extract a method declaration.
-
-        Args:
-            node: Method declaration node
-
-        Returns:
-            Function object or None if extraction fails
-        """
-        try:
-            # Get method name
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                return None
-
-            method_name = self._get_node_text_optimized(name_node)
-
-            # Get modifiers and visibility
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-
-            # Check if async
-            is_async = "async" in modifiers
-
-            # Get attributes
-            attributes = self._extract_attributes(node)
-
-            # Get return type
-            type_node = node.child_by_field_name("type")
-            return_type = self._extract_type_name(type_node)
-
-            # Get parameters
-            params_node = node.child_by_field_name("parameters")
-            parameters = self._extract_parameters(params_node)
-
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
-            # Calculate complexity (simplified)
-            complexity_score = self._calculate_complexity(node)
-
-            return Function(
-                name=method_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
-                parameters=parameters,
-                return_type=return_type,
-                modifiers=modifiers,
-                visibility=visibility,
-                is_async=is_async,
-                annotations=attributes,
-                complexity_score=complexity_score,
-            )
-
-        except Exception as e:
-            log_error(f"Error extracting method: {e}")
-            return None
+        """Extract a method declaration."""
+        return _extract_method_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+            self._extract_attributes,
+            self._extract_type_name,
+            self._extract_parameters,
+            self._calculate_complexity,
+        )
 
     def _extract_constructor(self, node: "tree_sitter.Node") -> Function | None:
-        """
-        Extract a constructor declaration.
-
-        Args:
-            node: Constructor declaration node
-
-        Returns:
-            Function object or None if extraction fails
-        """
-        try:
-            # Get constructor name
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                return None
-
-            constructor_name = self._get_node_text_optimized(name_node)
-
-            # Get modifiers and visibility
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-
-            # Get attributes
-            attributes = self._extract_attributes(node)
-
-            # Get parameters
-            params_node = node.child_by_field_name("parameters")
-            parameters = self._extract_parameters(params_node)
-
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
-            return Function(
-                name=constructor_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
-                parameters=parameters,
-                return_type="void",
-                modifiers=modifiers,
-                visibility=visibility,
-                is_constructor=True,
-                annotations=attributes,
-            )
-
-        except Exception as e:
-            log_error(f"Error extracting constructor: {e}")
-            return None
+        """Extract a constructor declaration."""
+        return _extract_ctor_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+            self._extract_attributes,
+            self._extract_parameters,
+        )
 
     def _extract_property(self, node: "tree_sitter.Node") -> Function | None:
-        """
-        Extract a property declaration.
-
-        Args:
-            node: Property declaration node
-
-        Returns:
-            Function object with is_property=True or None if extraction fails
-        """
-        try:
-            # Get property name
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                return None
-
-            property_name = self._get_node_text_optimized(name_node)
-
-            # Get modifiers and visibility
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-
-            # Get attributes
-            attributes = self._extract_attributes(node)
-
-            # Get property type
-            type_node = node.child_by_field_name("type")
-            property_type = self._extract_type_name(type_node)
-
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
-            # Check for getter/setter (for future use)
-            # has_getter = False
-            # has_setter = False
-            # for child in node.children:
-            #     if child.type == "accessor_list":
-            #         for accessor in child.children:
-            #             if accessor.type == "get_accessor_declaration":
-            #                 has_getter = True
-            #             elif accessor.type == "set_accessor_declaration":
-            #                 has_setter = True
-            #             elif accessor.type == "init_accessor_declaration":
-            #                 has_setter = True  # init is a special setter
-
-            return Function(
-                name=property_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
-                parameters=[],
-                return_type=property_type,
-                modifiers=modifiers,
-                visibility=visibility,
-                is_property=True,
-                annotations=attributes,
-            )
-
-        except Exception as e:
-            log_error(f"Error extracting property: {e}")
-            return None
+        """Extract a property declaration."""
+        return _extract_prop_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+            self._extract_attributes,
+            self._extract_type_name,
+        )
 
     def _calculate_complexity(self, node: "tree_sitter.Node") -> int:
-        """
-        Calculate cyclomatic complexity of a method.
-
-        Args:
-            node: Method node
-
-        Returns:
-            Complexity score (1 + number of decision points)
-        """
-        complexity = 1
-        decision_keywords = {
-            "if_statement",
-            "switch_statement",
-            "for_statement",
-            "foreach_statement",
-            "while_statement",
-            "do_statement",
-            "catch_clause",
-            "conditional_expression",  # ternary operator
-        }
-
-        for child in self._traverse_iterative(node):
-            if child.type in decision_keywords:
-                complexity += 1
-
-        return complexity
+        """Calculate cyclomatic complexity of a method."""
+        return _calc_complexity_standalone(node, self._traverse_iterative)
 
     def extract_variables(
         self, tree: "tree_sitter.Tree | None", source_code: str
@@ -654,124 +362,24 @@ class CSharpElementExtractor(ElementExtractor):
         return variables
 
     def _extract_field(self, node: "tree_sitter.Node") -> list[Variable]:
-        """
-        Extract field declarations.
-
-        Args:
-            node: Field declaration node
-
-        Returns:
-            List of Variable objects (can be multiple if multiple variables declared)
-        """
-        variables: list[Variable] = []
-
-        try:
-            # Get modifiers
-            modifiers = self._extract_modifiers(node)
-            visibility = self._determine_visibility(modifiers)
-
-            # Check if constant or readonly
-            is_constant = "const" in modifiers
-            # is_readonly = "readonly" in modifiers  # For future use
-
-            # Get attributes
-            attributes = self._extract_attributes(node)
-
-            # Get field type
-            type_node = None
-            for child in node.children:
-                if child.type == "variable_declaration":
-                    type_node = child.child_by_field_name("type")
-                    break
-
-            field_type = self._extract_type_name(type_node)
-
-            # Get variable declarators
-            for child in node.children:
-                if child.type == "variable_declaration":
-                    for declarator in child.children:
-                        if declarator.type == "variable_declarator":
-                            name_node = declarator.child_by_field_name("name")
-                            if name_node:
-                                field_name = self._get_node_text_optimized(name_node)
-                                raw_text = self._get_node_text_optimized(node)
-
-                                variables.append(
-                                    Variable(
-                                        name=field_name,
-                                        start_line=node.start_point[0] + 1,
-                                        end_line=node.end_point[0] + 1,
-                                        raw_text=raw_text,
-                                        variable_type=field_type,
-                                        modifiers=modifiers,
-                                        visibility=visibility,
-                                        is_constant=is_constant,
-                                        annotations=attributes,
-                                    )
-                                )
-
-        except Exception as e:
-            log_error(f"Error extracting field: {e}")
-
-        return variables
+        """Extract field declarations."""
+        return _extract_field_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+            self._extract_attributes,
+            self._extract_type_name,
+        )
 
     def _extract_event(self, node: "tree_sitter.Node") -> list[Variable]:
-        """
-        Extract event field declarations.
-
-        Args:
-            node: Event field declaration node
-
-        Returns:
-            List of Variable objects representing events
-        """
-        variables: list[Variable] = []
-
-        try:
-            # Get modifiers
-            modifiers = self._extract_modifiers(node)
-            modifiers.append("event")  # Mark as event
-            visibility = self._determine_visibility(modifiers)
-
-            # Get attributes
-            attributes = self._extract_attributes(node)
-
-            # Get event type
-            type_node = None
-            for child in node.children:
-                if child.type == "variable_declaration":
-                    type_node = child.child_by_field_name("type")
-                    break
-
-            event_type = self._extract_type_name(type_node)
-
-            # Get variable declarators
-            for child in node.children:
-                if child.type == "variable_declaration":
-                    for declarator in child.children:
-                        if declarator.type == "variable_declarator":
-                            name_node = declarator.child_by_field_name("name")
-                            if name_node:
-                                event_name = self._get_node_text_optimized(name_node)
-                                raw_text = self._get_node_text_optimized(node)
-
-                                variables.append(
-                                    Variable(
-                                        name=event_name,
-                                        start_line=node.start_point[0] + 1,
-                                        end_line=node.end_point[0] + 1,
-                                        raw_text=raw_text,
-                                        variable_type=event_type,
-                                        modifiers=modifiers,
-                                        visibility=visibility,
-                                        annotations=attributes,
-                                    )
-                                )
-
-        except Exception as e:
-            log_error(f"Error extracting event: {e}")
-
-        return variables
+        """Extract event field declarations."""
+        return _extract_event_standalone(
+            node,
+            self._get_node_text_optimized,
+            self._extract_modifiers,
+            self._extract_attributes,
+            self._extract_type_name,
+        )
 
     def extract_imports(
         self, tree: "tree_sitter.Tree | None", source_code: str
@@ -807,55 +415,8 @@ class CSharpElementExtractor(ElementExtractor):
         return imports
 
     def _extract_using_directive(self, node: "tree_sitter.Node") -> Import | None:
-        """
-        Extract a using directive.
-
-        Args:
-            node: Using directive node
-
-        Returns:
-            Import object or None if extraction fails
-        """
-        try:
-            # Get the namespace or type being imported
-            name_node = node.child_by_field_name("name")
-            if not name_node:
-                # Try to find qualified_name or identifier
-                for child in node.children:
-                    if child.type in ["qualified_name", "identifier", "name_equals"]:
-                        name_node = child
-                        break
-
-            if not name_node:
-                return None
-
-            import_name = self._get_node_text_optimized(name_node)
-
-            # Check if it's a static using
-            is_static = False
-            for child in node.children:
-                if (
-                    child.type == "static"
-                    or self._get_node_text_optimized(child) == "static"
-                ):
-                    is_static = True
-                    break
-
-            # Get raw text
-            raw_text = self._get_node_text_optimized(node)
-
-            return Import(
-                name=import_name,
-                start_line=node.start_point[0] + 1,
-                end_line=node.end_point[0] + 1,
-                raw_text=raw_text,
-                module_name=import_name,
-                is_static=is_static,
-            )
-
-        except Exception as e:
-            log_error(f"Error extracting using directive: {e}")
-            return None
+        """Extract a using directive."""
+        return _extract_using_standalone(node, self._get_node_text_optimized)
 
 
 class CSharpPlugin(LanguagePlugin):
@@ -1007,11 +568,8 @@ class CSharpPlugin(LanguagePlugin):
         from ..models import AnalysisResult
 
         try:
-            # Read file content
             source_code, encoding = read_file_safe(file_path)
-            self.extractor._file_encoding = encoding
 
-            # Get tree-sitter language
             language = self.get_tree_sitter_language()
             if not language:
                 log_error("Failed to load C# language")
@@ -1023,10 +581,7 @@ class CSharpPlugin(LanguagePlugin):
                     error_message="Failed to load C# language",
                 )
 
-            # Parse the source code
             parser = tree_sitter.Parser()
-
-            # Set language using the appropriate method
             if hasattr(parser, "set_language"):
                 parser.set_language(language)
             elif hasattr(parser, "language"):
@@ -1036,25 +591,14 @@ class CSharpPlugin(LanguagePlugin):
 
             tree = parser.parse(source_code.encode("utf-8"))
 
-            # Extract all elements
-            classes = self.extractor.extract_classes(tree, source_code)
-            functions = self.extractor.extract_functions(tree, source_code)
-            variables = self.extractor.extract_variables(tree, source_code)
-            imports = self.extractor.extract_imports(tree, source_code)
-
-            # Combine all elements into a single list
+            extractor = self.create_extractor()
             elements: list[Any] = []
-            elements.extend(classes)
-            elements.extend(functions)
-            elements.extend(variables)
-            elements.extend(imports)
+            elements.extend(extractor.extract_classes(tree, source_code))
+            elements.extend(extractor.extract_functions(tree, source_code))
+            elements.extend(extractor.extract_variables(tree, source_code))
+            elements.extend(extractor.extract_imports(tree, source_code))
 
-            # Count AST nodes
-            node_count = sum(
-                1 for _ in self.extractor._traverse_iterative(tree.root_node)
-            )
-
-            # Count lines
+            node_count = sum(1 for _ in _traverse_nodes(tree.root_node))
             line_count = len(source_code.split("\n"))
 
             return AnalysisResult(

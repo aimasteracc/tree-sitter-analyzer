@@ -1,0 +1,42 @@
+{
+  "counts_by_type": {
+    "Class": 8,
+    "Function": 8,
+    "Package": 1,
+    "Variable": 4
+  },
+  "element_total": 21,
+  "names_by_type": {
+    "Class": [
+      "Config",
+      "Displayable",
+      "Error",
+      "LegacyUserManager",
+      "Result",
+      "Success",
+      "User",
+      "UserManager"
+    ],
+    "Function": [
+      "display",
+      "fetchUserAsync",
+      "get",
+      "getUser",
+      "main",
+      "summary",
+      "toTitleCase"
+    ],
+    "Package": [
+      "com.example.kotlin"
+    ],
+    "Variable": [
+      "unknown"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Package",
+    "Variable"
+  ]
+}

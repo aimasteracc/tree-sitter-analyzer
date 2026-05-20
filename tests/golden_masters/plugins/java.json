@@ -1,0 +1,68 @@
+{
+  "counts_by_type": {
+    "Class": 8,
+    "Function": 26,
+    "Import": 2,
+    "Package": 1,
+    "Variable": 6
+  },
+  "element_total": 43,
+  "names_by_type": {
+    "Class": [
+      "AbstractParentClass",
+      "AnotherInterface",
+      "InnerClass",
+      "ParentClass",
+      "StaticNestedClass",
+      "Test",
+      "TestEnum",
+      "TestInterface"
+    ],
+    "Function": [
+      "ParentClass",
+      "Test",
+      "TestEnum",
+      "abstractMethod",
+      "anotherMethod",
+      "concreteMethod",
+      "createList",
+      "defaultMethod",
+      "doSomething",
+      "finalMethod",
+      "genericMethod",
+      "getDescription",
+      "getValue",
+      "innerMethod",
+      "nestedMethod",
+      "packageMethod",
+      "parentMethod",
+      "privateMethod",
+      "setValue",
+      "staticInterfaceMethod",
+      "staticMethod",
+      "staticParentMethod"
+    ],
+    "Import": [
+      "java.util.ArrayList",
+      "java.util.List"
+    ],
+    "Package": [
+      "com.example"
+    ],
+    "Variable": [
+      "CONSTANT",
+      "description",
+      "finalField",
+      "parentField",
+      "staticValue",
+      "value"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Package",
+    "Variable"
+  ]
+}

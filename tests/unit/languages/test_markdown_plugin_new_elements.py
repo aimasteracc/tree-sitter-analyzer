@@ -382,10 +382,11 @@ class TestMarkdownPluginNewElementsIntegration:
 
         # extract_elements uses create_extractor(), not get_extractor()
         with patch.object(self.plugin, "create_extractor", return_value=mock_extractor):
-            elements = self.plugin.extract_elements(mock_tree, "test content")
+            result = self.plugin.extract_elements(mock_tree, "test content")
 
-            # Should include all element types that return results
-            assert len(elements) >= 12  # All 12 extraction methods
+            assert isinstance(result, dict)
+            assert "elements" in result
+            assert len(result["elements"]) >= 12  # All 12 extraction methods
 
             # Verify all extraction methods were called
             mock_extractor.extract_headers.assert_called_once()
@@ -499,27 +500,32 @@ Footnote reference[^1]
             mock_read_file_safe.return_value = (content, "utf-8")
 
             with patch(
-                "tree_sitter_analyzer.languages.markdown_plugin.tree_sitter"
-            ) as mock_ts:
-                mock_ts.Parser.return_value = mock_parser
+                "tree_sitter_analyzer.languages.markdown_plugin.plugin.tree_sitter"
+            ) as mock_ts_plugin:
+                mock_ts_plugin.Parser.return_value = mock_parser
 
-                with patch.object(
-                    self.plugin, "get_tree_sitter_language", return_value=mock_language
-                ):
+                with patch(
+                    "tree_sitter_analyzer.languages.markdown_plugin.extractor.tree_sitter"
+                ) as mock_ts:
+                    mock_ts.Parser.return_value = mock_parser
+
                     with patch.object(
-                        self.plugin, "create_extractor", return_value=mock_extractor
+                        self.plugin,
+                        "get_tree_sitter_language",
+                        return_value=mock_language,
                     ):
-                        from tree_sitter_analyzer.core.analysis_engine import (
-                            AnalysisRequest,
-                        )
+                        with patch.object(
+                            self.plugin, "create_extractor", return_value=mock_extractor
+                        ):
+                            from tree_sitter_analyzer.core.analysis_engine import (
+                                AnalysisRequest,
+                            )
 
-                        request = AnalysisRequest(file_path="test.md")
-                        result = await self.plugin.analyze_file("test.md", request)
+                            request = AnalysisRequest(file_path="test.md")
+                            result = await self.plugin.analyze_file("test.md", request)
 
-                        assert result.success is True
-                        assert (
-                            len(result.elements) >= 3
-                        )  # At least header, blockquote, and hr should be detected
+                            assert result.success is True
+                            assert len(result.elements) >= 3
 
 
 class TestMarkdownElementNewAttributes:

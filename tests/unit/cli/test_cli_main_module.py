@@ -10,6 +10,15 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.unit.cli._test_cli_main_module_handle_special_commands_mixin import (
+    TestHandleSpecialCommandsTestMixin,
+)
+from tests.unit.cli._test_cli_main_module_parser_mixin import (
+    TestCreateArgumentParserMixin,
+)
+from tests.unit.cli._test_cli_main_module_test_mixin import (
+    TestCLICommandFactoryTestMixin,
+)
 from tree_sitter_analyzer.cli_main import (
     CLICommandFactory,
     create_argument_parser,
@@ -18,382 +27,21 @@ from tree_sitter_analyzer.cli_main import (
 )
 
 
-class TestCLICommandFactory:
+class TestCLICommandFactory(TestCLICommandFactoryTestMixin):
     """Tests for CLICommandFactory class."""
 
-    def test_create_command_list_queries(self):
-        """Test creating ListQueriesCommand."""
-        args = argparse.Namespace(
-            list_queries=True,
-            file_path=None,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "ListQueriesCommand"
+    __test__ = True
 
-    def test_create_command_describe_query(self):
-        """Test creating DescribeQueryCommand."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query="class",
-            file_path=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "DescribeQueryCommand"
-
-    def test_create_command_show_languages(self):
-        """Test creating ShowLanguagesCommand."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=True,
-            file_path=None,
-            show_supported_extensions=False,
-            filter_help=None,
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "ShowLanguagesCommand"
-
-    def test_create_command_show_extensions(self):
-        """Test creating ShowExtensionsCommand."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=True,
-            file_path=None,
-            filter_help=None,
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "ShowExtensionsCommand"
-
-    def test_create_command_filter_help(self):
-        """Test creating filter help command."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=True,
-            file_path=None,
-        )
-        command = CLICommandFactory.create_command(args)
-        # filter_help returns None (exits with code 0)
-        assert command is None
-
-    def test_create_command_table(self):
-        """Test creating TableCommand."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path="test.py",
-            table="full",
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "TableCommand"
-
-    def test_create_command_structure(self):
-        """Test creating StructureCommand."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path="test.py",
-            structure=True,
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "StructureCommand"
-
-    def test_create_command_summary(self):
-        """Test creating SummaryCommand."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path="test.py",
-            summary="classes,methods",
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "SummaryCommand"
-
-    def test_create_command_advanced(self):
-        """Test creating AdvancedCommand."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path="test.py",
-            advanced=True,
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "AdvancedCommand"
-
-    def test_create_command_query_key(self):
-        """Test creating QueryCommand with query_key."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path="test.py",
-            query_key="class",
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "QueryCommand"
-
-    def test_create_command_query_string(self):
-        """Test creating QueryCommand with query_string."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path="test.py",
-            query_string="(function_declaration)",
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "QueryCommand"
-
-    def test_create_command_default(self):
-        """Test creating DefaultCommand when no specific command is given."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path="test.py",
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "DefaultCommand"
-
-    def test_create_command_partial_read(self):
-        """Test creating PartialReadCommand."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path="test.py",
-            partial_read=True,
-            start_line=1,
-            end_line=10,
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is not None
-        assert command.__class__.__name__ == "PartialReadCommand"
-
-    def test_create_command_no_file_path(self):
-        """Test that command is None when file_path is not provided."""
-        args = argparse.Namespace(
-            list_queries=False,
-            describe_query=None,
-            show_supported_languages=False,
-            show_supported_extensions=False,
-            filter_help=None,
-            file_path=None,
-        )
-        command = CLICommandFactory.create_command(args)
-        assert command is None
+    _cli_command_factory = CLICommandFactory
 
 
-class TestCreateArgumentParser:
+class TestCreateArgumentParser(TestCreateArgumentParserMixin):
     """Tests for create_argument_parser function."""
 
-    def test_parser_creation(self):
-        """Test that argument parser is created successfully."""
-        parser = create_argument_parser()
-        assert parser is not None
-        assert isinstance(parser, argparse.ArgumentParser)
-
-    def test_parser_has_file_path_argument(self):
-        """Test that parser has file_path argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["test.py"])
-        assert args.file_path == "test.py"
-
-    def test_parser_has_query_key_argument(self):
-        """Test that parser has --query-key argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--query-key", "class", "test.py"])
-        assert args.query_key == "class"
-
-    def test_parser_has_query_string_argument(self):
-        """Test that parser has --query-string argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--query-string", "(function)", "test.py"])
-        assert args.query_string == "(function)"
-
-    def test_parser_has_filter_argument(self):
-        """Test that parser has --filter argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--filter", "name=main", "test.py"])
-        assert args.filter == "name=main"
-
-    def test_parser_has_list_queries_argument(self):
-        """Test that parser has --list-queries argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--list-queries"])
-        assert args.list_queries is True
-
-    def test_parser_has_describe_query_argument(self):
-        """Test that parser has --describe-query argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--describe-query", "class"])
-        assert args.describe_query == "class"
-
-    def test_parser_has_show_supported_languages_argument(self):
-        """Test that parser has --show-supported-languages argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--show-supported-languages"])
-        assert args.show_supported_languages is True
-
-    def test_parser_has_show_supported_extensions_argument(self):
-        """Test that parser has --show-supported-extensions argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--show-supported-extensions"])
-        assert args.show_supported_extensions is True
-
-    def test_parser_has_output_format_argument(self):
-        """Test that parser has --output-format argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--output-format", "json", "test.py"])
-        assert args.output_format == "json"
-
-    def test_parser_has_format_argument(self):
-        """Test that parser has --format argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--format", "toon", "test.py"])
-        assert args.format == "toon"
-
-    def test_parser_has_table_argument(self):
-        """Test that parser has --table argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--table", "full", "test.py"])
-        assert args.table == "full"
-
-    def test_parser_has_include_javadoc_argument(self):
-        """Test that parser has --include-javadoc argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--include-javadoc", "test.py"])
-        assert args.include_javadoc is True
-
-    def test_parser_has_advanced_argument(self):
-        """Test that parser has --advanced argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--advanced", "test.py"])
-        assert args.advanced is True
-
-    def test_parser_has_summary_argument(self):
-        """Test that parser has --summary argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--summary", "test.py"])
-        # --summary is a flag that accepts a value
-        assert args.summary == "test.py"
-
-    def test_parser_has_structure_argument(self):
-        """Test that parser has --structure argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--structure", "test.py"])
-        assert args.structure is True
-
-    def test_parser_has_statistics_argument(self):
-        """Test that parser has --statistics argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--statistics", "test.py"])
-        assert args.statistics is True
-
-    def test_parser_has_language_argument(self):
-        """Test that parser has --language argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--language", "python", "test.py"])
-        assert args.language == "python"
-
-    def test_parser_has_project_root_argument(self):
-        """Test that parser has --project-root argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--project-root", "/path/to/project", "test.py"])
-        assert args.project_root == "/path/to/project"
-
-    def test_parser_has_quiet_argument(self):
-        """Test that parser has --quiet argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--quiet", "test.py"])
-        assert args.quiet is True
-
-    def test_parser_has_partial_read_argument(self):
-        """Test that parser has --partial-read argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--partial-read", "test.py"])
-        assert args.partial_read is True
-
-    def test_parser_has_start_line_argument(self):
-        """Test that parser has --start-line argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--start-line", "10", "test.py"])
-        assert args.start_line == 10
-
-    def test_parser_has_end_line_argument(self):
-        """Test that parser has --end-line argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--end-line", "20", "test.py"])
-        assert args.end_line == 20
-
-    def test_parser_has_start_column_argument(self):
-        """Test that parser has --start-column argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--start-column", "5", "test.py"])
-        assert args.start_column == 5
-
-    def test_parser_has_end_column_argument(self):
-        """Test that parser has --end-column argument."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--end-column", "15", "test.py"])
-        assert args.end_column == 15
-
-    def test_parser_default_output_format(self):
-        """Test that default output format is json."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["test.py"])
-        assert args.output_format == "json"
-
-    def test_parser_file_path_optional(self):
-        """Test that file_path is optional."""
-        parser = create_argument_parser()
-        args = parser.parse_args(["--list-queries"])
-        assert args.file_path is None
+    __test__ = True
 
 
-class TestHandleSpecialCommands:
+class TestHandleSpecialCommandsBranchCoverage:
     """Tests for handle_special_commands function."""
 
     @patch("tree_sitter_analyzer.cli_main.output_list")
@@ -412,6 +60,65 @@ class TestHandleSpecialCommands:
         result = handle_special_commands(args)
         assert result == 0
         mock_output_list.assert_called()
+
+    @patch("tree_sitter_analyzer.output_manager.output_json")
+    def test_handle_agent_skills_outputs_inventory(self, mock_output_json, tmp_path):
+        """Agent skills returns project-local skill metadata and gaps."""
+        skill_dir = tmp_path / ".agents" / "skills" / "demo"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: demo\n"
+            "description: Use when demonstrating project-local skills.\n"
+            "---\n\n"
+            "# Demo Skill\n\n"
+            "## Acceptance Criteria\n\n"
+            "- Inventory includes this skill.\n",
+            encoding="utf-8",
+        )
+        args = argparse.Namespace(
+            agent_skills=True,
+            agent_skills_root=None,
+            agent_workflow=False,
+            file_path=None,
+            project_root=str(tmp_path),
+            format="json",
+        )
+
+        result = handle_special_commands(args)
+
+        assert result == 0
+        payload = mock_output_json.call_args.args[0]
+        assert payload["success"] is True
+        assert payload["inventory"] == "project agent skills"
+        assert payload["skill_count"] == 1
+        assert payload["skills"][0]["name"] == "demo"
+        assert payload["skills"][0]["acceptance_criteria_present"] is True
+
+    @patch("tree_sitter_analyzer.output_manager.output_json")
+    def test_handle_agent_workflow_outputs_pack(self, mock_output_json):
+        """Agent workflow returns a structured SMART command pack."""
+        args = argparse.Namespace(
+            agent_workflow=True,
+            file_path="target.py",
+            project_root="/repo",
+            format="json",
+        )
+
+        result = handle_special_commands(args)
+
+        assert result == 0
+        payload = mock_output_json.call_args.args[0]
+        assert payload["success"] is True
+        assert payload["workflow"] == "SMART agent workflow pack"
+        assert payload["target_path"] == "target.py"
+        assert payload["agent_summary"]["next_step"].startswith(
+            "uv run tree-sitter-analyzer safe-to-edit target.py"
+        )
+        assert payload["agent_summary"]["queue_ledger_command"] == (
+            "uv run tree-sitter-analyzer change-impact "
+            "--change-impact-scope target.py --agent-summary-only --format json"
+        )
 
     @patch("tree_sitter_analyzer.cli_main.output_list")
     def test_handle_show_common_queries(self, mock_output_list):
@@ -894,3 +601,9 @@ class TestErrorHandling:
                 main()
 
                 mock_exit.assert_called_once_with(1)
+
+
+class TestHandleSpecialCommands(TestHandleSpecialCommandsTestMixin):
+    """Tests for handle_special_commands() covering all branches."""
+
+    __test__ = True

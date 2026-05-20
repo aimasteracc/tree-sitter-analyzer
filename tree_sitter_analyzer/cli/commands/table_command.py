@@ -9,21 +9,19 @@ import sys
 from typing import Any
 
 from ...constants import (
-    ELEMENT_TYPE_CLASS,
-    ELEMENT_TYPE_FUNCTION,
-    ELEMENT_TYPE_IMPORT,
-    ELEMENT_TYPE_PACKAGE,
-    ELEMENT_TYPE_SQL_FUNCTION,
-    ELEMENT_TYPE_SQL_INDEX,
-    ELEMENT_TYPE_SQL_PROCEDURE,
-    ELEMENT_TYPE_SQL_TABLE,
-    ELEMENT_TYPE_SQL_TRIGGER,
-    ELEMENT_TYPE_SQL_VIEW,
-    ELEMENT_TYPE_VARIABLE,
     get_element_type,
 )
 from ...output_manager import output_error
 from .base_command import BaseCommand
+from .table_command_helpers import (
+    StructureConverters,
+    build_structure_format,
+    collect_structure_elements,
+    convert_to_toon_format,
+    get_default_package_name,
+    process_parameters,
+    resolve_structure_package_name,
+)
 
 
 class TableCommand(BaseCommand):
@@ -33,6 +31,7 @@ class TableCommand(BaseCommand):
         """Initialize the table command."""
         super().__init__(args)
 
+    # Main entry point - dispatches to handler: execute_async
     async def execute_async(self, language: str) -> int:
         """Execute table format generation."""
         try:
@@ -43,8 +42,37 @@ class TableCommand(BaseCommand):
 
             table_type = getattr(self.args, "table", "full")
 
-            # Handle TOON format separately
-            if table_type == "toon":
+            # DOG-3 fix: --output-format used to be silently ignored when
+            # --table was also set. The global format flag now wins for the
+            # encoding choice — but only when the user *explicitly* provided
+            # it. Argparse leaves --output-format at its default ("json") for
+            # every invocation, so checking the value alone would silently
+            # break "--table=full" without --output-format. Instead we
+            # inspect sys.argv: only honor --output-format / --format when
+            # the literal flag appears.
+            output_format = ""
+            argv_tokens = " ".join(sys.argv[1:])
+            if "--output-format" in argv_tokens or "--format" in argv_tokens:
+                output_format = (
+                    getattr(self.args, "format", None)
+                    or getattr(self.args, "output_format", None)
+                    or ""
+                ).lower()
+            if output_format == "toon" and table_type != "toon":
+                table_type = "toon"
+            elif output_format == "json" and table_type != "json":
+                table_type = "json"
+
+            if table_type == "json":
+                formatted_data = self._convert_to_structure_format(
+                    analysis_result, language
+                )
+                import json
+
+                formatted_output = json.dumps(
+                    formatted_data, indent=2, ensure_ascii=False
+                )
+            elif table_type == "toon":
                 formatted_output = self._format_as_toon(analysis_result)
             else:
                 # Get appropriate formatter using unified FormatterRegistry
@@ -75,6 +103,7 @@ class TableCommand(BaseCommand):
             output_error(f"An error occurred during table format analysis: {e}")
             return 1
 
+    # Format data for output: _format_as_toon
     def _format_as_toon(self, analysis_result: Any) -> str:
         """Format analysis result as TOON."""
         from ...formatters.toon_formatter import ToonFormatter
@@ -86,97 +115,12 @@ class TableCommand(BaseCommand):
         structure_data = self._convert_to_toon_format(analysis_result)
         return formatter.format(structure_data)
 
+    # Format data for output: _convert_to_toon_format
     def _convert_to_toon_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to TOON-friendly format with position info."""
-        classes = []
-        methods = []
-        fields = []
-        imports = []
+        return convert_to_toon_format(analysis_result)
 
-        for element in analysis_result.elements:
-            element_type = get_element_type(element)
-
-            if element_type == ELEMENT_TYPE_CLASS:
-                classes.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "visibility": getattr(element, "visibility", "public"),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_FUNCTION:
-                methods.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "visibility": getattr(element, "visibility", "public"),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_VARIABLE:
-                fields.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "type": getattr(element, "type_annotation", ""),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-            elif element_type == ELEMENT_TYPE_IMPORT:
-                imports.append(
-                    {
-                        "name": getattr(element, "name", "unknown"),
-                        "is_static": getattr(element, "is_static", False),
-                        "is_wildcard": getattr(element, "is_wildcard", False),
-                        "statement": getattr(element, "import_statement", ""),
-                        "line_range": (
-                            getattr(element, "start_line", 0),
-                            getattr(element, "end_line", 0),
-                        ),
-                    }
-                )
-
-        # Get package info
-        packages = [
-            e
-            for e in analysis_result.elements
-            if get_element_type(e) == ELEMENT_TYPE_PACKAGE
-        ]
-        package_info = None
-        if packages:
-            pkg = packages[0]
-            package_info = {
-                "name": getattr(pkg, "name", ""),
-                "line_range": (
-                    getattr(pkg, "start_line", 0),
-                    getattr(pkg, "end_line", 0),
-                ),
-            }
-
-        return {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "package": package_info,
-            "classes": classes,
-            "methods": methods,
-            "fields": fields,
-            "imports": imports,
-            "statistics": {
-                "class_count": len(classes),
-                "method_count": len(methods),
-                "field_count": len(fields),
-                "import_count": len(imports),
-                "total_lines": analysis_result.line_count,
-            },
-        }
-
+    # Format data for output: _convert_to_formatter_format
     def _convert_to_formatter_format(self, analysis_result: Any) -> dict[str, Any]:
         """Convert AnalysisResult to format expected by formatters."""
         return {
@@ -227,79 +171,33 @@ class TableCommand(BaseCommand):
         Returns:
             Default package name ("unknown" for Java-like, "" for others)
         """
-        # Languages with package/namespace concept
-        PACKAGED_LANGUAGES = {"java", "kotlin", "scala", "csharp", "cpp", "c++"}
+        return get_default_package_name(language)
 
-        if language.lower() in PACKAGED_LANGUAGES:
-            return "unknown"
-
-        return ""  # No package for JS, TS, Python, etc.
-
+    # Format data for output: _convert_to_structure_format
     def _convert_to_structure_format(
         self, analysis_result: Any, language: str
     ) -> dict[str, Any]:
         """Convert AnalysisResult to the format expected by table formatter."""
-        classes = []
-        methods = []
-        fields = []
-        imports = []
+        package_name = resolve_structure_package_name(analysis_result, language)
+        converters = StructureConverters(
+            class_element=self._convert_class_element,
+            function_element=self._convert_function_element,
+            variable_element=self._convert_variable_element,
+            import_element=self._convert_import_element,
+            sql_element=self._convert_sql_element,
+        )
+        package_name, classes, methods, fields, imports = collect_structure_elements(
+            analysis_result,
+            language,
+            package_name,
+            converters,
+            output_error,
+        )
+        return build_structure_format(
+            analysis_result, package_name, classes, methods, fields, imports
+        )
 
-        # Try to get package from analysis_result.package attribute first
-        package_obj = getattr(analysis_result, "package", None)
-        if package_obj and hasattr(package_obj, "name"):
-            package_name = str(package_obj.name)
-        else:
-            # Fall back to default or scanning elements
-            package_name = self._get_default_package_name(language)
-
-        # Process each element
-        for i, element in enumerate(analysis_result.elements):
-            try:
-                element_type = get_element_type(element)
-                element_name = getattr(element, "name", None)
-
-                if element_type == ELEMENT_TYPE_PACKAGE:
-                    package_name = str(element_name)
-                elif element_type == ELEMENT_TYPE_CLASS:
-                    classes.append(self._convert_class_element(element, i, language))
-                elif element_type == ELEMENT_TYPE_FUNCTION:
-                    methods.append(self._convert_function_element(element, language))
-                elif element_type == ELEMENT_TYPE_VARIABLE:
-                    fields.append(self._convert_variable_element(element, language))
-                elif element_type == ELEMENT_TYPE_IMPORT:
-                    imports.append(self._convert_import_element(element))
-                # SQL element types
-                elif element_type in [
-                    ELEMENT_TYPE_SQL_TABLE,
-                    ELEMENT_TYPE_SQL_VIEW,
-                    ELEMENT_TYPE_SQL_PROCEDURE,
-                    ELEMENT_TYPE_SQL_FUNCTION,
-                    ELEMENT_TYPE_SQL_TRIGGER,
-                    ELEMENT_TYPE_SQL_INDEX,
-                ]:
-                    methods.append(self._convert_sql_element(element, language))
-
-            except Exception as element_error:
-                output_error(f"ERROR: Element {i} processing failed: {element_error}")
-                continue
-
-        return {
-            "file_path": analysis_result.file_path,
-            "language": analysis_result.language,
-            "line_count": analysis_result.line_count,
-            "package": {"name": package_name},
-            "classes": classes,
-            "methods": methods,
-            "fields": fields,
-            "imports": imports,
-            "statistics": {
-                "method_count": len(methods),
-                "field_count": len(fields),
-                "class_count": len(classes),
-                "import_count": len(imports),
-            },
-        }
-
+    # Convert between formats: _convert_class_element
     def _convert_class_element(
         self, element: Any, index: int, language: str
     ) -> dict[str, Any]:
@@ -325,6 +223,7 @@ class TableCommand(BaseCommand):
             },
         }
 
+    # Convert between formats: _convert_function_element
     def _convert_function_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert function element to table format."""
         # Process parameters based on language
@@ -353,6 +252,7 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
 
+    # Convert between formats: _convert_variable_element
     def _convert_variable_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert variable element to table format."""
         # Get field type based on language
@@ -385,6 +285,7 @@ class TableCommand(BaseCommand):
             "javadoc": javadoc,
         }
 
+    # Convert between formats: _convert_import_element
     def _convert_import_element(self, element: Any) -> dict[str, Any]:
         """Convert import element to table format."""
         # Try to get the full import statement from raw_text
@@ -402,6 +303,7 @@ class TableCommand(BaseCommand):
             "module_name": getattr(element, "module_name", ""),
         }
 
+    # Convert between formats: _convert_sql_element
     def _convert_sql_element(self, element: Any, language: str) -> dict[str, Any]:
         """Convert SQL element to table format."""
         element_name = getattr(element, "name", str(element))
@@ -435,6 +337,7 @@ class TableCommand(BaseCommand):
             "source_tables": source_tables,
         }
 
+    # Process data through pipeline: _process_sql_parameters
     def _process_sql_parameters(self, params: Any) -> list[dict[str, str]]:
         """Process SQL parameters."""
         if not params:
@@ -451,59 +354,10 @@ class TableCommand(BaseCommand):
         else:
             return [{"name": str(params), "type": "Any"}]
 
+    # Process data through pipeline: _process_parameters
     def _process_parameters(self, params: Any, language: str) -> list[dict[str, str]]:
         """Process parameters based on language syntax."""
-        if isinstance(params, str):
-            param_list = []
-            if params.strip():
-                param_names = [p.strip() for p in params.split(",") if p.strip()]
-                param_list = [{"name": name, "type": "Any"} for name in param_names]
-            return param_list
-        elif isinstance(params, list):
-            param_list = []
-            for param in params:
-                if isinstance(param, str):
-                    param = param.strip()
-                    # Languages using "name: type" syntax
-                    TYPE_SUFFIX_LANGUAGES = {
-                        "python",
-                        "rust",
-                        "kotlin",
-                        "typescript",
-                        "ts",
-                        "scala",
-                    }
-
-                    if language.lower() in TYPE_SUFFIX_LANGUAGES:
-                        # Format: "name: type"
-                        if ":" in param:
-                            parts = param.split(":", 1)
-                            param_name = parts[0].strip()
-                            param_type = parts[1].strip() if len(parts) > 1 else "Any"
-                            param_list.append({"name": param_name, "type": param_type})
-                        else:
-                            param_list.append({"name": param, "type": "Any"})
-                    else:
-                        # Java format: "Type name"
-                        last_space_idx = param.rfind(" ")
-                        if last_space_idx != -1:
-                            param_type = param[:last_space_idx].strip()
-                            param_name = param[last_space_idx + 1 :].strip()
-                            if param_type and param_name:
-                                param_list.append(
-                                    {"name": param_name, "type": param_type}
-                                )
-                            else:
-                                param_list.append({"name": param, "type": "Any"})
-                        else:
-                            param_list.append({"name": param, "type": "Any"})
-                elif isinstance(param, dict):
-                    param_list.append(param)
-                else:
-                    param_list.append({"name": str(param), "type": "Any"})
-            return param_list
-        else:
-            return []
+        return process_parameters(params, language)
 
     def _get_element_visibility(self, element: Any) -> str:
         """Get element visibility."""

@@ -74,6 +74,10 @@ class QueryCommand(BaseCommand):
                 output_error(
                     f"Query '{sanitized_query_key}' not found for language '{language}'"
                 )
+                output_info(
+                    f"Available queries: {', '.join(sorted(available_queries))}"
+                )
+                output_info("Use --list-queries to see all available query keys.")
                 return 1
             # Store query name - QueryService will resolve the query string
             query_to_execute = sanitized_query_key  # This is actually the query key now
@@ -108,8 +112,10 @@ class QueryCommand(BaseCommand):
                 print(formatter.format(results))
             else:
                 for i, query_result in enumerate(results, 1):
+                    name = query_result.get("name")
+                    name_suffix = f": {name}" if name else ""
                     output_data(
-                        f"\n{i}. {query_result['capture_name']} ({query_result['node_type']})"
+                        f"\n{i}. {query_result['capture_name']}{name_suffix} ({query_result['node_type']})"
                     )
                     output_data(
                         f"   Position: Line {query_result['start_line']}-{query_result['end_line']}"

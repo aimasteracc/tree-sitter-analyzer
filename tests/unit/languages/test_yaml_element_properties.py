@@ -134,85 +134,85 @@ class TestYAMLElementProperties:
 
         # Property: All required base CodeElement attributes must be present
         assert hasattr(element, "name"), "YAMLElement must have 'name' attribute"
-        assert hasattr(
-            element, "start_line"
-        ), "YAMLElement must have 'start_line' attribute"
-        assert hasattr(
-            element, "end_line"
-        ), "YAMLElement must have 'end_line' attribute"
-        assert hasattr(
-            element, "raw_text"
-        ), "YAMLElement must have 'raw_text' attribute"
-        assert hasattr(
-            element, "language"
-        ), "YAMLElement must have 'language' attribute"
-        assert hasattr(
-            element, "element_type"
-        ), "YAMLElement must have 'element_type' attribute"
+        assert hasattr(element, "start_line"), (
+            "YAMLElement must have 'start_line' attribute"
+        )
+        assert hasattr(element, "end_line"), (
+            "YAMLElement must have 'end_line' attribute"
+        )
+        assert hasattr(element, "raw_text"), (
+            "YAMLElement must have 'raw_text' attribute"
+        )
+        assert hasattr(element, "language"), (
+            "YAMLElement must have 'language' attribute"
+        )
+        assert hasattr(element, "element_type"), (
+            "YAMLElement must have 'element_type' attribute"
+        )
 
         # Property: All YAML-specific attributes must be present
         assert hasattr(element, "key"), "YAMLElement must have 'key' attribute"
         assert hasattr(element, "value"), "YAMLElement must have 'value' attribute"
-        assert hasattr(
-            element, "value_type"
-        ), "YAMLElement must have 'value_type' attribute"
-        assert hasattr(
-            element, "anchor_name"
-        ), "YAMLElement must have 'anchor_name' attribute"
-        assert hasattr(
-            element, "alias_target"
-        ), "YAMLElement must have 'alias_target' attribute"
-        assert hasattr(
-            element, "nesting_level"
-        ), "YAMLElement must have 'nesting_level' attribute"
-        assert hasattr(
-            element, "document_index"
-        ), "YAMLElement must have 'document_index' attribute"
-        assert hasattr(
-            element, "child_count"
-        ), "YAMLElement must have 'child_count' attribute"
+        assert hasattr(element, "value_type"), (
+            "YAMLElement must have 'value_type' attribute"
+        )
+        assert hasattr(element, "anchor_name"), (
+            "YAMLElement must have 'anchor_name' attribute"
+        )
+        assert hasattr(element, "alias_target"), (
+            "YAMLElement must have 'alias_target' attribute"
+        )
+        assert hasattr(element, "nesting_level"), (
+            "YAMLElement must have 'nesting_level' attribute"
+        )
+        assert hasattr(element, "document_index"), (
+            "YAMLElement must have 'document_index' attribute"
+        )
+        assert hasattr(element, "child_count"), (
+            "YAMLElement must have 'child_count' attribute"
+        )
 
         # Property: Attribute values must match what was set
         assert element.name == name, f"Expected name '{name}', got '{element.name}'"
-        assert (
-            element.start_line == start_line
-        ), f"Expected start_line {start_line}, got {element.start_line}"
-        assert (
-            element.end_line == end_line
-        ), f"Expected end_line {end_line}, got {element.end_line}"
-        assert (
-            element.raw_text == raw_text
-        ), f"Expected raw_text '{raw_text}', got '{element.raw_text}'"
-        assert (
-            element.element_type == element_type
-        ), f"Expected element_type '{element_type}', got '{element.element_type}'"
+        assert element.start_line == start_line, (
+            f"Expected start_line {start_line}, got {element.start_line}"
+        )
+        assert element.end_line == end_line, (
+            f"Expected end_line {end_line}, got {element.end_line}"
+        )
+        assert element.raw_text == raw_text, (
+            f"Expected raw_text '{raw_text}', got '{element.raw_text}'"
+        )
+        assert element.element_type == element_type, (
+            f"Expected element_type '{element_type}', got '{element.element_type}'"
+        )
         assert element.key == key, f"Expected key '{key}', got '{element.key}'"
-        assert (
-            element.value == value
-        ), f"Expected value '{value}', got '{element.value}'"
-        assert (
-            element.value_type == value_type
-        ), f"Expected value_type '{value_type}', got '{element.value_type}'"
-        assert (
-            element.anchor_name == anchor_name
-        ), f"Expected anchor_name '{anchor_name}', got '{element.anchor_name}'"
-        assert (
-            element.alias_target == alias_target
-        ), f"Expected alias_target '{alias_target}', got '{element.alias_target}'"
-        assert (
-            element.nesting_level == nesting_level
-        ), f"Expected nesting_level {nesting_level}, got {element.nesting_level}"
-        assert (
-            element.document_index == document_index
-        ), f"Expected document_index {document_index}, got {element.document_index}"
-        assert (
-            element.child_count == child_count
-        ), f"Expected child_count {child_count}, got {element.child_count}"
+        assert element.value == value, (
+            f"Expected value '{value}', got '{element.value}'"
+        )
+        assert element.value_type == value_type, (
+            f"Expected value_type '{value_type}', got '{element.value_type}'"
+        )
+        assert element.anchor_name == anchor_name, (
+            f"Expected anchor_name '{anchor_name}', got '{element.anchor_name}'"
+        )
+        assert element.alias_target == alias_target, (
+            f"Expected alias_target '{alias_target}', got '{element.alias_target}'"
+        )
+        assert element.nesting_level == nesting_level, (
+            f"Expected nesting_level {nesting_level}, got {element.nesting_level}"
+        )
+        assert element.document_index == document_index, (
+            f"Expected document_index {document_index}, got {element.document_index}"
+        )
+        assert element.child_count == child_count, (
+            f"Expected child_count {child_count}, got {element.child_count}"
+        )
 
         # Property: Default language should be 'yaml'
-        assert (
-            element.language == "yaml"
-        ), f"Expected language 'yaml', got '{element.language}'"
+        assert element.language == "yaml", (
+            f"Expected language 'yaml', got '{element.language}'"
+        )
 
     @settings(max_examples=100)
     @given(
@@ -296,9 +296,9 @@ class TestYAMLElementProperties:
 
         # Property: to_summary_item() must return a valid dictionary
         summary = element.to_summary_item()
-        assert isinstance(
-            summary, dict
-        ), f"to_summary_item() must return dict, got {type(summary)}"
+        assert isinstance(summary, dict), (
+            f"to_summary_item() must return dict, got {type(summary)}"
+        )
 
         # Property: Summary must contain required fields
         assert "name" in summary, "Summary must contain 'name' field"
@@ -310,12 +310,12 @@ class TestYAMLElementProperties:
         assert "end" in summary["lines"], "Lines must contain 'end' field"
 
         # Property: Summary values must match element values
-        assert (
-            summary["name"] == name
-        ), f"Summary name '{summary['name']}' must match element name '{name}'"
-        assert (
-            summary["type"] == element_type
-        ), f"Summary type '{summary['type']}' must match element_type '{element_type}'"
+        assert summary["name"] == name, (
+            f"Summary name '{summary['name']}' must match element name '{name}'"
+        )
+        assert summary["type"] == element_type, (
+            f"Summary type '{summary['type']}' must match element_type '{element_type}'"
+        )
         assert summary["lines"]["start"] == start_line, "Summary start line must match"
         assert summary["lines"]["end"] == end_line, "Summary end line must match"
 
@@ -323,9 +323,9 @@ class TestYAMLElementProperties:
         assert "key" in summary, "Summary must contain 'key' field"
         assert "value_type" in summary, "Summary must contain 'value_type' field"
         assert "nesting_level" in summary, "Summary must contain 'nesting_level' field"
-        assert (
-            "document_index" in summary
-        ), "Summary must contain 'document_index' field"
+        assert "document_index" in summary, (
+            "Summary must contain 'document_index' field"
+        )
 
         # Property: Summary must be JSON serializable
         try:
@@ -418,9 +418,9 @@ class TestYAMLElementProperties:
         )
 
         # Property: element_type must be stored correctly
-        assert (
-            element.element_type == element_type
-        ), f"element_type must be '{element_type}'"
+        assert element.element_type == element_type, (
+            f"element_type must be '{element_type}'"
+        )
 
         # Property: value_type must be stored correctly
         assert element.value_type == value_type, f"value_type must be '{value_type}'"
@@ -428,6 +428,6 @@ class TestYAMLElementProperties:
         # Property: Summary must reflect correct types
         summary = element.to_summary_item()
         assert summary["type"] == element_type, f"Summary type must be '{element_type}'"
-        assert (
-            summary["value_type"] == value_type
-        ), f"Summary value_type must be '{value_type}'"
+        assert summary["value_type"] == value_type, (
+            f"Summary value_type must be '{value_type}'"
+        )

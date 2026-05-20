@@ -28,39 +28,36 @@ class LanguageLoader:
 
     # 対応言語とモジュールのマッピング（最適化：frozendict使用を検討）
     LANGUAGE_MODULES = {
-        "bash": "tree_sitter_bash",
-        "c": "tree_sitter_c",
-        "cpp": "tree_sitter_cpp",
-        "csharp": "tree_sitter_c_sharp",
-        "cs": "tree_sitter_c_sharp",  # C# alias
-        "css": "tree_sitter_css",
-        "go": "tree_sitter_go",
-        "html": "tree_sitter_html",
         "java": "tree_sitter_java",
         "javascript": "tree_sitter_javascript",
-        "json": "tree_sitter_json",
-        "kotlin": "tree_sitter_kotlin",
-        "markdown": "tree_sitter_markdown",
-        "php": "tree_sitter_php",
-        "python": "tree_sitter_python",
-        "ruby": "tree_sitter_ruby",
-        "rust": "tree_sitter_rust",
-        "scala": "tree_sitter_scala",
-        "sql": "tree_sitter_sql",
-        "swift": "tree_sitter_swift",
-        "tsx": "tree_sitter_typescript",
         "typescript": "tree_sitter_typescript",
+        "tsx": "tree_sitter_typescript",
+        "python": "tree_sitter_python",
+        "c": "tree_sitter_c",
+        "cpp": "tree_sitter_cpp",
+        "rust": "tree_sitter_rust",
+        "go": "tree_sitter_go",
+        "markdown": "tree_sitter_markdown",
+        "sql": "tree_sitter_sql",
+        "csharp": "tree_sitter_c_sharp",
+        "cs": "tree_sitter_c_sharp",  # C# alias
+        # Web languages
+        "html": "tree_sitter_html",
+        "css": "tree_sitter_css",
         "yaml": "tree_sitter_yaml",
         "yml": "tree_sitter_yaml",  # YAML alias
-        "jsonc": "tree_sitter_json",  # JSON with comments alias
-        "json5": "tree_sitter_json",  # JSON5 alias
+        # Additional languages
+        "php": "tree_sitter_php",
+        "ruby": "tree_sitter_ruby",
+        "kotlin": "tree_sitter_kotlin",
+        "swift": "tree_sitter_swift",
     }
 
     # TypeScript特別処理（TypeScriptとTSX）
     TYPESCRIPT_DIALECTS = {"typescript": "typescript", "tsx": "tsx"}
 
     @property
-    def SUPPORTED_LANGUAGES(self) -> list[str]:
+    def SUPPORTED_LANGUAGES(self) -> list:
         """サポートされている言語のリストを取得するプロパティ"""
         return list(self.LANGUAGE_MODULES.keys())
 
@@ -230,7 +227,7 @@ class LanguageLoader:
         """Create a parser for the specified language (alias for create_parser_safely)"""
         return self.create_parser_safely(language)
 
-    def get_supported_languages(self) -> list[str]:
+    def get_supported_languages(self) -> list:
         """
         サポートされている言語のリストを取得（最適化：結果キャッシュ）
 

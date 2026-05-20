@@ -7,6 +7,7 @@ mechanisms for the MCP server operations.
 """
 
 import asyncio
+import inspect
 import logging
 import traceback
 from collections.abc import Callable
@@ -473,6 +474,7 @@ class ErrorHandler:
         logger.info("Error history and statistics cleared")
 
 
+# Handle request or event: handle_mcp_errors
 def handle_mcp_errors(
     operation: str = "unknown",
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -550,7 +552,7 @@ def handle_mcp_errors(
                     ) from e
                 raise
 
-        return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+        return async_wrapper if inspect.iscoroutinefunction(func) else sync_wrapper
 
     return decorator
 
@@ -559,6 +561,7 @@ def handle_mcp_errors(
 _error_handler = ErrorHandler()
 
 
+# Handle request or event: get_error_handler
 def get_error_handler() -> ErrorHandler:
     """
     Get the global error handler instance

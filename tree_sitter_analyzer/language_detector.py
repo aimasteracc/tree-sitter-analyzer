@@ -9,6 +9,15 @@ Supports multiple languages with extensible configuration.
 from pathlib import Path
 from typing import Any
 
+from ._language_detector_helpers import (
+    build_content_pattern_weights,
+    build_extension_confidence_map,
+    get_cached_language,
+    get_path_mtime_ns,
+    normalize_detection_path,
+    store_cached_language,
+)
+
 
 class LanguageDetector:
     """Automatic programming language detector"""
@@ -87,10 +96,6 @@ class LanguageDetector:
         # YAML系
         ".yaml": "yaml",
         ".yml": "yaml",
-        # Shell/Bash系
-        ".sh": "bash",
-        ".bash": "bash",
-        ".zsh": "bash",
     }
 
     # Ambiguous extensions (map to multiple languages)
@@ -116,162 +121,31 @@ class LanguageDetector:
 
     # Tree-sitter supported languages
     SUPPORTED_LANGUAGES = {
-        "bash",
+        "java",
+        "javascript",
+        "typescript",
+        "python",
         "c",
         "cpp",
         "csharp",
-        "css",
-        "go",
-        "html",
-        "java",
-        "javascript",
-        "json",
-        "kotlin",
-        "markdown",
-        "php",
-        "python",
-        "ruby",
         "rust",
-        "sql",
+        "go",
+        "kotlin",
+        "php",
+        "ruby",
         "swift",
-        "typescript",
+        "markdown",
+        "html",
+        "css",
+        "json",
+        "sql",
         "yaml",
     }
 
     def __init__(self) -> None:
         """Initialize detector"""
-        self.extension_map = {
-            ".java": ("java", 0.9),
-            ".js": ("javascript", 0.9),
-            ".jsx": ("javascript", 0.8),
-            ".ts": ("typescript", 0.9),
-            ".tsx": ("typescript", 0.8),
-            ".mts": ("typescript", 0.9),
-            ".cts": ("typescript", 0.9),
-            ".py": ("python", 0.9),
-            ".pyw": ("python", 0.8),
-            ".c": ("c", 0.9),
-            ".h": ("c", 0.7),
-            ".cpp": ("cpp", 0.9),
-            ".cxx": ("cpp", 0.9),
-            ".cc": ("cpp", 0.9),
-            ".hpp": ("cpp", 0.8),
-            ".rs": ("rust", 0.9),
-            ".go": ("go", 0.9),
-            ".cs": ("csharp", 0.9),
-            ".php": ("php", 0.9),
-            ".rb": ("ruby", 0.9),
-            ".swift": ("swift", 0.9),
-            ".kt": ("kotlin", 0.9),
-            ".kts": ("kotlin", 0.9),
-            ".scala": ("scala", 0.9),
-            ".clj": ("clojure", 0.9),
-            ".hs": ("haskell", 0.9),
-            ".ml": ("ocaml", 0.9),
-            ".fs": ("fsharp", 0.9),
-            ".elm": ("elm", 0.9),
-            ".dart": ("dart", 0.9),
-            ".lua": ("lua", 0.9),
-            ".r": ("r", 0.9),
-            ".m": ("objectivec", 0.7),
-            ".mm": ("objectivec", 0.8),
-            # Markdown extensions
-            ".md": ("markdown", 0.9),
-            ".markdown": ("markdown", 0.9),
-            ".mdown": ("markdown", 0.8),
-            ".mkd": ("markdown", 0.8),
-            ".mkdn": ("markdown", 0.8),
-            ".mdx": ("markdown", 0.7),  # MDX might be mixed with JSX
-            # HTML extensions
-            ".html": ("html", 0.9),
-            ".htm": ("html", 0.9),
-            ".xhtml": ("html", 0.8),
-            # CSS extensions
-            ".css": ("css", 0.9),
-            ".scss": ("css", 0.8),  # Sass/SCSS
-            ".sass": ("css", 0.8),  # Sass
-            ".less": ("css", 0.8),  # Less
-            # JSON extensions
-            ".json": ("json", 0.9),
-            ".jsonc": ("json", 0.8),  # JSON with comments
-            ".json5": ("json", 0.8),  # JSON5 format
-            # SQL extensions
-            ".sql": ("sql", 0.9),
-            # YAML extensions
-            ".yaml": ("yaml", 0.9),
-            ".yml": ("yaml", 0.9),
-        }
-
-        # Content-based detection patterns
-        self.content_patterns = {
-            "java": [
-                (r"package\s+[\w\.]+\s*;", 0.3),
-                (r"public\s+class\s+\w+", 0.3),
-                (r"import\s+[\w\.]+\s*;", 0.2),
-                (r"@\w+\s*\(", 0.2),  # Annotations
-            ],
-            "python": [
-                (r"def\s+\w+\s*\(", 0.3),
-                (r"import\s+\w+", 0.2),
-                (r"from\s+\w+\s+import", 0.2),
-                (r'if\s+__name__\s*==\s*["\']__main__["\']', 0.3),
-            ],
-            "javascript": [
-                (r"function\s+\w+\s*\(", 0.3),
-                (r"var\s+\w+\s*=", 0.2),
-                (r"let\s+\w+\s*=", 0.2),
-                (r"const\s+\w+\s*=", 0.2),
-                (r"console\.log\s*\(", 0.1),
-            ],
-            "typescript": [
-                (r"interface\s+\w+", 0.3),
-                (r"type\s+\w+\s*=", 0.2),
-                (r":\s*\w+\s*=", 0.2),  # Type annotations
-                (r"export\s+(interface|type|class)", 0.2),
-            ],
-            "c": [
-                (r"#include\s*<[\w\.]+>", 0.3),
-                (r"int\s+main\s*\(", 0.3),
-                (r"printf\s*\(", 0.2),
-                (r"#define\s+\w+", 0.2),
-            ],
-            "cpp": [
-                (r"#include\s*<[\w\.]+>", 0.2),
-                (r"using\s+namespace\s+\w+", 0.3),
-                (r"std::\w+", 0.2),
-                (r"class\s+\w+\s*{", 0.3),
-            ],
-            "markdown": [
-                (r"^#{1,6}\s+", 0.4),  # ATX headers
-                (r"^\s*[-*+]\s+", 0.3),  # List items
-                (r"```[\w]*", 0.3),  # Fenced code blocks
-                (r"\[.*\]\(.*\)", 0.2),  # Links
-                (r"!\[.*\]\(.*\)", 0.2),  # Images
-                (r"^\s*>\s+", 0.2),  # Blockquotes
-                (r"^\s*\|.*\|", 0.2),  # Tables
-                (r"^[-=]{3,}$", 0.2),  # Setext headers or horizontal rules
-            ],
-            "html": [
-                (r"<!DOCTYPE\s+html", 0.4),  # HTML5 doctype
-                (r"<html[^>]*>", 0.3),  # HTML tag
-                (r"<head[^>]*>", 0.3),  # Head tag
-                (r"<body[^>]*>", 0.3),  # Body tag
-                (r"<div[^>]*>", 0.2),  # Div tag
-                (r"<p[^>]*>", 0.2),  # Paragraph tag
-                (r"<a\s+href=", 0.2),  # Link tag with href
-                (r"<img\s+src=", 0.2),  # Image tag with src
-            ],
-            "css": [
-                (r"[.#][\w-]+\s*{", 0.4),  # CSS selectors
-                (r"@media\s+", 0.3),  # Media queries
-                (r"@import\s+", 0.3),  # Import statements
-                (r"@keyframes\s+", 0.3),  # Keyframes
-                (r":\s*[\w-]+\s*;", 0.2),  # Property declarations
-                (r"color\s*:", 0.2),  # Color property
-                (r"font-", 0.2),  # Font properties
-                (r"margin\s*:", 0.2),  # Margin property
-            ],
-        }
+        self.extension_map = build_extension_confidence_map()
+        self.content_patterns = build_content_pattern_weights()
 
         from .utils import log_debug, log_warning
 
@@ -298,35 +172,37 @@ class LanguageDetector:
         path = Path(file_path)
         extension = path.suffix.lower()
 
-        # Direct mapping by extension
-        if extension in self.EXTENSION_MAPPING:
-            language = self.EXTENSION_MAPPING[extension]
-
-            # Ensure language is valid
-            if not language or language.strip() == "":
-                return "unknown", 0.0
-
-            # Use confidence from extension_map if available
-            if extension in self.extension_map:
-                _, confidence = self.extension_map[extension]
-                return language, confidence
-
-            # No ambiguity -> high confidence
-            if extension not in self.AMBIGUOUS_EXTENSIONS:
-                return language, 1.0
-
-            # Resolve ambiguity using content
-            if content:
-                refined_language = self._resolve_ambiguity(extension, content)
-                # Ensure refined language is valid
-                if not refined_language or refined_language.strip() == "":
-                    refined_language = "unknown"
-                return refined_language, 0.9 if refined_language != language else 0.7
-            else:
-                return language, 0.7  # Lower confidence without content
+        detected = self._detect_mapped_extension(extension, content)
+        if detected is not None:
+            return detected
 
         # Unknown extension - always return "unknown" instead of None
         return "unknown", 0.0
+
+    def _detect_mapped_extension(
+        self, extension: str, content: str | None
+    ) -> tuple[str, float] | None:
+        if extension not in self.EXTENSION_MAPPING:
+            return None
+
+        language = self.EXTENSION_MAPPING[extension]
+        if not language or language.strip() == "":
+            return "unknown", 0.0
+
+        if extension in self.extension_map:
+            _, confidence = self.extension_map[extension]
+            return language, confidence
+
+        if extension not in self.AMBIGUOUS_EXTENSIONS:
+            return language, 1.0
+
+        if not content:
+            return language, 0.7
+
+        refined_language = self._resolve_ambiguity(extension, content)
+        if not refined_language or refined_language.strip() == "":
+            refined_language = "unknown"
+        return refined_language, 0.9 if refined_language != language else 0.7
 
     def detect_from_extension(self, file_path: str) -> str:
         """
@@ -531,49 +407,16 @@ def detect_language_from_file(
 
     # Normalize to absolute path for caching (do not require file to exist).
     # If project_root is provided and file_path is relative, resolve against project_root.
-    try:
-        p = Path(file_path).expanduser()
-        if project_root and not p.is_absolute():
-            abs_path = str((Path(project_root).expanduser() / p).resolve())
-        else:
-            abs_path = str(p.resolve())
-    except Exception:
-        abs_path = file_path
+    abs_path = normalize_detection_path(file_path, project_root)
 
     # Best-practice cache: (project_root, abs_path) -> {language, mtime_ns}
     # If we cannot stat (missing file / permission), do NOT cache.
-    mtime_ns: int | None = None
-    try:
-        import os
-
-        if os.path.exists(abs_path):
-            mtime_ns = os.stat(abs_path).st_mtime_ns
-    except (PermissionError, OSError):
-        mtime_ns = None
+    mtime_ns = get_path_mtime_ns(abs_path)
 
     if mtime_ns is not None:
-        try:
-            from .mcp.utils.shared_cache import get_shared_cache
-
-            shared_cache = get_shared_cache()
-            cached = shared_cache.get_language_meta(abs_path, project_root=project_root)
-            if (
-                cached
-                and cached.get("mtime_ns") == mtime_ns
-                and isinstance(cached.get("language"), str)
-            ):
-                cached_lang = cached["language"]
-                return cached_lang if cached_lang.strip() else "unknown"
-        except (ImportError, ModuleNotFoundError):
-            # MCP cache is optional (e.g., when using the core library without MCP).
-            cached = None
-        except Exception as e:
-            # Cache failures must not break language detection
-            import logging
-
-            logging.getLogger(__name__).debug(
-                "Language cache lookup failed for %s: %s", abs_path, e
-            )
+        cached_language = get_cached_language(abs_path, mtime_ns, project_root)
+        if cached_language is not None:
+            return cached_language
 
     # Cache miss: use the global detector (fast, avoids per-call initialization costs)
     result = detector.detect_from_extension(abs_path)
@@ -583,24 +426,7 @@ def detect_language_from_file(
         return "unknown"
 
     # Store to cache (including unknown) only when we could stat the file
-    if mtime_ns is not None:
-        try:
-            from .mcp.utils.shared_cache import get_shared_cache
-
-            get_shared_cache().set_language_meta(
-                abs_path,
-                {"language": result, "mtime_ns": mtime_ns},
-                project_root=project_root,
-            )
-        except (ImportError, ModuleNotFoundError):
-            # MCP cache is optional (e.g., when using the core library without MCP).
-            pass
-        except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).debug(
-                "Language cache store failed for %s: %s", abs_path, e
-            )
+    store_cached_language(abs_path, result, mtime_ns, project_root)
 
     return result
 

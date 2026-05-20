@@ -46,8 +46,8 @@ CPP_QUERIES: dict[str, str] = {
         declarator: (destructor_name) @dtor.name)) @destructor
     """,
     "virtual_function": """
-    (function_definition
-      (virtual)) @virtual_function
+    (field_declaration
+      "virtual") @virtual_function
     """,
     # --- Templates ---
     "template": """
@@ -71,13 +71,14 @@ CPP_QUERIES: dict[str, str] = {
     """,
     "namespace_name": """
     (namespace_definition
-      name: (identifier) @namespace_name)
+      name: (namespace_identifier) @namespace_name)
     """,
     "using_declaration": """
     (using_declaration) @using_declaration
     """,
     "using_directive": """
-    (using_directive) @using_directive
+    (using_declaration
+      "namespace") @using_directive
     """,
     # --- Includes and Preprocessor ---
     "include": """
@@ -133,14 +134,13 @@ CPP_QUERIES: dict[str, str] = {
     # --- Inheritance ---
     "base_class": """
     (base_class_clause
-      (base_specifier) @base_class)
+      (type_identifier) @base_class)
     """,
     "public_inheritance": """
     (base_class_clause
-      (base_specifier
-        (access_specifier) @access
-        (#eq? @access "public")
-        (type_identifier) @base_type)) @public_inheritance
+      (access_specifier) @access
+      (#eq? @access "public")
+      (type_identifier) @base_type) @public_inheritance
     """,
     # --- Smart Pointers and Modern C++ ---
     "smart_pointer": """

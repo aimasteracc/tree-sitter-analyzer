@@ -8,6 +8,7 @@ Handles partial file reading functionality, extracting specified line ranges.
 from typing import TYPE_CHECKING, Any
 
 from ...file_handler import read_file_partial
+from ...mcp.tools.read_partial_helpers import build_agent_summary
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
@@ -107,17 +108,36 @@ class PartialReadCommand(BaseCommand):
 
     def _output_partial_content(self, content: str) -> None:
         """Output the partial content in the specified format."""
+        end_line = getattr(self.args, "end_line", None)
+        start_column = getattr(self.args, "start_column", None)
+        end_column = getattr(self.args, "end_column", None)
+        lines_extracted = (
+            end_line - self.args.start_line + 1
+            if end_line
+            else len(content.splitlines())
+        )
+
         # Build result data
         result_data = {
             "file_path": self.args.file_path,
             "range": {
                 "start_line": self.args.start_line,
-                "end_line": getattr(self.args, "end_line", None),
-                "start_column": getattr(self.args, "start_column", None),
-                "end_column": getattr(self.args, "end_column", None),
+                "end_line": end_line,
+                "start_column": start_column,
+                "end_column": end_column,
             },
             "content": content,
             "content_length": len(content),
+            "agent_summary": build_agent_summary(
+                file_path=self.args.file_path,
+                start_line=self.args.start_line,
+                end_line=end_line,
+                start_column=start_column,
+                end_column=end_column,
+                content_length=len(content),
+                lines_extracted=lines_extracted,
+                content_format="text",
+            ),
         }
 
         # Build range info for header

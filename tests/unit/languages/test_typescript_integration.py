@@ -240,14 +240,17 @@ class TestTypeScriptIntegration:
         # Check common queries
         common_queries = ["function", "class", "variable", "import", "export"]
         for query in common_queries:
-            assert (
-                query in queries
-            ), f"Common query '{query}' not found in supported queries"
+            assert query in queries, (
+                f"Common query '{query}' not found in supported queries"
+            )
 
     @patch(
-        "tree_sitter_analyzer.languages.typescript_plugin.TREE_SITTER_AVAILABLE", True
+        "tree_sitter_analyzer.languages.typescript_plugin.plugin.TREE_SITTER_AVAILABLE",
+        True,
     )
-    @patch("tree_sitter_analyzer.languages.typescript_plugin.loader.load_language")
+    @patch(
+        "tree_sitter_analyzer.languages.typescript_plugin.extractor.loader.load_language"
+    )
     @pytest.mark.asyncio
     async def test_typescript_plugin_analyze_file_mock(self, mock_load_language):
         """Test TypeScript plugin file analysis with mocked dependencies"""

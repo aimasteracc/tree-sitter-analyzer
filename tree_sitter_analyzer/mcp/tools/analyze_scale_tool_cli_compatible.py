@@ -63,6 +63,7 @@ class AnalyzeScaleToolCLICompatible:
             "additionalProperties": False,
         }
 
+    # execute: implementation
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """
         Execute the analyze_code_scale tool with CLI-compatible output.
@@ -171,6 +172,7 @@ class AnalyzeScaleToolCLICompatible:
                 "error_message": str(e),
             }
 
+    # validate_arguments: implementation
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """
         Validate tool arguments against the schema.
@@ -218,6 +220,7 @@ class AnalyzeScaleToolCLICompatible:
 
         return True
 
+    # get_tool_definition: implementation
     def get_tool_definition(self) -> Any:
         """
         Get the MCP tool definition for analyze_code_scale.

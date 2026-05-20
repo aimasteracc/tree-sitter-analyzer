@@ -235,6 +235,7 @@ class YAMLFormatter(BaseFormatter):
             return self._format_csv(analysis_result)
         return self._format_full(analysis_result)
 
+    # Format data for output: _format_full
     def _format_full(self, analysis_result: dict[str, Any]) -> str:
         """Format full table output for YAML files."""
         file_path = analysis_result.get("file_path", "")
@@ -340,6 +341,7 @@ class YAMLFormatter(BaseFormatter):
 
         return "\n".join(output)
 
+    # Format data for output: _format_compact
     def _format_compact(self, analysis_result: dict[str, Any]) -> str:
         """Format compact table output for YAML files."""
         file_path = analysis_result.get("file_path", "")
@@ -403,6 +405,7 @@ class YAMLFormatter(BaseFormatter):
 
         return "\n".join(output)
 
+    # Format data for output: _format_csv
     def _format_csv(self, analysis_result: dict[str, Any]) -> str:
         """Format CSV output for YAML files."""
         elements = analysis_result.get("elements", [])
@@ -438,6 +441,7 @@ class YAMLFormatter(BaseFormatter):
         else:
             return "Very Complex"
 
+    # Format data for output: _format_advanced_text
     def _format_advanced_text(self, data: dict[str, Any]) -> str:
         """Format advanced analysis in text format."""
         output = ["--- Advanced Analysis Results ---"]
@@ -463,6 +467,7 @@ class YAMLFormatter(BaseFormatter):
 
         return "\n".join(output)
 
+    # Format data for output: _format_json_output
     def _format_json_output(self, title: str, data: dict[str, Any]) -> str:
         """Format JSON output with title."""
         import json

@@ -290,7 +290,7 @@ def test_detect_from_extension_various_files(
         "go",
         "php",
         "ruby",
-        "scala",
+        "swift",
     ],
 )
 def test_is_supported_supported_languages(language_detector, language):
@@ -298,7 +298,7 @@ def test_is_supported_supported_languages(language_detector, language):
     assert language_detector.is_supported(language) is True
 
 
-@pytest.mark.parametrize("language", ["haskell", "unknown"])
+@pytest.mark.parametrize("language", ["scala", "unknown"])
 def test_is_supported_unsupported_languages(language_detector, language):
     """Test support status for unsupported languages"""
     assert language_detector.is_supported(language) is False
@@ -330,6 +330,7 @@ def test_get_supported_languages(language_detector):
     assert "cpp" in languages
     assert "php" in languages
     assert "ruby" in languages
+    assert "swift" in languages
     # Should be sorted
     assert languages == sorted(languages)
 
@@ -361,15 +362,14 @@ def test_get_language_info_supported(language_detector):
     assert info["tree_sitter_available"] is True
 
 
-def test_get_language_info_unsupported(language_detector):
-    """Test getting language information for unsupported language"""
-    # Test for unsupported language (using haskell which is not supported)
-    info = language_detector.get_language_info("haskell")
+def test_get_language_info_swift_supported(language_detector):
+    """Test getting language information for Swift."""
+    info = language_detector.get_language_info("swift")
 
-    assert info["name"] == "haskell"
-    assert ".hs" in info["extensions"]
-    assert info["supported"] is False
-    assert info["tree_sitter_available"] is False
+    assert info["name"] == "swift"
+    assert ".swift" in info["extensions"]
+    assert info["supported"] is True
+    assert info["tree_sitter_available"] is True
 
 
 def test_resolve_ambiguity_non_ambiguous(language_detector):
@@ -428,8 +428,7 @@ def test_is_language_supported_global():
     """Test global is_language_supported function"""
     assert is_language_supported("java") is True
     assert is_language_supported("python") is True
-    assert is_language_supported("scala") is True
-    assert is_language_supported("haskell") is False
+    assert is_language_supported("swift") is True
     assert is_language_supported("unknown") is False
 
 
@@ -491,3 +490,181 @@ def test_none_content_for_ambiguous_extension(language_detector):
     language, confidence = language_detector.detect_language("test.h", None)
     assert language == "c"
     assert confidence == 0.7
+
+
+# --- Tests for uncovered private method paths ---
+
+
+def test_resolve_ambiguity_h_with_cpp_content(language_detector):
+    """_resolve_ambiguity for .h with C++ content returns cpp"""
+    result = language_detector._resolve_ambiguity(
+        ".h", "#include <iostream>\nstd::cout << 'hi';"
+    )
+    assert result == "cpp"
+
+
+def test_resolve_ambiguity_h_with_c_content(language_detector):
+    """_resolve_ambiguity for .h with C content returns c"""
+    result = language_detector._resolve_ambiguity(
+        ".h", '#include <stdio.h>\nprintf("hi");'
+    )
+    assert result == "c"
+
+
+def test_resolve_ambiguity_h_with_objc_content(language_detector):
+    """_resolve_ambiguity for .h with ObjC content returns objc"""
+    result = language_detector._resolve_ambiguity(
+        ".h", "#import <Foundation/Foundation.h>\n@interface Foo\nNSString *s; alloc]"
+    )
+    assert result == "objc"
+
+
+def test_resolve_ambiguity_m_with_objc_content(language_detector):
+    """_resolve_ambiguity for .m with ObjC content"""
+    result = language_detector._resolve_ambiguity(
+        ".m", '#import "Foo.h"\n@interface Bar\nalloc]'
+    )
+    assert result == "objc"
+
+
+def test_resolve_ambiguity_m_with_matlab_content(language_detector):
+    """_resolve_ambiguity for .m with MATLAB content"""
+    result = language_detector._resolve_ambiguity(
+        ".m", "function y = f(x)\nclc;\nclear all\ndisp(x)\nend;"
+    )
+    assert result == "matlab"
+
+
+def test_resolve_ambiguity_sql_fallback(language_detector):
+    """_resolve_ambiguity for .sql returns first candidate"""
+    result = language_detector._resolve_ambiguity(".sql", "SELECT 1")
+    assert result == "sql"
+
+
+def test_resolve_ambiguity_json_fallback(language_detector):
+    """_resolve_ambiguity for .json returns first candidate"""
+    result = language_detector._resolve_ambiguity(".json", "{}")
+    assert result == "json"
+
+
+def test_detect_c_family_cpp_wins(language_detector):
+    """_detect_c_family with strong C++ patterns"""
+    content = "#include <iostream>\nusing namespace std;\nstd::vector<int> v;"
+    result = language_detector._detect_c_family(content, ["c", "cpp"])
+    assert result == "cpp"
+
+
+def test_detect_c_family_c_wins(language_detector):
+    """_detect_c_family with strong C patterns"""
+    content = '#include <stdio.h>\nprintf("hello");\nmalloc(64);\ntypedef struct'
+    result = language_detector._detect_c_family(content, ["c", "cpp"])
+    assert result == "c"
+
+
+def test_detect_c_family_objc_wins(language_detector):
+    """_detect_c_family with ObjC patterns winning"""
+    content = "#import <Foundation/Foundation.h>\n@interface Foo\nalloc]"
+    result = language_detector._detect_c_family(content, ["c", "cpp", "objc"])
+    assert result == "objc"
+
+
+def test_detect_objc_vs_matlab_objc_wins(language_detector):
+    """_detect_objc_vs_matlab with clear ObjC content"""
+    content = '#import "Foo.h"\n@interface MyClass\n@implementation MyClass\nNSString *s = [[NSString alloc] init]'
+    result = language_detector._detect_objc_vs_matlab(content, ["objc", "matlab"])
+    assert result == "objc"
+
+
+def test_detect_objc_vs_matlab_matlab_wins(language_detector):
+    """_detect_objc_vs_matlab with clear MATLAB content"""
+    content = "function result = calc()\nclc;\nclear all\ndisp('hello')\nend;"
+    result = language_detector._detect_objc_vs_matlab(content, ["objc", "matlab"])
+    assert result == "matlab"
+
+
+def test_detect_from_extension_none_input(language_detector):
+    """detect_from_extension with None returns unknown"""
+    assert language_detector.detect_from_extension(None) == "unknown"
+
+
+def test_detect_from_extension_non_string_input(language_detector):
+    """detect_from_extension with non-string returns unknown"""
+    assert language_detector.detect_from_extension(123) == "unknown"
+
+
+def test_detect_language_with_content_ambiguity_path(language_detector):
+    """Force ambiguity resolution by removing .sql from extension_map"""
+    language_detector.extension_map.pop(".sql", None)
+    language, confidence = language_detector.detect_language(
+        "test.sql", "SELECT * FROM table"
+    )
+    assert language == "sql"
+    assert confidence == 0.7
+
+
+def test_detect_language_with_content_ambiguity_without_content(language_detector):
+    """Force ambiguity path without content returns 0.7 confidence"""
+    language_detector.extension_map.pop(".sql", None)
+    language, confidence = language_detector.detect_language("test.sql")
+    assert language == "sql"
+    assert confidence == 0.7
+
+
+def test_detect_language_empty_string_path(language_detector):
+    """detect_language with empty string"""
+    language, confidence = language_detector.detect_language("")
+    assert language == "unknown"
+    assert confidence == 0.0
+
+
+def test_detect_language_non_string_input(language_detector):
+    """detect_language with non-string input"""
+    language, confidence = language_detector.detect_language(None)
+    assert language == "unknown"
+    assert confidence == 0.0
+
+
+def test_detect_language_from_file_with_project_root():
+    """detect_language_from_file with relative path and project_root"""
+    import os
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a real file so mtime_ns is captured
+        fpath = os.path.join(tmpdir, "test.py")
+        with open(fpath, "w") as f:
+            f.write("print('hello')")
+        result = detect_language_from_file("test.py", project_root=tmpdir)
+        assert result == "python"
+
+
+def test_detect_language_from_file_empty():
+    """detect_language_from_file with empty string"""
+    assert detect_language_from_file("") == "unknown"
+
+
+def test_detect_language_from_file_none():
+    """detect_language_from_file with None"""
+    assert detect_language_from_file(None) == "unknown"  # type: ignore
+
+
+def test_is_supported_with_plugin_manager_failure(language_detector):
+    """is_supported falls back when PluginManager raises"""
+    import unittest.mock
+
+    with unittest.mock.patch(
+        "tree_sitter_analyzer.plugins.manager.PluginManager",
+        side_effect=ImportError("nope"),
+    ):
+        assert language_detector.is_supported("cobol") is False
+
+
+def test_is_language_supported_with_plugin_manager_failure():
+    """is_language_supported falls back when PluginManager raises"""
+    import unittest.mock
+
+    with unittest.mock.patch(
+        "tree_sitter_analyzer.plugins.manager.PluginManager",
+        side_effect=ImportError("nope"),
+    ):
+        assert is_language_supported("cobol") is False

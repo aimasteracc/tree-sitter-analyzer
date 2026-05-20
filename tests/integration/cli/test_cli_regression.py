@@ -52,12 +52,9 @@ class TestCLIRegression:
         )
 
         assert returncode == 0, f"Command failed with stderr: {stderr}"
-        assert "Summary Results" in stdout
 
-        # Parse JSON output
-        json_start = stdout.find("{")
-        json_output = stdout[json_start:]
-        data = json.loads(json_output)
+        # Parse JSON output (output is clean JSON, no header)
+        data = json.loads(stdout)
 
         # Verify expected structure
         assert data["file_path"] == bigservice_path
@@ -102,12 +99,9 @@ class TestCLIRegression:
         )
 
         assert returncode == 0, f"Command failed with stderr: {stderr}"
-        assert "Advanced Analysis Results" in stdout
 
-        # Parse JSON output
-        json_start = stdout.find("{")
-        json_output = stdout[json_start:]
-        data = json.loads(json_output)
+        # Parse JSON output (output is clean JSON, no header)
+        data = json.loads(stdout)
 
         # Verify expected structure and counts
         assert data["file_path"] == bigservice_path
@@ -192,13 +186,8 @@ class TestCLIRegression:
 
         assert returncode == 0, f"Command failed with stderr: {stderr}"
 
-        # Verify structure output contains expected sections
-        assert "Structure Analysis Results" in stdout
-
-        # Parse JSON output
-        json_start = stdout.find("{")
-        json_output = stdout[json_start:]
-        data = json.loads(json_output)
+        # Parse JSON output (output is clean JSON, no header)
+        data = json.loads(stdout)
 
         # Verify expected structure
         assert data["file_path"] == bigservice_path
@@ -258,9 +247,9 @@ class TestCLIRegression:
 
         for cmd_args in commands:
             returncode, stdout, stderr = self.run_cli_command(cmd_args)
-            assert (
-                returncode == 0
-            ), f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            assert returncode == 0, (
+                f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            )
             assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
 
     def test_error_handling_consistency(self):
@@ -477,9 +466,9 @@ class TestCLIRegression:
 
         for cmd_args in commands:
             returncode, stdout, stderr = self.run_cli_command(cmd_args)
-            assert (
-                returncode == 0
-            ), f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            assert returncode == 0, (
+                f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            )
             assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
 
     # Markdown-specific tests
@@ -647,9 +636,9 @@ class TestCLIRegression:
 
         for cmd_args in commands:
             returncode, stdout, stderr = self.run_cli_command(cmd_args)
-            assert (
-                returncode == 0
-            ), f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            assert returncode == 0, (
+                f"Command {' '.join(cmd_args)} failed with stderr: {stderr}"
+            )
             assert len(stdout) > 0, f"Command {' '.join(cmd_args)} produced no output"
 
 

@@ -30,31 +30,72 @@ class BaseMCPTool(ABC):
         """
         Initialize the base MCP tool.
 
+        ARCH-A4: ``__init__`` now funnels through the same machinery as
+        ``set_project_path`` so the two paths can't drift apart. Subclasses
+        that need to reset lazy caches on a rebind should override
+        :meth:`_on_project_root_changed` (the hook), NOT
+        :meth:`set_project_path` itself. The hook is also called from
+        ``__init__`` so constructor-built tools and re-bound tools see the
+        same lifecycle.
+
         Args:
             project_root: Optional project root directory
         """
-        self.project_root = project_root
-        self.security_validator = SecurityValidator(project_root)
-        self.path_resolver = PathResolver(project_root)
-        logger.debug(
-            f"{self.__class__.__name__} initialized with project root: {project_root}"
-        )
+        # Wire core attributes via the same helper used by rebinds.
+        self._apply_project_root(project_root, _is_init=True)
 
     def set_project_path(self, project_path: str) -> None:
         """
         Update the project path for all components.
 
+        Final-by-convention: subclasses must not override this method.
+        Override :meth:`_on_project_root_changed` instead so the hook
+        order (apply attributes → clear shared cache → notify subclass)
+        is preserved.
+
         Args:
             project_path: New project root directory
         """
-        self.project_root = project_path
-        self.security_validator = SecurityValidator(project_path)
-        self.path_resolver = PathResolver(project_path)
-        # Invalidate shared caches when the project root changes to avoid cross-project pollution.
-        get_shared_cache().clear()
-        logger.info(
-            f"{self.__class__.__name__} project path updated to: {project_path}"
-        )
+        self._apply_project_root(project_path, _is_init=False)
+
+    def _apply_project_root(self, project_root: str | None, *, _is_init: bool) -> None:
+        """Single internal entry point for both constructor and rebind paths."""
+        self.project_root = project_root
+        self.security_validator = SecurityValidator(project_root)
+        self.path_resolver = PathResolver(project_root)
+        # Invalidate shared caches on rebind only — at __init__ there is
+        # nothing to invalidate, and clearing here would interfere with
+        # other tools sharing the same cache during server bootstrap.
+        if not _is_init:
+            get_shared_cache().clear()
+        # Notify subclasses so they can reset their own lazy state.
+        try:
+            self._on_project_root_changed(project_root)
+        except Exception as exc:  # noqa: BLE001 — log + keep going
+            logger.warning(
+                f"{self.__class__.__name__}._on_project_root_changed raised: {exc}"
+            )
+        if _is_init:
+            logger.debug(
+                f"{self.__class__.__name__} initialized with project root: {project_root}"
+            )
+        else:
+            logger.info(
+                f"{self.__class__.__name__} project path updated to: {project_root}"
+            )
+
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        """Hook for subclasses to reset lazy caches when project_root rebinds.
+
+        Default is a no-op. Subclasses (e.g. RouteDetectorTool,
+        CodeGraphCallTool, ASTCacheTool) override this to null out
+        their cached helpers — they no longer need to override
+        :meth:`set_project_path` itself. The hook fires from both
+        ``__init__`` and ``set_project_path``, so a subclass that
+        needs to lazy-init via the hook can rely on it running exactly
+        once per binding.
+        """
+        del project_root  # unused at base level — subclass hook
 
     def resolve_and_validate_file_path(self, file_path: str) -> str:
         """

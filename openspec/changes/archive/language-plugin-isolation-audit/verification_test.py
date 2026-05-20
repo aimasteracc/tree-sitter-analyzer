@@ -68,14 +68,14 @@ class TestLanguagePluginIsolation:
 
         if java_plugin and python_plugin:
             # 验证: 它们是不同的对象实例
-            assert (
-                java_plugin is not python_plugin
-            ), "不同语言的插件应该是不同的对象实例"
+            assert java_plugin is not python_plugin, (
+                "不同语言的插件应该是不同的对象实例"
+            )
 
             # 验证: 它们的类型不同
-            assert not isinstance(
-                java_plugin, type(python_plugin)
-            ), "不同语言的插件应该是不同的类"
+            assert not isinstance(java_plugin, type(python_plugin)), (
+                "不同语言的插件应该是不同的类"
+            )
 
             print(f"✅ Java插件: {type(java_plugin).__name__}")
             print(f"✅ Python插件: {type(python_plugin).__name__}")
@@ -101,16 +101,16 @@ class TestLanguagePluginIsolation:
             extractor2 = python_plugin.create_extractor()
 
             # 验证: 每次调用都创建新实例
-            assert (
-                extractor1 is not extractor2
-            ), "每次调用create_extractor()应该创建新实例"
+            assert extractor1 is not extractor2, (
+                "每次调用create_extractor()应该创建新实例"
+            )
 
             # 验证: 实例具有独立的缓存
             assert hasattr(extractor1, "_node_text_cache"), "Extractor应该有自己的缓存"
             assert hasattr(extractor2, "_node_text_cache"), "Extractor应该有自己的缓存"
-            assert (
-                extractor1._node_text_cache is not extractor2._node_text_cache
-            ), "每个extractor应该有独立的缓存实例"
+            assert extractor1._node_text_cache is not extractor2._node_text_cache, (
+                "每个extractor应该有独立的缓存实例"
+            )
 
             print(f"✅ Extractor1: {id(extractor1)}")
             print(f"✅ Extractor2: {id(extractor2)}")
@@ -198,12 +198,12 @@ class TestClass:
             # 验证结果
             if result1_java and result2_java:
                 # 验证: 两次Java分析的结果应该一致
-                assert (
-                    result1_java.language == result2_java.language == "java"
-                ), "语言标识应该一致"
-                assert len(result1_java.elements) == len(
-                    result2_java.elements
-                ), "元素数量应该一致"
+                assert result1_java.language == result2_java.language == "java", (
+                    "语言标识应该一致"
+                )
+                assert len(result1_java.elements) == len(result2_java.elements), (
+                    "元素数量应该一致"
+                )
 
                 print(f"✅ 第一次Java分析: {len(result1_java.elements)}个元素")
                 print(
@@ -261,9 +261,9 @@ class TestClass:
         manager = PluginManager()
 
         # 验证: _loaded_plugins是字典(Python字典在3.7+是有序且线程读安全的)
-        assert isinstance(
-            manager._loaded_plugins, dict
-        ), "_loaded_plugins应该是字典类型"
+        assert isinstance(manager._loaded_plugins, dict), (
+            "_loaded_plugins应该是字典类型"
+        )
 
         print(f"✅ PluginManager使用字典存储插件: {type(manager._loaded_plugins)}")
         print("✅ 基本数据结构符合线程安全要求")

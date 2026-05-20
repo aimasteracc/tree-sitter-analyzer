@@ -32,8 +32,12 @@ code_block,text,2,73,77
 code_block,text,6,80,85
 link,Inline link -> https://example.com,-,22,22
 link,Link with title -> https://example.com,-,23,23
+reference_link,Reference link -> None,-,24,24
+autolink,https://autolink.example.com -> https://autolink.example.com,-,25,25
+autolink,mailto:test@example.com -> mailto:test@example.com,-,26,26
 image,Alt text -> image.png,-,32,34
 image,Image with title -> image.png,-,32,34
+reference_image,Reference image,-,34,34
 image_reference_definition,Image Reference Definition: img1,-,36,37
 reference_definition,"[ref1]: https://reference.example.com ""Reference L",-,28,29
 reference_definition,"[img1]: reference-image.png ""Reference Image""

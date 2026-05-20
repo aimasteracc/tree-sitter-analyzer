@@ -229,22 +229,48 @@ def _get_query_description(query_name: str) -> str:
     return descriptions.get(query_name, "No description available")
 
 
-def get_all_queries() -> dict[str, str]:
-    """
-    Get all queries for the query loader
+# Query descriptions
+MARKDOWN_QUERY_DESCRIPTIONS: dict[str, str] = {
+    "headers": "Extract all heading elements (H1-H6, both ATX and Setext styles)",
+    "code_blocks": "Extract fenced and indented code blocks",
+    "inline_code": "Extract inline code spans",
+    "links": "Extract all types of links",
+    "images": "Extract image elements",
+    "lists": "Extract ordered and unordered lists",
+    "emphasis": "Extract emphasis and strong emphasis elements",
+    "blockquotes": "Extract blockquote elements",
+    "tables": "Extract pipe table elements",
+    "horizontal_rules": "Extract horizontal rule elements",
+    "html_blocks": "Extract HTML block elements",
+    "inline_html": "Extract inline HTML elements",
+    "strikethrough": "Extract strikethrough elements",
+    "task_lists": "Extract task list items (checkboxes)",
+    "footnotes": "Extract footnote references and definitions",
+    "text_content": "Extract all text content",
+    "document": "Extract document root",
+    "all_elements": "Extract all Markdown elements",
+}
 
-    Returns:
-        Dictionary mapping query names to query strings
-    """
-    # Combine direct queries and aliases
-    all_queries = MARKDOWN_QUERIES.copy()
+# Structured query registry for dynamic loader compatibility
+ALL_QUERIES: dict[str, dict[str, str]] = {}
+for query_name, query_string in MARKDOWN_QUERIES.items():
+    description = MARKDOWN_QUERY_DESCRIPTIONS.get(
+        query_name, f"Query '{query_name}' for Markdown"
+    )
+    ALL_QUERIES[query_name] = {"query": query_string, "description": description}
 
-    # Add aliases that point to actual queries
-    for alias, target in QUERY_ALIASES.items():
-        if target in MARKDOWN_QUERIES:
-            all_queries[alias] = MARKDOWN_QUERIES[target]
+# Add aliases that point to actual queries
+for alias, target in QUERY_ALIASES.items():
+    if target in ALL_QUERIES:
+        ALL_QUERIES[alias] = ALL_QUERIES[target]
 
-    return all_queries
+
+def get_all_queries() -> dict:
+    return ALL_QUERIES
+
+
+def list_queries() -> list:
+    return list(ALL_QUERIES.keys())
 
 
 # Export main functions and constants
@@ -255,4 +281,5 @@ __all__ = [
     "get_available_queries",
     "get_query_info",
     "get_all_queries",
+    "list_queries",
 ]

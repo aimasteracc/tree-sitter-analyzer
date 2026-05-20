@@ -358,6 +358,229 @@ class TestCssExtractAtRuleName:
             assert "display" in supports[0].selector or "grid" in supports[0].selector
 
 
+class TestCssExtractorErrorPaths:
+    """Cover error-handling and fallback branches in CssElementExtractor."""
+
+    def setup_method(self):
+        self.extractor = CssElementExtractor()
+
+    def test_extract_css_rules_no_root_node(self):
+        """extract_css_rules with tree lacking root_node returns empty."""
+        result = self.extractor.extract_css_rules(object(), "body {}")
+        assert result == []
+
+    def test_extract_css_rules_exception_during_traversal(self):
+        """extract_css_rules handles exception from traversal."""
+
+        class BadTree:
+            root_node = property(
+                lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+            )
+
+        result = self.extractor.extract_css_rules(BadTree(), "body {}")
+        assert isinstance(result, list)
+
+    def test_extract_node_text_exception(self):
+        """_extract_node_text returns empty string on exception."""
+
+        class BadNode:
+            start_byte = property(
+                lambda self: (_ for _ in ()).throw(RuntimeError("fail"))
+            )
+            end_byte = 0
+
+        assert self.extractor._extract_node_text(BadNode(), "css") == ""
+
+    def test_extract_selector_no_selectors_child_with_brace(self):
+        """_extract_selector fallback when no selectors child but has brace."""
+
+        class FakeNode:
+            type = "rule_set"
+            children = []
+            start_byte = 0
+            end_byte = 10
+
+        result = self.extractor._extract_selector(FakeNode(), "body { color")
+        assert result == "body"
+
+    def test_extract_selector_no_brace_returns_unknown(self):
+        """_extract_selector returns 'unknown' when text has no opening brace."""
+
+        class FakeNode:
+            type = "rule_set"
+            children = []
+            start_byte = 0
+            end_byte = 10
+
+        result = self.extractor._extract_selector(FakeNode(), "nobraCess")
+        assert result == "unknown"
+
+    def test_extract_selector_exception_returns_unknown(self):
+        """_extract_selector returns 'unknown' on exception."""
+
+        class BadNode:
+            children = property(lambda self: (_ for _ in ()).throw(RuntimeError("x")))
+
+        result = self.extractor._extract_selector(BadNode(), "body {}")
+        assert result == "unknown"
+
+    def test_extract_properties_no_block_child(self):
+        """_extract_properties returns empty dict when no block child."""
+
+        class FakeNode:
+            children = []
+
+        result = self.extractor._extract_properties(FakeNode(), "body {}")
+        assert result == {}
+
+    def test_extract_properties_exception(self):
+        """_extract_properties handles exception gracefully."""
+
+        class BadNode:
+            children = property(lambda self: (_ for _ in ()).throw(RuntimeError("x")))
+
+        result = self.extractor._extract_properties(BadNode(), "body {}")
+        assert isinstance(result, dict)
+
+    def test_parse_declaration_no_children(self):
+        """_parse_declaration fallback when node has no children."""
+
+        class FakeDecl:
+            start_byte = 0
+            end_byte = 14
+
+        name, value = self.extractor._parse_declaration(FakeDecl(), "color: red;")
+        assert name == "color"
+        assert value == "red"
+
+    def test_parse_declaration_empty_children(self):
+        """_parse_declaration fallback when children don't match types."""
+
+        class FakeChild:
+            type = "unknown"
+            start_byte = 0
+            end_byte = 5
+
+        class FakeDecl:
+            children = [FakeChild()]
+            start_byte = 0
+            end_byte = 5
+
+        name, value = self.extractor._parse_declaration(FakeDecl(), "hello")
+        assert name == ""
+        assert value == ""
+
+    def test_parse_declaration_exception(self):
+        """_parse_declaration returns empty tuple on exception."""
+
+        class BadDecl:
+            children = property(lambda self: (_ for _ in ()).throw(RuntimeError("x")))
+
+        name, value = self.extractor._parse_declaration(BadDecl(), "x")
+        assert name == ""
+        assert value == ""
+
+    def test_create_style_element_exception(self):
+        """_create_style_element returns None on exception."""
+
+        class BadNode:
+            type = property(lambda self: (_ for _ in ()).throw(RuntimeError("x")))
+
+        result = self.extractor._create_style_element(BadNode(), "body {}")
+        assert result is None
+
+    def test_extract_at_rule_name_non_standard(self):
+        """_extract_at_rule_name for @charset / @namespace returns truncated text."""
+
+        class FakeNode:
+            start_byte = 0
+            end_byte = 20
+
+        result = self.extractor._extract_at_rule_name(FakeNode(), "@charset 'utf-8';")
+        assert isinstance(result, str)
+
+    def test_extract_at_rule_name_no_at_sign(self):
+        """_extract_at_rule_name for text not starting with @."""
+
+        class FakeNode:
+            start_byte = 0
+            end_byte = 5
+
+        result = self.extractor._extract_at_rule_name(FakeNode(), "hello")
+        assert result == "hello"
+
+    def test_extract_at_rule_name_exception(self):
+        """_extract_at_rule_name returns empty string when _extract_node_text swallows error."""
+
+        class BadNode:
+            start_byte = property(lambda self: (_ for _ in ()).throw(RuntimeError("x")))
+            end_byte = 0
+
+        result = self.extractor._extract_at_rule_name(BadNode(), "x")
+        assert isinstance(result, str)
+
+
+class TestCssPluginAnalyzeFallback:
+    """Cover analyze_file ImportError fallback path."""
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_import_error_fallback(self):
+        """analyze_file falls back gracefully when tree_sitter_css is missing."""
+        import tempfile
+        from unittest.mock import patch
+
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        css_content = "body { margin: 0; }\n.container { padding: 10px; }"
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".css", delete=False) as f:
+            f.write(css_content)
+            temp_path = f.name
+
+        try:
+            with patch(
+                "tree_sitter_analyzer.languages.css_plugin.tree_sitter_css",
+                side_effect=ImportError,
+                create=True,
+            ):
+                with patch.dict("sys.modules", {"tree_sitter_css": None}):
+                    result = await plugin.analyze_file(temp_path, MockRequest())
+                    assert result.success
+                    assert result.language == "css"
+                    assert len(result.elements) >= 1
+        finally:
+            Path(temp_path).unlink()
+
+    @pytest.mark.asyncio
+    async def test_analyze_file_read_error(self):
+        """analyze_file returns error result when file reading fails."""
+        plugin = CssPlugin()
+
+        class MockRequest:
+            include_source = True
+            query_filters = {}
+
+        result = await plugin.analyze_file("/nonexistent/path/file.css", MockRequest())
+        assert result.success is False
+        assert result.error_message is not None
+
+    def test_execute_query_strategy_none_key(self):
+        """execute_query_strategy returns None when query_key is None."""
+        plugin = CssPlugin()
+        result = plugin.execute_query_strategy(None, "css")
+        assert result is None
+
+    def test_execute_query_strategy_unknown_key(self):
+        """execute_query_strategy returns None for unknown query key."""
+        plugin = CssPlugin()
+        result = plugin.execute_query_strategy("nonexistent", "css")
+        assert result is None
+
+
 class TestCssIntegration:
     """Integration tests for CSS plugin"""
 

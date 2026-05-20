@@ -453,9 +453,247 @@ class TestMarkdownFormatterNewElements:
         ]
 
         for section in new_element_sections:
-            assert (
-                section not in result
-            ), f"Section '{section}' should not be present when no elements exist"
+            assert section not in result, (
+                f"Section '{section}' should not be present when no elements exist"
+            )
+
+
+class TestMarkdownFormatterCompactTable:
+    """Test compact table output format."""
+
+    def setup_method(self):
+        self.formatter = MarkdownFormatter()
+
+    def test_compact_basic(self):
+        analysis_result = {
+            "file_path": "docs/guide.md",
+            "elements": [
+                {
+                    "type": "heading",
+                    "text": "Title",
+                    "level": 1,
+                    "line_range": {"start": 1},
+                },
+                {
+                    "type": "heading",
+                    "text": "Section",
+                    "level": 2,
+                    "line_range": {"start": 5},
+                },
+                {
+                    "type": "link",
+                    "text": "Home",
+                    "url": "/",
+                    "line_range": {"start": 3},
+                },
+                {
+                    "type": "code_block",
+                    "language": "python",
+                    "line_range": {"start": 7},
+                },
+                {"type": "list", "line_range": {"start": 9}},
+                {"type": "table", "line_range": {"start": 11}},
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="compact")
+        assert "# guide\n" in result
+        assert "## Summary\n" in result
+        assert "| Headers | 2 |" in result
+        assert "| Links | 1 |" in result
+        assert "| Code Blocks | 1 |" in result
+        assert "| Lists | 1 |" in result
+        assert "| Tables | 1 |" in result
+        assert "| **Total** | **6** |" in result
+
+    def test_compact_with_images(self):
+        analysis_result = {
+            "file_path": "photo.md",
+            "elements": [
+                {
+                    "type": "image",
+                    "url": "a.png",
+                    "alt": "A",
+                    "line_range": {"start": 1},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="compact")
+        assert "| Images | 1 |" in result
+
+    def test_compact_headers_truncated_at_20(self):
+        analysis_result = {
+            "file_path": "long.md",
+            "elements": [
+                {
+                    "type": "heading",
+                    "text": f"H{i}",
+                    "level": 1,
+                    "line_range": {"start": i},
+                }
+                for i in range(25)
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="compact")
+        assert "(5 more)" in result
+
+    def test_compact_no_headers_skips_structure(self):
+        analysis_result = {
+            "file_path": "bare.md",
+            "elements": [
+                {"type": "link", "text": "X", "url": "u", "line_range": {"start": 1}},
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="compact")
+        assert "## Document Structure" not in result
+
+
+class TestMarkdownFormatterCSVTable:
+    """Test CSV table output format."""
+
+    def setup_method(self):
+        self.formatter = MarkdownFormatter()
+
+    def test_csv_header_row(self):
+        analysis_result = {"file_path": "f.md", "elements": []}
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert result.startswith(
+            "Type,Text/URL/Language,Level/Count,Start Line,End Line"
+        )
+
+    def test_csv_heading_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "heading",
+                    "text": "Title",
+                    "level": 2,
+                    "line_range": {"start": 1, "end": 1},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        lines = result.split("\n")
+        assert any("heading" in ln and "Title" in ln for ln in lines)
+
+    def test_csv_link_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "link",
+                    "text": "Click",
+                    "url": "https://x.com",
+                    "line_range": {"start": 3, "end": 3},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert "Click -> https://x.com" in result
+
+    def test_csv_image_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "image",
+                    "alt": "Photo",
+                    "url": "pic.jpg",
+                    "line_range": {"start": 5, "end": 5},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert "Photo -> pic.jpg" in result
+
+    def test_csv_code_block_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "code_block",
+                    "language": "python",
+                    "line_count": 10,
+                    "line_range": {"start": 1, "end": 10},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert "code_block,python,10" in result
+
+    def test_csv_list_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "list",
+                    "list_type": "ordered",
+                    "item_count": 3,
+                    "line_range": {"start": 1, "end": 3},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert "list,ordered,3" in result
+
+    def test_csv_table_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "table",
+                    "column_count": 4,
+                    "row_count": 5,
+                    "line_range": {"start": 1, "end": 5},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert "table,4x5" in result
+
+    def test_csv_unknown_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "custom",
+                    "name": "mystery",
+                    "line_range": {"start": 1, "end": 1},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert "custom,mystery" in result
+
+    def test_csv_autolink_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "autolink",
+                    "text": "link",
+                    "url": "https://a.com",
+                    "line_range": {"start": 1, "end": 1},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert "autolink" in result
+
+    def test_csv_task_list_element(self):
+        analysis_result = {
+            "file_path": "f.md",
+            "elements": [
+                {
+                    "type": "task_list",
+                    "list_type": "checklist",
+                    "item_count": 2,
+                    "line_range": {"start": 1, "end": 2},
+                },
+            ],
+        }
+        result = self.formatter.format_table(analysis_result, table_type="csv")
+        assert "task_list,checklist,2" in result
 
 
 if __name__ == "__main__":

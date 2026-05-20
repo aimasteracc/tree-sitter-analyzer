@@ -9,7 +9,7 @@ import json
 import sys
 from typing import Any
 
-from .utils import log_error, log_warning
+from .utils import log_warning
 
 
 class OutputManager:
@@ -93,7 +93,6 @@ class OutputManager:
     def error(self, message: str) -> None:
         """Output error message"""
         print(f"ERROR: {message}", file=sys.stderr)
-        log_error(message)
 
     def success(self, message: str) -> None:
         """Output success message"""

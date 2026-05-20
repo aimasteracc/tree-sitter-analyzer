@@ -1,0 +1,35 @@
+{
+  "success": true,
+  "count": 1,
+  "truncated": false,
+  "elapsed_ms": 0,
+  "summary": {
+    "total_matches": 1,
+    "total_files": 1,
+    "summary": "Found 1 matches in 1 files",
+    "top_files": [
+      {
+        "file": "f",
+        "match_count": 1,
+        "sample_lines": [
+          "L1: test"
+        ]
+      }
+    ],
+    "truncated": false
+  },
+  "agent_summary": {
+    "risk": "low",
+    "mode": "summary",
+    "query": "test",
+    "count": 1,
+    "total_matches": 1,
+    "truncated": false,
+    "elapsed_ms": 0,
+    "next_step": "Run search_content in normal or group_by_file mode for the top files.",
+    "suggested_tool": "search_content",
+    "stop_condition": "The next search returns concrete line matches for the target files.",
+    "file_count": 1,
+    "output_saved": true
+  }
+}

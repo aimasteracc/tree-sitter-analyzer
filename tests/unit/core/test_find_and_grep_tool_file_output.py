@@ -81,12 +81,15 @@ def nested_hello():
     @pytest.mark.asyncio
     async def test_basic_file_output(self, find_and_grep_tool, temp_project_dir):
         """Test basic file output functionality"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock fd output (file discovery)
             fd_output = f"{temp_project_dir}/test1.py\n{temp_project_dir}/test2.js\n"
             # Mock ripgrep output (content search)
@@ -116,6 +119,7 @@ def nested_hello():
             assert "count" in result
             assert "results" in result
             assert "meta" in result
+            assert result["agent_summary"]["mode"] == "normal"
 
             # Check file output
             assert "output_file" in result
@@ -137,18 +141,22 @@ def nested_hello():
             assert "files" in saved_content
             assert "summary" in saved_content
             assert "meta" in saved_content
+            assert saved_content["agent_summary"]["mode"] == "normal"
 
     @pytest.mark.asyncio
     async def test_suppress_output_functionality(
         self, find_and_grep_tool, temp_project_dir
     ):
         """Test suppress_output functionality"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
             rg_output = b'{"type":"match","data":{"path":{"text":"test1.py"},"lines":{"text":"def hello_world():"},"line_number":2,"absolute_offset":1,"submatches":[{"match":{"text":"hello"},"start":4,"end":9}]}}\n'
@@ -171,6 +179,7 @@ def nested_hello():
             assert "count" in result
             assert "output_file" in result
             assert "file_saved" in result
+            assert result["agent_summary"]["suppress_output"] is True
 
             # Verify file was still created with full content
             file_path = result["file_saved"].split("Results saved to ")[1]
@@ -183,18 +192,22 @@ def nested_hello():
             # File should contain full results even when output is suppressed
             assert "results" in saved_content
             assert "files" in saved_content
+            assert saved_content["agent_summary"]["output_saved"] is True
 
     @pytest.mark.asyncio
     async def test_group_by_file_with_output(
         self, find_and_grep_tool, temp_project_dir
     ):
         """Test group_by_file mode with file output"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock outputs with multiple matches in same file
             fd_output = f"{temp_project_dir}/test1.py\n"
             rg_output = b"""{"type":"match","data":{"path":{"text":"test1.py"},"lines":{"text":"def hello_world():"},"line_number":2,"absolute_offset":1,"submatches":[{"match":{"text":"hello"},"start":4,"end":9}]}}
@@ -236,12 +249,15 @@ def nested_hello():
     @pytest.mark.asyncio
     async def test_summary_only_with_output(self, find_and_grep_tool, temp_project_dir):
         """Test summary_only mode with file output"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n{temp_project_dir}/test2.js\n"
             rg_output = b"""{"type":"match","data":{"path":{"text":"test1.py"},"lines":{"text":"def hello_world():"},"line_number":2,"absolute_offset":1,"submatches":[{"match":{"text":"hello"},"start":4,"end":9}]}}
@@ -280,12 +296,15 @@ def nested_hello():
     @pytest.mark.asyncio
     async def test_count_only_mode(self, find_and_grep_tool, temp_project_dir):
         """Test count_only_matches mode"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
             # Mock count output from ripgrep
@@ -310,16 +329,20 @@ def nested_hello():
             assert "total_matches" in result
             assert "file_counts" in result
             assert "meta" in result
+            assert result["agent_summary"]["mode"] == "count_only"
 
     @pytest.mark.asyncio
     async def test_total_only_mode(self, find_and_grep_tool, temp_project_dir):
         """Test total_only mode"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
             # Mock count output from ripgrep
@@ -345,12 +368,15 @@ def nested_hello():
     @pytest.mark.asyncio
     async def test_file_filtering_options(self, find_and_grep_tool, temp_project_dir):
         """Test various file filtering options with output"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
             rg_output = b'{"type":"match","data":{"path":{"text":"test1.py"},"lines":{"text":"def hello_world():"},"line_number":2,"absolute_offset":1,"submatches":[{"match":{"text":"hello"},"start":4,"end":9}]}}\n'
@@ -381,12 +407,15 @@ def nested_hello():
         self, find_and_grep_tool, temp_project_dir
     ):
         """Test error handling when file output fails"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock successful fd and rg outputs
             fd_output = f"{temp_project_dir}/test1.py\n"
             rg_output = b'{"type":"match","data":{"path":{"text":"test1.py"},"lines":{"text":"def hello_world():"},"line_number":2,"absolute_offset":1,"submatches":[{"match":{"text":"hello"},"start":4,"end":9}]}}\n'
@@ -418,12 +447,15 @@ def nested_hello():
     @pytest.mark.asyncio
     async def test_fd_failure_handling(self, find_and_grep_tool, temp_project_dir):
         """Test handling of fd command failure"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock fd failure
             mock_run.return_value = (1, b"", b"fd error")
 
@@ -443,12 +475,15 @@ def nested_hello():
     @pytest.mark.asyncio
     async def test_rg_failure_handling(self, find_and_grep_tool, temp_project_dir):
         """Test handling of ripgrep command failure"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock successful fd but failed rg
             fd_output = f"{temp_project_dir}/test1.py\n"
             mock_run.side_effect = [
@@ -472,12 +507,15 @@ def nested_hello():
     @pytest.mark.asyncio
     async def test_no_files_found(self, find_and_grep_tool, temp_project_dir):
         """Test behavior when no files are found by fd"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock fd returning no files
             mock_run.return_value = (0, b"", b"")
 
@@ -500,12 +538,15 @@ def nested_hello():
     @pytest.mark.asyncio
     async def test_sorting_options(self, find_and_grep_tool, temp_project_dir):
         """Test file sorting options"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock fd output with multiple files
             fd_output = f"{temp_project_dir}/test1.py\n{temp_project_dir}/test2.js\n{temp_project_dir}/README.md\n"
             rg_output = b'{"type":"match","data":{"path":{"text":"test1.py"},"lines":{"text":"def hello_world():"},"line_number":2,"absolute_offset":1,"submatches":[{"match":{"text":"hello"},"start":4,"end":9}]}}\n'
@@ -554,12 +595,15 @@ def nested_hello():
         self, find_and_grep_tool, temp_project_dir
     ):
         """Test complex workflow combining multiple features with file output"""
-        with patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
-            return_value=True,
-        ), patch(
-            "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
-        ) as mock_run:
+        with (
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.check_external_command",
+                return_value=True,
+            ),
+            patch(
+                "tree_sitter_analyzer.mcp.tools.find_and_grep_tool.fd_rg_utils.run_command_capture"
+            ) as mock_run,
+        ):
             # Mock outputs for complex search
             fd_output = (
                 f"{temp_project_dir}/test1.py\n{temp_project_dir}/subdir/nested.py\n"

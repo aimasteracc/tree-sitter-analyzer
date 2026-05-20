@@ -35,9 +35,9 @@ fields:
     MaxNameLength,,(15,15)
 imports:
   [3]{name,is_static,is_wildcard,statement,line_range(a,b)}:
-    System,false,false,,(1,1)
-    System.Collections.Generic,false,false,,(2,2)
-    System.Linq,false,false,,(3,3)
+    System,false,false,using System;,(1,1)
+    System.Collections.Generic,false,false,using System.Collections.Generic;,(2,2)
+    System.Linq,false,false,using System.Linq;,(3,3)
 statistics:
   class_count: 4
   method_count: 19

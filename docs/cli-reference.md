@@ -19,6 +19,95 @@ Complete command-line interface reference for Tree-sitter Analyzer.
 uv run tree-sitter-analyzer <file_path> [options]
 ```
 
+### Agent Workflow Pack
+
+Agents can ask for a ready-to-run SMART workflow command pack before opening a
+new queue item:
+
+```bash
+uv run tree-sitter-analyzer agent-workflow --format json
+uv run tree-sitter-analyzer agent-workflow tree_sitter_analyzer/cli_main.py --format json
+```
+
+The JSON and TOON responses include `current_phase`, `phase_order`,
+`current_step`, and `recommended_commands`, so agents can tell whether they
+should start at project setup (`set`) or jump directly to targeted file analysis
+(`analyze`) for an existing queue head. JSON mode also includes per-step
+`handoff` metadata (`to`, `condition`, `goal`, `transition_command`) so callers
+can assert exact queue transitions. TOON includes a compact `handoffs:` section
+with one readable rule per step.
+
+When a target path is supplied, `agent_summary.queue_ledger_command` gives the
+scoped `change-impact` command that reports current-queue and out-of-scope dirty
+counts.
+
+When the `set` phase is chosen, the pack now also recommends
+`agent-skills --format json` and `parser-readiness --format json` so the first
+queue cycle starts with skill availability and language-plugin readiness checked
+before file mapping.
+
+### Agent Skills Inventory
+
+Project-local skills under `.agents/skills` can be inspected through the same
+CLI surface as code-analysis tools. The inventory reports each skill's trigger
+text, read order, support files, scripts, context needs, side effects, and gaps
+such as missing completion or acceptance guidance. It also returns a
+`validation` summary with `status`, blocking/caution/optional gap counts, and
+the next metadata fix:
+
+```bash
+uv run tree-sitter-analyzer agent-skills --format json
+uv run tree-sitter-analyzer agent-skills --format toon
+uv run tree-sitter-analyzer --agent-skills --agent-skills-root .agents/skills --format json
+```
+
+### Parser Readiness Advisor
+
+Language roadmap work can be inspected before writing a new plugin. The parser
+readiness advisor compares local parser dependencies, plugin entry points,
+loader mappings, tests, golden masters, and installed parser-package artifacts
+such as package version, project/maintenance URLs, binding ABI, parser semantic
+version, packaged `grammar.json`, and scanner files:
+
+```bash
+uv run tree-sitter-analyzer parser-readiness --format json
+uv run tree-sitter-analyzer parser-readiness swift --format json
+uv run tree-sitter-analyzer --parser-readiness --parser-readiness-include-supported --format toon
+```
+
+### Agent-Friendly MCP Aliases
+
+These aliases are equivalent to the flag-based MCP mirror commands and exist so
+agents can call tools in the same order they think about the workflow:
+
+```bash
+uv run tree-sitter-analyzer agent-skills --format json
+uv run tree-sitter-analyzer parser-readiness swift --format json
+uv run tree-sitter-analyzer file-health tree_sitter_analyzer/cli_main.py --format json
+uv run tree-sitter-analyzer safe-to-edit tree_sitter_analyzer/cli_main.py --edit-type refactor --format json
+uv run tree-sitter-analyzer refactor tree_sitter_analyzer/cli_main.py --format json
+uv run tree-sitter-analyzer smart-context tree_sitter_analyzer/cli_main.py --format json
+uv run tree-sitter-analyzer change-impact --agent-summary-only --format json
+uv run tree-sitter-analyzer change-impact --change-impact-mode staged --change-impact-no-tests --format json
+uv run tree-sitter-analyzer change-impact --change-impact-scope tree_sitter_analyzer/cli_main.py --agent-summary-only --format json
+uv run tree-sitter-analyzer project-health --max-files 5 --format json
+uv run tree-sitter-analyzer --dependencies summary --format json
+uv run tree-sitter-analyzer tree_sitter_analyzer/cli_main.py --dependencies file_deps --format json
+```
+
+Use `project-health --max-files <n>` when working inside a noisy repository.
+It limits detailed file rows, top targets, and the agent backlog so the next
+queue head stays compact and intentional.
+
+`file-health` JSON and TOON responses include an `agent_summary` with the weakest
+dimension and score plus the first actionable smell, its line, symbol, and detail
+when those can be inferred, so an agent can jump straight to the right function
+before deciding whether to invoke `refactor`.
+
+Scoped `change-impact` responses include a `queue_ledger` with scoped changed
+counts, out-of-scope dirty counts, short previews, and a compact handoff string.
+Use it when the working tree is noisy and the current queue is only a few paths.
+
 ### Global Options
 
 | Option | Description |
@@ -388,4 +477,3 @@ uv run tree-sitter-analyzer large_file.java --query-key methods --filter "public
 # 4. Extract only the lines you need
 uv run tree-sitter-analyzer large_file.java --partial-read --start-line 100 --end-line 150
 ```
-

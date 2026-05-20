@@ -312,6 +312,23 @@ class FileOutputManager:
             generated_filename = self.generate_output_filename(base_name, content)
             output_file = output_path / generated_filename
 
+        # SEC-1: reject paths that escape the configured output directory.
+        # An MCP-supplied filename like "../../etc/cron.d/x" would otherwise
+        # let an agent plant files anywhere it can write. We resolve both
+        # ends and require output_file to be inside output_path.
+        try:
+            output_root_resolved = output_path.resolve()
+            output_file_resolved = output_file.resolve()
+            output_file_resolved.relative_to(output_root_resolved)
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                f"Refusing to write outside the output directory: "
+                f"{output_file} is not under {output_path} ({exc})"
+            ) from None
+        # From here on, use the resolved path so any later relativisation
+        # (e.g. logging) does not include traversal segments.
+        output_file = output_file_resolved
+
         # Ensure output directory exists
         output_file.parent.mkdir(parents=True, exist_ok=True)
 

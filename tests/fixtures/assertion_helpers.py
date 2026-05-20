@@ -100,20 +100,20 @@ def assert_analysis_result_valid(
 
     # Check specific values if provided
     if expected_language:
-        assert (
-            result["language"] == expected_language
-        ), f"Expected language '{expected_language}', got '{result['language']}'"
+        assert result["language"] == expected_language, (
+            f"Expected language '{expected_language}', got '{result['language']}'"
+        )
 
     if expected_file:
-        assert (
-            result["file"] == expected_file
-        ), f"Expected file '{expected_file}', got '{result['file']}'"
+        assert result["file"] == expected_file, (
+            f"Expected file '{expected_file}', got '{result['file']}'"
+        )
 
     # Check success status
     if require_success:
-        assert (
-            result.get("success", True) is True
-        ), f"Analysis failed: {result.get('error', 'Unknown error')}"
+        assert result.get("success", True) is True, (
+            f"Analysis failed: {result.get('error', 'Unknown error')}"
+        )
 
 
 def assert_element_has_required_fields(
@@ -183,9 +183,9 @@ def assert_list_contains_dicts_with_key(
 
     if expected_values is not None:
         actual_values = {item[key] for item in items}
-        assert (
-            actual_values == expected_values
-        ), f"Values don't match. Expected: {expected_values}, Got: {actual_values}"
+        assert actual_values == expected_values, (
+            f"Values don't match. Expected: {expected_values}, Got: {actual_values}"
+        )
 
 
 def assert_query_result_valid(
@@ -215,14 +215,14 @@ def assert_query_result_valid(
         ... )
     """
     assert isinstance(result, list), "Result must be a list"
-    assert (
-        len(result) >= min_matches
-    ), f"Expected at least {min_matches} matches, got {len(result)}"
+    assert len(result) >= min_matches, (
+        f"Expected at least {min_matches} matches, got {len(result)}"
+    )
 
     if max_matches is not None:
-        assert (
-            len(result) <= max_matches
-        ), f"Expected at most {max_matches} matches, got {len(result)}"
+        assert len(result) <= max_matches, (
+            f"Expected at most {max_matches} matches, got {len(result)}"
+        )
 
     # Check structure of each match
     for i, match in enumerate(result):
@@ -258,9 +258,9 @@ def assert_file_output_valid(
     assert_has_keys(output, ["format", "content"], ["success", "error", "path"])
 
     if expected_format:
-        assert (
-            output["format"] == expected_format
-        ), f"Expected format '{expected_format}', got '{output['format']}'"
+        assert output["format"] == expected_format, (
+            f"Expected format '{expected_format}', got '{output['format']}'"
+        )
 
     # Content should not be empty
     assert output["content"], "Output content is empty"
@@ -313,9 +313,9 @@ def assert_error_message_contains(
         ... )
     """
     for substring in expected_substrings:
-        assert (
-            substring in error_msg
-        ), f"Error message missing expected substring '{substring}'. Got: {error_msg}"
+        assert substring in error_msg, (
+            f"Error message missing expected substring '{substring}'. Got: {error_msg}"
+        )
 
 
 def assert_performance_acceptable(
@@ -337,9 +337,9 @@ def assert_performance_acceptable(
     Example:
         >>> assert_performance_acceptable(0.5, 1.0, "file analysis")
     """
-    assert (
-        elapsed_time <= max_time
-    ), f"{operation} took {elapsed_time:.2f}s, expected <= {max_time:.2f}s"
+    assert elapsed_time <= max_time, (
+        f"{operation} took {elapsed_time:.2f}s, expected <= {max_time:.2f}s"
+    )
 
 
 # Export all helpers

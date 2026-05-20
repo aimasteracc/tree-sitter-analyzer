@@ -186,16 +186,12 @@ class TestSummaryCommandOutputSummaryAnalysis:
             mock_formatter_class.return_value = mock_formatter
             with patch("builtins.print") as mock_print:
                 command._output_summary_analysis(analysis_result)
-                # formatter.format is called once, and print is called twice:
-                # 1. output_section header
-                # 2. formatted output
+                # formatter.format is called once, and print is called once:
+                # (section header is skipped for toon/json to keep output clean)
                 mock_formatter_class.assert_called_once_with(use_tabs=False)
                 mock_formatter.format.assert_called_once()
-                assert mock_print.call_count == 2
-                # First call is to section header
-                assert mock_print.call_args_list[0][0][0] == "\n--- Summary Results ---"
-                # Second call is to formatted output
-                assert mock_print.call_args_list[1][0][0] == "formatted_output"
+                assert mock_print.call_count == 1
+                assert mock_print.call_args_list[0][0][0] == "formatted_output"
 
     def test_output_summary_analysis_default_types(self, command):
         """Test _output_summary_analysis with default types."""

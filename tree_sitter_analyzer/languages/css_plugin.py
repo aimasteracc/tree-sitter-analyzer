@@ -10,13 +10,20 @@ selector parsing, and property analysis.
 import logging
 from typing import TYPE_CHECKING, Any
 
-from ..core.request import AnalysisRequest
 from ..models import AnalysisResult, StyleElement
 from ..plugins.base import ElementExtractor, LanguagePlugin
-from ..utils import log_debug, log_error, log_info, safe_preview
+from ..utils import log_debug, log_error, log_info
+from .css_helpers import (
+    classify_rule as _classify_rule_standalone,
+)
+from .css_helpers import (
+    create_style_element as _create_style_standalone,
+)
 
 if TYPE_CHECKING:
     import tree_sitter
+
+    from ..core.analysis_engine import AnalysisRequest
 
 logger = logging.getLogger(__name__)
 
@@ -146,169 +153,51 @@ class CssElementExtractor(ElementExtractor):
         self, node: "tree_sitter.Node", source_code: str
     ) -> StyleElement | None:
         """Create StyleElement from tree-sitter node using tree-sitter-css grammar"""
-        try:
-            # Extract selector and properties based on node type
-            if node.type == "rule_set":
-                selector = self._extract_selector(node, source_code)
-                properties = self._extract_properties(node, source_code)
-                element_class = self._classify_rule(properties)
-                name = selector or "unknown_rule"
-            elif node.type in [
-                "at_rule",
-                "media_statement",
-                "import_statement",
-                "keyframes_statement",
-            ]:
-                selector = self._extract_at_rule_name(node, source_code)
-                properties = {}
-                element_class = "at_rule"
-                name = selector or "unknown_at_rule"
-            else:
-                selector = safe_preview(self._extract_node_text(node, source_code))
-                properties = {}
-                element_class = "other"
-                name = selector or "unknown"
+        return _create_style_standalone(
+            node,
+            lambda n: self._extract_node_text(n, source_code),
+            self.property_categories,
+        )
 
-            # Extract raw text
-            raw_text = self._extract_node_text(node, source_code)
-
-            # Create StyleElement
-            element = StyleElement(
-                name=name,
-                start_line=(
-                    node.start_point[0] + 1 if hasattr(node, "start_point") else 0
-                ),
-                end_line=node.end_point[0] + 1 if hasattr(node, "end_point") else 0,
-                raw_text=raw_text,
-                language="css",
-                selector=selector,
-                properties=properties,
-                element_class=element_class,
-            )
-
-            return element
-
-        except Exception as e:
-            log_debug(f"Failed to create StyleElement: {e}")
-            return None
+    def _classify_rule(self, properties: dict[str, str]) -> str:
+        """Classify CSS rule based on properties"""
+        return _classify_rule_standalone(properties, self.property_categories)
 
     def _extract_selector(self, node: "tree_sitter.Node", source_code: str) -> str:
-        """Extract selector from CSS rule_set node using tree-sitter-css grammar"""
-        try:
-            if hasattr(node, "children"):
-                for child in node.children:
-                    if hasattr(child, "type") and child.type == "selectors":
-                        return self._extract_node_text(child, source_code).strip()
+        """Extract selector from CSS rule_set node"""
+        from .css_helpers import extract_css_selector
 
-            # Fallback: extract from beginning of node text
-            node_text = self._extract_node_text(node, source_code)
-            if "{" in node_text:
-                return node_text.split("{")[0].strip()
-
-            return "unknown"
-        except Exception:
-            return "unknown"
+        return extract_css_selector(
+            node, lambda n: self._extract_node_text(n, source_code)
+        )
 
     def _extract_properties(
         self, node: "tree_sitter.Node", source_code: str
     ) -> dict[str, str]:
-        """Extract properties from CSS rule_set node using tree-sitter-css grammar"""
-        properties = {}
+        """Extract properties from CSS rule_set node"""
+        from .css_helpers import extract_css_properties
 
-        try:
-            if hasattr(node, "children"):
-                for child in node.children:
-                    if hasattr(child, "type") and child.type == "block":
-                        # Look for declarations within the block
-                        for grandchild in child.children:
-                            if (
-                                hasattr(grandchild, "type")
-                                and grandchild.type == "declaration"
-                            ):
-                                prop_name, prop_value = self._parse_declaration(
-                                    grandchild, source_code
-                                )
-                                if prop_name:
-                                    properties[prop_name] = prop_value
-        except Exception as e:
-            log_debug(f"Failed to extract properties: {e}")
-
-        return properties
+        return extract_css_properties(
+            node, lambda n: self._extract_node_text(n, source_code)
+        )
 
     def _parse_declaration(
         self, decl_node: "tree_sitter.Node", source_code: str
     ) -> tuple[str, str]:
-        """Parse individual CSS declaration using tree-sitter-css grammar"""
-        try:
-            prop_name = ""
-            prop_value = ""
+        """Parse individual CSS declaration"""
+        from .css_helpers import parse_declaration
 
-            if hasattr(decl_node, "children"):
-                for child in decl_node.children:
-                    if hasattr(child, "type"):
-                        if child.type == "property_name":
-                            prop_name = self._extract_node_text(
-                                child, source_code
-                            ).strip()
-                        elif child.type in ["value", "values"]:
-                            prop_value = self._extract_node_text(
-                                child, source_code
-                            ).strip()
-
-            # Fallback to simple parsing
-            if not prop_name:
-                decl_text = self._extract_node_text(decl_node, source_code)
-                if ":" in decl_text:
-                    parts = decl_text.split(":", 1)
-                    prop_name = parts[0].strip()
-                    prop_value = parts[1].strip().rstrip(";")
-
-            return prop_name, prop_value
-        except Exception:
-            return "", ""
+        return parse_declaration(
+            decl_node, lambda n: self._extract_node_text(n, source_code)
+        )
 
     def _extract_at_rule_name(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract at-rule name from CSS at-rule node"""
-        try:
-            node_text = self._extract_node_text(node, source_code)
-            if node_text.startswith("@"):
-                # For @media, @keyframes, etc., extract the full declaration line
-                # Split by { to get the rule declaration
-                if "{" in node_text:
-                    declaration = node_text.split("{")[0].strip()
-                    return declaration
-                # Fallback: extract @rule-name part
-                parts = node_text.split()
-                if parts:
-                    # For @media and @keyframes, include parameters
-                    if parts[0] in ("@media", "@keyframes", "@supports"):
-                        # Return first line or up to first {
-                        first_line = node_text.split("\n")[0].strip()
-                        if "{" in first_line:
-                            return first_line.split("{")[0].strip()
-                        return first_line
-                    return parts[0]
-            return safe_preview(node_text)  # Truncate for readability
-        except Exception:
-            return "unknown"
+        from .css_helpers import extract_at_rule_name
 
-    def _classify_rule(self, properties: dict[str, str]) -> str:
-        """Classify CSS rule based on properties"""
-        if not properties:
-            return "other"
-
-        # Count properties in each category
-        category_scores = dict.fromkeys(self.property_categories, 0)
-
-        for prop_name in properties.keys():
-            prop_name_lower = prop_name.lower()
-            for category, props in self.property_categories.items():
-                if any(prop in prop_name_lower for prop in props):
-                    category_scores[category] += 1
-
-        # Return category with highest score
-        best_category = max(category_scores, key=lambda k: category_scores[k])
-        return best_category if category_scores[best_category] > 0 else "other"
+        return extract_at_rule_name(
+            node, lambda n: self._extract_node_text(n, source_code)
+        )
 
     def _extract_node_text(self, node: "tree_sitter.Node", source_code: str) -> str:
         """Extract text content from a tree-sitter node"""

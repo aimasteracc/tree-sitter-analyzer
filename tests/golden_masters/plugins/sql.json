@@ -1,0 +1,51 @@
+{
+  "counts_by_type": {
+    "SQLFunction": 2,
+    "SQLIndex": 7,
+    "SQLProcedure": 2,
+    "SQLTable": 3,
+    "SQLTrigger": 2,
+    "SQLView": 2
+  },
+  "element_total": 18,
+  "names_by_type": {
+    "SQLFunction": [
+      "calculate_order_total",
+      "is_user_active"
+    ],
+    "SQLIndex": [
+      "idx_orders_date",
+      "idx_orders_user_date",
+      "idx_orders_user_id",
+      "idx_products_category",
+      "idx_products_name",
+      "idx_users_email",
+      "idx_users_status"
+    ],
+    "SQLProcedure": [
+      "get_user_orders",
+      "update_product_stock"
+    ],
+    "SQLTable": [
+      "orders",
+      "products",
+      "users"
+    ],
+    "SQLTrigger": [
+      "log_user_changes",
+      "update_order_total"
+    ],
+    "SQLView": [
+      "active_users",
+      "order_summary"
+    ]
+  },
+  "types": [
+    "SQLFunction",
+    "SQLIndex",
+    "SQLProcedure",
+    "SQLTable",
+    "SQLTrigger",
+    "SQLView"
+  ]
+}

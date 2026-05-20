@@ -1,0 +1,119 @@
+[
+  {
+    "project": "flask-py",
+    "query": "How does a Flask request flow from URL routing to response?",
+    "language": "python",
+    "index_time_s": 0.0,
+    "index_files": 83,
+    "index_symbols": 0,
+    "tool_calls_needed": 5,
+    "analysis_time_s": 0.08,
+    "file_reads_needed": 3,
+    "tokens_approx": 0,
+    "found_symbols": [
+      "dispatch_request",
+      "Flask",
+      "Request"
+    ],
+    "expected_symbols": [
+      "Flask",
+      "route",
+      "dispatch_request",
+      "full_dispatch_request",
+      "make_response",
+      "Request",
+      "Response"
+    ],
+    "recall": 0.43,
+    "comparable_cg": "claude-code-py",
+    "cg_tool_calls": 3,
+    "cg_time_s": 39,
+    "cg_file_reads": 0
+  },
+  {
+    "project": "requests-py",
+    "query": "How does an HTTP request get prepared, sent, and response parsed?",
+    "language": "python",
+    "index_time_s": 0.0,
+    "index_files": 37,
+    "index_symbols": 0,
+    "tool_calls_needed": 5,
+    "analysis_time_s": 0.11,
+    "file_reads_needed": 3,
+    "tokens_approx": 0,
+    "found_symbols": [
+      "HTTPAdapter",
+      "send"
+    ],
+    "expected_symbols": [
+      "Session",
+      "request",
+      "Request",
+      "PreparedRequest",
+      "send",
+      "HTTPAdapter",
+      "Response"
+    ],
+    "recall": 0.29,
+    "comparable_cg": "claude-code-py",
+    "cg_tool_calls": 3,
+    "cg_time_s": 39,
+    "cg_file_reads": 0
+  },
+  {
+    "project": "gson-java",
+    "query": "How does Gson serialize and deserialize Java objects?",
+    "language": "java",
+    "index_time_s": 0.0,
+    "index_files": 262,
+    "index_symbols": 0,
+    "tool_calls_needed": 5,
+    "analysis_time_s": 0.02,
+    "file_reads_needed": 3,
+    "tokens_approx": 0,
+    "found_symbols": [],
+    "expected_symbols": [
+      "Gson",
+      "toJson",
+      "fromJson",
+      "TypeAdapter",
+      "JsonWriter",
+      "JsonReader",
+      "JsonElement"
+    ],
+    "recall": 0.0,
+    "comparable_cg": "claude-code-jv",
+    "cg_tool_calls": 1,
+    "cg_time_s": 19,
+    "cg_file_reads": 0
+  },
+  {
+    "project": "express-ts",
+    "query": "How does Express route an incoming request to a handler?",
+    "language": "javascript",
+    "index_time_s": 0.0,
+    "index_files": 141,
+    "index_symbols": 0,
+    "tool_calls_needed": 5,
+    "analysis_time_s": 0.02,
+    "file_reads_needed": 3,
+    "tokens_approx": 0,
+    "found_symbols": [
+      "Route"
+    ],
+    "expected_symbols": [
+      "createApplication",
+      "Router",
+      "handle",
+      "Layer",
+      "Route",
+      "dispatch",
+      "next"
+    ],
+    "recall": 0.14,
+    "comparable_cg": "vscode-ts",
+    "cg_tool_calls": 3,
+    "cg_time_s": 17,
+    "cg_file_reads": 0
+  }
+]

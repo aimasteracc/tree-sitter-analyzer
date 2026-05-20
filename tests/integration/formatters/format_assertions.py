@@ -35,14 +35,14 @@ class FormatAssertions:
         lines = content.split("\n")
         line_count = len(lines)
 
-        assert (
-            line_count >= min_lines
-        ), f"Expected at least {min_lines} lines, got {line_count}"
+        assert line_count >= min_lines, (
+            f"Expected at least {min_lines} lines, got {line_count}"
+        )
 
         if max_lines is not None:
-            assert (
-                line_count <= max_lines
-            ), f"Expected at most {max_lines} lines, got {line_count}"
+            assert line_count <= max_lines, (
+                f"Expected at most {max_lines} lines, got {line_count}"
+            )
 
     @staticmethod
     def assert_valid_markdown_table(content: str) -> bool:
@@ -108,18 +108,18 @@ class MarkdownTableAssertions(FormatAssertions):
         """
         # Validate basic markdown structure
         validation_result = validate_format(content, "markdown")
-        assert (
-            validation_result.is_valid
-        ), f"Invalid markdown structure: {validation_result.errors}"
+        assert validation_result.is_valid, (
+            f"Invalid markdown structure: {validation_result.errors}"
+        )
 
         # Check for section headers
         found_sections = MarkdownTableAssertions._extract_section_headers(content)
 
         if require_all_sections:
             missing_sections = set(expected_sections) - set(found_sections)
-            assert (
-                not missing_sections
-            ), f"Missing required sections: {missing_sections}"
+            assert not missing_sections, (
+                f"Missing required sections: {missing_sections}"
+            )
 
         # Validate table structure after each section
         sections = content.split("## ")
@@ -136,9 +136,9 @@ class MarkdownTableAssertions(FormatAssertions):
 
         main_header = lines[0]
         assert main_header.startswith("# "), "Main header should start with '# '"
-        assert (
-            expected_class_name in main_header
-        ), f"Main header should contain class name '{expected_class_name}'"
+        assert expected_class_name in main_header, (
+            f"Main header should contain class name '{expected_class_name}'"
+        )
 
     @staticmethod
     def assert_table_column_headers(
@@ -162,9 +162,9 @@ class MarkdownTableAssertions(FormatAssertions):
         ]  # Remove empty first/last
 
         for expected_col in expected_columns:
-            assert (
-                expected_col in header_columns
-            ), f"Missing column '{expected_col}' in section '{section_name}'"
+            assert expected_col in header_columns, (
+                f"Missing column '{expected_col}' in section '{section_name}'"
+            )
 
     @staticmethod
     def assert_table_row_count(
@@ -182,14 +182,14 @@ class MarkdownTableAssertions(FormatAssertions):
         # Subtract header and separator rows
         data_rows = len(table_lines) - 2 if len(table_lines) >= 2 else 0
 
-        assert (
-            data_rows >= min_rows
-        ), f"Section '{section_name}' has {data_rows} rows, expected at least {min_rows}"
+        assert data_rows >= min_rows, (
+            f"Section '{section_name}' has {data_rows} rows, expected at least {min_rows}"
+        )
 
         if max_rows is not None:
-            assert (
-                data_rows <= max_rows
-            ), f"Section '{section_name}' has {data_rows} rows, expected at most {max_rows}"
+            assert data_rows <= max_rows, (
+                f"Section '{section_name}' has {data_rows} rows, expected at most {max_rows}"
+            )
 
     @staticmethod
     def assert_code_block_language(content: str, expected_language: str) -> None:
@@ -198,9 +198,9 @@ class MarkdownTableAssertions(FormatAssertions):
 
         for language, _ in code_blocks:
             if language:  # Language specified
-                assert (
-                    language == expected_language
-                ), f"Code block language '{language}' should be '{expected_language}'"
+                assert language == expected_language, (
+                    f"Code block language '{language}' should be '{expected_language}'"
+                )
 
     @staticmethod
     def _extract_section_headers(content: str) -> list[str]:
@@ -228,9 +228,9 @@ class MarkdownTableAssertions(FormatAssertions):
 
         # Check separator row
         separator_line = table_lines[1]
-        assert MarkdownTableAssertions.TABLE_SEPARATOR_PATTERN.match(
-            separator_line
-        ), f"Invalid table separator: {separator_line}"
+        assert MarkdownTableAssertions.TABLE_SEPARATOR_PATTERN.match(separator_line), (
+            f"Invalid table separator: {separator_line}"
+        )
 
 
 class CompactFormatAssertions(MarkdownTableAssertions):
@@ -249,9 +249,9 @@ class CompactFormatAssertions(MarkdownTableAssertions):
         """Assert compact format includes visibility information"""
         # v1.6.1.4 compact format uses text (public, private, protected)
         # instead of symbols (+ - #)
-        assert (
-            "public" in content or "private" in content or "protected" in content
-        ), "Missing visibility information in compact format"
+        assert "public" in content or "private" in content or "protected" in content, (
+            "Missing visibility information in compact format"
+        )
 
     @staticmethod
     def assert_compact_abbreviated_signatures(content: str) -> None:
@@ -260,9 +260,9 @@ class CompactFormatAssertions(MarkdownTableAssertions):
         # 1. Removing Parameters column (only in full format)
         # 2. Using 4-column table for methods: Name, Return Type, Access, Line
         # Check for simplified table structure
-        assert (
-            "| Name | Return Type | Access | Line |" in content
-        ), "Compact format should use simplified method table structure"
+        assert "| Name | Return Type | Access | Line |" in content, (
+            "Compact format should use simplified method table structure"
+        )
 
 
 class CSVFormatAssertions(FormatAssertions):
@@ -273,9 +273,9 @@ class CSVFormatAssertions(FormatAssertions):
         """Assert CSV format follows specification"""
         # Validate CSV structure
         validation_result = validate_format(content, "csv")
-        assert (
-            validation_result.is_valid
-        ), f"Invalid CSV structure: {validation_result.errors}"
+        assert validation_result.is_valid, (
+            f"Invalid CSV structure: {validation_result.errors}"
+        )
 
         lines = content.strip().split("\n")
         assert len(lines) >= 2, "CSV must have header and at least one data row"
@@ -306,9 +306,9 @@ class CSVFormatAssertions(FormatAssertions):
         assert matching_rows, f"No {row_type} rows found in CSV"
 
         for row in matching_rows:
-            assert expected_pattern.match(
-                row
-            ), f"Row doesn't match expected pattern: {row}"
+            assert expected_pattern.match(row), (
+                f"Row doesn't match expected pattern: {row}"
+            )
 
     @staticmethod
     def assert_csv_complexity_scores(content: str) -> None:
@@ -326,9 +326,9 @@ class CSVFormatAssertions(FormatAssertions):
             parts = row.split(",")
             if len(parts) >= 6:  # Assuming complexity is in 6th column
                 complexity = parts[5].strip()
-                assert (
-                    complexity and complexity.isdigit()
-                ), f"Invalid complexity score in row: {row}"
+                assert complexity and complexity.isdigit(), (
+                    f"Invalid complexity score in row: {row}"
+                )
 
     @staticmethod
     def _assert_csv_header_compliance(header: list[str]) -> None:
@@ -336,9 +336,9 @@ class CSVFormatAssertions(FormatAssertions):
         required_columns = ["Type", "Name", "Signature", "Visibility", "Lines"]
 
         for required_col in required_columns:
-            assert (
-                required_col in header
-            ), f"Missing required CSV column: {required_col}"
+            assert required_col in header, (
+                f"Missing required CSV column: {required_col}"
+            )
 
 
 class FullFormatAssertions(MarkdownTableAssertions):
@@ -374,9 +374,9 @@ class FullFormatAssertions(MarkdownTableAssertions):
             "Access",
         ]
         for prop in required_properties:
-            assert (
-                f"| {prop} |" in content
-            ), f"Missing property '{prop}' in Class Info table"
+            assert f"| {prop} |" in content, (
+                f"Missing property '{prop}' in Class Info table"
+            )
 
     @staticmethod
     def assert_full_format_detailed_sections(content: str) -> None:
@@ -398,9 +398,9 @@ class FullFormatAssertions(MarkdownTableAssertions):
                     # Should have table markers if there's content
                     has_table = "|" in section_content
                     # Accept empty sections (class with no methods/fields)
-                    assert (
-                        has_table or not section_content.strip()
-                    ), f"Section '{section}' should contain a table or be empty"
+                    assert has_table or not section_content.strip(), (
+                        f"Section '{section}' should contain a table or be empty"
+                    )
 
 
 class FormatComplianceAssertions:
@@ -432,16 +432,18 @@ class FormatComplianceAssertions:
         """Assert current output doesn't regress from reference"""
         if not allow_additions:
             # Exact match required
-            assert (
-                current_output == reference_output
-            ), f"Format regression detected in {format_type} format"
+            assert current_output == reference_output, (
+                f"Format regression detected in {format_type} format"
+            )
         else:
             # Current output can have additions but not removals
             reference_lines = set(reference_output.split("\n"))
             current_lines = set(current_output.split("\n"))
 
             missing_lines = reference_lines - current_lines
-            assert not missing_lines, f"Format regression: missing lines in {format_type} format: {missing_lines}"
+            assert not missing_lines, (
+                f"Format regression: missing lines in {format_type} format: {missing_lines}"
+            )
 
     @staticmethod
     def _assert_element_count_consistency(
@@ -474,9 +476,9 @@ class FormatComplianceAssertions:
                     continue  # Skip unknown element types
 
                 # Allow some tolerance for different counting methods
-                assert (
-                    abs(actual_count - expected_count) <= 1
-                ), f"Element count mismatch in {format_type}: expected {expected_count} {element_type}, got {actual_count}"
+                assert abs(actual_count - expected_count) <= 1, (
+                    f"Element count mismatch in {format_type}: expected {expected_count} {element_type}, got {actual_count}"
+                )
 
 
 # Convenience functions for common assertions

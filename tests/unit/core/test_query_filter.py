@@ -209,6 +209,146 @@ class TestQueryFilterMatchModifier:
         assert query_filter._match_modifier(result, "private", "false") is True
 
 
+class TestQueryFilterVisibility:
+    """Tests for visibility filter."""
+
+    def test_visibility_public(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public void run() {}"}
+        filtered = query_filter.filter_results([result], "visibility=public")
+        assert len(filtered) == 1
+
+    def test_visibility_private(self, query_filter: QueryFilter) -> None:
+        result = {"content": "private void run() {}"}
+        filtered = query_filter.filter_results([result], "visibility=private")
+        assert len(filtered) == 1
+
+    def test_visibility_protected(self, query_filter: QueryFilter) -> None:
+        result = {"content": "protected void run() {}"}
+        filtered = query_filter.filter_results([result], "visibility=protected")
+        assert len(filtered) == 1
+
+    def test_visibility_no_match(self, query_filter: QueryFilter) -> None:
+        result = {"content": "private void run() {}"}
+        filtered = query_filter.filter_results([result], "visibility=public")
+        assert len(filtered) == 0
+
+    def test_visibility_unknown_value(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public void run() {}"}
+        filtered = query_filter.filter_results([result], "visibility=package")
+        assert len(filtered) == 1
+
+
+class TestQueryFilterAsyncFinalAbstract:
+    """Tests for async, final, and abstract modifier filters."""
+
+    def test_async_true(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public async Task RunAsync() {}"}
+        filtered = query_filter.filter_results([result], "async=true")
+        assert len(filtered) == 1
+
+    def test_async_false(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public void Run() {}"}
+        filtered = query_filter.filter_results([result], "async=false")
+        assert len(filtered) == 1
+
+    def test_async_false_when_present(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public async Task RunAsync() {}"}
+        filtered = query_filter.filter_results([result], "async=false")
+        assert len(filtered) == 0
+
+    def test_final_true(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public final void finalize() {}"}
+        filtered = query_filter.filter_results([result], "final=true")
+        assert len(filtered) == 1
+
+    def test_final_false(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public void run() {}"}
+        filtered = query_filter.filter_results([result], "final=false")
+        assert len(filtered) == 1
+
+    def test_abstract_true(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public abstract void doWork();"}
+        filtered = query_filter.filter_results([result], "abstract=true")
+        assert len(filtered) == 1
+
+    def test_abstract_false(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public void run() {}"}
+        filtered = query_filter.filter_results([result], "abstract=false")
+        assert len(filtered) == 1
+
+
+class TestQueryFilterUnknownKey:
+    """Tests for unknown filter key fallback."""
+
+    def test_unknown_filter_key_returns_all(self, query_filter: QueryFilter) -> None:
+        results = [{"content": "def main(): pass"}]
+        filtered = query_filter.filter_results(results, "unknown_key=value")
+        assert len(filtered) == 1
+
+
+class TestQueryFilterMatchNamePaths:
+    """Tests for exact/pattern name match branches."""
+
+    def test_match_name_exact_java(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public void myMethod() {}"}
+        assert query_filter._match_name(result, "exact", "myMethod") is True
+        assert query_filter._match_name(result, "exact", "other") is False
+
+    def test_match_name_pattern_wildcard(self, query_filter: QueryFilter) -> None:
+        result = {"content": "def get_name(): pass"}
+        assert query_filter._match_name(result, "pattern", "get*") is True
+        assert query_filter._match_name(result, "pattern", "set*") is False
+
+    def test_match_name_unknown_type(self, query_filter: QueryFilter) -> None:
+        result = {"content": "def main(): pass"}
+        assert query_filter._match_name(result, "regex", "main") is False
+
+
+class TestQueryFilterMatchParamsError:
+    """Tests for _match_params ValueError path."""
+
+    def test_match_params_non_numeric(self, query_filter: QueryFilter) -> None:
+        result = {"content": "def test(x): pass"}
+        assert query_filter._match_params(result, "exact", "abc") is False
+
+
+class TestQueryFilterMatchModifierEdgeCases:
+    """Tests for _match_modifier edge cases."""
+
+    def test_match_modifier_protected_true(self, query_filter: QueryFilter) -> None:
+        result = {"content": "protected void doWork() {}"}
+        assert query_filter._match_modifier(result, "protected", "true") is True
+
+    def test_match_modifier_case_insensitive_value(
+        self, query_filter: QueryFilter
+    ) -> None:
+        result = {"content": "public static void main() {}"}
+        assert query_filter._match_modifier(result, "static", "True") is True
+
+    def test_match_modifier_false_when_present(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public static void main() {}"}
+        assert query_filter._match_modifier(result, "static", "false") is False
+
+    def test_match_modifier_multiline_content(self, query_filter: QueryFilter) -> None:
+        content = "public void run()\n{\n  static x = 1;\n}"
+        result = {"content": content}
+        assert query_filter._match_modifier(result, "static", "true") is False
+
+    def test_match_modifier_generic_bracket(self, query_filter: QueryFilter) -> None:
+        result = {"content": "public abstract <T> void process() {}"}
+        assert query_filter._match_modifier(result, "abstract", "true") is True
+
+
+class TestQueryFilterCountParamsEdgeCases:
+    """Tests for _count_parameters edge cases."""
+
+    def test_count_parameters_no_parens(self, query_filter: QueryFilter) -> None:
+        assert query_filter._count_parameters("no parens here") == 0
+
+    def test_count_parameters_empty_parens(self, query_filter: QueryFilter) -> None:
+        assert query_filter._count_parameters("def test(   ): pass") == 0
+
+
 class TestQueryFilterEdgeCases:
     """Tests for edge cases and error handling."""
 

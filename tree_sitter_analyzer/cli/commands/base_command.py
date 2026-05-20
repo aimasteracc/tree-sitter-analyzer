@@ -52,12 +52,14 @@ class BaseCommand(ABC):
         )
         if not is_valid:
             output_error(f"Invalid file path: {error_msg}")
+            output_info("Use --project-root to set the project root directory.")
             return False
 
         from pathlib import Path
 
         if not Path(self.args.file_path).exists():
-            output_error("Invalid file path: file does not exist")
+            output_error(f"File not found: {self.args.file_path}")
+            output_info("Check the file path and try again.")
             return False
 
         return True

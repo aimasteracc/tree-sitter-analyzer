@@ -60,6 +60,24 @@ cover/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+.autonomous-runtime/autonomous-state.json
+.autonomous-runtime/loop.lock
+.autonomous-runtime/autonomous-loop.log
+.autonomous-runtime/last-tick.json
+
+# Local autonomous-dev helper scripts — never commit (use opencode/CLI flags that
+# bypass safety gates like --dangerously-skip-permissions and --no-verify).
+# The safe, committed equivalent lives in scripts/auto_review.py.
+autonomous_sprint_loop.sh
+autonomous_*.sh
+
+# Internal docs (audit findings, narrative reports, promotion strategy).
+# Stays out of the public repo so the user-facing surface is the README,
+# CHANGELOG, and RELEASE_NOTES — not the internal-quality-tracking
+# paperwork. Engineering decisions remain visible via commit history
+# and AUTONOMOUS_DEV.md (which IS public, because it documents how the
+# project is run).
+docs/internal/
 
 # Flask stuff:
 instance/
@@ -328,8 +346,21 @@ tests/debug_artifacts/
 # Internal design documents (not for public)
 docs/designs/tree-sitter-analyzer-*.md
 
-# gstack compiled binaries (110MB+, tracked by historical mistake)
+# gstack compiled binaries
 .claude/skills/gstack/bin/*.exe
 
 # Claude local settings
 .claude/settings.local.json
+
+# AI assistant skill cache
+.claude/
+.agents/
+
+# Ruflo runtime
+.claude-flow/
+.swarm/
+.claude/memory.db
+.claude/helpers/
+ruvector.db
+.query_cache.json
+coverage.json

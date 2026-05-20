@@ -1,0 +1,58 @@
+{
+  "counts_by_type": {
+    "Class": 6,
+    "Function": 9,
+    "Import": 3,
+    "Variable": 15
+  },
+  "element_total": 33,
+  "names_by_type": {
+    "Class": [
+      "Color",
+      "Number",
+      "Person",
+      "Point",
+      "Rectangle",
+      "Status"
+    ],
+    "Function": [
+      "SQUARE",
+      "add",
+      "calculate_distance",
+      "compare_ints",
+      "find_max",
+      "main",
+      "multiply",
+      "process_array",
+      "sort_with_comparator"
+    ],
+    "Import": [
+      "local_header.h",
+      "stdio.h",
+      "stdlib.h"
+    ],
+    "Variable": [
+      "CONSTANT_VALUE",
+      "DEBUG",
+      "MAX_SIZE",
+      "age",
+      "bottom_right",
+      "d",
+      "external_value",
+      "f",
+      "global_value",
+      "i",
+      "name",
+      "static_value",
+      "top_left",
+      "x",
+      "y"
+    ]
+  },
+  "types": [
+    "Class",
+    "Function",
+    "Import",
+    "Variable"
+  ]
+}

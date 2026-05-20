@@ -541,6 +541,7 @@ class TestLanguageMapping:
             "sql",
             "csharp",
             "cs",
+            "swift",
         ]
 
         for lang in expected_languages:

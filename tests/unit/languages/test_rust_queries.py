@@ -120,9 +120,9 @@ class TestRustQueryDescriptions:
     def test_all_queries_have_descriptions(self):
         """All queries should have descriptions."""
         for query_name in RUST_QUERIES.keys():
-            assert (
-                query_name in RUST_QUERY_DESCRIPTIONS
-            ), f"Query '{query_name}' has no description"
+            assert query_name in RUST_QUERY_DESCRIPTIONS, (
+                f"Query '{query_name}' has no description"
+            )
 
 
 class TestGetRustQuery:

@@ -502,6 +502,7 @@ class AnalysisResult:
             ELEMENT_TYPE_ANNOTATION: [],
         }
 
+        # Iterate over e
         for e in elements:
             etype = get_element_type(e)
             if etype in grouped:
@@ -581,6 +582,7 @@ class AnalysisResult:
         if "all" in types:
             target_types = set(type_mapping.values())
         else:
+            # Iterate over t
             for t in types:
                 if t in type_mapping:
                     target_types.add(type_mapping[t])
@@ -588,6 +590,7 @@ class AnalysisResult:
         # Single pass filtering
         from .constants import get_element_type
 
+        # Iterate over element
         for element in elements:
             if get_element_type(element) in target_types:
                 summary["summary_elements"].append(element.to_summary_item())
@@ -619,6 +622,7 @@ class AnalysisResult:
             "analysis_time": self.analysis_time,
         }
 
+    # Format data for output: to_mcp_format
     def to_mcp_format(self) -> dict[str, Any]:
         """
         Produce output in MCP-compatible format
@@ -886,6 +890,7 @@ class SQLView(SQLElement):
 
 
 @dataclass(frozen=False)
+# SQLProcedure class definition
 class SQLProcedure(SQLElement):
     """SQL stored procedure representation"""
 
@@ -894,6 +899,7 @@ class SQLProcedure(SQLElement):
 
 
 @dataclass(frozen=False)
+# SQLFunction class definition
 class SQLFunction(SQLElement):
     """SQL function representation"""
 
@@ -904,6 +910,7 @@ class SQLFunction(SQLElement):
 
 
 @dataclass(frozen=False)
+# SQLTrigger class definition
 class SQLTrigger(SQLElement):
     """SQL trigger representation"""
 
@@ -915,6 +922,7 @@ class SQLTrigger(SQLElement):
 
 
 @dataclass(frozen=False)
+# SQLIndex class definition
 class SQLIndex(SQLElement):
     """SQL index representation"""
 
@@ -925,6 +933,7 @@ class SQLIndex(SQLElement):
 
 
 @dataclass(frozen=False)
+# YAMLElement class definition
 class YAMLElement(CodeElement):
     """
     YAML要素を表現するデータモデル。

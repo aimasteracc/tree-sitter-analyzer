@@ -147,9 +147,9 @@ class Calculator:
 
             # Class name check - only for non-CSV formats
             if format_type != "csv":
-                assert (
-                    "Calculator" in output
-                ), f"Missing 'Calculator' in {format_type} format"
+                assert "Calculator" in output, (
+                    f"Missing 'Calculator' in {format_type} format"
+                )
 
         print("✅ Format consistency validation passed")
 

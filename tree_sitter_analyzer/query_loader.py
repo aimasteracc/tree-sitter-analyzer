@@ -160,18 +160,24 @@ class QueryLoader:
         """List all languages that have query modules available."""
         languages = []
 
-        # 既知の言語をチェック
         known_languages = [
-            "java",
-            "javascript",
-            "typescript",
-            "python",
-            "sql",
             "c",
             "cpp",
-            "rust",
+            "csharp",
+            "css",
             "go",
+            "html",
+            "java",
+            "javascript",
+            "kotlin",
             "markdown",
+            "php",
+            "python",
+            "ruby",
+            "rust",
+            "sql",
+            "typescript",
+            "yaml",
         ]
 
         for language in known_languages:

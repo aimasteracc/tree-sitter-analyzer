@@ -1708,6 +1708,18 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-timeout"
+version = "2.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ac/82/4c9ecabab13363e72d880f2fb504c5f750433b2b6f16e99f4ec21ada284c/pytest_timeout-2.4.0.tar.gz", hash = "sha256:7e68e90b01f9eff71332b25001f85c75495fc4e3a836701876183c4bcfd0540a", size = 17973, upload-time = "2025-05-05T19:44:34.99Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/b6/3127540ecdf1464a00e5a01ee60a1b09175f6913f0644ac748494d9c4b21/pytest_timeout-2.4.0-py3-none-any.whl", hash = "sha256:c42667e5cdadb151aeb5b26d114aff6bdf5a907f176a007a30b940d3d865b5c2", size = 14382, upload-time = "2025-05-05T19:44:33.502Z" },
+]
+
+[[package]]
 name = "pytest-xdist"
 version = "3.8.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2418,6 +2430,8 @@ all = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "tree-sitter-c" },
     { name = "tree-sitter-cpp" },
@@ -2430,6 +2444,7 @@ all = [
     { name = "tree-sitter-python" },
     { name = "tree-sitter-rust" },
     { name = "tree-sitter-sql" },
+    { name = "tree-sitter-swift" },
     { name = "tree-sitter-typescript" },
     { name = "types-psutil" },
 ]
@@ -2449,6 +2464,7 @@ all-languages = [
     { name = "tree-sitter-ruby" },
     { name = "tree-sitter-rust" },
     { name = "tree-sitter-sql" },
+    { name = "tree-sitter-swift" },
     { name = "tree-sitter-typescript" },
     { name = "tree-sitter-yaml" },
 ]
@@ -2477,6 +2493,8 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "types-psutil" },
 ]
@@ -2496,6 +2514,8 @@ full = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "tree-sitter-c" },
     { name = "tree-sitter-cpp" },
@@ -2505,6 +2525,7 @@ full = [
     { name = "tree-sitter-markdown" },
     { name = "tree-sitter-python" },
     { name = "tree-sitter-rust" },
+    { name = "tree-sitter-swift" },
     { name = "tree-sitter-typescript" },
     { name = "types-psutil" },
 ]
@@ -2524,6 +2545,8 @@ integration = [
     { name = "pytest-benchmark" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
     { name = "tree-sitter-java" },
     { name = "tree-sitter-javascript" },
     { name = "tree-sitter-markdown" },
@@ -2570,6 +2593,9 @@ rust = [
 sql = [
     { name = "tree-sitter-sql" },
 ]
+swift = [
+    { name = "tree-sitter-swift" },
+]
 systems = [
     { name = "tree-sitter-c" },
     { name = "tree-sitter-cpp" },
@@ -2581,6 +2607,8 @@ test = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
     { name = "tree-sitter-c-sharp" },
     { name = "tree-sitter-cpp" },
     { name = "tree-sitter-java" },
@@ -2621,6 +2649,7 @@ dev = [
     { name = "pytest-benchmark" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "ruff" },
     { name = "safety" },
@@ -2702,6 +2731,16 @@ requires-dist = [
     { name = "pytest-mock", marker = "extra == 'full'", specifier = ">=3.14.1" },
     { name = "pytest-mock", marker = "extra == 'integration'", specifier = ">=3.14.1" },
     { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.14.1" },
+    { name = "pytest-timeout", marker = "extra == 'all'", specifier = ">=2.4.0" },
+    { name = "pytest-timeout", marker = "extra == 'dev'", specifier = ">=2.4.0" },
+    { name = "pytest-timeout", marker = "extra == 'full'", specifier = ">=2.4.0" },
+    { name = "pytest-timeout", marker = "extra == 'integration'", specifier = ">=2.4.0" },
+    { name = "pytest-timeout", marker = "extra == 'test'", specifier = ">=2.4.0" },
+    { name = "pytest-xdist", marker = "extra == 'all'", specifier = ">=3.8.0" },
+    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8.0" },
+    { name = "pytest-xdist", marker = "extra == 'full'", specifier = ">=3.8.0" },
+    { name = "pytest-xdist", marker = "extra == 'integration'", specifier = ">=3.8.0" },
+    { name = "pytest-xdist", marker = "extra == 'test'", specifier = ">=3.8.0" },
     { name = "ruff", marker = "extra == 'all'", specifier = ">=0.5.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5.0" },
     { name = "ruff", marker = "extra == 'full'", specifier = ">=0.5.0" },
@@ -2795,6 +2834,10 @@ requires-dist = [
     { name = "tree-sitter-sql", marker = "extra == 'all-languages'", specifier = ">=0.3.11,<0.4.0" },
     { name = "tree-sitter-sql", marker = "extra == 'sql'", specifier = ">=0.3.11,<0.4.0" },
     { name = "tree-sitter-sql", marker = "extra == 'test'", specifier = ">=0.3.11,<0.4.0" },
+    { name = "tree-sitter-swift", marker = "extra == 'all'", specifier = ">=0.7.2" },
+    { name = "tree-sitter-swift", marker = "extra == 'all-languages'", specifier = ">=0.7.2" },
+    { name = "tree-sitter-swift", marker = "extra == 'full'", specifier = ">=0.7.2" },
+    { name = "tree-sitter-swift", marker = "extra == 'swift'", specifier = ">=0.7.2" },
     { name = "tree-sitter-typescript", specifier = ">=0.23.2" },
     { name = "tree-sitter-typescript", marker = "extra == 'all'", specifier = ">=0.20.0,<0.25.0" },
     { name = "tree-sitter-typescript", marker = "extra == 'all-languages'", specifier = ">=0.20.0,<0.25.0" },
@@ -2810,7 +2853,7 @@ requires-dist = [
     { name = "types-psutil", marker = "extra == 'dev'", specifier = ">=5.9.0" },
     { name = "types-psutil", marker = "extra == 'full'", specifier = ">=5.9.0" },
 ]
-provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "rust", "go", "markdown", "html", "css", "sql", "csharp", "php", "ruby", "yaml", "kotlin", "web", "systems", "popular", "all-languages", "mcp", "dev", "test", "integration", "full", "all"]
+provides-extras = ["java", "javascript", "typescript", "python", "c", "cpp", "rust", "go", "markdown", "html", "css", "sql", "csharp", "php", "ruby", "yaml", "kotlin", "swift", "web", "systems", "popular", "all-languages", "mcp", "dev", "test", "integration", "full", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2827,6 +2870,7 @@ dev = [
     { name = "pytest-benchmark", specifier = ">=5.1.0" },
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "pytest-mock", specifier = ">=3.14.1" },
+    { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.5.0" },
     { name = "safety", specifier = ">=3.0.0,<3.3.0" },
@@ -2859,6 +2903,14 @@ version = "0.23.1"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/22/85/a61c782afbb706a47d990eaee6977e7c2bd013771c5bf5c81c617684f286/tree_sitter_c_sharp-0.23.1.tar.gz", hash = "sha256:322e2cfd3a547a840375276b2aea3335fa6458aeac082f6c60fec3f745c967eb", size = 1317728, upload-time = "2024-11-11T05:25:32.535Z" }
 wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/dc/d4a0ad9e466263728f80f9dac399609473af01c1aba2ea3ea8879ce56276/tree_sitter_c_sharp-0.23.1-cp310-abi3-macosx_10_9_x86_64.whl", hash = "sha256:e87be7572991552606a3155d2f6c2045ded8bce94bfd9f74bf521d949c219a1c", size = 333661, upload-time = "2026-04-14T15:11:14.227Z" },
+    { url = "https://files.pythonhosted.org/packages/61/7a/5c862770460a2e27079e725585ad2718100373c09448c14e36934ef44414/tree_sitter_c_sharp-0.23.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:86c2fdf178c66474a1be2965602818d30780e4e3ed890e3c206931f65d9a154c", size = 376295, upload-time = "2026-04-14T15:11:15.346Z" },
+    { url = "https://files.pythonhosted.org/packages/67/18/0571a3a34c0feda60a9c37cf6dd5edfdbc24f8fcb1e48b6b6eb0f324ad2a/tree_sitter_c_sharp-0.23.1-cp310-abi3-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:035d259e64c41d02cc45afc3b8b46388b232e7d16d84734d851cca7334761da5", size = 358331, upload-time = "2026-04-14T15:11:16.418Z" },
+    { url = "https://files.pythonhosted.org/packages/44/65/0f7e1f50f6365338eb700f01710da0adc49a49fa9a8443e5a90ea4f29491/tree_sitter_c_sharp-0.23.1-cp310-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:fa472cb9de7e14fee9408e144f29f68384cd8e9c677dff0002da19f361a59bdf", size = 359444, upload-time = "2026-04-14T15:11:17.509Z" },
+    { url = "https://files.pythonhosted.org/packages/98/60/129bd56d5ef22b4ae254940a09b6d3ed873093218868a3f9635d571d514e/tree_sitter_c_sharp-0.23.1-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:1a0ea86eccff74e85ab4a2cf77c813fad7c84162962ce242dff0c51601028832", size = 358143, upload-time = "2026-04-14T15:11:18.755Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/cd/e12cdca47e0c56151cb4b156d48091b7bc1d968e072c1656cf6b73fe7218/tree_sitter_c_sharp-0.23.1-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:8ab26dc998bbd4b4287b129f67c10ca715deb402ed77d0645674490ea509097e", size = 357524, upload-time = "2026-04-14T15:11:19.717Z" },
+    { url = "https://files.pythonhosted.org/packages/6a/2c/f742d60f818cba83760f4975c7158d1c96c36b5807e95a843db7fb8c64b7/tree_sitter_c_sharp-0.23.1-cp310-abi3-win_amd64.whl", hash = "sha256:d4486653feaff3314ef45534dcb6f9ea8ab3aa160896287c6473788f88eb38be", size = 338755, upload-time = "2026-04-14T15:11:20.883Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/e4/8a8642b9bba86248ac2facc81ffb187c06c6768efa56c79d61fab70d736b/tree_sitter_c_sharp-0.23.1-cp310-abi3-win_arm64.whl", hash = "sha256:e7a14b76ec23cc8386cf662d5ea602d81331376c93ca6299a97b174047790345", size = 337261, upload-time = "2026-04-14T15:11:22.111Z" },
     { url = "https://files.pythonhosted.org/packages/58/04/f6c2df4c53a588ccd88d50851155945cff8cd887bd70c175e00aaade7edf/tree_sitter_c_sharp-0.23.1-cp39-abi3-macosx_10_9_x86_64.whl", hash = "sha256:2b612a6e5bd17bb7fa2aab4bb6fc1fba45c94f09cb034ab332e45603b86e32fd", size = 372235, upload-time = "2024-11-11T05:25:19.424Z" },
     { url = "https://files.pythonhosted.org/packages/99/10/1aa9486f1e28fc22810fa92cbdc54e1051e7f5536a5e5b5e9695f609b31e/tree_sitter_c_sharp-0.23.1-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:1a8b98f62bc53efcd4d971151950c9b9cd5cbe3bacdb0cd69fdccac63350d83e", size = 419046, upload-time = "2024-11-11T05:25:20.679Z" },
     { url = "https://files.pythonhosted.org/packages/0f/21/13df29f8fcb9ba9f209b7b413a4764b673dfd58989a0dd67e9c7e19e9c2e/tree_sitter_c_sharp-0.23.1-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:986e93d845a438ec3c4416401aa98e6a6f6631d644bbbc2e43fcb915c51d255d", size = 415999, upload-time = "2024-11-11T05:25:22.359Z" },
@@ -3077,6 +3129,22 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/52/e9/a7afd7f68ce165c040ce50e67bb05553784a8e17f37e057405d693fc869d/tree_sitter_sql-0.3.11-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:0e22ea8de690dd9960d8c0c36c4cd25417b084e1e29c91ac0235fbdb3abb4664", size = 379447, upload-time = "2025-10-01T13:44:13.062Z" },
     { url = "https://files.pythonhosted.org/packages/eb/b3/57ff42dadd33c06fabe6c725de50e1625e1060f1571cc21a9260febadc1f/tree_sitter_sql-0.3.11-cp310-abi3-win_amd64.whl", hash = "sha256:c57b877702d218c0856592d33320c02b2dc8411d8820b3bf7b81be86c54fa0bb", size = 343550, upload-time = "2025-10-01T13:44:13.988Z" },
     { url = "https://files.pythonhosted.org/packages/77/60/f10b8551f435d57a4748820ee30e66df2682820b2972375c2b89d2e5fb10/tree_sitter_sql-0.3.11-cp310-abi3-win_arm64.whl", hash = "sha256:8a1e42f0a2c9b01b23074708ecf5b8d21b9a0440e3dff279d8cf466cdf1a877e", size = 333547, upload-time = "2025-10-01T13:44:14.893Z" },
+]
+
+[[package]]
+name = "tree-sitter-swift"
+version = "0.7.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/45/6986ace9ad2eb7a111b7c47c8900192bc4d6c9f3db236fde873b7f8579c3/tree_sitter_swift-0.7.2.tar.gz", hash = "sha256:67b9a3ba5ab8fff2c082a2c0c33c8b5a66539f8bfa5058385688b1aefc11cead", size = 926779, upload-time = "2026-05-04T05:05:13.461Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/7f/98abba4def5dca30ece6e3cd9fb09f0cddbdc250fd2d050d1cfdbe0c8924/tree_sitter_swift-0.7.2-cp38-abi3-macosx_10_9_x86_64.whl", hash = "sha256:4664a5cbf20f0090ea2de540abc4f3392479a89db516f9774a62885c1b61aac7", size = 330332, upload-time = "2026-05-04T05:05:03.176Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/dd/aee99d2ccf0deb48e84656fefdecf059392a6778d3f050bf33cfa1d6074c/tree_sitter_swift-0.7.2-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:5d5791dbec5e4070accc0e06d231e18879d67edab98369685a81a1f77e024727", size = 352232, upload-time = "2026-05-04T05:05:04.493Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/74/0af5181a67c71f09af7a9f7942ba8f65e22a4f4d6eed426e6daf6253d3a6/tree_sitter_swift-0.7.2-cp38-abi3-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:600053b3ed763beaa5156ba1d70b22602ed88a6cff6cf3aab238133983426f9e", size = 358235, upload-time = "2026-05-04T05:05:05.777Z" },
+    { url = "https://files.pythonhosted.org/packages/34/04/e6ded10edc9ece2a5812058dace35bbae03685547d4bee03af843b7a9ca5/tree_sitter_swift-0.7.2-cp38-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:4c8398f0b105293bbae375c7701256772b90996044f822e8e590297cc671e6e4", size = 354699, upload-time = "2026-05-04T05:05:06.917Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/56/befd27fac44be001e0489cdeed8c5837ebba4e1a92d2155460f5a53c5fe1/tree_sitter_swift-0.7.2-cp38-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:cfbd96472e4841dbacf903088044f4a6a0fb4fa5ef7084a5bf55a804fefcc013", size = 353478, upload-time = "2026-05-04T05:05:08.524Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/fb/9acab9dd78a2fcbd04c90a42bd8f313d9ae719f4e3388cd1345d03bbe0de/tree_sitter_swift-0.7.2-cp38-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:e4de7c8a789c6fe01e0e0ba2a2792e9d4db905eb146ed9a321502a848826ba84", size = 356772, upload-time = "2026-05-04T05:05:09.612Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/0e/5eb7a57346a287fa9bd7d5757a9fc1cbaef4dc043093a565e91384a7df18/tree_sitter_swift-0.7.2-cp38-abi3-win_amd64.whl", hash = "sha256:dec5aa6bc475ccd41685ce88dfde5894077bed6123b85e89e2c027f5ab6ab09e", size = 337169, upload-time = "2026-05-04T05:05:11.138Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/00/43b80f23c282cd0391442c1e3e5d9e6fb8c3fd62add900d6879522dc81de/tree_sitter_swift-0.7.2-cp38-abi3-win_arm64.whl", hash = "sha256:c7d11ca989e1930a55a79bbea5964fa1b121d947fa25ec7c068364383c85e6c3", size = 333364, upload-time = "2026-05-04T05:05:12.458Z" },
 ]
 
 [[package]]
