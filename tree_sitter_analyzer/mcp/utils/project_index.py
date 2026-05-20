@@ -12,13 +12,100 @@ import json
 import logging
 import os
 import re
-import subprocess
+import subprocess  # nosec
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
+
+# Path segments that should be excluded from the language-distribution
+# count. They contain valid source files (fixtures, golden masters,
+# internal audit docs, generated reports) but those files are NOT part
+# of the project's "actual source mix" — counting them inflates
+# secondary languages and misleads the headline number.
+_LANGUAGE_COUNT_EXCLUDED_SEGMENTS: frozenset[str] = frozenset(
+    {
+        "tests/golden_masters",
+        "tests/fixtures",
+        "tests/test_data",
+        "tests/golden",
+        "docs/internal",
+        "compatibility_test/results",
+        "corpus",
+        "examples",
+        ".tree-sitter-cache",
+        ".ast-cache",
+        # Build artefacts + dev-tooling caches (see project_overview_tool
+        # for the same rationale — keep these two lists in sync).
+        "comprehensive_test_results",
+        "openspec",
+        ".claude",
+        ".agents",
+        ".swarm",
+        ".kiro",
+        ".roo",
+        ".autonomous-runtime",
+        ".claude-flow",
+    }
+)
+
+
+def _is_language_count_excluded(filepath: str) -> bool:
+    """True if ``filepath`` should not influence language_distribution.
+
+    Uses simple substring match against ``_LANGUAGE_COUNT_EXCLUDED_SEGMENTS``
+    so it's both fast and platform-agnostic (works for ``/`` and ``\\``).
+    """
+    normalized = filepath.replace("\\", "/")
+    return any(seg in normalized for seg in _LANGUAGE_COUNT_EXCLUDED_SEGMENTS)
+
+
+# Names that look like classes to the AST-based edge extractor but are
+# actually Python typing / stdlib helpers — they should never surface
+# as "critical architectural nodes". TYPE_CHECKING is the worst case:
+# every type-annotated module imports it, so PageRank ranks it #3 on
+# any large project, where it conveys zero architectural meaning.
+_PAGERANK_STDLIB_BLOCKLIST: frozenset[str] = frozenset(
+    {
+        # typing
+        "TYPE_CHECKING",
+        "Any",
+        "Optional",
+        "Union",
+        "Literal",
+        "ClassVar",
+        "Final",
+        "Annotated",
+        "Generic",
+        "Protocol",
+        "TypeVar",
+        "TypedDict",
+        "NamedTuple",
+        "Iterator",
+        "Iterable",
+        "Sequence",
+        "Mapping",
+        "Callable",
+        "Awaitable",
+        "AsyncIterator",
+        "Coroutine",
+        # common stdlib namespaces masquerading as classes
+        "Path",
+        "Exception",
+        "ValueError",
+        "TypeError",
+        "RuntimeError",
+        "OSError",
+        # tree-sitter internal node types that aren't user classes
+        "Node",
+        "Tree",
+        "Parser",
+        "Language",
+        "Query",
+    }
+)
 
 # Map file extensions to canonical language names
 _EXT_TO_LANGUAGE: dict[str, str] = {
@@ -260,9 +347,7 @@ class ProjectIndexManager:
                 readme_excerpt=str(data.get("readme_excerpt", "")),
                 module_descriptions=dict(data.get("module_descriptions", {})),
                 critical_nodes=list(data.get("critical_nodes", [])),
-                module_dependency_order=list(
-                    data.get("module_dependency_order", [])
-                ),
+                module_dependency_order=list(data.get("module_dependency_order", [])),
             )
         except (KeyError, TypeError, ValueError) as err:
             logger.warning("Malformed project index data: %s", err)
@@ -319,9 +404,15 @@ class ProjectIndexManager:
         now = time.time()
         all_files: list[str] = self._list_files(scan_roots)
 
-        # Derive language distribution from extensions
+        # Derive language distribution from extensions.
+        # Exclude fixture/golden/internal-doc paths so the language mix
+        # reflects the project's *real* source mix. Without this filter,
+        # a Python project ships ``markdown=2945`` because internal audit
+        # notes + golden masters drown out the actual ``python=1347``.
         lang_dist: dict[str, int] = {}
         for filepath in all_files:
+            if _is_language_count_excluded(filepath):
+                continue
             ext = Path(filepath).suffix.lower()
             lang = _EXT_TO_LANGUAGE.get(ext)
             if lang:
@@ -332,7 +423,9 @@ class ProjectIndexManager:
         root_path = Path(self.project_root)
 
         # Identify key files (must live at project root, case-insensitive match)
-        root_entries = {e.name.lower(): e.name for e in root_path.iterdir() if e.is_file()}
+        root_entries = {
+            e.name.lower(): e.name for e in root_path.iterdir() if e.is_file()
+        }
         key_files: list[str] = [
             root_entries[name]
             for name in sorted(root_entries)
@@ -399,9 +492,11 @@ class ProjectIndexManager:
         abs_roots = [str(Path(r).resolve()) for r in roots]
 
         # Try fd first — run from project_root so fd returns relative paths,
-        # then convert them to absolute.
+        # then convert them to absolute. ``fd`` resolved via $PATH is the
+        # standard tooling entrypoint; argument list is static (no shell
+        # expansion), so bandit's B603/B607 are false positives here.
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec
                 ["fd", "--type", "f", "--color", "never", "--absolute-path", "."]
                 + abs_roots,
                 capture_output=True,
@@ -523,7 +618,9 @@ class ProjectIndexManager:
                 # Collect depth-2 breakdown
                 if len(parts) >= 3:
                     sub_dir = parts[1]
-                    if sub_dir not in self._ARTIFACT_DIRS and not sub_dir.startswith("."):
+                    if sub_dir not in self._ARTIFACT_DIRS and not sub_dir.startswith(
+                        "."
+                    ):
                         sub_counts.setdefault(top_dir, {})
                         sub_counts[top_dir][sub_dir] = (
                             sub_counts[top_dir].get(sub_dir, 0) + 1
@@ -681,8 +778,16 @@ class ProjectIndexManager:
 
     # Build infrastructure directory names — always classified as "core"
     _BUILD_DIR_NAMES: frozenset[str] = frozenset(
-        {"buildsrc", "gradle", ".github", "build", "scripts",
-         ".circleci", ".gitlab", ".husky"}
+        {
+            "buildsrc",
+            "gradle",
+            ".github",
+            "build",
+            "scripts",
+            ".circleci",
+            ".gitlab",
+            ".husky",
+        }
     )
 
     def _classify_dir(self, path: Path) -> Literal["core", "context", "tooling"]:
@@ -703,9 +808,7 @@ class ProjectIndexManager:
             return "tooling"
         # 3. Independent project
         has_readme = (path / "README.md").exists()
-        has_build = any(
-            (path / fname).exists() for fname in self._BUILD_FILE_NAMES
-        )
+        has_build = any((path / fname).exists() for fname in self._BUILD_FILE_NAMES)
         if has_readme and has_build:
             return "context"
         return "core"
@@ -714,9 +817,7 @@ class ProjectIndexManager:
     # Edge extraction & PageRank
     # ------------------------------------------------------------------
 
-    def _extract_edges_from_file(
-        self, path: Path
-    ) -> list[tuple[str, str]]:
+    def _extract_edges_from_file(self, path: Path) -> list[tuple[str, str]]:
         """Extract edges via language-specific extractor (plugin registry).
 
         Each language's logic lives in edge_extractors/<lang>.py.
@@ -788,14 +889,23 @@ class ProjectIndexManager:
                         new_scores[dst] = new_scores.get(dst, 0.0) + contrib
 
                 # Convergence check
-                err = sum(
-                    abs(new_scores[nd] - scores[nd]) for nd in node_list
-                )
+                err = sum(abs(new_scores[nd] - scores[nd]) for nd in node_list)
                 scores = new_scores
                 if err < 1.0e-6 * n:
                     break
 
-            top = sorted(scores.items(), key=lambda kv: -kv[1])[:top_n]
+            # Filter Python stdlib / typing helpers that look like classes
+            # in the edge extraction but are not real architectural nodes.
+            # ``TYPE_CHECKING`` is the worst offender — it surfaces as a
+            # high-degree node because every type-annotated module imports
+            # it, but renaming it is meaningless. ``Any``, ``Optional``,
+            # ``ClassVar`` etc. land in the same bucket.
+            filtered = [
+                (name, score)
+                for name, score in sorted(scores.items(), key=lambda kv: -kv[1])
+                if name not in _PAGERANK_STDLIB_BLOCKLIST
+            ]
+            top = filtered[:top_n]
             return [
                 {
                     "name": name,
@@ -906,9 +1016,7 @@ class ProjectIndexManager:
                 desc = index.module_descriptions.get(name, "")
                 padding = max(1, DIR_COL - len(dir_label))
                 desc_str = f"  {desc}" if desc else ""
-                lines.append(
-                    f"  {dir_label}{' ' * padding}{desc_str}".rstrip()
-                )
+                lines.append(f"  {dir_label}{' ' * padding}{desc_str}".rstrip())
                 for sub in item.get("subdirectories", [])[:4]:
                     sname = sub["name"]
                     rel = f"{name}/{sname}"
@@ -916,9 +1024,7 @@ class ProjectIndexManager:
                     if sdesc:
                         sub_label = sname + "/"
                         pad2 = max(1, DIR_COL - 2 - len(sub_label))
-                        lines.append(
-                            f"    {sub_label}{' ' * pad2}  {sdesc}"
-                        )
+                        lines.append(f"    {sub_label}{' ' * pad2}  {sdesc}")
 
         if context_dirs:
             lines.append("")
@@ -937,9 +1043,7 @@ class ProjectIndexManager:
                 dir_label = name + "/"
                 padding = max(1, DIR_COL - len(dir_label))
                 desc_str = f"  {desc}" if desc else ""
-                lines.append(
-                    f"  {dir_label}{' ' * padding}{desc_str}".rstrip()
-                )
+                lines.append(f"  {dir_label}{' ' * padding}{desc_str}".rstrip())
 
         if index.custom_notes:
             lines.append(f"\nnotes:    {index.custom_notes}")
@@ -950,9 +1054,7 @@ class ProjectIndexManager:
     # Incremental update helpers
     # ------------------------------------------------------------------
 
-    def _compute_file_hashes(
-        self, roots: list[str]
-    ) -> dict[str, list[float]]:
+    def _compute_file_hashes(self, roots: list[str]) -> dict[str, list[float]]:
         """Return {filepath: [mtime, size]} for all files under roots.
 
         Uses stat() only — no file content read — so it's fast even on
@@ -995,9 +1097,7 @@ class ProjectIndexManager:
         except OSError as err:
             logger.warning("Could not save summary.toon: %s", err)
 
-    def _save_critical_nodes(
-        self, nodes: list[dict[str, Any]]
-    ) -> None:
+    def _save_critical_nodes(self, nodes: list[dict[str, Any]]) -> None:
         path = Path(self.project_root) / self.CRITICAL_FILE
         path.parent.mkdir(parents=True, exist_ok=True)
         try:

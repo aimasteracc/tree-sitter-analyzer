@@ -195,7 +195,9 @@ class TraceImpactTool(BaseMCPTool):
         # 验证 symbol
         symbol = arguments.get("symbol")
         if not symbol or not isinstance(symbol, str) or not symbol.strip():
-            raise ValueError("symbol parameter is required and must be a non-empty string")
+            raise ValueError(
+                "symbol parameter is required and must be a non-empty string"
+            )
 
         # 验证 file_path（如果提供）
         file_path = arguments.get("file_path")
@@ -262,13 +264,16 @@ class TraceImpactTool(BaseMCPTool):
         else:
             # 默认使用当前目录
             from pathlib import Path
+
             roots = [str(Path.cwd())]
 
         # 检测语言（如果提供了 file_path）
         language = None
         language_extensions: list[str] = []
         if file_path:
-            language = detect_language_from_file(file_path, project_root=self.project_root)
+            language = detect_language_from_file(
+                file_path, project_root=self.project_root
+            )
             if language and language != "unknown":
                 # 获取该语言的所有扩展名
                 language_extensions = self._get_extensions_for_language(language)
@@ -284,14 +289,16 @@ class TraceImpactTool(BaseMCPTool):
         # 构建排除模式
         exclude_globs = list(exclude_patterns)
         # 添加常见的排除模式
-        exclude_globs.extend([
-            "**/node_modules/**",
-            "**/.git/**",
-            "**/vendor/**",
-            "**/__pycache__/**",
-            "**/*.min.js",
-            "**/*.min.css",
-        ])
+        exclude_globs.extend(
+            [
+                "**/node_modules/**",
+                "**/.git/**",
+                "**/vendor/**",
+                "**/__pycache__/**",
+                "**/*.min.js",
+                "**/*.min.css",
+            ]
+        )
 
         # 如果检测到语言，添加语言过滤
         include_globs: list[str] = []
@@ -346,7 +353,9 @@ class TraceImpactTool(BaseMCPTool):
             }
         elif rc not in (0, 1):
             # 其他错误
-            error_msg = stderr.decode("utf-8", errors="replace") if stderr else "Unknown error"
+            error_msg = (
+                stderr.decode("utf-8", errors="replace") if stderr else "Unknown error"
+            )
             return {
                 "success": False,
                 "error": f"Search failed: {error_msg}",
@@ -387,11 +396,16 @@ class TraceImpactTool(BaseMCPTool):
             truncated = False
 
         # 转换为用户友好的格式
+        # ``line`` is the integer line number (1-based). ``line_number`` is
+        # an explicit alias to remove ambiguity — naive callers reading the
+        # field name ``line`` sometimes assume it contains the line *text*.
         usages = []
         for match in matches:
+            line_no = match["line"]
             usage = {
                 "file": match["file"],
-                "line": match["line"],
+                "line": line_no,
+                "line_number": line_no,
                 "context": match["text"],  # 匹配行的文本
             }
             usages.append(usage)

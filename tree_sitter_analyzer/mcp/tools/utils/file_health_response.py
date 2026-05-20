@@ -59,7 +59,13 @@ def _build_base_health_result(
         "success": True,
         "file_path": file_path,
         "grade": health.grade,
+        # ``total_score`` is the canonical name; ``health_score`` and
+        # ``overall_score`` are documented aliases so callers that follow
+        # the more common naming conventions still find the value
+        # without needing to know our exact field name.
         "total_score": health.total,
+        "health_score": health.total,
+        "overall_score": health.total,
         "signal": _build_signal(health.dimensions),
         "dimensions": health.dimensions,
         "code_smells": smells,

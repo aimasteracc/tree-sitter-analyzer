@@ -66,6 +66,46 @@ _EXCLUDE_DIRS = {
     ".autonomous-runtime",
 }
 
+# Path segments that should be excluded from language-distribution counts.
+# These dirs contain valid source files (fixtures, golden masters,
+# internal audit docs) but those files are NOT part of the project's
+# "actual source mix" — counting them inflates secondary languages
+# (markdown=2945 swamping python=1347) and misleads the headline number.
+_LANGUAGE_COUNT_EXCLUDED_SEGMENTS: frozenset[str] = frozenset(
+    {
+        "tests/golden_masters",
+        "tests/fixtures",
+        "tests/test_data",
+        "tests/golden",
+        "docs/internal",
+        "compatibility_test/results",
+        "corpus",
+        "examples",
+        ".tree-sitter-cache",
+        ".ast-cache",
+        # Build artefacts + dev-tooling caches that ship .md / .yaml files
+        # by the hundred (skill docs, agent prompts) but are NOT project
+        # source. ``comprehensive_test_results`` alone holds ~2,500 md
+        # files that drown out the real source mix.
+        "comprehensive_test_results",
+        "openspec",
+        ".claude",
+        ".agents",
+        ".swarm",
+        ".kiro",
+        ".roo",
+        ".autonomous-runtime",
+        ".claude-flow",
+    }
+)
+
+
+def _is_language_count_excluded(rel_path: str) -> bool:
+    """True if ``rel_path`` should not influence language_distribution."""
+    normalized = rel_path.replace("\\", "/")
+    return any(seg in normalized for seg in _LANGUAGE_COUNT_EXCLUDED_SEGMENTS)
+
+
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -184,17 +224,22 @@ def _add_file_to_scan(scan: dict[str, Any], root: Path, path: Path) -> None:
     if not lang:
         return
     try:
+        rel_path = str(path.relative_to(root))
         size = path.stat().st_size
         lines = _count_lines(path)
         scan["source_files"].append(
             {
-                "path": str(path.relative_to(root)),
+                "path": rel_path,
                 "language": lang,
                 "lines": lines,
                 "size_bytes": size,
             }
         )
-        _increment(scan["lang_dist"], lang)
+        # Skip language tally for fixture / golden-master / internal-docs
+        # files. They're real code but not part of the project's "source mix".
+        # Their existence is still recorded in ``source_files`` and ``ext_dist``.
+        if not _is_language_count_excluded(rel_path):
+            _increment(scan["lang_dist"], lang)
     except (OSError, UnicodeDecodeError):
         return
 
