@@ -1708,6 +1708,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-rerunfailures"
+version = "16.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/6b/27/fd0209642f3a1069da3e0be3c7e339f942d052d81ccb1fb4eb9b187d3633/pytest_rerunfailures-16.2.tar.gz", hash = "sha256:5f5a32f15674a3d54f7598388fcd3cc1bc5c37284731a4704a44485dcdda5e23", size = 32121, upload-time = "2026-05-13T08:13:26.998Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/a5/d8c1ad74529b483044b787ead2d24ecc624bca4084a509002102e4bab8cc/pytest_rerunfailures-16.2-py3-none-any.whl", hash = "sha256:c22a53d2827becc76f057d4ded123c0e726523f2f0e5f0bb4efb31fd59e1f14e", size = 14505, upload-time = "2026-05-13T08:13:25.485Z" },
+]
+
+[[package]]
 name = "pytest-timeout"
 version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2378,7 +2391,7 @@ wheels = [
 
 [[package]]
 name = "tree-sitter-analyzer"
-version = "1.10.8"
+version = "1.12.0"
 source = { editable = "." }
 dependencies = [
     { name = "cachetools" },
@@ -2493,6 +2506,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "ruff" },
@@ -2607,6 +2621,7 @@ test = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "tree-sitter-c-sharp" },
@@ -2649,6 +2664,7 @@ dev = [
     { name = "pytest-benchmark" },
     { name = "pytest-cov" },
     { name = "pytest-mock" },
+    { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "ruff" },
@@ -2731,6 +2747,8 @@ requires-dist = [
     { name = "pytest-mock", marker = "extra == 'full'", specifier = ">=3.14.1" },
     { name = "pytest-mock", marker = "extra == 'integration'", specifier = ">=3.14.1" },
     { name = "pytest-mock", marker = "extra == 'test'", specifier = ">=3.14.1" },
+    { name = "pytest-rerunfailures", marker = "extra == 'dev'", specifier = ">=16.2" },
+    { name = "pytest-rerunfailures", marker = "extra == 'test'", specifier = ">=16.2" },
     { name = "pytest-timeout", marker = "extra == 'all'", specifier = ">=2.4.0" },
     { name = "pytest-timeout", marker = "extra == 'dev'", specifier = ">=2.4.0" },
     { name = "pytest-timeout", marker = "extra == 'full'", specifier = ">=2.4.0" },
@@ -2870,6 +2888,7 @@ dev = [
     { name = "pytest-benchmark", specifier = ">=5.1.0" },
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "pytest-mock", specifier = ">=3.14.1" },
+    { name = "pytest-rerunfailures", specifier = ">=16.2" },
     { name = "pytest-timeout", specifier = ">=2.4.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
     { name = "ruff", specifier = ">=0.5.0" },
