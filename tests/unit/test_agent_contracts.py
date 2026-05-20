@@ -403,6 +403,30 @@ def test_analyze_file_uses_create_extractor() -> None:
     )
 
 
+def test_mcp_command_specs_have_resolvable_tool_classes() -> None:
+    """ARCH-A2 regression: every MCP_COMMAND_SPECS entry's ``tool_attr``
+    must be resolvable via ``_get_tool_class`` (i.e. present in
+    ``_TOOL_CLASSES_BY_ATTR``). Adding a spec without updating the lookup
+    table used to fail at runtime with ``Unknown MCP tool: …``; this test
+    catches the drift at collection time."""
+    from tree_sitter_analyzer.cli.commands.mcp_commands import (
+        _TOOL_CLASSES_BY_ATTR,
+        MCP_COMMAND_SPECS,
+    )
+
+    referenced = {spec.tool_attr for spec in MCP_COMMAND_SPECS}
+    available = set(_TOOL_CLASSES_BY_ATTR)
+    missing = referenced - available
+    assert not missing, (
+        f"MCP_COMMAND_SPECS references tool classes not registered in "
+        f"_TOOL_CLASSES_BY_ATTR: {sorted(missing)}. Either add the class "
+        f"to the dict in cli/commands/mcp_commands.py or remove the spec."
+    )
+    # Informational: don't enforce the reverse (extra classes), since a
+    # tool might intentionally exist without a CLI spec (e.g. internal
+    # helpers).
+
+
 def test_mcp_server_module_does_not_eagerly_import_tools() -> None:
     """PERF-3 regression: ``tree_sitter_analyzer.mcp.server`` must not import
     the 23 individual tool modules at module load. Tool imports belong inside

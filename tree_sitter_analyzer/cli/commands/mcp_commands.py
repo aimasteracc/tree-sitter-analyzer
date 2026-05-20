@@ -256,37 +256,35 @@ def _run_tool(
         return 1
 
 
+# ARCH-A2: single dict replaces the 14-branch if-ladder. Adding a new tool
+# now means appending one entry here + one McpCommandSpec above + (if the
+# tool is MCP-exposed) one entry in mcp/server.py's _create_tool_registry.
+# That's still 3 places, but each is now O(1) lookup instead of a linear
+# branch chain, and the contract test below catches drift on the first run.
+_TOOL_CLASSES_BY_ATTR: dict[str, Callable[..., Any]] = {
+    "FileHealthTool": FileHealthTool,
+    "ParserReadinessTool": ParserReadinessTool,
+    "ProjectHealthTool": ProjectHealthTool,
+    "ProjectOverviewTool": ProjectOverviewTool,
+    "SafeToEditTool": SafeToEditTool,
+    "ChangeImpactTool": ChangeImpactTool,
+    "DependencyAnalysisTool": DependencyAnalysisTool,
+    "RefactoringSuggestionsTool": RefactoringSuggestionsTool,
+    "SmartContextTool": SmartContextTool,
+    "SymbolLineageTool": SymbolLineageTool,
+    "CodePatternsTool": CodePatternsTool,
+    "CodeGraphCallTool": CodeGraphCallTool,
+    "ASTCacheTool": ASTCacheTool,
+    "RouteDetectorTool": RouteDetectorTool,
+}
+
+
 def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
     """Resolve a tool class by its command spec attribute name."""
-    if tool_attr == "FileHealthTool":
-        return FileHealthTool
-    if tool_attr == "ParserReadinessTool":
-        return ParserReadinessTool
-    if tool_attr == "ProjectHealthTool":
-        return ProjectHealthTool
-    if tool_attr == "ProjectOverviewTool":
-        return ProjectOverviewTool
-    if tool_attr == "SafeToEditTool":
-        return SafeToEditTool
-    if tool_attr == "ChangeImpactTool":
-        return ChangeImpactTool
-    if tool_attr == "DependencyAnalysisTool":
-        return DependencyAnalysisTool
-    if tool_attr == "RefactoringSuggestionsTool":
-        return RefactoringSuggestionsTool
-    if tool_attr == "SmartContextTool":
-        return SmartContextTool
-    if tool_attr == "SymbolLineageTool":
-        return SymbolLineageTool
-    if tool_attr == "CodePatternsTool":
-        return CodePatternsTool
-    if tool_attr == "CodeGraphCallTool":
-        return CodeGraphCallTool
-    if tool_attr == "ASTCacheTool":
-        return ASTCacheTool
-    if tool_attr == "RouteDetectorTool":
-        return RouteDetectorTool
-    raise KeyError(f"Unknown MCP tool: {tool_attr}")
+    try:
+        return _TOOL_CLASSES_BY_ATTR[tool_attr]
+    except KeyError as exc:
+        raise KeyError(f"Unknown MCP tool: {tool_attr}") from exc
 
 
 def handle_mcp_commands(
