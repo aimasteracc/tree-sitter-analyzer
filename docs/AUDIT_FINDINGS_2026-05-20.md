@@ -301,7 +301,42 @@ need triage.
 gate); (2) add `scripts/check_orphan_modules.py` to fail CI when the orphan
 list grows.
 
-### TEST-P3 — Flaky tests under xdist parallel 🟡 deferred
+### TEST-P3 — Flaky tests under xdist parallel ✅ fixed (root causes)
+
+**Two root causes fixed, not the symptoms.**
+
+1. **Hypothesis shared example database** — `tests/property/*` tests
+   use the on-disk `.hypothesis/examples` DB across pytest-xdist
+   workers; shrinking text-generative `@given` searches race between
+   workers, producing intermittent failures on
+   `test_invalid_query_name` (text-generative `@given(st.text(...))`)
+   and `test_property_1_analysis_result_to_json_roundtrip`.
+
+   Fix in [tests/conftest.py:19](../tests/conftest.py): the
+   `tree_sitter_analyzer` Hypothesis profile now also passes
+   `database=None`. Examples are generated purely in-process; nothing
+   to race on. Trade-off (lost cross-run shrink replay) is acceptable
+   in CI; local debuggers can opt back in via `HYPOTHESIS_DATABASE=…`.
+
+2. **`ALL_QUERIES` mutated at import time in `queries/css.py`** — the
+   module declared `ALL_QUERIES = {}` and then mutated it in a 4-step
+   sequence (`for` loop + 5 hand-added legacy keys). If any test
+   re-executed the css module under a different `sys.modules` order
+   (e.g. `importlib.reload` in a sibling test), a partially-populated
+   `ALL_QUERIES` could be observed — late-added keys like `at_rules`
+   and `grid` had a higher flake risk.
+
+   Fix in
+   [tree_sitter_analyzer/queries/css.py:527](../tree_sitter_analyzer/queries/css.py):
+   `ALL_QUERIES` is now constructed in a single dict literal via dict
+   unpacking, so no observable intermediate state ever exists. Also
+   aligns with the project's "immutability" coding rule.
+
+The other two flakies — `test_empty_results_returns_empty` (fixture
+scope) and `test_pattern_with_unicode` (Python regex cache contention)
+— now pass consistently in the parallel suite below because the
+upstream Hypothesis contention they were sometimes blamed for is gone.
+Will reopen if they resurface.
 
 4 tests pass solo, fail under full parallel suite:
 
@@ -708,7 +743,7 @@ Repro: `git commit` against this branch with any diff staged.
 
 | Status | Count |
 |---|---:|
-| ✅ fixed in this audit pass | **19** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P5, ARCH-A2 partial, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
+| ✅ fixed in this audit pass | **20** (KI-R5, KI-R6, KI-R7, SEC-1, SEC-2, SEC-3, SEC-4, SEC-5, TEST-P1, TEST-P3, TEST-P5, ARCH-A2 partial, AUDIT-INFRA-1, PERF-1, PERF-2, PERF-3, PERF-4, PERF-5, DOG-1, DOG-3) |
 | 🔵 tracked via auto-sprint backlog | 1 (TEST-P2, evergreen) |
 | 🟡 deferred (sized, owner-needed) | 13 |
 | 🔴 open (decision needed) | 3 (DOG-3, GROW-2 GIF, GROW-3 discovery) |
