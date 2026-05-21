@@ -339,6 +339,37 @@ class TestR37afCLIEnvelopeContract:
         )
         _assert_envelope(payload, "ShowExtensionsCommand")
 
+    def test_filter_help_json_envelope(self):
+        """r37ai: ``--filter-help`` was the last info command without JSON
+        envelope support. Now emits canonical envelope when
+        ``--format json`` (or default ``--output-format=json``).
+        """
+        from tree_sitter_analyzer.cli_main import _print_filter_help
+
+        args = Namespace(format="json", output_format="json")
+        captured: dict = {}
+        with patch(
+            "tree_sitter_analyzer.output_manager.output_json",
+            side_effect=lambda d: captured.update(d) if isinstance(d, dict) else None,
+        ):
+            _print_filter_help(args)
+        _assert_envelope(captured, "filter_help[json]")
+        assert isinstance(captured.get("filter_help"), str)
+        assert len(captured["filter_help"]) > 100  # non-trivial help text
+
+    def test_filter_help_text_path_preserved(self):
+        """Text path (no --format json) must still emit text via output_info."""
+        from tree_sitter_analyzer.cli_main import _print_filter_help
+
+        args = Namespace(format=None, output_format="text")
+        with (
+            patch("tree_sitter_analyzer.cli_main.output_info") as mock_info,
+            patch("tree_sitter_analyzer.output_manager.output_json") as mock_json,
+        ):
+            _print_filter_help(args)
+        assert mock_json.call_count == 0, "text mode must not call output_json"
+        assert mock_info.call_count > 0
+
     def test_mcp_command_error_envelope_has_top_verdict(self):
         """r37ah: MCP-bridged commands' error envelope must mirror verdict.
 
@@ -432,7 +463,8 @@ class TestR37afCLISurfaceBaseline:
     #   r37af: 11 (initial coverage of MCP/CLI surfaces)
     #   r37ag: 12 (+ PartialReadCommand)
     #   r37ah: 13 (+ MCP-bridged error envelope)
-    BASELINE_COVERAGE = 13
+    #   r37ai: 15 (+ filter_help JSON envelope + text-path preserved)
+    BASELINE_COVERAGE = 15
 
     def test_envelope_test_count_does_not_shrink(self):
         """If you delete a test from TestR37afCLIEnvelopeContract,

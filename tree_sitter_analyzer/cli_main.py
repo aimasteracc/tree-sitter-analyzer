@@ -88,16 +88,51 @@ def _create_info_command(args: argparse.Namespace) -> Any:
     if getattr(args, "show_supported_extensions", False):
         return ShowExtensionsCommand(args)
     if getattr(args, "filter_help", False):
-        _print_filter_help()
+        _print_filter_help(args)
         return None
     return _NO_COMMAND_MATCH
 
 
-def _print_filter_help() -> None:
-    """Print query filter help and let the caller exit successfully."""
+def _print_filter_help(args: argparse.Namespace | None = None) -> None:
+    """Print query filter help (text) or emit a JSON envelope.
+
+    r37ai (dogfood): ``--filter-help`` previously ignored
+    ``--format json`` and always called ``output_info`` (plain text).
+    Agents piping through ``json.loads`` failed. Now mirrors the
+    pattern of the other info commands (r37ad/ae): JSON path emits
+    canonical envelope keys, text path preserves backward compat.
+    """
     from tree_sitter_analyzer.core.query_filter import QueryFilter
 
-    output_info(QueryFilter().get_filter_help())
+    help_text = QueryFilter().get_filter_help()
+    fmt = (
+        getattr(args, "format", None) or getattr(args, "output_format", None)
+        if args is not None
+        else None
+    )
+    if fmt == "json":
+        from tree_sitter_analyzer.output_manager import output_json
+
+        line_count = help_text.count("\n") + 1
+        summary_line = f"filter_help: {line_count} lines of query filter syntax docs"
+        output_json(
+            {
+                "success": True,
+                "filter_help": help_text,
+                "summary_line": summary_line,
+                "verdict": "INFO",
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": (
+                        "Apply the filter syntax via `--filter='<expression>'` "
+                        "when running `--query-key` or `--query-string`."
+                    ),
+                    "verdict": "INFO",
+                },
+            }
+        )
+        return
+    output_info(help_text)
 
 
 def _create_file_command(args: argparse.Namespace) -> Any:
