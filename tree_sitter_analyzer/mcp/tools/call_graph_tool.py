@@ -13,9 +13,31 @@ from typing import Any
 from ...call_graph import CallGraph
 from ...utils import setup_logger
 from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
 
 logger = setup_logger(__name__)
+
+
+# Modes that resolve a specific symbol. When one of these returns zero
+# results we treat the response as ``NOT_FOUND`` and steer the caller
+# toward symbol_lineage rather than handing them an empty envelope.
+_SYMBOL_RESOLVING_MODES = frozenset({"callers", "callees", "chain"})
+
+
+def _result_is_empty_for_mode(result: dict[str, Any], mode: str) -> bool:
+    """Return True when the response represents a not-found lookup.
+
+    Finding F8 only treats the symbol-resolving modes as "not found" —
+    a zero-edge ``summary`` on an empty project is a different (and
+    not particularly actionable) condition.
+    """
+    if mode == "callers":
+        return int(result.get("caller_count", 0)) == 0
+    if mode == "callees":
+        return int(result.get("callee_count", 0)) == 0
+    if mode == "chain":
+        return int(result.get("edge_count", 0)) == 0
+    return False
 
 
 def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
@@ -25,11 +47,25 @@ def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
     ``summary_line=None`` on every call_graph response. Build a compact
     summary keyed off the response mode so the dispatch post-hook can
     mirror ``agent_summary.summary_line`` to the top level.
+
+    Finding F8 (round-17): when ``callers``/``callees``/``chain`` resolve
+    to zero hits for a symbol that doesn't exist, agents previously saw
+    ``verdict='n/a'`` plus a generic "drill in" next_step — nothing
+    actionable. We now overlay a ``NOT_FOUND`` verdict with a concrete
+    next_step pointing at ``symbol_lineage`` so the caller has somewhere
+    to go.
     """
     mode = result.get("mode", "summary")
     func = result.get("function") or ""
+    is_not_found = mode in _SYMBOL_RESOLVING_MODES and _result_is_empty_for_mode(
+        result, mode
+    )
 
-    if mode == "summary":
+    if is_not_found:
+        # F8: prefer a single canonical not-found line that tells agents
+        # the symbol is missing, regardless of which mode they tried.
+        summary_line = f"call_graph: symbol '{func}' not found"
+    elif mode == "summary":
         edges = result.get("edges", result.get("edge_count", 0))
         nodes = result.get("nodes", result.get("function_count", 0))
         summary_line = f"call_graph summary nodes={nodes} edges={edges}"
@@ -59,16 +95,28 @@ def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
     if not isinstance(agent_summary, dict) or not agent_summary:
         agent_summary = {}
     agent_summary.setdefault("summary_line", summary_line)
-    agent_summary.setdefault(
-        "next_step",
-        (
-            "Use callers/callees/chain modes to navigate the call graph."
-            if mode == "summary"
-            else "Drill into a specific function with mode='callers' or 'callees'."
-        ),
-    )
-    agent_summary.setdefault("verdict", "n/a")
+    if is_not_found:
+        agent_summary.setdefault(
+            "next_step",
+            "Run symbol_lineage to find similar names, or check spelling.",
+        )
+        agent_summary.setdefault("verdict", "NOT_FOUND")
+        agent_summary.setdefault("risk", "low")
+    else:
+        agent_summary.setdefault(
+            "next_step",
+            (
+                "Use callers/callees/chain modes to navigate the call graph."
+                if mode == "summary"
+                else "Drill into a specific function with mode='callers' or 'callees'."
+            ),
+        )
+        agent_summary.setdefault("verdict", "n/a")
     result["agent_summary"] = agent_summary
+    # F8: mirror agent_summary.summary_line to the top level so direct
+    # ``await tool.execute(args)`` callers see a non-None summary_line
+    # without going through the MCP dispatch post-hook.
+    mirror_summary_line(result)
 
 
 def _maybe_bare_name_hint(

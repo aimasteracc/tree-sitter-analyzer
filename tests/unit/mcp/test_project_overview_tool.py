@@ -81,9 +81,7 @@ class TestProjectOverviewExecute:
 
     def test_execute_empty_project(self, tmp_path) -> None:
         tool = ProjectOverviewTool(project_root=str(tmp_path))
-        result = _run(
-            tool.execute({"output_format": "json", "max_depth": 5})
-        )
+        result = _run(tool.execute({"output_format": "json", "max_depth": 5}))
 
         assert result["success"] is True
         assert result["summary"]["source_files"] == 0
@@ -98,9 +96,7 @@ class TestProjectOverviewExecute:
         _write(tmp_path, "style.css", "body {}\n")
 
         tool = ProjectOverviewTool(project_root=str(tmp_path))
-        result = _run(
-            tool.execute({"output_format": "json", "max_depth": 5})
-        )
+        result = _run(tool.execute({"output_format": "json", "max_depth": 5}))
 
         assert result["summary"]["languages_count"] == 4
         assert "python" in result["language_distribution"]
@@ -338,7 +334,10 @@ class TestBuildResult:
         assert result["summary"]["source_files"] == 2
         assert result["summary"]["non_source_files"] == 1
         assert result["summary"]["total_lines"] == 15
-        assert result["agent_summary"]["risk"] == "unknown"
+        # F11: ``risk`` is now inferred from observable signals instead of
+        # ``"unknown"``. A 2-file project with sub-50-line files trips no
+        # severity heuristic, so the fallback verdict is ``"low"``.
+        assert result["agent_summary"]["risk"] == "low"
         assert "tool_routing" in result
 
     def test_with_health_includes_smart_hint(self, tmp_path) -> None:
@@ -377,7 +376,12 @@ class TestBuildBaseResult:
             "lang_dist": {"python": 20},
             "ext_dist": {".py": 20},
             "source_files": [
-                {"path": f"f{i}.py", "language": "python", "lines": 20 - i, "size_bytes": 10}
+                {
+                    "path": f"f{i}.py",
+                    "language": "python",
+                    "lines": 20 - i,
+                    "size_bytes": 10,
+                }
                 for i in range(20)
             ],
             "dir_tree": {},
@@ -400,9 +404,7 @@ class TestBuildHealthAlert:
         assert "b.py" in alert
 
     def test_caps_at_5_files(self) -> None:
-        unhealthy = [
-            {"file": f"f{i}.py", "grade": "F", "score": 10} for i in range(8)
-        ]
+        unhealthy = [{"file": f"f{i}.py", "grade": "F", "score": 10} for i in range(8)]
         alert = _build_health_alert(unhealthy)
         assert "8 file(s)" in alert
 
@@ -417,8 +419,11 @@ class TestOverviewRisk:
     def test_high_when_health_alert(self) -> None:
         assert _overview_risk({"health_alert": "bad"}, True) == "high"
 
-    def test_unknown_when_no_health(self) -> None:
-        assert _overview_risk({}, False) == "unknown"
+    def test_fallback_when_no_signals(self) -> None:
+        # F11: a bare empty result with no signals must NOT report
+        # ``"unknown"`` — the fallback is ``"low"`` so the agent always
+        # receives a comparable risk grade.
+        assert _overview_risk({}, False) == "low"
 
     def test_low_when_health_ok(self) -> None:
         assert _overview_risk({}, True) == "low"
@@ -477,22 +482,30 @@ class TestCountLines:
 
 class TestSuggestRefactorAction:
     def test_large_prod_file(self) -> None:
-        result = _suggest_refactor_action("src/big.py", 600, type("H", (), {"grade": "D", "total": 30}))
+        result = _suggest_refactor_action(
+            "src/big.py", 600, type("H", (), {"grade": "D", "total": 30})
+        )
         assert result is not None
         assert "check_file_health" in result
 
     def test_test_file(self) -> None:
-        result = _suggest_refactor_action("tests/test_foo.py", 400, type("H", (), {"grade": "D", "total": 30}))
+        result = _suggest_refactor_action(
+            "tests/test_foo.py", 400, type("H", (), {"grade": "D", "total": 30})
+        )
         assert result is not None
         assert "Split" in result
 
     def test_markdown_file(self) -> None:
-        result = _suggest_refactor_action("docs/README.md", 200, type("H", (), {"grade": "D", "total": 30}))
+        result = _suggest_refactor_action(
+            "docs/README.md", 200, type("H", (), {"grade": "D", "total": 30})
+        )
         assert result is not None
         assert "Archive" in result
 
     def test_small_prod_file(self) -> None:
-        result = _suggest_refactor_action("src/small.py", 50, type("H", (), {"grade": "C", "total": 60}))
+        result = _suggest_refactor_action(
+            "src/small.py", 50, type("H", (), {"grade": "C", "total": 60})
+        )
         assert result is None
 
 
@@ -559,9 +572,7 @@ class TestEdgeCases:
         _write(tmp_path, "sub/deep.py", "y = 2\n")
 
         tool = ProjectOverviewTool(project_root=str(tmp_path))
-        result = _run(
-            tool.execute({"max_depth": 1, "output_format": "json"})
-        )
+        result = _run(tool.execute({"max_depth": 1, "output_format": "json"}))
 
         assert result["summary"]["source_files"] == 1
 
@@ -569,9 +580,7 @@ class TestEdgeCases:
         _write(tmp_path, "rückmeldung.py", "x = 1\n")
 
         tool = ProjectOverviewTool(project_root=str(tmp_path))
-        result = _run(
-            tool.execute({"max_depth": 5, "output_format": "json"})
-        )
+        result = _run(tool.execute({"max_depth": 5, "output_format": "json"}))
 
         assert result["summary"]["source_files"] == 1
 
@@ -599,8 +608,6 @@ class TestEdgeCases:
             _write(tmp_path, f"file{ext}", f"{lang} content\n")
 
         tool = ProjectOverviewTool(project_root=str(tmp_path))
-        result = _run(
-            tool.execute({"max_depth": 5, "output_format": "json"})
-        )
+        result = _run(tool.execute({"max_depth": 5, "output_format": "json"}))
 
         assert result["summary"]["languages_count"] == len(ext_lang)

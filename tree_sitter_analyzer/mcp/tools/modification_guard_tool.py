@@ -14,7 +14,7 @@ from typing import Any
 
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
 from .trace_impact_tool import TraceImpactTool, _get_impact_level
 
 # Set up logging
@@ -36,7 +36,92 @@ _VERDICT_BOOST: dict[str, str] = {
     "UNSAFE": "UNSAFE",  # already max
 }
 
+# Map this tool's verdict vocabulary to the cross-tool ``risk`` field
+# (low / medium / high) so agents can compare risk across safety tools
+# without learning each tool's local enum.
+_VERDICT_TO_RISK: dict[str, str] = {
+    "SAFE": "low",
+    "CAUTION": "low",
+    "REVIEW": "medium",
+    "UNSAFE": "high",
+}
+
 CRITICAL_NODES_FILE = ".tree-sitter-cache/critical_nodes.json"
+
+
+def _build_agent_summary(
+    *,
+    symbol: str,
+    modification_type: str,
+    safety_verdict: str,
+    total_callers: int,
+    summary_line: str,
+    proceed_recommendation: str,
+    architecture_rank: int | None,
+) -> dict[str, Any]:
+    """Compose the agent_summary block for modification_guard responses.
+
+    F10 fix: previously this tool emitted ``agent_summary={}`` because no
+    one populated it. Every safety tool (safe_to_edit, file_health,
+    modification_guard) ships the same shape — ``summary_line``,
+    ``verdict``, ``risk``, ``next_step`` — so agents can branch on a
+    single field regardless of which safety tool ran.
+    """
+    risk = _VERDICT_TO_RISK.get(safety_verdict, "medium")
+    next_step = _next_step_for_verdict(
+        safety_verdict=safety_verdict,
+        symbol=symbol,
+        modification_type=modification_type,
+        total_callers=total_callers,
+        architecture_rank=architecture_rank,
+    )
+    return {
+        "summary_line": summary_line,
+        "verdict": safety_verdict,
+        "risk": risk,
+        "next_step": next_step,
+        "symbol": symbol,
+        "modification_type": modification_type,
+        "total_callers": total_callers,
+        "recommendation": proceed_recommendation,
+        "stop_condition": (
+            f"safety_verdict resolves to SAFE or all {total_callers} caller(s) "
+            "have been reviewed/updated."
+        ),
+    }
+
+
+def _next_step_for_verdict(
+    *,
+    safety_verdict: str,
+    symbol: str,
+    modification_type: str,
+    total_callers: int,
+    architecture_rank: int | None,
+) -> str:
+    """Return one concrete next action keyed by the safety verdict."""
+    if architecture_rank is not None and architecture_rank <= 10:
+        return (
+            f"{symbol} is rank #{architecture_rank} in the architecture — "
+            "plan a staged migration and run batch_search before editing."
+        )
+    if safety_verdict == "SAFE":
+        return f"Proceed with {modification_type} for '{symbol}'."
+    if safety_verdict == "CAUTION":
+        return (
+            f"Run batch_search(['{symbol}']) to review {total_callers} caller(s), "
+            "then proceed with the edit."
+        )
+    if safety_verdict == "REVIEW":
+        return (
+            f"Audit all {total_callers} call sites via batch_search(['{symbol}']) "
+            "before changing the signature."
+        )
+    # UNSAFE / anything else: highest caution
+    return (
+        f"Do NOT modify '{symbol}' yet — plan a deprecation strategy and "
+        f"update all {total_callers} call sites atomically."
+    )
 
 
 def _load_critical_nodes(project_root: str | None) -> list[dict[str, Any]]:
@@ -398,4 +483,22 @@ class ModificationGuardTool(BaseMCPTool):
             parts.insert(2, pr_str)
         result["summary_line"] = "  ".join(parts)
 
-        return result
+        # F10: populate agent_summary with the canonical safety-tool
+        # shape (summary_line / verdict / risk / next_step). Prior to
+        # this fix the field was synthesised as ``{}`` downstream by
+        # ensure_canonical_success_envelope, which gave agents no useful
+        # decision signal.
+        result["agent_summary"] = _build_agent_summary(
+            symbol=symbol,
+            modification_type=modification_type,
+            safety_verdict=final_verdict,
+            total_callers=total_callers,
+            summary_line=result["summary_line"],
+            proceed_recommendation=proceed_recommendation,
+            architecture_rank=result.get("architecture_rank"),
+        )
+
+        # Mirror agent_summary.summary_line to the top-level envelope
+        # (idempotent — keeps the value we just set above) so direct
+        # callers that bypass the MCP dispatch hook still see it.
+        return mirror_summary_line(result)

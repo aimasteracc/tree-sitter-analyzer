@@ -376,10 +376,77 @@ def _build_agent_summary(
 
 
 def _overview_risk(result: dict[str, Any], include_health: bool) -> str:
+    """Infer project risk from observable signals (F11 fix).
+
+    Before F11 we returned ``"unknown"`` when ``include_health`` was
+    false, which gave AI agents no signal. We now derive a coarse
+    risk grade from data that is *always* present in the scan:
+    largest-file line counts, the count of oversized files in the
+    top-15 largest list, and language spread. When ``include_health``
+    is true we additionally honour D/F grades and health_alert.
+
+    Returns one of ``"low"``, ``"medium"``, ``"high"``. Never returns
+    ``"unknown"`` (which used to flow through to ``agent_summary``).
+    """
+    # Strongest signal first: explicit D/F health alert.
     if result.get("health_alert"):
         return "high"
-    if not include_health:
-        return "unknown"
+    if include_health:
+        health_summary = result.get("health_summary", [])
+        if isinstance(health_summary, list):
+            failing = sum(
+                1
+                for entry in health_summary
+                if isinstance(entry, dict) and entry.get("grade") in {"D", "F"}
+            )
+            if failing >= 2:
+                return "high"
+            if failing == 1:
+                return "medium"
+
+    # Signal: oversized source files in the top-15 largest list.
+    # Thresholds match the project's documented health rules
+    # (~500 lines is the soft refactor cue, ~800 is the hard cap).
+    largest = result.get("largest_source_files", []) or []
+    if isinstance(largest, list) and largest:
+        big_files = [
+            item
+            for item in largest
+            if isinstance(item, dict)
+            and isinstance(item.get("lines"), int)
+            and item["lines"] >= 800
+            and ".md" not in str(item.get("path", "")).lower()
+        ]
+        moderate_files = [
+            item
+            for item in largest
+            if isinstance(item, dict)
+            and isinstance(item.get("lines"), int)
+            and item["lines"] >= 500
+            and ".md" not in str(item.get("path", "")).lower()
+        ]
+        if len(big_files) >= 3:
+            return "high"
+        if big_files or len(moderate_files) >= 5:
+            return "medium"
+
+    # Signal: language sprawl (many languages → more integration risk).
+    summary = result.get("summary", {})
+    if isinstance(summary, dict):
+        languages_count = summary.get("languages_count", 0)
+        source_files = summary.get("source_files", 0)
+        if isinstance(languages_count, int) and languages_count >= 8:
+            return "medium"
+        # Very large monorepos (>2k source files) without health data
+        # warrant a hint to opt in to deeper inspection.
+        if (
+            not include_health
+            and isinstance(source_files, int)
+            and source_files >= 2000
+        ):
+            return "medium"
+
+    # Default — clean project (or insufficient signal but no red flags).
     return "low"
 
 

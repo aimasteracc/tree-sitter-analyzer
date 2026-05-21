@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 from ._route_detector_helpers import (
     extract_annotation_value,
     extract_django_handler,
-    extract_js_handler,
     extract_template_string,
     find_keyword,
     function_name_after_decorator,
@@ -27,6 +26,33 @@ from ._route_detector_helpers import (
     unquote,
     unquote_java_string,
     walk,
+)
+
+# Finding F4: AST node types whose presence anywhere in the argument list
+# means the call cannot be a normal ``app.get(url, callback)`` route — they
+# replace the callback slot with a non-callable value. We surface a marker
+# string (``<object>`` / ``<inline>``) instead of falling back to the URL
+# pattern, which used to leak through as a bogus ``handler_name``.
+_OBJECT_HANDLER_TYPES = frozenset(
+    {
+        "object",  # { method: 'GET', fn: handler } — config object
+        "object_pattern",  # destructuring (rare, but legal at this slot)
+    }
+)
+_INLINE_HANDLER_TYPES = frozenset(
+    {
+        "arrow_function",  # (req, res) => res.send('ok')
+        "function_expression",  # function (req, res) { ... }
+        "function",  # bare ``function`` node in some grammars
+    }
+)
+_REFERENCE_HANDLER_TYPES = frozenset(
+    {
+        "identifier",  # myHandler
+        "member_expression",  # users.list
+        "call_expression",  # myFn.bind(this)  / wrap(handler)
+        "subscript_expression",  # handlers['get']  (TS subscript form)
+    }
 )
 
 if TYPE_CHECKING:
@@ -224,6 +250,79 @@ def _is_express_receiver(receiver: str) -> bool:
     return bool(_EXPRESS_RECEIVER_SUFFIX.search(tail))
 
 
+def _extract_express_handler_name(args_node: Any) -> str:
+    """Resolve the handler name for an Express ``app.<verb>(...)`` call.
+
+    Finding F4: ``extract_js_handler`` (in ``_route_detector_helpers``) only
+    looked at the second positional argument. When that slot held an
+    *object literal* (e.g. ``{ method: 'GET', fn: handler }``) — or when
+    Express received a middleware array followed by the real callback —
+    the function silently fell back to the URL pattern (``children[0]``),
+    so we ended up reporting the URL itself as the ``handler_name``.
+
+    The new contract:
+
+    - if the callback slot holds a function expression  -> ``<inline>`` (or
+      the variable name when the grammar exposes one)
+    - if it holds a callable reference (identifier, member expression,
+      ``foo.bind(...)``)                                -> that reference
+    - if it holds an object/array literal               -> ``<object>``
+    - else                                              -> ``<unknown>``
+
+    We scan all positional args (skipping the URL pattern and any
+    middleware-array slots) and return the *last* callable-shaped child,
+    matching Express's "last function wins" semantics. When none of the
+    args look callable but one is clearly a config object, we return
+    ``<object>`` so the symbol can never be mistaken for an identifier.
+    """
+    positional: list[Any] = [
+        c
+        for c in args_node.children
+        if c.type not in (",", "(", ")", "comment", "line_comment", "block_comment")
+    ]
+    # First positional is the URL pattern — handled by the caller. Walk the
+    # rest looking for the last callable slot.
+    if len(positional) < 2:
+        return "<unknown>"
+    rest = positional[1:]
+
+    last_callable: Any | None = None
+    saw_object = False
+    for arg in rest:
+        node_type = arg.type
+        if node_type in _INLINE_HANDLER_TYPES:
+            last_callable = arg
+        elif node_type in _REFERENCE_HANDLER_TYPES:
+            last_callable = arg
+        elif node_type in _OBJECT_HANDLER_TYPES:
+            saw_object = True
+        elif node_type == "array":
+            # Middleware list — not the handler itself; ignored.
+            continue
+        elif node_type in ("string", "template_string"):
+            # A literal-string handler is legal in some routers; treat it
+            # the same way extract_js_handler did: strip quotes, cap length.
+            last_callable = arg
+        # Anything else (numbers, booleans, ``null``, ``undefined``) is
+        # ignored — they cannot be real handlers and we'd rather report
+        # ``<unknown>`` than something misleading.
+
+    if last_callable is not None:
+        node_type = last_callable.type
+        if node_type in _INLINE_HANDLER_TYPES:
+            return "<inline>"
+        if node_type == "call_expression":
+            return last_callable.text.decode()[:80]
+        if node_type in ("string", "template_string"):
+            return last_callable.text.decode().strip("\"'`")[:80]
+        # identifier / member_expression / subscript_expression
+        return last_callable.text.decode()[:80]
+
+    if saw_object:
+        return "<object>"
+    return "<unknown>"
+
+
 def scan_express_routes(
     root: Any, file_path: str, language: str, route_info_cls: type
 ) -> list[Any]:
@@ -278,7 +377,7 @@ def scan_express_routes(
         if not url_pattern or not url_pattern.startswith("/"):
             continue
         http_method = method_name.upper() if method_name != "use" else "USE"
-        handler_name = extract_js_handler(args_node)
+        handler_name = _extract_express_handler_name(args_node)
         routes.append(
             route_info_cls(
                 http_method=http_method,

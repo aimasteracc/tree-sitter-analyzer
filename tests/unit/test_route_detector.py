@@ -758,3 +758,132 @@ class TestRouteCachePersistence:
         # Bulk hit.
         bulk = cache.bulk_get_by_stat([("/p", 12345), ("/missing", 0)])
         assert bulk == {"/p": sample}
+
+
+# ---------------------------------------------------------------------------
+# Finding F4: handler-name quality for non-callable second args
+# ---------------------------------------------------------------------------
+
+
+class TestHandlerNameQuality:
+    """``handler_name`` must never silently be the URL pattern or a junk
+    arg-spec when the call's callable slot holds something that is not a
+    function reference (object literal, middleware array, etc.).
+
+    Round-17 finding F4: ``app.post('/x', { fn: handler })`` used to report
+    ``handler_name == '/x'`` because the extractor fell back to ``args[0]``
+    after failing to match the second arg. We now return ``<object>`` for
+    object-literal slots and ``<inline>`` for inline function expressions.
+    """
+
+    @staticmethod
+    def _handlers_by_url(project: Path) -> dict[str, str]:
+        # Cache stores prior results by content hash — bypass it so we
+        # measure the *current* extractor, not last round's cached output.
+        routes = RouteDetector(str(project), cache_enabled=False).detect_all()
+        return {r.url_pattern: r.handler_name for r in routes}
+
+    def test_inline_arrow_function_returns_inline(self, tmp_path: Path):
+        _write(
+            tmp_path,
+            "arrow.js",
+            """\
+const express = require('express');
+const app = express();
+app.get('/health', (req, res) => res.send('ok'));
+app.post('/users', async (req, res) => { res.json({}); });
+""",
+        )
+        handlers = self._handlers_by_url(tmp_path)
+        assert handlers["/health"] == "<inline>", (
+            f"F4: arrow-function callback must surface as '<inline>', "
+            f"got {handlers['/health']!r}"
+        )
+        assert handlers["/users"] == "<inline>"
+
+    def test_named_function_reference_returns_identifier(self, tmp_path: Path):
+        _write(
+            tmp_path,
+            "named.js",
+            """\
+const express = require('express');
+const app = express();
+app.get('/users', listUsers);
+app.post('/users/:id', userCtrl.create);
+app.delete('/users/:id', wrap(removeUser));
+""",
+        )
+        handlers = self._handlers_by_url(tmp_path)
+        # Bare identifier.
+        assert handlers["/users"] == "listUsers"
+        # Member expression — keep the chain so callers can resolve it.
+        assert handlers["/users/:id"] in ("userCtrl.create", "wrap(removeUser)"), (
+            "F4: named-reference handler shape regressed; "
+            f"got {handlers['/users/:id']!r}"
+        )
+
+    def test_object_literal_handler_returns_object_marker(self, tmp_path: Path):
+        """The big bug: an object literal callback slot must NOT surface
+        the URL pattern as ``handler_name``."""
+        _write(
+            tmp_path,
+            "object.js",
+            """\
+const express = require('express');
+const app = express();
+app.post('/save', { method: 'GET', fn: handler });
+app.put('/update', { handler: doUpdate, schema: schema });
+""",
+        )
+        handlers = self._handlers_by_url(tmp_path)
+        assert handlers["/save"] == "<object>", (
+            f"F4: object-literal slot must surface as '<object>', "
+            f"not as URL pattern. Got {handlers['/save']!r}"
+        )
+        assert handlers["/update"] == "<object>"
+        # Crucial negative assertion: handler must NEVER equal the URL
+        # itself (the bug we are fixing).
+        assert handlers["/save"] != "/save"
+        assert handlers["/update"] != "/update"
+
+    def test_middleware_array_skipped_real_handler_wins(self, tmp_path: Path):
+        """``app.get('/x', [mw1, mw2], realHandler)`` — handler must be the
+        final callable, not the middleware array."""
+        _write(
+            tmp_path,
+            "with_mw.js",
+            """\
+const express = require('express');
+const app = express();
+app.get('/with-array', ['mw1', 'mw2'], finalHandler);
+""",
+        )
+        handlers = self._handlers_by_url(tmp_path)
+        assert handlers["/with-array"] == "finalHandler", (
+            f"F4: middleware-array slot must be skipped; "
+            f"final identifier should win. Got {handlers['/with-array']!r}"
+        )
+        # Belt-and-braces: never the URL.
+        assert handlers["/with-array"] != "/with-array"
+
+    def test_handler_never_starts_with_slash(self, tmp_path: Path):
+        """Whatever the callback slot looks like, the handler name must
+        never be a URL pattern (regression-guard for the whole class)."""
+        _write(
+            tmp_path,
+            "mixed.js",
+            """\
+const express = require('express');
+const app = express();
+app.get('/a', { obj: 1 });
+app.post('/b', ['mw'], cb);
+app.put('/c', (req, res) => {});
+app.delete('/d', namedHandler);
+""",
+        )
+        handlers = self._handlers_by_url(tmp_path)
+        for url, handler in handlers.items():
+            assert not handler.startswith("/"), (
+                f"F4: handler_name {handler!r} for {url!r} looks like a URL — "
+                "extractor fell back to the wrong arg."
+            )

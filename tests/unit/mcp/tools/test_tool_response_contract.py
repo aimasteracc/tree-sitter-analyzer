@@ -402,3 +402,239 @@ class TestFinding6DispatchPostHook:
         out = ensure_canonical_success_envelope("tool_x", response)
         assert out is response
         assert "summary_line" not in out
+
+
+class TestF10ModificationGuardAgentSummary:
+    """F10: modification_guard previously returned ``agent_summary={}``.
+
+    Every safety tool must ship a populated ``agent_summary`` with the
+    canonical fields (``summary_line``, ``verdict``, ``risk``,
+    ``next_step``) so agents can branch on a single field regardless
+    of which safety tool ran.
+    """
+
+    @pytest.fixture
+    def project_with_symbol(self, tmp_path: Path) -> Path:
+        # A tiny project where the target symbol has zero callers — that
+        # gives a deterministic SAFE verdict without ripgrep variability.
+        src = tmp_path / "lib.py"
+        src.write_text(
+            "def lonely_function(x: int) -> int:\n    return x + 1\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_agent_summary_is_populated(self, project_with_symbol: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
+            ModificationGuardTool,
+        )
+
+        tool = ModificationGuardTool(str(project_with_symbol))
+        result = _run(
+            tool.execute({"symbol": "lonely_function", "modification_type": "rename"})
+        )
+        assert result["success"] is True
+        agent = result.get("agent_summary")
+        assert isinstance(agent, dict) and agent, (
+            f"agent_summary must be a populated dict, got {agent!r}"
+        )
+
+    def test_agent_summary_has_canonical_fields(
+        self, project_with_symbol: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
+            ModificationGuardTool,
+        )
+
+        tool = ModificationGuardTool(str(project_with_symbol))
+        result = _run(
+            tool.execute({"symbol": "lonely_function", "modification_type": "refactor"})
+        )
+        agent = result["agent_summary"]
+        for key in ("summary_line", "verdict", "risk", "next_step"):
+            assert key in agent, f"agent_summary missing required key: {key}"
+            value = agent[key]
+            assert isinstance(value, str) and value, (
+                f"agent_summary[{key!r}] must be a non-empty string, got {value!r}"
+            )
+        assert agent["verdict"] in {"SAFE", "CAUTION", "REVIEW", "UNSAFE"}
+        assert agent["risk"] in {"low", "medium", "high"}
+
+    def test_top_level_summary_line_matches_agent_summary(
+        self, project_with_symbol: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
+            ModificationGuardTool,
+        )
+
+        tool = ModificationGuardTool(str(project_with_symbol))
+        result = _run(
+            tool.execute({"symbol": "lonely_function", "modification_type": "delete"})
+        )
+        top_level = result.get("summary_line")
+        agent_sl = result["agent_summary"]["summary_line"]
+        assert isinstance(top_level, str) and top_level, (
+            "top-level summary_line must be a non-empty string"
+        )
+        assert top_level == agent_sl, (
+            "top-level summary_line must mirror agent_summary['summary_line']"
+        )
+
+
+class TestF11ProjectOverviewRisk:
+    """F11: project_overview returned ``risk="unknown"`` whenever
+    ``include_health`` was false. The fix infers risk from observable
+    signals (largest-file sizes, language spread) so callers always
+    receive ``low``/``medium``/``high`` — never ``unknown`` or empty.
+    """
+
+    @pytest.fixture
+    def clean_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "a.py"
+        src.write_text("def f() -> None:\n    return None\n", encoding="utf-8")
+        return tmp_path
+
+    @pytest.fixture
+    def risky_project(self, tmp_path: Path) -> Path:
+        # Three oversized source files → should trip the "high" branch
+        # even without ``include_health=True``.
+        big_body = "    pass\n" * 900  # 900 lines body
+        for i in range(3):
+            (tmp_path / f"big_{i}.py").write_text(
+                f"def big_{i}() -> None:\n{big_body}", encoding="utf-8"
+            )
+        return tmp_path
+
+    def _risk(self, result: dict) -> str:
+        agent = result.get("agent_summary") or {}
+        return agent.get("risk", "")
+
+    def test_risk_never_unknown_without_health(self, clean_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(clean_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        risk = self._risk(result)
+        assert risk in {"low", "medium", "high"}, (
+            f"risk must be one of low/medium/high — got {risk!r}"
+        )
+
+    def test_risk_never_unknown_with_health(self, clean_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(clean_project))
+        result = _run(tool.execute({"output_format": "json", "include_health": True}))
+        risk = self._risk(result)
+        assert risk in {"low", "medium", "high"}, (
+            f"risk must be one of low/medium/high — got {risk!r}"
+        )
+
+    def test_risky_project_escalates_above_low(self, risky_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(risky_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        risk = self._risk(result)
+        # Three files >800 lines should produce ``high`` per the inference
+        # rule. Accepting ``medium`` too would defeat the assertion — be
+        # explicit.
+        assert risk == "high", (
+            f"three 900-line source files must yield risk='high' — got {risk!r}"
+        )
+
+
+class TestF8CallGraphNotFound:
+    """F8 (round-17): when ``call_graph`` is invoked with a symbol that
+    does not exist in the project, the response must still carry an
+    actionable ``agent_summary`` — previously it shipped ``{}`` (or a
+    generic "drill in" next_step) which left agents with nothing to do.
+
+    Contract:
+      - ``success`` stays True (the lookup ran fine; the symbol simply
+        isn't there)
+      - ``agent_summary`` is a populated dict with ``summary_line``,
+        ``next_step``, and ``verdict`` (``NOT_FOUND``)
+      - top-level ``summary_line`` mirrors ``agent_summary["summary_line"]``
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "lib.py"
+        src.write_text("def real_function() -> int:\n    return 1\n", encoding="utf-8")
+        return tmp_path
+
+    def _run_callers(self, project: Path, symbol: str) -> dict:
+        from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
+
+        tool = CodeGraphCallTool(str(project))
+        return _run(
+            tool.execute(
+                {
+                    "mode": "callers",
+                    "function_name": symbol,
+                    "output_format": "json",
+                }
+            )
+        )
+
+    def test_not_found_success_is_true(self, tiny_project: Path) -> None:
+        """Lookup succeeded — the symbol just wasn't there. Don't poison
+        the success flag, or agents will branch into an error path that
+        doesn't fit."""
+        result = self._run_callers(tiny_project, "DoesNotExist_zzz")
+        assert result["success"] is True, (
+            "F8: a missing symbol is not an error — success must stay True"
+        )
+
+    def test_not_found_agent_summary_populated(self, tiny_project: Path) -> None:
+        """agent_summary must not be ``{}``. It must have the canonical
+        triple ``summary_line`` / ``next_step`` / ``verdict``."""
+        result = self._run_callers(tiny_project, "DoesNotExist_zzz")
+        agent = result.get("agent_summary")
+        assert isinstance(agent, dict) and agent, (
+            f"F8: agent_summary must be a populated dict — got {agent!r}"
+        )
+        for key in ("summary_line", "next_step", "verdict"):
+            assert key in agent, f"F8: agent_summary missing required key: {key!r}"
+            value = agent[key]
+            assert isinstance(value, str) and value, (
+                f"F8: agent_summary[{key!r}] must be a non-empty string — got {value!r}"
+            )
+        assert agent["verdict"] == "NOT_FOUND", (
+            f"F8: verdict must be NOT_FOUND for missing-symbol responses — "
+            f"got {agent['verdict']!r}"
+        )
+
+    def test_not_found_top_level_summary_line_mirrors_agent_summary(
+        self, tiny_project: Path
+    ) -> None:
+        """The dispatch post-hook and the tool's own helper both have to
+        agree on the line that lands at the top level."""
+        result = self._run_callers(tiny_project, "DoesNotExist_zzz")
+        top_level = result.get("summary_line")
+        agent_sl = result["agent_summary"]["summary_line"]
+        assert isinstance(top_level, str) and top_level, (
+            "F8: top-level summary_line must be a non-empty string"
+        )
+        assert top_level == agent_sl, (
+            f"F8: top-level summary_line must equal agent_summary['summary_line']. "
+            f"top={top_level!r} vs agent={agent_sl!r}"
+        )
+
+    def test_not_found_summary_line_mentions_symbol(self, tiny_project: Path) -> None:
+        """The summary line must name the missing symbol so agents can
+        log/forward it without re-parsing the request args."""
+        result = self._run_callers(tiny_project, "DoesNotExist_zzz")
+        sl = result["agent_summary"]["summary_line"]
+        assert "DoesNotExist_zzz" in sl, (
+            f"F8: summary_line must include the missing symbol name — got {sl!r}"
+        )
+        assert "not found" in sl.lower(), (
+            f"F8: summary_line must say 'not found' so callers can grep — got {sl!r}"
+        )
