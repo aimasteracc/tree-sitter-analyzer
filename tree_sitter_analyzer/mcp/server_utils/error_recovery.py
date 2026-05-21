@@ -258,6 +258,80 @@ _CANONICAL_KEYS: tuple[str, ...] = (
 )
 
 
+def ensure_canonical_success_envelope(
+    tool_name: str,
+    response: dict[str, Any],
+    *,
+    arguments: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Augment a tool's success-path response with the canonical envelope keys.
+
+    Finding 6: round-16b dogfood showed that 7 tools were returning responses
+    with ``summary_line=None`` (FileHealthTool, RefactoringSuggestionsTool,
+    SmartContextTool, AnalyzeCodeStructureTool, ProjectOverviewTool,
+    CodeGraphCallTool, ProjectHealthTool). Some emit ``agent_summary`` but
+    never mirror its ``summary_line`` to the top level; others omit
+    ``agent_summary`` entirely.
+
+    Run this at the MCP-server dispatch boundary, after a tool's
+    ``execute`` returns and before the result is JSON-serialised. It is
+    purely additive — if the tool already populated ``summary_line`` or
+    ``agent_summary`` we keep its value.
+
+    Skips:
+    - error responses (``success is False``) — those flow through
+      :func:`ensure_canonical_error_envelope` instead.
+    - TOON-formatted blobs (``format == 'toon'``) — those are already
+      shipped as ``toon_content`` plus the metadata copy.
+    """
+    # Errors handled by the error envelope path.
+    if response.get("success") is False:
+        return response
+
+    agent_summary = response.get("agent_summary")
+    summary_line_value = response.get("summary_line")
+
+    # Step 1: mirror agent_summary.summary_line → top-level if missing.
+    if not isinstance(summary_line_value, str) or not summary_line_value:
+        if isinstance(agent_summary, dict):
+            candidate = agent_summary.get("summary_line")
+            if isinstance(candidate, str) and candidate:
+                response["summary_line"] = candidate
+                summary_line_value = candidate
+
+    # Step 2: synthesize a minimal summary_line + agent_summary when the
+    # tool didn't produce either. Use tool name + the most informative
+    # identifier from the response or arguments.
+    if not isinstance(summary_line_value, str) or not summary_line_value:
+        identifier_key: str | None = None
+        identifier_value: str | None = None
+        for key in _IDENTIFIER_FIELDS:
+            val = response.get(key)
+            if isinstance(val, str) and val:
+                identifier_key, identifier_value = key, val
+                break
+        if identifier_value is None:
+            identifier_key, identifier_value = _pick_identifier(arguments)
+        synthesized = (
+            f"{tool_name}: {identifier_value}"
+            if identifier_value
+            else f"{tool_name}: ok"
+        )
+        response["summary_line"] = synthesized
+        summary_line_value = synthesized
+
+    # Step 3: ensure agent_summary is at least a dict with the
+    # mirrored summary_line and a generic next_step.
+    if not isinstance(agent_summary, dict):
+        agent_summary = {}
+    agent_summary.setdefault("summary_line", summary_line_value)
+    agent_summary.setdefault("next_step", "")
+    agent_summary.setdefault("verdict", "n/a")
+    response["agent_summary"] = agent_summary
+
+    return response
+
+
 def ensure_canonical_error_envelope(
     tool_name: str,
     response: dict[str, Any],

@@ -140,34 +140,38 @@ def _build_project_health_result(
     agent_backlog = _build_agent_backlog(all_scores, limit=visible_limit)
     files = _file_details(worst, max_files)
 
-    return {
-        "success": True,
-        "project_root": root,
-        "total_files": len(all_scores),
-        "matching_file_count": len(worst),
-        "detail_limit": max_files,
-        "detail_count": len(files),
-        "hidden_detail_count": max(0, len(worst) - len(files)),
-        "grade_distribution": grade_distribution,
-        "signal": _build_signal(signal_dims),
-        "average_dimensions": dim_avgs,
-        "coverage_status": _coverage_status(dim_avgs),
-        "weakest_dimension": weakest_dim,
-        "top_refactoring_targets": _top_refactoring_targets(worst, visible_limit),
-        "agent_summary": _build_project_agent_summary(
-            root=root,
-            total_files=len(all_scores),
-            grade_distribution=grade_distribution,
-            weakest_dim=weakest_dim,
-            agent_backlog=agent_backlog,
-            max_files=max_files,
-        ),
-        "agent_backlog": agent_backlog,
-        "files": files,
-        "recommendation": _build_project_recommendation(
-            grade_counts, weakest_dim, len(all_scores)
-        ),
-    }
+    from .base_tool import mirror_summary_line
+
+    return mirror_summary_line(
+        {
+            "success": True,
+            "project_root": root,
+            "total_files": len(all_scores),
+            "matching_file_count": len(worst),
+            "detail_limit": max_files,
+            "detail_count": len(files),
+            "hidden_detail_count": max(0, len(worst) - len(files)),
+            "grade_distribution": grade_distribution,
+            "signal": _build_signal(signal_dims),
+            "average_dimensions": dim_avgs,
+            "coverage_status": _coverage_status(dim_avgs),
+            "weakest_dimension": weakest_dim,
+            "top_refactoring_targets": _top_refactoring_targets(worst, visible_limit),
+            "agent_summary": _build_project_agent_summary(
+                root=root,
+                total_files=len(all_scores),
+                grade_distribution=grade_distribution,
+                weakest_dim=weakest_dim,
+                agent_backlog=agent_backlog,
+                max_files=max_files,
+            ),
+            "agent_backlog": agent_backlog,
+            "files": files,
+            "recommendation": _build_project_recommendation(
+                grade_counts, weakest_dim, len(all_scores)
+            ),
+        }
+    )
 
 
 def _normalize_max_files(value: Any) -> int:
@@ -344,7 +348,18 @@ def _build_project_agent_summary(
     """Build a compact project-level summary for autonomous agent loops."""
     queue_head = agent_backlog[0] if agent_backlog else None
     risk = _project_risk(grade_distribution)
+    # Finding 6: include summary_line so the dispatch post-hook can
+    # mirror it to the top-level envelope (round-16b dogfood saw None).
+    grade_breakdown = " ".join(
+        f"{grade}={grade_distribution.get(grade, 0)}"
+        for grade in ("A", "B", "C", "D", "F")
+    )
+    summary_line = (
+        f"project_health risk={risk} files={total_files} {grade_breakdown} "
+        f"backlog={len(agent_backlog)} weakest={weakest_dim or 'unknown'}"
+    )
     summary: dict[str, Any] = {
+        "summary_line": summary_line,
         "risk": risk,
         "total_files": total_files,
         "weakest_dimension": weakest_dim,

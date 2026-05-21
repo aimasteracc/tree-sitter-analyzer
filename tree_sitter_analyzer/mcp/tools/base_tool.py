@@ -18,6 +18,28 @@ from ..utils.shared_cache import get_shared_cache
 logger = setup_logger(__name__)
 
 
+def mirror_summary_line(result: dict[str, Any]) -> dict[str, Any]:
+    """Mirror ``agent_summary.summary_line`` to the top-level envelope.
+
+    Finding 6: round-16b dogfood showed seven tools shipping
+    ``summary_line=None`` at the top level even though their nested
+    ``agent_summary`` carried a useful one-liner. The MCP server dispatch
+    layer mirrors it centrally (:func:`ensure_canonical_success_envelope`),
+    but direct ``await tool.execute(args)`` callers (tests, CLI bridges)
+    bypass that path — so each tool layered helper mirrors at the response
+    builder too.
+
+    Idempotent: tools that already set ``summary_line`` keep their value.
+    """
+    agent_summary = result.get("agent_summary")
+    if not isinstance(agent_summary, dict):
+        return result
+    sl = agent_summary.get("summary_line")
+    if isinstance(sl, str) and sl and "summary_line" not in result:
+        result["summary_line"] = sl
+    return result
+
+
 class BaseMCPTool(ABC):
     """
     Base class for all MCP tools.

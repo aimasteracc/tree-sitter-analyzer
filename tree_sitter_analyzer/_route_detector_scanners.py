@@ -30,7 +30,7 @@ from ._route_detector_helpers import (
 )
 
 if TYPE_CHECKING:
-    from .route_detector import RouteInfo
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -161,13 +161,85 @@ def scan_django_urls(
 # ---------------------------------------------------------------------------
 
 
+# Finding 3: receiver-name whitelist for Express HTTP-verb calls.
+#
+# The previous implementation matched ``X.post(...)`` for any identifier X
+# whose first arg started with ``/``. That mis-classifies client-side HTTP
+# wrappers like ``apiClient.post('/save', ...)`` (and any custom RPC helper
+# named with an HTTP verb) as Express routes — they are not, and the file
+# usually does not even import ``express``.
+#
+# We now require the receiver name to:
+#   (a) be in a small, conventional whitelist (``app``/``router``/``server``
+#       /``api``), OR
+#   (b) end with ``Router`` / ``router`` (e.g. ``userRouter``, ``adminRouter``,
+#       ``v2Router``), which is by far the most common naming pattern for
+#       Express ``Router()`` instances.
+#
+# As an additional gate the source file must contain a recognisable Express
+# import (``require('express')`` / ``from 'express'`` / dynamic ``import('express')``).
+# Both checks must pass — receiver-name on its own would still misfire when a
+# custom helper happens to be named ``app`` or ``router``; the import check
+# alone is too loose because real codebases sometimes have client utilities
+# in the same file as the Express setup.
+_EXPRESS_RECEIVER_WHITELIST = frozenset({"app", "router", "server", "api", "express"})
+# Accept identifiers that *end* in "Router" or "router". Covers:
+#   userRouter, AdminRouter, v2Router       (CamelCase)
+#   user_router, admin_router               (snake_case)
+#   Router, router                          (bare — already in the whitelist)
+# Rejects identifiers that merely *contain* router (routerHelper, RouterFactory).
+_EXPRESS_RECEIVER_SUFFIX = re.compile(r"[A-Za-z0-9_$]+[Rr]outer$")
+_EXPRESS_IMPORT_RE = re.compile(
+    r"""(?x)
+    (?:
+        \brequire\s*\(\s*['"]express['"]\s*\)        # CommonJS require
+      | \bfrom\s+['"]express['"]                       # ES module import
+      | \bimport\s*\(\s*['"]express['"]\s*\)          # dynamic import()
+    )
+    """
+)
+
+
+def _file_imports_express(root: Any) -> bool:
+    """Return True when the parsed file imports ``express`` in any form."""
+    try:
+        source = root.text.decode()
+    except (AttributeError, UnicodeDecodeError):
+        return False
+    return bool(_EXPRESS_IMPORT_RE.search(source))
+
+
+def _is_express_receiver(receiver: str) -> bool:
+    """Decide whether ``receiver`` (the text before ``.get``/``.post``/...)
+    looks like an Express ``app``/``router`` reference.
+
+    A receiver may be a chain like ``users.router`` — we only consider the
+    last identifier in the chain so chained ``router`` accessors still match.
+    """
+    if not receiver:
+        return False
+    tail = receiver.rsplit(".", 1)[-1]
+    if tail in _EXPRESS_RECEIVER_WHITELIST:
+        return True
+    return bool(_EXPRESS_RECEIVER_SUFFIX.search(tail))
+
+
 def scan_express_routes(
     root: Any, file_path: str, language: str, route_info_cls: type
 ) -> list[Any]:
     routes: list[Any] = []
     http_methods = {
-        "get", "post", "put", "delete", "patch", "head", "options", "all", "use",
+        "get",
+        "post",
+        "put",
+        "delete",
+        "patch",
+        "head",
+        "options",
+        "all",
+        "use",
     }
+    file_imports_express = _file_imports_express(root)
     for node in walk(root):
         if node.type != "call_expression":
             continue
@@ -178,8 +250,16 @@ def scan_express_routes(
         parts = func_text.rsplit(".", 1)
         if len(parts) != 2:
             continue
-        method_name = parts[1].lower()
+        receiver, method_name = parts[0], parts[1].lower()
         if method_name not in http_methods:
+            continue
+        # Finding 3: skip non-Express receivers (apiClient.post,
+        # fetcher.get, etc.). Require both signals — receiver shape
+        # AND a recognisable express import in the file — before
+        # treating the call as a route.
+        if not _is_express_receiver(receiver):
+            continue
+        if not file_imports_express:
             continue
         args_node = node.child_by_field_name("arguments")
         if args_node is None:

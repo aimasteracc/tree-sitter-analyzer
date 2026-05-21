@@ -42,7 +42,9 @@ class TestEnvelopeSuccess:
     """Tools that need no arguments and should succeed against a tiny project."""
 
     def test_project_overview_envelope(self, tiny_project: Path) -> None:
-        from tree_sitter_analyzer.mcp.tools.project_overview_tool import ProjectOverviewTool
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
 
         tool = ProjectOverviewTool(str(tiny_project))
         result = _run(tool.execute({"output_format": "json"}))
@@ -222,3 +224,181 @@ class TestExecuteAcrossAllTools:
         assert skipped == [], (
             f"Tools missing from per_tool_args (add a row above): {skipped}"
         )
+
+
+class TestFinding6SummaryLine:
+    """Round-16b finding 6: 7 tools emitted ``summary_line=None``.
+
+    Each of the listed tools must populate both top-level ``summary_line``
+    AND a non-empty ``agent_summary`` dict on the success path. Previously
+    FileHealth/Refactoring/SmartContext/AnalyzeStructure/ProjectOverview/
+    CallGraph/ProjectHealth shipped one or both as ``None``/``{}``.
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "sample.py"
+        src.write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _assert_envelope(self, name: str, result: dict) -> None:
+        assert result.get("success") is True, f"{name}: success must be True"
+        sl = result.get("summary_line")
+        assert isinstance(sl, str) and sl, (
+            f"{name}: top-level summary_line must be a non-empty string (Finding 6)"
+        )
+        agent = result.get("agent_summary")
+        assert isinstance(agent, dict) and agent, (
+            f"{name}: agent_summary must be a populated dict (Finding 6). got {agent!r}"
+        )
+
+    def test_file_health_summary_line(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tiny_project))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": str(tiny_project / "sample.py"),
+                    "output_format": "json",
+                }
+            )
+        )
+        self._assert_envelope("check_file_health", result)
+
+    def test_refactoring_suggestions_summary_line(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        tool = RefactoringSuggestionsTool(str(tiny_project))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": str(tiny_project / "sample.py"),
+                    "output_format": "json",
+                }
+            )
+        )
+        self._assert_envelope("refactoring_suggestions", result)
+
+    def test_smart_context_summary_line(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.smart_context_tool import SmartContextTool
+
+        tool = SmartContextTool(str(tiny_project))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": str(tiny_project / "sample.py"),
+                    "output_format": "json",
+                }
+            )
+        )
+        self._assert_envelope("smart_context", result)
+
+    def test_analyze_code_structure_summary_line(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+            AnalyzeCodeStructureTool,
+        )
+
+        tool = AnalyzeCodeStructureTool(str(tiny_project))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": str(tiny_project / "sample.py"),
+                    "output_format": "json",
+                }
+            )
+        )
+        self._assert_envelope("analyze_code_structure", result)
+
+    def test_project_overview_summary_line(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(tiny_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        self._assert_envelope("get_project_overview", result)
+
+    def test_call_graph_summary_line(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
+
+        tool = CodeGraphCallTool(str(tiny_project))
+        result = _run(tool.execute({"mode": "summary", "output_format": "json"}))
+        self._assert_envelope("codegraph_call_graph", result)
+
+    def test_project_health_summary_line(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_health_tool import (
+            ProjectHealthTool,
+        )
+
+        tool = ProjectHealthTool(str(tiny_project))
+        result = _run(tool.execute({"output_format": "json", "max_files": 5}))
+        self._assert_envelope("check_project_health", result)
+
+
+class TestFinding6DispatchPostHook:
+    """The MCP dispatch post-hook must inject summary_line even when a tool
+    forgets to set it. This guards against a future tool returning
+    ``agent_summary`` without a top-level ``summary_line``."""
+
+    def test_post_hook_mirrors_agent_summary_summary_line(self) -> None:
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        response = {
+            "success": True,
+            "agent_summary": {
+                "summary_line": "tool_x: hello world",
+                "next_step": "next step",
+            },
+        }
+        out = ensure_canonical_success_envelope("tool_x", response)
+        assert out["summary_line"] == "tool_x: hello world"
+
+    def test_post_hook_synthesizes_summary_when_missing(self) -> None:
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        # Neither top-level summary_line nor agent_summary present.
+        response: dict = {"success": True}
+        out = ensure_canonical_success_envelope(
+            "tool_x", response, arguments={"file_path": "/some/file.py"}
+        )
+        assert isinstance(out["summary_line"], str)
+        assert "/some/file.py" in out["summary_line"]
+        assert isinstance(out["agent_summary"], dict)
+        assert out["agent_summary"]["summary_line"] == out["summary_line"]
+
+    def test_post_hook_is_idempotent_on_existing_summary_line(self) -> None:
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        response = {
+            "success": True,
+            "summary_line": "tool_x: custom",
+            "agent_summary": {"summary_line": "should not stomp"},
+        }
+        out = ensure_canonical_success_envelope("tool_x", response)
+        assert out["summary_line"] == "tool_x: custom", (
+            "post-hook must not overwrite an existing top-level summary_line"
+        )
+
+    def test_post_hook_skips_error_responses(self) -> None:
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        # success=False routes through the *error* envelope normaliser
+        # instead. The success normaliser must leave the dict untouched.
+        response = {"success": False, "error": "boom"}
+        out = ensure_canonical_success_envelope("tool_x", response)
+        assert out is response
+        assert "summary_line" not in out

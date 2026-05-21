@@ -45,7 +45,12 @@ def build_file_health_result(
             file_path, health.grade, smells, resolved, analysis
         )
     )
-    return result
+    # Finding 6: mirror agent_summary.summary_line to the top-level envelope
+    # so direct ``tool.execute()`` callers (CLI bridges, tests) see the same
+    # ``summary_line`` field the MCP dispatch post-hook would inject.
+    from ..base_tool import mirror_summary_line
+
+    return mirror_summary_line(result)
 
 
 def _build_base_health_result(
@@ -278,7 +283,16 @@ def _build_agent_summary(
 ) -> dict[str, Any]:
     """Build the compact first-read health decision summary for agents."""
     weakest_dimension, weakest_score = _weakest_dimension_score(health.dimensions)
+    # Finding 6: include a one-line summary so the central post-hook
+    # can mirror it to the top-level ``summary_line``. Agents that
+    # branch on ``summary_line`` (round-11 envelope) now see a useful
+    # value instead of None.
+    summary_line = (
+        f"{file_path} grade={health.grade} score={health.total} "
+        f"smells={len(smells)} weakest={weakest_dimension}"
+    )
     summary = {
+        "summary_line": summary_line,
         "risk": action["priority"],
         "grade": health.grade,
         "score": health.total,

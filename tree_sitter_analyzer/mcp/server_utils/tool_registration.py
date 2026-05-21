@@ -9,7 +9,11 @@ except ImportError:
     Tool = Any
 
 from ...utils import setup_logger
-from .error_recovery import build_agent_friendly_error, ensure_canonical_error_envelope
+from .error_recovery import (
+    build_agent_friendly_error,
+    ensure_canonical_error_envelope,
+    ensure_canonical_success_envelope,
+)
 
 logger = setup_logger(__name__)
 
@@ -63,6 +67,18 @@ def register_tools(server: Any, server_instance: Any) -> None:
             # — without losing any tool-specific fields they already set.
             if isinstance(result, dict) and result.get("success") is False:
                 result = ensure_canonical_error_envelope(
+                    name, result, arguments=arguments
+                )
+            elif isinstance(result, dict):
+                # Finding 6: success-path normalization. Mirror
+                # ``agent_summary.summary_line`` to top-level for tools
+                # that build an agent_summary but never set summary_line
+                # (FileHealth, ProjectHealth, RefactoringSuggestions, ...).
+                # Idempotent — tools that already set ``summary_line`` keep
+                # their value. Applies to TOON responses too because TOON
+                # mode keeps ``agent_summary``/``summary_line`` as metadata
+                # alongside the ``toon_content`` blob.
+                result = ensure_canonical_success_envelope(
                     name, result, arguments=arguments
                 )
             return [

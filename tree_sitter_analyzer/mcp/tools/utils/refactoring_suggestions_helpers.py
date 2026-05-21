@@ -103,7 +103,10 @@ def make_agent_summary(
     )
 
     if not suggestions:
+        # Finding 6: include summary_line so the central post-hook can
+        # mirror it to the top-level envelope.
         return {
+            "summary_line": f"{file_path} refactor=clean suggestions=0",
             "risk": "low",
             "next_step": "No refactoring action needed.",
             "suggested_tests": [refactor_command],
@@ -112,7 +115,16 @@ def make_agent_summary(
 
     top = suggestions[0]
     tests = [refactor_command, impact_command]
+    severities: dict[str, int] = {}
+    for s in suggestions:
+        sev = str(s.get("severity") or "info")
+        severities[sev] = severities.get(sev, 0) + 1
+    sev_summary = " ".join(f"{k}={v}" for k, v in severities.items()) or "info=0"
     summary: dict[str, Any] = {
+        "summary_line": (
+            f"{file_path} suggestions={len(suggestions)} top={top.get('pattern', 'unknown')} "
+            f"{sev_summary}"
+        ),
         "risk": _agent_risk(suggestions),
         "next_step": _next_step_for(top),
         "suggested_tests": _dedupe_tests(
@@ -189,22 +201,26 @@ def build_success_response(
 ) -> dict[str, Any]:
     """Build the final successful refactoring response."""
     finalized = finalize_suggestions(suggestions, max_suggestions, include_skeleton)
-    return {
-        "success": True,
-        # ``file_path`` is the canonical field used across every other
-        # tool; ``file`` is kept as a backward-compat alias.
-        "file": file_path,
-        "file_path": file_path,
-        "total_suggestions": len(finalized),
-        # ``count``/``results`` are cross-tool canonical aliases so an
-        # agent walking a generic envelope finds the data without
-        # learning this tool's specific vocabulary.
-        "count": len(finalized),
-        "results": finalized,
-        "summary": make_summary(finalized),
-        "agent_summary": make_agent_summary(file_path, finalized),
-        "suggestions": finalized,
-    }
+    from ..base_tool import mirror_summary_line
+
+    return mirror_summary_line(
+        {
+            "success": True,
+            # ``file_path`` is the canonical field used across every other
+            # tool; ``file`` is kept as a backward-compat alias.
+            "file": file_path,
+            "file_path": file_path,
+            "total_suggestions": len(finalized),
+            # ``count``/``results`` are cross-tool canonical aliases so an
+            # agent walking a generic envelope finds the data without
+            # learning this tool's specific vocabulary.
+            "count": len(finalized),
+            "results": finalized,
+            "summary": make_summary(finalized),
+            "agent_summary": make_agent_summary(file_path, finalized),
+            "suggestions": finalized,
+        }
+    )
 
 
 def finalize_suggestions(

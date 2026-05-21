@@ -215,32 +215,36 @@ def _build_smart_context_result(profile: SmartContextProfile) -> dict[str, Any]:
         downstream_count=len(profile.dependents),
         test_files=profile.test_files,
     )
-    return {
-        "success": True,
-        "file_path": profile.file_path,
-        "line_count": profile.line_count,
-        "language": profile.language,
-        "health": {
-            "grade": grade,
-            "score": score,
-            "signal": _build_signal(profile.health.dimensions),
-            "weakest_dimension": weakest,
-        },
-        "agent_summary": _build_agent_summary(summary_input),
-        "exports": profile.exports,
-        "structure": profile.structure,
-        "dependencies": {
-            "imports_count": len(profile.dependencies),
-            "imported_by_count": len(profile.dependents),
-            "imports_sample": profile.dependencies[:5],
-            "imported_by_sample": profile.dependents[:5],
-        },
-        "tests": profile.test_files,
-        "edit_risk": profile.risk,
-        "recommendation": _build_summary(
-            grade, profile.risk, len(profile.exports), len(profile.dependents)
-        ),
-    }
+    from .base_tool import mirror_summary_line
+
+    return mirror_summary_line(
+        {
+            "success": True,
+            "file_path": profile.file_path,
+            "line_count": profile.line_count,
+            "language": profile.language,
+            "health": {
+                "grade": grade,
+                "score": score,
+                "signal": _build_signal(profile.health.dimensions),
+                "weakest_dimension": weakest,
+            },
+            "agent_summary": _build_agent_summary(summary_input),
+            "exports": profile.exports,
+            "structure": profile.structure,
+            "dependencies": {
+                "imports_count": len(profile.dependencies),
+                "imported_by_count": len(profile.dependents),
+                "imports_sample": profile.dependencies[:5],
+                "imported_by_sample": profile.dependents[:5],
+            },
+            "tests": profile.test_files,
+            "edit_risk": profile.risk,
+            "recommendation": _build_summary(
+                grade, profile.risk, len(profile.exports), len(profile.dependents)
+            ),
+        }
+    )
 
 
 # _build_agent_summary: implementation
@@ -251,7 +255,16 @@ def _build_agent_summary(context: AgentSummaryInput) -> dict[str, Any]:
         "uv run python -m tree_sitter_analyzer "
         f"{quoted_path} --file-health --format json"
     )
+    # Finding 6: include a summary_line that the central post-hook can
+    # mirror to the top-level envelope. Agents that branch on
+    # ``summary_line`` see a useful one-liner instead of ``None``.
+    summary_line = (
+        f"{context.file_path} grade={context.grade} score={context.score} "
+        f"risk={context.risk} exports={context.export_count} "
+        f"downstream={context.downstream_count}"
+    )
     return {
+        "summary_line": summary_line,
         "risk": context.risk,
         "grade": context.grade,
         "score": context.score,

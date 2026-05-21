@@ -18,6 +18,59 @@ from .base_tool import BaseMCPTool
 logger = setup_logger(__name__)
 
 
+def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
+    """Populate the canonical agent_summary + summary_line for call_graph.
+
+    Finding 6: round-16b dogfood saw ``agent_summary={}`` and
+    ``summary_line=None`` on every call_graph response. Build a compact
+    summary keyed off the response mode so the dispatch post-hook can
+    mirror ``agent_summary.summary_line`` to the top level.
+    """
+    mode = result.get("mode", "summary")
+    func = result.get("function") or ""
+
+    if mode == "summary":
+        edges = result.get("edges", result.get("edge_count", 0))
+        nodes = result.get("nodes", result.get("function_count", 0))
+        summary_line = f"call_graph summary nodes={nodes} edges={edges}"
+    elif mode == "all_functions":
+        summary_line = f"call_graph all_functions count={result.get('count', 0)}"
+    elif mode == "callers":
+        summary_line = (
+            f"call_graph callers function={func} "
+            f"caller_count={result.get('caller_count', 0)}"
+        )
+    elif mode == "callees":
+        summary_line = (
+            f"call_graph callees function={func} "
+            f"callee_count={result.get('callee_count', 0)}"
+        )
+    elif mode == "chain":
+        summary_line = (
+            f"call_graph chain function={func} "
+            f"depth={result.get('depth', 0)} "
+            f"edge_count={result.get('edge_count', 0)}"
+        )
+    else:  # pragma: no cover - defensive
+        summary_line = f"call_graph mode={mode}"
+
+    result.setdefault("summary_line", summary_line)
+    agent_summary = result.get("agent_summary")
+    if not isinstance(agent_summary, dict) or not agent_summary:
+        agent_summary = {}
+    agent_summary.setdefault("summary_line", summary_line)
+    agent_summary.setdefault(
+        "next_step",
+        (
+            "Use callers/callees/chain modes to navigate the call graph."
+            if mode == "summary"
+            else "Drill into a specific function with mode='callers' or 'callees'."
+        ),
+    )
+    agent_summary.setdefault("verdict", "n/a")
+    result["agent_summary"] = agent_summary
+
+
 def _maybe_bare_name_hint(
     graph: CallGraph, func_name: str, hit_count: int, mode: str
 ) -> str | None:
@@ -265,6 +318,10 @@ class CodeGraphCallTool(BaseMCPTool):
             result["cache_age_s"] = round(time.time() - self._call_graph_built_at, 3)
         if self._cache_invalidated_reason is not None:
             result["cache_invalidated_reason"] = self._cache_invalidated_reason
+
+        # Finding 6: populate envelope so the dispatch post-hook (and direct
+        # ``execute()`` callers) see non-empty ``summary_line``/``agent_summary``.
+        _attach_call_graph_envelope(result)
 
         from ..utils.format_helper import apply_toon_format_to_response
 

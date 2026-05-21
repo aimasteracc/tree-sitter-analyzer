@@ -22,6 +22,7 @@ from ...mcp.utils import get_performance_monitor
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.error_sanitizer import safe_error_message
+from ..utils.file_metrics import compute_file_metrics
 from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_code_structure_helpers import convert_analysis_result_to_structure_dict
 from .base_tool import BaseMCPTool
@@ -35,6 +36,50 @@ from .universal_analyze_helpers import (
 )
 
 logger = setup_logger(__name__)
+
+
+def _attach_canonical_envelope(base: dict[str, Any]) -> None:
+    """Inject ``success``/``summary_line``/``agent_summary`` into the response.
+
+    Finding 2: round 11 standardized the canonical envelope across MCP
+    tools but ``universal_analyze`` was missed — JSON keys were only the
+    analysis payload (``classes``/``methods``/``metrics``/...) with no
+    ``success`` or summary fields. Agents consuming the response could not
+    branch on the same fields they see on every other tool. This helper
+    is idempotent: callers that already populate ``summary_line`` or
+    ``agent_summary`` keep their values.
+    """
+    base.setdefault("success", True)
+
+    file_path = base.get("file_path", "<unknown>")
+    language = base.get("language", "unknown")
+
+    raw_metrics = base.get("metrics")
+    metrics: dict[str, Any] = raw_metrics if isinstance(raw_metrics, dict) else {}
+    line_count = metrics.get("lines_total") or metrics.get("lines_code") or 0
+    classes = base.get("classes") or []
+    methods = base.get("methods") or []
+    fields = base.get("fields") or []
+    n_classes = len(classes) if isinstance(classes, list) else 0
+    n_methods = len(methods) if isinstance(methods, list) else 0
+    n_fields = len(fields) if isinstance(fields, list) else 0
+
+    summary_line = (
+        f"{file_path} {language} {line_count} lines  "
+        f"classes={n_classes} methods={n_methods} fields={n_fields}"
+    )
+    base.setdefault("summary_line", summary_line)
+
+    agent_summary = base.get("agent_summary")
+    if not isinstance(agent_summary, dict):
+        agent_summary = {}
+    agent_summary.setdefault("summary_line", summary_line)
+    agent_summary.setdefault(
+        "next_step",
+        "Call analyze_code_structure for per-element detail.",
+    )
+    agent_summary.setdefault("verdict", "n/a")
+    base["agent_summary"] = agent_summary
 
 
 def _attach_structure_detail(base: dict[str, Any], result: Any) -> None:
@@ -201,6 +246,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
             raise RuntimeError(f"Failed to analyze file: {file_path}")
 
         base: dict[str, Any] = {
+            "success": True,
             "file_path": file_path,
             "language": language,
             "analyzer_type": "advanced",
@@ -224,6 +270,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         if arguments.get("include_ast", False):
             base["ast_info"] = {"node_count": result.line_count, "depth": 0}
 
+        _attach_canonical_envelope(base)
         return base
 
     async def _analyze_universal(
@@ -251,7 +298,23 @@ class UniversalAnalyzeTool(BaseMCPTool):
         # buckets and does NOT expose an `elements` key — without this,
         # count_dict_elements_by_type sees an empty list and returns zeros.
         analysis_dict["elements"] = result.elements or []
+        # Finding 1: classify code/comment/blank lines via the shared file_metrics
+        # helper so the universal path produces the same counts as analyze_scale.
+        # Previously this branch hardcoded lines_comment=0 and lines_blank=0
+        # while copying line_count into lines_code (lying about every file).
+        try:
+            line_metrics = compute_file_metrics(
+                file_path,
+                language=language,
+                project_root=self.project_root,
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning(f"file_metrics computation failed for {file_path}: {exc}")
+            line_metrics = {}
+        analysis_dict["_file_metrics"] = line_metrics
+
         base: dict[str, Any] = {
+            "success": True,
             "file_path": file_path,
             "language": language,
             "analyzer_type": "universal",
@@ -275,6 +338,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
         if arguments.get("include_ast", False):
             base["ast_info"] = analysis_dict.get("ast_info", {})
 
+        _attach_canonical_envelope(base)
         return base
 
     # -- Advanced analyzer extractors --
@@ -340,15 +404,40 @@ class UniversalAnalyzeTool(BaseMCPTool):
     def _extract_universal_basic_metrics(
         self, analysis_dict: dict[str, Any]
     ) -> dict[str, Any]:
-        """Extract basic metrics using universal tree-sitter path."""
+        """Extract basic metrics using universal tree-sitter path.
+
+        Finding 1: prefer the file_metrics classifier (same as analyze_scale)
+        so comments and blank lines are counted correctly. Falls back to
+        ``line_count`` from the analysis result when the classifier could
+        not run (e.g. file disappeared between dispatch and extract).
+        """
         elements = analysis_dict.get("elements", [])
         counts = count_dict_elements_by_type(elements)
+        raw_metrics = analysis_dict.get("_file_metrics")
+        line_metrics: dict[str, Any] = (
+            raw_metrics if isinstance(raw_metrics, dict) else {}
+        )
+        total_lines_raw = line_metrics.get("total_lines")
+        total_lines = (
+            total_lines_raw
+            if isinstance(total_lines_raw, int)
+            else analysis_dict.get("line_count", 0)
+        )
+        code_lines = line_metrics.get("code_lines")
+        comment_lines = line_metrics.get("comment_lines")
+        blank_lines = line_metrics.get("blank_lines")
+        if not isinstance(code_lines, int):
+            code_lines = total_lines
+        if not isinstance(comment_lines, int):
+            comment_lines = 0
+        if not isinstance(blank_lines, int):
+            blank_lines = 0
         return {
             "metrics": {
-                "lines_total": analysis_dict.get("line_count", 0),
-                "lines_code": analysis_dict.get("line_count", 0),
-                "lines_comment": 0,
-                "lines_blank": 0,
+                "lines_total": total_lines,
+                "lines_code": code_lines,
+                "lines_comment": comment_lines,
+                "lines_blank": blank_lines,
                 "elements": counts,
             }
         }

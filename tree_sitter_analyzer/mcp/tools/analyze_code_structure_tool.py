@@ -231,7 +231,42 @@ def _build_success_response(
     response = _base_success_response(options, metadata, table_output)
     _attach_next_steps(response, next_steps)
     _suppress_table_output_if_requested(response, options)
+    # Finding 6: synthesize an agent_summary + summary_line so the central
+    # post-hook (and direct ``execute()`` callers) see populated envelope
+    # keys. Round-16b dogfood saw both as ``None`` here.
+    _attach_agent_summary(response, options, metadata, next_steps)
     return response
+
+
+def _attach_agent_summary(
+    response: dict[str, Any],
+    options: _ExecutionOptions,
+    metadata: dict[str, Any],
+    next_steps: list[str],
+) -> None:
+    """Inject ``agent_summary`` + ``summary_line`` keys on the success path."""
+
+    def _safe_int(value: Any) -> int:
+        return value if isinstance(value, int) else 0
+
+    n_classes = _safe_int(metadata.get("classes_count", 0))
+    n_methods = _safe_int(metadata.get("methods_count", 0))
+    n_fields = _safe_int(metadata.get("fields_count", 0))
+    total_lines = _safe_int(metadata.get("total_lines", 0))
+    summary_line = (
+        f"{options.file_path} {options.language} {total_lines} lines  "
+        f"classes={n_classes} methods={n_methods} fields={n_fields}"
+    )
+    response["summary_line"] = summary_line
+    response["agent_summary"] = {
+        "summary_line": summary_line,
+        "next_step": (
+            next_steps[0]
+            if next_steps
+            else "Call query_code or extract_code_section for deeper detail."
+        ),
+        "verdict": "n/a",
+    }
 
 
 def _base_success_response(

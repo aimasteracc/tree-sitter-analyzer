@@ -104,6 +104,9 @@ def test_file_health_result_marks_healthy_files_as_no_action() -> None:
         "post_edit_commands": [],
     }
     assert result["agent_summary"] == {
+        "summary_line": (
+            "src/healthy.py grade=A score=96.0 smells=0 weakest=complexity"
+        ),
         "risk": "none",
         "grade": "A",
         "score": 96.0,
@@ -156,6 +159,9 @@ def test_file_health_result_includes_direct_agent_commands_for_smells() -> None:
         "uv run python -m tree_sitter_analyzer --change-impact --format json",
     ]
     assert result["agent_summary"] == {
+        "summary_line": (
+            "src/needs work.py grade=C score=72.0 smells=1 weakest=complexity"
+        ),
         "risk": "medium",
         "grade": "C",
         "score": 72.0,

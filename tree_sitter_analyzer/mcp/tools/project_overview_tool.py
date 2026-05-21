@@ -260,7 +260,10 @@ def _build_result(
         result["smart_workflow_hint"] = _health_opt_in_hint()
     result["agent_summary"] = _build_agent_summary(result, include_health)
     result["tool_routing"] = _build_tool_routing()
-    return result
+    # Finding 6: mirror agent_summary.summary_line to the top-level envelope.
+    from .base_tool import mirror_summary_line
+
+    return mirror_summary_line(result)
 
 
 def _build_base_result(root: Path, scan: dict[str, Any]) -> dict[str, Any]:
@@ -349,7 +352,16 @@ def _build_agent_summary(
     summary = result["summary"]
     largest = result.get("largest_source_files", [])
     top_language = _top_language(result.get("language_distribution", {}))
+    # Finding 6: include summary_line so the dispatch post-hook can mirror
+    # it to the top-level envelope (was None across the project_overview
+    # JSON response in round-16b dogfood).
+    summary_line = (
+        f"project_overview source_files={summary['source_files']} "
+        f"languages={summary['languages_count']} "
+        f"top_language={top_language or 'unknown'}"
+    )
     return {
+        "summary_line": summary_line,
         "risk": _overview_risk(result, include_health),
         "next_step": _overview_next_step(result, include_health),
         "verification_command": "uv run python -m tree_sitter_analyzer --overview --format json",

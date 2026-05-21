@@ -225,6 +225,106 @@ class TestExpressDetection:
 
 
 # ---------------------------------------------------------------------------
+# Finding 3: Express receiver-name filter (round-16b dogfood)
+# ---------------------------------------------------------------------------
+
+
+class TestExpressReceiverFilter:
+    """``X.post('/x', ...)`` must not match unless X is an Express receiver."""
+
+    def test_client_http_call_is_not_a_route(self, tmp_path: Path):
+        """Custom apiClient.post('/save', ...) is a client call, not a route.
+
+        Reproduces round-16b finding 3: round-15 RouteDetector reported
+        2 Express routes from a file that doesn't even import express and
+        whose ``.post(...)`` calls were against a custom ``apiClient``
+        object — a common pattern in vanilla JS.
+        """
+        _write(
+            tmp_path,
+            "client.js",
+            """\
+const API_BASE = 'https://api.example.com';
+const apiClient = {
+    async post(endpoint, data) {
+        return fetch(API_BASE + endpoint, {method: 'POST', body: JSON.stringify(data)});
+    },
+    async get(endpoint) {
+        return fetch(API_BASE + endpoint);
+    },
+};
+
+async function handleAction(action, element) {
+    switch (action) {
+        case 'save':
+            await apiClient.post('/save', {data: 'example'});
+            break;
+        case 'delete':
+            await apiClient.post('/delete', {id: element.dataset.id});
+            break;
+    }
+}
+""",
+        )
+        routes = RouteDetector(str(tmp_path)).detect_all()
+        assert routes == [], (
+            f"Finding 3: apiClient.post('/...') falsely matched as route — got {len(routes)}"
+        )
+
+    def test_express_routes_still_match_with_router_receiver(self, tmp_path: Path):
+        """userRouter.post(...) with require('express') still detected."""
+        _write(
+            tmp_path,
+            "routes.js",
+            """\
+const express = require('express');
+const userRouter = express.Router();
+userRouter.get('/users', listUsers);
+userRouter.post('/users', createUser);
+""",
+        )
+        routes = RouteDetector(str(tmp_path)).detect_all()
+        assert len(routes) == 2, (
+            "Custom <name>Router receivers must still match when file "
+            f"imports express. Got {len(routes)} routes."
+        )
+
+    def test_app_post_without_express_import_is_skipped(self, tmp_path: Path):
+        """app.post(...) is ignored unless the file imports express.
+
+        Defends against random ``app`` namespaces in non-Express code
+        (e.g. Electron's ``app``) producing false positives.
+        """
+        _write(
+            tmp_path,
+            "electron-main.js",
+            """\
+const { app } = require('electron');
+app.post('/some-channel', () => {});
+""",
+        )
+        routes = RouteDetector(str(tmp_path)).detect_all()
+        assert routes == [], (
+            f"Finding 3: non-express `app.post()` matched anyway — got {len(routes)}"
+        )
+
+    def test_es_module_express_import_still_detected(self, tmp_path: Path):
+        """from 'express' should also count as an express import."""
+        _write(
+            tmp_path,
+            "app.js",
+            """\
+import express from 'express';
+const app = express();
+app.get('/health', (req, res) => res.send('ok'));
+""",
+        )
+        routes = RouteDetector(str(tmp_path)).detect_all()
+        assert len(routes) == 1
+        assert routes[0].url_pattern == "/health"
+
+
+# ---------------------------------------------------------------------------
 # Spring Boot
 # ---------------------------------------------------------------------------
 
@@ -487,7 +587,9 @@ class TestRouteDetectorToolExecute:
         assert all("/leak" not in r.url_pattern for r in routes)
         assert all("/outside/" not in r.file_path for r in routes)
 
-    def test_set_project_path_resets_detector(self, flask_project: Path, tmp_path: Path):
+    def test_set_project_path_resets_detector(
+        self, flask_project: Path, tmp_path: Path
+    ):
         tool = RouteDetectorTool(str(flask_project))
         first = self._run(tool, {"mode": "summary", "output_format": "json"})
         assert first["total_routes"] == 3
@@ -525,9 +627,7 @@ class TestRouteCachePersistence:
             r.url_pattern for r in second
         )
 
-    def test_cache_invalidates_on_content_change(
-        self, multi_framework_project: Path
-    ):
+    def test_cache_invalidates_on_content_change(self, multi_framework_project: Path):
         d1 = RouteDetector(str(multi_framework_project))
         d1.detect_all()
 
@@ -535,8 +635,7 @@ class TestRouteCachePersistence:
         # Other files (api.py, routes.js) must stay as cache hits.
         app = multi_framework_project / "app.py"
         app.write_text(
-            app.read_text()
-            + "\n@app.route('/new')\ndef brand_new():\n    return 'x'\n"
+            app.read_text() + "\n@app.route('/new')\ndef brand_new():\n    return 'x'\n"
         )
 
         d2 = RouteDetector(str(multi_framework_project))
@@ -592,8 +691,7 @@ class TestRouteCachePersistence:
                 "from flask import Flask\n"
                 f"app = Flask('m{i}')\n"
                 + "".join(
-                    f"@app.route('/r{i}_{j}')\n"
-                    f"def h_{i}_{j}():\n    return 'x'\n\n"
+                    f"@app.route('/r{i}_{j}')\ndef h_{i}_{j}():\n    return 'x'\n\n"
                     for j in range(3)
                 )
             )
@@ -639,9 +737,17 @@ class TestRouteCachePersistence:
     def test_route_cache_round_trip(self, tmp_path: Path):
         db = tmp_path / "routes.db"
         cache = RouteCache(db)
-        sample = [{"http_method": "GET", "url_pattern": "/x", "handler_name": "h",
-                   "file_path": "/p", "line_number": 1, "framework": "flask",
-                   "language": "python"}]
+        sample = [
+            {
+                "http_method": "GET",
+                "url_pattern": "/x",
+                "handler_name": "h",
+                "file_path": "/p",
+                "line_number": 1,
+                "framework": "flask",
+                "language": "python",
+            }
+        ]
         cache.put("/p", "deadbeef", 12345, sample)
         assert cache.get("/p", "deadbeef") == sample
         # Wrong hash → miss.
