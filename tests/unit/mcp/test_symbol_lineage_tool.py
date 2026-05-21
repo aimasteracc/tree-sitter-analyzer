@@ -137,9 +137,7 @@ class TestExecute:
 
     def test_toon_format_includes_content(self, tool, tmp_path):
         _write_py(tmp_path, "pkg/__init__.py", "x = 1\n")
-        result = asyncio.run(
-            tool.execute({"symbol": "x", "output_format": "toon"})
-        )
+        result = asyncio.run(tool.execute({"symbol": "x", "output_format": "toon"}))
         assert result["success"] is True
         assert "toon_content" in result
 
@@ -147,3 +145,40 @@ class TestExecute:
         t = SymbolLineageTool(project_root=None)
         with pytest.raises(ValueError, match="Project root"):
             asyncio.run(t.execute({"symbol": "foo"}))
+
+
+class TestR37uTopLevelVerdictMirror:
+    """r37u dogfood: ``--symbol-lineage`` envelope used to omit top-level
+    ``verdict`` even though ``agent_summary.verdict`` was populated.
+    Matches the N4 pattern other tools already follow — agents branching
+    on ``result["verdict"]`` should see the same value as
+    ``result["agent_summary"]["verdict"]``.
+    """
+
+    def test_top_level_verdict_mirrors_agent_summary_when_found(self, tool, tmp_path):
+        _write_py(
+            tmp_path,
+            "pkg/core.py",
+            "def my_func():\n    return 42\n",
+        )
+        result = asyncio.run(
+            tool.execute({"symbol": "my_func", "output_format": "json"})
+        )
+        assert result["success"] is True
+        # Top-level verdict must be present (not None) AND match agent_summary.
+        assert result["verdict"] is not None, (
+            "r37u: top-level 'verdict' must be populated for envelope contract parity"
+        )
+        assert result["verdict"] == result["agent_summary"]["verdict"]
+
+    def test_top_level_verdict_mirrors_when_not_found(self, tool, tmp_path):
+        """Even when no definition is found, top-level verdict must mirror."""
+        _write_py(tmp_path, "pkg/__init__.py", "")
+        result = asyncio.run(
+            tool.execute({"symbol": "NonExistent", "output_format": "json"})
+        )
+        assert result["success"] is True
+        assert result["verdict"] is not None
+        assert result["verdict"] == result["agent_summary"]["verdict"]
+        # 'unknown' risk maps to 'n/a' verdict per the standard mapping.
+        assert result["verdict"] == "n/a"

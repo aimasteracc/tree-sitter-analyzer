@@ -372,6 +372,13 @@ class SymbolLineageTool(BaseMCPTool):
                 "Use analyze_change_impact after editing for git-diff level detail."
             ),
             "summary_line": summary_line,
+            # r37u (dogfood): mirror ``agent_summary.verdict`` to top-level
+            # so CLI callers see the same canonical envelope shape as MCP
+            # routed dispatch (matches the N4 pattern in parser_readiness /
+            # dependency_analysis / agent_skills). Without this, agents
+            # branching on ``result["verdict"]`` see ``None`` even when
+            # ``agent_summary.verdict`` is populated (CAUTION/UNSAFE/SAFE).
+            "verdict": verdict,
             "agent_summary": agent_summary,
         }
 
