@@ -155,10 +155,15 @@ def make_agent_summary(
         sev = str(s.get("severity") or "info")
         severities[sev] = severities.get(sev, 0) + 1
     sev_summary = " ".join(f"{k}={v}" for k, v in severities.items()) or "info=0"
+    # r37t (dogfood): structural suggestions (P001 god_file, P002
+    # long_function, ...) carry their kind in ``name``; anti-pattern
+    # bridges from code_patterns set BOTH ``name`` and ``pattern`` to
+    # the same value. Read ``name`` first so structural findings stop
+    # rendering as ``top=unknown`` in the summary_line.
+    top_label = top.get("name") or top.get("pattern") or top.get("type") or "unknown"
     summary: dict[str, Any] = {
         "summary_line": (
-            f"{file_path} suggestions={len(suggestions)} top={top.get('pattern', 'unknown')} "
-            f"{sev_summary}"
+            f"{file_path} suggestions={len(suggestions)} top={top_label} {sev_summary}"
         ),
         # J9 (round-22): expose ``verdict`` aligned with code_patterns
         # / safety-tool vocab (SAFE / CAUTION / UNSAFE). Any critical

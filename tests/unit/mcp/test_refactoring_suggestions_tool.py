@@ -485,3 +485,79 @@ class TestRefactoringSuggestionsTool:
                 ast.parse(skeleton)
             except SyntaxError:
                 pass  # Some skeletons may have incomplete bodies — that's ok
+
+
+class TestR37tStructuralSuggestionsTopLabel:
+    """r37t (dogfood): structural suggestions (P001 god_file, P002
+    long_function, ...) carry their kind in ``name`` — they do NOT set
+    a ``pattern`` field. The summary_line helper used to read
+    ``top.get('pattern', 'unknown')`` so structural-only files always
+    rendered ``top=unknown`` in the headline. The fix reads ``name``
+    first with ``pattern`` and ``type`` as fallbacks.
+
+    Caught by dogfooding ``--refactor`` on our own
+    ``trace_impact_tool.py`` (806 lines, god_file + long_function +
+    deep_nesting). Headline previously said:
+        ``... suggestions=4 top=unknown major=3 critical=1``
+    Now correctly says:
+        ``... suggestions=4 top=long_function major=3 critical=1``
+    """
+
+    def test_structural_long_function_renders_name(self):
+        suggestions = [
+            {
+                "id": "P002",
+                "name": "long_function",
+                "severity": "major",
+                "message": "fn x is 90 lines",
+            }
+        ]
+        result = make_agent_summary("foo.py", suggestions)
+        assert "top=long_function" in result["summary_line"]
+        assert "top=unknown" not in result["summary_line"]
+
+    def test_anti_pattern_bridge_still_works(self):
+        """Anti-pattern bridge sets BOTH name and pattern → still resolves."""
+        suggestions = [
+            {
+                "id": "AP002",
+                "name": "bare_except",
+                "pattern": "bare_except",
+                "severity": "major",
+                "message": "bare except",
+            }
+        ]
+        result = make_agent_summary("foo.py", suggestions)
+        assert "top=bare_except" in result["summary_line"]
+
+    def test_legacy_pattern_only_still_resolves(self):
+        """Old fixtures with only ``pattern`` (no ``name``) still resolve."""
+        suggestions = [
+            {
+                "id": "X",
+                "pattern": "legacy_kind",
+                "severity": "major",
+                "message": "legacy",
+            }
+        ]
+        result = make_agent_summary("foo.py", suggestions)
+        assert "top=legacy_kind" in result["summary_line"]
+
+    def test_type_fallback_when_no_name_no_pattern(self):
+        """Final fallback to ``type`` before ``unknown``."""
+        suggestions = [
+            {
+                "id": "Y",
+                "type": "synthetic_kind",
+                "severity": "major",
+                "message": "no name no pattern",
+            }
+        ]
+        result = make_agent_summary("foo.py", suggestions)
+        assert "top=synthetic_kind" in result["summary_line"]
+
+    def test_unknown_only_when_truly_missing(self):
+        """``top=unknown`` reserved for entries with no kind metadata at all."""
+        suggestions = [{"severity": "major", "message": "no kind info"}]
+        result = make_agent_summary("foo.py", suggestions)
+        assert "top=unknown" in result["summary_line"]
