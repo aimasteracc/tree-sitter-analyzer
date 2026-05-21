@@ -573,6 +573,9 @@ class GetCodeOutlineTool(BaseMCPTool):
                 f"{method_count} methods, {field_count} fields"
             )
             result["summary_line"] = summary_line
+            # r37w (envelope ratchet): top-level verdict mirror to satisfy
+            # the r37u contract (top-level must equal agent_summary.verdict).
+            result["verdict"] = "INFO"
             result["agent_summary"] = {
                 "summary_line": summary_line,
                 "next_step": (

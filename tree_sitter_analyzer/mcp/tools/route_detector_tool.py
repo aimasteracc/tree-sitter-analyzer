@@ -307,6 +307,10 @@ def _attach_route_summary(result: dict[str, Any], mode: str) -> None:
     # (matches the verdict vocabulary used by other informational
     # tools). Agents that branch on ``verdict`` see a consistent shape
     # regardless of which tool ran.
+    # r37w (envelope ratchet): mirror to top-level so the r37u contract
+    # holds (``result["verdict"]`` must equal
+    # ``result["agent_summary"]["verdict"]``, not None).
+    result["verdict"] = "INFO"
     result["agent_summary"] = {
         "summary_line": summary_line,
         "next_step": next_step,
@@ -335,6 +339,8 @@ def _validation_error_envelope(
         "error_type": "validation",
         "error": message,
         "summary_line": summary_line,
+        # r37w: top-level verdict mirror (envelope contract).
+        "verdict": "ERROR",
         "agent_summary": {
             "summary_line": summary_line,
             "next_step": "Fix the input path and retry.",

@@ -8,6 +8,7 @@ renaming any existing fields:
 - ``elapsed_ms``      — hoisted from nested ``meta`` if missing at top level
 - ``truncated``       — hoisted from nested ``meta`` if missing at top level
 - ``summary_line``    — mirror of ``agent_summary.summary_line`` when present
+- ``verdict``         — mirror of ``agent_summary.verdict`` when present (r37w)
 
 This is purely additive: every existing key on the input dict survives.
 """
@@ -63,5 +64,17 @@ def normalize_envelope(
                 agent_summary.get("summary_line"), str
             ):
                 result["summary_line"] = agent_summary["summary_line"]
+
+    # r37w: top-level verdict mirror. The r37u envelope contract requires
+    # ``result["verdict"]`` to equal ``result["agent_summary"]["verdict"]``
+    # (not None) whenever the agent_summary carries a verdict. Doing it
+    # in the central normalizer fixes the four search/navigation drifters
+    # (search_content, query, find_and_grep, list_files) in one shot.
+    if "verdict" not in result or result.get("verdict") is None:
+        agent_summary = result.get("agent_summary")
+        if isinstance(agent_summary, dict) and isinstance(
+            agent_summary.get("verdict"), str
+        ):
+            result["verdict"] = agent_summary["verdict"]
 
     return result

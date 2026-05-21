@@ -6099,12 +6099,16 @@ class TestEnvelopeContractSnapshot:
 
     # r37u (round-37u): tightened the top-level verdict gate.
     # ``agent_summary.verdict`` set but top-level ``verdict`` None used to
-    # slip past the snapshot. Now flagged as drift. These 14 tools are the
+    # slip past the snapshot. Now flagged as drift. These tools are the
     # current snapshot of "agent_summary populated, top-level missing" —
     # tracked here as a ratchet so each can be fixed one at a time.
-    # SymbolLineageTool was fixed in r37u and removed from this list.
     # DO NOT add new tools here — write a 3-line fix at the tool layer
     # (mirror agent_summary.verdict into the top-level response dict).
+    # Migration progress (target: 0):
+    #   r37u baseline: 16 (after symbol_lineage fixed)
+    #   r37w:  10 (fixed 6 via search_envelope + route_detector + outline:
+    #     FindAndGrep, GetCodeOutline, ListFiles, Query, RouteDetector,
+    #     SearchContent)
     KNOWN_VERDICT_DRIFT: frozenset[str] = frozenset(
         {
             "AgentWorkflowTool",
@@ -6114,14 +6118,8 @@ class TestEnvelopeContractSnapshot:
             "BatchSearchTool",
             "BuildProjectIndexTool",
             "CallGraphTool",
-            "FindAndGrepTool",
-            "GetCodeOutlineTool",
             "GetProjectSummaryTool",
-            "ListFilesTool",
-            "QueryTool",
             "ReadPartialTool",
-            "RouteDetectorTool",
-            "SearchContentTool",
             "UniversalAnalyzeTool",
         }
     )
@@ -6463,12 +6461,16 @@ class TestEnvelopeContractSnapshot:
 
         Migration progress (target: 0):
           r37u baseline: 16 (after symbol_lineage fixed)
+          r37w:          10 (6 fixed via search_envelope verdict mirror +
+                             RouteDetector + GetCodeOutline:
+                             FindAndGrep, GetCodeOutline, ListFiles,
+                             Query, RouteDetector, SearchContent)
         """
         # The baseline established when r37u tightened the gate.
         # Do NOT raise this — write a 3-line fix at the tool layer
         # (mirror ``verdict`` into the response dict at the same level
         # as ``summary_line`` / ``agent_summary``).
-        BASELINE = 16
+        BASELINE = 10
         # Sanity: every name in the drift list must be a real tool in
         # the snapshot — otherwise stale entries hide live drift.
         case_names = {name for (name, _, _) in tool_cases}
