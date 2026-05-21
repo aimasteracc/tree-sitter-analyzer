@@ -145,6 +145,18 @@ class AnalyzeScaleTool(BaseMCPTool):
     # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute code scale analysis for single or batch files."""
+        # Issue 1: validate ``mode`` early so unknown values raise instead
+        # of silently no-op'ing. The full validator is heavier (file_paths
+        # / file_path checks), so this only enforces the mode-typo gate.
+        if "mode" in arguments and arguments["mode"] is not None:
+            mode_value = arguments["mode"]
+            if mode_value not in ("single", "batch", "batch_metrics"):
+                raise ValueError(
+                    f"mode={mode_value!r} not supported. AnalyzeScale dispatches "
+                    "on file_paths presence: pass file_paths=[...] for batch, "
+                    "file_path='...' for single."
+                )
+
         # Conditional check
         if "file_paths" in arguments and arguments["file_paths"] is not None:
             return await self._execute_metrics_batch(arguments)
@@ -204,6 +216,10 @@ class AnalyzeScaleTool(BaseMCPTool):
                     include_guidance,
                     include_details,
                 )
+                # Issue 2: echo dispatch mode + output_format on the
+                # single-file path so callers can audit envelope parity.
+                result["mode"] = "single"
+                result["output_format"] = output_format
 
                 logger.info(
                     f"Successfully analyzed {file_path}: "
@@ -387,14 +403,19 @@ class AnalyzeScaleTool(BaseMCPTool):
         summary_line = (
             f"batch metrics: {len(ok)}/{len(file_paths)} files ok, {len(errors)} errors"
         )
+        # Issue 2: echo ``mode`` + ``output_format`` so agents can audit
+        # which dispatch path ran without re-reading their own call site.
+        # Issue 3: ``summary_line`` lives only on ``agent_summary`` in batch
+        # mode — the previous top-level mirror duplicated tokens for no win.
         response: dict[str, Any] = {
             "success": len(ok) > 0,
+            "mode": "batch_metrics" if metrics_only else "batch",
+            "output_format": output_format,
             "count_files": len(file_paths),
             "count_ok": len(ok),
             "count_errors": len(errors),
             "limits": {"max_files": max_files, "concurrency": 4},
             "results": per_file,
-            "summary_line": summary_line,
             "agent_summary": {
                 "summary_line": summary_line,
                 "next_step": (

@@ -221,6 +221,7 @@ def build_empty_response(
         "results": [],
         "count": 0,
         "meta": meta,
+        "output_format": arguments.get("output_format", "toon"),
         "agent_summary": build_agent_summary_from_meta(
             arguments,
             mode="empty",
@@ -253,6 +254,7 @@ def build_count_only_response(context: FindAndGrepCountOnlyContext) -> dict[str,
         "total_matches": total_matches,
         "file_counts": file_counts,
         "meta": meta,
+        "output_format": context.output_format,
         "agent_summary": build_agent_summary_from_meta(
             context.arguments,
             mode="count_only",

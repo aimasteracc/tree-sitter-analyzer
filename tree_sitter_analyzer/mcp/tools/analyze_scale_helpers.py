@@ -445,6 +445,19 @@ def generate_llm_guidance(
 # Input validation for batch and single-file analysis modes
 def validate_scale_arguments(arguments: dict[str, Any]) -> bool:
     """Validate file_path and option arguments for analyze scale tool."""
+    # Issue 1: ``mode`` is dispatched on ``file_paths`` presence — accepting
+    # arbitrary ``mode=`` values silently drops them. Echo back a clear
+    # error pointing at the right dispatch contract instead of "passed
+    # but ignored". Accept the canonical values for forward-compat.
+    if "mode" in arguments and arguments["mode"] is not None:
+        mode_value = arguments["mode"]
+        if mode_value not in ("single", "batch", "batch_metrics"):
+            raise ValueError(
+                f"mode={mode_value!r} not supported. AnalyzeScale dispatches "
+                "on file_paths presence: pass file_paths=[...] for batch, "
+                "file_path='...' for single."
+            )
+
     # Batch mode: file_paths array with metrics_only flag
     if "file_paths" in arguments and arguments["file_paths"] is not None:
         if "file_path" in arguments:
@@ -504,6 +517,9 @@ def create_json_file_analysis(
     )
     result: dict[str, Any] = {
         "success": True,
+        # Issue 2: echo dispatch mode + output_format on JSON-file path too.
+        "mode": "single",
+        "output_format": output_format,
         "file_path": file_path,
         "language": "json",
         "file_size_bytes": file_metrics["file_size_bytes"],

@@ -133,6 +133,7 @@ class ChangeImpactTool(BaseMCPTool):
             )
             if agent_summary_only:
                 result = build_agent_summary_only_response(result)
+            result["output_format"] = output_format
             return apply_toon_format_to_response(result, output_format)
 
         diff_stat = _get_diff_stat(mode, self.project_root, scope_paths)
@@ -155,6 +156,7 @@ class ChangeImpactTool(BaseMCPTool):
         )
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
+        result["output_format"] = output_format
         return apply_toon_format_to_response(result, output_format)
 
     def _execute_pr_analysis(
@@ -173,6 +175,7 @@ class ChangeImpactTool(BaseMCPTool):
                     "success": False,
                     "error": f"Invalid GitHub PR URL: {pr_url}",
                     "hint": "Expected format: https://github.com/owner/repo/pull/123",
+                    "output_format": output_format,
                 },
                 output_format,
             )
@@ -184,6 +187,7 @@ class ChangeImpactTool(BaseMCPTool):
                     "error": "gh CLI not available or not authenticated",
                     "hint": "Install gh CLI and run 'gh auth login'",
                     "pr_url": parsed.url,
+                    "output_format": output_format,
                 },
                 output_format,
             )
@@ -191,7 +195,9 @@ class ChangeImpactTool(BaseMCPTool):
         changed_files = fetch_pr_changed_files(parsed)
         if scope_paths:
             changed_files = [
-                f for f in changed_files if any(f.startswith(s.rstrip("/")) for s in scope_paths)
+                f
+                for f in changed_files
+                if any(f.startswith(s.rstrip("/")) for s in scope_paths)
             ]
 
         if not changed_files:
@@ -208,6 +214,7 @@ class ChangeImpactTool(BaseMCPTool):
             )
             if agent_summary_only:
                 result = build_agent_summary_only_response(result)
+            result["output_format"] = output_format
             return apply_toon_format_to_response(result, output_format)
 
         diff_stat = fetch_pr_diff_stat(parsed)
@@ -233,4 +240,5 @@ class ChangeImpactTool(BaseMCPTool):
         )
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
+        result["output_format"] = output_format
         return apply_toon_format_to_response(result, output_format)

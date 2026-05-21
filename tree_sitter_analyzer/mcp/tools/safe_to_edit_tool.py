@@ -128,6 +128,9 @@ class SafeToEditTool(BaseMCPTool):
                 scorer=self._get_scorer(),
             )
         )
+        # Echo the requested output_format so agents can audit envelope
+        # parity without re-reading their own call site.
+        result["output_format"] = output_format
 
         from ..utils.format_helper import apply_toon_format_to_response
 

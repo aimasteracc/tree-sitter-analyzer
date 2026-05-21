@@ -129,6 +129,9 @@ class SmartContextTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
         profile = self._build_profile(file_path)
         result = _build_smart_context_result(profile)
+        # Echo the requested output_format so agents can audit envelope
+        # parity across tools without consulting the call site.
+        result["output_format"] = output_format
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)

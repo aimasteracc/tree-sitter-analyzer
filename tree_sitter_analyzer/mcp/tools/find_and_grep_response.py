@@ -33,6 +33,7 @@ class FindAndGrepRespondMixin:
         if arguments.get("summary_only", False):
             grouped["summary"] = fd_rg_utils.summarize_search_results(matches)
         grouped["meta"] = meta
+        grouped["output_format"] = arguments.get("output_format", "toon")
         grouped["agent_summary"] = build_agent_summary_from_meta(
             arguments,
             mode="group_by_file",
@@ -67,6 +68,7 @@ class FindAndGrepRespondMixin:
             "results": [],
             "summary": fd_rg_utils.summarize_search_results(matches),
             "meta": meta,
+            "output_format": arguments.get("output_format", "toon"),
             "agent_summary": build_agent_summary_from_meta(
                 arguments,
                 mode="summary",
@@ -95,6 +97,7 @@ class FindAndGrepRespondMixin:
             "success": True,
             "count": len(matches),
             "meta": meta,
+            "output_format": output_format,
             "agent_summary": build_agent_summary_from_meta(
                 arguments,
                 mode="normal",

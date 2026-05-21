@@ -6,6 +6,10 @@ Replaces Python-AST-only analysis with the existing tree-sitter language
 plugin system so that all 15 supported languages get full MCP tool value.
 """
 
+from __future__ import annotations
+
+import ast
+from pathlib import Path
 from typing import Any
 
 from ....constants import (
@@ -116,8 +120,19 @@ def get_imports(result: AnalysisResult) -> list[str]:
 
 
 def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
-    """Extract all exported symbols (classes, functions, constants)."""
+    """Extract all exported symbols (classes, functions, constants, __all__).
+
+    Recognises four export classes:
+    - ``class`` — definitions
+    - ``function`` — public (non-underscore-prefixed) definitions
+    - ``constant`` — UPPER_CASE module-level variables
+    - ``reexport`` — names listed in a module-level ``__all__`` list literal
+
+    The ``reexport`` recognition is what makes ``__init__.py`` files report
+    non-empty ``exports`` even when they only import + re-publish symbols.
+    """
     exports: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
 
     for e in result.elements:
         if is_element_of_type(e, ELEMENT_TYPE_CLASS):
@@ -130,6 +145,7 @@ def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
                     "methods": len(methods),
                 }
             )
+            seen_names.add(e.name)
         elif is_element_of_type(e, ELEMENT_TYPE_FUNCTION):
             if not e.name.startswith("_"):
                 exports.append(
@@ -139,6 +155,7 @@ def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
                         "line": e.start_line,
                     }
                 )
+                seen_names.add(e.name)
         elif is_element_of_type(e, ELEMENT_TYPE_VARIABLE):
             if e.name.isupper():
                 exports.append(
@@ -148,8 +165,71 @@ def get_all_exports(result: AnalysisResult) -> list[dict[str, Any]]:
                         "line": e.start_line,
                     }
                 )
+                seen_names.add(e.name)
+
+    # Re-exports declared via ``__all__`` — parse the source so that
+    # __init__.py files (which usually only import + republish) report
+    # exports>0. Names already captured as class/function/constant above
+    # are skipped to avoid double-counting.
+    file_path = getattr(result, "file_path", None)
+    if isinstance(file_path, str):
+        for reexport in _extract_all_reexports(file_path):
+            if reexport["name"] in seen_names:
+                continue
+            exports.append(reexport)
+            seen_names.add(reexport["name"])
 
     return exports
+
+
+def _extract_all_reexports(file_path: str) -> list[dict[str, Any]]:
+    """Parse a module-level ``__all__`` list literal and return reexports.
+
+    Only Python sources are considered. Failures (missing file, syntax
+    error, non-list ``__all__``, non-string members) are swallowed — this
+    is best-effort metadata, never a correctness gate.
+    """
+    if not file_path or not file_path.endswith(".py"):
+        return []
+    try:
+        source = Path(file_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return []
+
+    for node in tree.body:
+        names_line = _read_all_assignment(node)
+        if names_line is None:
+            continue
+        names, lineno = names_line
+        return [{"name": name, "kind": "reexport", "line": lineno} for name in names]
+    return []
+
+
+def _read_all_assignment(node: ast.stmt) -> tuple[list[str], int] | None:
+    """Return ``(names, lineno)`` if ``node`` is ``__all__ = [...]``.
+
+    Accepts list or tuple literals of string constants. Returns ``None``
+    for anything else (other assignments, augmented assignments, dynamic
+    forms like ``__all__ += [...]``).
+    """
+    if not isinstance(node, ast.Assign):
+        return None
+    if not any(isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets):
+        return None
+    value = node.value
+    if not isinstance(value, ast.List | ast.Tuple):
+        return None
+    names: list[str] = []
+    for elt in value.elts:
+        if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+            names.append(elt.value)
+    if not names:
+        return None
+    return names, node.lineno
 
 
 def get_structure(result: AnalysisResult) -> list[dict[str, str]]:

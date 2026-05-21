@@ -89,6 +89,7 @@ class QueryTool(BaseMCPTool):
                 "error": safe_error_message(e, self.project_root),
                 "file_path": arguments.get("file_path", "unknown"),
                 "language": arguments.get("language", "unknown"),
+                "output_format": arguments.get("output_format", "json"),
             }
 
     # _execute_file_query: implementation
@@ -107,6 +108,7 @@ class QueryTool(BaseMCPTool):
             return {
                 "success": False,
                 "error": "Cannot provide both query_key and query_string",
+                "output_format": arguments.get("output_format", "json"),
             }
 
         resolved = self.resolve_and_validate_file_path(file_path)
@@ -146,6 +148,7 @@ class QueryTool(BaseMCPTool):
                 query_string,
                 resolved,
                 elapsed_ms=elapsed_ms,
+                output_format=arguments.get("output_format", "json"),
             )
 
         # Detect truncation against optional max_count
@@ -175,6 +178,9 @@ class QueryTool(BaseMCPTool):
 
         formatted["elapsed_ms"] = elapsed_ms
         formatted["truncated"] = truncated
+        # Echo output_format so agents can audit envelope parity without
+        # re-reading the call site.
+        formatted["output_format"] = arguments.get("output_format", "json")
         formatted["agent_summary"] = build_query_agent_summary(
             file_path=file_path,
             language=language,
@@ -217,6 +223,7 @@ class QueryTool(BaseMCPTool):
         resolved: str,
         *,
         elapsed_ms: float | None = None,
+        output_format: str = "json",
     ) -> dict[str, Any]:
         """Build helpful response for empty query results."""
         productive = await self._find_productive_queries(resolved, language)
@@ -230,6 +237,7 @@ class QueryTool(BaseMCPTool):
             "language": language,
             "elapsed_ms": float(elapsed_ms) if elapsed_ms is not None else 0.0,
             "truncated": False,
+            "output_format": output_format,
         }
         if productive:
             response["productive_queries"] = productive
