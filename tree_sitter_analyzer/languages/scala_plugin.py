@@ -233,7 +233,9 @@ class ScalaElementExtractor(ElementExtractor):
         """Extract function definition (with body)"""
         return self._extract_function_common(node)
 
-    def _extract_function_declaration(self, node: "tree_sitter.Node") -> Function | None:
+    def _extract_function_declaration(
+        self, node: "tree_sitter.Node"
+    ) -> Function | None:
         """Extract function declaration (abstract, without body)"""
         return self._extract_function_common(node)
 
@@ -315,7 +317,10 @@ class ScalaElementExtractor(ElementExtractor):
                 for grandchild in child.children:
                     if grandchild.type == "identifier":
                         param_name = self._get_node_text(grandchild)
-                    elif "type" in grandchild.type or grandchild.type == "type_identifier":
+                    elif (
+                        "type" in grandchild.type
+                        or grandchild.type == "type_identifier"
+                    ):
                         param_type = self._get_node_text(grandchild)
 
                 if param_name:
@@ -338,9 +343,7 @@ class ScalaElementExtractor(ElementExtractor):
         """Extract trait definition (Scala interface/mixin)"""
         return self._extract_class_like(node, "trait")
 
-    def _extract_class_like(
-        self, node: "tree_sitter.Node", kind: str
-    ) -> Class | None:
+    def _extract_class_like(self, node: "tree_sitter.Node", kind: str) -> Class | None:
         """Generic extraction for class/object/trait"""
         try:
             # Extract name
@@ -660,7 +663,9 @@ class ScalaPlugin(LanguagePlugin):
                 return AnalysisResult(
                     file_path=file_path,
                     language="scala",
-                    line_count=len(file_content.split("\n")),
+                    # P1: splitlines() matches wc -l (split("\n") over-counts by 1
+                    # when file ends with trailing \n)
+                    line_count=len(file_content.splitlines()),
                     elements=[],
                     source_code=file_content,
                 )
@@ -705,7 +710,9 @@ class ScalaPlugin(LanguagePlugin):
             return AnalysisResult(
                 file_path=file_path,
                 language="scala",
-                line_count=len(file_content.split("\n")),
+                # P1: splitlines() matches wc -l (split("\n") over-counts by 1
+                # when file ends with trailing \n)
+                line_count=len(file_content.splitlines()),
                 elements=all_elements,
                 node_count=node_count,
                 source_code=file_content,

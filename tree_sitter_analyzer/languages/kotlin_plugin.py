@@ -292,7 +292,7 @@ class KotlinPlugin(LanguagePlugin):
                 return AnalysisResult(
                     file_path=file_path,
                     language="kotlin",
-                    line_count=len(file_content.split("\n")),
+                    line_count=len(file_content.splitlines()),
                     elements=[],
                     source_code=file_content,
                 )
@@ -328,7 +328,7 @@ class KotlinPlugin(LanguagePlugin):
             return AnalysisResult(
                 file_path=file_path,
                 language="kotlin",
-                line_count=len(file_content.split("\n")),
+                line_count=len(file_content.splitlines()),
                 elements=all_elements,
                 node_count=node_count,
                 source_code=file_content,

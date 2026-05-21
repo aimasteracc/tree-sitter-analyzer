@@ -9100,3 +9100,97 @@ class TestO6ErrorSummaryLineMessage:
         assert "url_pattern" in sl, (
             f"O6: summary_line must contain the actual error reason — got {sl!r}"
         )
+
+
+# ============================================================================
+# P1 — CLI ``--advanced`` line_count must match MCP and ``wc -l``
+# ============================================================================
+
+
+class TestP1LineCountParityAcrossPlugins:
+    """P1 (round-32): seven language plugins computed ``line_count`` as
+    ``len(file_content.split("\\n"))``. On files ending with a trailing
+    newline (the universal Unix convention), that over-counts by 1 — the
+    trailing ``""`` left by ``split`` becomes a phantom line.
+
+    The MCP ``analyze_scale_tool`` already used the canonical
+    ``mcp/utils/file_metrics.py`` helper, so CLI ``--advanced`` reported
+    ``N+1`` while MCP and ``wc -l`` reported ``N`` for the same file.
+    Switching the plugins to ``splitlines()`` aligns them with the
+    Python/JavaScript/Swift plugins and with the MCP code path.
+
+    This test parametrises over every fixed plugin and asserts three
+    invariants for a file ending in ``\\n``:
+
+    1. ``len(splitlines())`` is the canonical count.
+    2. CLI ``--advanced`` reports the same number.
+    3. MCP ``analyze_scale`` reports the same number.
+    """
+
+    # (language tag, file extension, source ending with '\n')
+    _CASES: list[tuple[str, str, str]] = [
+        ("java", "java", "package com.x;\npublic class L {}\n"),
+        ("cpp", "cpp", "#include <stdio.h>\nint main() { return 0; }\n"),
+        ("c", "c", "#include <stdio.h>\nint main() { return 0; }\n"),
+        ("rust", "rs", 'fn main() { println!("hi"); }\n'),
+        ("go", "go", "package main\nfunc main() {}\n"),
+        ("kotlin", "kt", "fun main() {}\n"),
+        ("csharp", "cs", "public class L {}\n"),
+    ]
+
+    @pytest.mark.parametrize("language,ext,content", _CASES)
+    def test_plugin_line_count_matches_splitlines_and_mcp(
+        self,
+        tmp_path: Path,
+        language: str,
+        ext: str,
+        content: str,
+    ) -> None:
+        # 1. Canonical: ``splitlines()`` of a file ending in ``\n``.
+        expected = len(content.splitlines())
+        assert expected > 0, "fixture must have at least one line of content"
+
+        # 2. MCP path goes through the centralised ``file_metrics`` and is
+        # the reference. After P1 the plugin path agrees.
+        sample = tmp_path / f"sample.{ext}"
+        sample.write_text(content, encoding="utf-8")
+
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
+            AnalyzeScaleTool,
+        )
+
+        mcp_tool = AnalyzeScaleTool(project_root=str(tmp_path))
+        mcp_result = asyncio.run(mcp_tool.execute({"file_path": f"sample.{ext}"}))
+        mcp_line_count = mcp_result.get("line_count")
+        assert mcp_line_count == expected, (
+            f"P1 ({language}): MCP analyze_scale.line_count={mcp_line_count!r} "
+            f"diverged from canonical splitlines() count={expected}. "
+            f"This is the reference path; check mcp/utils/file_metrics.py."
+        )
+
+        # 3. Plugin path (used by CLI ``--advanced``). After P1 every
+        # language plugin builds ``AnalysisResult`` with ``splitlines()``.
+        from tree_sitter_analyzer.core.analysis_engine import get_analysis_engine
+        from tree_sitter_analyzer.core.request import AnalysisRequest
+
+        engine = get_analysis_engine(str(tmp_path))
+        plugin_result = asyncio.run(
+            engine.analyze(AnalysisRequest(file_path=str(sample), language=language))
+        )
+        assert plugin_result is not None, (
+            f"P1 ({language}): analysis engine returned None for {sample}"
+        )
+        plugin_line_count = plugin_result.line_count
+        assert plugin_line_count == expected, (
+            f"P1 ({language}): plugin line_count={plugin_line_count!r} "
+            f"diverged from canonical splitlines() count={expected}. "
+            f"This is the bug — plugin still uses split('\\n') which "
+            f"over-counts by 1 on files ending with a trailing newline."
+        )
+
+        # 4. Cross-tool parity: CLI ``--advanced`` and MCP MUST agree.
+        assert plugin_line_count == mcp_line_count, (
+            f"P1 ({language}): CLI plugin line_count={plugin_line_count!r} "
+            f"!= MCP line_count={mcp_line_count!r}. Cross-tool numeric "
+            f"disagreement breaks downstream consumers."
+        )

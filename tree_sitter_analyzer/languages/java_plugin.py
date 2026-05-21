@@ -516,7 +516,7 @@ class JavaPlugin(LanguagePlugin):
                 return AnalysisResult(
                     file_path=file_path,
                     language="java",
-                    line_count=len(file_content.split("\n")),
+                    line_count=len(file_content.splitlines()),
                     elements=[],
                     source_code=file_content,
                     success=False,
@@ -568,7 +568,7 @@ class JavaPlugin(LanguagePlugin):
             return AnalysisResult(
                 file_path=file_path,
                 language="java",
-                line_count=len(file_content.split("\n")),
+                line_count=len(file_content.splitlines()),
                 elements=all_elements,
                 node_count=node_count,
                 source_code=file_content,

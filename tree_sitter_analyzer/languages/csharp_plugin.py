@@ -602,7 +602,7 @@ class CSharpPlugin(LanguagePlugin):
             elements.extend(extractor.extract_imports(tree, source_code))
 
             node_count = sum(1 for _ in _traverse_nodes(tree.root_node))
-            line_count = len(source_code.split("\n"))
+            line_count = len(source_code.splitlines())
 
             return AnalysisResult(
                 file_path=file_path,

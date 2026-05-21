@@ -10,7 +10,7 @@ def empty_cpp_analysis_result(file_path: str, file_content: str) -> AnalysisResu
     return AnalysisResult(
         file_path=file_path,
         language="cpp",
-        line_count=len(file_content.split("\n")),
+        line_count=len(file_content.splitlines()),
         elements=[],
         source_code=file_content,
     )
@@ -24,7 +24,7 @@ def cpp_parser_failure_result(
     return AnalysisResult(
         file_path=file_path,
         language="cpp",
-        line_count=len(file_content.split("\n")),
+        line_count=len(file_content.splitlines()),
         elements=[],
         source_code=file_content,
         error_message=f"Parser creation failed: {error}",
@@ -86,7 +86,7 @@ def build_cpp_analysis_result(
     return AnalysisResult(
         file_path=file_path,
         language="cpp",
-        line_count=len(file_content.split("\n")),
+        line_count=len(file_content.splitlines()),
         elements=flatten_cpp_elements(elements_dict),
         node_count=node_count,
         source_code=file_content,

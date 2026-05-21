@@ -30,8 +30,10 @@ class TestEmptyCppAnalysisResult:
         assert result.line_count == 1
 
     def test_empty_content(self):
+        # splitlines() of "" returns [], matching wc -l on an empty file.
+        # (Old N+1 behavior pinned 1; corrected to 0 in the line_count parity fix.)
         result = empty_cpp_analysis_result("a.cpp", "")
-        assert result.line_count == 1
+        assert result.line_count == 0
 
 
 class TestCppParserFailureResult:
@@ -96,10 +98,16 @@ class TestLoadCppTreeSitterLanguage:
         assert result is None
 
     def test_general_exception_returns_none(self):
-        with patch(
-            "tree_sitter_analyzer.languages._cpp_plugin_analysis_helpers._coerce_cpp_language",
-            side_effect=RuntimeError("boom"),
-        ), patch.dict("sys.modules", {"tree_sitter": MagicMock(), "tree_sitter_cpp": MagicMock()}):
+        with (
+            patch(
+                "tree_sitter_analyzer.languages._cpp_plugin_analysis_helpers._coerce_cpp_language",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch.dict(
+                "sys.modules",
+                {"tree_sitter": MagicMock(), "tree_sitter_cpp": MagicMock()},
+            ),
+        ):
             result = load_cpp_tree_sitter_language()
         assert result is None
 
@@ -126,9 +134,7 @@ class TestFlattenCppElements:
 
 class TestBuildCppAnalysisResult:
     def test_builds_result(self):
-        result = build_cpp_analysis_result(
-            "f.cpp", "a\nb", {"functions": ["main"]}, 42
-        )
+        result = build_cpp_analysis_result("f.cpp", "a\nb", {"functions": ["main"]}, 42)
         assert result.file_path == "f.cpp"
         assert result.language == "cpp"
         assert result.line_count == 2
