@@ -6116,16 +6116,26 @@ class TestEnvelopeContractSnapshot:
         """Each entry: (label, instantiated tool, execute args)."""
         sample = "sample.py"
         from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        # T5 (round-37g): expand snapshot from 18 → 29 tools.
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+            AnalyzeCodeStructureTool,
+        )
         from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
             AnalyzeScaleTool,
         )
         from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+        from tree_sitter_analyzer.mcp.tools.batch_search_tool import BatchSearchTool
+        from tree_sitter_analyzer.mcp.tools.build_project_index_tool import (
+            BuildProjectIndexTool,
+        )
         from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
             CodeGraphCallTool,
         )
         from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
             ChangeImpactTool,
         )
+        from tree_sitter_analyzer.mcp.tools.check_tools_tool import CheckToolsTool
         from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
             CodePatternsTool,
         )
@@ -6133,6 +6143,10 @@ class TestEnvelopeContractSnapshot:
             DependencyAnalysisTool,
         )
         from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+        from tree_sitter_analyzer.mcp.tools.find_and_grep_tool import FindAndGrepTool
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
         from tree_sitter_analyzer.mcp.tools.get_project_summary_tool import (
             GetProjectSummaryTool,
         )
@@ -6149,15 +6163,28 @@ class TestEnvelopeContractSnapshot:
             ProjectOverviewTool,
         )
         from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
+        from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
         from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
             RouteDetectorTool,
         )
         from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+        from tree_sitter_analyzer.mcp.tools.search_content_tool import (
+            SearchContentTool,
+        )
         from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
             SmartContextTool,
         )
+        from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
+            SymbolLineageTool,
+        )
         from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
             TraceImpactTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import (
+            UniversalAnalyzeTool,
         )
 
         root = str(envelope_project)
@@ -6218,6 +6245,65 @@ class TestEnvelopeContractSnapshot:
                 "QueryTool",
                 QueryTool(root),
                 {"file_path": sample, "query_key": "methods"},
+            ),
+            # T5 (round-37g): 11 more tools added; SearchContent and
+            # FindAndGrep were the 2 new drifters fixed in this round.
+            (
+                "SymbolLineageTool",
+                SymbolLineageTool(root),
+                {"symbol": "greet", "output_format": "json"},
+            ),
+            (
+                "UniversalAnalyzeTool",
+                UniversalAnalyzeTool(root),
+                {"file_path": sample, "output_format": "json"},
+            ),
+            (
+                "RefactoringSuggestionsTool",
+                RefactoringSuggestionsTool(root),
+                {"file_path": sample, "output_format": "json"},
+            ),
+            (
+                "GetCodeOutlineTool",
+                GetCodeOutlineTool(root),
+                {"file_path": sample, "output_format": "json"},
+            ),
+            (
+                "AnalyzeCodeStructureTool",
+                AnalyzeCodeStructureTool(root),
+                {"file_path": sample, "output_format": "json"},
+            ),
+            (
+                "ReadPartialTool",
+                ReadPartialTool(root),
+                {
+                    "file_path": sample,
+                    "start_line": 1,
+                    "end_line": 3,
+                    "output_format": "json",
+                },
+            ),
+            ("CheckToolsTool", CheckToolsTool(root), {}),
+            ("BuildProjectIndexTool", BuildProjectIndexTool(root), {}),
+            (
+                "BatchSearchTool",
+                BatchSearchTool(root),
+                {
+                    "queries": [
+                        {"pattern": "greet", "roots": [root]},
+                        {"pattern": "hello", "roots": [root]},
+                    ]
+                },
+            ),
+            (
+                "SearchContentTool",
+                SearchContentTool(root),
+                {"roots": [root], "query": "greet"},
+            ),
+            (
+                "FindAndGrepTool",
+                FindAndGrepTool(root),
+                {"roots": [root], "query": "greet"},
             ),
         ]
 

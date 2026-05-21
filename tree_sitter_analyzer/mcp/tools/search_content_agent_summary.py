@@ -25,8 +25,18 @@ def build_agent_summary(context: SearchAgentSummaryInput) -> dict[str, Any]:
         context.total_matches if context.total_matches is not None else context.count
     )
     risk = _search_summary_risk(match_total, context.truncated)
+    # T5 (round-37g): canonical envelope requires ``verdict``. search is
+    # informational; map risk → verdict matching the project-wide vocab
+    # (low→INFO, medium→CAUTION, high→REVIEW).
+    if risk == "high":
+        verdict = "REVIEW"
+    elif risk == "medium":
+        verdict = "CAUTION"
+    else:
+        verdict = "INFO"
     summary: dict[str, Any] = {
         "risk": risk,
+        "verdict": verdict,
         "mode": context.mode,
         "query": _short_query(context.arguments.get("query", "")),
         "count": context.count,

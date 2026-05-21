@@ -29,8 +29,18 @@ def build_agent_summary(context: FindAndGrepSummaryInput) -> dict[str, Any]:
     risk = _find_and_grep_summary_risk(
         match_total, context.searched_file_count, context.truncated
     )
+    # T5 (round-37g): canonical envelope requires ``verdict``. find_and_grep
+    # is informational; map risk → verdict matching project-wide vocab
+    # (low→INFO, medium→CAUTION, high→REVIEW).
+    if risk == "high":
+        verdict = "REVIEW"
+    elif risk == "medium":
+        verdict = "CAUTION"
+    else:
+        verdict = "INFO"
     summary: dict[str, Any] = {
         "risk": risk,
+        "verdict": verdict,
         "mode": context.mode,
         "query": _short_query(context.arguments.get("query", "")),
         "count": context.count,
