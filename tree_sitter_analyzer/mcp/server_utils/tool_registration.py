@@ -9,7 +9,7 @@ except ImportError:
     Tool = Any
 
 from ...utils import setup_logger
-from .error_recovery import build_agent_friendly_error
+from .error_recovery import build_agent_friendly_error, ensure_canonical_error_envelope
 
 logger = setup_logger(__name__)
 
@@ -56,6 +56,15 @@ def register_tools(server: Any, server_instance: Any) -> None:
             logger.info(f"MCP tool call: {name} with args: {list(arguments.keys())}")
             server_instance._validate_file_path_security(arguments)
             result = await _dispatch_tool(server_instance, name, arguments)
+            # Central envelope normalization: tools that return their own
+            # ``{success: False, ...}`` dicts (find_and_grep, refactoring_suggestions,
+            # read_partial, query, search_content) get the canonical
+            # ``agent_summary``/``summary_line``/``error_type`` keys added here
+            # — without losing any tool-specific fields they already set.
+            if isinstance(result, dict) and result.get("success") is False:
+                result = ensure_canonical_error_envelope(
+                    name, result, arguments=arguments
+                )
             return [
                 TextContent(
                     type="text",
@@ -64,7 +73,7 @@ def register_tools(server: Any, server_instance: Any) -> None:
             ]
         except Exception as e:
             _safe_log_error(f"Tool call error for {name}: {e}")
-            error_body = build_agent_friendly_error(name, e)
+            error_body = build_agent_friendly_error(name, e, arguments=arguments)
             return [
                 TextContent(
                     type="text",

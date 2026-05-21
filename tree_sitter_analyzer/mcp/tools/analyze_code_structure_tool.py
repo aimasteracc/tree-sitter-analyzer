@@ -20,7 +20,7 @@ from ..utils.file_output_manager import FileOutputManager
 from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_code_structure_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
 from .analyze_code_structure_helpers import (
-    convert_analysis_result_to_dict,
+    convert_analysis_result_to_structure_dict,
     extract_metadata,
 )
 from .base_tool import BaseMCPTool
@@ -218,12 +218,7 @@ def _build_next_steps(structure_dict: dict[str, Any], file_path: str) -> list[st
 
 def _convert_analysis_result(result: Any) -> dict[str, Any]:
     """Convert AnalysisResult to a JSON-serializable dict."""
-    return convert_analysis_result_to_dict(
-        result,
-        _get_method_parameters,
-        _get_method_modifiers,
-        _get_field_modifiers,
-    )
+    return convert_analysis_result_to_structure_dict(result)
 
 
 def _build_success_response(
@@ -403,6 +398,11 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
             table_output,
             _build_next_steps(structure_dict, options.file_path),
         )
+        # Hoist the rich per-element detail to top-level so agents can read it
+        # without parsing ``table_output``. Mirrors ``universal_analyze``'s
+        # shape for cross-tool parity.
+        for key in ("classes", "methods", "fields", "imports"):
+            response[key] = structure_dict.get(key, [])
         if options.output_file:
             self._save_output(response, table_output, options)
         return apply_toon_format_to_response(response, options.output_format)

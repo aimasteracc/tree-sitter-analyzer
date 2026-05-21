@@ -2,7 +2,9 @@
 """
 Shared helpers for analyze_code_structure_tool.
 
-Extracted from the monolithic tool file to reduce duplication.
+Extracted from the monolithic tool file so other MCP tools (notably
+``universal_analyze``) can reuse the same per-element converters and emit the
+same structure shape.
 """
 
 from typing import Any
@@ -15,6 +17,72 @@ from ...constants import (
     ELEMENT_TYPE_VARIABLE,
     is_element_of_type,
 )
+
+# --- default element-detail extractors --------------------------------
+# These live here (not on the tool class) so both ``analyze_code_structure``
+# and ``universal_analyze`` produce identical per-element dicts.
+
+
+def get_method_modifiers(method: Any) -> list[str]:
+    """Extract method modifiers (static, final, abstract)."""
+    mods: list[str] = []
+    if getattr(method, "is_static", False):
+        mods.append("static")
+    if getattr(method, "is_final", False):
+        mods.append("final")
+    if getattr(method, "is_abstract", False):
+        mods.append("abstract")
+    return mods
+
+
+def get_field_modifiers(field: Any) -> list[str]:
+    """Extract field modifiers (visibility, static, final)."""
+    mods: list[str] = []
+    visibility = getattr(field, "visibility", "private")
+    if visibility and visibility != "package":
+        mods.append(visibility)
+    if getattr(field, "is_static", False):
+        mods.append("static")
+    if getattr(field, "is_final", False):
+        mods.append("final")
+    return mods
+
+
+def convert_parameters(parameters: Any) -> list[dict[str, str]]:
+    """Convert method parameters to dict format."""
+    result: list[dict[str, str]] = []
+    for param in parameters:
+        if isinstance(param, dict):
+            result.append(
+                {
+                    "name": param.get("name", "param"),
+                    "type": param.get("type", "Object"),
+                }
+            )
+        else:
+            result.append(
+                {
+                    "name": getattr(param, "name", "param"),
+                    "type": getattr(param, "param_type", "Object"),
+                }
+            )
+    return result
+
+
+def get_method_parameters(method: Any) -> list[dict[str, str]]:
+    """Extract method parameters with types."""
+    parameters = getattr(method, "parameters", [])
+    if parameters and isinstance(parameters[0], str):
+        result: list[dict[str, str]] = []
+        for param_str in parameters:
+            parts = param_str.strip().split()
+            if len(parts) >= 2:
+                result.append({"name": parts[-1], "type": " ".join(parts[:-1])})
+            elif len(parts) == 1:
+                result.append({"name": "param", "type": parts[0]})
+        return result
+    return convert_parameters(parameters)
+
 
 # JSON Schema: input validation for analyze_code_structure tool
 TOOL_SCHEMA: dict[str, Any] = {
@@ -48,6 +116,22 @@ TOOL_SCHEMA: dict[str, Any] = {
     "required": ["file_path"],
     "additionalProperties": False,
 }
+
+
+def convert_analysis_result_to_structure_dict(result: Any) -> dict[str, Any]:
+    """Convert an :class:`AnalysisResult` to the rich structure dict.
+
+    Thin wrapper around :func:`convert_analysis_result_to_dict` that wires up
+    the default per-element extractors so both ``analyze_code_structure`` and
+    ``universal_analyze`` emit the same per-element detail without passing
+    helper callables.
+    """
+    return convert_analysis_result_to_dict(
+        result,
+        get_method_parameters,
+        get_method_modifiers,
+        get_field_modifiers,
+    )
 
 
 # convert_analysis_result_to_dict: implementation

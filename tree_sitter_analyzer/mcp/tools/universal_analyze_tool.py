@@ -23,6 +23,7 @@ from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
 from ..utils.error_sanitizer import safe_error_message
 from ..utils.format_helper import apply_toon_format_to_response
+from .analyze_code_structure_helpers import convert_analysis_result_to_structure_dict
 from .base_tool import BaseMCPTool
 from .universal_analyze_helpers import (
     TOOL_SCHEMA as _TOOL_SCHEMA,
@@ -34,6 +35,39 @@ from .universal_analyze_helpers import (
 )
 
 logger = setup_logger(__name__)
+
+
+def _attach_structure_detail(base: dict[str, Any], result: Any) -> None:
+    """Hoist per-element detail onto the response.
+
+    Reuses the same converters that :class:`AnalyzeCodeStructureTool` runs, so
+    both tools emit identical ``classes``/``methods``/``fields``/``imports``
+    arrays (signatures, line ranges, complexity, modifiers, annotations).
+    """
+    try:
+        rich = convert_analysis_result_to_structure_dict(result)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning(f"structure detail conversion failed: {exc}")
+        return
+
+    for key in ("classes", "methods", "fields", "imports"):
+        items = rich.get(key, [])
+        # Top-level hoist for agents reading either tool's response.
+        base[key] = items
+        # Enrich the structure envelope so analysis_type='structure'/'metrics'
+        # consumers also see the detailed entries.
+        structure = base.get("structure")
+        if isinstance(structure, dict):
+            structure[key] = items
+    # Carry the package info forward when present.
+    package = rich.get("package")
+    structure = base.get("structure")
+    if (
+        package is not None
+        and isinstance(structure, dict)
+        and not structure.get("package")
+    ):
+        structure["package"] = package
 
 
 class UniversalAnalyzeTool(BaseMCPTool):
@@ -182,6 +216,11 @@ class UniversalAnalyzeTool(BaseMCPTool):
         elif analysis_type == "metrics":
             base.update(self._extract_comprehensive_metrics(result))
 
+        # Hoist the rich per-element detail so agents reading either
+        # ``universal_analyze`` or ``analyze_code_structure`` see the same
+        # shape (signatures, line ranges, complexity, modifiers).
+        _attach_structure_detail(base, result)
+
         if arguments.get("include_ast", False):
             base["ast_info"] = {"node_count": result.line_count, "depth": 0}
 
@@ -227,6 +266,11 @@ class UniversalAnalyzeTool(BaseMCPTool):
             base.update(self._extract_universal_structure_info(analysis_dict))
         elif analysis_type == "metrics":
             base.update(self._extract_universal_comprehensive_metrics(analysis_dict))
+
+        # Hoist the rich per-element detail so agents reading either
+        # ``universal_analyze`` or ``analyze_code_structure`` see the same
+        # shape (signatures, line ranges, complexity, modifiers).
+        _attach_structure_detail(base, result)
 
         if arguments.get("include_ast", False):
             base["ast_info"] = analysis_dict.get("ast_info", {})
