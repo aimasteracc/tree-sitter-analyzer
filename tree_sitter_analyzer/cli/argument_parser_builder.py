@@ -598,3 +598,28 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
             "--modification-guard (improves accuracy)"
         ),
     )
+    # T2 (round-37d dogfood): CLI-MCP parity for batch_search.
+    # CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
+    # batch_search needs 2-10 queries, each with pattern + optional roots.
+    # The CLI accepts a JSON file with the queries array, mirroring how the
+    # MCP tool consumes them.
+    parser.add_argument(
+        "--batch-search",
+        action="store_true",
+        help=(
+            "Run 2-10 ripgrep searches in parallel and return their results. "
+            "Requires --batch-search-queries-json FILE pointing to a JSON "
+            "array of {pattern, roots?, literal?, case_sensitive?, label?} "
+            "query objects."
+        ),
+    )
+    parser.add_argument(
+        "--batch-search-queries-json",
+        metavar="PATH",
+        help=(
+            "Path to JSON file containing the batch_search queries array "
+            "(required for --batch-search; 2-10 items, each with at least "
+            "a 'pattern' key). See BatchSearchTool inputSchema for the "
+            "full per-query shape."
+        ),
+    )

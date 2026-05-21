@@ -19,6 +19,9 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
 # module level — see ``tests/unit/cli/test_mcp_commands.py``.
 # noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.batch_search_tool import (
+    BatchSearchTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.build_project_index_tool import (
     BuildProjectIndexTool,  # noqa: F401
 )
@@ -199,6 +202,47 @@ def _build_trace_impact_tool_args(args: Any, output_format: str) -> dict[str, An
     if roots:
         tool_args["project_root"] = roots
     return tool_args
+
+
+def _build_batch_search_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """Build tool args for --batch-search (T2 round-37d parity fix).
+
+    BatchSearchTool's schema is ``{queries: array<{pattern, roots?, ...}>}``.
+    The CLI accepts a JSON file with the queries array (a single CLI flag
+    cannot encode a list of dicts cleanly). Validation, schema strictness,
+    and the 2-10 queries cap are enforced by the tool itself.
+
+    ``output_format`` is not on the schema (additionalProperties: false),
+    so we don't forward it — the CLI's format handler emits the response
+    in the requested format after the tool returns.
+    """
+    del output_format  # BatchSearchTool currently ignores output_format
+    queries_path = getattr(args, "batch_search_queries_json", None)
+    if not queries_path:
+        raise ValueError(
+            "--batch-search requires --batch-search-queries-json PATH "
+            "pointing to a JSON array of query objects"
+        )
+    import json
+    from pathlib import Path
+
+    try:
+        text = Path(queries_path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(
+            f"Cannot read batch_search queries file '{queries_path}': {exc}"
+        ) from exc
+    try:
+        queries = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"--batch-search-queries-json '{queries_path}' is not valid JSON: {exc}"
+        ) from exc
+    if not isinstance(queries, list):
+        raise ValueError(
+            f"--batch-search-queries-json '{queries_path}' must contain a JSON array"
+        )
+    return {"queries": queries}
 
 
 def _build_modification_guard_tool_args(
@@ -449,6 +493,12 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         label="Pre-modification safety check (symbol-level)",
         build_tool_args=_build_modification_guard_tool_args,
     ),
+    McpCommandSpec(
+        flag_name="batch_search",
+        tool_attr="BatchSearchTool",
+        label="Run 2-10 ripgrep searches in parallel",
+        build_tool_args=_build_batch_search_tool_args,
+    ),
 )
 
 
@@ -679,6 +729,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CheckToolsTool",
         "BuildProjectIndexTool",
         "ModificationGuardTool",
+        "BatchSearchTool",
     }
 )
 

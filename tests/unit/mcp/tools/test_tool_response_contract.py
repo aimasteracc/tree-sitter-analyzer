@@ -9664,3 +9664,81 @@ class TestT1ModificationGuardCLIParity:
         assert payload.get("symbol") == "T1Target", payload
         agent = payload.get("agent_summary", {})
         assert agent.get("verdict") in {"SAFE", "CAUTION", "REVIEW", "UNSAFE"}, agent
+
+
+class TestT2BatchSearchCLIParity:
+    """T2 (round-37d dogfood): ``batch_search`` MCP tool had no CLI flag.
+    The sibling search tools (find-and-grep / search-content / list-files)
+    have standalone entry-points; batch-search was missing. Now added as
+    ``--batch-search`` with ``--batch-search-queries-json`` to ferry the
+    structured queries array."""
+
+    def test_cli_flag_runs_2_query_batch(self, tmp_path):
+        """``--batch-search --batch-search-queries-json FILE`` works end-to-end."""
+        import json
+        import subprocess
+
+        # Make a small fixture tree for the queries to hit.
+        (tmp_path / "sample.py").write_text("def alpha(): pass\ndef beta(): pass\n")
+        queries_file = tmp_path / "queries.json"
+        queries_file.write_text(
+            json.dumps(
+                [
+                    {"pattern": "alpha", "roots": [str(tmp_path)]},
+                    {"pattern": "beta", "roots": [str(tmp_path)]},
+                ]
+            )
+        )
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-m",
+                "tree_sitter_analyzer",
+                "--batch-search",
+                "--batch-search-queries-json",
+                str(queries_file),
+                "--project-root",
+                str(tmp_path),
+                "--format",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        payload = json.loads(result.stdout)
+        assert payload.get("success") is True, payload
+        # batch_search returns the queries list it ran.
+        assert isinstance(payload.get("queries"), list), payload
+        assert len(payload["queries"]) == 2, payload
+
+    def test_cli_flag_missing_queries_json_returns_error(self, tmp_path):
+        """--batch-search without --batch-search-queries-json returns validation error."""
+        import json
+        import subprocess
+
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-m",
+                "tree_sitter_analyzer",
+                "--batch-search",
+                "--project-root",
+                str(tmp_path),
+                "--format",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        try:
+            payload = json.loads(result.stdout)
+            assert payload.get("success") is False, payload
+            assert "batch-search-queries-json" in payload.get("error", ""), payload
+        except json.JSONDecodeError:
+            assert result.returncode != 0
