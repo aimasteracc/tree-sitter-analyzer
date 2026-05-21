@@ -510,3 +510,66 @@ class TestTableCommandOutputTable:
         with patch("sys.stdout.buffer.write") as mock_write:
             command._output_table(table_output)
             mock_write.assert_called_once_with(table_output.encode("utf-8"))
+
+
+class TestR37abTableJsonCanonicalEnvelope:
+    """r37ab (dogfood): CLI ``--table json`` was the 4th CLI surface
+    missing canonical envelope. This test pins the contract.
+    """
+
+    def test_table_json_envelope_attached(self):
+        from tree_sitter_analyzer.cli.commands.table_command import (
+            _attach_table_envelope,
+        )
+
+        analysis_result = MagicMock()
+        analysis_result.file_path = "/test/foo.py"
+        analysis_result.language = "python"
+        analysis_result.line_count = 250
+
+        data = {
+            "classes": [],
+            "methods": [],
+            "fields": [],
+            "imports": [],
+            "statistics": {
+                "class_count": 2,
+                "method_count": 7,
+                "field_count": 3,
+                "import_count": 5,
+            },
+        }
+        _attach_table_envelope(data, analysis_result)
+        assert data["success"] is True
+        assert data["verdict"] == "INFO"
+        assert isinstance(data["summary_line"], str)
+        assert "/test/foo.py" in data["summary_line"]
+        assert "table=json" in data["summary_line"]
+        assert "classes=2" in data["summary_line"]
+        assert "methods=7" in data["summary_line"]
+        agent_summary = data["agent_summary"]
+        assert agent_summary["verdict"] == "INFO"
+        assert agent_summary["summary_line"] == data["summary_line"]
+
+    def test_table_json_falls_back_to_list_length_when_stats_missing(self):
+        """If ``statistics`` is absent, counts derive from list lengths."""
+        from tree_sitter_analyzer.cli.commands.table_command import (
+            _attach_table_envelope,
+        )
+
+        analysis_result = MagicMock()
+        analysis_result.file_path = "/x.py"
+        analysis_result.language = "python"
+        analysis_result.line_count = 10
+
+        data = {
+            "classes": [MagicMock(), MagicMock()],  # 2 classes
+            "methods": [MagicMock()],  # 1 method
+            "fields": [],
+            "imports": [MagicMock(), MagicMock(), MagicMock()],  # 3 imports
+        }
+        _attach_table_envelope(data, analysis_result)
+        assert "classes=2" in data["summary_line"]
+        assert "methods=1" in data["summary_line"]
+        assert "fields=0" in data["summary_line"]
+        assert "imports=3" in data["summary_line"]

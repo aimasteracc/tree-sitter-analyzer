@@ -24,6 +24,40 @@ from .table_command_helpers import (
 )
 
 
+def _attach_table_envelope(data: dict[str, Any], analysis_result: Any) -> None:
+    """Attach canonical envelope keys to a ``--table json`` response.
+
+    r37ab (dogfood): without this, ``--table json`` was the 4th CLI
+    surface (after --advanced / --summary / --structure) emitting
+    ``summary_line=None`` / ``verdict=None`` / ``agent_summary=None``.
+    Agents reading the response shape couldn't tell the call
+    succeeded vs. silently failed. The 4 add'l keys are purely
+    additive — existing ``effective_table`` / ``requested_table`` /
+    ``classes`` / ``methods`` keys survive untouched.
+    """
+    stats = data.get("statistics", {})
+    n_classes = stats.get("class_count", len(data.get("classes", [])))
+    n_methods = stats.get("method_count", len(data.get("methods", [])))
+    n_fields = stats.get("field_count", len(data.get("fields", [])))
+    n_imports = stats.get("import_count", len(data.get("imports", [])))
+    summary_line = (
+        f"{analysis_result.file_path} ({analysis_result.language}) table=json: "
+        f"classes={n_classes} methods={n_methods} fields={n_fields} "
+        f"imports={n_imports} lines={analysis_result.line_count}"
+    )
+    data["success"] = True
+    data["summary_line"] = summary_line
+    data["verdict"] = "INFO"
+    data["agent_summary"] = {
+        "summary_line": summary_line,
+        "next_step": (
+            "Switch to --table full for a Markdown view, or run "
+            "extract_code_section (MCP) for body extraction by line range."
+        ),
+        "verdict": "INFO",
+    }
+
+
 class TableCommand(BaseCommand):
     """Command for generating table format output."""
 
@@ -99,6 +133,11 @@ class TableCommand(BaseCommand):
                     formatted_data["effective_table"] = table_type
                     if table_was_user_specified:
                         formatted_data["requested_table"] = user_table_request
+                    # r37ab (dogfood): 4th CLI surface (after --advanced
+                    # r37y / --summary r37z / --structure r37aa) missing
+                    # canonical envelope. Same fix shape — attach
+                    # success / summary_line / verdict / agent_summary.
+                    _attach_table_envelope(formatted_data, analysis_result)
                 import json
 
                 formatted_output = json.dumps(
