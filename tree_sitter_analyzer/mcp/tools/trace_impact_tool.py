@@ -243,10 +243,14 @@ def _get_impact_level(count: int) -> dict[str, str]:
             "guidance": "Safe to modify or delete.",
         }
     elif count <= 5:
+        # r37s (dogfood): hardcoded ``caller(s)`` is a placeholder for
+        # unknown plurality. We already KNOW count here (1-5), so render
+        # proper singular/plural English ("1 caller" / "3 callers").
+        caller_word = "caller" if count == 1 else "callers"
         return {
             "level": "low",
             "badge": "⚠️ LOW IMPACT",
-            "guidance": f"{count} caller(s) found. Review before modifying.",
+            "guidance": f"{count} {caller_word} found. Review before modifying.",
         }
     elif count <= 20:
         return {
