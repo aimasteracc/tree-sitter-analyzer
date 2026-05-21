@@ -9,6 +9,8 @@ file-level dependency graph analysis for a complete impact preview.
 Tells AI agents: "If you change X, here's everything affected."
 """
 
+import copy
+import time
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +48,34 @@ TOOL_SCHEMA: dict[str, Any] = {
 class SymbolLineageTool(BaseMCPTool):
     """Trace symbol lineage: definitions, references, file-level downstream impact."""
 
+    def __init__(self, project_root: str | None = None) -> None:
+        # Lazy graph + per-symbol response cache. Built on the first call,
+        # reset on project_root rebind via _on_project_root_changed.
+        self._dep_graph: DependencyGraph | None = None
+        self._symbol_cache: dict[tuple[str, int], dict[str, Any]] = {}
+        super().__init__(project_root)
+
+    def _on_project_root_changed(self, project_root: str | None) -> None:
+        # ARCH-A4 hook: invalidate every per-project cache when rebinding.
+        self._dep_graph = None
+        self._symbol_cache = {}
+
+    def _get_dep_graph(self) -> DependencyGraph | None:
+        """Return cached dependency graph, building it on first use.
+
+        Returns ``None`` if graph construction fails (keeps the tool usable
+        with reduced fidelity — downstream/upstream stay empty).
+        """
+        if self._dep_graph is None:
+            if not self.project_root:
+                raise ValueError("Project root not set. Call set_project_path first.")
+            try:
+                self._dep_graph = DependencyGraph(str(self.project_root))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"DependencyGraph build failed: {exc}")
+                return None
+        return self._dep_graph
+
     def get_tool_schema(self) -> dict[str, Any]:
         return TOOL_SCHEMA
 
@@ -72,7 +102,9 @@ class SymbolLineageTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        started = time.perf_counter()
         symbol = arguments["symbol"].strip()
+        max_depth = int(arguments.get("max_depth", 3))
         output_format = arguments.get("output_format", "toon")
 
         if not self.project_root:
@@ -81,6 +113,18 @@ class SymbolLineageTool(BaseMCPTool):
         root = Path(self.project_root).resolve()
         if not root.is_dir():
             raise ValueError(f"Project root is not a directory: {root}")
+
+        # Per-symbol response cache: this tool does an expensive cross-file
+        # walk (rglob + 500x engine.analyze) even with the analysis cache
+        # warm. The same (symbol, max_depth) pair is asked for repeatedly
+        # by orchestrators, so cache the deep-copied response.
+        cache_key = (symbol, max_depth)
+        cached = self._symbol_cache.get(cache_key)
+        if cached is not None:
+            result = copy.deepcopy(cached)
+            result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+            result["from_cache"] = True
+            return apply_toon_format_to_response(result, output_format)
 
         ref_args = {"symbol": symbol, "output_format": "json"}
         refs_result = await execute_find_references(self.project_root, ref_args)
@@ -92,10 +136,9 @@ class SymbolLineageTool(BaseMCPTool):
         ref_files = {r["file"] for r in references}
         all_symbol_files = def_files | ref_files
 
-        try:
-            graph = DependencyGraph(str(root))
-        except Exception:
-            graph = None
+        # Use the instance-cached graph (built lazily on first call,
+        # invalidated on project_root rebind via _on_project_root_changed).
+        graph = self._get_dep_graph()
 
         downstream: dict[str, Any] = {}
         upstream: dict[str, Any] = {}
@@ -180,6 +223,14 @@ class SymbolLineageTool(BaseMCPTool):
                 "verdict": verdict,
             },
         }
+
+        # Stash a deep-copy so subsequent identical lookups skip the
+        # cross-file walk + dep-graph traversal. The cache is keyed on
+        # (symbol, max_depth) and reset on project_root rebind.
+        self._symbol_cache[cache_key] = copy.deepcopy(response)
+
+        response["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+        response["from_cache"] = False
 
         return apply_toon_format_to_response(response, output_format)
 

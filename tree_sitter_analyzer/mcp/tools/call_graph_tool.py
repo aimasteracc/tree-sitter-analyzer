@@ -7,6 +7,7 @@ Provides callers_of, callees_of, call_chain, and summary queries.
 CodeGraph parity: equivalent to codegraph_callers / codegraph_callees.
 """
 
+import time
 from typing import Any
 
 from ...call_graph import CallGraph
@@ -136,8 +137,12 @@ class CodeGraphCallTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
+        started = time.perf_counter()
         mode = arguments.get("mode", "summary")
         output_format = arguments.get("output_format", "toon")
+        # Cache hit fast-path: the first call builds the graph (2-5s on
+        # medium repos); every subsequent call within the same process
+        # reuses ``self._call_graph`` and finishes in tens of ms.
         graph = self._get_call_graph()
 
         if mode == "summary":
@@ -196,6 +201,8 @@ class CodeGraphCallTool(BaseMCPTool):
                 result["hint"] = hint
         else:
             raise ValueError(f"Unknown mode: {mode}")
+
+        result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
 
         from ..utils.format_helper import apply_toon_format_to_response
 

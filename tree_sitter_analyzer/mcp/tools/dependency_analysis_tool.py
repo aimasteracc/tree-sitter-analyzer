@@ -6,6 +6,7 @@ Exposes project_graph.py to AI agents via MCP protocol.
 Provides dependency graph queries, blast radius analysis, and cycle detection.
 """
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -78,8 +79,12 @@ class DependencyAnalysisTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         self.validate_arguments(arguments)
 
+        started = time.perf_counter()
         mode = arguments.get("mode", "summary")
         output_format = arguments.get("output_format", "toon")
+        # Cache hit fast-path: ``self._graph`` is built lazily on the first
+        # call (2-5s on medium repos) and reused for the rest of the process
+        # lifetime — subsequent calls finish in single-digit ms.
         graph = self._get_graph()
 
         if mode == "summary":
@@ -111,6 +116,8 @@ class DependencyAnalysisTool(BaseMCPTool):
         # Attach a one-line headline + next-step hint for LLM consumers.
         # Each mode emits a distinct shape, so build per-mode here.
         _attach_agent_summary(result, mode, graph)
+
+        result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
 
         from ..utils.format_helper import apply_toon_format_to_response
 

@@ -239,10 +239,23 @@ def _base_success_response(
     metadata: dict[str, Any],
     table_output: str,
 ) -> dict[str, Any]:
-    """Build the common success response payload."""
+    """Build the common success response payload.
+
+    ``table_format`` mirrors the input ``format_type`` (the structure-table
+    style: full/compact/csv). ``format_type`` is kept as a backward-compat
+    alias for one release — round-7/12 dogfood audits called out the name
+    as confusing because callers expected it to describe the envelope.
+
+    ``output_format`` mirrors the input envelope choice (json/toon) so
+    callers can verify which envelope they received without re-deriving it
+    from the presence/absence of ``toon_content``.
+    """
     return {
         "success": True,
+        "table_format": options.format_type,
+        # Deprecated alias — kept for one release; prefer ``table_format``.
         "format_type": options.format_type,
+        "output_format": options.output_format,
         "file_path": options.file_path,
         "language": options.language,
         "metadata": metadata,
