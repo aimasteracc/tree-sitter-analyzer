@@ -96,3 +96,48 @@ class TestSingleSourceOfTruth:
             "shared ``wants_json_output``. Offenders: "
             + ", ".join(f"{p}: {names}" for p, names in violations)
         )
+
+    def test_no_inline_format_getattr_duplication(self):
+        """r37an: catch the INLINE pattern that r37am's guard missed.
+
+        ``fmt = getattr(args, "format", None) or getattr(args,
+        "output_format", ...)`` followed by ``if fmt == "json"`` is
+        functionally identical to ``wants_json_output(args)`` but the
+        guard above only checks function definitions. r37an caught
+        ``sql_platform_helpers.py`` re-inlining the same pattern.
+        This test extends the guard to flag any new inline copy.
+
+        Allowlist: ``output_format.py`` (the definition) and
+        ``_effective_output_format`` in ``special_commands.py`` which
+        returns the format *string* (with a "json" default), not a
+        boolean — different semantics so an explicit allowlist entry.
+        """
+        cli_root = (
+            Path(__file__).parent.parent.parent.parent / "tree_sitter_analyzer" / "cli"
+        )
+        # Match the two-call getattr pattern that drove r37am consolidation.
+        inline_re = re.compile(
+            r'getattr\s*\(\s*args\s*,\s*["\']format["\'].*?\s*'
+            r'or\s+getattr\s*\(\s*args\s*,\s*["\']output_format["\']',
+            re.DOTALL,
+        )
+        # Files that legitimately use this idiom for a *different* purpose.
+        allowlist = {
+            "output_format.py",  # the canonical definition
+            # _effective_output_format returns the *string* (with default),
+            # not a bool — different semantics.
+            "special_commands.py",
+        }
+        violations: list[Path] = []
+        for py_file in cli_root.rglob("*.py"):
+            if py_file.name in allowlist:
+                continue
+            text = py_file.read_text(encoding="utf-8")
+            if inline_re.search(text):
+                violations.append(py_file.relative_to(cli_root.parent.parent))
+        assert not violations, (
+            "r37an: inline `getattr(args, 'format', ...) or getattr(args, "
+            "'output_format', ...)` pattern found outside "
+            "cli/output_format.py. Use ``wants_json_output(args)`` instead. "
+            f"Offenders: {violations}"
+        )

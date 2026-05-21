@@ -23,10 +23,13 @@ def handle_sql_platform_info(
     info = PlatformDetector.detect()
     profile = BehaviorProfile.load(info.platform_key)
 
-    fmt = None
-    if args is not None:
-        fmt = getattr(args, "format", None) or getattr(args, "output_format", None)
-    if fmt == "json" and output_json_fn is not None:
+    # r37an (dogfood): use shared output-format helper instead of the
+    # inline two-call format/output_format getattr idiom (was the 4th
+    # copy of the pattern that r37am consolidated, missed because the
+    # original guard only caught function definitions, not inline use).
+    from tree_sitter_analyzer.cli.output_format import wants_json_output
+
+    if args is not None and wants_json_output(args) and output_json_fn is not None:
         profile_payload: dict[str, Any] | None = None
         if profile:
             profile_payload = {
