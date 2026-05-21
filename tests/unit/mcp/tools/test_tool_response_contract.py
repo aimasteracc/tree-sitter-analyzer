@@ -2366,3 +2366,341 @@ class TestH12SymbolLineageDefClassification:
         assert any(d.get("role") == "definition" for d in defs), (
             f"H12: at least one definition must have role='definition' — got {defs!r}"
         )
+
+
+# ============================================================================
+# Pol1 — code_patterns summary_line cosmetics (round-21)
+# ============================================================================
+
+
+class TestPol1CodePatternsSummaryLine:
+    """Pol1 (round-21): the ``summary_line`` for ``code_patterns`` shipped
+    in round-20 with a double space between ``patterns`` and ``critical=``:
+
+      "<path> 3 patterns  critical=0 warning=3"
+                        ^^^^
+
+    Cosmetic, but downstream regexes that split on a single space see
+    an empty token and either crash or mis-attribute fields. Tests here
+    guard the headline against double spaces, leading/trailing
+    whitespace, and ensure the agent summary mirror stays in sync.
+    """
+
+    @pytest.fixture
+    def project_with_smells(self, tmp_path: Path) -> Path:
+        # A few cheap signals so the patterns list is non-empty.
+        src = tmp_path / "buggy.py"
+        src.write_text(
+            "def f():\n"
+            "    try:\n"
+            "        pass\n"
+            "    except:\n"
+            "        pass\n"
+            "def g():\n"
+            "    print('hi')\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _run_patterns(self, project: Path, name: str) -> dict:
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        tool = CodePatternsTool(str(project))
+        return _run(tool.execute({"file_path": name, "output_format": "json"}))
+
+    def test_summary_line_has_no_double_spaces(self, project_with_smells: Path) -> None:
+        result = self._run_patterns(project_with_smells, "buggy.py")
+        summary = result.get("summary_line", "")
+        assert "  " not in summary, (
+            f"Pol1: summary_line must not contain double spaces — got {summary!r}"
+        )
+
+    def test_summary_line_has_no_leading_trailing_whitespace(
+        self, project_with_smells: Path
+    ) -> None:
+        result = self._run_patterns(project_with_smells, "buggy.py")
+        summary = result.get("summary_line", "")
+        assert summary == summary.strip(), (
+            f"Pol1: summary_line must not have leading/trailing whitespace — "
+            f"got {summary!r}"
+        )
+
+    def test_agent_summary_summary_line_mirrors_top_level(
+        self, project_with_smells: Path
+    ) -> None:
+        """The agent-summary mirror is what chained tools read; both
+        surfaces must stay aligned and free of double-space artefacts."""
+        result = self._run_patterns(project_with_smells, "buggy.py")
+        top = result.get("summary_line", "")
+        nested = result.get("agent_summary", {}).get("summary_line", "")
+        assert top == nested, (
+            f"Pol1: agent_summary.summary_line must mirror top-level — "
+            f"top={top!r} nested={nested!r}"
+        )
+        assert "  " not in nested, (
+            f"Pol1: agent_summary.summary_line must not contain double spaces — "
+            f"got {nested!r}"
+        )
+
+    def test_summary_line_carries_expected_tokens(
+        self, project_with_smells: Path
+    ) -> None:
+        """Pol4 sweep: verify the structural tokens survive the rewrite —
+        we still need ``patterns``, ``critical=``, and ``warning=`` in the
+        headline. Otherwise an over-aggressive whitespace fix could drop
+        a column."""
+        result = self._run_patterns(project_with_smells, "buggy.py")
+        summary = result.get("summary_line", "")
+        for token in ("patterns", "critical=", "warning="):
+            assert token in summary, (
+                f"Pol1: summary_line missing token {token!r} — got {summary!r}"
+            )
+
+
+# ============================================================================
+# Pol2 — code_patterns vs file_health agree on empty files (round-21)
+# ============================================================================
+
+
+class TestPol2EmptyFileCrossTool:
+    """Pol2 (round-21): on a 0-byte (or whitespace-only) input,
+    ``code_patterns`` returned ``verdict: SAFE`` while ``file_health``
+    returned ``grade: N/A`` + ``signal: empty_file``. Cross-tool drift
+    on the same input forces agents to reconcile two truths.
+
+    Fix (Option A): ``code_patterns`` mirrors ``file_health`` —
+    short-circuit with ``verdict: N/A`` and ``signal: empty_file``,
+    skipping detector passes that have nothing to detect.
+    """
+
+    @pytest.fixture
+    def empty_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "zero.py").write_text("", encoding="utf-8")
+        (tmp_path / "ws.py").write_text("   \n   \n", encoding="utf-8")
+        return tmp_path
+
+    def _run_patterns(self, project: Path, name: str) -> dict:
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        tool = CodePatternsTool(str(project))
+        return _run(tool.execute({"file_path": name, "output_format": "json"}))
+
+    def _run_health(self, project: Path, name: str) -> dict:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(project))
+        return _run(tool.execute({"file_path": name, "output_format": "json"}))
+
+    def test_code_patterns_signals_empty_file(self, empty_project: Path) -> None:
+        result = self._run_patterns(empty_project, "zero.py")
+        assert result["signal"] == "empty_file", (
+            f"Pol2: code_patterns on 0-byte file must signal empty_file — "
+            f"got signal={result.get('signal')!r}"
+        )
+        assert result["verdict"] == "N/A", (
+            f"Pol2: code_patterns on 0-byte file must verdict N/A — "
+            f"got verdict={result.get('verdict')!r}"
+        )
+        # The agent-summary mirror has to agree too.
+        agent = result.get("agent_summary", {})
+        assert agent.get("verdict") == "N/A", (
+            f"Pol2: agent_summary.verdict must be N/A — got {agent.get('verdict')!r}"
+        )
+        # No patterns are reported on an empty file.
+        assert result["total_patterns"] == 0
+        assert result["count"] == 0
+
+    def test_code_patterns_signals_whitespace_only(self, empty_project: Path) -> None:
+        """The H9 widening (whitespace-only files behave like empty)
+        applies here too — otherwise the two tools would drift again."""
+        result = self._run_patterns(empty_project, "ws.py")
+        assert result["signal"] == "empty_file", (
+            f"Pol2: code_patterns on whitespace-only file must signal "
+            f"empty_file — got signal={result.get('signal')!r}"
+        )
+        assert result["verdict"] == "N/A"
+
+    def test_cross_tool_agreement_on_empty_signal(self, empty_project: Path) -> None:
+        """Both tools must surface the same ``signal`` on the same input.
+        This is the contract that lets an agent take one branch."""
+        patterns = self._run_patterns(empty_project, "zero.py")
+        health = self._run_health(empty_project, "zero.py")
+        assert patterns["signal"] == health["signal"] == "empty_file", (
+            f"Pol2: code_patterns and file_health must agree on empty-file "
+            f"signal — patterns={patterns.get('signal')!r} "
+            f"health={health.get('signal')!r}"
+        )
+
+    def test_cross_tool_agreement_on_whitespace_only(self, empty_project: Path) -> None:
+        patterns = self._run_patterns(empty_project, "ws.py")
+        health = self._run_health(empty_project, "ws.py")
+        assert patterns["signal"] == health["signal"] == "empty_file"
+
+
+# ============================================================================
+# Pol3 — change_impact preview transparency (round-21)
+# ============================================================================
+
+
+class TestPol3ChangeImpactPreviewTruncation:
+    """Pol3 (round-21): the preview lists inside ``change_impact``
+    responses (``changed_preview``, ``scoped_changed_preview``,
+    ``out_of_scope_changed_preview``) were silently capped at 5 with no
+    transparency. Hidden truncation bit chained agents in H2/H3 — the
+    same precedent applies here.
+
+    Fix: surface ``preview_limit`` + ``preview_truncated`` alongside
+    every capped preview, and keep the cap value in one named constant.
+    """
+
+    @pytest.fixture
+    def many_files_project(self, tmp_path: Path) -> Path:
+        """A project with > 5 dirty files. We never invoke git, so just
+        seed the request with a long ``changed_files`` list — the agent
+        summary builder doesn't care where the files came from."""
+        for i in range(8):
+            (tmp_path / f"f{i}.py").write_text(
+                f"def f{i}():\n    return {i}\n", encoding="utf-8"
+            )
+        return tmp_path
+
+    def test_constant_is_named_not_magic(self) -> None:
+        """The cap value lives in one place so all preview sites stay
+        aligned. If a future refactor drops the constant, the three
+        slicing sites would diverge."""
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+            CHANGE_IMPACT_PREVIEW_LIMIT,
+        )
+
+        assert isinstance(CHANGE_IMPACT_PREVIEW_LIMIT, int)
+        assert CHANGE_IMPACT_PREVIEW_LIMIT > 0
+
+    def test_agent_summary_surfaces_truncation_when_over_cap(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+            CHANGE_IMPACT_PREVIEW_LIMIT,
+            AgentSummaryContext,
+            build_agent_summary,
+        )
+
+        changed = [f"src/f{i}.py" for i in range(CHANGE_IMPACT_PREVIEW_LIMIT + 3)]
+        ctx = AgentSummaryContext(
+            risk="low",
+            changed_files=changed,
+            scope_paths=None,
+            verification={
+                "verification_command": "uv run pytest -q",
+                "test_required": True,
+                "default_test_command": "uv run pytest -q",
+            },
+            strategy={
+                "verification_strategy": "default",
+                "focused_test_command": "",
+                "verification_steps": ["uv run pytest -q"],
+            },
+            affected_count=0,
+            tests_to_run_count=0,
+        )
+        summary = build_agent_summary(ctx)
+        assert summary["preview_limit"] == CHANGE_IMPACT_PREVIEW_LIMIT, (
+            f"Pol3: preview_limit must equal the cap constant — "
+            f"got {summary.get('preview_limit')!r}"
+        )
+        assert summary["preview_truncated"] is True, (
+            f"Pol3: preview_truncated must be True when changed_count > cap — "
+            f"got {summary.get('preview_truncated')!r}"
+        )
+        assert len(summary["changed_preview"]) == CHANGE_IMPACT_PREVIEW_LIMIT, (
+            f"Pol3: changed_preview must be capped to the constant — "
+            f"got len={len(summary.get('changed_preview', []))}"
+        )
+
+    def test_agent_summary_marks_not_truncated_under_cap(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+            CHANGE_IMPACT_PREVIEW_LIMIT,
+            AgentSummaryContext,
+            build_agent_summary,
+        )
+
+        changed = ["src/a.py", "src/b.py"]
+        ctx = AgentSummaryContext(
+            risk="low",
+            changed_files=changed,
+            scope_paths=None,
+            verification={
+                "verification_command": "uv run pytest -q",
+                "test_required": True,
+                "default_test_command": "uv run pytest -q",
+            },
+            strategy={
+                "verification_strategy": "default",
+                "focused_test_command": "",
+                "verification_steps": ["uv run pytest -q"],
+            },
+            affected_count=0,
+            tests_to_run_count=0,
+        )
+        summary = build_agent_summary(ctx)
+        # Even under the cap, the two fields must be present so consumers
+        # can branch on a stable shape.
+        assert summary["preview_limit"] == CHANGE_IMPACT_PREVIEW_LIMIT
+        assert summary["preview_truncated"] is False, (
+            f"Pol3: preview_truncated must be False under cap — "
+            f"got {summary.get('preview_truncated')!r}"
+        )
+
+    def test_queue_ledger_surfaces_truncation_on_either_side(self) -> None:
+        """The ledger has two previews (scoped + out-of-scope). If
+        *either* underlying count exceeds the cap, ``preview_truncated``
+        must be True — otherwise an agent reading the ledger would miss
+        out-of-scope work."""
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+            CHANGE_IMPACT_PREVIEW_LIMIT,
+            attach_queue_ledger,
+        )
+
+        scoped = ["src/scoped.py"]
+        workspace = scoped + [
+            f"src/out{i}.py" for i in range(CHANGE_IMPACT_PREVIEW_LIMIT + 2)
+        ]
+        result: dict = {"agent_summary": {}, "verification_command": "uv run pytest -q"}
+        attach_queue_ledger(
+            result,
+            mode="diff",
+            scope_paths=["src/scoped.py"],
+            scoped_changed_files=scoped,
+            workspace_changed_files=workspace,
+        )
+        ledger = result["queue_ledger"]
+        assert ledger["preview_limit"] == CHANGE_IMPACT_PREVIEW_LIMIT
+        assert ledger["preview_truncated"] is True, (
+            f"Pol3: ledger.preview_truncated must be True when out_of_scope "
+            f"exceeds cap — got {ledger.get('preview_truncated')!r}"
+        )
+        assert (
+            len(ledger["out_of_scope_changed_preview"]) == CHANGE_IMPACT_PREVIEW_LIMIT
+        )
+
+    def test_queue_ledger_marks_not_truncated_when_under_cap(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+            attach_queue_ledger,
+        )
+
+        scoped = ["src/scoped.py"]
+        workspace = scoped + ["src/extra.py"]
+        result: dict = {"agent_summary": {}, "verification_command": "uv run pytest -q"}
+        attach_queue_ledger(
+            result,
+            mode="diff",
+            scope_paths=["src/scoped.py"],
+            scoped_changed_files=scoped,
+            workspace_changed_files=workspace,
+        )
+        ledger = result["queue_ledger"]
+        assert ledger["preview_truncated"] is False, (
+            f"Pol3: ledger.preview_truncated must be False under cap — "
+            f"got {ledger.get('preview_truncated')!r}"
+        )

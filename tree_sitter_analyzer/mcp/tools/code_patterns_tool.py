@@ -94,6 +94,17 @@ class CodePatternsTool(BaseMCPTool):
         if not Path(resolved).is_file():
             raise ValueError(f"Not a file: {file_path}")
 
+        # Pol2 (round-21): mirror ``file_health_tool`` and short-circuit on
+        # empty / whitespace-only files. Running the smell + security passes
+        # against zero bytes produces a true-but-misleading verdict=SAFE
+        # — "you have 0 patterns" reads as "this file is clean to ship"
+        # even though there is nothing to ship. ``file_health`` already
+        # returns ``signal=empty_file``; aligning the two tools lets agents
+        # branch on a single signal instead of reconciling cross-tool drift.
+        empty_response = _empty_file_response(resolved, file_path, output_format)
+        if empty_response is not None:
+            return empty_response
+
         min_sev = _SEVERITY_ORDER.get(severity_threshold, 0)
 
         from ...language_detector import detect_language_from_file
@@ -141,9 +152,17 @@ class CodePatternsTool(BaseMCPTool):
         warning_count = sum(1 for p in filtered if p.get("severity") == "warning")
 
         # One-line headline an LLM (or grep) can read at a glance.
-        summary_line = (
-            f"{file_path} {len(filtered)} patterns  "
-            f"critical={critical_count} warning={warning_count}"
+        # Pol1 (round-21): build via ``" ".join`` over a parts list so an
+        # empty segment can never re-introduce the double-space we shipped
+        # in round-20 (``"... patterns  critical=..."``). Any downstream
+        # regex that splits on a single space stays correct.
+        summary_line = " ".join(
+            [
+                file_path,
+                f"{len(filtered)} patterns",
+                f"critical={critical_count}",
+                f"warning={warning_count}",
+            ]
         )
         # Verdict mirrors the safety-tool vocabulary so callers can chain.
         if critical_count:
@@ -494,3 +513,72 @@ def _build_summary(patterns: list[dict[str, Any]]) -> str:
         parts.append(f"{info} info")
 
     return f"Patterns: {', '.join(parts)}. Total: {len(patterns)}."
+
+
+def _empty_file_response(
+    resolved: str, file_path: str, output_format: str
+) -> dict[str, Any] | None:
+    """Pol2 (round-21): mirror ``file_health_tool._empty_file_response``.
+
+    Returns ``None`` when the caller should continue with normal scanning;
+    otherwise returns a fully-formatted n/a envelope (already passed
+    through the TOON formatter).
+
+    Empty / whitespace-only files have no signal for any of the smell,
+    security, or anti-pattern detectors. Reporting ``verdict=SAFE`` on
+    such a file is true-but-misleading: callers chain ``verdict`` with
+    ``file_health.signal`` to decide whether to edit, and the two tools
+    were disagreeing about the same input. Aligning on
+    ``signal=empty_file`` + ``verdict=N/A`` lets agents take one branch.
+    """
+    detail = "empty (0 bytes)"
+    try:
+        size = Path(resolved).stat().st_size
+    except OSError:
+        return None
+    if size == 0:
+        pass  # fall through to the n/a envelope below
+    else:
+        # Match the H9 widening: whitespace-only files behave like empty.
+        try:
+            text = Path(resolved).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        if text.strip():
+            return None
+        detail = f"whitespace-only ({size} bytes)"
+
+    summary_line = " ".join(
+        [
+            file_path,
+            "0 patterns",
+            "critical=0",
+            "warning=0",
+            "signal=empty_file",
+        ]
+    )
+    response: dict[str, Any] = {
+        "success": True,
+        "file_path": file_path,
+        "language": None,
+        "verdict": "N/A",
+        "signal": "empty_file",
+        "total_patterns": 0,
+        "count": 0,
+        "results": [],
+        "patterns": [],
+        "by_category": {},
+        "critical_count": 0,
+        "warning_count": 0,
+        "summary": f"File is {detail}; nothing to detect.",
+        "smart_workflow_hint": (
+            f"File is {detail}; no patterns can be detected. Skip."
+        ),
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": "skip",
+            "verdict": "N/A",
+        },
+    }
+    return apply_toon_format_to_response(response, output_format)

@@ -7,6 +7,15 @@ from typing import Any
 
 LARGE_DIRTY_DIFF_THRESHOLD = 25
 
+# Pol3 (round-21): the in-response preview lists (``changed_preview``,
+# ``scoped_changed_preview``, ``out_of_scope_changed_preview``) are
+# capped so the JSON envelope stays small. Hidden truncation is a
+# documented footgun (see H2/H3) — every consumer that capped a
+# preview must also surface ``preview_limit`` + ``preview_truncated``
+# so an agent can decide whether to re-query for the rest. Keep the
+# magic number here so all three call sites stay aligned.
+CHANGE_IMPACT_PREVIEW_LIMIT = 5
+
 # H8: ``verdict`` values exposed by change-impact. ``CLEAN`` is the default
 # steady state — the analysis ran and nothing flagged. ``WARN`` covers
 # soft-failure paths (e.g. scope paths that don't exist on disk) where the
@@ -123,7 +132,14 @@ def build_agent_summary(context: AgentSummaryContext) -> dict[str, Any]:
         summary["focused_test_command"] = focused
 
     if context.changed_files:
-        summary["changed_preview"] = context.changed_files[:5]
+        # Pol3 (round-21): expose the cap + truncation flag whenever the
+        # preview is shorter than the underlying list. Hidden truncation
+        # bit chained agents in H2/H3 — the same precedent applies here.
+        summary["changed_preview"] = context.changed_files[:CHANGE_IMPACT_PREVIEW_LIMIT]
+        summary["preview_limit"] = CHANGE_IMPACT_PREVIEW_LIMIT
+        summary["preview_truncated"] = (
+            len(context.changed_files) > CHANGE_IMPACT_PREVIEW_LIMIT
+        )
 
     if (
         len(context.changed_files) > LARGE_DIRTY_DIFF_THRESHOLD
@@ -157,13 +173,23 @@ def attach_queue_ledger(
     verification_command = result.get("verification_command") or result.get(
         "agent_summary", {}
     ).get("verification_command", "")
+    # Pol3 (round-21): a cap on either preview without a transparency flag
+    # would let an agent think it had the full picture. Surface
+    # ``preview_limit`` + ``preview_truncated`` whenever the underlying
+    # count exceeds what we expose.
+    preview_truncated = (
+        len(scoped_changed_files) > CHANGE_IMPACT_PREVIEW_LIMIT
+        or len(out_of_scope) > CHANGE_IMPACT_PREVIEW_LIMIT
+    )
     ledger = {
         "mode": mode,
         "scope_paths": scope_paths,
         "scoped_changed_count": len(scoped_changed_files),
         "out_of_scope_changed_count": len(out_of_scope),
-        "scoped_changed_preview": scoped_changed_files[:5],
-        "out_of_scope_changed_preview": out_of_scope[:5],
+        "scoped_changed_preview": scoped_changed_files[:CHANGE_IMPACT_PREVIEW_LIMIT],
+        "out_of_scope_changed_preview": out_of_scope[:CHANGE_IMPACT_PREVIEW_LIMIT],
+        "preview_limit": CHANGE_IMPACT_PREVIEW_LIMIT,
+        "preview_truncated": preview_truncated,
         "handoff": _queue_ledger_handoff(
             scope_paths, scoped_changed_files, out_of_scope, verification_command
         ),
