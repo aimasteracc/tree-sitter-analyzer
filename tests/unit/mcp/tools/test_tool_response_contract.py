@@ -9742,3 +9742,138 @@ class TestT2BatchSearchCLIParity:
             assert "batch-search-queries-json" in payload.get("error", ""), payload
         except json.JSONDecodeError:
             assert result.returncode != 0
+
+
+# ============================================================================
+# T3 (round-37e dogfood): CLI-MCP parity matrix enforced as a pytest gate.
+# ============================================================================
+#
+# CLAUDE.md ships a hard requirement: "Every MCP tool must have a CLI
+# equivalent". J12/T1/T2 each found a single MCP tool that had slipped
+# past this rule. This test enforces it mechanically: every ``*_tool.py``
+# under ``mcp/tools/`` MUST be registered in ``_KNOWN_CLI_ENTRY_FOR_TOOL``
+# with a verifiable CLI form, and the form must resolve in ``--help`` or
+# in ``pyproject.toml [project.scripts]``.
+#
+# Adding a new MCP tool:
+#   1. Add ``--your-tool-name`` flag in argument_parser_builder.py (or
+#      a standalone entry-point in pyproject.toml).
+#   2. Wire it in mcp_commands.py (McpCommandSpec).
+#   3. Add the matching entry below.
+
+# kind="flag":      value is the CLI flag string (with leading dashes)
+# kind="entry":     value is the ``project.scripts`` entry name
+# kind="alias_of":  value is the canonical main-CLI flag (multi-tool alias)
+_KNOWN_CLI_ENTRY_FOR_TOOL: dict[str, tuple[str, str]] = {
+    "agent_skills": ("flag", "--agent-skills"),
+    "agent_workflow": ("flag", "--agent-workflow"),
+    "analyze_code_structure": ("alias_of", "--table"),
+    "analyze_scale": ("alias_of", "--advanced"),
+    "ast_cache": ("flag", "--ast-cache"),
+    "batch_search": ("flag", "--batch-search"),  # T2 (round-37d)
+    "build_project_index": ("flag", "--build-project-index"),
+    "call_graph": ("flag", "--call-graph"),
+    "change_impact": ("flag", "--change-impact"),
+    "check_tools": ("flag", "--check-tools"),
+    "code_patterns": ("flag", "--code-patterns"),
+    "dependency_analysis": ("alias_of", "--dependencies"),
+    "file_health": ("flag", "--file-health"),
+    "find_and_grep": ("entry", "find-and-grep"),
+    "get_code_outline": ("alias_of", "--table"),
+    "get_project_summary": ("alias_of", "--summary"),
+    "list_files": ("entry", "list-files"),
+    "modification_guard": ("flag", "--modification-guard"),  # T1 (round-37c)
+    "parser_readiness": ("flag", "--parser-readiness"),
+    "project_health": ("flag", "--project-health"),
+    "project_overview": ("alias_of", "--overview"),
+    "query": ("alias_of", "--query-key"),
+    "read_partial": ("alias_of", "--partial-read"),
+    "refactoring_suggestions": ("alias_of", "--refactor"),
+    "route_detector": ("alias_of", "--detect-routes"),
+    "safe_to_edit": ("flag", "--safe-to-edit"),
+    "search_content": ("entry", "search-content"),
+    "smart_context": ("flag", "--smart-context"),
+    "symbol_lineage": ("flag", "--symbol-lineage"),
+    "trace_impact": ("flag", "--trace-impact"),
+    "universal_analyze": ("alias_of", "--advanced"),
+}
+
+
+def _discover_mcp_tool_modules() -> list[str]:
+    """Return all MCP tool module names (without ``_tool.py`` suffix)."""
+    from pathlib import Path
+
+    tools_dir = Path(__file__).resolve().parents[4] / "tree_sitter_analyzer/mcp/tools"
+    names = []
+    for path in sorted(tools_dir.glob("*_tool.py")):
+        stem = path.stem  # e.g. "analyze_scale_tool"
+        if stem == "base_tool":
+            continue
+        names.append(stem.removesuffix("_tool"))
+    return names
+
+
+class TestT3CLIMCPParityMatrix:
+    """T3 (round-37e): pytest gate for CLAUDE.md ``CLI-MCP Parity`` rule.
+
+    Past gaps that slipped past code review and were only caught much
+    later by dogfood scans:
+    - J12 (round-24): trace_impact / check_tools / build_project_index
+    - T1 (round-37c): modification_guard
+    - T2 (round-37d): batch_search
+
+    The cost of this gate is one mapping entry per new tool — cheap
+    insurance against repeating the same class of incident.
+    """
+
+    def test_every_mcp_tool_is_in_the_parity_mapping(self):
+        """``*_tool.py`` files and parity mapping must be in sync."""
+        discovered = set(_discover_mcp_tool_modules())
+        registered = set(_KNOWN_CLI_ENTRY_FOR_TOOL.keys())
+        missing = discovered - registered
+        extra = registered - discovered
+        assert not missing, (
+            "T3: new MCP tool(s) found without CLI parity registration. "
+            f"Add to _KNOWN_CLI_ENTRY_FOR_TOOL: {sorted(missing)}. "
+            "Then make sure CLI also has the flag or entry-point."
+        )
+        assert not extra, (
+            "T3: _KNOWN_CLI_ENTRY_FOR_TOOL lists tools that no longer "
+            f"exist on disk: {sorted(extra)}. Remove the stale entry."
+        )
+
+    def test_every_flag_entry_appears_in_cli_help(self):
+        """Every ``flag``/``alias_of`` entry must resolve in --help."""
+        import subprocess
+
+        result = subprocess.run(
+            ["uv", "run", "python", "-m", "tree_sitter_analyzer", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        help_text = result.stdout + result.stderr
+        broken = []
+        for tool, (kind, value) in _KNOWN_CLI_ENTRY_FOR_TOOL.items():
+            if kind in ("flag", "alias_of") and value not in help_text:
+                broken.append((tool, kind, value))
+        assert not broken, (
+            f"T3: tools claim a CLI flag that doesn't appear in --help: {broken}"
+        )
+
+    def test_every_entry_point_is_listed_in_pyproject(self):
+        """Every ``entry`` script must be in pyproject.toml [project.scripts]."""
+        from pathlib import Path
+
+        pyproject = (Path(__file__).resolve().parents[4] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+        broken = []
+        for tool, (kind, value) in _KNOWN_CLI_ENTRY_FOR_TOOL.items():
+            if kind == "entry":
+                if f"{value} =" not in pyproject and f"{value}=" not in pyproject:
+                    broken.append((tool, kind, value))
+        assert not broken, (
+            "T3: tools claim a standalone CLI entry-point that isn't "
+            f"in pyproject.toml [project.scripts]: {broken}"
+        )
