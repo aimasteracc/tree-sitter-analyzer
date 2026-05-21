@@ -47,6 +47,29 @@ def mirror_summary_line(result: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def format_summary_line(*parts: Any) -> str:
+    """Join non-empty segments with single spaces into a clean summary line.
+
+    J5 (round-22 dogfood): four tools (universal_analyze_tool,
+    analyze_scale_helpers ×2, analyze_code_structure_tool) shipped
+    ``summary_line`` with a hard-coded ``"... lines  "`` (trailing double
+    space). Pol1 only fixed ``code_patterns_tool``. This helper closes
+    the door on the regression class entirely — future builders pass
+    parts as positional args, get a guaranteed-clean single-space join,
+    no matter how the parts are stitched. Empty/whitespace-only segments
+    are dropped so optional pieces don't reintroduce double spaces.
+
+    Examples:
+        >>> format_summary_line("foo.py", "python", "42 lines",
+        ...                      "classes=1", "methods=2")
+        'foo.py python 42 lines classes=1 methods=2'
+        >>> format_summary_line("foo.py", "", "42 lines", None)
+        'foo.py 42 lines'
+    """
+    cleaned = [str(p).strip() for p in parts if p is not None and str(p).strip()]
+    return " ".join(cleaned)
+
+
 class BaseMCPTool(ABC):
     """
     Base class for all MCP tools.
@@ -126,6 +149,39 @@ class BaseMCPTool(ABC):
         # Wire core attributes via the same helper used by rebinds.
         self._apply_project_root(project_root, _is_init=True)
 
+    @property
+    def project_root(self) -> str | None:
+        """The current project root for this tool.
+
+        J4: exposed as a property so direct attribute assignment
+        (``tool.project_root = "..."``) takes the same code path as
+        ``__init__`` / :meth:`set_project_path`. Setting this attribute
+        rewires the security validator + path resolver and fires
+        :meth:`_on_project_root_changed` so subclasses (e.g.
+        AnalyzeScaleTool) refresh their analysis engine instead of
+        pointing at a stale one whose validator rejects the resolved
+        absolute paths.
+        """
+        return self._project_root
+
+    @project_root.setter
+    def project_root(self, value: str | None) -> None:
+        """Setter that funnels through :meth:`_apply_project_root`.
+
+        We always treat a re-assignment as a rebind: the security
+        validator / path resolver are recreated and any
+        ``_on_project_root_changed`` hook is invoked. The very first
+        write (from ``_apply_project_root`` during ``__init__``) goes
+        through directly via :meth:`_apply_project_root` itself to avoid
+        recursion — see the ``_project_root_initialized`` guard.
+        """
+        if getattr(self, "_project_root_initialized", False):
+            # Subsequent assignment after construction → treat as rebind.
+            self._apply_project_root(value, _is_init=False)
+        else:
+            # First touch (raw attribute write from ``_apply_project_root``).
+            self._project_root = value
+
     def set_project_path(self, project_path: str) -> None:
         """
         Update the project path for all components.
@@ -142,7 +198,13 @@ class BaseMCPTool(ABC):
 
     def _apply_project_root(self, project_root: str | None, *, _is_init: bool) -> None:
         """Single internal entry point for both constructor and rebind paths."""
-        self.project_root = project_root
+        # Assigning to ``self.project_root`` after the init flag is set
+        # would re-enter via the property setter and recurse — write the
+        # underlying slot directly. The init flag is set after the first
+        # write so the property setter knows when to dispatch back here.
+        self._project_root = project_root
+        if _is_init:
+            self._project_root_initialized = True
         self.security_validator = SecurityValidator(project_root)
         self.path_resolver = PathResolver(project_root)
         # Invalidate shared caches on rebind only — at __init__ there is

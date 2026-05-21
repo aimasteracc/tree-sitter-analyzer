@@ -79,12 +79,12 @@ class ASTCacheTool(BaseMCPTool):
                 "Pre-indexed AST cache with FTS5 search and incremental sync (CodeGraph parity). Modes: "
                 "index (index project or single file), "
                 "lookup (get cached parse data for a file), "
-                "search (FTS5 full-text symbol search across indexed files), "
-                "fts_search (ranked FTS5 search with multi-term support), "
+                "search (symbol search — FTS5-ranked with multi-term support when available, LIKE fallback otherwise), "
                 "sync (incremental sync — detect changed/new/deleted files via content hash), "
                 "changes (preview changes without re-indexing), "
                 "stats (cache statistics), "
                 "invalidate (remove cached entry). "
+                "Note: ``fts_search`` is accepted as a deprecated alias for ``search`` and behaves identically. "
                 "No other tool provides persistent cross-session AST caching."
             ),
             "inputSchema": self.get_tool_schema(),
@@ -100,13 +100,15 @@ class ASTCacheTool(BaseMCPTool):
                         "index",
                         "lookup",
                         "search",
-                        "fts_search",
                         "sync",
                         "changes",
                         "stats",
                         "invalidate",
                     ],
-                    "description": "Operation mode",
+                    "description": (
+                        "Operation mode. ``fts_search`` is also accepted as a "
+                        "deprecated alias for ``search``."
+                    ),
                 },
                 "file_path": {
                     "type": "string",
@@ -114,15 +116,15 @@ class ASTCacheTool(BaseMCPTool):
                 },
                 "language": {
                     "type": "string",
-                    "description": "Language filter (optional, for search/fts_search)",
+                    "description": "Language filter (optional, for search mode)",
                 },
                 "query": {
                     "type": "string",
-                    "description": "Symbol search query (for search/fts_search mode)",
+                    "description": "Symbol search query (for search mode)",
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Max results for fts_search (default: 100)",
+                    "description": "Max results for search (default: 100)",
                 },
                 "max_files": {
                     "type": "integer",
@@ -139,6 +141,9 @@ class ASTCacheTool(BaseMCPTool):
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "stats")
+        # ``fts_search`` is a deprecated alias for ``search`` — it remains
+        # accepted at the validate boundary so existing MCP callers do not
+        # break, but it is no longer in the schema enum (J1).
         valid_modes = {
             "index",
             "lookup",
@@ -211,49 +216,40 @@ class ASTCacheTool(BaseMCPTool):
             )
             return _build_ast_cache_envelope("lookup", result, summary_line, next_step)
 
-        elif mode == "search":
-            query = arguments.get("query", "")
-            language = arguments.get("language")
-            results = cache.search_symbols(query, language=language)
-            summary_line = f"ast_cache search query={query!r} results={len(results)}"
-            next_step = (
-                "ast_cache mode=fts_search for ranked full-text matching"
-                if len(results) == 0
-                else "ast_cache mode=lookup file_path=<result.file> for full entry"
-            )
-            return _build_ast_cache_envelope(
-                "search",
-                {
-                    "query": query,
-                    "results": results,
-                    "count": len(results),
-                },
-                summary_line,
-                next_step,
-            )
-
-        elif mode == "fts_search":
+        elif mode in ("search", "fts_search"):
+            # J1: ``search`` and ``fts_search`` are the same mode — both call
+            # ``fts_search`` under the hood when FTS5 is available, falling
+            # back to a LIKE scan otherwise. ``fts_search`` is kept as a
+            # deprecated alias for callers that still pass it. The
+            # ``mode`` echoed in the envelope is preserved verbatim so
+            # callers can still see which alias they invoked.
             query = arguments.get("query", "")
             language = arguments.get("language")
             limit = arguments.get("limit", 100)
             results = cache.fts_search(query, language=language, limit=limit)
+            fts5_available = cache._fts5_available
             summary_line = (
-                f"ast_cache fts_search query={query!r} "
-                f"results={len(results)} fts5={cache._fts5_available}"
+                f"ast_cache {mode} query={query!r} "
+                f"results={len(results)} fts5={fts5_available}"
             )
             next_step = (
                 "ast_cache mode=lookup file_path=<result.file> for the full entry"
                 if results
-                else "ast_cache mode=index to build the FTS index first"
+                else "ast_cache mode=index to populate the FTS index first"
             )
+            payload: dict[str, Any] = {
+                "query": query,
+                "results": results,
+                "count": len(results),
+                "fts5_available": fts5_available,
+            }
+            if mode == "fts_search":
+                payload["deprecated_alias"] = (
+                    "use mode='search' — 'fts_search' is a deprecated alias"
+                )
             return _build_ast_cache_envelope(
-                "fts_search",
-                {
-                    "query": query,
-                    "results": results,
-                    "count": len(results),
-                    "fts5_available": cache._fts5_available,
-                },
+                mode,
+                payload,
                 summary_line,
                 next_step,
             )

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..utils.project_index import ProjectIndex, ProjectIndexManager
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, format_summary_line
 
 # Languages that are not "real" programming languages for display purposes
 _NON_CODE_LANGUAGES: frozenset[str] = frozenset(
@@ -409,7 +409,9 @@ def _build_project_summary_line(
     critical_part = (
         f"critical: {', '.join(top_critical)}" if top_critical else "critical: n/a"
     )
-    summary_line = f"{project_name} {lang_part}  {critical_part}"
+    # J5 (round-22): single-space join via helper — earlier this line had a
+    # literal double-space between ``{lang_part}`` and ``{critical_part}``.
+    summary_line = format_summary_line(project_name, lang_part, critical_part)
 
     # Next-step hint — orient the agent on what to do after orientation.
     if top_critical:

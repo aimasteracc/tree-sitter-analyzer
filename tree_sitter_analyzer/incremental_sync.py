@@ -121,7 +121,13 @@ class IncrementalSync:
             abs_del = os.path.join(self._cache.project_root, rel)
             self._cache.invalidate(abs_del)
             result.deleted_files += 1
-            detail = {"file": rel, "action": "deleted"}
+            # J8: per-file rows previously emitted ``{"action": "indexed",
+            # "status": "skipped"}`` for files the cache refused — clearly
+            # contradictory. Rename ``action`` → ``considered`` so the row
+            # reads "tool tried to index, here is what actually happened".
+            # ``action`` is kept as a back-compat alias so existing
+            # callers don't break.
+            detail = {"file": rel, "considered": "deleted", "action": "deleted"}
             result.details.append(detail)
             if callback:
                 callback(detail)
@@ -168,11 +174,19 @@ class IncrementalSync:
         abs_path: str,
         conn: sqlite3.Connection,
     ) -> dict[str, Any]:
+        # J8: ``considered`` records what the sync engine attempted
+        # ("indexed" / "updated" / "deleted"); ``status`` records the actual
+        # outcome from the cache layer ("indexed" / "skipped" / "error" /
+        # "unknown"). Previously this was a single ``action`` field that
+        # confusingly read ``action: "indexed", status: "skipped"`` for files
+        # the cache refused. ``action`` is preserved as a back-compat alias.
         index_result = self._cache.index_file(abs_path)
+        status = index_result.get("status", "unknown")
         return {
             "file": rel_path,
+            "considered": "indexed",
             "action": "indexed",
-            "status": index_result.get("status", "unknown"),
+            "status": status,
         }
 
     def _reindex_modified(
@@ -183,10 +197,12 @@ class IncrementalSync:
     ) -> dict[str, Any]:
         self._cache.invalidate(abs_path)
         index_result = self._cache.index_file(abs_path)
+        status = index_result.get("status", "unknown")
         return {
             "file": rel_path,
+            "considered": "updated",
             "action": "updated",
-            "status": index_result.get("status", "unknown"),
+            "status": status,
         }
 
     def get_changes(self) -> dict[str, list[str]]:

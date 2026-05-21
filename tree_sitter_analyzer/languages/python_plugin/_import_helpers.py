@@ -100,11 +100,83 @@ def parse_from_import(
     )
 
 
+def parse_from_import_parts(node: Any, source_code: str) -> tuple[str, list[str]]:
+    """Public alias for :func:`_parse_from_import_parts` (J6).
+
+    Plugins that consume tree-sitter query captures (rather than walking
+    the AST themselves) need to recover ``(module_name, bound_names)``
+    from a raw ``import_from_statement`` node — the public name keeps
+    that helper reachable without importing a leading-underscore symbol.
+    """
+    return _parse_from_import_parts(node, source_code)
+
+
 def _parse_from_import_parts(node: Any, source_code: str) -> tuple[str, list[str]]:
+    """Pick apart a ``from X import (A, B as b, C)`` statement node.
+
+    Returns ``(module_name, bound_names)`` where ``bound_names`` is the
+    list of identifiers the import actually introduces into the local
+    namespace — i.e. the alias when one is present, otherwise the
+    imported symbol itself. J6: previously this routine collapsed the
+    entire parenthesised block (including newlines and trailing
+    comments) into a single ``name`` field.
+    """
+    children = list(node.children)
+    # Tree-sitter normally emits an explicit ``import`` keyword child that
+    # separates the module from the imported items. Some legacy callers
+    # (and the older mock-based tests) hand-build children without that
+    # keyword — in that case fall back to "first dotted_name = module,
+    # rest = imports".
+    has_import_keyword = any(child.type == "import" for child in children)
+    if has_import_keyword:
+        return _split_from_import_with_keyword(children, source_code)
+    return _split_from_import_without_keyword(children, source_code)
+
+
+def _split_from_import_with_keyword(
+    children: list[Any], source_code: str
+) -> tuple[str, list[str]]:
     module_name = ""
     imported_items: list[str] = []
+    saw_import_keyword = False
 
-    for child in node.children:
+    for child in children:
+        if child.type == "import":
+            saw_import_keyword = True
+            continue
+        if not saw_import_keyword:
+            if child.type in ("dotted_name", "relative_import"):
+                child_text = _node_source_text(child, source_code)
+                if child_text and not module_name:
+                    module_name = child_text
+            continue
+        if child.type == "import_list":
+            imported_items.extend(_collect_import_list_items(child, source_code))
+        elif child.type == "aliased_import":
+            bound = _bound_name_from_aliased_import(child, source_code)
+            if bound:
+                imported_items.append(bound)
+        elif child.type in ("dotted_name", "identifier"):
+            child_text = _node_source_text(child, source_code)
+            if child_text:
+                imported_items.append(child_text)
+        elif child.type == "wildcard_import":
+            imported_items.append("*")
+
+    return module_name, imported_items
+
+
+def _split_from_import_without_keyword(
+    children: list[Any], source_code: str
+) -> tuple[str, list[str]]:
+    """Legacy heuristic: first ``dotted_name`` is the module, rest are imports.
+
+    Preserved for callers (and tests) that synthesize import nodes by
+    hand without an explicit ``import`` keyword child.
+    """
+    module_name = ""
+    imported_items: list[str] = []
+    for child in children:
         if child.type == "dotted_name":
             child_text = _node_source_text(child, source_code)
             if not module_name:
@@ -113,13 +185,43 @@ def _parse_from_import_parts(node: Any, source_code: str) -> tuple[str, list[str
                 imported_items.append(child_text)
         elif child.type == "import_list":
             imported_items.extend(_collect_import_list_items(child, source_code))
-
+        elif child.type == "aliased_import":
+            bound = _bound_name_from_aliased_import(child, source_code)
+            if bound:
+                imported_items.append(bound)
     return module_name, imported_items
 
 
+def _bound_name_from_aliased_import(node: Any, source_code: str) -> str:
+    """Return the locally bound identifier for an ``aliased_import`` node.
+
+    For ``X as Y`` the bound name is ``Y``; we return the identifier
+    that appears after the ``as`` keyword. Fall back to the first
+    ``dotted_name``/``identifier`` child when the alias is absent
+    (defensive — tree-sitter should always emit the alias).
+    """
+    seen_as = False
+    for child in node.children:
+        if child.type == "as":
+            seen_as = True
+            continue
+        if seen_as and child.type == "identifier":
+            return _node_source_text(child, source_code)
+    # Defensive fallback — return the original symbol.
+    for child in node.children:
+        if child.type in ("dotted_name", "identifier"):
+            return _node_source_text(child, source_code)
+    return ""
+
+
 def _collect_import_list_items(import_list_node: Any, source_code: str) -> list[str]:
-    imported_items = []
+    imported_items: list[str] = []
     for child in import_list_node.children:
+        if child.type == "aliased_import":
+            bound = _bound_name_from_aliased_import(child, source_code)
+            if bound:
+                imported_items.append(bound)
+            continue
         if child.type not in ("dotted_name", "identifier"):
             continue
         item = _node_source_text(child, source_code)

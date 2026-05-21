@@ -22,6 +22,7 @@ from ._import_helpers import (
     extract_imports_from_tree,
     import_node_context,
     parse_from_import,
+    parse_from_import_parts,
     parse_simple_import,
     query_class_body_nodes,
 )
@@ -82,6 +83,7 @@ __all__ = [
     "node_line_range",
     "node_raw_text",
     "parse_from_import",
+    "parse_from_import_parts",
     "parse_simple_import",
     "query_class_body_nodes",
     "run_iterative_traversal",

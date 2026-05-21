@@ -292,9 +292,17 @@ def test_safe_to_edit_cli_falls_back_to_schema_default_for_legacy_namespaces(
     ],
 )
 def test_file_scoped_mcp_cli_commands_require_file_path(
+    capsys,
     flag_overrides: dict[str, Any],
     expected_error: str,
 ) -> None:
+    """J2: when ``--format json`` is requested, even the pre-execution
+    validation failures (e.g. missing ``--file-path``) must surface as
+    a parseable JSON envelope on stdout, not a plain-text ``ERROR:`` line
+    that callers cannot consume.
+    """
+    import json as _json
+
     output: list[dict[str, Any]] = []
     errors: list[str] = []
 
@@ -307,7 +315,14 @@ def test_file_scoped_mcp_cli_commands_require_file_path(
 
     assert result == 1
     assert output == []
-    assert errors == [expected_error]
+    # JSON path now emits the envelope via ``print(json.dumps(...))``,
+    # so the plain-text ``errors`` sink is bypassed.
+    assert errors == []
+    stdout = capsys.readouterr().out
+    payload = _json.loads(stdout.strip())
+    assert payload["success"] is False
+    assert payload["error"] == expected_error
+    assert payload["error_type"] == "validation"
 
 
 @pytest.mark.parametrize(

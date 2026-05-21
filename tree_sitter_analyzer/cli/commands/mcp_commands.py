@@ -2,6 +2,7 @@
 """MCP-equivalent CLI command handlers."""
 
 import asyncio
+import json
 import os
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -260,29 +261,117 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
 )
 
 
+def _classify_error_type(exc: BaseException) -> str:
+    """Classify an exception for the ``error_type`` envelope field.
+
+    J2: agents on the other end of ``--format json`` need a coarse
+    bucket so they can decide between "fix my input" vs "report a bug".
+    ``ValueError`` is by far the most common path-validation failure
+    (the security validator and path resolver both raise it), and
+    ``FileNotFoundError`` / generic ``OSError`` is the other half of the
+    validation surface. Anything else is treated as internal — agents
+    should surface those to a human.
+    """
+    if isinstance(exc, ValueError | FileNotFoundError | OSError):
+        return "validation"
+    return "internal"
+
+
+def _build_error_envelope(
+    flag_name: str,
+    label: str,
+    exc: BaseException,
+) -> dict[str, Any]:
+    """Construct a canonical error envelope for a failed MCP CLI command.
+
+    Mirrors the success-envelope shape (``success``, ``summary_line``,
+    ``agent_summary``) so a programmatic consumer can use the same
+    parser for success and failure cases.
+    """
+    err_type = _classify_error_type(exc)
+    exc_name = type(exc).__name__
+    message = str(exc) or exc_name
+    return {
+        "success": False,
+        "error_type": err_type,
+        "error": message,
+        "summary_line": f"{flag_name}: error — {exc_name}",
+        "agent_summary": {
+            "verdict": "ERROR",
+            "summary_line": f"{flag_name}: {exc_name}",
+            "next_step": "Fix the input and retry.",
+            "label": label,
+        },
+    }
+
+
+def _emit_error_envelope(
+    flag_name: str,
+    label: str,
+    exc: BaseException,
+    output_format: str,
+    output_json_fn: Callable[[dict[str, Any]], None],
+    output_error_fn: Callable[[str], None],
+) -> int:
+    """Print a format-respecting error envelope and return exit code 1.
+
+    J2: when the user asked for ``--format json`` (or toon), an
+    unhandled error in the tool layer used to bypass the envelope and
+    drop a plain-text ``ERROR: ...`` line, leaving agents with no
+    parseable response. Now we honour the requested format: JSON when
+    ``output_format == 'json'``, TOON envelope (best-effort, falls
+    back to JSON on encoder failure) when ``output_format == 'toon'``,
+    and the original plain-text message in every other case.
+    """
+    envelope = _build_error_envelope(flag_name, label, exc)
+    if output_format == "json":
+        print(json.dumps(envelope, ensure_ascii=False))
+        return 1
+    if output_format == "toon":
+        try:
+            from tree_sitter_analyzer.formatters.toon_formatter import ToonFormatter
+
+            print(ToonFormatter().format(envelope))
+        except Exception:  # noqa: BLE001 — degrade to JSON if TOON unavailable
+            print(json.dumps(envelope, ensure_ascii=False))
+        return 1
+    output_error_fn(f"{label} failed: {exc}")
+    return 1
+
+
 def _run_tool(
     args: Any,
+    spec: McpCommandSpec,
     tool_cls: Callable[..., Any],
     tool_args: Mapping[str, Any],
-    label: str,
     output_json_fn: Callable[[dict[str, Any]], None],
     output_error_fn: Callable[[str], None],
     output_format_fn: Callable[[], str],
 ) -> int:
     """Helper: instantiate tool, run execute(), print output."""
+    output_format = output_format_fn()
     try:
         project_root = getattr(args, "project_root", None) or os.getcwd()
         tool = tool_cls(project_root=project_root)
         result: dict[str, Any] = asyncio.run(tool.execute(dict(tool_args)))
-        fmt = output_format_fn()
-        if fmt == "toon":
+        if output_format == "toon":
             print(result.get("toon_content", ""))
         else:
             output_json_fn(result)
         return 0 if result.get("success", False) else 1
     except Exception as e:
-        output_error_fn(f"{label} failed: {e}")
-        return 1
+        # J2: every ``except Exception`` in this module must respect the
+        # caller's requested format. The contract test
+        # ``TestJ2ErrorEnvelopeOnJsonFormat`` enforces this for both
+        # path-validation and tool-internal failures.
+        return _emit_error_envelope(
+            spec.flag_name,
+            spec.label,
+            e,
+            output_format,
+            output_json_fn,
+            output_error_fn,
+        )
 
 
 # ARCH-A2: declare which tool-class names this module exposes for the
@@ -330,6 +419,38 @@ def _get_tool_class(tool_attr: str) -> Callable[..., Any]:
     return cls  # type: ignore[no-any-return]
 
 
+def _format_aware_error_sink(
+    flag_name: str,
+    label: str,
+    output_format: str,
+    output_json_fn: Callable[[dict[str, Any]], None],
+    output_error_fn: Callable[[str], None],
+) -> Callable[[str], None]:
+    """Return a ``output_error_fn`` that respects the requested format.
+
+    J2: ``validate_mcp_command_args`` reports pre-execution failures
+    (e.g. missing ``--file-path`` for ``--dependencies blast_radius``)
+    via the same plain-text sink. When the caller asked for JSON or
+    TOON, we wrap the sink so the failure surfaces as a structured
+    envelope instead of an unparseable ``ERROR: ...`` line.
+    """
+
+    def _sink(message: str) -> None:
+        if output_format in {"json", "toon"}:
+            _emit_error_envelope(
+                flag_name,
+                label,
+                ValueError(message),
+                output_format,
+                output_json_fn,
+                output_error_fn,
+            )
+        else:
+            output_error_fn(message)
+
+    return _sink
+
+
 def handle_mcp_commands(
     args: Any,
     output_json_fn: Callable[[dict[str, Any]], None],
@@ -341,15 +462,22 @@ def handle_mcp_commands(
     if spec is None:
         return None
 
-    if not validate_mcp_command_args(args, spec, output_error_fn):
+    output_format = output_format_fn()
+    validate_sink = _format_aware_error_sink(
+        spec.flag_name,
+        spec.label,
+        output_format,
+        output_json_fn,
+        output_error_fn,
+    )
+    if not validate_mcp_command_args(args, spec, validate_sink):
         return 1
 
-    output_format = output_format_fn()
     return _run_tool(
         args,
+        spec,
         _get_tool_class(spec.tool_attr),
         build_mcp_tool_args(args, spec, output_format),
-        spec.label,
         output_json_fn,
         output_error_fn,
         output_format_fn,

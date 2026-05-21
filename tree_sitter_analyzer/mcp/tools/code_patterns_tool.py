@@ -185,9 +185,14 @@ class CodePatternsTool(BaseMCPTool):
             # a list under ``results``. Mirror the same names here so an
             # agent walking generic envelopes doesn't have to know each
             # tool's nickname.
+            #
+            # J13 (round-22): the legacy ``patterns`` key duplicated
+            # ``results`` byte-for-byte (pure token waste in TOON output).
+            # Removed in favour of the canonical ``results`` list. If a
+            # caller still depends on ``patterns``, switch it to
+            # ``results``.
             "count": len(filtered),
             "results": filtered[:50],
-            "patterns": filtered[:50],
             "by_category": {k: len(v) for k, v in by_category.items()},
             "critical_count": critical_count,
             "warning_count": warning_count,
@@ -215,36 +220,70 @@ class CodePatternsTool(BaseMCPTool):
 def _dedup_security_mirror(
     patterns: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Remove ``smells`` entries that mirror a ``security`` finding.
+    """Remove duplicate findings across smell / security / anti-pattern passes.
 
-    ``file_health_smells.detect_code_smells`` re-emits security issues under
-    the smell namespace (id ``security:<name>``) so that file-health reports
-    can surface them as a single signal. When ``code_patterns`` *also* runs
-    the dedicated security pass, the same underlying finding appears twice:
-    once with category ``smells`` and id ``security:sql_injection``, once
-    with category ``security`` and id ``sql_injection``. The second one is
-    the canonical record, so we drop the smell-namespaced mirror whenever a
-    matching ``(line, security-name)`` exists under the ``security``
-    category.
+    Two dedup passes happen here, in this order:
+
+    1) ``smells`` mirror of a security finding (original G4 behaviour).
+       ``file_health_smells.detect_code_smells`` re-emits security issues
+       under the smell namespace (id ``security:<name>``) so that
+       file-health reports can surface them as a single signal. When
+       ``code_patterns`` *also* runs the dedicated security pass, the
+       same underlying finding appears twice: once with category
+       ``smells`` and id ``security:sql_injection``, once with category
+       ``security`` and id ``sql_injection``. The second one is the
+       canonical record, so we drop the smell-namespaced mirror whenever
+       a matching ``(line, security-name)`` exists under the
+       ``security`` category.
+
+    2) ``anti_patterns`` vs ``security`` cross-category mirror (J10,
+       round-22). ``_detect_security`` and ``_detect_anti_patterns``
+       independently flag the same constructs — ``bare_except`` shows
+       up as ``('bare_except', 'security')`` AND ``('AP002',
+       'anti_patterns', 'bare_except')`` on the same line. Keep the
+       ``security`` namespace as canonical (matches the G4 convention)
+       and drop the ``anti_patterns`` duplicate whenever a matching
+       ``(line, normalized_type)`` exists under ``security``.
     """
+    # --- Pass 1 (G4): drop the ``smells`` mirror of a security finding ---
     security_keys: set[tuple[int | None, str]] = {
         (p.get("line"), str(p.get("type") or p.get("id") or ""))
         for p in patterns
         if p.get("category") == "security"
     }
-    if not security_keys:
-        return patterns
 
-    deduped: list[dict[str, Any]] = []
-    for pattern in patterns:
-        if pattern.get("category") == "smells":
-            raw_type = str(pattern.get("type") or pattern.get("id") or "")
-            if raw_type.startswith("security:"):
-                normalized = raw_type.split(":", 1)[1]
-                if (pattern.get("line"), normalized) in security_keys:
-                    continue
-        deduped.append(pattern)
-    return deduped
+    pass1: list[dict[str, Any]] = []
+    if security_keys:
+        for pattern in patterns:
+            if pattern.get("category") == "smells":
+                raw_type = str(pattern.get("type") or pattern.get("id") or "")
+                if raw_type.startswith("security:"):
+                    normalized = raw_type.split(":", 1)[1]
+                    if (pattern.get("line"), normalized) in security_keys:
+                        continue
+            pass1.append(pattern)
+    else:
+        pass1 = list(patterns)
+
+    # --- Pass 2 (J10): drop anti_patterns mirror of a security finding ---
+    # ``security_keys`` is reused intentionally: pass1 only drops smell
+    # mirrors, so the set of canonical security findings is unchanged.
+    if not security_keys:
+        return pass1
+
+    pass2: list[dict[str, Any]] = []
+    for pattern in pass1:
+        if pattern.get("category") == "anti_patterns":
+            # The anti-pattern entries carry the human-readable
+            # ``type`` (e.g. ``bare_except``) — that is what matches
+            # the security ``type`` key. Compare against ``type`` only;
+            # the AP*** ``id`` would never collide and the security
+            # detector itself already normalises on ``type``.
+            anti_type = str(pattern.get("type") or "")
+            if anti_type and (pattern.get("line"), anti_type) in security_keys:
+                continue
+        pass2.append(pattern)
+    return pass2
 
 
 def _detect_smells(
@@ -564,9 +603,11 @@ def _empty_file_response(
         "verdict": "N/A",
         "signal": "empty_file",
         "total_patterns": 0,
+        # J13 (round-22): ``patterns`` removed as a duplicate of
+        # ``results``. Empty file gives an empty list under the
+        # canonical key.
         "count": 0,
         "results": [],
-        "patterns": [],
         "by_category": {},
         "critical_count": 0,
         "warning_count": 0,

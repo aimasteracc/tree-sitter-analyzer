@@ -16,6 +16,7 @@ from typing import Any
 from ...utils import setup_logger
 from ._refactoring_plan_builder import build_precise_plans
 from .base_tool import BaseMCPTool
+from .code_patterns_tool import _detect_anti_patterns, _detect_security
 from .utils.element_extractor import extract_elements
 from .utils.refactoring_suggestions_helpers import (
     build_success_response,
@@ -156,6 +157,17 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 _EXTRACTABLE_PATTERNS,
             )
 
+        # J9 (round-22): bridge anti-patterns + security findings into the
+        # refactor suggestion stream. Before this, a file containing
+        # ``def f(x=[])``, ``except:``, and ``eval(...)`` returned
+        # ``refactor=clean`` while ``code_patterns`` flagged 4 findings on
+        # the same file — agents that ran refactor first shipped the bugs.
+        # The structural detectors above only catch length / nesting /
+        # large-class smells; anti-patterns + security live in their own
+        # module. We pull from the same helpers ``code_patterns`` uses so
+        # the two tools no longer disagree on the same input.
+        _surface_security_and_anti_patterns(resolved, suggestions, file_path=file_path)
+
         build_precise_plans(resolved, source, analysis, suggestions)
 
         result = build_success_response(
@@ -177,3 +189,96 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         if not file_path or not isinstance(file_path, str):
             raise ValueError("file_path is required and must be a string")
         return True
+
+
+def _surface_security_and_anti_patterns(
+    resolved: str,
+    suggestions: list[dict[str, Any]],
+    *,
+    file_path: str,
+) -> None:
+    """J9: append code_patterns findings as refactor suggestions.
+
+    The refactor tool used to only emit *structural* suggestions (long
+    method, deep nesting, god class). On a file like::
+
+        def f(x=[]):
+            return x
+        try: pass
+        except: pass
+        eval("1+1")
+
+    every structural threshold passes (the file is 5 lines, no nesting,
+    no class) so the tool happily returned ``refactor=clean`` —
+    misleading because ``code_patterns`` flagged the same file as
+    UNSAFE with 2 critical findings. An agent chaining
+    ``--refactor`` first would have shipped the bugs.
+
+    We pull from the same module-level helpers that ``code_patterns``
+    uses so both tools see exactly the same findings. The shape is
+    normalised to the refactor suggestion contract: severity values are
+    mapped (critical→critical, warning→major, info→minor) so the
+    existing ``_agent_risk`` and severity-counting logic keeps working
+    without special casing.
+    """
+    from ...language_detector import detect_language_from_file
+
+    try:
+        language = detect_language_from_file(resolved)
+    except Exception:  # nosec B110 — language detection is best-effort
+        return
+
+    if not language:
+        return
+
+    findings: list[dict[str, Any]] = []
+    try:
+        findings.extend(_detect_security(resolved, language))
+    except Exception:  # nosec B110 — detector failure must not block refactor
+        pass
+    try:
+        findings.extend(_detect_anti_patterns(resolved, language))
+    except Exception:  # nosec B110 — detector failure must not block refactor
+        pass
+
+    if not findings:
+        return
+
+    # Severity mapping: code_patterns uses ``critical/warning/info``;
+    # refactor's downstream logic uses ``critical/major/minor``. Keep
+    # the ordering parallel so ``_agent_risk`` still produces
+    # ``high`` for any critical finding.
+    severity_map = {"critical": "critical", "warning": "major", "info": "minor"}
+
+    for finding in findings:
+        sev_raw = str(finding.get("severity") or "info")
+        sev = severity_map.get(sev_raw, "minor")
+        category = str(finding.get("category") or "")
+        finding_id = str(finding.get("id") or finding.get("type") or "unknown")
+        finding_type = str(finding.get("type") or finding_id)
+        message = str(finding.get("message") or finding_type)
+        line = finding.get("line")
+        # Priority pulls criticals above structural suggestions but
+        # leaves room (100) for the god-file pattern. ``code_patterns``
+        # already attaches a severity ordering — mirror it here so the
+        # most dangerous finding sorts to the top of the response.
+        priority = 85 if sev == "critical" else (60 if sev == "major" else 40)
+        suggestion: dict[str, Any] = {
+            "type": "anti_pattern" if category == "anti_patterns" else "security",
+            "id": finding_id,
+            "name": finding_type,
+            "pattern": finding_type,
+            "severity": sev,
+            "message": message,
+            "priority_score": priority,
+            "source": "code_patterns",
+            "category": category,
+        }
+        if isinstance(line, int):
+            suggestion["line_range"] = {"start": line, "end": line}
+        suggestions.append(suggestion)
+
+    # Side-effect documented: callers receive the augmented list in
+    # place. The display ``file_path`` is unused here — kept in the
+    # signature so future severity-weighting can echo it back.
+    _ = file_path

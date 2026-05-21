@@ -71,12 +71,13 @@ class TestGetToolSchema:
         schema = tool.get_tool_schema()
         modes = schema["properties"]["mode"]["enum"]
         # ``changes`` and ``sync`` were added post-consolidation for the
-        # incremental-sync workflow.
+        # incremental-sync workflow. ``fts_search`` was collapsed into
+        # ``search`` (J1) — it remains accepted at the validate boundary
+        # for back-compat but is no longer advertised in the schema enum.
         assert set(modes) == {
             "index",
             "lookup",
             "search",
-            "fts_search",
             "sync",
             "changes",
             "stats",
@@ -170,7 +171,12 @@ class TestExecute:
     @pytest.mark.asyncio
     async def test_search_mode(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
+        # J1: ``search`` is now backed by ``fts_search`` (which delegates
+        # to a LIKE scan when FTS5 is unavailable). Stub both so the test
+        # works regardless of the runtime implementation.
+        mock_cache.fts_search.return_value = [{"name": "MyClass"}]
         mock_cache.search_symbols.return_value = [{"name": "MyClass"}]
+        mock_cache._fts5_available = True
         result = await tool.execute({"mode": "search", "query": "MyClass"})
         assert result["count"] == 1
         assert result["query"] == "MyClass"
@@ -179,10 +185,14 @@ class TestExecute:
     async def test_fts_search_mode(self, tool_with_mock_cache):
         tool, mock_cache = tool_with_mock_cache
         mock_cache.fts_search.return_value = [{"name": "MyClass", "rank": -1.0}]
+        mock_cache._fts5_available = True
         result = await tool.execute(
             {"mode": "fts_search", "query": "MyClass", "limit": 10}
         )
         assert result["count"] == 1
+        # J1: ``fts_search`` is now a deprecated alias — the response
+        # should surface that fact so callers can migrate.
+        assert "deprecated_alias" in result
 
     @pytest.mark.asyncio
     async def test_index_single_file(self, tool_with_mock_cache):

@@ -11,6 +11,7 @@ from ...constants import (
     is_element_of_type,
 )
 from ...utils import setup_logger
+from .base_tool import format_summary_line
 
 logger = setup_logger(__name__)
 
@@ -511,9 +512,15 @@ def create_json_file_analysis(
     from ..utils.format_helper import apply_toon_format_to_response as _apply_toon
 
     total_lines = file_metrics["total_lines"]
-    summary_line = (
-        f"{file_path} json {total_lines} lines  "
-        "classes=0 methods=0 fields=0 (data file)"
+    # J5 (round-22): single-space join via helper.
+    summary_line = format_summary_line(
+        file_path,
+        "json",
+        f"{total_lines} lines",
+        "classes=0",
+        "methods=0",
+        "fields=0",
+        "(data file)",
     )
     result: dict[str, Any] = {
         "success": True,
@@ -585,9 +592,15 @@ def build_analysis_result(
     import_count = count_elements_fn(elements, ELEMENT_TYPE_IMPORT, "import")
     total_lines = file_metrics.get("total_lines") if file_metrics else None
     # Build a one-line headline an LLM (or grep) can parse.
-    summary_line = (
-        f"{file_path} {language} {total_lines if total_lines is not None else 0} lines  "
-        f"classes={class_count} methods={method_count} fields={field_count}"
+    # J5 (round-22): single-space join via helper.
+    line_total = total_lines if total_lines is not None else 0
+    summary_line = format_summary_line(
+        file_path,
+        language,
+        f"{line_total} lines",
+        f"classes={class_count}",
+        f"methods={method_count}",
+        f"fields={field_count}",
     )
     # Suggest the next step — mirrors the workflow hint in
     # ``generate_llm_guidance`` but kept self-contained so it survives

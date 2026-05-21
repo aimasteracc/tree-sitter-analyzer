@@ -135,8 +135,13 @@ def make_agent_summary(
     if not suggestions:
         # Finding 6: include summary_line so the central post-hook can
         # mirror it to the top-level envelope.
+        # J9 (round-22): add ``verdict`` so callers chaining refactor +
+        # code_patterns can use a single vocabulary. Empty suggestions
+        # map to ``SAFE`` — the structural and bridged anti-pattern
+        # passes both found nothing.
         return {
             "summary_line": f"{file_path} refactor=clean suggestions=0",
+            "verdict": "SAFE",
             "risk": "low",
             "next_step": "No refactoring action needed.",
             "suggested_tests": [refactor_command],
@@ -155,6 +160,12 @@ def make_agent_summary(
             f"{file_path} suggestions={len(suggestions)} top={top.get('pattern', 'unknown')} "
             f"{sev_summary}"
         ),
+        # J9 (round-22): expose ``verdict`` aligned with code_patterns
+        # / safety-tool vocab (SAFE / CAUTION / UNSAFE). Any critical
+        # suggestion (god_file, mutable_default, eval) escalates to
+        # UNSAFE; major (long_method / deep_nesting / bare_except) maps
+        # to CAUTION; minor / info stays at SAFE.
+        "verdict": _agent_verdict(suggestions),
         "risk": _agent_risk(suggestions),
         "next_step": _next_step_for(top),
         "suggested_tests": _dedupe_tests(
@@ -241,11 +252,17 @@ def build_success_response(
     in the envelope. ``file`` keeps the same value so the (single
     test-only) back-compat alias still resolves without leaking the
     user's absolute home path.
+
+    J9 (round-22): ``verdict`` is mirrored at the top level so chained
+    tools can read ``response['verdict']`` without descending into
+    ``agent_summary``. Matches the pattern already used by
+    ``code_patterns_tool`` and the safety tools.
     """
     finalized = finalize_suggestions(suggestions, max_suggestions, include_skeleton)
     from ..base_tool import mirror_summary_line
 
     display_path = _to_project_relative(file_path, project_root)
+    agent_summary = make_agent_summary(display_path, finalized)
     return mirror_summary_line(
         {
             "success": True,
@@ -260,8 +277,13 @@ def build_success_response(
             # learning this tool's specific vocabulary.
             "count": len(finalized),
             "results": finalized,
+            # J9 (round-22): mirror ``verdict`` to the top level so an
+            # agent reading the envelope without descending into
+            # ``agent_summary`` still sees the SAFE/CAUTION/UNSAFE
+            # signal that drives the next step.
+            "verdict": agent_summary.get("verdict", "SAFE"),
             "summary": make_summary(finalized),
-            "agent_summary": make_agent_summary(display_path, finalized),
+            "agent_summary": agent_summary,
             "suggestions": finalized,
         }
     )
@@ -329,6 +351,24 @@ def _agent_risk(suggestions: list[dict[str, Any]]) -> str:
     if "major" in severities:
         return "medium"
     return "low"
+
+
+def _agent_verdict(suggestions: list[dict[str, Any]]) -> str:
+    """J9 (round-22): map suggestion severities to the cross-tool verdict.
+
+    Aligns with ``code_patterns`` / ``safe_to_edit`` / ``modification_guard``
+    vocab: SAFE / CAUTION / UNSAFE. Empty suggestions are handled by the
+    caller (no-suggestions branch returns SAFE). Any ``critical`` lifts
+    the verdict to UNSAFE; ``major`` lifts to CAUTION; otherwise SAFE.
+    """
+    if not suggestions:
+        return "SAFE"
+    severities = {str(s.get("severity") or "") for s in suggestions}
+    if "critical" in severities:
+        return "UNSAFE"
+    if "major" in severities:
+        return "CAUTION"
+    return "SAFE"
 
 
 def _next_step_for(suggestion: dict[str, Any]) -> str:

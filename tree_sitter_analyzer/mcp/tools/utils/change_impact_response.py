@@ -16,13 +16,28 @@ LARGE_DIRTY_DIFF_THRESHOLD = 25
 # magic number here so all three call sites stay aligned.
 CHANGE_IMPACT_PREVIEW_LIMIT = 5
 
-# H8: ``verdict`` values exposed by change-impact. ``CLEAN`` is the default
-# steady state — the analysis ran and nothing flagged. ``WARN`` covers
-# soft-failure paths (e.g. scope paths that don't exist on disk) where the
-# analysis still produced a real result but the caller's input was partly
-# ignored. We deliberately don't escalate to ``UNSAFE`` here because the
-# tool answers a different question (impact) than the safety tools.
+# H8 / J11: ``verdict`` values exposed by change-impact.
+#
+# Before J11 (round-22) the tool emitted ``CLEAN`` whenever the analysis
+# ran without an invalid-scope warning, even when ``changed_count > 0``.
+# That collided with the safety-tool vocabulary (safe_to_edit /
+# code_patterns) where ``CLEAN`` means "no issues, ship it" — agents that
+# chained the two tools shipped pending work because change-impact's
+# ``CLEAN`` meant "the scope filter applied" not "no work to verify".
+#
+# Post J11 the verdict is content-aware:
+#   * ``CLEAN``   — analysis succeeded AND ``changed_count == 0``.
+#   * ``REVIEW``  — analysis succeeded but ``changed_count > 0``; the
+#                   caller still has verification work to do before the
+#                   queue is closed.
+#   * ``WARN``    — soft-failure (e.g. scope paths that don't exist on
+#                   disk) — analysis ran but the caller's input was
+#                   partly ignored.
+#
+# We deliberately don't escalate to ``UNSAFE`` here because the tool
+# answers a different question (impact) than the safety tools.
 CHANGE_IMPACT_VERDICT_CLEAN = "CLEAN"
+CHANGE_IMPACT_VERDICT_REVIEW = "REVIEW"
 CHANGE_IMPACT_VERDICT_WARN = "WARN"
 
 
@@ -298,18 +313,24 @@ def _agent_stop_condition(
 def apply_scope_validation(
     result: dict[str, Any], scope_paths_invalid: list[str]
 ) -> dict[str, Any]:
-    """H8: surface nonexistent scope paths so callers can't miss the typo.
+    """H8 / J11: surface nonexistent scope paths and a content-aware verdict.
 
     Behaviour:
       - ``scope_paths_invalid`` always lands in the response (even empty),
         so consumers can branch on a single key without first checking
         existence. The default value keeps round-trip JSON stable.
-      - ``agent_summary["verdict"]`` defaults to ``CLEAN``. When any
-        invalid path is supplied we escalate to ``WARN`` — never
-        ``UNSAFE`` because the analysis still produced a real result.
+      - ``agent_summary["verdict"]`` is content-aware:
+          * ``WARN``   — any invalid scope path was supplied.
+          * ``CLEAN``  — analysis ran cleanly AND ``changed_count == 0``.
+          * ``REVIEW`` — analysis ran cleanly but ``changed_count > 0``;
+                         the queue still has verification work pending.
+        Pre-J11 the response emitted ``CLEAN`` even with 14 changed files,
+        which collided with the safety-tool vocabulary (where ``CLEAN``
+        means "ship it"). Agents chaining the two ended up shipping pending
+        work.
       - ``agent_summary["next_step"]`` is rewritten with a concrete
-        "did you typo?" hint so the agent's decision loop catches it
-        before re-running.
+        "did you typo?" hint when any scope is invalid so the agent's
+        decision loop catches it before re-running.
       - ``summary_line`` (top-level and inside ``agent_summary``) gains a
         ``scope_invalid=N`` token so chained tools can grep one line.
       - We never flip ``success`` to False. The analysis still has value;
@@ -327,11 +348,41 @@ def apply_scope_validation(
         agent_summary["scope_paths_invalid"] = list(scope_paths_invalid)
         _augment_summary_line(result, agent_summary, scope_paths_invalid)
     else:
-        # Default verdict for change-impact is CLEAN. Use setdefault so we
-        # don't stomp a richer verdict another helper may have set.
-        agent_summary.setdefault("verdict", CHANGE_IMPACT_VERDICT_CLEAN)
+        # J11 (round-22): pick CLEAN vs REVIEW based on whether the
+        # analysis still has pending work to verify. Use setdefault on
+        # whichever value we compute so we don't stomp a richer verdict
+        # another helper may have set first.
+        changed_count = _resolve_changed_count(result, agent_summary)
+        default_verdict = (
+            CHANGE_IMPACT_VERDICT_CLEAN
+            if changed_count == 0
+            else CHANGE_IMPACT_VERDICT_REVIEW
+        )
+        agent_summary.setdefault("verdict", default_verdict)
 
     return result
+
+
+def _resolve_changed_count(
+    result: dict[str, Any], agent_summary: dict[str, Any]
+) -> int:
+    """Best-effort lookup of ``changed_count`` across response shapes.
+
+    The full change-impact response stores ``changed_count`` at the top
+    level, the no-changes shortcut returns it inside ``agent_summary``,
+    and the agent-summary-only collapse keeps it at the top level too.
+    Try both and fall back to counting ``changed_files``. Returning 0
+    when nothing is found is safe — it preserves the legacy CLEAN
+    default for ambiguous callers.
+    """
+    for source in (result, agent_summary):
+        value = source.get("changed_count")
+        if isinstance(value, int):
+            return value
+    files = result.get("changed_files")
+    if isinstance(files, list):
+        return len(files)
+    return 0
 
 
 def _augment_summary_line(

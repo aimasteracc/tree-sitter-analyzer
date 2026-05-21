@@ -13,6 +13,7 @@ from ._extractor_helpers import (
     extract_imports_from_tree,
     import_node_context,
     node_raw_text,
+    parse_from_import_parts,
 )
 
 
@@ -146,7 +147,14 @@ class PythonImportPackageMixin:
     def _extract_import_info(
         self, node: Any, source_code: str, import_type: str
     ) -> Import | None:
-        """Extract detailed import information from AST node."""
+        """Extract detailed import information from AST node.
+
+        J6: ``from X import (A, B as b, C)`` previously collapsed the entire
+        parenthesised block — newlines, alias keyword, trailing comments and
+        all — into a single ``name`` field. We now walk the child nodes to
+        recover the bound identifiers and emit a clean comma-joined name
+        (with ``imported_names`` populated for downstream consumers).
+        """
         try:
             if not self._validate_node(node):
                 return None
@@ -157,20 +165,34 @@ class PythonImportPackageMixin:
             # offset). Use the byte-aware helper instead.
             import_text = get_node_text_safe(node, source_code) or source_code
 
+            module_name = ""
+            imported_names: list[str] = []
+            import_name = ""
+
             if import_type == "from_import":
-                if "from" in import_text and "import" in import_text:
-                    parts = import_text.split("import")
-                    module_name = parts[0].replace("from", "").strip()
-                    import_name = parts[1].strip()
+                # Walk child nodes — robust against multi-line parenthesised
+                # imports, aliases, and trailing comments. Falls back to a
+                # cleaned text-slice when the children are unavailable.
+                module_name, imported_names = parse_from_import_parts(node, source_code)
+                if imported_names:
+                    import_name = ", ".join(imported_names)
                 else:
-                    module_name = ""
-                    import_name = import_text
+                    import_name = _clean_import_name_fallback(import_text)
             elif import_type == "aliased_import":
-                module_name = ""
-                import_name = import_text
+                import_name = _clean_import_name_fallback(import_text)
             else:
-                module_name = ""
-                import_name = import_text.replace("import", "").strip()
+                import_name = _clean_import_name_fallback(
+                    import_text.replace("import", "", 1)
+                )
+                # ``import a, b, c`` — populate imported_names from a clean text.
+                if import_name and "," in import_name:
+                    imported_names = [
+                        token.strip()
+                        for token in import_name.split(",")
+                        if token.strip()
+                    ]
+                elif import_name:
+                    imported_names = [import_name]
 
             return Import(
                 name=import_name,
@@ -179,8 +201,32 @@ class PythonImportPackageMixin:
                 raw_text=import_text,
                 language="python",
                 module_name=module_name,
+                imported_names=imported_names,
             )
 
         except Exception as exc:
             log_warning(f"Could not extract import info: {exc}")
             return None
+
+
+def _clean_import_name_fallback(text: str) -> str:
+    """Strip parens, newlines, and trailing comments from an import literal.
+
+    Used only when child-node walking is unavailable (e.g. degraded parser
+    or unexpected node shape). Returns a single-line comma-joined string.
+    """
+    if not text:
+        return ""
+    cleaned = text.replace("\n", " ").replace("\r", " ")
+    # Drop the surrounding parens but keep the content for callers that
+    # still want a one-liner.
+    cleaned = cleaned.replace("(", " ").replace(")", " ")
+    # Drop trailing ``# ...`` comments on each comma-separated item.
+    parts: list[str] = []
+    for token in cleaned.split(","):
+        tok = token.strip()
+        if "#" in tok:
+            tok = tok.split("#", 1)[0].strip()
+        if tok:
+            parts.append(tok)
+    return ", ".join(parts)

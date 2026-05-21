@@ -43,8 +43,11 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
     assert result["focused_test_command"] == ""
     assert result["verification_strategy"] == "docs_only"
     assert result["verification_steps"] == ["git diff --check"]
-    # H8: agent_summary now carries a ``verdict`` field. Default is
-    # ``CLEAN`` (no scope_paths supplied, nothing to flag).
+    # H8 / J11: agent_summary carries a ``verdict`` field. Pre-J11 the
+    # default was ``CLEAN`` even when ``changed_count > 0`` — that
+    # collided with the safety-tool vocabulary (``CLEAN`` means "ship
+    # it"). Post-J11 a non-empty diff escalates the verdict to ``REVIEW``
+    # so chained agents know the queue still has work to verify.
     # Pol3 (round-21): ``preview_limit`` + ``preview_truncated`` surface
     # whenever ``changed_preview`` is present so chained agents can tell
     # they have the full list.
@@ -61,7 +64,7 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
         "changed_preview": ["README.md"],
         "preview_limit": 5,
         "preview_truncated": False,
-        "verdict": "CLEAN",
+        "verdict": "REVIEW",
     }
 
 

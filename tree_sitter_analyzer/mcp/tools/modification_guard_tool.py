@@ -14,7 +14,7 @@ from typing import Any
 
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
-from .base_tool import BaseMCPTool, mirror_summary_line
+from .base_tool import BaseMCPTool, format_summary_line, mirror_summary_line
 from .trace_impact_tool import TraceImpactTool, _get_impact_level
 
 # Set up logging
@@ -484,7 +484,9 @@ class ModificationGuardTool(BaseMCPTool):
         ]
         if pr_str:
             parts.insert(2, pr_str)
-        result["summary_line"] = "  ".join(parts)
+        # J5 (round-22): single-space join via helper — was ``"  ".join``
+        # (literal double space) which produced ``"foo rank=#1  pr=...."``.
+        result["summary_line"] = format_summary_line(*parts)
 
         # F10: populate agent_summary with the canonical safety-tool
         # shape (summary_line / verdict / risk / next_step). Prior to

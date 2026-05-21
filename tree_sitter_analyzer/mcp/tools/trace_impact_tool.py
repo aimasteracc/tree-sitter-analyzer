@@ -12,6 +12,9 @@ architecture, reusing existing ripgrep infrastructure.
 
 from __future__ import annotations
 
+import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from ...language_detector import LanguageDetector, detect_language_from_file
@@ -59,6 +62,168 @@ def _is_source_file(file_path: str) -> bool:
         return False
     lower = file_path.lower()
     return any(lower.endswith(ext) for ext in _SOURCE_EXTS)
+
+
+# J7 (round-22): even after H4's extension filter, docstring and comment
+# hits inside ``.py``/``.ts``/etc still inflate ``source_call_count`` — a
+# line like ``"""ARCH-A4 regression: BaseMCPTool.set_project_path..."""``
+# is counted as a caller. Heuristic-based classification (regex + triple-
+# quote state) is good enough: full AST lookup per hit is too expensive
+# for trace_impact, which runs on many matches at once.
+_PY_LIKE_EXTS = (".py",)
+_C_LIKE_EXTS = (
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".java",
+    ".go",
+    ".rs",
+    ".c",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".h",
+    ".hpp",
+    ".hxx",
+)
+
+# Match either a triple-double-quote or triple-single-quote token at any
+# position on the line. We don't try to handle prefix strings (``r"""``,
+# ``f"""``) specially — the leading prefix is fine, we just look at the
+# triple-quote run itself.
+_PY_TRIPLE_QUOTE_RE = re.compile(r'(?:"""|\'\'\')')
+
+
+def _python_non_code_lines(text: str) -> set[int]:
+    # Heuristic Python-comment / docstring detector. Returns 1-based line
+    # numbers that are comment-only OR inside a triple-quoted string.
+    #
+    # Rules:
+    # * Lines whose first non-whitespace character is ``#`` count as comments.
+    # * Lines fully inside a triple-quoted string count as docstring text.
+    # * The line that opens a triple-quote AND the line that closes it
+    #   are both flagged — even if the opener has code before the triple
+    #   quote, we err on the side of dropping the hit. False negatives
+    #   (treating a real call site as a docstring) are visible to the
+    #   caller via the ``raw_match_count`` field, and a slight over-filter
+    #   is acceptable per the brief.
+    #
+    # Doesn't track escape sequences inside the string — a triple-quote
+    # inside a docstring is impossible to write in pure-string form
+    # anyway, so a naive token count works.
+    non_code: set[int] = set()
+    in_triple = False
+    for idx, line in enumerate(text.splitlines(), start=1):
+        stripped = line.lstrip()
+        # Count how many triple-quote tokens appear on this line. The
+        # state-machine: each triple-quote run toggles the inside-string
+        # flag. Open-and-close on the same line cancels out.
+        toggles = len(_PY_TRIPLE_QUOTE_RE.findall(line))
+        if in_triple:
+            # Already inside a docstring → this line is docstring text.
+            non_code.add(idx)
+            if toggles % 2 == 1:
+                in_triple = False
+            continue
+        if toggles >= 1:
+            # Opening (and possibly closing on the same line) — treat
+            # the line itself as docstring so opener content like an
+            # ARCH-A4 regression docstring header is dropped.
+            non_code.add(idx)
+            if toggles % 2 == 1:
+                in_triple = True
+            continue
+        # Plain comment line.
+        if stripped.startswith("#"):
+            non_code.add(idx)
+    return non_code
+
+
+def _c_like_non_code_lines(text: str) -> set[int]:
+    """Return 1-based line numbers that are ``//`` comments or inside ``/* */`` blocks.
+
+    Tracks ``/* ... */`` state across lines. Doesn't try to honour string
+    literals (``"http://example.com"`` will look like ``//`` to this
+    scanner) — acceptable per the J7 brief, which prefers a heuristic
+    over per-hit AST lookups.
+    """
+    non_code: set[int] = set()
+    in_block = False
+    for idx, line in enumerate(text.splitlines(), start=1):
+        stripped = line.lstrip()
+        if in_block:
+            non_code.add(idx)
+            if "*/" in line:
+                in_block = False
+                # If after closing the block there's only whitespace,
+                # the line stays purely comment. If real code follows
+                # ``*/``, treating the line as non-code is a small
+                # over-filter — acceptable.
+            continue
+        if stripped.startswith("//"):
+            non_code.add(idx)
+            continue
+        if "/*" in line:
+            non_code.add(idx)
+            # Check whether the block also closes on the same line.
+            close_idx = line.find("*/", line.find("/*") + 2)
+            if close_idx == -1:
+                in_block = True
+    return non_code
+
+
+@lru_cache(maxsize=512)
+def _file_non_code_lines(file_path: str) -> frozenset[int]:
+    """Read ``file_path`` once and compute the set of comment/docstring lines.
+
+    Cached so a single ``trace_impact`` call with N hits across M files
+    pays the file-read cost M times, not N times. The cache is process-
+    local; in MCP-server mode the same files get read again on a fresh
+    invocation, which is fine — they're typically already in the OS page
+    cache.
+    """
+    lower = file_path.lower()
+    try:
+        text = Path(file_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        # File disappeared / unreadable → assume nothing is non-code so
+        # we don't accidentally hide every hit.
+        return frozenset()
+    if lower.endswith(_PY_LIKE_EXTS):
+        return frozenset(_python_non_code_lines(text))
+    if lower.endswith(_C_LIKE_EXTS):
+        return frozenset(_c_like_non_code_lines(text))
+    return frozenset()
+
+
+def _filter_comment_docstring_matches(
+    matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Drop hits whose line is inside a comment or docstring.
+
+    Called AFTER ``_filter_source_matches`` so we only pay the file-read
+    cost for hits that survived the extension filter. The pair of filters
+    together gives an honest ``source_call_count``:
+
+    * Extension filter (H4): drops markdown / CHANGELOG hits.
+    * Comment/docstring filter (J7): drops hits inside ``#`` / ``//`` /
+      ``/* */`` / Python triple-quoted strings.
+    """
+    if not matches:
+        return matches
+    kept: list[dict[str, Any]] = []
+    for match in matches:
+        file_path = match.get("file", "")
+        line_no = match.get("line")
+        if not file_path or not isinstance(line_no, int):
+            kept.append(match)
+            continue
+        non_code = _file_non_code_lines(file_path)
+        if line_no in non_code:
+            continue
+        kept.append(match)
+    return kept
 
 
 def _get_impact_level(count: int) -> dict[str, str]:
@@ -443,8 +608,18 @@ class TraceImpactTool(BaseMCPTool):
         # passes ``--no-ignore``) and against future schema drift in
         # ``_SOURCE_EXTS``. ``source_call_count`` is the honest number
         # an agent can trust; ``true_total`` is what rg actually
-        # returned. The two should be equal in normal operation.
-        source_matches = _filter_source_matches(matches)
+        # returned.
+        #
+        # J7 fix (round-22): on top of the extension filter, drop hits
+        # inside comments and docstrings. ``BaseMCPTool`` previously
+        # reported 99 source callers — most of them were
+        # ``"""...BaseMCPTool..."""`` docstring text or ``# ...
+        # BaseMCPTool`` comment text, not real call sites. After this
+        # filter ``source_call_count`` reflects only code lines.
+        # ``raw_match_count`` keeps the original ripgrep count for
+        # transparency.
+        ext_filtered = _filter_source_matches(matches)
+        source_matches = _filter_comment_docstring_matches(ext_filtered)
 
         # Capture true total BEFORE truncating for display.
         # impact_level and source_call_count must reflect the actual number

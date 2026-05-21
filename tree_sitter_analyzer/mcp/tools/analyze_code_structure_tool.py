@@ -23,7 +23,7 @@ from .analyze_code_structure_helpers import (
     convert_analysis_result_to_structure_dict,
     extract_metadata,
 )
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, format_summary_line
 
 logger = setup_logger(__name__)
 
@@ -253,9 +253,14 @@ def _attach_agent_summary(
     n_methods = _safe_int(metadata.get("methods_count", 0))
     n_fields = _safe_int(metadata.get("fields_count", 0))
     total_lines = _safe_int(metadata.get("total_lines", 0))
-    summary_line = (
-        f"{options.file_path} {options.language} {total_lines} lines  "
-        f"classes={n_classes} methods={n_methods} fields={n_fields}"
+    # J5 (round-22): single-space join via helper.
+    summary_line = format_summary_line(
+        options.file_path,
+        options.language,
+        f"{total_lines} lines",
+        f"classes={n_classes}",
+        f"methods={n_methods}",
+        f"fields={n_fields}",
     )
     response["summary_line"] = summary_line
     response["agent_summary"] = {

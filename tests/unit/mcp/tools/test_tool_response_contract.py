@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -2704,3 +2705,1222 @@ class TestPol3ChangeImpactPreviewTruncation:
             f"Pol3: ledger.preview_truncated must be False under cap — "
             f"got {ledger.get('preview_truncated')!r}"
         )
+
+
+# ============================================================================
+# J9 — refactor agrees with code_patterns on the same file (round-22)
+# ============================================================================
+
+
+class TestJ9RefactorCodePatternsParity:
+    """J9 (round-22): before this fix the ``refactor`` tool was
+    structure-only — it found long methods, deep nesting, god classes,
+    but never noticed ``eval(...)``, ``except:``, or ``def f(x=[])``.
+    On the same file ``code_patterns`` returned 4 findings (2 critical)
+    while ``refactor`` happily reported ``verdict=clean suggestions=0``.
+    An agent that chained ``--refactor`` first shipped the bugs.
+
+    Fix (Option A): the refactor tool now delegates to the same
+    ``_detect_anti_patterns`` and ``_detect_security`` helpers
+    ``code_patterns`` uses, surfacing those findings as suggestions
+    with the appropriate severity. The cross-tool ``verdict`` now
+    aligns: SAFE / CAUTION / UNSAFE.
+    """
+
+    @pytest.fixture
+    def buggy_project(self, tmp_path: Path) -> Path:
+        """A 5-line Python file containing every category of finding the
+        cross-tool contract should surface: mutable default arg
+        (critical anti-pattern), bare except (warning), eval (critical
+        security). Structural detectors find nothing because the file
+        is too small for any threshold."""
+        src = tmp_path / "buggy.py"
+        src.write_text(
+            'def f1(x=[]):\n    return x\ntry: pass\nexcept: pass\neval("1+1")\n',
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _run_refactor(self, project: Path) -> dict:
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        tool = RefactoringSuggestionsTool(str(project))
+        return _run(tool.execute({"file_path": "buggy.py", "output_format": "json"}))
+
+    def _run_patterns(self, project: Path) -> dict:
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        tool = CodePatternsTool(str(project))
+        return _run(tool.execute({"file_path": "buggy.py", "output_format": "json"}))
+
+    def test_refactor_no_longer_returns_clean_on_buggy_file(
+        self, buggy_project: Path
+    ) -> None:
+        """The pre-J9 verdict was ``clean`` (zero suggestions). Post-J9
+        the bridged anti-pattern / security findings push the count
+        above zero so an agent chain doesn't ship the file."""
+        result = self._run_refactor(buggy_project)
+        total = result.get("total_suggestions", len(result.get("suggestions", [])))
+        assert total > 0, (
+            f"J9: refactor must surface anti-patterns + security findings "
+            f"on a buggy file — got total_suggestions={total}"
+        )
+
+    def test_refactor_verdict_aligns_with_code_patterns(
+        self, buggy_project: Path
+    ) -> None:
+        """Both tools must agree on the same input. ``code_patterns``
+        emits ``UNSAFE`` on this file; ``refactor`` must do the same."""
+        refactor = self._run_refactor(buggy_project)
+        patterns = self._run_patterns(buggy_project)
+        rv = refactor.get("verdict") or refactor.get("agent_summary", {}).get("verdict")
+        pv = patterns.get("verdict") or patterns.get("agent_summary", {}).get("verdict")
+        assert rv == pv == "UNSAFE", (
+            f"J9: refactor and code_patterns must agree on the verdict — "
+            f"refactor={rv!r} code_patterns={pv!r}"
+        )
+
+    def test_refactor_surfaces_anti_pattern_categories(
+        self, buggy_project: Path
+    ) -> None:
+        """The bridged findings must be findable in the suggestion list.
+        We don't pin specific IDs (the underlying detectors may evolve)
+        — only that anti-patterns and security findings BOTH appear."""
+        result = self._run_refactor(buggy_project)
+        sources = {s.get("source") for s in result.get("suggestions", [])}
+        assert "code_patterns" in sources, (
+            f"J9: at least one suggestion must come from the code_patterns "
+            f"bridge — sources={sources!r}"
+        )
+
+    def test_refactor_clean_file_keeps_safe_verdict(self, tmp_path: Path) -> None:
+        """Sanity check: a clean Python file leaves the verdict at SAFE.
+        Otherwise we'd be permanently flagging every file."""
+        (tmp_path / "ok.py").write_text(
+            "def add(a: int, b: int) -> int:\n    return a + b\n",
+            encoding="utf-8",
+        )
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        tool = RefactoringSuggestionsTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "ok.py", "output_format": "json"}))
+        verdict = result.get("verdict") or result.get("agent_summary", {}).get(
+            "verdict"
+        )
+        assert verdict == "SAFE", (
+            f"J9: clean file must keep verdict at SAFE — got {verdict!r}"
+        )
+
+
+# ============================================================================
+# J10 — bare_except not double-listed across security + anti_patterns
+# ============================================================================
+
+
+class TestJ10NoDupCategoriesBareExcept:
+    """J10 (round-22): ``_detect_security`` and ``_detect_anti_patterns``
+    both emit a ``bare_except`` finding on ``try: / except:``. Pre-J10
+    the same (file, line) showed up twice in ``results`` — once under
+    ``category=security`` and once under ``category=anti_patterns``.
+    Pure noise that double-counts the ``warning_count`` and burns
+    tokens in TOON output.
+
+    Fix: extend ``_dedup_security_mirror`` (already deduped the
+    smell-namespaced mirror under G4) to also drop the anti-pattern
+    duplicate. Security namespace stays canonical (G4 convention).
+    """
+
+    @pytest.fixture
+    def be_project(self, tmp_path: Path) -> Path:
+        # Use an indented bare-except inside a function so both
+        # detectors trigger (the anti-pattern detector requires a
+        # ``def`` nearby).
+        (tmp_path / "be.py").write_text(
+            "def f():\n    try:\n        pass\n    except:\n        pass\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _run_patterns(self, project: Path) -> dict:
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        tool = CodePatternsTool(str(project))
+        return _run(tool.execute({"file_path": "be.py", "output_format": "json"}))
+
+    def test_bare_except_appears_exactly_once(self, be_project: Path) -> None:
+        result = self._run_patterns(be_project)
+        bare_excepts = [p for p in result["results"] if p.get("type") == "bare_except"]
+        assert len(bare_excepts) == 1, (
+            f"J10: bare_except must appear once in results — "
+            f"got {len(bare_excepts)} entries: {bare_excepts!r}"
+        )
+
+    def test_security_namespace_is_canonical(self, be_project: Path) -> None:
+        """The surviving entry must be the ``security``-namespaced one
+        (matches the G4 convention used for the smell-mirror dedup)."""
+        result = self._run_patterns(be_project)
+        bare_excepts = [p for p in result["results"] if p.get("type") == "bare_except"]
+        assert bare_excepts[0]["category"] == "security", (
+            f"J10: bare_except canonical category must be ``security`` — "
+            f"got {bare_excepts[0]['category']!r}"
+        )
+
+    def test_warning_count_not_double_counted(self, be_project: Path) -> None:
+        """The pre-J10 double-listing inflated ``warning_count`` to 2.
+        After dedup it must be exactly 1."""
+        result = self._run_patterns(be_project)
+        # The file has exactly one warning-level finding (bare_except).
+        # Any extra info-level findings don't count toward warning_count.
+        assert result["warning_count"] == 1, (
+            f"J10: warning_count must reflect a single bare_except — "
+            f"got {result['warning_count']}"
+        )
+
+
+# ============================================================================
+# J11 — change_impact verdict vocabulary (round-22)
+# ============================================================================
+
+
+class TestJ11ChangeImpactVerdictVocab:
+    """J11 (round-22): ``change_impact`` used to emit ``verdict=CLEAN``
+    even with ``changed_count > 0``. That collided with the safety-tool
+    vocabulary (``CLEAN`` means "ship it"). Agents chaining the two
+    shipped work that still needed verification.
+
+    Fix: ``CLEAN`` only fires when ``changed_count == 0`` AND no
+    invalid scope paths. Otherwise emit ``REVIEW`` (pending
+    verification) or ``WARN`` (soft-failure from H8).
+    """
+
+    def _ctx(
+        self, changed_files: list[str], scope_paths: list[str] | None = None
+    ) -> dict:
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+            apply_scope_validation,
+        )
+
+        result: dict = {
+            "changed_count": len(changed_files),
+            "changed_files": changed_files,
+            "scope_paths": scope_paths or [],
+            "agent_summary": {"changed_count": len(changed_files)},
+        }
+        return apply_scope_validation(result, [])
+
+    def test_changed_count_zero_emits_clean(self) -> None:
+        """No changes → CLEAN. The legacy steady state."""
+        result = self._ctx([])
+        verdict = result["agent_summary"]["verdict"]
+        assert verdict == "CLEAN", (
+            f"J11: changed_count=0 must emit CLEAN — got {verdict!r}"
+        )
+
+    def test_changed_count_positive_emits_review(self) -> None:
+        """Any non-empty diff → REVIEW. Pre-J11 this returned CLEAN
+        which an agent would read as ``ship it``."""
+        result = self._ctx(["src/a.py", "src/b.py"])
+        verdict = result["agent_summary"]["verdict"]
+        assert verdict == "REVIEW", (
+            f"J11: changed_count>0 must emit REVIEW — got {verdict!r}"
+        )
+        # CLEAN must NOT appear when there are changes. Belt-and-braces
+        # — the brief specifically says ``verdict != CLEAN``.
+        assert verdict != "CLEAN"
+
+    def test_constants_named_so_callsites_align(self) -> None:
+        """All three verdict values live as named constants so future
+        refactors don't drift between the source and the documentation."""
+        from tree_sitter_analyzer.mcp.tools.utils import change_impact_response as cir
+
+        assert cir.CHANGE_IMPACT_VERDICT_CLEAN == "CLEAN"
+        assert cir.CHANGE_IMPACT_VERDICT_REVIEW == "REVIEW"
+        assert cir.CHANGE_IMPACT_VERDICT_WARN == "WARN"
+
+    def test_invalid_scope_still_overrides_to_warn(self) -> None:
+        """The H8 escalation still beats the J11 default. WARN takes
+        precedence over REVIEW because the caller's input was partly
+        ignored — they need to know that, not just that they have
+        work pending."""
+        from tree_sitter_analyzer.mcp.tools.utils.change_impact_response import (
+            apply_scope_validation,
+        )
+
+        result: dict = {
+            "changed_count": 3,
+            "changed_files": ["a.py", "b.py", "c.py"],
+            "agent_summary": {"changed_count": 3},
+        }
+        result = apply_scope_validation(result, ["nonexistent.py"])
+        assert result["agent_summary"]["verdict"] == "WARN", (
+            f"J11/H8: invalid scope must still escalate to WARN — "
+            f"got {result['agent_summary']['verdict']!r}"
+        )
+
+
+# ============================================================================
+# J13 — code_patterns dropped duplicate `patterns` key (round-22)
+# ============================================================================
+
+
+class TestJ13CodePatternsNoDuplicatePatternsKey:
+    """J13 (round-22): ``code_patterns`` was emitting both ``results``
+    and ``patterns`` as byte-identical lists. Pure token waste in TOON
+    output, and forced callers to know that the two keys were aliases.
+
+    Fix: drop ``patterns`` entirely. The canonical alias is
+    ``results`` (matches every other search/scan tool). Callers that
+    previously read ``response['patterns']`` must switch to
+    ``response['results']``.
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "bug.py").write_text(
+            "def f(x=[]):\n    return x\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _run_patterns(self, project: Path) -> dict:
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        tool = CodePatternsTool(str(project))
+        return _run(tool.execute({"file_path": "bug.py", "output_format": "json"}))
+
+    def test_patterns_key_removed(self, tiny_project: Path) -> None:
+        """``patterns`` is no longer a top-level key — agents must use
+        ``results``."""
+        result = self._run_patterns(tiny_project)
+        assert "patterns" not in result, (
+            f"J13: ``patterns`` was removed as a duplicate of ``results`` — "
+            f"got result keys: {sorted(result.keys())!r}"
+        )
+
+    def test_results_still_canonical(self, tiny_project: Path) -> None:
+        """``results`` survives as the single source of truth."""
+        result = self._run_patterns(tiny_project)
+        assert "results" in result, (
+            f"J13: ``results`` must remain the canonical list key — "
+            f"got result keys: {sorted(result.keys())!r}"
+        )
+        # And it must actually contain the findings (not an empty
+        # placeholder).
+        assert isinstance(result["results"], list)
+
+    def test_empty_file_also_drops_patterns_key(self, tmp_path: Path) -> None:
+        """The empty-file short-circuit envelope must also be free of
+        the duplicate key — otherwise we'd reintroduce the drift on
+        the no-content branch."""
+        (tmp_path / "empty.py").write_text("", encoding="utf-8")
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        tool = CodePatternsTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "empty.py", "output_format": "json"}))
+        assert "patterns" not in result, (
+            f"J13: empty-file envelope must also be free of ``patterns`` — "
+            f"got keys: {sorted(result.keys())!r}"
+        )
+        assert "results" in result and result["results"] == []
+
+
+# ============================================================================
+# J14 — N/A casing canonical across tools (round-22)
+# ============================================================================
+
+
+class TestJ14NACasingCanonical:
+    """J14 (round-22): on an empty file ``code_patterns`` returned
+    ``verdict=N/A`` (uppercase) while ``file_health`` returned
+    ``verdict=n/a`` (lowercase). Every other verdict in the codebase is
+    uppercase (SAFE, CAUTION, UNSAFE, CLEAN, WARN), so file_health was
+    the outlier.
+
+    Fix: align file_health's empty-file branch to ``N/A``. Both tools
+    now emit the same casing on the same input.
+    """
+
+    @pytest.fixture
+    def empty_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "zero.py").write_text("", encoding="utf-8")
+        return tmp_path
+
+    def test_code_patterns_emits_uppercase_na(self, empty_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        tool = CodePatternsTool(str(empty_project))
+        result = _run(tool.execute({"file_path": "zero.py", "output_format": "json"}))
+        assert result["verdict"] == "N/A", (
+            f"J14: code_patterns must emit uppercase N/A — "
+            f"got {result.get('verdict')!r}"
+        )
+
+    def test_file_health_emits_uppercase_na(self, empty_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(empty_project))
+        result = _run(tool.execute({"file_path": "zero.py", "output_format": "json"}))
+        assert result["verdict"] == "N/A", (
+            f"J14: file_health must emit uppercase N/A — got {result.get('verdict')!r}"
+        )
+
+    def test_cross_tool_casing_matches(self, empty_project: Path) -> None:
+        """The whole point of J14: both tools agree byte-for-byte."""
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        patterns = _run(
+            CodePatternsTool(str(empty_project)).execute(
+                {"file_path": "zero.py", "output_format": "json"}
+            )
+        )
+        health = _run(
+            FileHealthTool(str(empty_project)).execute(
+                {"file_path": "zero.py", "output_format": "json"}
+            )
+        )
+        assert patterns["verdict"] == health["verdict"] == "N/A", (
+            f"J14: code_patterns and file_health must agree on N/A casing — "
+            f"patterns={patterns.get('verdict')!r} "
+            f"health={health.get('verdict')!r}"
+        )
+
+    def test_agent_summary_verdict_also_uppercase(self, empty_project: Path) -> None:
+        """The verdict is mirrored inside ``agent_summary``. Both
+        surfaces must agree — drift here is the same footgun the
+        top-level fix addresses."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(empty_project))
+        result = _run(tool.execute({"file_path": "zero.py", "output_format": "json"}))
+        nested = result.get("agent_summary", {}).get("verdict")
+        assert nested == "N/A", (
+            f"J14: file_health agent_summary.verdict must also be N/A — got {nested!r}"
+        )
+
+
+class TestJ2ErrorEnvelopeOnJsonFormat:
+    """J2: CLI error paths must emit a JSON envelope under ``--format json``.
+
+    Before J2 the ``except Exception`` handler in
+    ``mcp_commands._run_tool`` printed a plain-text ``ERROR: ...`` line
+    even when the user explicitly asked for ``--format json``, leaving
+    every programmatic consumer (Claude Code, scripted agents) without
+    a parseable response. The fix funnels every error path — both the
+    pre-execution ``validate_mcp_command_args`` sink and the
+    ``except Exception`` block — through a format-aware envelope
+    builder. These tests pin the new contract end-to-end.
+    """
+
+    def _envelope_from_stdout(self, stdout: str) -> dict[str, Any]:
+        import json as _json
+
+        payload = _json.loads(stdout.strip())
+        assert payload["success"] is False, (
+            f"J2: error envelope must carry success=False — got {payload!r}"
+        )
+        assert isinstance(payload["error"], str) and payload["error"], (
+            "J2: error envelope must carry a non-empty error string"
+        )
+        assert payload["error_type"] in {"validation", "internal"}, (
+            f"J2: error_type must be validation|internal — got "
+            f"{payload.get('error_type')!r}"
+        )
+        return payload
+
+    def test_out_of_project_path_emits_json_envelope(
+        self, capsys, tmp_path: Path
+    ) -> None:
+        """Source 1: security boundary failure (out-of-project absolute path)."""
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.commands import mcp_commands
+
+        out_of_project = tmp_path / "out_of_project.py"
+        out_of_project.write_text("import os\n")
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        args = Namespace(
+            code_patterns=True,
+            file_path=str(out_of_project),
+            project_root=str(project_root),
+        )
+        # Cover all MCP-spec flags so ``find_selected_mcp_command``
+        # picks ``code_patterns`` cleanly without ``AttributeError``.
+        for flag in (
+            "file_health",
+            "project_health",
+            "overview",
+            "safe_to_edit",
+            "change_impact",
+            "parser_readiness",
+            "dependencies",
+            "refactor",
+            "smart_context",
+            "symbol_lineage",
+            "call_graph",
+            "ast_cache",
+            "detect_routes",
+        ):
+            setattr(args, flag, False if flag != "dependencies" else None)
+        args.code_patterns_categories = ["all"]
+        args.severity_threshold = "info"
+
+        result = mcp_commands.handle_mcp_commands(
+            args,
+            lambda payload: None,
+            lambda message: None,
+            lambda: "json",
+        )
+
+        assert result == 1
+        stdout = capsys.readouterr().out
+        payload = self._envelope_from_stdout(stdout)
+        assert payload["error_type"] == "validation"
+        assert (
+            "Security validation failed" in payload["error"]
+            or "outside project" in payload["error"].lower()
+        ), payload["error"]
+
+    def test_nonexistent_file_emits_json_envelope(self, capsys, tmp_path: Path) -> None:
+        """Source 2: file-not-found failure (FileNotFoundError / ValueError)."""
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.commands import mcp_commands
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        args = Namespace(
+            file_health=True,
+            file_path=str(project_root / "does_not_exist.py"),
+            project_root=str(project_root),
+        )
+        for flag in (
+            "code_patterns",
+            "project_health",
+            "overview",
+            "safe_to_edit",
+            "change_impact",
+            "parser_readiness",
+            "dependencies",
+            "refactor",
+            "smart_context",
+            "symbol_lineage",
+            "call_graph",
+            "ast_cache",
+            "detect_routes",
+        ):
+            setattr(args, flag, False if flag != "dependencies" else None)
+
+        result = mcp_commands.handle_mcp_commands(
+            args,
+            lambda payload: None,
+            lambda message: None,
+            lambda: "json",
+        )
+
+        assert result == 1
+        stdout = capsys.readouterr().out
+        payload = self._envelope_from_stdout(stdout)
+        # FileHealthTool wraps the missing file as a ValueError so the
+        # bucket lands in "validation"; either bucket is acceptable but
+        # the envelope shape must be intact.
+        assert payload["error_type"] == "validation"
+        assert (
+            "does_not_exist" in payload["error"]
+            or "not found" in payload["error"].lower()
+        ), payload["error"]
+
+    def test_missing_required_file_path_emits_json_envelope(
+        self, capsys, tmp_path: Path
+    ) -> None:
+        """Source 3: pre-execution validation (missing ``--file-path``).
+
+        ``--dependencies blast_radius`` requires a file path and was
+        previously dropping the JSON envelope on this validation
+        failure too — the wrapped error sink must catch it.
+        """
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.commands import mcp_commands
+
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        args = Namespace(
+            dependencies="blast_radius",
+            file_path=None,
+            project_root=str(project_root),
+        )
+        for flag in (
+            "file_health",
+            "code_patterns",
+            "project_health",
+            "overview",
+            "safe_to_edit",
+            "change_impact",
+            "parser_readiness",
+            "refactor",
+            "smart_context",
+            "symbol_lineage",
+            "call_graph",
+            "ast_cache",
+            "detect_routes",
+        ):
+            setattr(args, flag, False)
+
+        result = mcp_commands.handle_mcp_commands(
+            args,
+            lambda payload: None,
+            lambda message: None,
+            lambda: "json",
+        )
+
+        assert result == 1
+        stdout = capsys.readouterr().out
+        payload = self._envelope_from_stdout(stdout)
+        assert payload["error_type"] == "validation"
+        assert "file" in payload["error"].lower(), payload["error"]
+
+
+class TestJ4ProjectRootSetterRevalidatesEngine:
+    """J4: ``tool.project_root = ...`` must rewire engine state.
+
+    ``AnalyzeScaleTool.__init__`` and ``set_project_path`` both fire
+    ``_on_project_root_changed`` so the underlying analysis engine
+    sees the new project root. Before J4 a direct attribute write
+    (``tool.project_root = "/abs"``) bypassed the hook — the engine
+    kept its stale security validator and rejected the absolute paths
+    that ``resolve_and_validate_file_path`` had just produced. The
+    property setter introduced in J4 closes that gap.
+    """
+
+    def test_setter_fires_hook_for_analyze_scale_tool(self, tmp_path: Path) -> None:
+        """Direct attribute assignment must rebuild the analysis engine."""
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+
+        # Build a tiny Python project inside tmp_path so the security
+        # validator accepts a relative path under the new project root.
+        sample = tmp_path / "sample.py"
+        sample.write_text("def greet(name: str) -> str:\n    return f'hi {name}'\n")
+
+        tool = AnalyzeScaleTool()  # no project_root in constructor
+        # The engine built at __init__ time is bound to ``None`` /
+        # cwd-style validation. Capture it so we can prove the setter
+        # really swapped it.
+        original_engine = tool.analysis_engine
+
+        tool.project_root = str(tmp_path)
+
+        assert tool.analysis_engine is not original_engine, (
+            "J4: ``project_root`` setter must invoke "
+            "``_on_project_root_changed`` so the analysis engine is "
+            "rebuilt against the new project root."
+        )
+
+        result = asyncio.run(tool.execute({"file_path": "sample.py"}))
+        assert result.get("success") is True, (
+            f"J4: tool.execute() must succeed after a post-construction "
+            f"``project_root`` assignment — got {result!r}"
+        )
+
+    def test_setter_preserves_security_gate(self, tmp_path: Path) -> None:
+        """The setter must NOT relax the engine's "no absolute paths" guard.
+
+        The rebuild fires the hook (so resolved relative paths work),
+        but the security validator must still reject paths outside the
+        new project root.
+        """
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+
+        outside = tmp_path / "outside.py"
+        outside.write_text("x = 1\n")
+        project_root = tmp_path / "project"
+        project_root.mkdir()
+
+        tool = AnalyzeScaleTool()
+        tool.project_root = str(project_root)
+
+        with pytest.raises(ValueError):
+            asyncio.run(tool.execute({"file_path": str(outside)}))
+
+
+# ============================================================================
+# J5 — summary_line is single-space joined across all builders (round-22)
+# ============================================================================
+
+
+class TestJ5SummaryLineNoDoubleSpaces:
+    """J5 (round-22): Pol1 fixed only ``code_patterns_tool`` but four
+    other tools still emitted ``summary_line`` with a hard-coded ``"...
+    lines  "`` (trailing double space) — producing visible artefacts like
+    ``"... 613 lines  classes=1 methods=13"``. The fix introduces a
+    shared ``format_summary_line(*parts)`` helper in ``base_tool`` so
+    every builder gets the same single-space join, and the regression
+    class is closed for good.
+
+    Contract (per-tool):
+      * ``summary_line`` (top-level) contains no double spaces.
+      * ``summary_line`` has no leading / trailing whitespace.
+      * ``agent_summary.summary_line``, when present, stays clean.
+    """
+
+    @pytest.fixture
+    def sample_python_file(self, tmp_path: Path) -> Path:
+        src = tmp_path / "sample.py"
+        src.write_text(
+            "class Foo:\n"
+            "    x: int = 1\n"
+            "    def bar(self) -> int:\n"
+            "        return self.x\n"
+            "    def baz(self) -> int:\n"
+            "        return self.bar() + 1\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        "tool_class_path,tool_name",
+        [
+            (
+                "tree_sitter_analyzer.mcp.tools.analyze_scale_tool.AnalyzeScaleTool",
+                "analyze_scale",
+            ),
+            (
+                "tree_sitter_analyzer.mcp.tools.universal_analyze_tool.UniversalAnalyzeTool",
+                "universal_analyze",
+            ),
+            (
+                "tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool.AnalyzeCodeStructureTool",
+                "analyze_code_structure",
+            ),
+        ],
+    )
+    def test_summary_line_no_double_spaces(
+        self,
+        sample_python_file: Path,
+        tool_class_path: str,
+        tool_name: str,
+    ) -> None:
+        import importlib
+
+        module_name, _, cls_name = tool_class_path.rpartition(".")
+        tool_cls = getattr(importlib.import_module(module_name), cls_name)
+        tool = tool_cls(project_root=str(sample_python_file))
+        result = _run(tool.execute({"file_path": "sample.py"}))
+
+        summary = result.get("summary_line", "")
+        assert isinstance(summary, str) and summary, (
+            f"J5/{tool_name}: summary_line must be a non-empty string — got {summary!r}"
+        )
+        assert "  " not in summary, (
+            f"J5/{tool_name}: summary_line must not contain double spaces — "
+            f"got {summary!r}"
+        )
+        assert summary == summary.strip(), (
+            f"J5/{tool_name}: summary_line must not have leading/trailing "
+            f"whitespace — got {summary!r}"
+        )
+
+        nested = result.get("agent_summary", {}).get("summary_line", "")
+        # When the tool surfaces a nested mirror, it must stay clean too.
+        if nested:
+            assert "  " not in nested, (
+                f"J5/{tool_name}: agent_summary.summary_line must not "
+                f"contain double spaces — got {nested!r}"
+            )
+
+    def test_json_file_path_summary_line_clean(self, tmp_path: Path) -> None:
+        # analyze_scale has a separate code path for JSON/YAML/TOML
+        # (``create_json_file_analysis``) — guard it explicitly so a
+        # future refactor cannot regress just the data-file branch.
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+
+        (tmp_path / "config.json").write_text(
+            '{"key": "value", "list": [1, 2, 3]}\n', encoding="utf-8"
+        )
+        tool = AnalyzeScaleTool(project_root=str(tmp_path))
+        result = _run(tool.execute({"file_path": "config.json"}))
+
+        summary = result.get("summary_line", "")
+        assert isinstance(summary, str) and summary, (
+            f"J5/json-path: summary_line must be non-empty — got {summary!r}"
+        )
+        assert "  " not in summary, (
+            f"J5/json-path: summary_line must not contain double spaces — "
+            f"got {summary!r}"
+        )
+        assert summary == summary.strip(), (
+            f"J5/json-path: summary_line must not have leading/trailing "
+            f"whitespace — got {summary!r}"
+        )
+
+    def test_format_summary_line_helper_drops_empty_parts(self) -> None:
+        # Direct unit-test on the helper so a future refactor can't
+        # accidentally reintroduce the double space by passing an empty
+        # segment between two real ones.
+        from tree_sitter_analyzer.mcp.tools.base_tool import format_summary_line
+
+        result = format_summary_line("foo.py", "", "42 lines", None, "classes=1")
+        assert result == "foo.py 42 lines classes=1", (
+            f"J5/helper: empty/None parts must be dropped — got {result!r}"
+        )
+        # Multiple non-empty parts always single-space joined.
+        assert format_summary_line("a", "b", "c") == "a b c"
+        # All-empty input collapses to "".
+        assert format_summary_line("", "  ", None) == ""
+
+
+# ============================================================================
+# J7 — trace_impact filters comment / docstring hits (round-22)
+# ============================================================================
+
+
+class TestJ7TraceImpactDocstringExclusion:
+    """J7 (round-22): H4's source-extension filter still let docstring
+    and comment text inflate ``source_call_count``. Lines like a triple-
+    quoted regression docstring or ``# parsing BaseMCPTool.__init__``
+    were counted as callers. After J7, only real code lines survive.
+
+    Contract:
+      * Usages must NOT include hits whose line starts with ``#`` (Py
+        comment) or triple-quote (Py docstring opener).
+      * Usages must NOT include hits inside multi-line triple-quoted
+        Python docstrings.
+      * Usages must NOT include hits inside ``//`` or ``/* */`` comments
+        in C-family languages.
+      * ``raw_match_count`` is preserved (transparency) and is >=
+        ``source_call_count`` whenever any non-code hits were filtered.
+    """
+
+    @pytest.fixture
+    def project_with_docstring_hits(self, tmp_path: Path) -> Path:
+        # A Python file with the symbol appearing in (a) a comment, (b)
+        # a multi-line docstring, (c) a single-line triple-quoted
+        # docstring, and (d) a real call. Only (c) class definition and
+        # (d) call should survive after J7's filter.
+        (tmp_path / "main.py").write_text(
+            "# Targeted comment about Widget\n"
+            "def setup():\n"
+            "    '''A docstring talking about Widget here.'''\n"
+            "    return None\n"
+            "\n"
+            "class C:\n"
+            '    """\n'
+            "    Multi-line docstring referencing Widget.\n"
+            "    Widget reference on a second docstring line.\n"
+            '    """\n'
+            "    def go(self):\n"
+            "        return Widget()\n"
+            "\n"
+            "class Widget:\n"
+            "    pass\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_trace_impact_drops_python_comment_lines(
+        self, project_with_docstring_hits: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
+
+        tool = TraceImpactTool(str(project_with_docstring_hits))
+        result = _run(tool.execute({"symbol": "Widget", "max_results": 50}))
+
+        assert result["success"] is True, f"trace_impact failed: {result!r}"
+        usages = result.get("usages", [])
+        for usage in usages:
+            text = (usage.get("context") or usage.get("text") or "").lstrip()
+            assert not text.startswith("#"), (
+                f"J7: usages must not include Python comment lines — "
+                f"got {text!r} at {usage.get('file')}:{usage.get('line')}"
+            )
+
+    def test_trace_impact_drops_python_docstring_lines(
+        self, project_with_docstring_hits: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
+
+        tool = TraceImpactTool(str(project_with_docstring_hits))
+        result = _run(tool.execute({"symbol": "Widget", "max_results": 50}))
+
+        usages = result.get("usages", [])
+        # No usage's text should start with a triple-quote (either form).
+        for usage in usages:
+            text = (usage.get("context") or usage.get("text") or "").lstrip()
+            assert not text.startswith('"""'), (
+                f"J7: usages must not include docstring text — got {text!r}"
+            )
+            assert not text.startswith("'''"), (
+                f"J7: usages must not include docstring text — got {text!r}"
+            )
+
+    def test_trace_impact_keeps_raw_match_count_for_transparency(
+        self, project_with_docstring_hits: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
+
+        tool = TraceImpactTool(str(project_with_docstring_hits))
+        result = _run(tool.execute({"symbol": "Widget", "max_results": 50}))
+
+        # The raw_match_count must persist so callers can see how much
+        # was filtered out.
+        assert "raw_match_count" in result, (
+            "J7: response must keep raw_match_count for transparency"
+        )
+        assert result["raw_match_count"] >= result["source_call_count"], (
+            f"J7: raw_match_count ({result['raw_match_count']}) must be "
+            f">= source_call_count ({result['source_call_count']})"
+        )
+
+    def test_python_non_code_lines_detects_triple_quote_block(self) -> None:
+        # Direct unit test on the heuristic so we know the regex /
+        # state-machine works without depending on the trace_impact
+        # pipeline. This is the load-bearing piece of J7.
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _python_non_code_lines,
+        )
+
+        text = (
+            "def foo():\n"
+            '    """\n'
+            "    Widget reference here.\n"
+            '    """\n'
+            "    return Widget()\n"
+        )
+        non_code = _python_non_code_lines(text)
+        # Lines 2, 3, 4 are the docstring open / body / close.
+        assert 2 in non_code, f"line 2 (docstring open) missing — got {non_code!r}"
+        assert 3 in non_code, f"line 3 (docstring body) missing — got {non_code!r}"
+        assert 4 in non_code, f"line 4 (docstring close) missing — got {non_code!r}"
+        # Line 5 is real code and must NOT be flagged.
+        assert 5 not in non_code, (
+            f"line 5 (real call) wrongly flagged as non-code — got {non_code!r}"
+        )
+
+    def test_python_non_code_lines_detects_hash_comments(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _python_non_code_lines,
+        )
+
+        text = "def foo():\n    # parsing Widget here\n    return Widget()\n"
+        non_code = _python_non_code_lines(text)
+        assert 2 in non_code, f"line 2 (# comment) missing — got {non_code!r}"
+        assert 3 not in non_code, (
+            f"line 3 (real call) wrongly flagged — got {non_code!r}"
+        )
+
+    def test_c_like_non_code_lines_detects_block_and_line_comments(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            _c_like_non_code_lines,
+        )
+
+        text = (
+            "class Foo {\n"
+            "  // Widget mention in line comment\n"
+            "  /*\n"
+            "   * Widget inside block comment\n"
+            "   */\n"
+            "  void go() { Widget(); }\n"
+            "}\n"
+        )
+        non_code = _c_like_non_code_lines(text)
+        # Line 2 (//), 3-5 (block comment) are non-code.
+        for line_no in (2, 3, 4, 5):
+            assert line_no in non_code, (
+                f"line {line_no} should be flagged as non-code — got {non_code!r}"
+            )
+        # Line 6 (real call) must NOT be flagged.
+        assert 6 not in non_code, (
+            f"line 6 (real call) wrongly flagged — got {non_code!r}"
+        )
+
+
+class TestJ1AstCacheSearchModesDistinct:
+    """Round-22 J1: ``search`` and ``fts_search`` were byte-identical
+    because ``search_symbols`` delegated to ``fts_search``. The tool
+    description claimed they differed — agents had to guess. Collapse
+    to one canonical mode (``search``); keep ``fts_search`` accepted
+    at the validate boundary as a deprecated alias but drop it from
+    the schema enum and surface a deprecation marker in the response.
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_fts_search_dropped_from_schema_enum(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(tiny_project))
+        modes = tool.get_tool_schema()["properties"]["mode"]["enum"]
+        assert "search" in modes, (
+            f"J1: ``search`` must remain in the schema enum — got {modes!r}"
+        )
+        assert "fts_search" not in modes, (
+            f"J1: ``fts_search`` must NOT appear in the schema enum — "
+            f"agents should see one canonical mode (``search``). "
+            f"Got {modes!r}"
+        )
+
+    def test_fts_search_alias_still_accepted(self, tiny_project: Path) -> None:
+        """Back-compat: existing MCP callers that still send
+        ``mode='fts_search'`` should keep working — the validate
+        boundary continues to accept it.
+        """
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(tiny_project))
+        # Should NOT raise — fts_search is a deprecated alias.
+        assert tool.validate_arguments({"mode": "fts_search", "query": "greet"}) is True
+
+    def test_fts_search_alias_surfaces_deprecation(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(tiny_project))
+        # Index first so the FTS index exists; otherwise empty result.
+        _run(tool.execute({"mode": "index"}))
+        result = _run(tool.execute({"mode": "fts_search", "query": "greet"}))
+        _assert_envelope_with_summary("ast_cache:fts_search(alias)", result)
+        assert "deprecated_alias" in result, (
+            f"J1: ``fts_search`` responses must carry a ``deprecated_alias`` "
+            f"marker so agents know to migrate to ``search``. "
+            f"Got keys: {sorted(result.keys())!r}"
+        )
+
+    def test_search_response_omits_deprecation_marker(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(tiny_project))
+        _run(tool.execute({"mode": "index"}))
+        result = _run(tool.execute({"mode": "search", "query": "greet"}))
+        _assert_envelope_with_summary("ast_cache:search", result)
+        assert "deprecated_alias" not in result, (
+            f"J1: ``search`` is the canonical mode — its response must NOT "
+            f"carry a ``deprecated_alias`` marker. Got keys: "
+            f"{sorted(result.keys())!r}"
+        )
+
+    def test_search_and_fts_search_results_equivalent(self, tiny_project: Path) -> None:
+        """Both modes are explicitly the same lookup — the document
+        contract (collapsed to one mode) is enforced by returning
+        identical result lists for the same query.
+        """
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(tiny_project))
+        _run(tool.execute({"mode": "index"}))
+        s = _run(tool.execute({"mode": "search", "query": "greet"}))
+        f = _run(tool.execute({"mode": "fts_search", "query": "greet"}))
+        assert s.get("results") == f.get("results"), (
+            "J1: collapsed ``search``/``fts_search`` must return identical "
+            "results — they are explicitly the same lookup."
+        )
+
+
+class TestJ6TOONImportRowsPerSymbol:
+    """Round-22 J6: ``from X import (A, B, C)`` collapsed the entire
+    parenthesised block — newlines, alias keyword, trailing comments
+    and all — into a single ``name`` cell, defeating TOON's whole
+    purpose (token efficiency). Strategy 1 (minimal projection): keep
+    one row per ``from`` statement but emit a clean comma-joined list
+    of the *bound* identifiers, with ``imported_names`` populated for
+    structured consumers.
+    """
+
+    @pytest.fixture
+    def multiline_import_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "module.py").write_text(
+            "from .alpha import (\n"
+            "    A,\n"
+            "    B,\n"
+            "    C,\n"
+            ")\n"
+            "from .beta import One as one, Two as two  # inline comment\n"
+            "from .gamma import (\n"
+            "    Solo as renamed,  # trailing comment that used to bleed\n"
+            ")\n"
+            "import os\n"
+            "from .single import Single\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _analyze_imports(self, project: Path) -> list[dict]:
+        from tree_sitter_analyzer.api import analyze_file
+
+        result = analyze_file(str(project / "module.py"), language="python")
+        # API surfaces import elements as ``type='import'`` rows on the
+        # flat ``elements`` list.
+        return [e for e in result.get("elements", []) if e.get("type") == "import"]
+
+    def test_names_have_no_newlines_or_parens(
+        self, multiline_import_project: Path
+    ) -> None:
+        imports = self._analyze_imports(multiline_import_project)
+        assert imports, "fixture must produce at least one import"
+        for imp in imports:
+            name = imp.get("name", "")
+            assert "\n" not in name, (
+                f"J6: import name must not contain newlines — defeats "
+                f"TOON's token efficiency. Got name={name!r}"
+            )
+            assert "(" not in name and ")" not in name, (
+                f"J6: import name must not contain parens — defeats "
+                f"TOON's token efficiency. Got name={name!r}"
+            )
+
+    def test_names_have_no_trailing_comments(
+        self, multiline_import_project: Path
+    ) -> None:
+        imports = self._analyze_imports(multiline_import_project)
+        for imp in imports:
+            name = imp.get("name", "")
+            assert "#" not in name, (
+                f"J6: import name must not contain ``#`` (trailing inline "
+                f"comment leaked from source). Got name={name!r}"
+            )
+
+    def test_aliased_import_uses_bound_identifier(
+        self, multiline_import_project: Path
+    ) -> None:
+        imports = self._analyze_imports(multiline_import_project)
+        gamma = next(
+            (i for i in imports if i.get("module_name") == ".gamma"),
+            None,
+        )
+        assert gamma is not None, (
+            f"J6: expected to find an import row for module ``.gamma``. "
+            f"Got modules: {[i.get('module_name') for i in imports]!r}"
+        )
+        name = gamma.get("name", "")
+        assert "renamed" in name, (
+            f"J6: aliased import ``Solo as renamed`` must surface the "
+            f"bound identifier ``renamed`` in the name, not the source "
+            f"name or the whole block. Got name={name!r}"
+        )
+
+    def test_imported_names_list_populated(
+        self, multiline_import_project: Path
+    ) -> None:
+        imports = self._analyze_imports(multiline_import_project)
+        alpha = next(
+            (i for i in imports if i.get("module_name") == ".alpha"),
+            None,
+        )
+        assert alpha is not None, "expected .alpha import row"
+        names = alpha.get("imported_names") or []
+        assert set(names) >= {"A", "B", "C"}, (
+            f"J6: ``imported_names`` must list every bound identifier. Got {names!r}"
+        )
+
+
+class TestJ8AstCacheSyncActionStatusConsistent:
+    """Round-22 J8: ``sync`` returned per-file dicts that read
+    ``{action: "indexed", status: "skipped"}`` for files the cache
+    refused — two contradictory labels. ``action`` is renamed to
+    ``considered`` (what the sync engine *attempted*) and kept as a
+    back-compat alias. The ``status`` field continues to record the
+    *outcome*.
+    """
+
+    @pytest.fixture
+    def mixed_project(self, tmp_path: Path) -> Path:
+        # A file the cache will index, plus one it will skip
+        # (``.cs`` is in the source-extension walker but unsupported
+        # by the parser registry, so the cache returns
+        # ``status: 'skipped'``).
+        (tmp_path / "indexable.py").write_text("def f(): return 1\n", encoding="utf-8")
+        (tmp_path / "skipped.cs").write_text(
+            "class C { void M(){} }\n", encoding="utf-8"
+        )
+        return tmp_path
+
+    def _run_sync(self, project: Path) -> dict:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(project))
+        return _run(tool.execute({"mode": "sync"}))
+
+    def test_no_indexed_skipped_contradiction(self, mixed_project: Path) -> None:
+        """The legacy contradiction ``action: indexed, status: skipped``
+        must no longer appear without an accompanying ``considered``
+        field that clarifies intent vs outcome.
+        """
+        result = self._run_sync(mixed_project)
+        details = result.get("details") or []
+        assert details, (
+            f"J8: ``sync`` must emit at least one detail row for our "
+            f"two-file fixture. Got result keys: {sorted(result.keys())!r}"
+        )
+        for d in details:
+            action = d.get("action")
+            status = d.get("status")
+            # If both are populated, the new ``considered`` field MUST
+            # also be present so the row reads "tool tried to X, here
+            # is the outcome" rather than a flat contradiction.
+            if action == "indexed" and status == "skipped":
+                assert "considered" in d, (
+                    f"J8: a row with ``action='indexed', status='skipped'`` "
+                    f"must also carry a ``considered`` field — without it "
+                    f"the two labels are flatly contradictory. Got {d!r}"
+                )
+
+    def test_considered_field_present_for_every_attempt(
+        self, mixed_project: Path
+    ) -> None:
+        """Every per-file row that records an indexing/update/deletion
+        attempt must carry the new ``considered`` field.
+        """
+        result = self._run_sync(mixed_project)
+        details = result.get("details") or []
+        assert details, "fixture must produce sync details"
+        for d in details:
+            assert "considered" in d, (
+                f"J8: every sync detail row must carry a ``considered`` "
+                f"field describing what the engine attempted. Got {d!r}"
+            )
+            assert d["considered"] in {"indexed", "updated", "deleted"}, (
+                f"J8: ``considered`` must be one of "
+                f"indexed/updated/deleted. Got {d['considered']!r}"
+            )
+
+    def test_action_field_kept_as_backcompat_alias(self, mixed_project: Path) -> None:
+        """The legacy ``action`` field is retained for back-compat —
+        downstream consumers that already read it must keep working.
+        """
+        result = self._run_sync(mixed_project)
+        details = result.get("details") or []
+        assert details, "fixture must produce sync details"
+        for d in details:
+            assert "action" in d, (
+                f"J8: ``action`` must remain as a back-compat alias for "
+                f"``considered``. Got {d!r}"
+            )
+            # Aliases must agree.
+            assert d["action"] == d["considered"], (
+                f"J8: ``action`` and ``considered`` must agree (alias). "
+                f"Got action={d['action']!r} vs considered={d['considered']!r}"
+            )

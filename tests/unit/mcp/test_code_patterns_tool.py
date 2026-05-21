@@ -355,10 +355,12 @@ class TestExecuteAntiPatterns:
     async def test_execute_detects_python_anti_patterns(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["anti_patterns"]})
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["anti_patterns"], "output_format": "json"}
+        )
         assert result["success"] is True
         assert result["total_patterns"] > 0
-        types = [p["type"] for p in result["patterns"]]
+        types = [p["type"] for p in result["results"]]
         assert "mutable_default_argument" in types
         assert "bare_except" in types
         assert "print_in_production" in types
@@ -367,9 +369,11 @@ class TestExecuteAntiPatterns:
     async def test_execute_detects_js_anti_patterns(self, tmp_path):
         fp = _make_js_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["anti_patterns"]})
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["anti_patterns"], "output_format": "json"}
+        )
         assert result["success"] is True
-        types = [p["type"] for p in result["patterns"]]
+        types = [p["type"] for p in result["results"]]
         assert "var_usage" in types
         assert "loose_equality" in types
 
@@ -377,9 +381,11 @@ class TestExecuteAntiPatterns:
     async def test_execute_detects_java_anti_patterns(self, tmp_path):
         fp = _make_java_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["anti_patterns"]})
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["anti_patterns"], "output_format": "json"}
+        )
         assert result["success"] is True
-        types = [p["type"] for p in result["patterns"]]
+        types = [p["type"] for p in result["results"]]
         assert "system_out_println" in types
         assert "print_stacktrace" in types
 
@@ -397,27 +403,33 @@ class TestExecuteCategoryFiltering:
     async def test_category_smells_only(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["smells"]})
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["smells"], "output_format": "json"}
+        )
         assert result["success"] is True
-        for p in result["patterns"]:
+        for p in result["results"]:
             assert p["category"] == "smells"
 
     @pytest.mark.asyncio
     async def test_category_security_only(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["security"]})
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["security"], "output_format": "json"}
+        )
         assert result["success"] is True
-        for p in result["patterns"]:
+        for p in result["results"]:
             assert p["category"] == "security"
 
     @pytest.mark.asyncio
     async def test_category_all_includes_everything(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["all"]})
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["all"], "output_format": "json"}
+        )
         assert result["success"] is True
-        cats = {p["category"] for p in result["patterns"]}
+        cats = {p["category"] for p in result["results"]}
         assert "anti_patterns" in cats
 
     @pytest.mark.asyncio
@@ -432,10 +444,14 @@ class TestExecuteCategoryFiltering:
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
         result = await tool.execute(
-            {"file_path": fp, "categories": ["smells", "anti_patterns"]}
+            {
+                "file_path": fp,
+                "categories": ["smells", "anti_patterns"],
+                "output_format": "json",
+            }
         )
         assert result["success"] is True
-        cats = {p["category"] for p in result["patterns"]}
+        cats = {p["category"] for p in result["results"]}
         assert cats <= {"smells", "anti_patterns"}
 
 
@@ -449,10 +465,11 @@ class TestExecuteSeverityFiltering:
                 "file_path": fp,
                 "categories": ["anti_patterns"],
                 "severity_threshold": "critical",
+                "output_format": "json",
             }
         )
         assert result["success"] is True
-        for p in result["patterns"]:
+        for p in result["results"]:
             assert p["severity"] == "critical"
 
     @pytest.mark.asyncio
@@ -464,10 +481,11 @@ class TestExecuteSeverityFiltering:
                 "file_path": fp,
                 "categories": ["anti_patterns"],
                 "severity_threshold": "warning",
+                "output_format": "json",
             }
         )
         assert result["success"] is True
-        for p in result["patterns"]:
+        for p in result["results"]:
             assert p["severity"] in ("warning", "critical")
 
     @pytest.mark.asyncio
@@ -479,10 +497,11 @@ class TestExecuteSeverityFiltering:
                 "file_path": fp,
                 "categories": ["anti_patterns"],
                 "severity_threshold": "info",
+                "output_format": "json",
             }
         )
         assert result["success"] is True
-        sevs = {p["severity"] for p in result["patterns"]}
+        sevs = {p["severity"] for p in result["results"]}
         assert sevs >= {"critical", "warning", "info"}
 
     @pytest.mark.asyncio
@@ -497,8 +516,10 @@ class TestExecuteSeverityFiltering:
     async def test_patterns_sorted_by_severity_desc(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["anti_patterns"]})
-        sevs = [p["severity"] for p in result["patterns"]]
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["anti_patterns"], "output_format": "json"}
+        )
+        sevs = [p["severity"] for p in result["results"]]
         order = [_SEVERITY_ORDER.get(s, 0) for s in sevs]
         assert order == sorted(order, reverse=True)
 
@@ -508,12 +529,17 @@ class TestExecuteResponseStructure:
     async def test_response_has_required_fields(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp})
+        # J13 (round-22): switch to JSON output so we can inspect the
+        # ``results`` field directly (TOON drops it into ``toon_content``).
+        result = await tool.execute({"file_path": fp, "output_format": "json"})
         assert "success" in result
         assert "file_path" in result
         assert "language" in result
         assert "total_patterns" in result
-        assert "patterns" in result
+        # J13 (round-22): ``patterns`` was a byte-identical duplicate of
+        # ``results``. The canonical alias is ``results`` (matches every
+        # other search/scan tool).
+        assert "results" in result
         assert "by_category" in result
         assert "summary" in result
         assert "smart_workflow_hint" in result
@@ -538,15 +564,17 @@ class TestExecuteResponseStructure:
     async def test_patterns_capped_at_50(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp})
-        assert len(result["patterns"]) <= 50
+        result = await tool.execute({"file_path": fp, "output_format": "json"})
+        assert len(result["results"]) <= 50
 
     @pytest.mark.asyncio
     async def test_each_pattern_has_required_keys(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["anti_patterns"]})
-        for p in result["patterns"]:
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["anti_patterns"], "output_format": "json"}
+        )
+        for p in result["results"]:
             assert "id" in p
             assert "category" in p
             assert "type" in p
@@ -559,9 +587,11 @@ class TestExecuteWorkflowHint:
     async def test_hint_mentions_critical_when_present(self, tmp_path):
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": fp, "categories": ["anti_patterns"]})
+        result = await tool.execute(
+            {"file_path": fp, "categories": ["anti_patterns"], "output_format": "json"}
+        )
         hint = result["smart_workflow_hint"]
-        has_critical = any(p["severity"] == "critical" for p in result["patterns"])
+        has_critical = any(p["severity"] == "critical" for p in result["results"])
         if has_critical:
             assert "Critical issues found" in hint
 
@@ -618,10 +648,14 @@ class TestExecuteEdgeCases:
         p.write_text("var x = 1;\nif (x == 2) {}\n", encoding="utf-8")
         tool = CodePatternsTool(str(tmp_path))
         result = await tool.execute(
-            {"file_path": str(p), "categories": ["anti_patterns"]}
+            {
+                "file_path": str(p),
+                "categories": ["anti_patterns"],
+                "output_format": "json",
+            }
         )
         assert result["success"] is True
-        types = [pt["type"] for pt in result["patterns"]]
+        types = [pt["type"] for pt in result["results"]]
         assert "var_usage" in types
 
 
@@ -744,7 +778,7 @@ class TestCrossLanguageSmellDetection:
             }
         )
 
-        smells = [p for p in result["patterns"] if p["category"] == "smells"]
+        smells = [p for p in result["results"] if p["category"] == "smells"]
         long_methods = [p for p in smells if p["type"] == "long_method"]
         assert long_methods, (
             "expected at least one long_method smell from cross-language AST "
@@ -773,7 +807,7 @@ class TestCrossLanguageSmellDetection:
             }
         )
 
-        smells = [p for p in result["patterns"] if p["category"] == "smells"]
+        smells = [p for p in result["results"] if p["category"] == "smells"]
         god_classes = [p for p in smells if p["type"] == "god_class"]
         assert god_classes, (
             "expected a god_class smell once the AST path is wired up; got "
@@ -814,7 +848,7 @@ class TestG3SqlInjectionFalsePositives:
         )
         sql_findings = [
             p
-            for p in result["patterns"]
+            for p in result["results"]
             if str(p.get("type") or p.get("id") or "").endswith("sql_injection")
         ]
         assert sql_findings == [], (
@@ -840,7 +874,7 @@ class TestG3SqlInjectionFalsePositives:
         )
         sql_findings = [
             p
-            for p in result["patterns"]
+            for p in result["results"]
             if str(p.get("type") or p.get("id") or "").endswith("sql_injection")
         ]
         assert sql_findings == [], (
@@ -866,7 +900,7 @@ class TestG3SqlInjectionFalsePositives:
         )
         sql_findings = [
             p
-            for p in result["patterns"]
+            for p in result["results"]
             if str(p.get("type") or p.get("id") or "").endswith("sql_injection")
         ]
         assert len(sql_findings) == 1, (
@@ -893,7 +927,7 @@ class TestG3SqlInjectionFalsePositives:
         )
         sql_findings = [
             p
-            for p in result["patterns"]
+            for p in result["results"]
             if str(p.get("type") or p.get("id") or "").endswith("sql_injection")
         ]
         assert len(sql_findings) == 1, (

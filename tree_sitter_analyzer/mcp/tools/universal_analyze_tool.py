@@ -25,7 +25,7 @@ from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_metrics import compute_file_metrics
 from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_code_structure_helpers import convert_analysis_result_to_structure_dict
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, format_summary_line
 from .universal_analyze_helpers import (
     TOOL_SCHEMA as _TOOL_SCHEMA,
 )
@@ -64,9 +64,15 @@ def _attach_canonical_envelope(base: dict[str, Any]) -> None:
     n_methods = len(methods) if isinstance(methods, list) else 0
     n_fields = len(fields) if isinstance(fields, list) else 0
 
-    summary_line = (
-        f"{file_path} {language} {line_count} lines  "
-        f"classes={n_classes} methods={n_methods} fields={n_fields}"
+    # J5 (round-22): single-space join via helper — never reintroduces the
+    # ``"... lines  "`` double-space we shipped earlier in this builder.
+    summary_line = format_summary_line(
+        file_path,
+        language,
+        f"{line_count} lines",
+        f"classes={n_classes}",
+        f"methods={n_methods}",
+        f"fields={n_fields}",
     )
     base.setdefault("summary_line", summary_line)
 

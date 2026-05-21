@@ -212,11 +212,18 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         if text.strip():
             return None
         detail = f"whitespace-only ({size} bytes)"
+    # J14 (round-22): align ``verdict`` casing across tools. Every other
+    # safety verdict in the codebase (SAFE / CAUTION / UNSAFE / CLEAN /
+    # WARN / N/A in code_patterns) is uppercase; the file_health empty
+    # branch was emitting lowercase ``n/a`` and forcing agents to do
+    # case-insensitive comparisons. Switching to ``N/A`` matches
+    # code_patterns' empty-file response so the two tools agree on the
+    # same input both byte-for-byte and structurally.
     return {
         "success": True,
         "file_path": file_path,
         "grade": "N/A",
-        "verdict": "n/a",
+        "verdict": "N/A",
         "signal": "empty_file",
         "recommendation": "File is empty; nothing to analyze.",
         "code_smells": [],
@@ -225,7 +232,7 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "agent_summary": {
             "summary_line": f"{file_path} is {detail}",
             "next_step": "skip",
-            "verdict": "n/a",
+            "verdict": "N/A",
         },
         "agent_next_action": {
             "priority": "none",
