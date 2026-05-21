@@ -233,6 +233,8 @@ class BatchSearchTool(BaseMCPTool):
             "total_matches": total_matches,
             "execution_note": f"{len(queries)} searches executed in parallel",
             "summary_line": summary_line,
+            # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+            "verdict": "n/a",
             "agent_summary": {
                 "summary_line": summary_line,
                 "next_step": next_step,

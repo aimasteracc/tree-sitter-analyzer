@@ -138,6 +138,9 @@ def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
         )
         agent_summary.setdefault("verdict", "n/a")
     result["agent_summary"] = agent_summary
+    # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+    if isinstance(agent_summary.get("verdict"), str):
+        result.setdefault("verdict", agent_summary["verdict"])
     # F8: mirror agent_summary.summary_line to the top level so direct
     # ``await tool.execute(args)`` callers see a non-None summary_line
     # without going through the MCP dispatch post-hook.

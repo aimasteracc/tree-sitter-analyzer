@@ -295,6 +295,8 @@ class GetProjectSummaryTool(BaseMCPTool):
                         "output_format": resolved_fmt,
                         "summary": text,
                         "summary_line": summary_line,
+                        # r37x: top-level verdict mirror.
+                        "verdict": "INFO",
                         "agent_summary": {
                             "summary_line": summary_line,
                             "next_step": next_step,
@@ -327,6 +329,8 @@ class GetProjectSummaryTool(BaseMCPTool):
                 "output_format": resolved_fmt,
                 "summary": text,
                 "summary_line": summary_line,
+                # r37x: top-level verdict mirror.
+                "verdict": "INFO",
                 "agent_summary": {
                     "summary_line": summary_line,
                     "next_step": next_step,
@@ -369,6 +373,8 @@ class GetProjectSummaryTool(BaseMCPTool):
             "readme_excerpt": idx.readme_excerpt,
             "module_descriptions": idx.module_descriptions,
             "summary_line": summary_line,
+            # r37x: top-level verdict mirror.
+            "verdict": "INFO",
             "agent_summary": {
                 "summary_line": summary_line,
                 "next_step": next_step,

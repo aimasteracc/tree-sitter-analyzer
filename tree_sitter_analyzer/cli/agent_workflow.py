@@ -85,6 +85,8 @@ def build_agent_workflow_pack(
         # walking the generic envelope find it without reaching into the
         # nested dict.
         "summary_line": agent_summary["summary_line"],
+        # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+        "verdict": agent_summary["verdict"],
     }
     result["toon_content"] = _build_toon_content(result)
     return result

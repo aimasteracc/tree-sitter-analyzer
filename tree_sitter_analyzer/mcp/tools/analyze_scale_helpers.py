@@ -660,6 +660,8 @@ def build_analysis_result(
         # Top-level summary_line (mirror of agent_summary.summary_line) for
         # cross-tool consistency with modification_guard / safe_to_edit.
         "summary_line": summary_line,
+        # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+        "verdict": agent_summary["verdict"],
         "agent_summary": agent_summary,
     }
 

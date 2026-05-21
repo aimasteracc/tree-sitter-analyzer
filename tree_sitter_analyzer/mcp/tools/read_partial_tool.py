@@ -334,6 +334,10 @@ class ReadPartialTool(BaseMCPTool):
         summary_line = result["agent_summary"].get("summary_line")
         if summary_line:
             result["summary_line"] = summary_line
+        # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+        verdict = result["agent_summary"].get("verdict")
+        if isinstance(verdict, str):
+            result["verdict"] = verdict
 
         if end_line and end_line > start_line and not (out_of_range or partial_range):
             result["next_steps"] = [

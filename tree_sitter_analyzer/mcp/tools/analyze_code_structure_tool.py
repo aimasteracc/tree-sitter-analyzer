@@ -268,6 +268,8 @@ def _attach_agent_summary(
         f"fields={n_fields}",
     )
     response["summary_line"] = summary_line
+    # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+    response["verdict"] = "n/a"
     response["agent_summary"] = {
         "summary_line": summary_line,
         "next_step": (

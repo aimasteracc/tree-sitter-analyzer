@@ -91,6 +91,8 @@ def _attach_canonical_envelope(base: dict[str, Any]) -> None:
     )
     agent_summary.setdefault("verdict", "n/a")
     base["agent_summary"] = agent_summary
+    # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+    base.setdefault("verdict", agent_summary["verdict"])
 
 
 def _attach_structure_detail(base: dict[str, Any], result: Any) -> None:

@@ -116,4 +116,10 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
     summary_line = result.get("summary_line")
     if isinstance(summary_line, str) and summary_line:
         response["summary_line"] = summary_line
+    # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+    agent_summary = result.get("agent_summary")
+    if isinstance(agent_summary, dict) and isinstance(
+        agent_summary.get("verdict"), str
+    ):
+        response["verdict"] = agent_summary["verdict"]
     return response

@@ -6099,30 +6099,21 @@ class TestEnvelopeContractSnapshot:
 
     # r37u (round-37u): tightened the top-level verdict gate.
     # ``agent_summary.verdict`` set but top-level ``verdict`` None used to
-    # slip past the snapshot. Now flagged as drift. These tools are the
-    # current snapshot of "agent_summary populated, top-level missing" —
-    # tracked here as a ratchet so each can be fixed one at a time.
+    # slip past the snapshot. Now flagged as drift.
     # DO NOT add new tools here — write a 3-line fix at the tool layer
     # (mirror agent_summary.verdict into the top-level response dict).
-    # Migration progress (target: 0):
-    #   r37u baseline: 16 (after symbol_lineage fixed)
-    #   r37w:  10 (fixed 6 via search_envelope + route_detector + outline:
-    #     FindAndGrep, GetCodeOutline, ListFiles, Query, RouteDetector,
-    #     SearchContent)
-    KNOWN_VERDICT_DRIFT: frozenset[str] = frozenset(
-        {
-            "AgentWorkflowTool",
-            "AnalyzeCodeStructureTool",
-            "AnalyzeScaleTool",
-            "AstCacheTool",
-            "BatchSearchTool",
-            "BuildProjectIndexTool",
-            "CallGraphTool",
-            "GetProjectSummaryTool",
-            "ReadPartialTool",
-            "UniversalAnalyzeTool",
-        }
-    )
+    # Migration progress (target: 0) — ✅ COMPLETE in r37x:
+    #   r37u baseline: 16 (after symbol_lineage fixed in r37u)
+    #   r37w:          10 (search_envelope + RouteDetector + GetCodeOutline)
+    #   r37x:           0 (AgentWorkflow / AnalyzeCodeStructure /
+    #                      AnalyzeScale / AstCache / BatchSearch /
+    #                      BuildProjectIndex / CallGraph /
+    #                      GetProjectSummary / ReadPartial /
+    #                      UniversalAnalyze) — RATCHET COMPLETE.
+    # Adding a new entry here is a code-review red flag — the
+    # ``test_canonical_envelope_full_snapshot`` gate will FAIL on the
+    # tool layer drift instead.
+    KNOWN_VERDICT_DRIFT: frozenset[str] = frozenset()
 
     @pytest.fixture
     def envelope_project(self, tmp_path: Path) -> Path:
@@ -6459,18 +6450,18 @@ class TestEnvelopeContractSnapshot:
         the baseline so adding a new drifter — or shipping a new tool
         without a top-level ``verdict`` — fails CI immediately.
 
-        Migration progress (target: 0):
+        Migration progress (target: 0) — ✅ COMPLETE in r37x:
           r37u baseline: 16 (after symbol_lineage fixed)
-          r37w:          10 (6 fixed via search_envelope verdict mirror +
-                             RouteDetector + GetCodeOutline:
-                             FindAndGrep, GetCodeOutline, ListFiles,
-                             Query, RouteDetector, SearchContent)
+          r37w:          10 (search_envelope + RouteDetector + GetCodeOutline)
+          r37x:           0 (AgentWorkflow / AnalyzeCodeStructure /
+                             AnalyzeScale / AstCache / BatchSearch /
+                             BuildProjectIndex / CallGraph /
+                             GetProjectSummary / ReadPartial /
+                             UniversalAnalyze)
         """
         # The baseline established when r37u tightened the gate.
-        # Do NOT raise this — write a 3-line fix at the tool layer
-        # (mirror ``verdict`` into the response dict at the same level
-        # as ``summary_line`` / ``agent_summary``).
-        BASELINE = 10
+        # Now zero — any new drifter fails CI immediately.
+        BASELINE = 0
         # Sanity: every name in the drift list must be a real tool in
         # the snapshot — otherwise stale entries hide live drift.
         case_names = {name for (name, _, _) in tool_cases}

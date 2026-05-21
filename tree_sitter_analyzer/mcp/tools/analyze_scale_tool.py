@@ -451,6 +451,8 @@ class AnalyzeScaleTool(BaseMCPTool):
             "count_errors": len(errors),
             "limits": {"max_files": max_files, "concurrency": 4},
             "results": per_file,
+            # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
+            "verdict": "INFO",
             "agent_summary": {
                 "summary_line": summary_line,
                 "next_step": (
