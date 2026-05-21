@@ -75,6 +75,7 @@ class SummaryCommand(BaseCommand):
         ]
 
         summary_data: dict[str, Any] = {
+            "success": True,
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
             "summary": {},
@@ -126,6 +127,48 @@ class SummaryCommand(BaseCommand):
                 }
                 for i in imports
             ]
+
+        # r37z (dogfood): canonical envelope. ``--summary`` was the second
+        # CLI path (after ``--advanced`` fixed in r37y) that emitted
+        # ``summary_line=None`` / ``verdict=None`` / ``agent_summary=None``
+        # — agents reading the response shape couldn't tell the call
+        # succeeded vs. silently failed. The headline reports the requested
+        # element types so the caller sees what they got at a glance.
+        n_classes = (
+            len(summary_data["summary"].get("classes", []))
+            if "classes" in requested_types
+            else 0
+        )
+        n_methods = (
+            len(summary_data["summary"].get("methods", []))
+            if "methods" in requested_types
+            else 0
+        )
+        n_fields = (
+            len(summary_data["summary"].get("fields", []))
+            if "fields" in requested_types
+            else 0
+        )
+        n_imports = (
+            len(summary_data["summary"].get("imports", []))
+            if "imports" in requested_types
+            else 0
+        )
+        summary_line = (
+            f"{analysis_result.file_path} ({analysis_result.language}) summary: "
+            f"classes={n_classes} methods={n_methods} fields={n_fields} imports={n_imports} "
+            f"types={','.join(requested_types)}"
+        )
+        summary_data["summary_line"] = summary_line
+        summary_data["verdict"] = "INFO"
+        summary_data["agent_summary"] = {
+            "summary_line": summary_line,
+            "next_step": (
+                "Use --structure / --advanced for full details or "
+                "extract_code_section (MCP) to read specific symbols."
+            ),
+            "verdict": "INFO",
+        }
 
         if self.args.output_format == "json":
             output_json(summary_data)

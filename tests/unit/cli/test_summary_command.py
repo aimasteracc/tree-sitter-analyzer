@@ -452,3 +452,59 @@ class TestSummaryCommandOutputTextFormat:
             calls = [str(call) for call in mock_data.call_args_list]
             assert any("Classes (0 items):" in call for call in calls)
             assert any("Methods (0 items):" in call for call in calls)
+
+
+class TestR37zSummaryCanonicalEnvelope:
+    """r37z (dogfood): CLI ``--summary`` was missing
+    ``summary_line``/``verdict``/``agent_summary`` entirely. This test
+    pins the canonical envelope contract on the JSON output path.
+    """
+
+    def test_summary_emits_canonical_envelope(self, command):
+        from unittest.mock import MagicMock
+
+        command.args.output_format = "json"
+        command.args.summary = "classes,methods"
+        analysis_result = MagicMock()
+        analysis_result.file_path = "/test/foo.py"
+        analysis_result.language = "python"
+        analysis_result.elements = []
+
+        captured: dict[str, object] = {}
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_json",
+            side_effect=lambda d: captured.update(d),
+        ):
+            command._output_summary_analysis(analysis_result)
+
+        assert captured.get("verdict") == "INFO"
+        assert isinstance(captured.get("summary_line"), str)
+        assert captured["summary_line"]
+        agent_summary = captured.get("agent_summary")
+        assert isinstance(agent_summary, dict)
+        assert agent_summary["verdict"] == "INFO"
+        assert agent_summary["summary_line"] == captured["summary_line"]
+        # File path should be on the headline so callers can grep it.
+        assert analysis_result.file_path in captured["summary_line"]
+        # types= must reflect what the caller asked for so two summary
+        # calls with different scopes have distinguishable headlines.
+        assert "types=classes,methods" in captured["summary_line"]
+
+    def test_summary_success_key_present(self, command):
+        """Even on an empty file, ``success: True`` must be set explicitly."""
+        from unittest.mock import MagicMock
+
+        command.args.output_format = "json"
+        command.args.summary = "imports"
+        analysis_result = MagicMock()
+        analysis_result.file_path = "/test/empty.py"
+        analysis_result.language = "python"
+        analysis_result.elements = []
+
+        captured: dict[str, object] = {}
+        with patch(
+            "tree_sitter_analyzer.cli.commands.summary_command.output_json",
+            side_effect=lambda d: captured.update(d),
+        ):
+            command._output_summary_analysis(analysis_result)
+        assert captured.get("success") is True
