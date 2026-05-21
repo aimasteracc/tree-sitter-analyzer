@@ -222,3 +222,82 @@ class TestLangNameRegex:
         assert not _LANG_NAME_RE.match(name), (
             f"Expected {name!r} NOT to match _LANG_NAME_RE"
         )
+
+
+# ---------------------------------------------------------------------------
+# r37o — parser_package_warnings dogfood finding
+# ---------------------------------------------------------------------------
+
+
+class TestParserPackageWarnings:
+    """r37o: parser_readiness must flag duplicate parser declarations.
+
+    Dogfood finding: our own pyproject.toml declares ``tree-sitter-c``,
+    ``tree-sitter-cpp``, ``tree-sitter-php``, etc. in both core
+    ``dependencies`` AND multiple optional ``extras`` with diverging
+    version constraints (e.g. core ``>=0.24.1`` vs extra
+    ``>=0.23.0,<0.25.0``). pip resolves the intersection so installs
+    still work, but an agent reading the raw ``parser_packages`` field
+    cannot tell which constraint is binding.
+
+    This test pins the diagnostic contract:
+    - ``parser_package_warnings`` exists on the response envelope
+    - For our own project, the list is NON-EMPTY (pyproject still has
+      redundant declarations as of r37o)
+    - Each warning entry has the expected shape:
+      ``{language, package, declarations, sources, hint}``
+    """
+
+    def test_warnings_field_exists_on_response(self, tmp_path):
+        """Even a project with NO duplicates must expose the empty list."""
+        # tmp_path has no pyproject.toml → parser_packages is empty →
+        # warnings list is empty but the key must be present.
+        result = build_parser_readiness_advice(str(tmp_path))
+        assert "parser_package_warnings" in result, (
+            "r37o: parser_readiness response must include "
+            "'parser_package_warnings' field even when no warnings exist"
+        )
+        assert isinstance(result["parser_package_warnings"], list)
+
+    def test_real_project_has_dogfood_warnings(self):
+        """On our own pyproject.toml: must surface known redundancies."""
+        import os
+
+        project_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        )
+        result = build_parser_readiness_advice(project_root)
+        warnings = result.get("parser_package_warnings", [])
+        assert isinstance(warnings, list)
+        # As of r37o, our pyproject has redundant declarations for ~13
+        # languages. We only assert >=1 so the test stays stable when
+        # pyproject is cleaned up over time.
+        assert len(warnings) >= 1, (
+            "r37o: own pyproject.toml has known duplicate parser package "
+            "declarations — expected the dogfood gate to surface at least one"
+        )
+
+    def test_warning_entry_shape(self):
+        """Each warning entry must have the documented field set."""
+        import os
+
+        project_root = os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        )
+        result = build_parser_readiness_advice(project_root)
+        warnings = result.get("parser_package_warnings", [])
+        if not warnings:
+            pytest.skip("no warnings to validate")
+        for w in warnings:
+            assert set(w.keys()) >= {
+                "language",
+                "package",
+                "declarations",
+                "sources",
+                "hint",
+            }, f"r37o: warning entry missing expected keys: {sorted(w.keys())}"
+            assert isinstance(w["language"], str) and w["language"]
+            assert isinstance(w["package"], str)
+            assert isinstance(w["declarations"], list) and len(w["declarations"]) >= 2
+            assert isinstance(w["sources"], list)
+            assert isinstance(w["hint"], str) and w["language"] in w["hint"]

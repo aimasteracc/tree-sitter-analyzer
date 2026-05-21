@@ -10,6 +10,7 @@ from tree_sitter_analyzer.cli.parser_readiness_records import build_language_rec
 from tree_sitter_analyzer.cli.parser_readiness_sources import (
     WIKI_READINESS_SIGNALS,
     collect_readiness_inputs,
+    detect_parser_package_warnings,
     normalize_language,
     parser_package_requirements,
     select_report_languages,
@@ -153,6 +154,14 @@ def _metadata_summary(
         "candidate_count": _candidate_count(records),
         "implemented_languages": sorted(plugin_entrypoints),
         "parser_packages": parser_package_requirements(parser_packages),
+        # r37o (dogfood): surface pyproject hygiene warnings — when the
+        # same parser package is declared in multiple locations with
+        # different version constraints, agents reading
+        # ``parser_packages.<lang>`` cannot tell which one is binding.
+        # Diagnostic only; does not change install behaviour or escalate
+        # the readiness verdict (those are about parser wiring, not
+        # manifest tidiness).
+        "parser_package_warnings": detect_parser_package_warnings(parser_packages),
     }
 
 

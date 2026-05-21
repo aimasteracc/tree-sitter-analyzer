@@ -62,6 +62,55 @@ def parser_package_requirements(
     }
 
 
+def detect_parser_package_warnings(
+    parser_packages: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Flag languages whose parser package is declared in multiple
+    pyproject.toml locations with diverging version constraints.
+
+    ``pyproject.toml`` often lists the same ``tree-sitter-<lang>`` package
+    in core ``project.dependencies`` AND in one or more
+    ``optional-dependencies`` extras. ``pip`` resolves the intersection
+    (so installs still work), but the duplicate declaration is misleading:
+    an agent reading ``parser_packages.php = [">=0.24.1",
+    ">=0.23.0,<0.25.0"]`` cannot tell which constraint is binding.
+
+    This helper surfaces an actionable hint per language so callers can
+    show the user that the pyproject is redundant and should be
+    consolidated. It is purely diagnostic — it does NOT change install
+    behaviour and does NOT escalate the readiness verdict (readiness is
+    about whether the parser is wired in, not whether the manifest is
+    tidy).
+
+    Returns a list ordered by language name. Each entry shape:
+
+    ``{"language": str, "package": str, "declarations": list[str],
+       "sources": list[str], "hint": str}``
+    """
+    warnings: list[dict[str, Any]] = []
+    for language, info in sorted(parser_packages.items()):
+        requirements = info.get("requirements") or []
+        if len(requirements) <= 1:
+            continue
+        sources = list(info.get("sources") or [])
+        warnings.append(
+            {
+                "language": language,
+                "package": info.get("package", ""),
+                "declarations": list(requirements),
+                "sources": sources,
+                "hint": (
+                    f"{language}: tree-sitter parser declared in "
+                    f"{len(sources) or len(requirements)} pyproject.toml "
+                    "location(s) with diverging version constraints — "
+                    "consolidate into a single canonical declaration so "
+                    "the binding constraint is unambiguous."
+                ),
+            }
+        )
+    return warnings
+
+
 def normalize_language(language: str) -> str:
     """Normalize aliases and punctuation in user-facing language names."""
     normalized = language.strip().lower().replace("_", "-")
