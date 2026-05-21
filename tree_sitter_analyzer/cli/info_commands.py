@@ -167,9 +167,17 @@ class DescribeQueryCommand(InfoCommand):
         elif hasattr(self.args, "file_path") and self.args.file_path:
             language = detect_language_from_file(self.args.file_path)
         else:
-            output_error(
-                "ERROR: Query description display requires --language or target file specification"
-            )
+            if _wants_json_output(self.args):
+                output_json(
+                    _error_envelope(
+                        "describe_query requires --language or target file",
+                        error_type="validation",
+                    )
+                )
+            else:
+                output_error(
+                    "ERROR: Query description display requires --language or target file specification"
+                )
             return 1
 
         try:
@@ -179,17 +187,54 @@ class DescribeQueryCommand(InfoCommand):
             query_content = query_loader.get_query(language, self.args.describe_query)
 
             if query_description is None or query_content is None:
-                output_error(
-                    f"Query '{self.args.describe_query}' not found for language '{language}'"
+                msg = (
+                    f"Query '{self.args.describe_query}' not found for language "
+                    f"'{language}'"
                 )
+                if _wants_json_output(self.args):
+                    output_json(
+                        _error_envelope(
+                            msg, error_type="not_found", verdict="NOT_FOUND"
+                        )
+                    )
+                else:
+                    output_error(msg)
                 return 1
 
-            output_info(
-                f"Query key '{self.args.describe_query}' ({language}): {query_description}"
-            )
-            output_data(f"Query content:\n{query_content}")
+            if _wants_json_output(self.args):
+                summary_line = (
+                    f"describe_query ({language}/{self.args.describe_query}): "
+                    f"{len(query_content.splitlines())} lines"
+                )
+                output_json(
+                    {
+                        "success": True,
+                        "language": language,
+                        "query_key": self.args.describe_query,
+                        "description": query_description,
+                        "query_content": query_content,
+                        "summary_line": summary_line,
+                        "verdict": "INFO",
+                        "agent_summary": {
+                            "summary_line": summary_line,
+                            "next_step": (
+                                f"Run `--query-key={self.args.describe_query} "
+                                f"--language={language}` to execute this query."
+                            ),
+                            "verdict": "INFO",
+                        },
+                    }
+                )
+            else:
+                output_info(
+                    f"Query key '{self.args.describe_query}' ({language}): {query_description}"
+                )
+                output_data(f"Query content:\n{query_content}")
         except ValueError as e:
-            output_error(f"{e}")
+            if _wants_json_output(self.args):
+                output_json(_error_envelope(str(e), error_type="validation"))
+            else:
+                output_error(f"{e}")
             return 1
         return 0
 
@@ -198,13 +243,44 @@ class ShowLanguagesCommand(InfoCommand):
     """Command to show supported languages."""
 
     def execute(self) -> int:
-        output_list("Supported languages:")
+        languages_info = []
         for language in detector.get_supported_languages():
             info = detector.get_language_info(language)
-            extensions = ", ".join(info["extensions"][:5])
-            if len(info["extensions"]) > 5:
-                extensions += f", ... ({len(info['extensions']) - 5} more)"
-            output_list(f"  {language:<12} - Extensions: {extensions}")
+            languages_info.append(
+                {
+                    "language": language,
+                    "extensions": list(info["extensions"]),
+                }
+            )
+
+        if _wants_json_output(self.args):
+            summary_line = f"show_supported_languages: {len(languages_info)} languages"
+            output_json(
+                {
+                    "success": True,
+                    "languages": languages_info,
+                    "language_count": len(languages_info),
+                    "summary_line": summary_line,
+                    "verdict": "INFO",
+                    "agent_summary": {
+                        "summary_line": summary_line,
+                        "next_step": (
+                            "Pass --language=<name> + --list-queries to see that "
+                            "language's available query keys."
+                        ),
+                        "verdict": "INFO",
+                    },
+                }
+            )
+            return 0
+
+        output_list("Supported languages:")
+        for entry in languages_info:
+            exts = entry["extensions"]
+            extensions = ", ".join(exts[:5])
+            if len(exts) > 5:
+                extensions += f", ... ({len(exts) - 5} more)"
+            output_list(f"  {entry['language']:<12} - Extensions: {extensions}")
         return 0
 
 
@@ -212,8 +288,32 @@ class ShowExtensionsCommand(InfoCommand):
     """Command to show supported extensions."""
 
     def execute(self) -> int:
+        supported_extensions = list(detector.get_supported_extensions())
+
+        if _wants_json_output(self.args):
+            summary_line = (
+                f"show_supported_extensions: {len(supported_extensions)} extensions"
+            )
+            output_json(
+                {
+                    "success": True,
+                    "extensions": supported_extensions,
+                    "extension_count": len(supported_extensions),
+                    "summary_line": summary_line,
+                    "verdict": "INFO",
+                    "agent_summary": {
+                        "summary_line": summary_line,
+                        "next_step": (
+                            "Use --show-supported-languages to map extensions back "
+                            "to languages."
+                        ),
+                        "verdict": "INFO",
+                    },
+                }
+            )
+            return 0
+
         output_list("Supported file extensions:")
-        supported_extensions = detector.get_supported_extensions()
         # Use more efficient chunking with itertools.islice
         from itertools import islice
 
@@ -224,3 +324,30 @@ class ShowExtensionsCommand(InfoCommand):
             output_list(line)
         output_info(f"\nTotal {len(supported_extensions)} extensions supported")
         return 0
+
+
+def _error_envelope(
+    message: str,
+    *,
+    error_type: str = "error",
+    verdict: str = "ERROR",
+) -> dict[str, object]:
+    """r37ae: shared error envelope shape for JSON info commands.
+
+    Matches the validation-error envelope used by file-path tools so
+    agents can parse error responses with the same code path regardless
+    of whether they hit ``--describe-query`` or ``--file-health``.
+    """
+    summary_line = f"error: {message}"
+    return {
+        "success": False,
+        "error_type": error_type,
+        "error": message,
+        "summary_line": summary_line,
+        "verdict": verdict,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": "Fix the input and retry.",
+            "verdict": verdict,
+        },
+    }

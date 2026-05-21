@@ -408,3 +408,124 @@ class TestR37adListQueriesJsonEnvelope:
         assert rc == 0
         assert mock_json.call_count == 0, "text mode must not call output_json"
         assert mock_list.call_count > 0
+
+
+class TestR37aeRemainingInfoCommandsJsonEnvelope:
+    """r37ae (dogfood): batch follow-up to r37ad — extend JSON envelope
+    support to the other 3 info commands: ``--describe-query``,
+    ``--show-supported-languages``, ``--show-supported-extensions``.
+    Same drift pattern: all ignored ``--format json``.
+    """
+
+    def test_describe_query_json_envelope(self):
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.info_commands import DescribeQueryCommand
+
+        args = Namespace(
+            language="python",
+            describe_query="classes",
+            file_path=None,
+            output_format="json",
+            format="json",
+        )
+        cmd = DescribeQueryCommand(args)
+        captured: dict = {}
+        with patch(
+            "tree_sitter_analyzer.cli.info_commands.output_json",
+            side_effect=lambda d: captured.update(d) if isinstance(d, dict) else None,
+        ):
+            rc = cmd.execute()
+        assert rc == 0
+        assert captured.get("success") is True
+        assert captured.get("verdict") == "INFO"
+        assert captured.get("language") == "python"
+        assert captured.get("query_key") == "classes"
+        assert isinstance(captured.get("description"), str)
+        assert isinstance(captured.get("query_content"), str)
+        assert captured["agent_summary"]["verdict"] == "INFO"
+
+    def test_describe_query_not_found_json_envelope(self):
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.info_commands import DescribeQueryCommand
+
+        args = Namespace(
+            language="python",
+            describe_query="this_query_does_not_exist_xyz",
+            file_path=None,
+            output_format="json",
+            format="json",
+        )
+        cmd = DescribeQueryCommand(args)
+        captured: dict = {}
+        with patch(
+            "tree_sitter_analyzer.cli.info_commands.output_json",
+            side_effect=lambda d: captured.update(d) if isinstance(d, dict) else None,
+        ):
+            rc = cmd.execute()
+        assert rc == 1
+        assert captured.get("success") is False
+        assert captured.get("verdict") == "NOT_FOUND"
+        assert captured.get("error_type") == "not_found"
+        assert "this_query_does_not_exist_xyz" in captured.get("error", "")
+
+    def test_show_supported_languages_json_envelope(self):
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.info_commands import ShowLanguagesCommand
+
+        args = Namespace(output_format="json", format="json")
+        cmd = ShowLanguagesCommand(args)
+        captured: dict = {}
+        with patch(
+            "tree_sitter_analyzer.cli.info_commands.output_json",
+            side_effect=lambda d: captured.update(d) if isinstance(d, dict) else None,
+        ):
+            rc = cmd.execute()
+        assert rc == 0
+        assert captured.get("success") is True
+        assert captured.get("verdict") == "INFO"
+        assert isinstance(captured.get("languages"), list)
+        assert captured.get("language_count", 0) > 0
+        # Each language entry must have the documented shape.
+        sample = captured["languages"][0]
+        assert "language" in sample
+        assert "extensions" in sample
+        assert isinstance(sample["extensions"], list)
+
+    def test_show_supported_extensions_json_envelope(self):
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.info_commands import ShowExtensionsCommand
+
+        args = Namespace(output_format="json", format="json")
+        cmd = ShowExtensionsCommand(args)
+        captured: dict = {}
+        with patch(
+            "tree_sitter_analyzer.cli.info_commands.output_json",
+            side_effect=lambda d: captured.update(d) if isinstance(d, dict) else None,
+        ):
+            rc = cmd.execute()
+        assert rc == 0
+        assert captured.get("success") is True
+        assert captured.get("verdict") == "INFO"
+        assert isinstance(captured.get("extensions"), list)
+        assert captured.get("extension_count", 0) > 0
+
+    def test_show_languages_text_path_preserved(self):
+        """Text default must still go through output_list (backward compat)."""
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.info_commands import ShowLanguagesCommand
+
+        args = Namespace(output_format="text", format=None)
+        cmd = ShowLanguagesCommand(args)
+        with (
+            patch("tree_sitter_analyzer.cli.info_commands.output_list") as mock_list,
+            patch("tree_sitter_analyzer.cli.info_commands.output_json") as mock_json,
+        ):
+            rc = cmd.execute()
+        assert rc == 0
+        assert mock_json.call_count == 0
+        assert mock_list.call_count > 0
