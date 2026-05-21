@@ -148,7 +148,11 @@ class TestGetToolDefinition:
         assert "max_filesize" in properties
         assert "context_before" in properties
         assert "context_after" in properties
-        assert "encoding" not in properties  # removed for token efficiency
+        # F5: ``encoding`` is now declared in the schema. The fd_rg_utils
+        # layer accepts ``arguments['encoding']`` and forwards it to
+        # ripgrep as ``--encoding``, so the schema must list it for
+        # strict-parameter validation to allow it.
+        assert "encoding" in properties
         assert "max_count" in properties
         assert "timeout_ms" in properties
 

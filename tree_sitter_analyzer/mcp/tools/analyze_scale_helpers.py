@@ -518,8 +518,11 @@ def create_json_file_analysis(
     result: dict[str, Any] = {
         "success": True,
         # Issue 2: echo dispatch mode + output_format on JSON-file path too.
+        # F12: keep ``format`` as a back-compat alias of ``output_format`` so
+        # JSON callers see the same key the TOON envelope already exposes.
         "mode": "single",
         "output_format": output_format,
+        "format": output_format,
         "file_path": file_path,
         "language": "json",
         "file_size_bytes": file_metrics["file_size_bytes"],

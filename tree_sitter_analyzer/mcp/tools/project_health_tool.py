@@ -7,6 +7,7 @@ Returns grade distribution, F/D file list with recommendations, and top refactor
 """
 
 import shlex
+import time
 from collections import Counter
 from typing import Any
 
@@ -16,6 +17,28 @@ from .base_tool import BaseMCPTool
 from .file_health_tool import _build_signal
 
 logger = setup_logger(__name__)
+
+
+# F9: realistic timing buckets — round-16b dogfood on a 4.4k-file repo took
+# ~5min, while the previous description claimed 30s–3min. The post-hook
+# uses these numbers to emit a budget hint agents can plan against.
+def _estimate_seconds(total_files: int) -> int:
+    """Return a rough wall-clock estimate so callers can size their timeouts.
+
+    The numbers come from instrumented project-health runs on three
+    differently-sized repos (small ~150 files, medium ~1k, large 4k+).
+    They are deliberately conservative — agents that budget by these
+    numbers should still finish before the call times out.
+    """
+    if total_files < 200:
+        return 30
+    if total_files < 1000:
+        return 90
+    if total_files < 3000:
+        return 240
+    # 3k+ files: 5 min and up — the round-16b case took ~280s.
+    return 360
+
 
 _EXCLUDE_DIRS = {
     "node_modules",
@@ -63,9 +86,11 @@ class ProjectHealthTool(BaseMCPTool):
             "description": (
                 "Score ALL files: grade distribution (A-F), worst files, smells, "
                 "top refactoring targets. First call on any project. "
-                "SLOW: scans every source file. Expect 30s–3min on 1k+ file "
-                "projects on first call; ``max_files`` only caps display, "
-                "not scan scope."
+                "SLOW: scans every source file. Budget ~30s on <200 files, "
+                "~90s on <1k, ~4min on <3k, 5min+ on 3k+ file repos. "
+                "``max_files`` only caps display, not scan scope. The "
+                "response carries an ``agent_summary.budget_seconds`` field "
+                "(estimated and actual) so callers can size timeouts."
             ),
             "inputSchema": self.get_tool_schema(),
         }
@@ -109,8 +134,16 @@ class ProjectHealthTool(BaseMCPTool):
         output_format = arguments.get("output_format", "toon")
 
         scorer = HealthScorer()
+        # F9: measure the scan so the response carries an honest
+        # ``actual_seconds`` next to ``estimated_seconds``. Agents that
+        # obeyed the previous ``30s–3min`` description timed out on
+        # 4k-file repos; recording the truth lets the next caller plan.
+        scan_start = time.monotonic()
         all_scores = scorer.score_project(root)
-        result = _build_project_health_result(root, all_scores, min_grade, max_files)
+        actual_seconds = round(time.monotonic() - scan_start, 1)
+        result = _build_project_health_result(
+            root, all_scores, min_grade, max_files, actual_seconds=actual_seconds
+        )
 
         from ..utils.format_helper import apply_toon_format_to_response
 
@@ -128,8 +161,14 @@ def _build_project_health_result(
     all_scores: list[Any],
     min_grade: str,
     max_files: int,
+    actual_seconds: float | None = None,
 ) -> dict[str, Any]:
-    """Build the JSON-ready project-health response."""
+    """Build the JSON-ready project-health response.
+
+    ``actual_seconds`` is the measured scan wall-clock from the calling
+    tool. When omitted (legacy callers and unit tests that build results
+    directly), the timing fields fall back to the size-based estimate.
+    """
     grade_counts = Counter(score.grade for score in all_scores)
     grade_distribution = {grade: grade_counts.get(grade, 0) for grade in "ABCDF"}
     dim_avgs = _average_dimensions(all_scores)
@@ -164,6 +203,7 @@ def _build_project_health_result(
                 weakest_dim=weakest_dim,
                 agent_backlog=agent_backlog,
                 max_files=max_files,
+                actual_seconds=actual_seconds,
             ),
             "agent_backlog": agent_backlog,
             "files": files,
@@ -344,19 +384,34 @@ def _build_project_agent_summary(
     weakest_dim: str,
     agent_backlog: list[dict[str, Any]],
     max_files: int = 20,
+    actual_seconds: float | None = None,
 ) -> dict[str, Any]:
-    """Build a compact project-level summary for autonomous agent loops."""
+    """Build a compact project-level summary for autonomous agent loops.
+
+    F9: ``budget_seconds`` carries the size-based estimate plus the actual
+    scan wall-clock when the caller measured it. Agents that previously
+    timed out on the documented 30s–3min budget now have a real number to
+    plan against.
+    """
     queue_head = agent_backlog[0] if agent_backlog else None
     risk = _project_risk(grade_distribution)
+    estimated_seconds = _estimate_seconds(total_files)
     # Finding 6: include summary_line so the dispatch post-hook can
     # mirror it to the top-level envelope (round-16b dogfood saw None).
+    # F9: append timing so the post-hook can emit a real budget hint —
+    # agents previously trusted the description's 30s–3min ceiling and
+    # aborted on 4k-file repos that actually took 5 minutes.
     grade_breakdown = " ".join(
         f"{grade}={grade_distribution.get(grade, 0)}"
         for grade in ("A", "B", "C", "D", "F")
     )
+    budget_segment = f"estimated_seconds={estimated_seconds}"
+    if actual_seconds is not None:
+        budget_segment += f" actual_seconds={actual_seconds}"
     summary_line = (
         f"project_health risk={risk} files={total_files} {grade_breakdown} "
-        f"backlog={len(agent_backlog)} weakest={weakest_dim or 'unknown'}"
+        f"backlog={len(agent_backlog)} weakest={weakest_dim or 'unknown'} "
+        f"{budget_segment}"
     )
     summary: dict[str, Any] = {
         "summary_line": summary_line,
@@ -366,6 +421,10 @@ def _build_project_agent_summary(
         "d_count": grade_distribution.get("D", 0),
         "f_count": grade_distribution.get("F", 0),
         "backlog_count": len(agent_backlog),
+        "budget_seconds": {
+            "estimated": estimated_seconds,
+            "actual": actual_seconds,
+        },
         "verification_command": "uv run pytest -q",
         "project_health_command": (
             "uv run python -m tree_sitter_analyzer "

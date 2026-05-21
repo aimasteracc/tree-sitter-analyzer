@@ -85,9 +85,7 @@ class TestCreateJsonFileAnalysis:
         }
 
     def test_basic_analysis_structure(self):
-        result = create_json_file_analysis(
-            "config.json", self._base_metrics(), False
-        )
+        result = create_json_file_analysis("config.json", self._base_metrics(), False)
         assert result["success"] is True
         assert result["file_path"] == "config.json"
         assert result["language"] == "json"
@@ -113,33 +111,25 @@ class TestCreateJsonFileAnalysis:
         assert result["scale_category"] == "large"
 
     def test_without_guidance(self):
-        result = create_json_file_analysis(
-            "a.json", self._base_metrics(), False
-        )
+        result = create_json_file_analysis("a.json", self._base_metrics(), False)
         assert "llm_analysis_guidance" not in result
 
     def test_with_guidance(self):
-        result = create_json_file_analysis(
-            "a.json", self._base_metrics(), True
-        )
+        result = create_json_file_analysis("a.json", self._base_metrics(), True)
         assert "llm_analysis_guidance" in result
         g = result["llm_analysis_guidance"]
         assert g["file_characteristics"] == "JSON configuration/data file"
         assert "recommended_workflow" in g
 
     def test_complexity_metrics_zeros(self):
-        result = create_json_file_analysis(
-            "a.json", self._base_metrics(), False
-        )
+        result = create_json_file_analysis("a.json", self._base_metrics(), False)
         cm = result["complexity_metrics"]
         assert cm["total_elements"] == 0
         assert cm["max_depth"] == 0
         assert cm["avg_complexity"] == 0.0
 
     def test_structural_overview_empty(self):
-        result = create_json_file_analysis(
-            "a.json", self._base_metrics(), False
-        )
+        result = create_json_file_analysis("a.json", self._base_metrics(), False)
         so = result["structural_overview"]
         assert so["classes"] == []
         assert so["methods"] == []
@@ -330,3 +320,62 @@ class TestBuildDetailedAnalysis:
         assert len(detailed["classes"]) == 1
         assert len(detailed["methods"]) == 1
         assert len(detailed["fields"]) == 1
+
+
+class TestF12FormatKeyConsistency:
+    """Regression tests for F12 — round-16b dogfood found that the JSON
+    envelope returned ``output_format`` while the TOON envelope returned
+    ``format``, so callers that key off either name silently dropped fields.
+    The canonical key is ``output_format``; ``format`` survives as a
+    back-compat alias that MUST equal ``output_format`` whenever it
+    appears.
+    """
+
+    def _metrics(self, total_lines: int = 50) -> dict:
+        return {
+            "total_lines": total_lines,
+            "code_lines": 40,
+            "comment_lines": 5,
+            "blank_lines": 5,
+            "file_size_bytes": 1024,
+            "estimated_tokens": 200,
+        }
+
+    def test_create_json_file_analysis_exposes_output_format_in_json(self):
+        """JSON-file path on JSON output must expose ``output_format`` and
+        a matching ``format`` alias — round-16b saw the JSON envelope drop
+        ``format`` entirely."""
+        result = create_json_file_analysis(
+            "config.json", self._metrics(), include_guidance=False, output_format="json"
+        )
+        assert result["output_format"] == "json"
+        assert result["format"] == "json"
+        assert result["format"] == result["output_format"]
+
+    def test_create_json_file_analysis_exposes_output_format_in_toon(self):
+        """JSON-file path on TOON output must still expose ``output_format``
+        even after the TOON wrapper rewrites ``format`` to ``toon``."""
+        result = create_json_file_analysis(
+            "config.json", self._metrics(), include_guidance=False, output_format="toon"
+        )
+        # The TOON wrapper stomps ``format`` to "toon" but preserves the
+        # canonical ``output_format`` key from the inner dict.
+        assert result["output_format"] == "toon"
+        assert result["format"] == "toon"
+        assert result["format"] == result["output_format"]
+
+    def test_format_alias_matches_output_format_for_both_paths(self):
+        """Whichever format the caller asks for, ``format`` and
+        ``output_format`` MUST agree — never one set without the other,
+        never different values."""
+        for fmt in ("json", "toon"):
+            result = create_json_file_analysis(
+                "data.json", self._metrics(), include_guidance=False, output_format=fmt
+            )
+            assert "format" in result, f"format missing for output_format={fmt}"
+            assert "output_format" in result, (
+                f"output_format missing for output_format={fmt}"
+            )
+            assert result["format"] == result["output_format"], (
+                f"format/output_format disagree for {fmt}"
+            )

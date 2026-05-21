@@ -6,16 +6,23 @@ This module defines the base class that all MCP tools should inherit from
 to ensure consistent behavior and project path management.
 """
 
+import functools
+import inspect
 from abc import ABC, abstractmethod
 from typing import Any
 
 from ...security import SecurityValidator
 from ...utils import setup_logger
 from ..utils.path_resolver import PathResolver
+from ..utils.schema_strictness import enforce_strict_params
 from ..utils.shared_cache import get_shared_cache
 
 # Set up logging
 logger = setup_logger(__name__)
+
+# Sentinel attribute name marking a function that has already been wrapped
+# by ``__init_subclass__`` so a deeper subclass doesn't double-wrap it.
+_F5_WRAPPED_ATTR = "_f5_strict_params_wrapped"
 
 
 def mirror_summary_line(result: dict[str, Any]) -> dict[str, Any]:
@@ -47,6 +54,59 @@ class BaseMCPTool(ABC):
     Provides common functionality including project path management,
     security validation, and path resolution.
     """
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """F5: wrap every subclass's ``execute`` with strict-parameter check.
+
+        We do this once per subclass — the wrapper inspects the tool's
+        own ``inputSchema`` (via :meth:`get_tool_definition`) and rejects
+        unknown top-level parameters with a did-you-mean hint. Direct
+        ``await tool.execute(args)`` callers (tests, CLI bridges) and
+        the MCP dispatcher both flow through this guard.
+
+        Idempotent: if a subclass inherits ``execute`` from a parent that
+        was already wrapped, we don't wrap again. If a subclass redefines
+        ``execute``, the new definition is wrapped fresh.
+        """
+        super().__init_subclass__(**kwargs)
+        cls_execute = cls.__dict__.get("execute")
+        if cls_execute is None or not callable(cls_execute):
+            return
+        if getattr(cls_execute, _F5_WRAPPED_ATTR, False):
+            return
+        if not inspect.iscoroutinefunction(cls_execute):
+            # Non-async execute means the subclass deviates from the
+            # protocol. Leave it alone — the central dispatcher fallback
+            # still catches MCP-routed calls.
+            return
+
+        @functools.wraps(cls_execute)
+        async def _wrapped(
+            self: BaseMCPTool, arguments: dict[str, Any]
+        ) -> dict[str, Any]:
+            self._guard_strict_parameters(arguments)
+            return await cls_execute(self, arguments)  # type: ignore[no-any-return]
+
+        setattr(_wrapped, _F5_WRAPPED_ATTR, True)
+        cls.execute = _wrapped  # type: ignore[method-assign]
+
+    def _guard_strict_parameters(self, arguments: dict[str, Any]) -> None:
+        """Refuse unknown top-level parameters using the tool's own schema.
+
+        Subclasses normally never call this directly — the
+        ``__init_subclass__`` wrapper calls it before delegating to the
+        subclass's ``execute``. Exposed as a method so tests and the
+        legacy dispatcher can reuse the same code path.
+        """
+        try:
+            definition = self.get_tool_definition()
+        except Exception:  # noqa: BLE001 — definition errors are out of scope
+            return
+        if not isinstance(definition, dict):
+            return
+        schema = definition.get("inputSchema")
+        tool_name = definition.get("name") or self.__class__.__name__
+        enforce_strict_params(tool_name, schema, arguments)
 
     def __init__(self, project_root: str | None = None) -> None:
         """

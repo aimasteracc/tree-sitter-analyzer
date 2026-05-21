@@ -123,13 +123,18 @@ async def test_fd_13_and_plus_ignore_case(tmp_path, monkeypatch):
     )
 
     # Test AND with case insensitive
+    # F5: schema uses ``case: "insensitive"`` — the bare
+    # ``case_insensitive: true`` field that this test originally passed
+    # was silently dropped by JSON Schema's default
+    # ``additionalProperties: true``. The behaviour the test asserts
+    # (case-insensitive match) was already broken; F5 surfaces that.
     result = await tool.execute(
         {
             "roots": [str(tmp_path)],
             "pattern": "*",
             "glob": True,
             "query": "hello",
-            "case_insensitive": True,
+            "case": "insensitive",
         }
     )
 

@@ -218,8 +218,13 @@ class AnalyzeScaleTool(BaseMCPTool):
                 )
                 # Issue 2: echo dispatch mode + output_format on the
                 # single-file path so callers can audit envelope parity.
+                # F12: ``format`` is kept as a back-compat alias of
+                # ``output_format`` so JSON callers see the same key the
+                # TOON envelope already exposes (round-16b dogfood saw the
+                # JSON path miss ``format`` entirely).
                 result["mode"] = "single"
                 result["output_format"] = output_format
+                result["format"] = output_format
 
                 logger.info(
                     f"Successfully analyzed {file_path}: "
@@ -407,10 +412,13 @@ class AnalyzeScaleTool(BaseMCPTool):
         # which dispatch path ran without re-reading their own call site.
         # Issue 3: ``summary_line`` lives only on ``agent_summary`` in batch
         # mode — the previous top-level mirror duplicated tokens for no win.
+        # F12: keep ``format`` as a back-compat alias of ``output_format``
+        # so the JSON and TOON paths expose the same key everywhere.
         response: dict[str, Any] = {
             "success": len(ok) > 0,
             "mode": "batch_metrics" if metrics_only else "batch",
             "output_format": output_format,
+            "format": output_format,
             "count_files": len(file_paths),
             "count_ok": len(ok),
             "count_errors": len(errors),

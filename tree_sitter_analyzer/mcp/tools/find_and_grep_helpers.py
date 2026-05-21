@@ -95,6 +95,10 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "Content exclude globs",
         },
         "max_filesize": {"type": "string"},
+        "encoding": {
+            "type": "string",
+            "description": "File encoding for ripgrep (e.g. 'utf-8', 'latin1')",
+        },
         "context_before": {"type": "integer"},
         "context_after": {"type": "integer"},
         "max_count": {"type": "integer"},

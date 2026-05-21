@@ -75,6 +75,9 @@ TOOL_SCHEMA: dict[str, Any] = {
             "description": "If true with output_file, suppress detailed output and return metadata only",
         },
     },
+    # F5: refuse unknown keys with did-you-mean. Enforced centrally by
+    # BaseMCPTool.__init_subclass__ — declared here for completeness.
+    "additionalProperties": False,
 }
 
 

@@ -203,16 +203,22 @@ class TestGetToolDefinition:
         assert properties["count_only"]["default"] is False
 
     def test_output_file_property(self, tool):
+        """F5: ``output_file`` is read by ``list_files_helpers`` and used
+        to save the result to disk — it must be declared in the schema
+        so strict-parameter validation accepts it."""
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
         properties = schema.get("properties", {})
-        assert "output_file" not in properties
+        assert "output_file" in properties
 
     def test_suppress_output_property(self, tool):
+        """F5: ``suppress_output`` pairs with ``output_file`` to omit
+        the detailed payload from the response. Now declared in schema
+        for strict-parameter validation."""
         definition = tool.get_tool_definition()
         schema = definition["inputSchema"]
         properties = schema.get("properties", {})
-        assert "suppress_output" not in properties
+        assert "suppress_output" in properties
 
     def test_output_format_property(self, tool):
         definition = tool.get_tool_definition()

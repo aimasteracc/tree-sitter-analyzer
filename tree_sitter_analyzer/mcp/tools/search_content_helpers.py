@@ -52,6 +52,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "items": {"type": "string"},
             "description": "Exclude globs",
         },
+        "extensions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "File extensions (no dots) to limit search to",
+        },
+        "encoding": {
+            "type": "string",
+            "description": "File encoding for ripgrep (e.g. 'utf-8', 'latin1')",
+        },
         "follow_symlinks": {"type": "boolean", "default": False},
         "hidden": {"type": "boolean", "default": False},
         "no_ignore": {"type": "boolean", "default": False},

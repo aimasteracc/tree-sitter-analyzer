@@ -86,8 +86,10 @@ async def test_fd_20_case_insensitive_search(tmp_path, monkeypatch):
     )
 
     # Test case insensitive content search
+    # F5: ``case`` is the schema-declared field; ``case_insensitive`` was
+    # silently dropped before F5.
     result = await tool.execute(
-        {"roots": [str(tmp_path)], "query": "content", "case_insensitive": True}
+        {"roots": [str(tmp_path)], "query": "content", "case": "insensitive"}
     )
 
     assert result["success"] is True

@@ -102,6 +102,15 @@ TOOL_SCHEMA: dict[str, Any] = {
             "enum": ["json", "toon"],
             "default": "toon",
         },
+        "output_file": {
+            "type": "string",
+            "description": "Optional filename to save output to file",
+        },
+        "suppress_output": {
+            "type": "boolean",
+            "default": False,
+            "description": "If true with output_file, suppress detailed output",
+        },
     },
     # roots is the only required field
     "required": ["roots"],

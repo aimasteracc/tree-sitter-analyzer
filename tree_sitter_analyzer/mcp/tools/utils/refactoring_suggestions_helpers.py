@@ -220,6 +220,10 @@ def get_refactoring_tool_schema() -> dict[str, Any]:
             },
         },
         "required": ["file_path"],
+        # F5: refuse unknown parameters with a did-you-mean hint. Enforced
+        # centrally by BaseMCPTool.__init_subclass__ — declared here so the
+        # schema describes the contract accurately.
+        "additionalProperties": False,
     }
 
 

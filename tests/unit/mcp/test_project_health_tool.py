@@ -285,3 +285,86 @@ def test_project_agent_summary_promotes_f_grade_queue_head() -> None:
     assert summary["queue_head"]["priority"] == "critical"
     assert summary["queue_head_command"].endswith("--refactor --format json")
     assert summary["next_step"].startswith("Run safe-to-edit")
+
+
+class TestF9DescriptionAndBudget:
+    """Regression tests for F9 — round-16b dogfood found that the MCP
+    description advertised ``30s–3min`` while a 4k-file repo actually
+    took ~5min, so agents that obeyed the documented budget timed out
+    and abandoned the call. Two contracts now hold:
+
+    1. The tool description mentions realistic numbers (4min / 5min+)
+       and tells callers to read ``agent_summary.budget_seconds``.
+    2. ``agent_summary.summary_line`` includes ``estimated_seconds=`` —
+       and ``actual_seconds=`` when the executing tool measured the run.
+    """
+
+    def test_description_mentions_realistic_timing(self) -> None:
+        """The description must NOT keep claiming ``30s–3min`` for
+        anything bigger than a small repo — that's what tripped agents."""
+        tool = ProjectHealthTool()
+        definition = tool.get_tool_definition()
+        description = definition["description"]
+        # Anchor on the realistic numbers from the bucketed estimator.
+        assert "4min" in description or "5min" in description, (
+            "description must surface realistic upper-bound timing so "
+            "agents budget correctly on large repos"
+        )
+        # The old misleading "30s–3min" string must be gone.
+        assert "3min" not in description, (
+            "stale ceiling — 4k-file repos take 5min, not 3min"
+        )
+        # And callers should know where to read the real number.
+        assert "budget_seconds" in description
+
+    def test_agent_summary_summary_line_includes_estimated_seconds(self) -> None:
+        """summary_line must expose ``estimated_seconds=`` so the dispatch
+        post-hook can emit a budget hint at the envelope level."""
+        backlog = _build_agent_backlog(
+            [_score("src/bad.py", "D", 30.0, {"size": 18.0})]
+        )
+        summary = _build_project_agent_summary(
+            root="/repo",
+            total_files=450,
+            grade_distribution={"A": 100, "B": 50, "C": 290, "D": 10, "F": 0},
+            weakest_dim="size",
+            agent_backlog=backlog,
+        )
+        # No actual_seconds passed → only the estimate should appear.
+        assert "estimated_seconds=" in summary["summary_line"]
+        assert "actual_seconds=" not in summary["summary_line"]
+        assert summary["budget_seconds"]["estimated"] > 0
+        assert summary["budget_seconds"]["actual"] is None
+
+    def test_agent_summary_summary_line_includes_actual_seconds_when_measured(
+        self,
+    ) -> None:
+        """When the calling tool measured the scan, both ``estimated_seconds``
+        and ``actual_seconds`` must reach the summary_line — the post-hook
+        relies on the actual number for the budget hint."""
+        backlog: list = []
+        summary = _build_project_agent_summary(
+            root="/repo",
+            total_files=4500,
+            grade_distribution={"A": 1000, "B": 500, "C": 3000, "D": 0, "F": 0},
+            weakest_dim="complexity",
+            agent_backlog=backlog,
+            actual_seconds=287.4,
+        )
+        assert "estimated_seconds=" in summary["summary_line"]
+        assert "actual_seconds=287.4" in summary["summary_line"]
+        assert summary["budget_seconds"]["estimated"] >= 240  # 3k+ files bucket
+        assert summary["budget_seconds"]["actual"] == 287.4
+
+    def test_estimate_seconds_scales_with_project_size(self) -> None:
+        """The size-based estimate must be monotonic and align with the
+        documented buckets so the description stays accurate."""
+        from tree_sitter_analyzer.mcp.tools.project_health_tool import (
+            _estimate_seconds,
+        )
+
+        assert _estimate_seconds(50) <= _estimate_seconds(500)
+        assert _estimate_seconds(500) <= _estimate_seconds(2500)
+        assert _estimate_seconds(2500) <= _estimate_seconds(5000)
+        # 4k-file repo (round-16b case) should land in the 5min+ bucket.
+        assert _estimate_seconds(4500) >= 300

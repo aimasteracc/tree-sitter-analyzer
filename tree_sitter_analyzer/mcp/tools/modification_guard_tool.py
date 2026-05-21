@@ -296,6 +296,9 @@ class ModificationGuardTool(BaseMCPTool):
                     },
                 },
                 "required": ["symbol", "modification_type"],
+                # F5: refuse unknown keys; central enforcement is in
+                # BaseMCPTool.__init_subclass__.
+                "additionalProperties": False,
             },
         }
 

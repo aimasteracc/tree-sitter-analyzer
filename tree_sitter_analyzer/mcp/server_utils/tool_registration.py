@@ -9,6 +9,7 @@ except ImportError:
     Tool = Any
 
 from ...utils import setup_logger
+from ..utils.schema_strictness import enforce_strict_params
 from .error_recovery import (
     build_agent_friendly_error,
     ensure_canonical_error_envelope,
@@ -101,8 +102,20 @@ def register_tools(server: Any, server_instance: Any) -> None:
 async def _dispatch_tool(
     server_instance: Any, name: str, arguments: dict[str, Any]
 ) -> Any:
-    """Route a tool call to the appropriate handler."""
+    """Route a tool call to the appropriate handler.
+
+    F5: legacy non-BaseMCPTool paths (``set_project_path``) get the
+    strict-parameter check here, since they bypass the
+    ``BaseMCPTool.__init_subclass__`` wrapper. BaseMCPTool-backed paths
+    (everything in ``server_instance._tools``, plus ``extract_code_section``
+    and ``analyze_code_structure`` which delegate to BaseMCPTool subclasses)
+    are validated by that wrapper and need no extra gate here.
+    """
     if name == "set_project_path":
+        schema = _SET_PROJECT_PATH_TOOL["inputSchema"]
+        enforce_strict_params(
+            name, schema if isinstance(schema, dict) else None, arguments
+        )
         return server_instance._handle_set_project_path(arguments)
     if name == "extract_code_section":
         return await server_instance._handle_extract_code_section(arguments)

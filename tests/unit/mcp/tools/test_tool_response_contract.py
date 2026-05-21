@@ -1106,3 +1106,186 @@ class TestG9RefactorPathRelative:
             f"G9: absolute path under project_root must be relativized — "
             f"got {out['file_path']!r}"
         )
+
+
+class TestF5SchemaStrictness:
+    """F5: round-16b dogfood showed parameter typos pass silently.
+
+    JSON Schema defaults to ``additionalProperties: true`` — so
+    ``max_suggestion: 5`` (missing the 's') would validate, the typo'd
+    key would be dropped, and the tool would run with the default
+    ``max_suggestions: 10``. The caller never learns their input was
+    ignored.
+
+    F5 makes ``additionalProperties: false`` the implicit default for
+    every tool's input schema via ``BaseMCPTool.__init_subclass__`` and
+    rejects unknown top-level parameters with a *did-you-mean* hint
+    derived from :func:`difflib.get_close_matches`. The MCP server's
+    canonical error envelope wraps the resulting ``ValueError`` into
+    a ``success: false, error_type: "validation"`` response.
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "sample.py"
+        src.write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_typo_in_parameter_raises_validation_error(
+        self, tiny_project: Path
+    ) -> None:
+        """``max_suggestion`` (missing the 's') must be rejected with a
+        ``ValueError`` whose message points at ``max_suggestions``."""
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        tool = RefactoringSuggestionsTool(str(tiny_project))
+        with pytest.raises(ValueError) as exc_info:
+            _run(
+                tool.execute(
+                    {
+                        "file_path": str(tiny_project / "sample.py"),
+                        "max_suggestion": 5,  # typo of max_suggestions
+                    }
+                )
+            )
+        msg = str(exc_info.value)
+        assert "max_suggestion" in msg
+        assert "max_suggestions" in msg, (
+            "did-you-mean hint must point the caller at the real parameter"
+        )
+
+    def test_dispatcher_wraps_typo_in_canonical_error_envelope(
+        self, tiny_project: Path
+    ) -> None:
+        """End-to-end through the MCP dispatch path: typo'd parameter
+        comes out as ``{success: false, error_type: "validation"}``
+        with the did-you-mean hint preserved in ``error``."""
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            build_agent_friendly_error,
+        )
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        tool = RefactoringSuggestionsTool(str(tiny_project))
+        args = {
+            "file_path": str(tiny_project / "sample.py"),
+            "max_suggestion": 5,
+        }
+        try:
+            _run(tool.execute(args))
+            pytest.fail("expected ValueError")
+        except ValueError as e:
+            envelope = build_agent_friendly_error(
+                "refactoring_suggestions", e, arguments=args
+            )
+        assert envelope["success"] is False
+        assert envelope["error_type"] == "validation"
+        assert "max_suggestion" in envelope["error"]
+        assert "max_suggestions" in envelope["error"]
+        # Canonical envelope mirrors a summary_line at top level.
+        assert isinstance(envelope.get("summary_line"), str)
+
+    def test_valid_parameters_still_pass_through(self, tiny_project: Path) -> None:
+        """Sanity: a well-formed call still succeeds end-to-end."""
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        tool = RefactoringSuggestionsTool(str(tiny_project))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": str(tiny_project / "sample.py"),
+                    "max_suggestions": 5,
+                    "output_format": "json",
+                }
+            )
+        )
+        assert result["success"] is True
+
+    def test_unknown_parameter_with_no_close_match_has_no_did_you_mean(
+        self, tiny_project: Path
+    ) -> None:
+        """``difflib.get_close_matches`` only fires when the typo is
+        within editing distance of a real property — random keys must
+        get the bare ``unknown parameter`` message with no hint."""
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        tool = RefactoringSuggestionsTool(str(tiny_project))
+        with pytest.raises(ValueError) as exc_info:
+            _run(
+                tool.execute(
+                    {
+                        "file_path": str(tiny_project / "sample.py"),
+                        "xyz_unrelated_garbage": True,
+                    }
+                )
+            )
+        msg = str(exc_info.value)
+        assert "xyz_unrelated_garbage" in msg
+        assert "did you mean" not in msg, (
+            "did-you-mean hint must not fire for typos with no close match"
+        )
+
+    def test_file_health_tool_also_rejects_typos(self, tiny_project: Path) -> None:
+        """The strictness check is centralised at the base class level —
+        every BaseMCPTool subclass inherits it. Use a second real tool
+        as a smoke check that we did not accidentally hard-code the
+        check to one specific tool."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tiny_project))
+        with pytest.raises(ValueError) as exc_info:
+            _run(
+                tool.execute(
+                    {
+                        "file_path": str(tiny_project / "sample.py"),
+                        "output_formatt": "json",  # extra t
+                    }
+                )
+            )
+        msg = str(exc_info.value)
+        assert "output_formatt" in msg
+        # Close enough that difflib should suggest 'output_format'.
+        assert "output_format" in msg
+
+    def test_enforce_strict_params_helper_directly(self) -> None:
+        """Direct unit test on the helper — covers the function in
+        isolation from any tool's get_tool_definition."""
+        from tree_sitter_analyzer.mcp.utils.schema_strictness import (
+            enforce_strict_params,
+        )
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string"},
+                "max_suggestions": {"type": "integer"},
+            },
+            "required": ["file_path"],
+        }
+        # Empty arguments → no-op.
+        enforce_strict_params("t", schema, {})
+        # Valid call → no-op.
+        enforce_strict_params("t", schema, {"file_path": "x"})
+        # Unknown key with close match → ValueError with hint.
+        with pytest.raises(ValueError, match="max_suggestions"):
+            enforce_strict_params("t", schema, {"file_path": "x", "max_suggestion": 1})
+        # additionalProperties: True opts out of strictness.
+        enforce_strict_params(
+            "t",
+            {**schema, "additionalProperties": True},
+            {"file_path": "x", "extras": "ok"},
+        )
+        # Missing schema → no-op.
+        enforce_strict_params("t", None, {"file_path": "x"})
+        # Schema without properties → no-op (cannot know what's known).
+        enforce_strict_params("t", {"type": "object"}, {"file_path": "x"})
