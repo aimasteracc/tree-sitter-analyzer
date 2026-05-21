@@ -47,7 +47,19 @@ class ListFilesTool(BaseMCPTool):
         return {
             "name": "list_files",
             "description": (
-                "Map: fd-based file listing. Discover structure before deeper analysis."
+                "fd-based file listing. Discover directory structure before deeper "
+                "analysis. Honors .gitignore by default and respects file-type "
+                "categories (.py, .ts, etc.) via the ``types`` parameter.\n\n"
+                "WHEN TO USE:\n"
+                "- Mapping a new codebase before any other analysis\n"
+                "- Filtering files by extension (e.g. only .py + .pyi)\n"
+                "- Counting how many source files a project has via count_only=true\n"
+                "- Producing a quick structural overview\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To search file CONTENT — use search_content or find_and_grep\n"
+                "- To analyse a single file's structure — use get_code_outline\n"
+                "- To get a semantic project map — use project_overview"
             ),
             "inputSchema": TOOL_SCHEMA,
         }

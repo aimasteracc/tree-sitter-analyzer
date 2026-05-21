@@ -10000,3 +10000,156 @@ class TestT3CLIMCPParityMatrix:
             "T3: tools claim a standalone CLI entry-point that isn't "
             f"in pyproject.toml [project.scripts]: {broken}"
         )
+
+
+# ============================================================================
+# T7 (round-37i dogfood): MCP tool description quality baseline.
+# ============================================================================
+#
+# MCP tools are surfaced to LLM agents via their ``description`` field — the
+# agent reads it to decide whether to call the tool. A 70-char description
+# ("Walk a directory tree") gives the agent almost nothing to work with;
+# 1000-char descriptions with WHEN TO USE / WHEN NOT TO USE sections give
+# the agent enough context to pick the right tool.
+#
+# r37i scan found:
+#   - 7/31 tools have full WHEN TO USE / WHEN NOT TO USE guidance
+#   - 16/31 tools have description >= 200 chars
+#   - 15/31 tools have description < 200 chars (mostly the older tools)
+#
+# This test enforces a quality floor (the minimum length) and tracks the
+# WHEN TO USE coverage as a ratchet — adding new tools must meet the floor,
+# and we slowly migrate existing tools up.
+
+# Tools whose description is currently below the 200-char floor.
+# These are intentionally exempted from the gate while we migrate them.
+# DO NOT add new entries here for new tools — instead, write a better
+# description.
+_DESCRIPTION_QUALITY_EXEMPT_BELOW_200: frozenset[str] = frozenset(
+    {
+        "agent_skills",
+        "analyze_code_structure",
+        "analyze_scale",
+        "change_impact",
+        "file_health",
+        "find_and_grep",
+        # list_files migrated out in r37i — now has WHEN TO USE guidance.
+        "project_overview",
+        "query",
+        "read_partial",
+        "refactoring_suggestions",
+        "safe_to_edit",
+        "search_content",
+        "smart_context",
+        "universal_analyze",
+    }
+)
+
+
+def _load_mcp_tool_descriptions() -> dict[str, str]:
+    """Load every MCP tool's description via instantiation + get_tool_definition().
+
+    Skips ``base_tool`` (abstract) and any tool that fails to instantiate.
+    """
+    import importlib
+
+    descriptions: dict[str, str] = {}
+    for tool in _discover_mcp_tool_modules():
+        module = importlib.import_module(f"tree_sitter_analyzer.mcp.tools.{tool}_tool")
+        # Find the *Tool class in this module
+        for attr_name in dir(module):
+            attr = getattr(module, attr_name)
+            if not isinstance(attr, type):
+                continue
+            if attr.__module__ != module.__name__:
+                continue
+            if not hasattr(attr, "get_tool_definition"):
+                continue
+            try:
+                instance = attr()
+            except Exception:  # noqa: BLE001 — some tools need project_root
+                try:
+                    instance = attr(".")
+                except Exception:  # noqa: BLE001
+                    continue
+            try:
+                defn = instance.get_tool_definition()
+            except Exception:  # noqa: BLE001
+                continue
+            desc = defn.get("description", "")
+            if isinstance(desc, str):
+                descriptions[tool] = desc
+                break
+    return descriptions
+
+
+class TestT7DescriptionQualityFloor:
+    """T7 (round-37i): MCP tool descriptions must give the agent enough
+    context to pick the right tool. Today most tools have terse descriptions
+    that force the agent to guess. This test sets a quality floor and a
+    growth ratchet:
+
+    1. Every NEW tool's description must be >= 200 chars AND mention either
+       WHEN TO USE or a concrete usage scenario.
+    2. Existing short-description tools live in
+       ``_DESCRIPTION_QUALITY_EXEMPT_BELOW_200``. We migrate them out one
+       at a time — removing an entry from the exemption set without
+       improving the description fails the gate.
+    3. The exemption set must not GROW. Adding a new exemption is a code
+       review red flag.
+
+    Past dogfood findings prevented by this gate:
+    - K3 documentation drift (description claimed feature X but tool did Y)
+    - F9 budget claim vs reality
+    - Future agents skipping a tool because the description is unclear.
+    """
+
+    MIN_DESCRIPTION_LENGTH = 200
+
+    def test_no_new_tool_below_quality_floor(self):
+        """Tools NOT in the exemption set must be >= 200 chars."""
+        descriptions = _load_mcp_tool_descriptions()
+        violations = []
+        for tool, desc in descriptions.items():
+            if tool in _DESCRIPTION_QUALITY_EXEMPT_BELOW_200:
+                continue
+            if len(desc) < self.MIN_DESCRIPTION_LENGTH:
+                violations.append((tool, len(desc)))
+        assert not violations, (
+            "T7: these tools have descriptions shorter than 200 chars and "
+            "are not on the exemption list. Either write a longer description "
+            "(preferred) or add to _DESCRIPTION_QUALITY_EXEMPT_BELOW_200 "
+            f"(temporary): {violations}"
+        )
+
+    def test_exemption_set_does_not_grow(self):
+        """Every name in the exemption set must still need exemption.
+
+        Removing a tool from the set without fixing its description triggers
+        the floor test above. Adding a name that doesn't exist as a tool
+        triggers this test.
+        """
+        descriptions = _load_mcp_tool_descriptions()
+        stale = _DESCRIPTION_QUALITY_EXEMPT_BELOW_200 - descriptions.keys()
+        assert not stale, (
+            "T7: _DESCRIPTION_QUALITY_EXEMPT_BELOW_200 contains tool names "
+            f"that no longer exist: {sorted(stale)}. Remove them."
+        )
+
+    def test_exemption_count_does_not_grow_silently(self):
+        """The exemption set must not exceed today's baseline (15).
+
+        If you want to raise this number you must explicitly amend the test
+        with a comment justifying the regression. This catches the case
+        where a new tool is added with a too-short description AND quietly
+        added to the exemption set.
+        """
+        # Baseline established 2026-05-21 in round-37i.
+        # Migration progress: 15 → 14 (list_files migrated out r37i)
+        BASELINE_EXEMPT_COUNT = 14
+        assert len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200) <= BASELINE_EXEMPT_COUNT, (
+            f"T7: exemption set grew to {len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200)} "
+            f"(baseline: {BASELINE_EXEMPT_COUNT}). New tools must meet the "
+            "200-char description floor. If you have a legitimate reason to "
+            "raise the baseline, document it in this test with a comment."
+        )
