@@ -9585,3 +9585,39 @@ class TestS1CLIAdvancedPerKindCounts:
             payload = json.loads(result.stdout)
             for key in ("method_count", "class_count", "field_count", "import_count"):
                 assert key in payload, f"S1: '{key}' missing from {payload!r}"
+
+
+class TestS2AnalyzeCodeStructureStatisticsParity:
+    """S2 (round-37 dogfood): CLI ``--table=full --format json`` exposed
+    ``statistics: {class_count, method_count, field_count, import_count,
+    total_lines}`` at top level, but MCP ``analyze_code_structure`` only
+    exposed ``metadata: {classes_count, methods_count, ...}`` (plural,
+    nested). Agents pivoting between surfaces hit different shapes.
+    Fix hoists the ``statistics`` dict to MCP top-level for parity."""
+
+    async def test_mcp_response_includes_top_level_statistics(self, tmp_path):
+        """MCP analyze_code_structure exposes top-level ``statistics``."""
+
+        from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
+            AnalyzeCodeStructureTool,
+        )
+
+        fixture = tmp_path / "s2.py"
+        fixture.write_text(
+            "import os\n"
+            "class F:\n"
+            "    x: int = 0\n"
+            "    def a(self): pass\n"
+            "    def b(self): pass\n"
+        )
+        tool = AnalyzeCodeStructureTool(project_root=str(tmp_path))
+        result = await tool.execute({"file_path": "s2.py", "output_format": "json"})
+        # Top-level statistics dict mirrors CLI --table=full shape.
+        stats = result.get("statistics")
+        assert isinstance(stats, dict), result
+        assert stats.get("class_count") == 1, stats
+        assert stats.get("method_count") == 2, stats
+        # Legacy metadata (plural keys) remains for back-compat.
+        meta = result.get("metadata", {})
+        assert meta.get("classes_count") == 1, meta
+        assert meta.get("methods_count") == 2, meta

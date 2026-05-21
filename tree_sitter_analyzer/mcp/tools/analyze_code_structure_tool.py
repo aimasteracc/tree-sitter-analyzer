@@ -488,6 +488,14 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         # shape for cross-tool parity.
         for key in ("classes", "methods", "fields", "imports"):
             response[key] = structure_dict.get(key, [])
+        # S2 (round-37 dogfood): hoist ``statistics`` to top-level so MCP
+        # matches CLI ``--table=full --format json`` parity. CLI exposes
+        # ``statistics: {class_count, method_count, field_count, import_count,
+        # total_lines}``; MCP only had ``metadata: {classes_count,
+        # methods_count, ...}`` (plural, nested). Both shapes now coexist.
+        stats = structure_dict.get("statistics")
+        if isinstance(stats, dict):
+            response["statistics"] = stats
         if options.output_file:
             self._save_output(response, table_output, options)
         return apply_toon_format_to_response(response, options.output_format)
