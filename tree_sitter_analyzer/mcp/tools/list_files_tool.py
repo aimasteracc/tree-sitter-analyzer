@@ -32,6 +32,10 @@ from .list_files_helpers import (
 
 logger = logging.getLogger(__name__)
 
+# Time budget (ms) for the follow-up unbounded fd pass that resolves the real
+# total file count when the user-supplied limit truncated the first pass.
+_RECOUNT_BUDGET_MS = 500
+
 __all__ = ["ListFilesTool", "_build_agent_summary"]
 
 
@@ -134,8 +138,23 @@ class ListFilesTool(BaseMCPTool):
 
         lines = _decode_lines(out)
 
+        # H3 fix: fd's --max-results truncates server-side, so a response
+        # with len(lines)==limit could mean "exactly limit files exist" OR
+        # "many more exist, we just stopped early." Run a follow-up fd pass
+        # without --max-results to learn the truth. Budget: 500ms.
+        real_total, total_count_known = await self._resolve_real_total(
+            lines, limit, arguments, roots, effective_types, no_ignore
+        )
+
         if arguments.get("count_only", False):
-            return self._respond_count_only(lines, elapsed_ms, arguments, limit)
+            return self._respond_count_only(
+                lines,
+                elapsed_ms,
+                arguments,
+                limit,
+                real_total=real_total,
+                total_count_known=total_count_known,
+            )
 
         return _respond_detailed(
             DetailedResponseContext(
@@ -146,8 +165,64 @@ class ListFilesTool(BaseMCPTool):
                 no_ignore=no_ignore,
                 effective_types=effective_types,
                 project_root=self.project_root,
-            )
+            ),
+            real_total=real_total,
+            total_count_known=total_count_known,
         )
+
+    async def _resolve_real_total(
+        self,
+        lines: list[str],
+        limit: int,
+        arguments: dict[str, Any],
+        roots: list[str],
+        effective_types: list[str] | None,
+        no_ignore: bool,
+    ) -> tuple[int, bool]:
+        """Recount without --max-results when fd may have truncated.
+
+        Returns ``(real_total, total_count_known)``.
+
+        - Not truncated: ``(len(lines), True)`` — first pass already complete.
+        - Truncated and recount within budget: ``(real_count, True)``.
+        - Truncated and recount over budget or failed: ``(len(lines), False)``.
+        """
+        # Heuristic: if fd returned strictly fewer lines than the cap, there's
+        # nothing more to find — the first pass was exhaustive.
+        if len(lines) < limit:
+            return len(lines), True
+
+        try:
+            unbounded_cmd = _build_fd_command(
+                arguments,
+                roots,
+                fd_rg_utils.MAX_RESULTS_HARD_CAP,
+                effective_types,
+                no_ignore,
+            )
+            started = time.perf_counter()
+            rc, out, _err = await fd_rg_utils.run_command_capture(
+                unbounded_cmd,
+                timeout_ms=_RECOUNT_BUDGET_MS,
+            )
+            recount_ms = int((time.perf_counter() - started) * 1000)
+
+            if rc != 0:
+                logger.debug("list_files recount rc=%s in %sms", rc, recount_ms)
+                return len(lines), False
+
+            if recount_ms > _RECOUNT_BUDGET_MS:
+                return len(lines), False
+
+            recount_lines = _decode_lines(out)
+            real_total = len(recount_lines)
+            if real_total < len(lines):
+                # Defensive: should not happen, but trust the visible lines.
+                return len(lines), False
+            return real_total, True
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("list_files recount raised %s; using estimate", exc)
+            return len(lines), False
 
     def _resolve_no_ignore(self, arguments: dict[str, Any]) -> bool:
         """Determine no_ignore flag with smart gitignore detection."""
@@ -174,6 +249,9 @@ class ListFilesTool(BaseMCPTool):
         elapsed_ms: int,
         arguments: dict[str, Any],
         limit: int,
+        *,
+        real_total: int | None = None,
+        total_count_known: bool = True,
     ) -> dict[str, Any]:
         """Return count-only response through the shared response helper."""
         return _build_count_only_response(
@@ -183,5 +261,7 @@ class ListFilesTool(BaseMCPTool):
                 arguments=arguments,
                 limit=limit,
                 project_root=self.project_root,
-            )
+            ),
+            real_total=real_total,
+            total_count_known=total_count_known,
         )

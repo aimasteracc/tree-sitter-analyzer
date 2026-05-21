@@ -17,6 +17,7 @@ from typing import Any
 from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
+from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
 from .base_tool import BaseMCPTool
 from .query_symbol_search import execute_find_references
 
@@ -53,12 +54,22 @@ class SymbolLineageTool(BaseMCPTool):
         # reset on project_root rebind via _on_project_root_changed.
         self._dep_graph: DependencyGraph | None = None
         self._symbol_cache: dict[tuple[str, int], dict[str, Any]] = {}
+        # H4 fix: fingerprint snapshot for the cached graph + symbol cache.
+        # When the source tree changes, both the graph and the per-symbol
+        # response cache are invalidated together — the symbol responses
+        # bake in the graph's downstream/upstream sets.
+        self._dep_graph_fingerprint: GraphFingerprint | None = None
+        self._dep_graph_built_at: float | None = None
+        self._cache_invalidated_reason: str | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         # ARCH-A4 hook: invalidate every per-project cache when rebinding.
         self._dep_graph = None
         self._symbol_cache = {}
+        self._dep_graph_fingerprint = None
+        self._dep_graph_built_at = None
+        self._cache_invalidated_reason = None
 
     def _get_dep_graph(self) -> DependencyGraph | None:
         """Return cached dependency graph, building it on first use.
@@ -66,15 +77,52 @@ class SymbolLineageTool(BaseMCPTool):
         Returns ``None`` if graph construction fails (keeps the tool usable
         with reduced fidelity — downstream/upstream stay empty).
         """
+        if not self.project_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+
+        current_fp = compute_graph_fingerprint(str(self.project_root))
+        reason: str | None = None
         if self._dep_graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
+            reason = "cold"
+        elif self._dep_graph_fingerprint != current_fp:
+            reason = self._explain_fingerprint_delta(
+                self._dep_graph_fingerprint, current_fp
+            )
+
+        if reason is not None:
+            # Invalidate downstream caches that depend on the graph.
+            self._symbol_cache = {}
             try:
                 self._dep_graph = DependencyGraph(str(self.project_root))
+                self._dep_graph_fingerprint = current_fp
+                self._dep_graph_built_at = time.time()
+                self._cache_invalidated_reason = reason
             except Exception as exc:  # noqa: BLE001
                 logger.warning(f"DependencyGraph build failed: {exc}")
+                # Keep the prior state so the next call retries on its own.
+                self._dep_graph = None
+                self._dep_graph_fingerprint = None
+                self._dep_graph_built_at = None
+                self._cache_invalidated_reason = None
                 return None
+        else:
+            self._cache_invalidated_reason = None
         return self._dep_graph
+
+    @staticmethod
+    def _explain_fingerprint_delta(
+        old: GraphFingerprint | None, new: GraphFingerprint
+    ) -> str:
+        if old is None:
+            return "cold"
+        if old.file_count != new.file_count:
+            delta = new.file_count - old.file_count
+            return (
+                f"file_count_changed ({delta:+d}, {old.file_count}->{new.file_count})"
+            )
+        if old.max_mtime_ns != new.max_mtime_ns:
+            return "source_modified"
+        return "unknown"
 
     def get_tool_schema(self) -> dict[str, Any]:
         return TOOL_SCHEMA
@@ -114,6 +162,12 @@ class SymbolLineageTool(BaseMCPTool):
         if not root.is_dir():
             raise ValueError(f"Project root is not a directory: {root}")
 
+        # H4 fix: refresh the dep graph (and clear _symbol_cache if needed)
+        # before serving from the per-symbol response cache. _get_dep_graph
+        # will wipe _symbol_cache when it rebuilds, so the cache lookup
+        # below is automatically post-invalidation.
+        graph = self._get_dep_graph()
+
         # Per-symbol response cache: this tool does an expensive cross-file
         # walk (rglob + 500x engine.analyze) even with the analysis cache
         # warm. The same (symbol, max_depth) pair is asked for repeatedly
@@ -124,6 +178,9 @@ class SymbolLineageTool(BaseMCPTool):
             result = copy.deepcopy(cached)
             result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
             result["from_cache"] = True
+            # H4 introspection on warm symbol-cache hit.
+            if self._dep_graph_built_at is not None:
+                result["cache_age_s"] = round(time.time() - self._dep_graph_built_at, 3)
             return apply_toon_format_to_response(result, output_format)
 
         ref_args = {"symbol": symbol, "output_format": "json"}
@@ -136,9 +193,8 @@ class SymbolLineageTool(BaseMCPTool):
         ref_files = {r["file"] for r in references}
         all_symbol_files = def_files | ref_files
 
-        # Use the instance-cached graph (built lazily on first call,
-        # invalidated on project_root rebind via _on_project_root_changed).
-        graph = self._get_dep_graph()
+        # ``graph`` was already resolved above (just before the symbol
+        # cache lookup) — avoid the duplicate fingerprint scan.
 
         downstream: dict[str, Any] = {}
         upstream: dict[str, Any] = {}
@@ -231,6 +287,11 @@ class SymbolLineageTool(BaseMCPTool):
 
         response["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         response["from_cache"] = False
+        # H4 introspection.
+        if self._dep_graph_built_at is not None:
+            response["cache_age_s"] = round(time.time() - self._dep_graph_built_at, 3)
+        if self._cache_invalidated_reason is not None:
+            response["cache_invalidated_reason"] = self._cache_invalidated_reason
 
         return apply_toon_format_to_response(response, output_format)
 

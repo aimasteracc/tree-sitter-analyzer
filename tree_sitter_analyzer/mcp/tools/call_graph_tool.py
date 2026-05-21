@@ -12,6 +12,7 @@ from typing import Any
 
 from ...call_graph import CallGraph
 from ...utils import setup_logger
+from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -62,17 +63,61 @@ class CodeGraphCallTool(BaseMCPTool):
 
     def __init__(self, project_root: str | None = None) -> None:
         self._call_graph: CallGraph | None = None
+        # H4 fix: fingerprint snapshotted when the graph was built.
+        # Compared against a fresh fingerprint on every _get_call_graph()
+        # to detect in-place edits that don't change the directory mtime.
+        self._call_graph_fingerprint: GraphFingerprint | None = None
+        self._call_graph_built_at: float | None = None
+        self._cache_invalidated_reason: str | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._call_graph = None
+        self._call_graph_fingerprint = None
+        self._call_graph_built_at = None
+        self._cache_invalidated_reason = None
 
     def _get_call_graph(self) -> CallGraph:
+        if not self.project_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+
+        current_fp = compute_graph_fingerprint(self.project_root)
+        reason: str | None = None
         if self._call_graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
+            reason = "cold"
+        elif self._call_graph_fingerprint != current_fp:
+            reason = self._explain_fingerprint_delta(
+                self._call_graph_fingerprint, current_fp
+            )
+
+        if reason is not None:
             self._call_graph = CallGraph(self.project_root)
+            self._call_graph.build()
+            self._call_graph_fingerprint = current_fp
+            self._call_graph_built_at = time.time()
+            self._cache_invalidated_reason = reason
+        else:
+            # Warm reuse — clear any prior invalidation reason so the next
+            # response stays quiet about it.
+            self._cache_invalidated_reason = None
+        assert self._call_graph is not None  # nosec B101 - just rebuilt above
         return self._call_graph
+
+    @staticmethod
+    def _explain_fingerprint_delta(
+        old: GraphFingerprint | None, new: GraphFingerprint
+    ) -> str:
+        """Best-effort human-readable reason the cache was invalidated."""
+        if old is None:
+            return "cold"
+        if old.file_count != new.file_count:
+            delta = new.file_count - old.file_count
+            return (
+                f"file_count_changed ({delta:+d}, {old.file_count}->{new.file_count})"
+            )
+        if old.max_mtime_ns != new.max_mtime_ns:
+            return "source_modified"
+        return "unknown"
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -203,6 +248,13 @@ class CodeGraphCallTool(BaseMCPTool):
             raise ValueError(f"Unknown mode: {mode}")
 
         result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+        # H4 introspection: tell callers when this response came from a
+        # rebuilt graph vs a warm reuse, so AI agents can reason about
+        # whether they're seeing post-edit state.
+        if self._call_graph_built_at is not None:
+            result["cache_age_s"] = round(time.time() - self._call_graph_built_at, 3)
+        if self._cache_invalidated_reason is not None:
+            result["cache_invalidated_reason"] = self._cache_invalidated_reason
 
         from ..utils.format_helper import apply_toon_format_to_response
 

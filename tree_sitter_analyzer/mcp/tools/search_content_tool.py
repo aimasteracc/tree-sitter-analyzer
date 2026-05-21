@@ -154,7 +154,7 @@ class SearchContentTool(BaseMCPTool):
             message = err.decode("utf-8", errors="replace").strip() or "ripgrep failed"
             return {"success": False, "error": message, "returncode": rc}
 
-        return format_search_response(
+        return await format_search_response(
             arguments,
             output_format,
             out,
@@ -165,6 +165,9 @@ class SearchContentTool(BaseMCPTool):
             fd_rg_utils=fd_rg_utils,
             attach_toon=attach_toon_content_to_response,
             apply_toon=apply_toon_format_to_response,
+            rg_args=rg_args,
+            roots=roots,
+            files=files,
         )
 
     # Validate and resolve roots/files parameters

@@ -127,8 +127,12 @@ def respond_grouped(
     file_output_manager: Any,
     fd_rg_utils: Any,
     attach_toon: ToonFormatter,
+    real_total: int | None = None,
+    total_count_known: bool = True,
 ) -> dict[str, Any]:
     """Return matches organized by file."""
+    displayed = len(matches)
+    total_for_envelope = real_total if real_total is not None else displayed
     result = fd_rg_utils.group_matches_by_file(matches)
     result["truncated"] = truncated
     result["elapsed_ms"] = elapsed_ms
@@ -136,14 +140,21 @@ def respond_grouped(
         SearchAgentSummaryInput(
             arguments=arguments,
             mode="group_by_file",
-            count=int(result.get("count", len(matches))),
-            total_matches=len(matches),
+            count=int(result.get("count", displayed)),
+            total_matches=total_for_envelope,
             file_count=len(result.get("files", [])),
             truncated=truncated,
             elapsed_ms=elapsed_ms,
         )
     )
-    normalize_envelope(result, total_count=len(matches))
+    normalize_envelope(result, total_count=total_for_envelope)
+    _attach_total_count_metadata(
+        result,
+        displayed_count=displayed,
+        real_total=real_total,
+        total_count_known=total_count_known,
+        truncated=truncated,
+    )
 
     suppressed = handle_output_and_cache(
         result, arguments, file_output_manager, cache, cache_key, output_format
@@ -167,12 +178,16 @@ def respond_summary(
     file_output_manager: Any,
     fd_rg_utils: Any,
     attach_toon: ToonFormatter,
+    real_total: int | None = None,
+    total_count_known: bool = True,
 ) -> dict[str, Any]:
     """Return aggregated search statistics."""
     summary = fd_rg_utils.summarize_search_results(matches)
+    displayed = len(matches)
+    total_for_envelope = real_total if real_total is not None else displayed
     result: dict[str, Any] = {
         "success": True,
-        "count": len(matches),
+        "count": displayed,
         "results": [],
         "truncated": truncated,
         "elapsed_ms": elapsed_ms,
@@ -181,14 +196,21 @@ def respond_summary(
             SearchAgentSummaryInput(
                 arguments=arguments,
                 mode="summary",
-                count=len(matches),
+                count=displayed,
                 file_count=summary.get("total_files"),
                 truncated=truncated,
                 elapsed_ms=elapsed_ms,
             )
         ),
     }
-    normalize_envelope(result, total_count=len(matches))
+    normalize_envelope(result, total_count=total_for_envelope)
+    _attach_total_count_metadata(
+        result,
+        displayed_count=displayed,
+        real_total=real_total,
+        total_count_known=total_count_known,
+        truncated=truncated,
+    )
 
     suppressed = handle_output_and_cache(
         result, arguments, file_output_manager, cache, cache_key, output_format
@@ -212,18 +234,22 @@ def respond_full(
     file_output_manager: Any,
     fd_rg_utils: Any,
     apply_toon: ToonApplier,
+    real_total: int | None = None,
+    total_count_known: bool = True,
 ) -> dict[str, Any]:
     """Return full match details with optional next steps."""
+    displayed = len(matches)
+    total_for_envelope = real_total if real_total is not None else displayed
     result: dict[str, Any] = {
         "success": True,
-        "count": len(matches),
+        "count": displayed,
         "truncated": truncated,
         "elapsed_ms": elapsed_ms,
         "agent_summary": build_agent_summary(
             SearchAgentSummaryInput(
                 arguments=arguments,
                 mode="normal",
-                count=len(matches),
+                count=displayed,
                 file_count=count_match_files(matches),
                 truncated=truncated,
                 elapsed_ms=elapsed_ms,
@@ -240,7 +266,14 @@ def respond_full(
     save_enriched_output(
         result, matches, arguments, output_format, file_output_manager, fd_rg_utils
     )
-    normalize_envelope(result, total_count=len(matches))
+    normalize_envelope(result, total_count=total_for_envelope)
+    _attach_total_count_metadata(
+        result,
+        displayed_count=displayed,
+        real_total=real_total,
+        total_count_known=total_count_known,
+        truncated=truncated,
+    )
 
     suppressed = handle_output_and_cache(
         result, arguments, file_output_manager, cache, cache_key, output_format
@@ -249,3 +282,35 @@ def respond_full(
         return normalize_envelope(suppressed)
 
     return apply_toon(result, output_format)
+
+
+def _attach_total_count_metadata(
+    result: dict[str, Any],
+    *,
+    displayed_count: int,
+    real_total: int | None,
+    total_count_known: bool,
+    truncated: bool,
+) -> None:
+    """Attach H2 fix metadata for total_count under truncation.
+
+    Adds fields:
+    - ``total_count_known``: True when ``total_count`` is the real total.
+      False when ripgrep truncated and the recount pass was skipped or
+      exceeded its time budget.
+    - ``total_count_at_least``: a lower bound (``displayed_count``) when
+      the real total is unknown — callers can ``>=`` against this safely.
+    """
+    if not truncated:
+        # Non-truncated responses already have honest total_count via envelope.
+        result["total_count_known"] = True
+        return
+    result["total_count_known"] = bool(total_count_known)
+    if not total_count_known:
+        # When the real total is unknown, the envelope already mirrors
+        # displayed_count into total_count. Surface the lower-bound name
+        # explicitly so callers don't accidentally trust it as exact.
+        result["total_count_at_least"] = displayed_count
+        # Also overwrite total_count to be max(displayed_count, real_total).
+        # Since real_total is unknown we leave total_count == displayed_count
+        # but the new flag makes the uncertainty explicit.

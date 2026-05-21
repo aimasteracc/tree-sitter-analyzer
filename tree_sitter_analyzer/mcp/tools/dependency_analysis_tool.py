@@ -12,6 +12,7 @@ from typing import Any
 
 from ...project_graph import BlastRadius, DependencyGraph
 from ...utils import setup_logger
+from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -22,17 +23,58 @@ class DependencyAnalysisTool(BaseMCPTool):
 
     def __init__(self, project_root: str | None = None) -> None:
         self._graph: DependencyGraph | None = None
+        # H4 fix: snapshot fingerprint at build time. Compared against a
+        # fresh fingerprint on every call so in-place edits invalidate
+        # both the instance cache AND, indirectly, DependencyGraph's
+        # _global_cache (whose key is now derived from the same fingerprint).
+        self._graph_fingerprint: GraphFingerprint | None = None
+        self._graph_built_at: float | None = None
+        self._cache_invalidated_reason: str | None = None
         super().__init__(project_root)
 
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._graph = None
+        self._graph_fingerprint = None
+        self._graph_built_at = None
+        self._cache_invalidated_reason = None
 
     def _get_graph(self) -> DependencyGraph:
+        if not self.project_root:
+            raise ValueError("Project root not set. Call set_project_path first.")
+
+        current_fp = compute_graph_fingerprint(self.project_root)
+        reason: str | None = None
         if self._graph is None:
-            if not self.project_root:
-                raise ValueError("Project root not set. Call set_project_path first.")
+            reason = "cold"
+        elif self._graph_fingerprint != current_fp:
+            reason = self._explain_fingerprint_delta(
+                self._graph_fingerprint, current_fp
+            )
+
+        if reason is not None:
             self._graph = DependencyGraph(self.project_root)
+            self._graph_fingerprint = current_fp
+            self._graph_built_at = time.time()
+            self._cache_invalidated_reason = reason
+        else:
+            self._cache_invalidated_reason = None
+        assert self._graph is not None  # nosec B101 - just rebuilt above
         return self._graph
+
+    @staticmethod
+    def _explain_fingerprint_delta(
+        old: GraphFingerprint | None, new: GraphFingerprint
+    ) -> str:
+        if old is None:
+            return "cold"
+        if old.file_count != new.file_count:
+            delta = new.file_count - old.file_count
+            return (
+                f"file_count_changed ({delta:+d}, {old.file_count}->{new.file_count})"
+            )
+        if old.max_mtime_ns != new.max_mtime_ns:
+            return "source_modified"
+        return "unknown"
 
     def get_tool_definition(self) -> dict[str, Any]:
         return {
@@ -118,6 +160,11 @@ class DependencyAnalysisTool(BaseMCPTool):
         _attach_agent_summary(result, mode, graph)
 
         result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
+        # H4 introspection.
+        if self._graph_built_at is not None:
+            result["cache_age_s"] = round(time.time() - self._graph_built_at, 3)
+        if self._cache_invalidated_reason is not None:
+            result["cache_invalidated_reason"] = self._cache_invalidated_reason
 
         from ..utils.format_helper import apply_toon_format_to_response
 

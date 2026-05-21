@@ -159,12 +159,26 @@ class DependencyGraph:
 
     @staticmethod
     def _cache_key_for(project_root: str) -> str | None:
-        """Generate a cache key based on project directory metadata."""
+        """Generate a cache key based on project source-file fingerprint.
+
+        Uses ``compute_graph_fingerprint`` (file_count + max_mtime_ns of all
+        source files) instead of the project-root directory mtime alone.
+        Directory mtime only flips on file add/remove, so modifying a file
+        in place previously left a stale graph cached forever.
+
+        Cost: ~10ms on a 1300-file repo — fast enough to call on every
+        ``DependencyGraph(root)`` construction.
+        """
         try:
-            stat = os.stat(project_root)
-            return f"{project_root}:{stat.st_mtime}"
+            os.stat(project_root)
         except OSError:
             return None
+        # Local import to avoid a hard dependency cycle (mcp.tools imports
+        # project_graph, so we can't import it at module level).
+        from .mcp.tools._graph_cache_fingerprint import compute_graph_fingerprint
+
+        fp = compute_graph_fingerprint(project_root)
+        return f"{project_root}:{fp.file_count}:{fp.max_mtime_ns}"
 
     _EXCLUDE_DIRS = {
         "node_modules",
@@ -195,8 +209,21 @@ class DependencyGraph:
     def _build(self) -> None:
         """Scan project directory and build the dependency graph."""
         supported_exts = {
-            ".py", ".js", ".ts", ".jsx", ".tsx", ".java",
-            ".go", ".rs", ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx",
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".go",
+            ".rs",
+            ".c",
+            ".cpp",
+            ".cc",
+            ".cxx",
+            ".h",
+            ".hpp",
+            ".hxx",
         }
 
         # Collect all source files (excluding generated/dependency dirs)
@@ -287,7 +314,11 @@ class DependencyGraph:
         elif language == "rust":
             if not is_relative:
                 return None
-            path_parts = module.replace("crate::", "").replace("super::", "").replace("self::", "")
+            path_parts = (
+                module.replace("crate::", "")
+                .replace("super::", "")
+                .replace("self::", "")
+            )
             path = path_parts.replace("::", "/")
             source_dir = Path(source_rel).parent
             candidate = str(source_dir / path)

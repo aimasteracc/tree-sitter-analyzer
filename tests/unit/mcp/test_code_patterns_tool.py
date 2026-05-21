@@ -192,7 +192,7 @@ class TestCheckJsAntiPatterns:
 
 class TestCheckJavaAntiPatterns:
     def test_system_out_println(self):
-        lines = ["System.out.println(\"hi\");"]
+        lines = ['System.out.println("hi");']
         patterns: list[dict] = []
         _check_java_anti_patterns(lines, patterns)
         assert any(p["type"] == "system_out_println" for p in patterns)
@@ -204,7 +204,7 @@ class TestCheckJavaAntiPatterns:
         assert any(p["type"] == "print_stacktrace" for p in patterns)
 
     def test_commented_println_ignored(self):
-        lines = ["// System.out.println(\"debug\");"]
+        lines = ['// System.out.println("debug");']
         patterns: list[dict] = []
         _check_java_anti_patterns(lines, patterns)
         assert patterns == []
@@ -312,11 +312,7 @@ class TestSeverityOrder:
 def _make_python_with_anti_patterns(tmp_path) -> str:
     p = tmp_path / "sample.py"
     p.write_text(
-        "def foo(x=[]):\n"
-        "    try:\n"
-        "        pass\n"
-        "    except:\n"
-        "        print('bad')\n",
+        "def foo(x=[]):\n    try:\n        pass\n    except:\n        print('bad')\n",
         encoding="utf-8",
     )
     return str(p)
@@ -343,12 +339,12 @@ def _make_js_with_anti_patterns(tmp_path) -> str:
 def _make_java_with_anti_patterns(tmp_path) -> str:
     p = tmp_path / "Sample.java"
     p.write_text(
-        'public class Sample {\n'
-        '  void run() {\n'
+        "public class Sample {\n"
+        "  void run() {\n"
         '    System.out.println("hi");\n'
-        '    try { bad(); } catch (Exception e) { e.printStackTrace(); }\n'
-        '  }\n'
-        '}\n',
+        "    try { bad(); } catch (Exception e) { e.printStackTrace(); }\n"
+        "  }\n"
+        "}\n",
         encoding="utf-8",
     )
     return str(p)
@@ -449,7 +445,11 @@ class TestExecuteSeverityFiltering:
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
         result = await tool.execute(
-            {"file_path": fp, "categories": ["anti_patterns"], "severity_threshold": "critical"}
+            {
+                "file_path": fp,
+                "categories": ["anti_patterns"],
+                "severity_threshold": "critical",
+            }
         )
         assert result["success"] is True
         for p in result["patterns"]:
@@ -460,7 +460,11 @@ class TestExecuteSeverityFiltering:
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
         result = await tool.execute(
-            {"file_path": fp, "categories": ["anti_patterns"], "severity_threshold": "warning"}
+            {
+                "file_path": fp,
+                "categories": ["anti_patterns"],
+                "severity_threshold": "warning",
+            }
         )
         assert result["success"] is True
         for p in result["patterns"]:
@@ -471,7 +475,11 @@ class TestExecuteSeverityFiltering:
         fp = _make_python_with_anti_patterns(tmp_path)
         tool = CodePatternsTool(str(tmp_path))
         result = await tool.execute(
-            {"file_path": fp, "categories": ["anti_patterns"], "severity_threshold": "info"}
+            {
+                "file_path": fp,
+                "categories": ["anti_patterns"],
+                "severity_threshold": "info",
+            }
         )
         assert result["success"] is True
         sevs = {p["severity"] for p in result["patterns"]}
@@ -609,7 +617,9 @@ class TestExecuteEdgeCases:
         p = tmp_path / "sample.ts"
         p.write_text("var x = 1;\nif (x == 2) {}\n", encoding="utf-8")
         tool = CodePatternsTool(str(tmp_path))
-        result = await tool.execute({"file_path": str(p), "categories": ["anti_patterns"]})
+        result = await tool.execute(
+            {"file_path": str(p), "categories": ["anti_patterns"]}
+        )
         assert result["success"] is True
         types = [pt["type"] for pt in result["patterns"]]
         assert "var_usage" in types
@@ -648,7 +658,14 @@ class TestAntiPatternLineNumbers:
 
 class TestAntiPatternIds:
     def test_python_anti_patterns_have_ids(self):
-        lines = ["def foo(x=[]):", "    pass", "except:", "    pass", "def bar():", "    print('x')"]
+        lines = [
+            "def foo(x=[]):",
+            "    pass",
+            "except:",
+            "    pass",
+            "def bar():",
+            "    print('x')",
+        ]
         patterns: list[dict] = []
         _check_python_anti_patterns(lines, patterns)
         ids = {p["id"] for p in patterns}
@@ -692,3 +709,73 @@ class TestDetectSecurityWithRealFile:
     def test_detect_security_handles_unreadable_gracefully(self):
         result = _detect_security("/nonexistent/path/code.py", "python")
         assert isinstance(result, list)
+
+
+# ---------------------------------------------------------------------------
+# Cross-language smell detection (regression for bugs H1 + M5)
+#
+# Before the fix, code_patterns called detect_code_smells with analysis=None,
+# which fell back to a Python-only heuristic. JS / TS / Java long functions
+# and god-classes were silently ignored even though file_health flagged them.
+# ---------------------------------------------------------------------------
+
+
+class TestCrossLanguageSmellDetection:
+    @pytest.mark.asyncio
+    async def test_code_patterns_long_method_js(self, tmp_path):
+        """Bug H1 regression: a 100+ line JS function MUST surface as long_method."""
+        body = "\n".join(f"  const var{i} = input + {i};" for i in range(1, 121))
+        source = (
+            "function longJSFunction(input) {\n"
+            "  // Auto-generated long function for testing\n"
+            f"{body}\n"
+            "  return var100;\n"
+            "}\n"
+        )
+        target = tmp_path / "long.js"
+        target.write_text(source, encoding="utf-8")
+
+        tool = CodePatternsTool(str(tmp_path))
+        result = await tool.execute(
+            {
+                "file_path": str(target),
+                "categories": ["smells"],
+                "output_format": "json",
+            }
+        )
+
+        smells = [p for p in result["patterns"] if p["category"] == "smells"]
+        long_methods = [p for p in smells if p["type"] == "long_method"]
+        assert long_methods, (
+            "expected at least one long_method smell from cross-language AST "
+            f"detection, got: {smells}"
+        )
+        assert long_methods[0]["severity"] == "critical"
+
+    @pytest.mark.asyncio
+    async def test_code_patterns_god_class_js(self, tmp_path):
+        """Bug M5 regression: a single 300+ line JS class MUST surface as god_class."""
+        method_chunks: list[str] = []
+        for i in range(1, 30):
+            body = "\n".join(f"    const x{j} = {i} + {j};" for j in range(10))
+            method_chunks.append(f"  method{i}() {{\n{body}\n    return x9;\n  }}")
+        source = "class BigJS {\n" + "\n".join(method_chunks) + "\n}\n"
+
+        target = tmp_path / "big_class.js"
+        target.write_text(source, encoding="utf-8")
+
+        tool = CodePatternsTool(str(tmp_path))
+        result = await tool.execute(
+            {
+                "file_path": str(target),
+                "categories": ["smells"],
+                "output_format": "json",
+            }
+        )
+
+        smells = [p for p in result["patterns"] if p["category"] == "smells"]
+        god_classes = [p for p in smells if p["type"] == "god_class"]
+        assert god_classes, (
+            "expected a god_class smell once the AST path is wired up; got "
+            f"smells={smells}"
+        )

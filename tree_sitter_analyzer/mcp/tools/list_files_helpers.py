@@ -187,12 +187,24 @@ def _resolve_effective_types(arguments: dict[str, Any]) -> list[str] | None:
     return effective_types
 
 
-def _respond_count_only(context: CountResponseContext) -> dict[str, Any]:
+def _respond_count_only(
+    context: CountResponseContext,
+    *,
+    real_total: int | None = None,
+    total_count_known: bool = True,
+) -> dict[str, Any]:
     """Return count-only response with optional file output."""
     from .search_envelope import normalize_envelope
 
-    total_count = min(len(context.lines), fd_rg_utils.MAX_RESULTS_HARD_CAP)
-    truncated = len(context.lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP
+    displayed_count = len(context.lines)
+    # H3 fix: if the recount pass succeeded, trust real_total. Otherwise
+    # treat displayed_count as a lower bound and mark total_count_known=False.
+    if real_total is not None and total_count_known:
+        total_count = real_total
+        truncated = real_total > displayed_count or real_total >= context.limit
+    else:
+        total_count = displayed_count
+        truncated = displayed_count >= context.limit
 
     agent_summary = _build_agent_summary(
         count=total_count,
@@ -219,6 +231,13 @@ def _respond_count_only(context: CountResponseContext) -> dict[str, Any]:
         "agent_summary": agent_summary,
         "summary_line": agent_summary.get("summary_line", ""),
     }
+    _attach_total_count_metadata(
+        result,
+        displayed_count=displayed_count,
+        real_total=real_total,
+        total_count_known=total_count_known,
+        truncated=truncated,
+    )
 
     file_response = _save_count_output(
         context.project_root, context.arguments, context.limit, result
@@ -232,15 +251,60 @@ def _respond_count_only(context: CountResponseContext) -> dict[str, Any]:
     return apply_toon_format_to_response(result, output_format)
 
 
-def _respond_detailed(context: DetailedResponseContext) -> dict[str, Any]:
+def _attach_total_count_metadata(
+    result: dict[str, Any],
+    *,
+    displayed_count: int,
+    real_total: int | None,
+    total_count_known: bool,
+    truncated: bool,
+) -> None:
+    """Attach H3-fix fields so callers can detect truncation honestly.
+
+    - ``total_count_known``: True when the recount pass succeeded, False
+      when the unbounded fd pass was skipped or over budget.
+    - ``total_count_at_least``: a lower bound (``displayed_count``) when
+      ``total_count_known=False``.
+    """
+    if not truncated:
+        result["total_count_known"] = True
+        return
+    result["total_count_known"] = bool(total_count_known)
+    if not total_count_known:
+        result["total_count_at_least"] = displayed_count
+
+
+def _respond_detailed(
+    context: DetailedResponseContext,
+    *,
+    real_total: int | None = None,
+    total_count_known: bool = True,
+) -> dict[str, Any]:
     """Return detailed file listing with metadata and optional file output."""
     from .search_envelope import normalize_envelope
 
     lines = context.lines
-    truncated = len(lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP
-    pre_truncation_count = len(lines)
-    if truncated:
+    # H3 fix: if the fd recount pass succeeded, real_total is the true count.
+    # ``truncated`` becomes True whenever fd's limit clipped the first pass.
+    displayed_count = len(lines)
+    if real_total is not None and total_count_known:
+        truncated = real_total > displayed_count
+        pre_truncation_count = real_total
+    else:
+        # Fall back to the old hard-cap check; the recount-failed path
+        # still surfaces uncertainty via total_count_known=False below.
+        truncated = displayed_count >= context.limit
+        pre_truncation_count = displayed_count
+
+    # Hard-cap rule: even if recount says nothing was clipped, returning more
+    # than MAX_RESULTS_HARD_CAP means we're going to slice and must mark
+    # truncated=True so callers know they're seeing a prefix.
+    if displayed_count > fd_rg_utils.MAX_RESULTS_HARD_CAP:
         lines = lines[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
+        truncated = True
+        # Preserve the larger real_total when known; otherwise displayed_count
+        # is at least the pre-slice line count we just observed.
+        pre_truncation_count = max(pre_truncation_count, displayed_count)
 
     results = _parse_fd_output(lines, context.effective_types)
 
@@ -268,6 +332,13 @@ def _respond_detailed(context: DetailedResponseContext) -> dict[str, Any]:
         "summary_line": agent_summary.get("summary_line", ""),
         "results": results,
     }
+    _attach_total_count_metadata(
+        final_result,
+        displayed_count=displayed_count,
+        real_total=real_total,
+        total_count_known=total_count_known,
+        truncated=truncated,
+    )
 
     file_response = _save_detailed_output(
         context.project_root,

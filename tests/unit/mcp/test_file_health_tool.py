@@ -515,3 +515,49 @@ def test_god_class_reports_single_oversized_class_span() -> None:
             "fix": "Extract responsibilities into separate classes (Single Responsibility Principle)",
         }
     ]
+
+
+# ---------------------------------------------------------------------------
+# Binary + empty file guards (regression for bugs M6 + M7)
+#
+# Before the fix:
+#   - Binary files (.pyc) were scored grade F with an empty-string dimension
+#     leak in the recommendation.
+#   - 0-byte files were scored grade B / SAFE with a confusing
+#     ``large_file`` signal.
+# ---------------------------------------------------------------------------
+
+
+def test_file_health_binary_file(tmp_path) -> None:
+    """Bug M6 regression: refuse to analyze binary files cleanly."""
+    binary = tmp_path / "test_module.pyc"
+    binary.write_bytes(b"\x42\x0d\x0d\x0a\x00\x00\x00\x00" + b"\xff" * 200)
+
+    tool = FileHealthTool(project_root=str(tmp_path))
+    result = _run(tool.execute({"file_path": str(binary), "output_format": "json"}))
+
+    assert result["success"] is False
+    assert result["error_type"] == "binary_file"
+    assert "binary" in result["error"].lower()
+    assert result["file_path"] == str(binary)
+    assert result["agent_summary"]["verdict"] == "ERROR"
+    assert result["agent_summary"]["next_step"] == "skip"
+
+
+def test_file_health_empty_file(tmp_path) -> None:
+    """Bug M7 regression: 0-byte file returns an n/a envelope, never grade B."""
+    empty = tmp_path / "empty.py"
+    empty.write_text("", encoding="utf-8")
+
+    tool = FileHealthTool(project_root=str(tmp_path))
+    result = _run(tool.execute({"file_path": str(empty), "output_format": "json"}))
+
+    assert result["success"] is True
+    assert result["grade"] == "N/A"
+    assert result["verdict"] == "n/a"
+    assert result["signal"] == "empty_file"
+    assert "empty" in result["recommendation"].lower()
+    # The follow-up actions must be no-ops — agents must not chain refactor
+    # commands on a 0-byte file.
+    assert result["agent_next_action"]["mcp_command"] == ""
+    assert result["agent_next_action"]["post_edit_commands"] == []

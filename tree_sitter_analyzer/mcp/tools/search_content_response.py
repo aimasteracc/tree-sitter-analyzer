@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -12,6 +14,13 @@ from .search_content_response_modes import (
     respond_summary,
     respond_total_only,
 )
+
+logger = logging.getLogger(__name__)
+
+# Time budget for the follow-up rg --count-matches pass that resolves the
+# real pre-truncation total. If a single recount run takes longer than this,
+# fall back to ``total_count_known=False`` and ``total_count_at_least``.
+RECOUNT_BUDGET_MS = 500
 
 ToonFormatter = Callable[[dict[str, Any]], dict[str, Any]]
 ToonApplier = Callable[[dict[str, Any], str], dict[str, Any]]
@@ -65,7 +74,7 @@ def build_rg_args(
     }
 
 
-def format_search_response(
+async def format_search_response(
     arguments: dict[str, Any],
     output_format: str,
     out: bytes,
@@ -77,6 +86,9 @@ def format_search_response(
     fd_rg_utils: Any,
     attach_toon: ToonFormatter,
     apply_toon: ToonApplier,
+    rg_args: dict[str, Any] | None = None,
+    roots: list[str] | None = None,
+    files: list[str] | None = None,
 ) -> dict[str, Any] | int:
     """Dispatch successful rg output to the requested response mode."""
     if arguments.get("total_only", False):
@@ -96,6 +108,19 @@ def format_search_response(
         )
 
     matches, truncated = _parse_limited_matches(arguments, out, fd_rg_utils)
+
+    # H2 fix: ripgrep's --max-count truncates server-side per file, and the
+    # tool's apply_limits truncates again globally. When truncated, the only
+    # honest pre-truncation count is via a follow-up rg --count-matches run.
+    real_total, total_count_known = await _resolve_real_total(
+        truncated=truncated,
+        displayed_count=len(matches),
+        rg_args=rg_args,
+        roots=roots,
+        files=files,
+        fd_rg_utils=fd_rg_utils,
+    )
+
     return _format_match_response(
         matches,
         truncated,
@@ -108,7 +133,90 @@ def format_search_response(
         fd_rg_utils,
         attach_toon,
         apply_toon,
+        real_total=real_total,
+        total_count_known=total_count_known,
     )
+
+
+async def _resolve_real_total(
+    *,
+    truncated: bool,
+    displayed_count: int,
+    rg_args: dict[str, Any] | None,
+    roots: list[str] | None,
+    files: list[str] | None,
+    fd_rg_utils: Any,
+) -> tuple[int, bool]:
+    """Return (real_total, total_count_known) for a search response.
+
+    When not truncated, real_total == displayed_count and known=True.
+
+    When truncated, run a fresh rg --count-matches pass (no max_count) to
+    learn the true count. If that pass exceeds RECOUNT_BUDGET_MS we drop
+    back to displayed_count + total_count_known=False.
+    """
+    if not truncated:
+        return displayed_count, True
+
+    if rg_args is None:
+        # No rg_args supplied (legacy callers): be honest about uncertainty.
+        return displayed_count, False
+
+    try:
+        recount_args = dict(rg_args)
+        # Drop the per-file cap that caused truncation in the first place.
+        recount_args["max_count"] = None
+        # Mirror search_content_tool._run_search file-vs-roots routing.
+        if files:
+            recount_roots = sorted({str(_parent_dir(f)) for f in files})
+        else:
+            recount_roots = roots or []
+
+        cmd = fd_rg_utils.build_rg_command(
+            roots=recount_roots,
+            count_only_matches=True,
+            **{k: v for k, v in recount_args.items() if k != "files_from"},
+            files_from=None,
+        )
+        started = time.perf_counter()
+        rc, out_bytes, _err = await fd_rg_utils.run_command_capture(
+            cmd, timeout_ms=RECOUNT_BUDGET_MS
+        )
+        recount_ms = int((time.perf_counter() - started) * 1000)
+
+        if rc not in (0, 1):
+            logger.debug(
+                "Recount pass failed (rc=%s, %sms); dropping to estimate.",
+                rc,
+                recount_ms,
+            )
+            return displayed_count, False
+
+        if recount_ms > RECOUNT_BUDGET_MS:
+            logger.debug(
+                "Recount pass exceeded budget (%sms > %sms); using estimate.",
+                recount_ms,
+                RECOUNT_BUDGET_MS,
+            )
+            # Even if we have a value, treat it as estimate-only when slow.
+            return displayed_count, False
+
+        file_counts = fd_rg_utils.parse_rg_count_output(out_bytes)
+        real_total = int(file_counts.get("__total__", 0))
+        # If recount somehow undercounts (race/IO), trust displayed_count.
+        if real_total < displayed_count:
+            return displayed_count, False
+        return real_total, True
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("Recount pass raised %s; using estimate.", exc)
+        return displayed_count, False
+
+
+def _parent_dir(file_path: str) -> str:
+    """Return the parent directory of a file path (mirrors _prepare_search_roots)."""
+    from pathlib import Path
+
+    return str(Path(file_path).parent)
 
 
 def _parse_limited_matches(
@@ -136,6 +244,8 @@ def _format_match_response(
     fd_rg_utils: Any,
     attach_toon: ToonFormatter,
     apply_toon: ToonApplier,
+    real_total: int | None = None,
+    total_count_known: bool = True,
 ) -> dict[str, Any]:
     """Dispatch parsed matches to grouped, summary, or full response mode."""
     if arguments.get("group_by_file", False) and matches:
@@ -150,6 +260,8 @@ def _format_match_response(
             file_output_manager,
             fd_rg_utils,
             attach_toon,
+            real_total=real_total,
+            total_count_known=total_count_known,
         )
     if arguments.get("summary_only", False):
         return respond_summary(
@@ -163,6 +275,8 @@ def _format_match_response(
             file_output_manager,
             fd_rg_utils,
             attach_toon,
+            real_total=real_total,
+            total_count_known=total_count_known,
         )
     return respond_full(
         matches,
@@ -175,6 +289,8 @@ def _format_match_response(
         file_output_manager,
         fd_rg_utils,
         apply_toon,
+        real_total=real_total,
+        total_count_known=total_count_known,
     )
 
 

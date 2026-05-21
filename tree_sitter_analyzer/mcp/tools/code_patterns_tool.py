@@ -15,6 +15,7 @@ from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 from .security_scanner import detect_security_issues
+from .utils.element_extractor import extract_elements
 from .utils.file_health_smells import detect_code_smells
 
 logger = setup_logger(__name__)
@@ -104,7 +105,7 @@ class CodePatternsTool(BaseMCPTool):
         scan_all = "all" in categories
 
         if scan_all or "smells" in categories:
-            all_patterns.extend(_detect_smells(resolved, language))
+            all_patterns.extend(_detect_smells(resolved, language, self.project_root))
 
         if scan_all or "security" in categories:
             all_patterns.extend(_detect_security(resolved, language))
@@ -182,13 +183,22 @@ class CodePatternsTool(BaseMCPTool):
         return apply_toon_format_to_response(response, output_format)
 
 
-def _detect_smells(file_path: str, language: str) -> list[dict[str, Any]]:
+def _detect_smells(
+    file_path: str, language: str, project_root: str | None = None
+) -> list[dict[str, Any]]:
     # ``detect_code_smells`` signature is (file_path, dimensions, analysis,
-    # language=None). The wrapper here only has the file path and language,
-    # so pass empty placeholders for the unused contextual inputs — the
-    # smell detector falls back to source-only heuristics.
+    # language=None). Build the same tree-sitter analysis that
+    # ``file_health_tool`` uses so the AST-driven detectors (long_method,
+    # god_class) work for every supported language. Without ``analysis`` the
+    # detector falls back to ``find_long_blocks_heuristic`` in
+    # ``file_health_blocks`` — which matches only ``def`` / ``async def``
+    # prefixes and is therefore Python-only. (Bugs H1 + M5.)
     try:
-        smells = detect_code_smells(file_path, {}, None, language=language)
+        analysis = extract_elements(file_path, project_root)
+    except Exception:  # nosec B110 — parse failure is non-critical, fall back to heuristic
+        analysis = None
+    try:
+        smells = detect_code_smells(file_path, {}, analysis, language=language)
     except Exception:
         return []
 
