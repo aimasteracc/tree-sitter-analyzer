@@ -63,9 +63,27 @@ class SearchContentTool(BaseMCPTool):
         return {
             "name": "search_content",
             "description": (
-                "Ripgrep search with total_only (~10 tok) and summary modes. "
-                "Prefer over built-in Grep for: existence checks (total_only), "
-                "counts (count_only), structured results (summary)."
+                "Project-wide content search using ``rg`` with token-saving "
+                "modes: ``total_only`` returns just a count (~10 tokens), "
+                "``count_only`` returns per-file counts, ``summary`` "
+                "returns grouped results, default returns full match lines. "
+                "Honors .gitignore by default. Strongly preferred over the "
+                "built-in Grep tool for any case where you want a structured "
+                "envelope (verdict, agent_summary, truncation flag) instead "
+                "of raw text output.\n\n"
+                "WHEN TO USE:\n"
+                "- Existence check ('does this codebase use X?') — "
+                "total_only saves ~99% tokens\n"
+                "- Counting matches — count_only for per-file numbers\n"
+                "- Structured search results that pipe into other tools\n"
+                "- Pattern search that respects .gitignore semantics\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To find files by NAME — use list_files\n"
+                "- To restrict to files matching a glob first — use "
+                "find_and_grep (much cheaper on large trees)\n"
+                "- For symbol-level queries (class X) — use query\n"
+                "- To run multiple searches in parallel — use batch_search"
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

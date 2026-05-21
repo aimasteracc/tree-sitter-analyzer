@@ -37,9 +37,28 @@ class AgentSkillsTool(BaseMCPTool):
         return {
             "name": "list_agent_skills",
             "description": (
-                "List project-local .agents/skills metadata, trigger text, read order, "
-                "support files, scripts, context needs, side effects, and gaps. "
-                "Use before selecting a project-local skill."
+                "Enumerate project-local skills stored under ``.agents/skills/`` "
+                "(or wherever ``skills_root`` points). Each entry includes the "
+                "skill's trigger text, recommended read order, supporting "
+                "files / scripts / context-pack requirements, any declared "
+                "side effects, and gap flags (missing scripts, unresolved "
+                "references). Use this BEFORE invoking a project skill so "
+                "the agent knows what state the skill expects.\n\n"
+                "WHEN TO USE:\n"
+                "- Before invoking any project skill — preload context + "
+                "side-effect awareness\n"
+                "- To discover which skills are available in a new repo\n"
+                "- To detect skills with missing dependencies (gap flags)\n"
+                "- To pick the skill whose trigger text matches the user "
+                "intent\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To inspect MCP tools themselves — they self-describe via "
+                "their own ``description`` fields\n"
+                "- To run a skill — this tool only enumerates, it does not "
+                "execute anything\n"
+                "- For built-in Claude Code skills — those are surfaced by "
+                "the Skill tool, not via this MCP endpoint"
             ),
             "inputSchema": TOOL_SCHEMA,
         }

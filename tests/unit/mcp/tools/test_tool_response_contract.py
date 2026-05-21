@@ -10027,7 +10027,7 @@ class TestT3CLIMCPParityMatrix:
 # description.
 _DESCRIPTION_QUALITY_EXEMPT_BELOW_200: frozenset[str] = frozenset(
     {
-        "agent_skills",
+        # agent_skills migrated out in r37m — skill-preloading detail added.
         # analyze_code_structure migrated out in r37l — table-format detail.
         # analyze_scale migrated out in r37j — WHEN TO USE guidance added.
         # change_impact migrated out in r37k — post-edit blast-radius detail.
@@ -10035,11 +10035,11 @@ _DESCRIPTION_QUALITY_EXEMPT_BELOW_200: frozenset[str] = frozenset(
         # find_and_grep migrated out in r37l — two-stage filter/search detail.
         # list_files migrated out in r37i — now has WHEN TO USE guidance.
         # project_overview migrated out in r37l — first-call orientation.
-        "query",
+        # query migrated out in r37m — AST symbol search detail.
         "read_partial",
         # refactoring_suggestions migrated out in r37k.
         # safe_to_edit migrated out in r37j — full pre-edit guidance.
-        "search_content",
+        # search_content migrated out in r37m — token-saving modes detail.
         # smart_context migrated out in r37k — one-shot orientation detail.
         "universal_analyze",
     }
@@ -10150,7 +10150,8 @@ class TestT7DescriptionQualityFloor:
         #   14 → 11 (r37j: analyze_scale + file_health + safe_to_edit)
         #   11 →  8 (r37k: change_impact + refactoring_suggestions + smart_context)
         #    8 →  5 (r37l: project_overview + analyze_code_structure + find_and_grep)
-        BASELINE_EXEMPT_COUNT = 5
+        #    5 →  2 (r37m: agent_skills + search_content + query)
+        BASELINE_EXEMPT_COUNT = 2
         assert len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200) <= BASELINE_EXEMPT_COUNT, (
             f"T7: exemption set grew to {len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200)} "
             f"(baseline: {BASELINE_EXEMPT_COUNT}). New tools must meet the "

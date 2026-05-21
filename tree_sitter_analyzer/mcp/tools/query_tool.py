@@ -59,9 +59,26 @@ class QueryTool(BaseMCPTool):
         return {
             "name": "query_code",
             "description": (
-                "AST symbol search (NOT text grep). Wildcards: *Service, handle_*. "
-                "Fuzzy: ~analyz. Type filter: class/function. "
-                "Cross-file by default. Use instead of Grep for symbol definitions."
+                "AST-aware symbol search across the indexed project. "
+                "Unlike grep, this matches against parsed declarations "
+                "(class / function / method / variable) so results are "
+                "semantic, not text-coincidence. Supports glob wildcards "
+                "(``*Service``, ``handle_*``), fuzzy matching (``~analyz`` "
+                "to allow typos), and type filters (only classes, only "
+                "functions). Cross-file by default; pass ``file_path`` to "
+                "scope to a single file.\n\n"
+                "WHEN TO USE:\n"
+                "- Finding a class/function definition by partial name\n"
+                "- Locating all symbols matching a pattern (``handle_*``)\n"
+                "- Fuzzy search when you don't remember the exact spelling\n"
+                "- Type-filtered queries (give me all the class names only)\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To search arbitrary text (comments, strings, errors) — "
+                "use search_content\n"
+                "- To find usages / callers of a symbol — use trace_impact\n"
+                "- For a hierarchical file outline — use get_code_outline\n"
+                "- To search file names — use list_files"
             ),
             "inputSchema": _TOOL_SCHEMA,
         }
