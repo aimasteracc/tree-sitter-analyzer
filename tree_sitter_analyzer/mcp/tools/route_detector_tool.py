@@ -227,17 +227,33 @@ class RouteDetectorTool(BaseMCPTool):
         return apply_toon_format_to_response(result, output_format)
 
 
+def _pluralize(count: int, singular: str, plural: str | None = None) -> str:
+    """Return ``count + " " + (singular|plural)`` with English plural rules.
+
+    r37r (dogfood): ``detect_routes`` summary_line used to print
+    ``"2 routes across 1 frameworks"`` — count 1 with the plural "frameworks"
+    is a grammar bug that makes the tool look unpolished. This helper
+    centralises the rule (n != 1 → plural) so every count rendered into a
+    summary_line is correct.
+    """
+    word = singular if count == 1 else (plural or f"{singular}s")
+    return f"{count} {word}"
+
+
 def _attach_route_summary(result: dict[str, Any], mode: str) -> None:
     """Attach summary_line + agent_summary to a route_detector result.
 
-    Headline depends on mode — summary mode shows the global "N routes across
-    M frameworks" line, the lookup/prefix/file modes show their match count.
+    Headline depends on mode — summary mode shows the global "N route(s) across
+    M framework(s)" line, the lookup/prefix/file modes show their match count.
     """
     if mode == "summary":
         total = int(result.get("total_routes", 0))
         by_framework = result.get("by_framework", {}) or {}
         framework_count = len(by_framework)
-        summary_line = f"{total} routes across {framework_count} frameworks"
+        summary_line = (
+            f"{_pluralize(total, 'route')} across "
+            f"{_pluralize(framework_count, 'framework')}"
+        )
         next_step = (
             "detect_routes mode=all for full list, or mode=lookup url_pattern=<url> for one URL"
             if total
@@ -248,7 +264,7 @@ def _attach_route_summary(result: dict[str, Any], mode: str) -> None:
         # deprecated ``route_count`` alias keeps older fixtures that still
         # build the result dict by hand from working.
         count = int(result.get("total_routes", result.get("route_count", 0)))
-        summary_line = f"{count} routes"
+        summary_line = _pluralize(count, "route")
         next_step = (
             "detect_routes mode=lookup url_pattern=<url> to find a specific handler"
         )

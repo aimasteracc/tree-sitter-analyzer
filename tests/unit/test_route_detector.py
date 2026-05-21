@@ -515,6 +515,84 @@ class TestSummaryAndLookup:
 
 
 # ---------------------------------------------------------------------------
+# r37r: summary_line grammar — singular/plural rules
+# ---------------------------------------------------------------------------
+
+
+class TestR37rSummaryLineGrammar:
+    """r37r dogfood: ``2 routes across 1 frameworks`` is ungrammatical.
+
+    Caught by dogfooding ``--detect-routes`` on our own project (2 routes,
+    1 framework). The hardcoded template ``"{N} routes across {M} frameworks"``
+    pluralized both nouns regardless of count. The fix introduces a
+    ``_pluralize`` helper that applies the English ``n != 1 → plural`` rule.
+    """
+
+    def test_single_framework_uses_singular(self):
+        """Summary mode with 1 framework must say 'framework' not 'frameworks'."""
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            _attach_route_summary,
+        )
+
+        result = {"total_routes": 2, "by_framework": {"express": 2}}
+        _attach_route_summary(result, "summary")
+        assert result["summary_line"] == "2 routes across 1 framework"
+
+    def test_multiple_frameworks_uses_plural(self):
+        """Summary mode with 3 frameworks keeps 'frameworks' (plural)."""
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            _attach_route_summary,
+        )
+
+        result = {
+            "total_routes": 9,
+            "by_framework": {"flask": 3, "fastapi": 3, "express": 3},
+        }
+        _attach_route_summary(result, "summary")
+        assert result["summary_line"] == "9 routes across 3 frameworks"
+
+    def test_single_route_uses_singular(self):
+        """1 route + 1 framework → both singular."""
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            _attach_route_summary,
+        )
+
+        result = {"total_routes": 1, "by_framework": {"flask": 1}}
+        _attach_route_summary(result, "summary")
+        assert result["summary_line"] == "1 route across 1 framework"
+
+    def test_zero_routes_uses_plural(self):
+        """English convention: '0 routes' (plural) — n != 1 → plural."""
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            _attach_route_summary,
+        )
+
+        result = {"total_routes": 0, "by_framework": {}}
+        _attach_route_summary(result, "summary")
+        assert result["summary_line"] == "0 routes across 0 frameworks"
+
+    def test_mode_all_single_route_uses_singular(self):
+        """'all' mode also pluralizes by count."""
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            _attach_route_summary,
+        )
+
+        result = {"total_routes": 1, "by_framework": {"flask": 1}, "routes": []}
+        _attach_route_summary(result, "all")
+        assert result["summary_line"] == "1 route"
+
+    def test_mode_all_multiple_routes_uses_plural(self):
+        """'all' mode with 5 routes stays plural."""
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            _attach_route_summary,
+        )
+
+        result = {"total_routes": 5, "by_framework": {"flask": 5}, "routes": []}
+        _attach_route_summary(result, "all")
+        assert result["summary_line"] == "5 routes"
+
+
+# ---------------------------------------------------------------------------
 # detect_file: language dispatch (regression: extension lookup bug)
 # ---------------------------------------------------------------------------
 
