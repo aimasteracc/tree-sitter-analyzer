@@ -325,3 +325,86 @@ class TestQ3SupportedExtensionsParity:
         assert not re.search(r"^\s+scala\s", combined, re.MULTILINE), (
             f"--show-supported-languages still mentions scala:\n{combined}"
         )
+
+
+class TestR37adListQueriesJsonEnvelope:
+    """r37ad (dogfood): ``--list-queries`` previously ignored
+    ``--format json`` and always printed text via ``output_list``.
+    Agents that piped output through ``json.loads`` failed with
+    ``Expecting value``. This test pins the JSON envelope contract.
+    """
+
+    def test_list_queries_json_for_specific_language(self):
+        from argparse import Namespace
+
+        args = Namespace(
+            language="python",
+            file_path=None,
+            output_format="json",
+            format="json",
+        )
+        cmd = ListQueriesCommand(args)
+        captured: dict = {}
+        with patch(
+            "tree_sitter_analyzer.cli.info_commands.output_json",
+            side_effect=lambda d: captured.update(d) if isinstance(d, dict) else None,
+        ):
+            rc = cmd.execute()
+        assert rc == 0
+        assert captured.get("success") is True
+        assert captured.get("verdict") == "INFO"
+        assert captured.get("language") == "python"
+        assert captured.get("scope") == "single_language"
+        assert isinstance(captured.get("queries"), list)
+        assert isinstance(captured.get("query_count"), int)
+        assert captured["query_count"] > 0
+        agent_summary = captured.get("agent_summary")
+        assert isinstance(agent_summary, dict)
+        assert agent_summary["verdict"] == "INFO"
+        assert "python" in captured["summary_line"]
+
+    def test_list_queries_json_for_all_languages(self):
+        from argparse import Namespace
+
+        args = Namespace(
+            language=None,
+            file_path=None,
+            output_format="json",
+            format="json",
+        )
+        cmd = ListQueriesCommand(args)
+        captured: dict = {}
+        with patch(
+            "tree_sitter_analyzer.cli.info_commands.output_json",
+            side_effect=lambda d: captured.update(d) if isinstance(d, dict) else None,
+        ):
+            rc = cmd.execute()
+        assert rc == 0
+        assert captured.get("success") is True
+        assert captured.get("verdict") == "INFO"
+        assert captured.get("scope") == "all_languages"
+        assert captured.get("language") is None
+        assert isinstance(captured.get("languages"), list)
+        assert captured["language_count"] > 0
+        assert captured["query_count"] > 0
+        assert captured["agent_summary"]["verdict"] == "INFO"
+
+    def test_list_queries_text_path_preserved(self):
+        """Text path (default) must still work — regression for backward compat."""
+        from argparse import Namespace
+
+        args = Namespace(
+            language="python",
+            file_path=None,
+            output_format="text",
+            format=None,
+        )
+        cmd = ListQueriesCommand(args)
+        with (
+            patch("tree_sitter_analyzer.cli.info_commands.output_list") as mock_list,
+            patch("tree_sitter_analyzer.cli.info_commands.output_json") as mock_json,
+        ):
+            rc = cmd.execute()
+        assert rc == 0
+        assert mock_json.call_count == 0, "text mode must not call output_json"
+        assert mock_list.call_count > 0
