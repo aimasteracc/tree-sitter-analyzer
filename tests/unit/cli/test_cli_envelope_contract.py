@@ -370,6 +370,37 @@ class TestR37afCLIEnvelopeContract:
         assert mock_json.call_count == 0, "text mode must not call output_json"
         assert mock_info.call_count > 0
 
+    def test_sql_platform_info_json_envelope(self):
+        """r37ak: ``--sql-platform-info --format json`` → envelope.
+
+        Previously emitted text only via ``output_list``. Now follows
+        the same JSON/text branch pattern as other info commands.
+        """
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.commands.sql_platform_helpers import (
+            handle_sql_platform_info,
+        )
+
+        captured: dict = {}
+
+        def _output_json(d):
+            if isinstance(d, dict):
+                captured.update(d)
+
+        args = Namespace(format="json", output_format="json")
+        rc = handle_sql_platform_info(
+            lambda _: None,  # text fallback (should not be called)
+            _output_json,
+            args,
+        )
+        assert rc == 0
+        _assert_envelope(captured, "sql_platform_info[json]")
+        platform = captured.get("platform")
+        assert isinstance(platform, dict)
+        assert "platform_key" in platform
+        assert "os_name" in platform
+
     def test_show_query_languages_json_envelope(self):
         """r37aj: ``--show-query-languages --format json`` → envelope.
 
@@ -561,7 +592,8 @@ class TestR37afCLISurfaceBaseline:
     #   r37ah: 13 (+ MCP-bridged error envelope)
     #   r37ai: 15 (+ filter_help JSON envelope + text-path preserved)
     #   r37aj: 17 (+ show_query_languages + show_common_queries)
-    BASELINE_COVERAGE = 17
+    #   r37ak: 18 (+ sql_platform_info)
+    BASELINE_COVERAGE = 18
 
     def test_envelope_test_count_does_not_shrink(self):
         """If you delete a test from TestR37afCLIEnvelopeContract,

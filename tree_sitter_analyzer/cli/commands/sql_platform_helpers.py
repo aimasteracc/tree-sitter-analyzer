@@ -5,12 +5,63 @@ import pathlib
 from typing import Any
 
 
-def handle_sql_platform_info(output_list_fn: Any) -> int:
-    """Display SQL platform detection details."""
+def handle_sql_platform_info(
+    output_list_fn: Any,
+    output_json_fn: Any = None,
+    args: Any = None,
+) -> int:
+    """Display SQL platform detection details.
+
+    r37ak (dogfood): JSON envelope path added. When the caller passes
+    ``--format=json`` (or default ``--output-format=json``), emit a
+    canonical envelope instead of plain text. The legacy text path
+    (``output_list_fn``) is preserved for backward compatibility.
+    """
     from tree_sitter_analyzer.platform_compat.detector import PlatformDetector
     from tree_sitter_analyzer.platform_compat.profiles import BehaviorProfile
 
     info = PlatformDetector.detect()
+    profile = BehaviorProfile.load(info.platform_key)
+
+    fmt = None
+    if args is not None:
+        fmt = getattr(args, "format", None) or getattr(args, "output_format", None)
+    if fmt == "json" and output_json_fn is not None:
+        profile_payload: dict[str, Any] | None = None
+        if profile:
+            profile_payload = {
+                "schema_version": profile.schema_version,
+                "behaviors_recorded": len(profile.behaviors),
+                "adaptation_rules": list(profile.adaptation_rules),
+            }
+        summary_line = (
+            f"sql_platform_info: {info.platform_key} "
+            f"({'profile loaded' if profile else 'no profile (defaults)'})"
+        )
+        output_json_fn(
+            {
+                "success": True,
+                "platform": {
+                    "os_name": info.os_name,
+                    "os_version": info.os_version,
+                    "python_version": info.python_version,
+                    "platform_key": info.platform_key,
+                },
+                "profile": profile_payload,
+                "summary_line": summary_line,
+                "verdict": "INFO",
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": (
+                        "Use --record-sql-profile to capture behavior on a new "
+                        "platform, or --compare-sql-profiles to diff two."
+                    ),
+                    "verdict": "INFO",
+                },
+            }
+        )
+        return 0
+
     output_list_fn(
         [
             "SQL Platform Information:",
@@ -22,7 +73,6 @@ def handle_sql_platform_info(output_list_fn: Any) -> int:
         ]
     )
 
-    profile = BehaviorProfile.load(info.platform_key)
     if profile:
         output_list_fn(
             [

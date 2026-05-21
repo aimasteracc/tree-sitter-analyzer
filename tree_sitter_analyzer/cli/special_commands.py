@@ -383,7 +383,7 @@ def _handle_sql_platform_commands(
     if getattr(args, "sql_platform_info", False):
         from .commands.sql_platform_helpers import handle_sql_platform_info
 
-        return handle_sql_platform_info(context.output_list)
+        return handle_sql_platform_info(context.output_list, context.output_json, args)
     if getattr(args, "record_sql_profile", False):
         from .commands.sql_platform_helpers import handle_record_sql_profile
 
