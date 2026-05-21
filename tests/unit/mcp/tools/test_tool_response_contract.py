@@ -1289,3 +1289,1080 @@ class TestF5SchemaStrictness:
         enforce_strict_params("t", None, {"file_path": "x"})
         # Schema without properties → no-op (cannot know what's known).
         enforce_strict_params("t", {"type": "object"}, {"file_path": "x"})
+
+
+def _assert_envelope_with_summary(name: str, result: dict) -> None:
+    """Shared H5 helper: a response carries the full canonical envelope.
+
+    Round-20 dogfood (H5): four tools shipped ad-hoc dicts without
+    ``success`` / ``summary_line`` / ``agent_summary``. The post-hook
+    in the MCP dispatcher fills missing fields for MCP-routed callers
+    but *not* for direct ``await tool.execute(args)`` callers (tests,
+    CLI bridges) — so each tool now sets the envelope itself.
+    """
+    assert isinstance(result, dict), f"{name}: result must be a dict"
+    assert result.get("success") is True, f"{name}: success must be True"
+    sl = result.get("summary_line")
+    assert isinstance(sl, str) and sl, (
+        f"{name}: top-level summary_line must be a non-empty string"
+    )
+    agent = result.get("agent_summary")
+    assert isinstance(agent, dict) and agent, (
+        f"{name}: agent_summary must be a populated dict, got {agent!r}"
+    )
+    nested_sl = agent.get("summary_line")
+    assert isinstance(nested_sl, str) and nested_sl, (
+        f"{name}: agent_summary.summary_line must be a non-empty string"
+    )
+    assert sl == nested_sl, (
+        f"{name}: top-level summary_line must mirror agent_summary.summary_line — "
+        f"top={sl!r} vs agent={nested_sl!r}"
+    )
+
+
+class TestH5AstCacheEnvelope:
+    """Round-20 H5: ast_cache modes previously shipped raw dicts with
+    ``success`` but no ``summary_line`` or ``agent_summary``. Every
+    mode must now expose the canonical envelope keys.
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_stats_envelope(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(tiny_project))
+        result = _run(tool.execute({"mode": "stats"}))
+        _assert_envelope_with_summary("ast_cache:stats", result)
+        # Headline must include the key counts.
+        sl = result["summary_line"]
+        assert "files=" in sl and "symbols=" in sl and "fts5=" in sl
+
+    def test_search_envelope(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(tiny_project))
+        result = _run(tool.execute({"mode": "search", "query": "greet"}))
+        _assert_envelope_with_summary("ast_cache:search", result)
+        assert "search" in result["summary_line"]
+
+    def test_changes_envelope(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(tiny_project))
+        result = _run(tool.execute({"mode": "changes"}))
+        _assert_envelope_with_summary("ast_cache:changes", result)
+
+
+class TestH5CheckToolsEnvelope:
+    """Round-20 H5: check_tools previously returned
+    ``{fd, rg, status, recommendation}`` with no ``success`` /
+    ``summary_line`` / ``agent_summary``.
+    """
+
+    def test_envelope_present(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.check_tools_tool import CheckToolsTool
+
+        tool = CheckToolsTool(str(tmp_path))
+        result = _run(tool.execute({}))
+        _assert_envelope_with_summary("check_tools", result)
+        # status field must still be present (back-compat).
+        assert result.get("status") in {"all_tools_available", "missing_tools"}
+        # verdict must be one of the documented enum values.
+        verdict = result["agent_summary"].get("verdict")
+        assert verdict in {"READY", "MISSING"}, (
+            f"check_tools: verdict must be READY or MISSING, got {verdict!r}"
+        )
+
+
+class TestH5BuildProjectIndexEnvelope:
+    """Round-20 H5: build_project_index previously returned
+    ``{status, build_duration_ms, files_scanned, ...}`` with no
+    ``success`` / ``summary_line`` / ``agent_summary``.
+    """
+
+    def test_envelope_present(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.build_project_index_tool import (
+            BuildProjectIndexTool,
+        )
+
+        (tmp_path / "sample.py").write_text(
+            "def f() -> None:\n    return None\n", encoding="utf-8"
+        )
+        tool = BuildProjectIndexTool(str(tmp_path))
+        result = _run(tool.execute({}))
+        _assert_envelope_with_summary("build_project_index", result)
+        # Headline must mention the actual file count.
+        assert "files=" in result["summary_line"]
+        # Back-compat: status field still present.
+        assert result.get("status") == "built"
+
+
+class TestH5BatchSearchEnvelope:
+    """Round-20 H5: batch_search previously returned
+    ``{queries, total_matches, execution_note}`` with no ``success``
+    or ``summary_line``.
+    """
+
+    def test_envelope_present(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.batch_search_tool import BatchSearchTool
+
+        (tmp_path / "sample.py").write_text(
+            "def alpha(): pass\ndef beta(): pass\n", encoding="utf-8"
+        )
+        tool = BatchSearchTool(str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "queries": [
+                        {"pattern": "alpha", "roots": [str(tmp_path)]},
+                        {"pattern": "beta", "roots": [str(tmp_path)]},
+                    ]
+                }
+            )
+        )
+        _assert_envelope_with_summary("batch_search", result)
+        # Headline must include the query / match counts.
+        sl = result["summary_line"]
+        assert "queries=" in sl
+        assert "total_matches=" in sl
+
+
+class TestH10GetProjectSummaryFormat:
+    """Round-20 H10: get_project_summary previously returned
+    ``format=None`` on the JSON path. Both ``format`` and
+    ``output_format`` must echo the resolved value.
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "lib.py").write_text(
+            "def f() -> None:\n    return None\n", encoding="utf-8"
+        )
+        return tmp_path
+
+    def test_explicit_json_echoes_both_keys(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.get_project_summary_tool import (
+            GetProjectSummaryTool,
+        )
+
+        tool = GetProjectSummaryTool(str(tiny_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        # Both fields must carry the resolved value — neither may be None.
+        assert result.get("format") == "json", (
+            f"H10: explicit output_format=json must echo format='json' — got "
+            f"{result.get('format')!r}"
+        )
+        assert result.get("output_format") == "json", (
+            f"H10: output_format must echo back as 'json' — got "
+            f"{result.get('output_format')!r}"
+        )
+
+    def test_toon_default_echoes_both_keys(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.get_project_summary_tool import (
+            GetProjectSummaryTool,
+        )
+
+        tool = GetProjectSummaryTool(str(tiny_project))
+        result = _run(tool.execute({}))
+        # The tool documents toon as the default (token-efficiency choice
+        # for a first-hop orientation tool). Both keys must carry that
+        # value.
+        assert result.get("format") == "toon"
+        assert result.get("output_format") == "toon"
+
+    def test_default_is_documented_toon(self) -> None:
+        """H10 decision: default stayed ``toon`` for token efficiency.
+
+        Asserting the documented default catches future drift in either
+        direction — if someone flips it back to json, this test forces
+        an explicit decision (and a doc update for callers that depend
+        on the default).
+        """
+        from tree_sitter_analyzer.mcp.tools.get_project_summary_tool import (
+            GetProjectSummaryTool,
+        )
+
+        tool = GetProjectSummaryTool()
+        defn = tool.get_tool_definition()
+        schema = defn["inputSchema"]
+        of = schema["properties"]["output_format"]
+        assert of["default"] == "toon", (
+            f"H10: default output_format documented as 'toon' — got {of['default']!r}"
+        )
+        # The description must mention the rationale so callers know why.
+        assert "default" in of["description"].lower()
+
+
+class TestH11OverviewToolRoutingValidNames:
+    """Round-20 H11: ``tool_routing`` advertised tool names mixed with
+    CLI shorthand. Every value here must reference an MCP-registered
+    tool name AND use MCP keyword-argument syntax (``tool(key=value)``).
+    """
+
+    def test_every_routing_target_is_registered(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.server import _create_tool_registry
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            _build_tool_routing,
+        )
+
+        instances, _ = _create_tool_registry(str(tmp_path))
+        registered = {name for name, _ in instances}
+        routing = _build_tool_routing()
+        assert routing, "tool_routing must not be empty"
+
+        import re
+
+        # Snippet starts with ``<tool_name>(``. Pull out the leading
+        # identifier and assert it's in the live registry.
+        ident_re = re.compile(r"^([A-Za-z_][A-Za-z_0-9]*)\s*\(")
+        unknown: list[str] = []
+        for key, snippet in routing.items():
+            m = ident_re.match(snippet)
+            assert m is not None, (
+                f"H11: tool_routing[{key!r}] snippet must start with a "
+                f"tool name + '(' — got {snippet!r}"
+            )
+            tool_name = m.group(1)
+            if tool_name not in registered:
+                unknown.append(f"{key}: {tool_name}")
+        assert unknown == [], (
+            f"H11: tool_routing entries reference unregistered MCP tools: "
+            f"{unknown}. Valid names: {sorted(registered)}"
+        )
+
+    def test_routing_uses_keyword_arguments(self) -> None:
+        """MCP-canonical means keyword arguments — ``tool(key=value)`` —
+        not CLI positional ``tool key value``. Snippets that have any
+        argument MUST use ``=`` inside the parens."""
+        import re
+
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            _build_tool_routing,
+        )
+
+        for key, snippet in _build_tool_routing().items():
+            # Extract the argument portion (between first '(' and the
+            # matching ')' before the comment).
+            m = re.match(r"^[A-Za-z_][A-Za-z_0-9]*\(([^)]*)\)", snippet)
+            assert m is not None, (
+                f"H11: tool_routing[{key!r}] must be a function-call shape — "
+                f"got {snippet!r}"
+            )
+            args = m.group(1).strip()
+            # If args is empty, no syntax check needed (e.g.
+            # ``check_project_health()``).
+            if not args:
+                continue
+            # Any non-empty args MUST carry at least one '=' — meaning
+            # keyword form.
+            assert "=" in args, (
+                f"H11: tool_routing[{key!r}] uses positional / CLI form — "
+                f"MCP requires keyword arguments. Got: {snippet!r}"
+            )
+
+    def test_routing_covers_core_tools(self) -> None:
+        """A regression guard: the routing guide must still surface the
+        most common tools agents need (no shrinkage from this version)."""
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            _build_tool_routing,
+        )
+
+        routing = _build_tool_routing()
+        core_keys = {
+            "project_health",
+            "file_health",
+            "edit_risk",
+            "find_symbol",
+            "search_text",
+            "find_files",
+            "file_scale",
+            "structure_table",
+            "read_lines",
+        }
+        missing = core_keys - set(routing.keys())
+        assert not missing, (
+            f"H11: tool_routing must keep core entries — missing: {missing}"
+        )
+
+
+class TestH8ChangeImpactInvalidScope:
+    """H8: ``change_impact`` must not silently swallow a typo'd scope path.
+
+    Pre-fix behaviour:
+      uv run python -m tree_sitter_analyzer --change-impact \
+          --change-impact-scope /tmp/does_not_exist_xyz.py --format json
+      → success: true, changed_count: 0, summary: "No changes detected"
+
+    The user typoed their scope path; the tool silently treated it as a
+    valid scope that matched nothing — false negative ("no work needed").
+
+    Post-fix contract (analysis still runs on the *valid* scope paths,
+    but the response cannot be mistaken for clean):
+      - ``scope_paths_invalid`` lists every nonexistent path supplied
+      - ``agent_summary["next_step"]`` carries a concrete "did you typo?"
+        hint that names the offending paths
+      - ``agent_summary["verdict"]`` escalates from CLEAN to WARN
+      - ``summary_line`` (top-level + agent) carries a
+        ``scope_invalid=N`` token so chained tools can grep one line
+      - ``success`` stays True — the analysis itself succeeded
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        """Smallest valid project. ``execute()`` only inspects the working
+        tree via git, so we just need a real project_root on disk."""
+        src = tmp_path / "lib.py"
+        src.write_text(
+            "def widget() -> int:\n    return 1\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _run_change_impact(self, project: Path, scope_paths: list[str]) -> dict:
+        from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
+            ChangeImpactTool,
+        )
+
+        tool = ChangeImpactTool(str(project))
+        return _run(
+            tool.execute(
+                {
+                    "mode": "diff",
+                    "scope_paths": scope_paths,
+                    "output_format": "json",
+                }
+            )
+        )
+
+    def test_invalid_scope_path_listed_in_response(self, tiny_project: Path) -> None:
+        """The nonexistent path lands in ``scope_paths_invalid``."""
+        bogus = str(tiny_project / "does_not_exist_xyz.py")
+        result = self._run_change_impact(tiny_project, [bogus])
+        assert result["success"] is True, (
+            "H8: analysis still runs — success must stay True"
+        )
+        invalid = result.get("scope_paths_invalid")
+        assert isinstance(invalid, list) and bogus in invalid, (
+            f"H8: scope_paths_invalid must include the bogus path — got {invalid!r}"
+        )
+
+    def test_invalid_scope_path_warning_in_next_step(self, tiny_project: Path) -> None:
+        """``agent_summary['next_step']`` names the offending paths so an
+        agent's decision loop catches the typo before re-running."""
+        bogus = str(tiny_project / "missing_module.py")
+        result = self._run_change_impact(tiny_project, [bogus])
+        agent = result["agent_summary"]
+        next_step = agent.get("next_step", "")
+        assert isinstance(next_step, str) and next_step, (
+            f"H8: next_step must be a non-empty string — got {next_step!r}"
+        )
+        assert "do not exist" in next_step, (
+            f"H8: next_step must explain the failure — got {next_step!r}"
+        )
+        assert "did you typo" in next_step.lower(), (
+            f"H8: next_step must prompt the agent for a typo — got {next_step!r}"
+        )
+        assert bogus in next_step, (
+            f"H8: next_step must name the offending path — got {next_step!r}"
+        )
+
+    def test_invalid_scope_escalates_verdict_to_warn(self, tiny_project: Path) -> None:
+        """Verdict must escalate from the CLEAN default to WARN."""
+        bogus = str(tiny_project / "ghost.py")
+        result = self._run_change_impact(tiny_project, [bogus])
+        agent = result["agent_summary"]
+        verdict = agent.get("verdict")
+        assert verdict == "WARN", (
+            f"H8: invalid scope path must escalate verdict to WARN — got {verdict!r}"
+        )
+
+    def test_valid_scope_path_keeps_clean_verdict(self, tiny_project: Path) -> None:
+        """Sanity check: a real path leaves the verdict at the CLEAN
+        default. Otherwise we'd be permanently warning on every call."""
+        real = str(tiny_project / "lib.py")
+        result = self._run_change_impact(tiny_project, [real])
+        agent = result["agent_summary"]
+        verdict = agent.get("verdict")
+        assert verdict == "CLEAN", (
+            f"H8: valid scope path must keep verdict at CLEAN — got {verdict!r}"
+        )
+        # And scope_paths_invalid must be empty (always present, list shape).
+        assert result.get("scope_paths_invalid") == [], (
+            f"H8: scope_paths_invalid must be [] on the happy path — "
+            f"got {result.get('scope_paths_invalid')!r}"
+        )
+
+    def test_summary_line_contains_scope_invalid_token(
+        self, tiny_project: Path
+    ) -> None:
+        """``summary_line`` carries a ``scope_invalid=N`` token so chained
+        agents that only read the headline still see the warning."""
+        bogus1 = str(tiny_project / "absent1.py")
+        bogus2 = str(tiny_project / "absent2.py")
+        result = self._run_change_impact(tiny_project, [bogus1, bogus2])
+        # top-level
+        top = result.get("summary_line", "")
+        assert "scope_invalid=2" in top, (
+            f"H8: top-level summary_line must include scope_invalid=2 — got {top!r}"
+        )
+        # mirrored in agent_summary
+        nested = result["agent_summary"].get("summary_line", "")
+        assert "scope_invalid=2" in nested, (
+            f"H8: agent_summary['summary_line'] must include scope_invalid=2 — "
+            f"got {nested!r}"
+        )
+
+    def test_no_scope_paths_keeps_clean_default(self, tiny_project: Path) -> None:
+        """Without any scope_paths, the response stays clean — no
+        spurious WARN. ``scope_paths_invalid`` is still present (empty)."""
+        result = self._run_change_impact(tiny_project, [])
+        agent = result["agent_summary"]
+        assert agent.get("verdict") == "CLEAN", (
+            f"H8: no scope_paths must keep verdict at CLEAN — "
+            f"got {agent.get('verdict')!r}"
+        )
+        assert result.get("scope_paths_invalid") == [], (
+            "H8: empty scope_paths must yield empty scope_paths_invalid"
+        )
+
+    def test_relative_invalid_path_is_resolved_against_project_root(
+        self, tiny_project: Path
+    ) -> None:
+        """Relative paths get resolved against project_root before the
+        existence check. ``relative/missing/x.py`` (which doesn't exist
+        anywhere) must still be flagged."""
+        result = self._run_change_impact(tiny_project, ["relative/missing/x.py"])
+        invalid = result.get("scope_paths_invalid", [])
+        assert "relative/missing/x.py" in invalid, (
+            f"H8: relative paths must be resolved against project_root — "
+            f"got {invalid!r}"
+        )
+
+
+# ============================================================================
+# H2 — call_graph resolver parity between all_functions and callers/callees
+# ============================================================================
+
+
+class TestH2CallGraphResolverParity:
+    """H2 (round-20): symbols listed by ``mode=all_functions`` must also be
+    resolvable by ``mode=callers``/``mode=callees`` — they were not, because
+    ``_node_text`` used tree-sitter's BYTE offsets to index a Python ``str``
+    (character-indexed), corrupting call-target names for any source file
+    containing multi-byte characters (e.g. em-dashes in comments).
+
+    Repro symbol in the real repo: ``_normalize_dependency_mode`` in
+    ``tree_sitter_analyzer/cli/commands/mcp_commands.py`` (line 63). With
+    the bug, the file's em-dash in earlier comments shifted every
+    subsequent byte offset, so the call-name extracted at line 69 came
+    out as ``'malize_dependency_mode(get'`` and never matched the
+    function-name index. After the fix, ``callers_of`` finds the two
+    real callers (``_dependency_mode_requires_file`` and
+    ``_build_dependency_tool_args``).
+
+    Contract:
+      - If a symbol shows up in ``all_functions``, ``callers`` / ``callees``
+        must NOT respond with the canonical NOT_FOUND verdict.
+      - ``caller_count`` / ``callee_count`` are integers (may be 0 for
+        truly leaf functions — but the symbol must be RECOGNIZED).
+    """
+
+    @pytest.fixture
+    def project_with_emdash(self, tmp_path: Path) -> Path:
+        """Mimic the real bug shape: a source file with a multi-byte
+        character in a leading comment, plus a callee defined below
+        that comment, a caller invoking it, AND an explicit call to a
+        helper so ``callees`` has something to return for the function
+        under test.
+
+        Without the byte/char fix, the em-dash adds 2 bytes per
+        occurrence of drift, and every call name extracted after it is
+        truncated/shifted — including the call from ``normalize_thing``
+        to ``str.strip``-like helpers.
+        """
+        src = tmp_path / "module.py"
+        src.write_text(
+            "# Header — multi-byte em-dash drifts byte offsets vs char offsets.\n"
+            "# Another — em-dash to amplify the drift past one character.\n"
+            "\n"
+            "def fallback_value():\n"
+            "    return 'default'\n"
+            "\n"
+            "def normalize_thing(x):\n"
+            "    # normalize_thing has a callee (fallback_value) so its\n"
+            "    # callees list is non-empty when extraction works.\n"
+            "    return x or fallback_value()\n"
+            "\n"
+            "def caller_one(args):\n"
+            "    return normalize_thing(args)\n"
+            "\n"
+            "def caller_two(args):\n"
+            "    return normalize_thing(args)\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _run_tool(self, project: Path, mode: str, function: str | None = None) -> dict:
+        from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
+
+        tool = CodeGraphCallTool(str(project))
+        args: dict = {"mode": mode, "output_format": "json"}
+        if function is not None:
+            args["function_name"] = function
+        return _run(tool.execute(args))
+
+    def test_emdash_function_appears_in_all_functions(
+        self, project_with_emdash: Path
+    ) -> None:
+        """Sanity: the function IS indexed."""
+        result = self._run_tool(project_with_emdash, "all_functions")
+        names = {fn["name"] for fn in result.get("functions", [])}
+        assert "normalize_thing" in names, (
+            "H2 fixture: ``normalize_thing`` must appear in all_functions"
+        )
+
+    def test_emdash_function_callers_not_not_found(
+        self, project_with_emdash: Path
+    ) -> None:
+        """The real bug: ``callers`` returned ``verdict=NOT_FOUND`` for a
+        function that ``all_functions`` plainly lists. With the byte-vs-char
+        fix, the call-name extraction is correct and the lookup succeeds.
+        """
+        result = self._run_tool(project_with_emdash, "callers", "normalize_thing")
+        assert result["success"] is True
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert verdict != "NOT_FOUND", (
+            f"H2: ``callers`` must NOT report NOT_FOUND for an indexed symbol "
+            f"— got verdict={verdict!r}"
+        )
+        # caller_count must be an integer >= 0; the fixture has 2 callers.
+        assert isinstance(result.get("caller_count"), int), (
+            "H2: caller_count must be an integer when the symbol is indexed"
+        )
+        assert result["caller_count"] >= 2, (
+            f"H2: expected at least 2 callers (caller_one, caller_two) — "
+            f"got caller_count={result['caller_count']}, callers={result.get('callers')!r}"
+        )
+
+    def test_emdash_function_callees_not_not_found(
+        self, project_with_emdash: Path
+    ) -> None:
+        """``callees`` for ``normalize_thing`` must resolve at least
+        the call to ``fallback_value`` (defined in the same file). With
+        the byte/char bug, the call name extracted would be corrupted
+        (``'lback_value(' or worse``) and the resolver finds no match,
+        so ``callee_count`` collapses to 0 and the response carries the
+        canonical NOT_FOUND verdict."""
+        result = self._run_tool(project_with_emdash, "callees", "normalize_thing")
+        assert result["success"] is True
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert verdict != "NOT_FOUND", (
+            f"H2: ``callees`` must NOT report NOT_FOUND for an indexed symbol "
+            f"— got verdict={verdict!r}"
+        )
+        assert isinstance(result.get("callee_count"), int)
+        assert result["callee_count"] >= 1, (
+            f"H2: ``normalize_thing`` calls ``fallback_value`` — expected "
+            f"callee_count>=1, got {result['callee_count']} "
+            f"callees={result.get('callees')!r}"
+        )
+
+    def test_leaf_function_indexed_flag_exposed(
+        self, project_with_emdash: Path
+    ) -> None:
+        """The response must expose ``function_indexed`` so downstream
+        tools (and tests) can distinguish "this function is in the graph
+        but happens to have no callers/callees" from "we have no record
+        of this function". Without that distinction, F8's NOT_FOUND
+        verdict over-fires on leaf functions (and on functions used only
+        via first-class references like ``requires_file=foo``) and tells
+        the agent to run ``symbol_lineage`` for a name that already
+        exists — wasting an MCP round-trip."""
+        # ``fallback_value`` is called from ``normalize_thing`` so it has
+        # 1 caller. Pick the callees mode instead — it returns zero.
+        result = self._run_tool(project_with_emdash, "callees", "fallback_value")
+        assert result["success"] is True
+        assert result.get("function_indexed") is True, (
+            "H2: ``function_indexed`` must be exposed in the response so "
+            "downstream tools can distinguish indexed-leaf from unindexed."
+        )
+        assert result.get("agent_summary", {}).get("verdict") != "NOT_FOUND", (
+            "H2: leaf functions (zero callees but indexed) must not be "
+            "reported as NOT_FOUND."
+        )
+
+    def test_truly_unindexed_symbol_still_not_found(
+        self, project_with_emdash: Path
+    ) -> None:
+        """The NOT_FOUND verdict must still fire for symbols that the
+        graph does not know about at all. The F8 contract from round-17
+        depends on this — agents need a clear signal to switch to
+        ``symbol_lineage`` when they typo'd a name."""
+        result = self._run_tool(
+            project_with_emdash, "callers", "wholly_invented_xyz123"
+        )
+        assert result["success"] is True
+        assert result.get("function_indexed") is False, (
+            "H2: ``function_indexed`` must be False for unindexed symbols."
+        )
+        assert result.get("agent_summary", {}).get("verdict") == "NOT_FOUND", (
+            "H2: genuinely missing symbols must keep the NOT_FOUND verdict "
+            "so F8's symbol_lineage redirect still triggers."
+        )
+
+
+# ============================================================================
+# H3 — project graphs deterministic between runs
+# ============================================================================
+
+
+class TestH3DeterministicGraphCounts:
+    """H3 (round-20): public counts on call_graph and dependency_analysis
+    were non-deterministic — different runs of identical inputs returned
+    different ``cycle_count`` (5↔6) and different ``call_edge_count``
+    (varied by thousands). Root causes:
+
+      - ``CallGraph.build`` mixed "register definitions" and "resolve
+        calls" in a single pass that iterated files in filesystem order,
+        so call-to-definition resolution depended on which file was
+        parsed first. Fixed via a two-pass build: register all defs
+        from all files (sorted) in pass 1, then resolve calls in pass 2.
+
+      - ``DependencyGraph.find_cycles`` does a DFS that iterates a
+        ``set`` of nodes and ``set`` of neighbours, both of which have
+        PYTHONHASHSEED-dependent iteration order. Fixed in
+        ``dependency_analysis_tool`` by routing through
+        ``_deterministic_find_cycles`` which sorts iteration order and
+        canonicalises the cycle list.
+
+    These tests build the graph twice IN-PROCESS against an identical
+    fixture and assert that the public counts match. The fixture is
+    small and tailored so two builds finish fast.
+    """
+
+    @pytest.fixture
+    def project_with_cycle(self, tmp_path: Path) -> Path:
+        """A small project with a known import cycle and a call edge.
+
+        ``a -> b -> a`` is a 2-node cycle. We use ``from pkg.<mod> import
+        <name>`` so the dependency resolver maps each import to the
+        target ``.py`` file (rather than to ``pkg/__init__.py`` which is
+        what bare-package imports collapse to).
+
+        ``c`` calls a free function in ``a`` to give the call-graph
+        something extra to count edges on.
+        """
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "pkg" / "a.py").write_text(
+            "from pkg.b import do_b\n\ndef helper_a():\n    return do_b()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "pkg" / "b.py").write_text(
+            "from pkg.a import helper_a\n\ndef do_b():\n    return helper_a()\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "pkg" / "c.py").write_text(
+            "from pkg.a import helper_a\n\ndef use_a():\n    return helper_a()\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _build_dependency_summary(self, project: Path) -> dict:
+        """Run dependency-analysis ``summary`` with a fresh tool instance —
+        each instance builds its own graph, so this isolates the in-process
+        build from any global cache."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+
+        tool = DependencyAnalysisTool(str(project))
+        return _run(tool.execute({"mode": "summary", "output_format": "json"}))
+
+    def _build_call_graph_summary(self, project: Path) -> dict:
+        from tree_sitter_analyzer.mcp.tools.call_graph_tool import CodeGraphCallTool
+
+        tool = CodeGraphCallTool(str(project))
+        return _run(tool.execute({"mode": "summary", "output_format": "json"}))
+
+    def test_dependency_summary_cycle_count_stable(
+        self, project_with_cycle: Path
+    ) -> None:
+        """Two back-to-back ``dependencies summary`` calls return the
+        same ``cycle_count`` and ``node_count``. The first call sees a
+        cold graph, the second a warm one — but they must agree even if
+        the warm-cache path is taken."""
+        first = self._build_dependency_summary(project_with_cycle)
+        second = self._build_dependency_summary(project_with_cycle)
+        assert first["cycle_count"] == second["cycle_count"], (
+            f"H3: dependency summary cycle_count must be stable across runs — "
+            f"first={first['cycle_count']} second={second['cycle_count']}"
+        )
+        assert first["node_count"] == second["node_count"], (
+            f"H3: dependency summary node_count must be stable across runs — "
+            f"first={first['node_count']} second={second['node_count']}"
+        )
+        assert first["edge_count"] == second["edge_count"], (
+            f"H3: dependency summary edge_count must be stable across runs — "
+            f"first={first['edge_count']} second={second['edge_count']}"
+        )
+
+    def test_dependency_cycles_mode_count_stable(
+        self, project_with_cycle: Path
+    ) -> None:
+        """The ``cycles`` mode must return the same ``cycle_count`` across
+        back-to-back runs. The 2-node cycle a↔b must always be present."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+
+        first = _run(
+            DependencyAnalysisTool(str(project_with_cycle)).execute(
+                {"mode": "cycles", "output_format": "json"}
+            )
+        )
+        second = _run(
+            DependencyAnalysisTool(str(project_with_cycle)).execute(
+                {"mode": "cycles", "output_format": "json"}
+            )
+        )
+        assert first["cycle_count"] == second["cycle_count"], (
+            f"H3: dependency cycles cycle_count must be stable across runs — "
+            f"first={first['cycle_count']} second={second['cycle_count']}"
+        )
+        # Sanity: the a↔b cycle must be detected.
+        assert first["cycle_count"] >= 1, (
+            f"H3 fixture: expected at least one cycle (a↔b) — "
+            f"cycle_count={first['cycle_count']} cycles={first.get('cycles')!r}"
+        )
+
+    def test_call_graph_summary_edge_count_stable(
+        self, project_with_cycle: Path
+    ) -> None:
+        """``call_edge_count`` must agree across back-to-back builds.
+        Both calls go through a fresh tool instance so the second call
+        also builds the graph from scratch."""
+        first = self._build_call_graph_summary(project_with_cycle)
+        second = self._build_call_graph_summary(project_with_cycle)
+        assert first["call_edge_count"] == second["call_edge_count"], (
+            f"H3: call_graph call_edge_count must be stable across runs — "
+            f"first={first['call_edge_count']} second={second['call_edge_count']}"
+        )
+        assert first["function_count"] == second["function_count"], (
+            f"H3: call_graph function_count must be stable across runs — "
+            f"first={first['function_count']} second={second['function_count']}"
+        )
+
+
+class TestH4TraceImpactSourceOnly:
+    """H4 (round-20): ``trace_impact`` counted every ripgrep hit as a
+    "caller", inflating ``call_count`` with CHANGELOG.md / comment text
+    matches. Agents reading ``impact_badge: '🚨 HIGH IMPACT — 2132
+    CALLERS'`` would refuse to refactor based on marketing copy.
+
+    Contract:
+      - ``usages[].file`` must end in a source-code extension; no .md,
+        .txt, .csv, etc.
+      - ``source_call_count`` exists and equals ``call_count``.
+      - ``usage_count`` exists and equals ``len(usages)``.
+      - ``impact_badge`` reflects the source-only count.
+    """
+
+    @pytest.fixture
+    def mixed_project(self, tmp_path: Path) -> Path:
+        """Project with source files + markdown + text — same symbol in
+        every kind of file. The source-only filter must strip the
+        non-source hits."""
+        (tmp_path / "src.py").write_text(
+            "def widget() -> int:\n"
+            "    return 1\n"
+            "\n"
+            "def caller() -> int:\n"
+            "    return widget() + widget()\n",
+            encoding="utf-8",
+        )
+        # Non-source files that contain the symbol — must NOT contribute
+        # to ``call_count``.
+        (tmp_path / "CHANGELOG.md").write_text(
+            "## Changed\n- widget API now returns int\n- widget docs cleaned up\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "design.txt").write_text(
+            "widget design notes — please refer to widget for examples\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_trace_impact_excludes_markdown(self, mixed_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
+
+        tool = TraceImpactTool(str(mixed_project))
+        result = _run(tool.execute({"symbol": "widget"}))
+
+        assert result["success"] is True, f"trace_impact failed: {result!r}"
+        usages = result.get("usages", [])
+        # Every usage must come from a source extension.
+        for usage in usages:
+            file_name = usage.get("file", "")
+            assert not file_name.endswith(".md"), (
+                f"H4: usages must not contain markdown — got {file_name!r}"
+            )
+            assert not file_name.endswith(".txt"), (
+                f"H4: usages must not contain text files — got {file_name!r}"
+            )
+
+    def test_trace_impact_emits_source_call_count(self, mixed_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
+
+        tool = TraceImpactTool(str(mixed_project))
+        result = _run(tool.execute({"symbol": "widget"}))
+
+        assert "source_call_count" in result, (
+            "H4: response must include source_call_count"
+        )
+        assert "usage_count" in result, (
+            "H4: response must include usage_count for cross-tool parity"
+        )
+        # ``call_count`` is the canonical number; ``source_call_count``
+        # mirrors it under a more explicit name.
+        assert result["source_call_count"] == result["call_count"], (
+            f"H4: source_call_count must equal call_count — "
+            f"source_call_count={result['source_call_count']} "
+            f"call_count={result['call_count']}"
+        )
+        # ``usage_count`` reflects the length of the returned list.
+        assert result["usage_count"] == len(result["usages"]), (
+            f"H4: usage_count must equal len(usages) — "
+            f"usage_count={result['usage_count']} "
+            f"len(usages)={len(result['usages'])}"
+        )
+
+    def test_trace_impact_badge_uses_source_count(self, mixed_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
+
+        tool = TraceImpactTool(str(mixed_project))
+        result = _run(tool.execute({"symbol": "widget"}))
+
+        # The badge must reference the source-only count, never the raw
+        # rg hit total inflated by markdown matches.
+        badge = result.get("impact_badge", "")
+        # 2 callers in src.py (def + 2 call sites = 3 hits); CHANGELOG
+        # adds 2, design.txt adds 2. Without the filter call_count would
+        # be 7; with the filter it must be at most 3.
+        assert result["source_call_count"] <= 5, (
+            f"H4: source_call_count must exclude non-source matches — "
+            f"got {result['source_call_count']}; usages={result['usages']!r}"
+        )
+        if isinstance(badge, str):
+            assert "7 CALLERS" not in badge, (
+                f"H4: badge must not advertise inflated count — got {badge!r}"
+            )
+
+
+class TestH6FileHealthSmellTypes:
+    """H6 (round-20): ``file_health.code_smells[].type`` was ``None``
+    for every entry, while ``code_patterns`` produced proper strings
+    (``deep_nesting``, ``long_method``, …). The smell projection was
+    reading the wrong attribute.
+
+    Contract:
+      - Every smell in ``code_smells`` has a non-empty ``type``
+        string.
+      - ``type`` equals the canonical smell name (``smell``).
+    """
+
+    @pytest.fixture
+    def deeply_nested_project(self, tmp_path: Path) -> Path:
+        """One Python file with a deeply nested function — guaranteed
+        to trigger ``deep_nesting`` and ``long_method`` smells."""
+        src = tmp_path / "deeply_nested.py"
+        body_lines = ["def big():"]
+        for depth in range(7):
+            body_lines.append("    " * (depth + 1) + "if True:")
+        body_lines.append("    " * 8 + "x = 1")
+        # Pad to trigger long_method (>50 lines).
+        for i in range(60):
+            body_lines.append(f"    statement_{i} = {i}")
+        src.write_text("\n".join(body_lines) + "\n", encoding="utf-8")
+        return tmp_path
+
+    def test_smell_types_are_non_empty_strings(
+        self, deeply_nested_project: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(deeply_nested_project))
+        result = _run(
+            tool.execute({"file_path": "deeply_nested.py", "output_format": "json"})
+        )
+        smells = result.get("code_smells", [])
+        assert smells, f"H6 fixture: expected at least one smell — got {smells!r}"
+        for smell in smells:
+            smell_type = smell.get("type")
+            assert isinstance(smell_type, str), (
+                f"H6: code_smells[].type must be a string — got "
+                f"{smell_type!r} in {smell!r}"
+            )
+            assert smell_type, (
+                f"H6: code_smells[].type must be non-empty — got "
+                f"{smell_type!r} in {smell!r}"
+            )
+            # Type should match the canonical smell name.
+            assert smell_type == smell.get("smell"), (
+                f"H6: code_smells[].type must mirror code_smells[].smell "
+                f"— got type={smell_type!r} smell={smell.get('smell')!r}"
+            )
+
+
+class TestH7FileHealthNonCodeFile:
+    """H7 (round-20): ``file_health`` returned grade C "moderate
+    technical debt" for README.md and other non-code files. Code-
+    quality metrics don't apply to Markdown.
+
+    Contract:
+      - ``signal`` is ``"non_code_file"``.
+      - ``grade`` is ``"N/A"``.
+      - ``agent_summary.summary_line`` includes the non_code_file
+        signal.
+    """
+
+    @pytest.fixture
+    def project_with_md(self, tmp_path: Path) -> Path:
+        (tmp_path / "README.md").write_text(
+            "# Project\n\nThis is a README with some\nlines of text.\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_markdown_returns_non_code_signal(self, project_with_md: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(project_with_md))
+        result = _run(tool.execute({"file_path": "README.md", "output_format": "json"}))
+        assert result["signal"] == "non_code_file", (
+            f"H7: README.md must return signal=non_code_file — got "
+            f"{result.get('signal')!r}"
+        )
+        assert result["grade"] == "N/A", (
+            f"H7: README.md must return grade=N/A — got {result.get('grade')!r}"
+        )
+        # No code smells should be emitted for non-code files.
+        assert result.get("code_smells") == [], (
+            f"H7: non-code files must have empty code_smells — got "
+            f"{result.get('code_smells')!r}"
+        )
+
+    def test_markdown_summary_announces_signal(self, project_with_md: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(project_with_md))
+        result = _run(tool.execute({"file_path": "README.md", "output_format": "json"}))
+        summary = result.get("agent_summary") or {}
+        line = summary.get("summary_line", "")
+        assert "non_code_file" in line, (
+            f"H7: agent_summary.summary_line must mention non_code_file — got {line!r}"
+        )
+
+    def test_yaml_and_json_also_non_code(self, tmp_path: Path) -> None:
+        (tmp_path / "config.yaml").write_text("key: value\n", encoding="utf-8")
+        (tmp_path / "data.json").write_text('{"k": 1}\n', encoding="utf-8")
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        for name in ("config.yaml", "data.json"):
+            result = _run(tool.execute({"file_path": name, "output_format": "json"}))
+            assert result.get("signal") == "non_code_file", (
+                f"H7: {name} must return signal=non_code_file — got "
+                f"{result.get('signal')!r}"
+            )
+
+
+class TestH9FileHealthWhitespaceOnly:
+    """H9 (round-20): a Python file containing only whitespace
+    (``"   \\n   \\n"``) was graded A "SAFE" — the M7 fix only caught
+    0-byte files.
+
+    Contract:
+      - Whitespace-only files return ``signal: "empty_file"``.
+      - ``grade`` is ``"N/A"``.
+    """
+
+    def test_whitespace_only_returns_empty_signal(self, tmp_path: Path) -> None:
+        (tmp_path / "ws.py").write_text("   \n   \n", encoding="utf-8")
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "ws.py", "output_format": "json"}))
+        assert result["signal"] == "empty_file", (
+            f"H9: whitespace-only file must return signal=empty_file — "
+            f"got {result.get('signal')!r}"
+        )
+        assert result["grade"] == "N/A", (
+            f"H9: whitespace-only file must return grade=N/A — got "
+            f"{result.get('grade')!r}"
+        )
+
+    def test_zero_byte_still_empty_signal(self, tmp_path: Path) -> None:
+        """Regression: the M7 zero-byte path must still work."""
+        (tmp_path / "empty.py").write_text("", encoding="utf-8")
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "empty.py", "output_format": "json"}))
+        assert result["signal"] == "empty_file"
+        assert result["grade"] == "N/A"
+
+
+class TestH12SymbolLineageDefClassification:
+    """H12 (round-20): ``symbol_lineage`` returned
+    ``definition_count: 0`` for a Python function whose ``def`` site
+    was on line 63 of the queried file. The upstream classifier in
+    ``execute_find_references`` only marked hits with element_type
+    substring-matching ``definition``/``declaration``/``class``/
+    ``struct`` — Python ``element_type='function'`` therefore fell into
+    ``references``.
+
+    Contract:
+      - When a file contains the symbol's ``def`` site, the response
+        carries ``definition_count >= 1``.
+      - The reclassified entry has ``role: "definition"``.
+    """
+
+    @pytest.fixture
+    def lineage_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "lib.py").write_text(
+            "def my_target_symbol(arg: int) -> int:\n"
+            "    return arg + 1\n"
+            "\n"
+            "def caller() -> int:\n"
+            "    return my_target_symbol(5)\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_def_site_classified_as_definition(self, lineage_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
+            SymbolLineageTool,
+        )
+
+        tool = SymbolLineageTool(str(lineage_project))
+        result = _run(
+            tool.execute({"symbol": "my_target_symbol", "output_format": "json"})
+        )
+        assert result["definition_count"] >= 1, (
+            f"H12: definition_count must be >= 1 when the def site is in "
+            f"the project — got {result['definition_count']} "
+            f"defs={result.get('definitions')!r} "
+            f"refs={result.get('references')!r}"
+        )
+        defs = result.get("definitions", [])
+        assert any(d.get("role") == "definition" for d in defs), (
+            f"H12: at least one definition must have role='definition' — got {defs!r}"
+        )

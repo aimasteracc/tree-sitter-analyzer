@@ -215,8 +215,15 @@ class GetProjectSummaryTool(BaseMCPTool):
                         "description": (
                             "Output format. 'toon' (default) returns a concise "
                             "TOON-style structured text summary with semantic "
-                            "directory descriptions. 'json' returns the full "
-                            "structured object."
+                            "directory descriptions — chosen as the default "
+                            "because get_project_summary is the first-hop "
+                            "orientation tool and TOON cuts the response by "
+                            "roughly 70% on a typical project index. Pass "
+                            "'json' explicitly when you need the structured "
+                            "object (file_count, language_distribution, "
+                            "critical_nodes, top_level_structure, ...) for "
+                            "downstream code. Both values echo back in the "
+                            "``format`` and ``output_format`` keys (F12)."
                         ),
                         "default": "toon",
                     },
@@ -256,6 +263,12 @@ class GetProjectSummaryTool(BaseMCPTool):
         manager = ProjectIndexManager(project_root)
 
         if output_format in ("toon", "compact"):
+            # H10: ``format`` is the legacy key, ``output_format`` is the
+            # canonical one — F12 requires both to carry the resolved
+            # value so JSON and TOON callers see the same envelope shape.
+            # The TOON path keeps ``"toon"`` as the resolved value even
+            # if the caller passed the legacy ``"compact"`` alias.
+            resolved_fmt = "toon"
             toon_path = Path(project_root) / manager.TOON_FILE
             if not force_refresh and toon_path.exists():
                 # Fast path: return pre-rendered TOON directly
@@ -277,7 +290,8 @@ class GetProjectSummaryTool(BaseMCPTool):
                         idx_for_summary, project_root
                     )
                     return {
-                        "format": "toon",
+                        "format": resolved_fmt,
+                        "output_format": resolved_fmt,
                         "summary": text,
                         "summary_line": summary_line,
                         "agent_summary": {
@@ -305,7 +319,8 @@ class GetProjectSummaryTool(BaseMCPTool):
                 )
             summary_line, next_step = _build_project_summary_line(index, project_root)
             return {
-                "format": "toon",
+                "format": resolved_fmt,
+                "output_format": resolved_fmt,
                 "summary": text,
                 "summary_line": summary_line,
                 "agent_summary": {
@@ -327,7 +342,13 @@ class GetProjectSummaryTool(BaseMCPTool):
         is_fresh = age_hours < 1.0
         quick_start = _make_quick_start(idx)
         summary_line, next_step = _build_project_summary_line(idx, project_root)
+        # H10: echo the resolved output_format on the JSON path too —
+        # previously ``format`` was ``None`` here while the TOON path set
+        # it to ``"toon"``, leaving JSON callers blind to the envelope
+        # shape. F12 expects both keys to carry the resolved value.
         result: dict[str, Any] = {
+            "format": "json",
+            "output_format": "json",
             "project_root": idx.project_root,
             "index_age_hours": age_hours,
             "is_fresh": is_fresh,

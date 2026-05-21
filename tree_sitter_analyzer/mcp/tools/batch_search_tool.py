@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import fd_rg_utils
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
 
 _BATCH_MAX_MATCHES_PER_QUERY = 20
 
@@ -94,7 +94,11 @@ class BatchSearchTool(BaseMCPTool):
         for i, q in enumerate(queries):
             if not isinstance(q, dict):
                 raise ValueError(f"queries[{i}] must be an object")
-            if "pattern" not in q or not isinstance(q["pattern"], str) or not q["pattern"]:
+            if (
+                "pattern" not in q
+                or not isinstance(q["pattern"], str)
+                or not q["pattern"]
+            ):
                 raise ValueError(f"queries[{i}].pattern must be a non-empty string")
         return True
 
@@ -188,8 +192,30 @@ class BatchSearchTool(BaseMCPTool):
                 }
             )
 
-        return {
+        # H5: canonical envelope — ``success``, top-level
+        # ``summary_line`` (queries+matches), and ``agent_summary`` with
+        # the mirrored line + next_step + verdict ("n/a" — batch_search
+        # reports matches; it doesn't gate further analysis on its own).
+        truncated_count = sum(1 for q in query_results if q.get("truncated") is True)
+        summary_line = (
+            f"batch_search queries={len(queries)} "
+            f"total_matches={total_matches} truncated={truncated_count}"
+        )
+        next_step = (
+            "search_content per pattern for paging into match details"
+            if total_matches > 0
+            else "Refine patterns or broaden roots — no matches found"
+        )
+        response: dict[str, Any] = {
+            "success": True,
             "queries": query_results,
             "total_matches": total_matches,
             "execution_note": f"{len(queries)} searches executed in parallel",
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": "n/a",
+            },
         }
+        return mirror_summary_line(response)

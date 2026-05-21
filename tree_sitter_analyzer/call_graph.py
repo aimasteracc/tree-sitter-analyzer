@@ -338,16 +338,30 @@ def _extract_call(node: Any, source: str, language: str) -> dict[str, Any] | Non
 
 
 def _node_text(node: Any, source: str) -> str:
-    """Extract text from a node given the full source string."""
+    """Extract text from a node given the full source string.
+
+    H2 fix: tree-sitter exposes ``start_byte``/``end_byte`` as UTF-8 BYTE
+    offsets, not character offsets. Indexing into ``source`` (a ``str``)
+    with byte offsets returns garbage when the file contains any multi-
+    byte characters (e.g. em-dashes ``—`` in comments). Symptom: callees
+    extracted from a source file with non-ASCII text would have their
+    ``name`` truncated/shifted, so ``_resolve_callee`` could not match
+    them against the function-name index — caller/callee edges were
+    silently dropped for any function indirectly downstream of such a
+    file. Prefer ``node.text`` (already bytes from tree-sitter) and fall
+    back to a byte-slice of the source only if ``node.text`` is missing.
+    """
+    text = getattr(node, "text", None)
+    if isinstance(text, bytes):
+        return text.decode("utf-8", errors="replace")
+    if isinstance(text, str):
+        return text
     try:
         start = node.start_byte
         end = node.end_byte
-        return source[start:end]
+        return source.encode("utf-8")[start:end].decode("utf-8", errors="replace")
     except Exception:
-        text = node.text
-        if isinstance(text, bytes):
-            return text.decode("utf-8", errors="replace")
-        return str(text)
+        return ""
 
 
 def _find_parent_class_python(node: Any) -> str | None:
@@ -407,7 +421,32 @@ class CallGraph:
         self._built = False
 
     def build(self) -> None:
-        """Scan the project and build the call graph."""
+        """Scan the project and build the call graph.
+
+        H3 fix: two-pass deterministic build.
+
+        Previously this was a single pass that mixed "register definitions"
+        and "resolve calls" per file. ``_resolve_callee`` consulted
+        ``_func_by_name``, which was still being populated, so calls from
+        file A to a function defined in file B were resolved differently
+        depending on whether A or B was parsed first. Combined with
+        ``Path.rglob`` order being filesystem-defined (and Python set/dict
+        iteration order being randomized across processes via
+        ``PYTHONHASHSEED``), ``len(self._call_edges)`` varied by thousands
+        across identical runs of identical inputs.
+
+        Pass 1 (definitions): iterate files in sorted relative-path order,
+        parse, and register every ``FunctionRef`` into the indices. This
+        runs to completion before any call is resolved, so the candidate
+        set ``_func_by_name[name]`` is the same for every call site
+        regardless of which file's calls we resolve next.
+
+        Pass 2 (calls): iterate files in the same sorted order and resolve
+        each call against the now-complete definition index. Edges are
+        appended in a fully deterministic order — same source files, same
+        AST walk order, same candidate lookup — so ``call_edge_count`` is
+        byte-stable across runs.
+        """
         if self._built:
             return
 
@@ -431,16 +470,35 @@ class CallGraph:
                 if not self._is_excluded(f):
                     all_files.append(f)
 
-        rel_to_abs: dict[str, str] = {}
+        # H3: sort file iteration order so it does not depend on
+        # filesystem traversal order or PYTHONHASHSEED.
+        rel_to_abs_pairs: list[tuple[str, str]] = []
         for f in all_files:
             try:
                 rel = str(f.relative_to(self.project_root))
-                rel_to_abs[rel] = str(f)
+                rel_to_abs_pairs.append((rel, str(f)))
             except ValueError:
                 continue
+        rel_to_abs_pairs.sort(key=lambda p: p[0])
+        # De-dup while preserving sorted order — rglob may yield the same
+        # file twice if multiple extension globs match (extension set is
+        # disjoint here, but be defensive).
+        seen_rel: set[str] = set()
+        rel_to_abs: dict[str, str] = {}
+        for rel, abs_path in rel_to_abs_pairs:
+            if rel in seen_rel:
+                continue
+            seen_rel.add(rel)
+            rel_to_abs[rel] = abs_path
 
         parser = Parser()
 
+        # ----- Pass 1: parse all files, register every definition. -----
+        # Cache parse results so pass 2 doesn't re-parse — parsing dominates
+        # build cost (2-5s on medium repos); doubling it would regress UX.
+        parsed: dict[
+            str, tuple[str, Any, list[dict], list[dict], dict[str, FunctionRef]]
+        ] = {}
         for rel_path, abs_path in rel_to_abs.items():
             language = _language_from_ext(rel_path)
             if language is None:
@@ -469,6 +527,15 @@ class CallGraph:
                 qname = ref.qualified_name()
                 self._func_by_qualified[qname] = ref
                 file_funcs[defn["name"]] = ref
+
+            parsed[rel_path] = (language, tree, definitions, calls, file_funcs)
+
+        # ----- Pass 2: resolve calls against the now-complete index. -----
+        for rel_path in rel_to_abs:  # already sorted insertion order
+            entry = parsed.get(rel_path)
+            if entry is None:
+                continue
+            _language, _tree, _definitions, calls, file_funcs = entry
 
             for call in calls:
                 caller_ref = self._find_enclosing_func(file_funcs, call["line"])

@@ -17,6 +17,7 @@ from typing import Any
 from ...language_detector import LanguageDetector, detect_language_from_file
 from ...utils import setup_logger
 from ..utils.error_handler import handle_mcp_errors
+from ._graph_cache_fingerprint import _SOURCE_EXTS
 from .base_tool import BaseMCPTool
 from .fd_rg_utils import (
     build_rg_command,
@@ -26,6 +27,38 @@ from .fd_rg_utils import (
 
 # Set up logging
 logger = setup_logger(__name__)
+
+# H4 fix: restrict trace_impact to source-code extensions so the "CALLERS"
+# count is not inflated by CHANGELOG.md / design.md / comment matches.
+# Mirrors the SOURCE_EXTS list used for graph fingerprinting so the call
+# count, the dependency graph, and the impact badge all describe the same
+# universe of files. Globs are rooted at any depth (``**/*.py`` style) so
+# ripgrep ``-g`` accepts them without translation.
+_SOURCE_EXT_GLOBS: tuple[str, ...] = tuple(f"**/*{ext}" for ext in _SOURCE_EXTS)
+
+
+def _filter_source_matches(
+    matches: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """H4 fix: drop hits whose file extension is not in ``_SOURCE_EXTS``.
+
+    The ``-g`` flag passed to ripgrep already restricts the search at the
+    boundary; this is a belt-and-braces filter so that ``call_count`` is
+    honest even when ``-g`` is bypassed (e.g. a future change adds
+    ``--no-ignore`` or a custom glob). The cost is O(n) over hits that
+    have already been parsed once.
+    """
+    if not matches:
+        return matches
+    return [match for match in matches if _is_source_file(match.get("file", ""))]
+
+
+def _is_source_file(file_path: str) -> bool:
+    """Return ``True`` if ``file_path`` ends with a known source extension."""
+    if not file_path:
+        return False
+    lower = file_path.lower()
+    return any(lower.endswith(ext) for ext in _SOURCE_EXTS)
 
 
 def _get_impact_level(count: int) -> dict[str, str]:
@@ -309,6 +342,13 @@ class TraceImpactTool(BaseMCPTool):
             # 为每个扩展名创建包含模式
             for ext in language_extensions:
                 include_globs.append(f"**/*{ext}")
+        else:
+            # H4 fix: even without an explicit language, restrict to
+            # source-code extensions so the call-count is not inflated by
+            # CHANGELOG.md / design.md / comment matches. Agents reading
+            # "2132 CALLERS" should be looking at source files, not
+            # marketing copy.
+            include_globs.extend(_SOURCE_EXT_GLOBS)
 
         # 构建 ripgrep 命令
         cmd = build_rg_command(
@@ -397,17 +437,31 @@ class TraceImpactTool(BaseMCPTool):
         # 解析 JSON 输出
         matches = parse_rg_json_lines_to_matches(stdout)
 
+        # H4 fix: even with the source-extension filter applied at the
+        # ripgrep boundary, defensively re-filter in Python — guards
+        # against the rare case where rg ignores ``-g`` (e.g. user
+        # passes ``--no-ignore``) and against future schema drift in
+        # ``_SOURCE_EXTS``. ``source_call_count`` is the honest number
+        # an agent can trust; ``true_total`` is what rg actually
+        # returned. The two should be equal in normal operation.
+        source_matches = _filter_source_matches(matches)
+
         # Capture true total BEFORE truncating for display.
-        # impact_level and call_count must reflect the actual number of callers,
-        # not the display-capped count. If max_results=5 and there are 695 matches,
-        # call_count must be 695 and impact_level must be "high", not "low".
+        # impact_level and source_call_count must reflect the actual number
+        # of source-only callers, not the display-capped count. If
+        # max_results=5 and there are 695 matches, source_call_count must
+        # be 695 and impact_level must be "high", not "low".
         true_total = len(matches)
+        source_total = len(source_matches)
 
         # 限制结果数量（只影响显示，不影响 call_count）
-        if true_total > max_results:
-            matches = matches[:max_results]
+        # H4: display only source-extension matches; non-source hits never
+        # belonged in the callers list to begin with.
+        if source_total > max_results:
+            display_matches = source_matches[:max_results]
             truncated = True
         else:
+            display_matches = source_matches
             truncated = False
 
         # 转换为用户友好的格式
@@ -415,7 +469,7 @@ class TraceImpactTool(BaseMCPTool):
         # for: ``file`` + ``file_path``, ``line`` + ``line_number``,
         # ``context`` (the matched line text). Avoids cross-tool guessing.
         usages = []
-        for match in matches:
+        for match in display_matches:
             line_no = match["line"]
             file_path_val = match["file"]
             usage = {
@@ -427,8 +481,11 @@ class TraceImpactTool(BaseMCPTool):
             }
             usages.append(usage)
 
-        # 计算影响等级（使用真实总数，而非截断后的显示数）
-        total_count = true_total
+        # 计算影响等级（使用源文件真实总数，而非截断后的显示数）
+        # H4 fix: impact_badge / impact_level must reflect SOURCE callers
+        # only — markdown and comment matches don't justify a "🚨 HIGH
+        # IMPACT — N CALLERS" badge.
+        total_count = source_total
         impact = _get_impact_level(total_count)
 
         # 构建响应
@@ -451,8 +508,20 @@ class TraceImpactTool(BaseMCPTool):
         result: dict[str, Any] = {
             "success": True,
             "symbol": symbol,
+            # H4 fix: ``call_count`` / ``count`` keep their meaning (the
+            # caller-facing canonical count) but now reflect source-only
+            # hits — the inflated text-match number is no longer the
+            # default. ``source_call_count`` is the same value under a
+            # more explicit name for callers that want to be sure they
+            # are reading the post-filter total. ``usage_count`` is the
+            # number of usages actually returned in the response (post
+            # display truncation) so an agent can sanity-check
+            # ``len(usages) == usage_count``.
             "call_count": total_count,
             "count": total_count,
+            "source_call_count": source_total,
+            "usage_count": len(usages),
+            "raw_match_count": true_total,
             "impact_level": impact["level"],
             "verdict": impact["level"].upper(),
             "impact_badge": impact["badge"],
@@ -489,6 +558,13 @@ class TraceImpactTool(BaseMCPTool):
                 f"Results truncated to {max_results} usages. "
                 f"Consider narrowing the search scope or increasing max_results."
             )
+
+        # H4 introspection: tell the agent when text matches were dropped.
+        # ``true_total`` is rg's raw output; ``source_total`` is what
+        # remains after the source-extension filter. A non-zero delta
+        # means the previous ``call_count`` would have been inflated.
+        if true_total > source_total:
+            result["non_source_match_count"] = true_total - source_total
 
         return result
 

@@ -11,7 +11,7 @@ import time
 from typing import Any
 
 from ..utils.project_index import ProjectIndex, ProjectIndexManager
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
 from .get_project_summary_tool import _make_quick_start
 
 
@@ -102,14 +102,32 @@ class BuildProjectIndexTool(BaseMCPTool):
 
         quick_start = _make_quick_start(index)
 
-        return {
+        # H5: build a canonical envelope — ``success``, top-level
+        # ``summary_line`` (one-liner with the file count + duration so
+        # callers can audit at a glance), and ``agent_summary`` with the
+        # mirror line + next_step + verdict ("n/a" — this is a build
+        # operation, not an analysis verdict).
+        files_scanned = int(index.file_count or 0)
+        languages_count = len(index.language_distribution or {})
+        summary_line = (
+            f"build_project_index built files={files_scanned} "
+            f"languages={languages_count} duration_ms={build_duration_ms}"
+        )
+        next_step = "get_project_summary to retrieve this index in future sessions"
+        response: dict[str, Any] = {
+            "success": True,
             "status": "built",
             "build_duration_ms": build_duration_ms,
-            "files_scanned": index.file_count,
+            "files_scanned": files_scanned,
             "languages_found": index.language_distribution,
             "index_saved_to": manager.CACHE_FILE,
             "quick_start": quick_start,
-            "next_step": (
-                "Use get_project_summary to retrieve this index in future sessions."
-            ),
+            "next_step": next_step,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": "n/a",
+            },
         }
+        return mirror_summary_line(response)

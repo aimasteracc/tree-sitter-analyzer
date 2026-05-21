@@ -36,6 +36,14 @@ def build_file_health_result(
     analysis: Any,
 ) -> dict[str, Any]:
     """Build the result dict from health data, smells, and optional extraction plan."""
+    # H6 fix: the upstream ``detect_code_smells`` emits dicts keyed on
+    # ``smell`` (the canonical name) and never sets ``type``. The
+    # ``code_patterns`` tool, which shares the same source data, projects
+    # ``smell`` into ``type`` before returning. Mirror that projection
+    # here so ``file_health.code_smells[].type`` is a non-empty string —
+    # otherwise downstream cross-tool consumers see ``type: None`` and
+    # think the smell category is missing.
+    smells = _project_smell_type(smells)
     action = _build_agent_next_action(
         file_path, health.grade, health.dimensions, smells
     )
@@ -51,6 +59,34 @@ def build_file_health_result(
     from ..base_tool import mirror_summary_line
 
     return mirror_summary_line(result)
+
+
+def _project_smell_type(smells: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """H6 fix: ensure every smell carries a ``type`` field.
+
+    Upstream ``detect_code_smells`` returns dicts keyed on ``smell`` (e.g.
+    ``deep_nesting``, ``long_method``). The ``code_patterns`` tool re-emits
+    the same data under ``type`` so cross-tool consumers can branch on a
+    single field. ``file_health`` was passing the raw upstream shape, so
+    ``code_smells[].type`` came out as ``None``. We project here without
+    mutating the upstream list — each smell becomes a new dict with both
+    ``smell`` (kept for backwards compatibility) and ``type`` (the
+    canonical name).
+    """
+    projected: list[dict[str, Any]] = []
+    for smell in smells:
+        canonical = (
+            smell.get("smell") or smell.get("type") or smell.get("id") or "unknown"
+        )
+        # Immutable update: build a new dict so the caller's list is
+        # untouched if it is shared with another consumer.
+        new_smell = dict(smell)
+        new_smell["type"] = canonical
+        # ``smell`` is the original key — keep it so callers that
+        # already branch on it continue to work.
+        new_smell.setdefault("smell", canonical)
+        projected.append(new_smell)
+    return projected
 
 
 def _build_base_health_result(

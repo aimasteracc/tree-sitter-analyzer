@@ -8,6 +8,7 @@ Tells AI agents: what changed, what's affected, what tests to run.
 Supports GitHub PR URL analysis: pass pr_url to fetch diff via gh CLI.
 """
 
+from pathlib import Path
 from typing import Any
 
 from ...pr_url import (
@@ -27,10 +28,40 @@ from .utils.change_impact_git import (
     _get_diff_stat,
 )
 from .utils.change_impact_response import (
+    apply_scope_validation,
     attach_queue_ledger,
     build_agent_summary_only_response,
     build_no_changes_result,
 )
+
+
+def _resolve_scope_path(project_root: str | None, raw: str) -> Path:
+    """Resolve a user-supplied scope path against the project root.
+
+    Absolute paths are kept as-is; relative paths are interpreted relative
+    to ``project_root`` so the existence check matches what git diff
+    consumes downstream. When ``project_root`` is ``None`` we fall back
+    to the current working directory — git diff would do the same.
+    """
+    p = Path(raw)
+    if p.is_absolute():
+        return p
+    base = Path(project_root) if project_root else Path.cwd()
+    return base / p
+
+
+def _scope_paths_invalid(project_root: str | None, scope_paths: list[str]) -> list[str]:
+    """Return the subset of ``scope_paths`` that do not exist on disk.
+
+    Empty input → empty list. Pure helper so it can be unit-tested in
+    isolation.
+    """
+    return [
+        raw
+        for raw in scope_paths
+        if not _resolve_scope_path(project_root, raw).exists()
+    ]
+
 
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -110,6 +141,11 @@ class ChangeImpactTool(BaseMCPTool):
         scope_paths = arguments.get("scope_paths") or []
         agent_summary_only = bool(arguments.get("agent_summary_only", False))
 
+        # H8: validate scope paths against disk so a typo cannot silently
+        # become "scope matched nothing". The analysis still runs on the
+        # remaining valid scope (if any) — we only mark the invalid ones.
+        scope_paths_invalid = _scope_paths_invalid(self.project_root, scope_paths)
+
         if mode == "pr" and pr_url:
             return self._execute_pr_analysis(
                 pr_url, include_tests, output_format, scope_paths, agent_summary_only
@@ -131,6 +167,7 @@ class ChangeImpactTool(BaseMCPTool):
                 scoped_changed_files=changed_files,
                 workspace_changed_files=workspace_changed_files,
             )
+            result = apply_scope_validation(result, scope_paths_invalid)
             if agent_summary_only:
                 result = build_agent_summary_only_response(result)
             result["output_format"] = output_format
@@ -154,6 +191,7 @@ class ChangeImpactTool(BaseMCPTool):
             scoped_changed_files=changed_files,
             workspace_changed_files=workspace_changed_files,
         )
+        result = apply_scope_validation(result, scope_paths_invalid)
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format
@@ -192,6 +230,10 @@ class ChangeImpactTool(BaseMCPTool):
                 output_format,
             )
 
+        # H8: validate scope paths against disk (PR mode treats them as
+        # path prefixes from the local checkout).
+        scope_paths_invalid = _scope_paths_invalid(self.project_root, scope_paths)
+
         changed_files = fetch_pr_changed_files(parsed)
         if scope_paths:
             changed_files = [
@@ -212,6 +254,7 @@ class ChangeImpactTool(BaseMCPTool):
                 scoped_changed_files=[],
                 workspace_changed_files=[],
             )
+            result = apply_scope_validation(result, scope_paths_invalid)
             if agent_summary_only:
                 result = build_agent_summary_only_response(result)
             result["output_format"] = output_format
@@ -238,6 +281,7 @@ class ChangeImpactTool(BaseMCPTool):
             scoped_changed_files=changed_files,
             workspace_changed_files=changed_files,
         )
+        result = apply_scope_validation(result, scope_paths_invalid)
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format

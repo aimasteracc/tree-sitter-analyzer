@@ -467,19 +467,57 @@ def _top_language(language_distribution: dict[str, int]) -> str:
 
 
 def _build_tool_routing() -> dict[str, str]:
-    """Return the static MCP tool routing guide."""
+    """Return the static MCP tool routing guide.
+
+    H11: every value here must reference a tool name that is actually
+    registered in ``_create_tool_registry`` (see
+    ``tree_sitter_analyzer/mcp/server.py``). The previous version mixed
+    CLI shorthand into the MCP syntax, which made calls fail with
+    "unknown tool" when an agent copy-pasted the snippet through the
+    MCP JSON-RPC transport. The single source of truth for the names
+    below is the registry tuple in ``server._create_tool_registry``.
+    All snippets use MCP keyword-argument form (``tool(key=value)``);
+    none of them use CLI positional form.
+    """
     return {
-        "project_health": "check_project_health()  # grade ALL files, top fix targets",
-        "file_health": "check_file_health(file_path=...)  # A-F grade + smells + security",
-        "edit_risk": "safe_to_edit(file_path=...)  # MUST call before editing",
-        "refactor_plan": "refactoring_suggestions(file_path=...)  # extraction plans",
-        "change_impact": "analyze_change_impact()  # git diff + deps → tests to run",
-        "file_scale": "check_code_scale(file_path=...)",
-        "structure_table": "analyze_code_structure(file_path=..., format_type=compact)",
-        "read_lines": "extract_code_section(file_path=..., start_line=..., end_line=...)",
-        "find_symbol": "query_code(symbol='...')  # wildcards: *Service, fuzzy: ~analyz",
-        "search_text": "search_content(query='...', total_only=true)  # ~10 tok",
+        # Health + safety
+        "project_health": (
+            "check_project_health()  # grade ALL files, top fix targets"
+        ),
+        "file_health": (
+            "check_file_health(file_path='...')  # A-F grade + smells + security"
+        ),
+        "edit_risk": ("safe_to_edit(file_path='...')  # MUST call before editing"),
+        "refactor_plan": (
+            "refactoring_suggestions(file_path='...')  # extraction plans"
+        ),
+        "change_impact": ("analyze_change_impact()  # git diff + deps -> tests to run"),
+        # Scale + structure
+        "file_scale": "check_code_scale(file_path='...')",
+        "structure_table": (
+            "analyze_code_structure(file_path='...', format_type='compact')"
+        ),
+        "read_lines": (
+            "extract_code_section(file_path='...', start_line=1, end_line=100)"
+        ),
+        # Symbol + text search (MCP-canonical names from server registry)
+        "find_symbol": (
+            "query_code(symbol='...')  # wildcards: *Service, fuzzy: ~analyz"
+        ),
+        "search_text": ("search_content(query='...', total_only=true)  # ~10 tok"),
         "find_files": "list_files(roots=['.'], extensions=['py'])",
+        "find_and_grep": "find_and_grep(query='...', roots=['.'])",
+        # Deep analysis
+        "deps": "analyze_dependencies(mode='summary')",
+        "call_graph": "codegraph_call_graph(mode='summary')",
+        "symbol_lineage": "symbol_lineage(symbol='...')",
+        "smart_context": "smart_context(file_path='...')",
+        # Code-quality + routing
+        "code_patterns": "code_patterns(file_path='...')",
+        "detect_routes": "detect_routes(mode='summary')",
+        # Index + workflow
+        "ast_cache": "ast_cache(mode='stats')",
+        "agent_workflow": "get_agent_workflow(file_path='...')",
     }
 
 

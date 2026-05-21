@@ -234,7 +234,7 @@ def _summary(graph: DependencyGraph) -> dict[str, Any]:
 
 
 def _cycles(graph: DependencyGraph) -> dict[str, Any]:
-    cycles = graph.find_cycles()
+    cycles = _deterministic_find_cycles(graph)
     return {
         "success": True,
         "mode": "cycles",
@@ -247,6 +247,75 @@ def _cycles(graph: DependencyGraph) -> dict[str, Any]:
             else "No circular dependencies detected. Project structure is clean."
         ),
     }
+
+
+def _deterministic_find_cycles(graph: DependencyGraph) -> list[list[str]]:
+    """Enumerate elementary cycles in ``graph`` with a deterministic order.
+
+    H3 fix: ``DependencyGraph.find_cycles`` does a DFS that iterates
+    ``graph._nodes`` (a ``set``) and ``graph._deps[node]`` (also a ``set``).
+    Set iteration order in CPython depends on ``PYTHONHASHSEED``, so
+    different OS-level invocations of the same code on the same project
+    produced different enumeration trees and thus a *different number*
+    of cycles — the dogfood agent saw ``cycle_count`` flicker 5↔6 across
+    runs.
+
+    We re-implement the DFS here with sorted iteration of nodes and
+    neighbours. The algorithm matches ``DependencyGraph.find_cycles``
+    (back-edge style cycle detection) so the result shape and semantics
+    are unchanged; only the enumeration order is now stable. Cycles are
+    additionally canonicalised (rotated to start at their lexicographically
+    smallest node) and de-duplicated so equivalent cycles discovered from
+    different DFS roots collapse to a single entry.
+    """
+    nodes_sorted = sorted(graph._nodes)
+    deps = graph._deps  # dict[str, set[str]]
+
+    visited: set[str] = set()
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    raw_cycles: list[tuple[str, ...]] = []
+
+    def dfs(node: str) -> None:
+        visited.add(node)
+        stack.append(node)
+        on_stack.add(node)
+
+        for neighbor in sorted(deps.get(node, ())):
+            if neighbor not in visited:
+                dfs(neighbor)
+            elif neighbor in on_stack:
+                # back-edge → cycle from neighbor down to current
+                idx = stack.index(neighbor)
+                cycle_nodes = tuple(stack[idx:] + [neighbor])
+                raw_cycles.append(cycle_nodes)
+
+        stack.pop()
+        on_stack.discard(node)
+
+    for root in nodes_sorted:
+        if root not in visited:
+            dfs(root)
+
+    # Canonicalise each cycle: rotate the node list (excluding the closing
+    # duplicate) to start at its lexicographically smallest element, then
+    # re-append the closing node so the on-the-wire format matches the
+    # legacy shape (``[a, b, c, a]``). De-dup by canonical key.
+    canonical: dict[tuple[str, ...], list[str]] = {}
+    for cyc in raw_cycles:
+        if len(cyc) < 2:
+            continue
+        body = list(cyc[:-1])  # drop closing duplicate
+        if not body:
+            continue
+        pivot = min(range(len(body)), key=body.__getitem__)
+        rotated = body[pivot:] + body[:pivot]
+        key = tuple(rotated)
+        if key not in canonical:
+            canonical[key] = rotated + [rotated[0]]
+
+    # Sort cycles for stable response ordering (by their canonical key).
+    return [canonical[k] for k in sorted(canonical.keys())]
 
 
 def _file_deps(graph: DependencyGraph, rel_path: str) -> dict[str, Any]:
@@ -289,7 +358,11 @@ def _attach_agent_summary(
     - blast_radius: <file> forward=N reverse=N
     """
     if mode == "summary":
-        cycle_count = len(graph.find_cycles())
+        # H3: use the deterministic cycle enumerator so ``summary.cycle_count``
+        # stays byte-stable across runs (the underlying
+        # ``DependencyGraph.find_cycles`` is DFS-order-sensitive and varies
+        # with PYTHONHASHSEED).
+        cycle_count = len(_deterministic_find_cycles(graph))
         node_count = result.get("node_count", 0)
         edge_count = result.get("edge_count", 0)
         summary_line = (

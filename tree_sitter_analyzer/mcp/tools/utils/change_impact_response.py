@@ -7,6 +7,15 @@ from typing import Any
 
 LARGE_DIRTY_DIFF_THRESHOLD = 25
 
+# H8: ``verdict`` values exposed by change-impact. ``CLEAN`` is the default
+# steady state — the analysis ran and nothing flagged. ``WARN`` covers
+# soft-failure paths (e.g. scope paths that don't exist on disk) where the
+# analysis still produced a real result but the caller's input was partly
+# ignored. We deliberately don't escalate to ``UNSAFE`` here because the
+# tool answers a different question (impact) than the safety tools.
+CHANGE_IMPACT_VERDICT_CLEAN = "CLEAN"
+CHANGE_IMPACT_VERDICT_WARN = "WARN"
+
 
 @dataclass(frozen=True)
 class AgentSummaryContext:
@@ -258,3 +267,70 @@ def _agent_stop_condition(
         )
     steps = strategy.get("verification_steps") or [verification["verification_command"]]
     return f"{steps[-1]} exits successfully."
+
+
+def apply_scope_validation(
+    result: dict[str, Any], scope_paths_invalid: list[str]
+) -> dict[str, Any]:
+    """H8: surface nonexistent scope paths so callers can't miss the typo.
+
+    Behaviour:
+      - ``scope_paths_invalid`` always lands in the response (even empty),
+        so consumers can branch on a single key without first checking
+        existence. The default value keeps round-trip JSON stable.
+      - ``agent_summary["verdict"]`` defaults to ``CLEAN``. When any
+        invalid path is supplied we escalate to ``WARN`` — never
+        ``UNSAFE`` because the analysis still produced a real result.
+      - ``agent_summary["next_step"]`` is rewritten with a concrete
+        "did you typo?" hint so the agent's decision loop catches it
+        before re-running.
+      - ``summary_line`` (top-level and inside ``agent_summary``) gains a
+        ``scope_invalid=N`` token so chained tools can grep one line.
+      - We never flip ``success`` to False. The analysis still has value;
+        the verdict escalation is what tells agents "you ignored part of
+        the input".
+    """
+    result.setdefault("scope_paths_invalid", scope_paths_invalid)
+    agent_summary = result.setdefault("agent_summary", {})
+
+    if scope_paths_invalid:
+        agent_summary["verdict"] = CHANGE_IMPACT_VERDICT_WARN
+        agent_summary["next_step"] = (
+            f"scope path(s) do not exist: {scope_paths_invalid} — did you typo?"
+        )
+        agent_summary["scope_paths_invalid"] = list(scope_paths_invalid)
+        _augment_summary_line(result, agent_summary, scope_paths_invalid)
+    else:
+        # Default verdict for change-impact is CLEAN. Use setdefault so we
+        # don't stomp a richer verdict another helper may have set.
+        agent_summary.setdefault("verdict", CHANGE_IMPACT_VERDICT_CLEAN)
+
+    return result
+
+
+def _augment_summary_line(
+    result: dict[str, Any],
+    agent_summary: dict[str, Any],
+    scope_paths_invalid: list[str],
+) -> None:
+    """Append a ``scope_invalid=N`` token to both summary_line surfaces.
+
+    Keeps the original line content if one already exists; only appends
+    once per call. Bare absence is also handled — a minimal headline is
+    synthesized so chained agents always see the warning.
+    """
+    token = f"scope_invalid={len(scope_paths_invalid)}"
+
+    existing_top = result.get("summary_line")
+    if isinstance(existing_top, str) and existing_top:
+        if token not in existing_top:
+            result["summary_line"] = f"{existing_top} {token}"
+    else:
+        result["summary_line"] = f"change_impact: {token}"
+
+    existing_agent = agent_summary.get("summary_line")
+    if isinstance(existing_agent, str) and existing_agent:
+        if token not in existing_agent:
+            agent_summary["summary_line"] = f"{existing_agent} {token}"
+    else:
+        agent_summary["summary_line"] = result["summary_line"]

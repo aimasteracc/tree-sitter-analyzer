@@ -25,6 +25,28 @@ from .utils.file_health_smells import detect_code_smells
 
 logger = setup_logger(__name__)
 
+# H7 fix: extensions that are not code and therefore must not be graded
+# A-F. The health scorer reads them as ``language=None`` and silently
+# falls through to a generic file-size + line-count score, producing
+# grade C "moderate technical debt" for a README.md. The list mirrors
+# the common documentation / configuration extensions an agent will
+# encounter alongside source code.
+_NON_CODE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".md",
+        ".txt",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".json",
+        ".html",
+        ".xml",
+        ".csv",
+        ".rst",
+        ".ini",
+    }
+)
+
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -110,9 +132,18 @@ class FileHealthTool(BaseMCPTool):
 
         from ..utils.format_helper import apply_toon_format_to_response
 
+        # H7 fix: non-code files (Markdown, YAML, JSON, …) must not be
+        # graded A-F. Without this guard ``HealthScorer`` falls through
+        # to a size + line-count heuristic and produces grade C
+        # "moderate technical debt" for a README.md.
+        non_code_response = _non_code_file_response(resolved, file_path)
+        if non_code_response is not None:
+            return apply_toon_format_to_response(non_code_response, output_format)
+
         # Bug M7: 0-byte files have no signal. Health scoring would assign a
         # bogus "large_file" reading from empty dimensions — return a clear
-        # n/a envelope instead.
+        # n/a envelope instead. H9 extends this to whitespace-only files —
+        # ``\n\n   \n`` is operationally empty even though ``getsize > 0``.
         empty_response = _empty_file_response(resolved, file_path)
         if empty_response is not None:
             return apply_toon_format_to_response(empty_response, output_format)
@@ -154,16 +185,33 @@ class FileHealthTool(BaseMCPTool):
 
 
 def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None:
-    """Return an n/a envelope when ``resolved`` is a 0-byte file.
+    """Return an n/a envelope when ``resolved`` is empty or whitespace-only.
 
     Returning ``None`` means the caller should continue with normal scoring.
+
+    H9 extends the original M7 fix: a file containing only spaces and
+    newlines (``"   \\n   \\n"``) has ``st_size > 0`` but no analyzable
+    content. The scorer would happily grade it ``A`` because nothing
+    triggers a complexity / structure penalty — misleading because the
+    file really has zero signal.
     """
+    detail = "empty (0 bytes)"
     try:
         size = Path(resolved).stat().st_size
     except OSError:
         return None
-    if size != 0:
-        return None
+    if size == 0:
+        pass  # fall through to the n/a envelope below
+    else:
+        # H9: defer to content inspection when the file is non-empty
+        # but might be whitespace-only.
+        try:
+            text = Path(resolved).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        if text.strip():
+            return None
+        detail = f"whitespace-only ({size} bytes)"
     return {
         "success": True,
         "file_path": file_path,
@@ -175,13 +223,54 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "smell_count": 0,
         "dimensions": {},
         "agent_summary": {
-            "summary_line": f"{file_path} is empty (0 bytes)",
+            "summary_line": f"{file_path} is {detail}",
             "next_step": "skip",
             "verdict": "n/a",
         },
         "agent_next_action": {
             "priority": "none",
             "reason": "file is empty",
+            "mcp_command": "",
+            "cli_command": "",
+            "post_edit_commands": [],
+        },
+    }
+
+
+def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | None:
+    """Return an n/a envelope when ``resolved`` is a non-code file.
+
+    Returning ``None`` means the caller should continue with normal scoring.
+    H7 fix: Markdown / config files are not graded A-F — code-quality
+    metrics do not apply.
+    """
+    suffix = Path(resolved).suffix.lower()
+    if suffix not in _NON_CODE_EXTENSIONS:
+        return None
+    summary_line = f"{file_path} signal=non_code_file"
+    return {
+        "success": True,
+        "file_path": file_path,
+        "grade": "N/A",
+        # ``verdict`` mirrors safe_to_edit / modification_guard. Use
+        # ``N/A`` first; downstream code that requires one of the
+        # safety vocab strings should treat this as ``SAFE`` (nothing
+        # to break by skipping the analysis).
+        "verdict": "N/A",
+        "signal": "non_code_file",
+        "recommendation": ("Markdown/config files are not code-quality scored."),
+        "code_smells": [],
+        "smell_count": 0,
+        "dimensions": {},
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": ("Markdown/config files are not code-quality scored."),
+            "verdict": "N/A",
+        },
+        "agent_next_action": {
+            "priority": "none",
+            "reason": "non-code file",
             "mcp_command": "",
             "cli_command": "",
             "post_edit_commands": [],

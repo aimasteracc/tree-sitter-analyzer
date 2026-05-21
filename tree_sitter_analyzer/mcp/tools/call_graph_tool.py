@@ -30,13 +30,30 @@ def _result_is_empty_for_mode(result: dict[str, Any], mode: str) -> bool:
     Finding F8 only treats the symbol-resolving modes as "not found" —
     a zero-edge ``summary`` on an empty project is a different (and
     not particularly actionable) condition.
+
+    H2 refinement: an indexed leaf function (e.g. a callback registered
+    via ``requires_file=_dependency_mode_requires_file``) has zero
+    callers/callees but IS in the graph — its envelope must NOT carry
+    a ``NOT_FOUND`` verdict, or callers will be told the symbol doesn't
+    exist when it plainly does. We require BOTH ``count == 0`` AND
+    ``function_indexed`` is falsy before declaring not-found. Older
+    responses that don't carry ``function_indexed`` (e.g. legacy
+    constructions in tests) keep the prior behaviour — treat absence
+    as a not-indexed signal so existing F8 expectations still hold.
     """
+    indexed = result.get("function_indexed")
     if mode == "callers":
-        return int(result.get("caller_count", 0)) == 0
+        if int(result.get("caller_count", 0)) != 0:
+            return False
+        return not bool(indexed) if indexed is not None else True
     if mode == "callees":
-        return int(result.get("callee_count", 0)) == 0
+        if int(result.get("callee_count", 0)) != 0:
+            return False
+        return not bool(indexed) if indexed is not None else True
     if mode == "chain":
-        return int(result.get("edge_count", 0)) == 0
+        if int(result.get("edge_count", 0)) != 0:
+            return False
+        return not bool(indexed) if indexed is not None else True
     return False
 
 
@@ -326,6 +343,11 @@ class CodeGraphCallTool(BaseMCPTool):
                 "function": func_name,
                 "caller_count": len(callers),
                 "callers": callers,
+                # H2: ``NOT_FOUND`` verdict must reflect "symbol absent from
+                # the call graph", NOT "symbol has zero callers". Leaf
+                # functions and first-class function references are
+                # legitimately edge-less but still indexed.
+                "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
             }
             hint = _maybe_bare_name_hint(graph, func_name, len(callers), "callers")
             if hint:
@@ -340,6 +362,9 @@ class CodeGraphCallTool(BaseMCPTool):
                 "function": func_name,
                 "callee_count": len(callees),
                 "callees": callees,
+                # H2: see callers branch — distinguish indexed-but-edgeless
+                # from genuinely-unknown.
+                "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
             }
             hint = _maybe_bare_name_hint(graph, func_name, len(callees), "callees")
             if hint:
@@ -356,6 +381,8 @@ class CodeGraphCallTool(BaseMCPTool):
                 "depth": depth,
                 "edge_count": len(chain),
                 "chain": chain,
+                # H2: see callers branch.
+                "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
             }
             hint = _maybe_bare_name_hint(graph, func_name, len(chain), "chain")
             if hint:

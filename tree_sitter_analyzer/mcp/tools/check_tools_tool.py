@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
 
 
 class CheckToolsTool(BaseMCPTool):
@@ -98,9 +98,33 @@ class CheckToolsTool(BaseMCPTool):
                 )
             recommendation = "; ".join(install_hints)
 
-        return {
+        # H5: build a canonical envelope so the response carries
+        # ``success``, ``summary_line`` (one-line headline), and
+        # ``agent_summary`` (matched headline + next_step + verdict).
+        # The verdict reflects environment health rather than analysis,
+        # so the values are "READY" / "MISSING".
+        verdict = "READY" if not missing else "MISSING"
+        summary_line = (
+            f"check_tools status={status} "
+            f"fd={'ok' if fd_available else 'missing'} "
+            f"rg={'ok' if rg_available else 'missing'}"
+        )
+        next_step = (
+            "list_files / search_content are ready to run"
+            if not missing
+            else f"Install missing tools: {', '.join(missing)} ({recommendation})"
+        )
+        response: dict[str, Any] = {
+            "success": True,
             "fd": fd_result,
             "rg": rg_result,
             "status": status,
             "recommendation": recommendation,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": verdict,
+            },
         }
+        return mirror_summary_line(response)

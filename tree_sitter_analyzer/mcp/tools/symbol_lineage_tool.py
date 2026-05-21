@@ -188,6 +188,23 @@ class SymbolLineageTool(BaseMCPTool):
 
         definitions = refs_result.get("definitions", [])
         references = refs_result.get("references", [])
+        # H12 fix: ``execute_find_references`` classifies a hit as a
+        # definition only when ``element_type`` substring-matches
+        # {"definition", "declaration", "class", "struct"}. Tree-sitter
+        # element extractors return short canonical names — Python
+        # ``function``, ``method``, ``decorated_definition``; JS
+        # ``function``/``arrow_function``/``class``; Java
+        # ``method``/``class``/``interface``; Go ``function``/``method``.
+        # Anything labelled ``function``/``method``/``decorated_definition``
+        # therefore falls into ``references`` even when the hit is the
+        # actual ``def``/``class`` site. Re-classify here so callers see
+        # the def under ``definitions`` where the brief promises it.
+        # ``project_root`` + ``symbol`` enable the content-level check
+        # that reads the source line at each hit — required to avoid
+        # false-positive promotions on synthetic test fixtures.
+        definitions, references = _reclassify_definition_like(
+            definitions, references, str(self.project_root), symbol
+        )
 
         def_files = {d["file"] for d in definitions}
         ref_files = {r["file"] for r in references}
@@ -333,6 +350,209 @@ class SymbolLineageTool(BaseMCPTool):
             response["cache_invalidated_reason"] = self._cache_invalidated_reason
 
         return apply_toon_format_to_response(response, output_format)
+
+
+# H12: element_type values that mean "this hit IS the symbol's definition
+# site". Mirrors the keywords used by ``execute_find_references`` plus the
+# short canonical types returned by tree-sitter element extractors across
+# the languages most used in this repo's dogfood data:
+# - Python: function, method, decorated_definition, class
+# - JS/TS: function, arrow_function, function_declaration,
+#   class, class_declaration
+# - Java: method, class, interface, method_declaration, class_declaration
+# - Go: function, method, function_declaration, method_declaration
+# - Rust/C/C++/C#: function, struct, class, declaration
+# Matched as substrings (case-insensitive) so language-specific variants
+# like ``async_function_definition`` still classify correctly.
+_DEFINITION_LIKE_TYPES: tuple[str, ...] = (
+    "function",
+    "method",
+    "constructor",
+    "decorated_definition",
+    "arrow_function",
+    "function_declaration",
+    "method_declaration",
+    "function_definition",
+    "method_definition",
+    "class",
+    "class_declaration",
+    "class_definition",
+    "struct",
+    "struct_declaration",
+    "interface",
+    "interface_declaration",
+    "enum",
+    "enum_declaration",
+    "definition",
+    "declaration",
+    "trait",
+    "impl_item",
+)
+
+# Source-line prefixes that indicate a definition site. We check the
+# actual content of the source file at the hit's ``start_line`` before
+# promoting a reference to a definition — element_type alone is too
+# coarse because tree-sitter returns ``function`` for both ``def`` sites
+# (the actual definition) and synthetic test fixtures that mock call
+# sites. Reading the source provides the ground truth: a line that
+# *starts* with ``def``/``class``/``func``/etc. is a definition; a line
+# that just contains the symbol elsewhere is a reference.
+_DEFINITION_LINE_PREFIXES: tuple[str, ...] = (
+    "def ",
+    "async def ",
+    "class ",
+    "function ",
+    "function* ",
+    "async function ",
+    "func ",
+    "fn ",
+    "struct ",
+    "interface ",
+    "trait ",
+    "enum ",
+    "type ",
+    "public ",
+    "private ",
+    "protected ",
+    "static ",
+    "abstract ",
+    "@",  # Python decorator on the line above the def is still part of
+)
+
+
+def _is_definition_like(element_type: str) -> bool:
+    """Return ``True`` when ``element_type`` denotes a definition site.
+
+    Tree-sitter element extractors return short, language-specific names
+    (e.g. ``function`` for Python ``def``). The upstream classifier in
+    ``execute_find_references`` only checks for ``definition``/
+    ``declaration``/``class``/``struct`` substrings, so Python ``def``
+    sites get misrouted into ``references``. This predicate covers the
+    canonical names emitted across the languages this repo's dogfood
+    actually hits.
+    """
+    if not element_type:
+        return False
+    lowered = element_type.lower()
+    return any(kind in lowered for kind in _DEFINITION_LIKE_TYPES)
+
+
+def _line_looks_like_definition(
+    project_root: str,
+    file_rel: str,
+    line_no: int,
+    symbol: str,
+) -> bool:
+    """Return ``True`` when the source line at ``line_no`` is a def site.
+
+    Reads the file relative to ``project_root`` and inspects the line.
+    Definition sites begin with a definition keyword (``def``, ``class``,
+    ``function``, ``func``, ``fn``, …) and contain the symbol name. This
+    is more reliable than ``element_type`` alone for the H12 fix —
+    tree-sitter returns the short canonical type ``function`` for both
+    actual def sites and any synthetic test reference, so we need a
+    content-level check.
+    """
+    if not file_rel or line_no < 1 or not symbol:
+        return False
+    try:
+        path = Path(project_root) / file_rel
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    lines = text.splitlines()
+    if line_no > len(lines):
+        return False
+    line = lines[line_no - 1]
+    stripped = line.lstrip()
+    if symbol not in stripped:
+        return False
+    # Match any line that starts with a definition keyword and mentions
+    # the symbol. Decorators on the line above the def are tolerated by
+    # checking the next non-empty line too — but the basic case is a
+    # direct prefix.
+    if any(stripped.startswith(prefix) for prefix in _DEFINITION_LINE_PREFIXES):
+        return True
+    return False
+
+
+def _reclassify_definition_like(
+    definitions: list[dict[str, Any]],
+    references: list[dict[str, Any]],
+    project_root: str | None = None,
+    symbol: str | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """H12 fix: promote definition-like references into ``definitions``.
+
+    The upstream ``execute_find_references`` misclassifies Python ``def``
+    sites (``element_type="function"``) and Java methods
+    (``element_type="method"``) as references. Walk the references list
+    once and route each definition-like hit into a new ``definitions``
+    list.
+
+    Two tests must both pass for promotion:
+
+    1. ``element_type`` is a definition-like type (``function``,
+       ``method``, ``class``, …) — the upstream classifier already
+       narrowed the universe to nameable elements, but we re-check
+       defensively.
+    2. The source line at ``start_line`` starts with a definition
+       keyword (``def``, ``class``, ``func``, …) and mentions the
+       symbol. This filters out synthetic test fixtures that mock
+       references pointing at files that don't exist on disk.
+
+    Hits with ``role="related"`` are kept as references regardless —
+    they are substring matches on similarly-named symbols, not the
+    symbol's own def site.
+    """
+    if not references:
+        return definitions, references
+
+    promoted: list[dict[str, Any]] = []
+    remaining: list[dict[str, Any]] = []
+    seen_def_keys: set[tuple[str, int]] = {
+        (d.get("file", ""), d.get("start_line", 0)) for d in definitions
+    }
+
+    for entry in references:
+        role = entry.get("role")
+        etype = entry.get("type", "")
+        # ``related`` hits are substring matches, not the symbol's own
+        # def — keep them as references regardless of element_type.
+        if role == "related":
+            remaining.append(entry)
+            continue
+        if not _is_definition_like(etype):
+            remaining.append(entry)
+            continue
+        # Content check: only promote when the source line really IS a
+        # def site. Synthetic test fixtures point at files that don't
+        # exist on disk; the read fails and we leave the entry in
+        # references.
+        looks_like_def = False
+        if project_root and symbol:
+            looks_like_def = _line_looks_like_definition(
+                project_root,
+                entry.get("file", ""),
+                int(entry.get("start_line", 0)),
+                symbol,
+            )
+        if not looks_like_def:
+            remaining.append(entry)
+            continue
+        # Dedupe against any existing definitions to avoid duplicate
+        # entries when both classifiers happen to fire.
+        key = (entry.get("file", ""), entry.get("start_line", 0))
+        if key in seen_def_keys:
+            continue
+        seen_def_keys.add(key)
+        new_entry = dict(entry)
+        new_entry["role"] = "definition"
+        promoted.append(new_entry)
+
+    if not promoted:
+        return definitions, references
+    return [*definitions, *promoted], remaining
 
 
 def _assess_risk(

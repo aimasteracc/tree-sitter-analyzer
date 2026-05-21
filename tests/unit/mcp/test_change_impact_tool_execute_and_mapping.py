@@ -43,6 +43,8 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
     assert result["focused_test_command"] == ""
     assert result["verification_strategy"] == "docs_only"
     assert result["verification_steps"] == ["git diff --check"]
+    # H8: agent_summary now carries a ``verdict`` field. Default is
+    # ``CLEAN`` (no scope_paths supplied, nothing to flag).
     assert result["agent_summary"] == {
         "risk": "unknown",
         "scope": "workspace",
@@ -54,6 +56,7 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
         "verification_strategy": "docs_only",
         "stop_condition": "docs-only change: git diff --check passes and no runtime files are added.",
         "changed_preview": ["README.md"],
+        "verdict": "CLEAN",
     }
 
 

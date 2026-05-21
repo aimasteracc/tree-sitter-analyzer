@@ -54,7 +54,13 @@ async def _run(args: argparse.Namespace) -> int:
     try:
         result = await tool.execute(payload)
         output_data(result, args.output_format)
-        return 0 if (isinstance(result, dict) or isinstance(result, int)) else 0
+        # Honour ``success`` in the response envelope so ``set -e`` and CI
+        # steps see a non-zero exit when the tool reports failure.
+        # ``result.get("success", True)`` default-True keeps int/other
+        # non-dict shapes (e.g. count-only mode) at RC=0.
+        if isinstance(result, dict) and result.get("success", True) is False:
+            return 1
+        return 0
     except Exception as e:
         output_error(str(e))
         return 1
