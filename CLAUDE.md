@@ -11,6 +11,45 @@
 - Keep files under 500 lines
 - Validate input at system boundaries
 
+## Deliberate design decisions — do NOT "fix" these
+
+These look like inconsistencies in a dogfood pass, but they are intentional and reflect the project's design priorities. Reverting them costs real value. **If a dogfood agent proposes any of the items below as a "finding", REJECT the finding and link the agent back to this section.**
+
+### 1. MCP defaults to TOON; CLI defaults to JSON
+
+- **Why**: TOON is 50-70% more token-efficient than JSON. MCP callers are LLM agents — token cost is real money. CLI callers are humans / shells — JSON is human-readable and pipes into `jq`.
+- **Symptom that looks like a bug**: `MCP execute()` returns `{format: "toon", toon_content: "..."}` while CLI returns a parsed dict.
+- **Correct action**: leave the defaults alone. If TOON-vs-JSON divergence causes a real bug, fix the divergence (e.g. make TOON carry the same scalar fields, per F7/N8), don't flip the default.
+- **Past incident**: r36 attempted "R3: flip MCP output_format default to json" — rolled back. The token savings outweigh the parity argument.
+
+### 2. project_root canonicalisation is a foundational change
+
+- **Why**: macOS `/var/folders/...` symlinks to `/private/var/folders/...`. Naive `os.path.abspath()` doesn't resolve the symlink but `realpath()` does. The SecurityValidator and test fixtures use different resolutions, so any change to `BaseMCPTool.__init__` propagates through 164+ tests.
+- **Symptom that looks like a bug**: MCP `safe_to_edit(project_root='.')` returns SAFE while CLI returns UNSAFE (different downstream counts because `DependencyGraph('.')` walks a different tree than `DependencyGraph('/abs/path')`).
+- **Correct action**: if you fix this, study the macOS symlink behavior and the test fixture conventions FIRST. Use `os.path.abspath` only after confirming SecurityValidator / PathResolver / test fixtures all use the same resolution. Test on macOS specifically. Land it in a dedicated commit, never bundled with other fixes.
+- **Past incident**: r36 attempted "R1: canonicalise project_root in BaseMCPTool" — broke 164 tests on macOS, rolled back.
+
+### 3. CLI INFO/diagnostic output → stderr; JSON/TOON payload → stdout
+
+- **Why**: This was correctly fixed in r34 (Q2). DO NOT revert it. `print(message)` calls in CLI code MUST go to `sys.stderr` unless they emit machine-readable data to stdout.
+
+### 4. Markdown smell-detection is intentionally OFF in `project_health`
+
+- **Why**: r34 Q4 narrowed `PROJECT_HEALTH_SOURCE_EXTS` to code-only. `.md` files no longer count for code-quality grading. Re-adding markdown would re-inflate the C-grade bucket with golden_master fixtures.
+- **Correct action**: if you want to score markdown structure, build a separate `markdown_health` tool. Don't merge it back into `project_health`.
+
+## Dogfood-finding triage rules (when you receive a list of bugs from a dogfood agent)
+
+Before dispatching a fix agent for any finding, ask:
+
+1. **Is this a deliberate design decision?** Cross-check against the section above. If yes → REJECT, document, move on.
+2. **Does the proposed fix flip a default that exists for performance reasons?** (token cost, runtime, etc.) → REJECT unless the user explicitly approves.
+3. **Does the fix touch BaseMCPTool, PathResolver, SecurityValidator, or the plugin registry?** → SOLO commit with macOS gate-check; never bundle with cosmetic fixes.
+4. **Did the dogfood agent assume a non-existent flag exists?** (e.g. `--smart-context --query` when `--smart-context` is a bare flag) → REJECT as agent-error, not a bug.
+5. **Is the divergence cross-tool (e.g. CLI vs MCP)?** → check whether the asymmetry is intentional (see section above) before unifying.
+
+If a finding survives all five checks, dispatch a fix agent. Otherwise log the rejection rationale and skip it. **A dogfood round that fixes the wrong things is worse than one that finds nothing.**
+
 ## Agent Comms — Reality-Based Coordination
 
 **Tool-availability asymmetry:** `SendMessage` works **lead↔subagent** and lead↔lead, but **NOT subagent↔subagent**. Subagents spawned via the `Agent` tool are stateless one-shot workers — they have no inbox, cannot wait for events, and `SendMessage`/`TaskUpdate` are typically not in their tool allowlists. The `hive-mind_*` MCP tools provide coordination **metadata** (registry, consensus state) but do NOT grant subagents communication channels. Patterns that assume peer messaging will silently fail — agents either abort cleanly or run open-loop with stale assumptions. (See ruvnet/ruflo#2028 for the diagnosis.)
