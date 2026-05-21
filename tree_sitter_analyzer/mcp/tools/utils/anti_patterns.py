@@ -10,6 +10,7 @@ Each detector emits dicts with ``id`` / ``type`` / ``severity`` / ``line``
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,68 @@ def detect_anti_patterns(file_path: str, language: str | None) -> list[dict[str,
     elif language == "java":
         _check_java_anti_patterns(lines, patterns)
     return patterns
+
+
+def _python_mutable_default_lines(lines: list[str]) -> set[int]:
+    """Return 1-indexed line numbers of ``def`` defaults that are mutable.
+
+    r37au (dogfood): the previous line-text heuristic for AP001 fired on
+    every constructor / function CALL that happened to pass an empty
+    list/dict/set as a keyword arg (``SQLTable(columns=[], ...)``). The
+    only correct fix is AST-based detection: walk every ``FunctionDef``
+    / ``AsyncFunctionDef`` / ``Lambda`` and inspect its ``args.defaults``
+    + ``args.kw_defaults``. A default is "mutable" when it's a literal
+    list ``[]``, dict ``{}``, set ``{...}`` (or its zero-arg constructor
+    form ``list()`` / ``dict()`` / ``set()``).
+
+    Returns an empty set on tokenize/parse failure — the caller treats
+    that as "no AP001 findings", preferring false-negatives to false
+    positives. (Better to miss a real bug than to spam an agent with 11
+    bogus criticals on a clean dataclass-builder file.)
+    """
+    source = "\n".join(lines)
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return set()
+
+    flagged: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            _record_mutable_defaults(node, flagged)
+    return flagged
+
+
+def _record_mutable_defaults(
+    func: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
+    flagged: set[int],
+) -> None:
+    """Append line numbers of mutable defaults on a single function node."""
+    # Positional defaults align to the END of ``args``.
+    for default in func.args.defaults:
+        if _is_mutable_literal(default):
+            flagged.add(default.lineno)
+    # kw_defaults entries may be None (no default supplied).
+    for kw_default in func.args.kw_defaults:
+        if kw_default is None:
+            continue
+        if _is_mutable_literal(kw_default):
+            flagged.add(kw_default.lineno)
+
+
+def _is_mutable_literal(node: ast.expr) -> bool:
+    """Return True for ``[]`` / ``{}`` / ``{1, 2}`` / ``list()`` etc."""
+    if isinstance(node, (ast.List, ast.Dict, ast.Set)):
+        return True
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        # Zero-arg ``list()``, ``dict()``, ``set()`` — same trap.
+        if (
+            node.func.id in {"list", "dict", "set"}
+            and not node.args
+            and not node.keywords
+        ):
+            return True
+    return False
 
 
 def python_docstring_line_set(lines: list[str]) -> set[int]:
@@ -74,6 +137,14 @@ def _check_python_anti_patterns(
     lines: list[str], patterns: list[dict[str, Any]]
 ) -> None:
     docstring_lines = python_docstring_line_set(lines)
+    # r37au (dogfood): the line-text + "def in nearby lines" heuristic for
+    # AP001 fired on every constructor / function call that passed an
+    # empty list/dict/set as a keyword argument (e.g.
+    # ``SQLTable(name=..., columns=[], constraints=[])``). 11 such false
+    # positives showed up in formatters/_sql_formatter_wrapper_helpers.py.
+    # Switch to AST-based detection — only flag actual ``def f(x=[])``
+    # defaults, which is what AP001 was supposed to detect all along.
+    mutable_default_lines = _python_mutable_default_lines(lines)
     for i, line in enumerate(lines, 1):
         if i in docstring_lines:
             continue
@@ -86,21 +157,16 @@ def _check_python_anti_patterns(
         if stripped.startswith("#"):
             continue
 
-        if "=" in stripped and any(
-            f"={t}" in stripped for t in ("[]", "{},", "set()", "[],")
-        ):
-            if "def " in lines[max(0, i - 5) : i][-1] or any(
-                "def " in ln for ln in lines[max(0, i - 10) : i]
-            ):
-                patterns.append(
-                    {
-                        "id": "AP001",
-                        "type": "mutable_default_argument",
-                        "severity": "critical",
-                        "message": "Mutable default argument — shared across calls",
-                        "line": i,
-                    }
-                )
+        if i in mutable_default_lines:
+            patterns.append(
+                {
+                    "id": "AP001",
+                    "type": "mutable_default_argument",
+                    "severity": "critical",
+                    "message": "Mutable default argument — shared across calls",
+                    "line": i,
+                }
+            )
 
         if stripped.startswith("except:") and "except:" == stripped:
             patterns.append(

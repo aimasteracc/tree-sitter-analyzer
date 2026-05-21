@@ -692,12 +692,20 @@ class TestAntiPatternLineNumbers:
 
 class TestAntiPatternIds:
     def test_python_anti_patterns_have_ids(self):
+        # r37au: AP001 now uses AST-based detection (was line-text regex
+        # with too-loose "def in nearby lines" heuristic). The input must
+        # therefore be parseable Python — the previous fixture had a bare
+        # ``except:`` without an enclosing ``try:`` which broke AST parsing.
+        # Real-world input is always parseable, so this matches usage.
         lines = [
             "def foo(x=[]):",
             "    pass",
-            "except:",
-            "    pass",
+            "",
             "def bar():",
+            "    try:",
+            "        pass",
+            "    except:",
+            "        pass",
             "    print('x')",
         ]
         patterns: list[dict] = []
