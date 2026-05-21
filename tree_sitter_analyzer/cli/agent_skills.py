@@ -71,8 +71,46 @@ def build_agent_skills_inventory(
         "validation": validation,
         "agent_summary": _build_agent_summary(skills, gaps, validation),
     }
+    # N5 (round-29 dogfood): the success path used to ship
+    # ``summary_line=None`` at the top level and omit
+    # ``agent_summary.verdict`` entirely. The envelope contract snapshot
+    # test catches that drift — populate both surfaces here so direct
+    # CLI callers, MCP-routed callers, and snapshot-test consumers all
+    # see the canonical shape.
+    agent_summary = result["agent_summary"]
+    assert isinstance(agent_summary, dict)  # nosec B101 — built above
+    summary_line = _build_summary_line(result)
+    result["summary_line"] = summary_line
+    agent_summary["summary_line"] = summary_line
+    # Mirror verdict from the agent_summary surface (source of truth)
+    # to the top-level envelope. The verdict was populated in
+    # :func:`_build_agent_summary` based on ``validation.status``.
+    verdict = agent_summary.get("verdict")
+    if isinstance(verdict, str) and verdict:
+        result["verdict"] = verdict
     result["toon_content"] = _build_toon_content(result)
     return result
+
+
+def _build_summary_line(result: dict[str, Any]) -> str:
+    """Build the canonical one-line headline for agent_skills output.
+
+    N5 — pulls counts and validation_status off the assembled result so
+    the line stays in lockstep with ``agent_summary``. Examples:
+
+        agent_skills count=13 ready=11 status=ready
+        agent_skills count=0 status=blocked
+    """
+    skill_count = result.get("skill_count", 0)
+    agent_summary = result.get("agent_summary") or {}
+    status = agent_summary.get("validation_status", "unknown")
+    ready_for_use_count = agent_summary.get("ready_for_use_count", 0)
+    if skill_count:
+        return (
+            f"agent_skills count={skill_count} "
+            f"ready={ready_for_use_count} status={status}"
+        )
+    return f"agent_skills count={skill_count} status={status}"
 
 
 def _resolve_skills_root(project_path: Path, skills_root: str | None) -> Path:
@@ -368,9 +406,26 @@ def _build_agent_summary(
     gaps: dict[str, Any],
     validation: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build the compact decision surface agents read first."""
+    """Build the compact decision surface agents read first.
+
+    N5 (round-29 dogfood): also emit ``verdict`` per the envelope-contract
+    vocabulary (see :data:`_N_VERDICT_VOCABULARY`):
+
+    - ``validation.status == 'ready'`` → ``INFO`` (no metadata gaps)
+    - ``validation.status == 'caution'`` → ``WARN`` (caller should look
+      at the missing completion guidance before depending on a skill)
+    - ``validation.status == 'blocked'`` → ``REVIEW`` (blocking gaps
+      mean callers cannot trust the inventory until a fix lands)
+    """
     missing_completion_count = len(gaps["missing_completion_guidance"])
-    risk = "none" if validation["status"] == "ready" else validation["status"]
+    status = validation["status"]
+    risk = "none" if status == "ready" else status
+    if status == "ready":
+        verdict = "INFO"
+    elif status == "caution":
+        verdict = "WARN"
+    else:  # blocked or any future escalation tier
+        verdict = "REVIEW"
     next_step = (
         "Create .agents/skills or run project setup skills first."
         if gaps["skills_root_missing"]
@@ -380,8 +435,9 @@ def _build_agent_summary(
     actionability_preview = _top_actionable_skills(skills)
     return {
         "risk": risk,
+        "verdict": verdict,
         "skill_count": len(skills),
-        "validation_status": validation["status"],
+        "validation_status": status,
         "blocking_gap_count": validation["blocking_gap_count"],
         "caution_gap_count": validation["caution_gap_count"],
         "optional_gap_count": validation["optional_gap_count"],

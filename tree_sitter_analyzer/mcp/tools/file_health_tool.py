@@ -203,7 +203,63 @@ class FileHealthTool(BaseMCPTool):
         if language and "language" not in result:
             result["language"] = language
 
+        # N9 (round-28): echo raw ``line_count`` + ``binary`` so cross-tool
+        # consumers (analyze_scale, get_code_outline) see the same
+        # vocabulary. Use ``setdefault`` so any earlier path that already
+        # populated these wins.
+        line_count, is_binary = _file_metrics(resolved)
+        if line_count is not None:
+            result.setdefault("line_count", line_count)
+            # ``lines`` is the alias the brief / analyze_scale uses for
+            # the same value. Same int, two key names so agents that
+            # branch on either find the right number.
+            result.setdefault("lines", line_count)
+        result.setdefault("binary", is_binary)
+
         return apply_toon_format_to_response(result, output_format)
+
+
+def _file_metrics(resolved: str) -> tuple[int | None, bool]:
+    """N9 (round-28): compute ``line_count`` + ``binary`` for the envelope.
+
+    Cross-tool consumers (``analyze_scale``, ``get_code_outline``) echo
+    a ``line_count`` field; ``file_health`` was emitting the dimension
+    grades but never the raw count, so the envelope looked degraded
+    when an agent compared values across tools. The ``binary`` flag
+    mirrors ``_looks_binary``'s decision in the success envelope so a
+    consumer can branch without re-reading the file.
+
+    Returns ``(line_count, binary)``. ``line_count`` is ``None`` only
+    when the file can't be opened. ``binary`` is ``True`` when the first
+    1024 bytes either fail to utf-8-decode *and* the extension is not a
+    known source extension — null bytes inside ``.py`` / ``.c`` string
+    literals are legal and don't mark the file as binary.
+    """
+    path = Path(resolved)
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None, False
+    if not raw:
+        return 0, False
+    # Decide binary purely from extension + decodability so the
+    # ``binary`` flag stays in sync with the syntax-validity gate.
+    from .utils.parse_validity import _KNOWN_SOURCE_EXTENSIONS
+
+    is_source_extension = path.suffix.lower() in _KNOWN_SOURCE_EXTENSIONS
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        # File doesn't decode as utf-8 anywhere — definitely binary.
+        return None, True
+    # Counts ``\n`` separators; a file ending without a trailing newline
+    # still has one final line, matching ``len(content.splitlines())``.
+    line_count = len(text.splitlines())
+    # Files with null bytes in non-source extensions are binary; null
+    # bytes inside source files (string / char literals) are legal.
+    has_null = b"\x00" in raw[:1024]
+    binary = has_null and not is_source_extension
+    return line_count, binary
 
 
 def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None:
@@ -241,6 +297,9 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
     # case-insensitive comparisons. Switching to ``N/A`` matches
     # code_patterns' empty-file response so the two tools agree on the
     # same input both byte-for-byte and structurally.
+    # N9 (round-28): include raw ``line_count`` + ``binary`` so cross-tool
+    # consumers don't have to read the file twice to learn its size.
+    line_count, is_binary = _file_metrics(resolved)
     return {
         "success": True,
         "file_path": file_path,
@@ -253,6 +312,9 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "smells": [],
         "smell_count": 0,
         "dimensions": {},
+        "line_count": line_count if line_count is not None else 0,
+        "lines": line_count if line_count is not None else 0,
+        "binary": is_binary,
         "agent_summary": {
             "summary_line": f"{file_path} is {detail}",
             "next_step": "skip",
@@ -279,6 +341,9 @@ def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | N
     if suffix not in _NON_CODE_EXTENSIONS:
         return None
     summary_line = f"{file_path} signal=non_code_file"
+    # N9 (round-28): echo raw metrics so a consumer that read a config
+    # file alongside source files sees the same envelope shape.
+    line_count, is_binary = _file_metrics(resolved)
     return {
         "success": True,
         "file_path": file_path,
@@ -295,6 +360,9 @@ def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | N
         "smells": [],
         "smell_count": 0,
         "dimensions": {},
+        "line_count": line_count if line_count is not None else 0,
+        "lines": line_count if line_count is not None else 0,
+        "binary": is_binary,
         "summary_line": summary_line,
         "agent_summary": {
             "summary_line": summary_line,
@@ -320,6 +388,13 @@ def _looks_binary(resolved: str, language: str | None, analysis: Any) -> bool:
     files with no detected language (e.g. exotic suffixes) shouldn't be
     rejected, and zero-element results can legitimately happen for tiny
     valid files.
+
+    N9 (round-28): tighten the gate so a Python / C / Java file with a
+    null byte in a string literal is NOT misclassified as binary. If the
+    extension is a known source extension, we require the file to look
+    like binary on multiple axes — null bytes dominant in the head AND
+    utf-8 decode failure — before refusing to analyze it. Otherwise the
+    syntax-error path picks up the file and emits the right verdict.
     """
     if language and analysis is not None:
         return False
@@ -332,6 +407,32 @@ def _looks_binary(resolved: str, language: str | None, analysis: Any) -> bool:
 
     if not head:
         return False
+
+    # N9: well-known source extensions get a stricter binary check.
+    # ``def broken(:`` with a null byte is still a source file; tree-sitter
+    # rejecting it is a syntax issue, not a "binary file" issue. We require
+    # *both* signals (null bytes outnumber printable chars AND utf-8 fails)
+    # before declaring it binary.
+    from .utils.parse_validity import _KNOWN_SOURCE_EXTENSIONS
+
+    suffix = Path(resolved).suffix.lower()
+    if suffix in _KNOWN_SOURCE_EXTENSIONS:
+        # Only mark binary when the byte stream is genuinely non-text:
+        # decode failure is a hard signal; null bytes alone are not,
+        # because they're legal inside source literals.
+        try:
+            head.decode("utf-8")
+        except UnicodeDecodeError:
+            # Even on decode failure, allow source files with isolated
+            # null bytes (string literals) — refuse only when the file
+            # looks like a binary blob (high null-to-printable ratio).
+            null_count = head.count(b"\x00")
+            printable_count = sum(1 for b in head if 32 <= b < 127 or b in (9, 10, 13))
+            return null_count >= printable_count
+        return False
+
+    # Unknown / non-source extensions keep the looser legacy heuristic:
+    # any null byte or decode failure is enough.
     if b"\x00" in head:
         return True
     try:
@@ -343,11 +444,19 @@ def _looks_binary(resolved: str, language: str | None, analysis: Any) -> bool:
 
 def _binary_file_response(file_path: str, resolved: str) -> dict[str, Any]:
     """Return an error envelope refusing to analyze a binary file."""
+    # N9 (round-28): ``binary: True`` makes the rejection branch explicit
+    # for agents that branch on ``binary`` instead of ``error_type``.
+    line_count, _ = _file_metrics(resolved)
     return {
         "success": False,
         "error_type": "binary_file",
         "error": "Cannot analyze binary file",
         "file_path": file_path,
+        "binary": True,
+        # ``line_count`` may be ``None`` when decoding failed — keep the
+        # key present so the envelope shape stays uniform.
+        "line_count": line_count if line_count is not None else 0,
+        "lines": line_count if line_count is not None else 0,
         "agent_summary": {
             "summary_line": f"{file_path} appears to be binary/non-source",
             "next_step": "skip",
@@ -376,6 +485,10 @@ def _syntax_error_response(
     if not is_file_parse_broken(resolved, language):
         return None
     summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
+    # N9 (round-28): even on the ERROR path we know how many lines the
+    # file contains and whether it's actually binary — fill those slots
+    # so callers don't have to read the file again.
+    line_count, is_binary = _file_metrics(resolved)
     return {
         "success": True,
         "file_path": file_path,
@@ -394,6 +507,9 @@ def _syntax_error_response(
         "code_smells": [],
         "smell_count": 0,
         "dimensions": {},
+        "line_count": line_count if line_count is not None else 0,
+        "lines": line_count if line_count is not None else 0,
+        "binary": is_binary,
         "summary_line": summary_line,
         "agent_summary": {
             "summary_line": summary_line,

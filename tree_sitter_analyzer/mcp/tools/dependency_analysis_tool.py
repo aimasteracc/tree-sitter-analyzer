@@ -76,14 +76,32 @@ class DependencyAnalysisTool(BaseMCPTool):
             return "source_modified"
         return "unknown"
 
+    # N2 (round-28 dogfood): ``full`` is a CLI alias for ``summary``. The
+    # CLI silently aliases via ``_DEPENDENCY_MODE_ALIASES`` so
+    # ``--dependencies full`` works, but the MCP tool used to reject the
+    # exact same string with ``ValueError: Unknown mode: full``. This
+    # broke CLI-MCP parity (the brief calls this a "hard parity
+    # violation"). Canonical name is ``summary`` — picked because it is
+    # what the CLI normalizes to and what every internal reference
+    # (smart_prompts, analyze_scale_helpers, project_overview_tool,
+    # query_symbol_search) already names. ``full`` stays as an accepted
+    # alias for caller convenience but the response echoes ``summary``.
+    _MODE_ALIASES: dict[str, str] = {"full": "summary"}
+
+    @classmethod
+    def _normalize_mode(cls, mode: str) -> str:
+        """Resolve aliases (e.g. ``full`` -> ``summary``)."""
+        return cls._MODE_ALIASES.get(mode, mode)
+
     def get_tool_definition(self) -> dict[str, Any]:
         return {
             "name": "analyze_dependencies",
             "description": (
                 "Dependency graph + blast radius. Modes: blast_radius (impact), "
-                "file_deps, cycles, summary. No built-in tool provides this. "
-                "First call builds the full dep graph (2-5s on medium repos); "
-                "subsequent calls within the session reuse the cached graph."
+                "file_deps, cycles, summary (alias: full). No built-in tool "
+                "provides this. First call builds the full dep graph (2-5s on "
+                "medium repos); subsequent calls within the session reuse the "
+                "cached graph."
             ),
             "inputSchema": self.get_tool_schema(),
         }
@@ -94,8 +112,20 @@ class DependencyAnalysisTool(BaseMCPTool):
             "properties": {
                 "mode": {
                     "type": "string",
-                    "enum": ["blast_radius", "file_deps", "cycles", "summary"],
-                    "description": "Analysis mode (default: summary)",
+                    # N2: ``full`` is accepted as an alias for ``summary`` so
+                    # CLI ``--dependencies full`` and MCP ``mode=full`` both
+                    # work. Tool normalises internally and echoes ``summary``.
+                    "enum": [
+                        "blast_radius",
+                        "file_deps",
+                        "cycles",
+                        "summary",
+                        "full",
+                    ],
+                    "description": (
+                        "Analysis mode (default: summary). ``full`` is "
+                        "accepted as an alias for ``summary``."
+                    ),
                     "default": "summary",
                 },
                 "file_path": {
@@ -113,7 +143,10 @@ class DependencyAnalysisTool(BaseMCPTool):
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
-        mode = arguments.get("mode", "summary")
+        # N2: resolve aliases before mode-specific checks so ``mode=full``
+        # follows the same validation as ``mode=summary``.
+        raw_mode = arguments.get("mode", "summary")
+        mode = self._normalize_mode(raw_mode)
         if mode in ("blast_radius", "file_deps") and "file_path" not in arguments:
             raise ValueError(f"file_path is required for mode '{mode}'")
         return True
@@ -122,7 +155,11 @@ class DependencyAnalysisTool(BaseMCPTool):
         self.validate_arguments(arguments)
 
         started = time.perf_counter()
-        mode = arguments.get("mode", "summary")
+        # N2: normalise ``full`` -> ``summary`` so the rest of the
+        # dispatcher only ever sees canonical mode names. The echoed
+        # ``mode`` in the result is the canonical one ``summary`` —
+        # matching the CLI's existing alias behaviour.
+        mode = self._normalize_mode(arguments.get("mode", "summary"))
         output_format = arguments.get("output_format", "toon")
         # Cache hit fast-path: ``self._graph`` is built lazily on the first
         # call (2-5s on medium repos) and reused for the rest of the process
@@ -356,7 +393,18 @@ def _attach_agent_summary(
     - cycles: N cycles found
     - file_deps: <file> depends_on=N depended_by=N
     - blast_radius: <file> forward=N reverse=N
+
+    N3 (round-29 dogfood): every mode also emits ``verdict`` on the
+    success path. ``dependency_analysis`` is informational — most modes
+    default to ``INFO``. The exceptions are signalling-mode escalations:
+    - ``summary`` / ``cycles`` with ``cycle_count > 0`` → ``WARN``
+      (cycles flag a real refactor hazard the agent should surface).
+    - ``blast_radius`` with > 50 forward-impact files → ``REVIEW``
+      (large blast radius warrants explicit caller acknowledgment).
+    The vocabulary is the same set used by other envelope-contract
+    tools (see ``_N_VERDICT_VOCABULARY`` in the contract tests).
     """
+    verdict = "INFO"
     if mode == "summary":
         # H3: use the deterministic cycle enumerator so ``summary.cycle_count``
         # stays byte-stable across runs (the underlying
@@ -372,17 +420,20 @@ def _attach_agent_summary(
             next_step = (
                 "analyze_dependencies mode=cycles to enumerate circular dependencies"
             )
+            verdict = "WARN"
         else:
             next_step = "analyze_dependencies mode=blast_radius file_path=<file> to assess change impact"
         result["cycle_count"] = cycle_count
     elif mode == "cycles":
         cycle_count = int(result.get("cycle_count", 0))
         summary_line = f"cycles: {cycle_count} circular dependencies"
-        next_step = (
-            "break each cycle by extracting shared types or inverting an import"
-            if cycle_count
-            else "no cycles — proceed with planned refactor"
-        )
+        if cycle_count:
+            next_step = (
+                "break each cycle by extracting shared types or inverting an import"
+            )
+            verdict = "WARN"
+        else:
+            next_step = "no cycles — proceed with planned refactor"
     elif mode == "file_deps":
         file = result.get("file", "?")
         dep_count = int(result.get("dependency_count", 0))
@@ -396,7 +447,12 @@ def _attach_agent_summary(
         forward = int(result.get("forward_impact_count", 0))
         reverse = int(result.get("reverse_dependency_count", 0))
         summary_line = f"blast_radius {file}: forward={forward} reverse={reverse}"
-        if forward > 20:
+        if forward > 50:
+            next_step = (
+                "trace_impact on key symbols and run downstream tests before editing"
+            )
+            verdict = "REVIEW"
+        elif forward > 20:
             next_step = (
                 "trace_impact on key symbols and run downstream tests before editing"
             )
@@ -415,4 +471,8 @@ def _attach_agent_summary(
     result["agent_summary"] = {
         "summary_line": summary_line,
         "next_step": next_step,
+        "verdict": verdict,
     }
+    # Mirror verdict to the top-level envelope so direct callers (CLI,
+    # tests) see the same shape as the MCP-routed dispatch path.
+    result["verdict"] = verdict

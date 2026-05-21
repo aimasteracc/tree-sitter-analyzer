@@ -98,6 +98,14 @@ def _build_result(
     summary_line = _build_summary_line(result, recommendations)
     agent_summary["summary_line"] = summary_line
     result["summary_line"] = summary_line
+    # N4: mirror ``verdict`` to the top-level envelope so direct CLI
+    # callers see the same shape as MCP-routed dispatch (which already
+    # symmetrises top/agent via ``mirror_summary_line`` /
+    # ``ensure_canonical_success_envelope``). The agent_summary surface
+    # is the source of truth.
+    verdict = agent_summary.get("verdict")
+    if isinstance(verdict, str) and verdict:
+        result["verdict"] = verdict
     result["toon_content"] = _build_toon_content(result)
     return result
 
@@ -211,11 +219,36 @@ def _build_agent_summary(
     recommendations: list[dict[str, Any]],
     requested_language: str | None,
 ) -> dict[str, Any]:
+    """Build the agent_summary block for parser-readiness output.
+
+    N4 (round-29 dogfood): the success path used to omit ``verdict``
+    even though :data:`_N_VERDICT_VOCABULARY` (envelope contract) requires
+    it on every tool. We derive ``verdict`` from the existing ``risk``
+    field — kept for backward compatibility — using the canonical
+    informational-tool mapping:
+
+    - 0 missing parsers (``risk=low``) → ``INFO``
+    - 1-2 missing parsers (``risk=caution``) → ``CAUTION``
+    - 3+ missing parsers → ``REVIEW`` and ``risk=high``
+      (escalates the existing ``caution`` because a fleet of missing
+      parsers is a real roadmap gap the caller should look at).
+    """
     first = recommendations[0] if recommendations else None
+    candidate_count = len(recommendations)
+    if candidate_count >= 3:
+        risk = "high"
+        verdict = "REVIEW"
+    elif first:
+        risk = "caution"
+        verdict = "CAUTION"
+    else:
+        risk = "low"
+        verdict = "INFO"
     return {
-        "risk": "caution" if first else "low",
+        "risk": risk,
+        "verdict": verdict,
         "requested_language": requested_language,
-        "candidate_count": len(recommendations),
+        "candidate_count": candidate_count,
         "next_step": _summary_next_step(first),
         "verification_command": _summary_verification_command(first),
         "stop_condition": "Parser roadmap output names a next language, readiness gaps, and verification command.",

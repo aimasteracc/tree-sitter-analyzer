@@ -76,19 +76,24 @@ def _project_smell_type(smells: list[dict[str, Any]]) -> list[dict[str, Any]]:
     mutating the upstream list — each smell becomes a new dict with both
     ``smell`` (kept for backwards compatibility) and ``type`` (the
     canonical name).
+
+    N7 (round-28): ``type`` is now the canonical name with the legacy
+    ``security:`` prefix stripped. The bare ``smell`` value is also
+    normalized so the H6 contract ``type == smell`` keeps holding.
     """
+    from .file_health_smells import canonical_smell_type
+
     projected: list[dict[str, Any]] = []
     for smell in smells:
-        canonical = (
-            smell.get("smell") or smell.get("type") or smell.get("id") or "unknown"
-        )
+        canonical = canonical_smell_type(smell)
         # Immutable update: build a new dict so the caller's list is
         # untouched if it is shared with another consumer.
         new_smell = dict(smell)
         new_smell["type"] = canonical
-        # ``smell`` is the original key — keep it so callers that
-        # already branch on it continue to work.
-        new_smell.setdefault("smell", canonical)
+        # Normalize ``smell`` to the same canonical value so cross-tool
+        # callers that branch on either field see consistent strings —
+        # this also preserves the H6 contract that ``type == smell``.
+        new_smell["smell"] = canonical
         projected.append(new_smell)
     return projected
 

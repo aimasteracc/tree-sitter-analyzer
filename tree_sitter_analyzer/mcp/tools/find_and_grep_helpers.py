@@ -189,12 +189,18 @@ def build_search_meta(
     truncated: bool,
     fd_elapsed_ms: int,
     rg_elapsed_ms: int,
+    case: str | None = None,
 ) -> dict[str, Any]:
     """Build the shared metadata block for find_and_grep responses.
 
     ``elapsed_ms`` is the wall-clock sum of the fd and rg phases, exposed for
     consumers that just want a single timing number alongside the per-phase
     breakdown.
+
+    ``case_sensitive`` is echoed as a strict ``bool`` (never ``None``):
+    ``True`` only when ``case == "sensitive"``; ``False`` for ``"smart"``,
+    ``"insensitive"``, ``None``/missing, or any other value. This makes the
+    actually-honored case mode visible to callers (N1).
     """
     return {
         "searched_file_count": searched_file_count,
@@ -202,6 +208,7 @@ def build_search_meta(
         "fd_elapsed_ms": fd_elapsed_ms,
         "rg_elapsed_ms": rg_elapsed_ms,
         "elapsed_ms": int(fd_elapsed_ms) + int(rg_elapsed_ms),
+        "case_sensitive": case == "sensitive",
     }
 
 
@@ -219,6 +226,7 @@ def build_empty_response(
         truncated=truncated,
         fd_elapsed_ms=fd_elapsed_ms,
         rg_elapsed_ms=0,
+        case=arguments.get("case"),
     )
     result = {
         "success": True,
@@ -249,6 +257,7 @@ def build_count_only_response(context: FindAndGrepCountOnlyContext) -> dict[str,
         truncated=context.truncated,
         fd_elapsed_ms=context.fd_elapsed_ms,
         rg_elapsed_ms=context.rg_elapsed_ms,
+        case=context.arguments.get("case"),
     )
     result = {
         "success": True,

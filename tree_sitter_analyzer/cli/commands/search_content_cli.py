@@ -14,6 +14,7 @@ import sys
 from ...mcp.tools.search_content_tool import SearchContentTool
 from ...output_manager import output_data, output_error, set_output_mode
 from ...project_detector import detect_project_root
+from ._case_resolution import warn_on_duplicate_case
 from .search_content_cli_helpers import (
     add_output_options,
     add_rg_options,
@@ -54,6 +55,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 async def _run(args: argparse.Namespace) -> int:
     set_output_mode(quiet=bool(args.quiet), json_output=(args.output_format == "json"))
+
+    # N1: surface ``--case`` last-wins behavior so callers know which value
+    # actually won when the flag was passed more than once. Argparse keeps
+    # the final value; this just makes the override visible on stderr.
+    warn_on_duplicate_case(args.case)
 
     project_root = detect_project_root(None, args.project_root)
     tool = SearchContentTool(project_root)

@@ -15,9 +15,34 @@ from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool, mirror_summary_line
 from .security_scanner import detect_security_issues
+from .utils.anti_patterns import (
+    _check_java_anti_patterns,
+    _check_js_anti_patterns,
+    _check_python_anti_patterns,
+    detect_anti_patterns,
+)
+from .utils.anti_patterns import (
+    python_docstring_line_set as _python_docstring_line_set,
+)
 from .utils.element_extractor import extract_elements
-from .utils.file_health_smells import detect_code_smells
+from .utils.file_health_smells import canonical_smell_type, detect_code_smells
 from .utils.parse_validity import is_file_parse_broken
+
+# Backwards-compatible aliases for the previously-private helpers that
+# unit tests imported by name. The implementations now live in
+# ``utils.anti_patterns`` so file_health and code_patterns share the
+# same code (N7); we keep these symbols at the module level so older
+# call sites and tests continue to work.
+__all__ = [
+    "CodePatternsTool",
+    "_check_java_anti_patterns",
+    "_check_js_anti_patterns",
+    "_check_python_anti_patterns",
+    "_detect_anti_patterns",
+    "_detect_security",
+    "_detect_smells",
+    "_python_docstring_line_set",
+]
 
 logger = setup_logger(__name__)
 
@@ -248,15 +273,20 @@ def _dedup_security_mirror(
 
     1) ``smells`` mirror of a security finding (original G4 behaviour).
        ``file_health_smells.detect_code_smells`` re-emits security issues
-       under the smell namespace (id ``security:<name>``) so that
-       file-health reports can surface them as a single signal. When
-       ``code_patterns`` *also* runs the dedicated security pass, the
-       same underlying finding appears twice: once with category
-       ``smells`` and id ``security:sql_injection``, once with category
-       ``security`` and id ``sql_injection``. The second one is the
-       canonical record, so we drop the smell-namespaced mirror whenever
-       a matching ``(line, security-name)`` exists under the
-       ``security`` category.
+       under the smell namespace so file-health reports can surface them
+       as a single signal. When ``code_patterns`` *also* runs the
+       dedicated security pass, the same underlying finding appears
+       twice: once with ``category=smells smell_kind=security
+       type=sql_injection``, once with ``category=security
+       type=sql_injection``. The second one is the canonical record,
+       so we drop the smell-namespaced mirror whenever a matching
+       ``(line, type)`` exists under the ``security`` category.
+
+       N7 (round-28): the smell mirror now emits the bare type
+       (``sql_injection``) instead of the prefixed ``security:sql_injection``,
+       so the dedup uses the smell's ``smell_kind`` flag — set by
+       ``_check_security_smells`` — to identify a mirror. Direct ``type``
+       comparison would also work but the flag makes the intent explicit.
 
     2) ``anti_patterns`` vs ``security`` cross-category mirror (J10,
        round-22). ``_detect_security`` and ``_detect_anti_patterns``
@@ -277,12 +307,10 @@ def _dedup_security_mirror(
     pass1: list[dict[str, Any]] = []
     if security_keys:
         for pattern in patterns:
-            if pattern.get("category") == "smells":
-                raw_type = str(pattern.get("type") or pattern.get("id") or "")
-                if raw_type.startswith("security:"):
-                    normalized = raw_type.split(":", 1)[1]
-                    if (pattern.get("line"), normalized) in security_keys:
-                        continue
+            if pattern.get("category") == "smells" and _is_security_mirror_smell(
+                pattern, security_keys
+            ):
+                continue
             pass1.append(pattern)
     else:
         pass1 = list(patterns)
@@ -306,6 +334,33 @@ def _dedup_security_mirror(
                 continue
         pass2.append(pattern)
     return pass2
+
+
+def _is_security_mirror_smell(
+    pattern: dict[str, Any],
+    security_keys: set[tuple[int | None, str]],
+) -> bool:
+    """Return True when ``pattern`` is the smell-side mirror of a security finding.
+
+    Two ways to tell:
+    * The smell carries ``smell_kind="security"`` (set by
+      ``_check_security_smells`` once N7 stripped the ``security:``
+      prefix from ``type``).
+    * The ``type`` still uses the legacy ``security:<name>`` prefix
+      — kept as a fallback in case a downstream caller injects smells
+      via the old shape.
+
+    Either way we then verify ``(line, normalized_type)`` exists in
+    ``security_keys`` so we never drop an unrelated smell that happens
+    to share a name.
+    """
+    raw_type = str(pattern.get("type") or pattern.get("id") or "")
+    normalized = canonical_smell_type(pattern)
+    if pattern.get("smell_kind") == "security":
+        return (pattern.get("line"), normalized) in security_keys
+    if raw_type.startswith("security:"):
+        return (pattern.get("line"), normalized) in security_keys
+    return False
 
 
 def _detect_smells(
@@ -333,6 +388,22 @@ def _detect_smells(
         # also accept the older ``type``/``message`` shape for forward
         # compatibility.
         smell_id = smell.get("smell") or smell.get("type") or smell.get("id", "unknown")
+        # N7 (round-28): normalize the canonical type so security mirrors
+        # come through as ``eval_usage`` rather than ``security:eval_usage``.
+        # That matches the bare name ``_detect_security`` emits and lets
+        # cross-tool consumers branch on a single string.
+        canonical = canonical_smell_type(smell)
+        # N7 (round-28): file_health's ``detect_code_smells`` now emits
+        # anti-pattern findings as smells so ``code_smells`` matches what
+        # code_patterns sees. Inside code_patterns the dedicated
+        # ``_detect_anti_patterns`` pass produces the same findings under
+        # the canonical ``category=anti_patterns`` namespace — keeping
+        # the smell mirror as well would double-count every
+        # ``mutable_default_argument`` / ``bare_except`` /
+        # ``print_in_production`` line. Drop the smell mirror here; the
+        # anti_patterns pass remains the canonical surface.
+        if smell.get("smell_kind") == "anti_pattern":
+            continue
         detail = smell.get("detail") or smell.get("message", "")
         fix_hint = smell.get("fix", "")
         message = (
@@ -344,16 +415,21 @@ def _detect_smells(
             if sev_raw == "critical" or smell.get("critical")
             else ("warning" if sev_raw in ("warning", "major") else "info")
         )
-        patterns.append(
-            {
-                "id": smell_id,
-                "category": "smells",
-                "type": smell_id,
-                "severity": sev,
-                "message": message,
-                "line": smell.get("line"),
-            }
-        )
+        emitted: dict[str, Any] = {
+            "id": smell_id,
+            "category": "smells",
+            "type": canonical,
+            "severity": sev,
+            "message": message,
+            "line": smell.get("line"),
+        }
+        # Forward the smell_kind so ``_dedup_security_mirror`` knows
+        # this entry came from the security pass even though the name
+        # no longer carries the legacy prefix.
+        smell_kind = smell.get("smell_kind")
+        if smell_kind:
+            emitted["smell_kind"] = smell_kind
+        patterns.append(emitted)
     return patterns
 
 
@@ -395,166 +471,18 @@ def _detect_security(file_path: str, language: str) -> list[dict[str, Any]]:
 
 
 def _detect_anti_patterns(file_path: str, language: str) -> list[dict[str, Any]]:
-    patterns: list[dict[str, Any]] = []
+    """Wrap shared ``detect_anti_patterns`` and stamp ``category=anti_patterns``.
 
-    try:
-        content = Path(file_path).read_text(errors="replace")
-    except Exception:
-        return patterns
-
-    lines = content.splitlines()
-
-    if language == "python":
-        _check_python_anti_patterns(lines, patterns)
-    elif language in ("javascript", "typescript"):
-        _check_js_anti_patterns(lines, patterns)
-    elif language == "java":
-        _check_java_anti_patterns(lines, patterns)
-
-    return patterns
-
-
-def _python_docstring_line_set(lines: list[str]) -> set[int]:
-    # Return the 1-indexed line numbers that fall inside a Python triple-quoted
-    # string. We skip these lines when checking anti-patterns so that docstring
-    # examples (which often contain ``print()``, bare ``except:``, etc.) do not
-    # produce false positives.
-    #
-    # Implementation is intentionally line-based (not AST-based) because the
-    # caller only has access to the raw text. It handles single-line triple
-    # quotes and multi-line blocks but does not track nested strings or
-    # escapes — sufficient for anti-pattern muting.
-    inside = False
-    delim: str | None = None
-    docstring_lines: set[int] = set()
-    for i, line in enumerate(lines, 1):
-        if inside:
-            docstring_lines.add(i)
-            # Closing delim found — exit (assume single closing per line).
-            if delim and delim in line:
-                inside = False
-                delim = None
-            continue
-        for d in ('"""', "'''"):
-            idx = line.find(d)
-            if idx == -1:
-                continue
-            docstring_lines.add(i)
-            rest = line[idx + 3 :]
-            if d not in rest:
-                # Opens here but does not close on the same line.
-                inside = True
-                delim = d
-            break
-    return docstring_lines
-
-
-def _check_python_anti_patterns(
-    lines: list[str], patterns: list[dict[str, Any]]
-) -> None:
-    docstring_lines = _python_docstring_line_set(lines)
-    for i, line in enumerate(lines, 1):
-        if i in docstring_lines:
-            continue
-        stripped = line.strip()
-
-        if "=" in stripped and any(
-            f"={t}" in stripped for t in ("[]", "{},", "set()", "[],")
-        ):
-            if "def " in lines[max(0, i - 5) : i][-1] or any(
-                "def " in ln for ln in lines[max(0, i - 10) : i]
-            ):
-                patterns.append(
-                    {
-                        "id": "AP001",
-                        "category": "anti_patterns",
-                        "type": "mutable_default_argument",
-                        "severity": "critical",
-                        "message": "Mutable default argument — shared across calls",
-                        "line": i,
-                    }
-                )
-
-        if stripped.startswith("except:") and "except:" == stripped:
-            patterns.append(
-                {
-                    "id": "AP002",
-                    "category": "anti_patterns",
-                    "type": "bare_except",
-                    "severity": "warning",
-                    "message": "Bare except catches everything including KeyboardInterrupt",
-                    "line": i,
-                }
-            )
-
-        if "print(" in stripped and not stripped.startswith("#"):
-            in_def = any("def " in ln for ln in lines[max(0, i - 30) : i])
-            if in_def:
-                patterns.append(
-                    {
-                        "id": "AP003",
-                        "category": "anti_patterns",
-                        "type": "print_in_production",
-                        "severity": "info",
-                        "message": "Use logging instead of print()",
-                        "line": i,
-                    }
-                )
-
-
-def _check_js_anti_patterns(lines: list[str], patterns: list[dict[str, Any]]) -> None:
-    for i, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if "var " in stripped and not stripped.startswith("//"):
-            patterns.append(
-                {
-                    "id": "AP010",
-                    "category": "anti_patterns",
-                    "type": "var_usage",
-                    "severity": "info",
-                    "message": "Use const/let instead of var",
-                    "line": i,
-                }
-            )
-        if "== " in stripped or " !=" in stripped:
-            if "===" not in stripped and "!==" not in stripped:
-                patterns.append(
-                    {
-                        "id": "AP011",
-                        "category": "anti_patterns",
-                        "type": "loose_equality",
-                        "severity": "warning",
-                        "message": "Use === instead of == for strict comparison",
-                        "line": i,
-                    }
-                )
-
-
-def _check_java_anti_patterns(lines: list[str], patterns: list[dict[str, Any]]) -> None:
-    for i, line in enumerate(lines, 1):
-        stripped = line.strip()
-        if "System.out.println" in stripped and not stripped.startswith("//"):
-            patterns.append(
-                {
-                    "id": "AP020",
-                    "category": "anti_patterns",
-                    "type": "system_out_println",
-                    "severity": "info",
-                    "message": "Use a logging framework instead of System.out",
-                    "line": i,
-                }
-            )
-        if "e.printStackTrace()" in stripped:
-            patterns.append(
-                {
-                    "id": "AP021",
-                    "category": "anti_patterns",
-                    "type": "print_stacktrace",
-                    "severity": "warning",
-                    "message": "Use proper logging instead of printStackTrace()",
-                    "line": i,
-                }
-            )
+    N7 (round-28): the actual detection lives in
+    ``tree_sitter_analyzer.mcp.tools.utils.anti_patterns`` so both
+    ``code_patterns`` and ``file_health`` produce the same findings on
+    the same file. We only wrap the bare results with the category
+    tag the rest of ``code_patterns`` expects.
+    """
+    return [
+        {**issue, "category": "anti_patterns"}
+        for issue in detect_anti_patterns(file_path, language)
+    ]
 
 
 def _build_summary(patterns: list[dict[str, Any]]) -> str:

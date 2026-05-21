@@ -17,6 +17,18 @@ from .search_content_helpers import (
 )
 from .search_envelope import normalize_envelope
 
+
+def _resolved_case_sensitive(arguments: dict[str, Any]) -> bool:
+    """Echo the actually-honored case mode as a strict bool (N1).
+
+    Returns ``True`` only when the resolved ``case`` argument equals
+    ``"sensitive"``. Default ``smart``, explicit ``insensitive``, and any
+    missing/unknown value all map to ``False`` — never ``None`` — so callers
+    can rely on a stable bool field.
+    """
+    return arguments.get("case") == "sensitive"
+
+
 ToonFormatter = Callable[[dict[str, Any]], dict[str, Any]]
 ToonApplier = Callable[[dict[str, Any], str], dict[str, Any]]
 
@@ -106,6 +118,7 @@ def respond_count_only(
         "file_counts": file_counts,
         "elapsed_ms": elapsed_ms,
         "truncated": False,
+        "case_sensitive": _resolved_case_sensitive(arguments),
         "agent_summary": agent_summary,
     }
     normalize_envelope(result, total_count=int(total_matches))
@@ -136,6 +149,7 @@ def respond_grouped(
     result = fd_rg_utils.group_matches_by_file(matches)
     result["truncated"] = truncated
     result["elapsed_ms"] = elapsed_ms
+    result["case_sensitive"] = _resolved_case_sensitive(arguments)
     result["agent_summary"] = build_agent_summary(
         SearchAgentSummaryInput(
             arguments=arguments,
@@ -191,6 +205,7 @@ def respond_summary(
         "results": [],
         "truncated": truncated,
         "elapsed_ms": elapsed_ms,
+        "case_sensitive": _resolved_case_sensitive(arguments),
         "summary": summary,
         "agent_summary": build_agent_summary(
             SearchAgentSummaryInput(
@@ -245,6 +260,7 @@ def respond_full(
         "count": displayed,
         "truncated": truncated,
         "elapsed_ms": elapsed_ms,
+        "case_sensitive": _resolved_case_sensitive(arguments),
         "agent_summary": build_agent_summary(
             SearchAgentSummaryInput(
                 arguments=arguments,

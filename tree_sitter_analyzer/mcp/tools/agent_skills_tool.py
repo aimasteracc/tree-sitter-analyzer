@@ -113,8 +113,13 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
     alongside the metadata. Agents that want the lean version still
     read ``toon_content``; agents that need to branch on a specific
     skill's metadata can walk ``skills`` directly.
+
+    N5 (round-29 dogfood): also surface top-level ``summary_line`` and
+    ``verdict`` on the TOON path so the canonical envelope contract
+    holds regardless of output_format. The CLI/JSON path already
+    populates both in ``build_agent_skills_inventory``.
     """
-    return {
+    response: dict[str, Any] = {
         "success": result["success"],
         "format": "toon",
         "inventory": result["inventory"],
@@ -127,3 +132,10 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
         "validation": result["validation"],
         "toon_content": result["toon_content"],
     }
+    summary_line = result.get("summary_line")
+    if isinstance(summary_line, str) and summary_line:
+        response["summary_line"] = summary_line
+    verdict = result.get("verdict")
+    if isinstance(verdict, str) and verdict:
+        response["verdict"] = verdict
+    return response

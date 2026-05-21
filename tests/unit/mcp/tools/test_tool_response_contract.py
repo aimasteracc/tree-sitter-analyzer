@@ -6059,15 +6059,24 @@ class TestEnvelopeContractSnapshot:
     asserts the minimum invariants in *one* place so the next drift
     fails loudly instead of trickling into agent prompts.
 
-    Coverage: 13 representative tools across all major categories
+    Coverage: 16 representative tools across all major categories
     (single-file analysis, project-wide analysis, search, graph,
-    cache, route detection, lineage, change-impact).
+    cache, route detection, lineage, change-impact, dependency
+    analysis, parser readiness, agent skills inventory).
 
     Round-27 update: the four known drifters that round-26 flagged
     (SafeToEditTool top-level ``summary_line``, RouteDetectorTool /
     ProjectHealthTool / ProjectOverviewTool ``agent_summary.verdict``)
     are now fixed at the tool layer. The full snapshot test is no
     longer ``xfail`` — both tests in this class are hard gates.
+
+    Round-29 update: three more drifters surfaced from dogfood
+    (DependencyAnalysisTool success-path ``agent_summary.verdict``,
+    ParserReadinessTool top-level + agent_summary ``verdict``,
+    AgentSkillsTool top-level ``summary_line`` + agent_summary
+    ``verdict``). All three are fixed at the tool layer and now
+    included in :meth:`tool_cases` so future regressions of this
+    same class fail loudly here.
 
     Two-test split (kept for documentation):
 
@@ -6106,6 +6115,7 @@ class TestEnvelopeContractSnapshot:
     def tool_cases(self, envelope_project: Path):  # type: ignore[no-untyped-def]
         """Each entry: (label, instantiated tool, execute args)."""
         sample = "sample.py"
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
         from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
             AnalyzeScaleTool,
         )
@@ -6119,9 +6129,15 @@ class TestEnvelopeContractSnapshot:
         from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
             CodePatternsTool,
         )
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
         from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
         from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
             ModificationGuardTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import (
+            ParserReadinessTool,
         )
         from tree_sitter_analyzer.mcp.tools.project_health_tool import (
             ProjectHealthTool,
@@ -6165,6 +6181,25 @@ class TestEnvelopeContractSnapshot:
             ("TraceImpactTool", TraceImpactTool(root), {"symbol": "greet"}),
             ("ProjectHealthTool", ProjectHealthTool(root), {}),
             ("ProjectOverviewTool", ProjectOverviewTool(root), {}),
+            # Round-29 additions — N3/N4/N5 drift class. ``mode=summary``
+            # walks the whole dep graph (cheap on the 1-file fixture);
+            # parser-readiness and agent-skills both need no args and
+            # report on an empty project root cleanly.
+            (
+                "DependencyAnalysisTool",
+                DependencyAnalysisTool(root),
+                {"mode": "summary", "output_format": "json"},
+            ),
+            (
+                "ParserReadinessTool",
+                ParserReadinessTool(root),
+                {"output_format": "json"},
+            ),
+            (
+                "AgentSkillsTool",
+                AgentSkillsTool(root),
+                {"output_format": "json"},
+            ),
         ]
 
     def _collect_drift(self, tool_cases) -> list[str]:  # type: ignore[no-untyped-def]
@@ -6260,7 +6295,19 @@ class TestEnvelopeContractSnapshot:
 
 
 _N_VERDICT_VOCABULARY = frozenset(
-    {"SAFE", "CAUTION", "REVIEW", "UNSAFE", "INFO", "ERROR", "NOT_FOUND"}
+    {
+        "SAFE",
+        "CAUTION",
+        "REVIEW",
+        "UNSAFE",
+        "INFO",
+        # WARN is the dependency_analysis / agent_skills escalation
+        # tier between INFO and REVIEW (cycles present, caution-level
+        # metadata gaps). Added in round-29 for N3 / N5.
+        "WARN",
+        "ERROR",
+        "NOT_FOUND",
+    }
 )
 
 
@@ -6460,6 +6507,225 @@ class TestN4ProjectOverviewVerdict:
         assert isinstance(verdict, str) and verdict in _N_VERDICT_VOCABULARY, (
             f"N4: project_overview agent_summary.verdict must be populated "
             f"under include_health=True — got {verdict!r}"
+        )
+
+
+# ============================================================================
+# Round-29 — three more drifters the round-28 envelope snapshot did not
+# yet cover (dependency_analysis success-path verdict, parser_readiness
+# verdict + mirror, agent_skills top-level summary_line + verdict).
+# These tests pin the per-tool contract so future regressions fail at
+# the exact tool boundary instead of as a diffuse snapshot failure.
+# ============================================================================
+
+
+class TestN3DependencyAnalysisVerdict:
+    """N3 (round-29): analyze_dependencies success-path agent_summary
+    used to omit ``verdict`` entirely — only the error path carried
+    ``verdict: 'ERROR'``. Cross-tool agents that branch on ``verdict``
+    saw a missing field across every mode (summary / cycles / file_deps
+    / blast_radius). Contract now: every mode emits a populated
+    ``verdict`` from the canonical vocabulary, and the top-level
+    envelope mirrors it.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        # Two files with a tiny dependency edge so the graph isn't trivially
+        # empty (the snapshot test exercises ``summary``; this fixture also
+        # gives ``file_deps`` and ``blast_radius`` something real to look at).
+        (tmp_path / "lib.py").write_text(
+            "def helper() -> int:\n    return 1\n", encoding="utf-8"
+        )
+        (tmp_path / "app.py").write_text(
+            "from lib import helper\n\ndef run() -> int:\n    return helper()\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        "mode,extra",
+        [
+            ("summary", {}),
+            ("cycles", {}),
+            ("file_deps", {"file_path": "app.py"}),
+            ("blast_radius", {"file_path": "lib.py"}),
+        ],
+    )
+    def test_agent_summary_verdict_non_empty(
+        self, project: Path, mode: str, extra: dict[str, Any]
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+
+        tool = DependencyAnalysisTool(str(project))
+        args: dict[str, Any] = {"mode": mode, "output_format": "json"}
+        args.update(extra)
+        result = _run(tool.execute(args))
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(verdict, str) and verdict, (
+            f"N3: analyze_dependencies agent_summary.verdict must be a "
+            f"non-empty string on the success path — got {verdict!r} "
+            f"(mode={mode})"
+        )
+        assert verdict in _N_VERDICT_VOCABULARY, (
+            f"N3: analyze_dependencies agent_summary.verdict must be in the "
+            f"canonical vocabulary {sorted(_N_VERDICT_VOCABULARY)} — "
+            f"got {verdict!r} (mode={mode})"
+        )
+
+    def test_top_level_verdict_mirrors_agent_summary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+
+        tool = DependencyAnalysisTool(str(project))
+        result = _run(tool.execute({"mode": "summary", "output_format": "json"}))
+        top = result.get("verdict")
+        agent = result.get("agent_summary", {}).get("verdict")
+        assert top == agent, (
+            f"N3: analyze_dependencies top-level verdict must mirror "
+            f"agent_summary['verdict'] — got top={top!r} agent={agent!r}"
+        )
+
+
+class TestN4ParserReadinessVerdict:
+    """N4 (round-29): parser_readiness shipped ``agent_summary.risk``
+    (low/caution) but no ``verdict``, and the top-level envelope had
+    ``verdict=None``. Risk is the legacy domain-specific field; the
+    cross-tool contract is ``verdict``. Contract now: ``verdict`` is
+    populated in agent_summary, mirrored at the top level, and lives
+    in the canonical vocabulary (INFO / CAUTION / REVIEW for this
+    informational tool).
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_agent_summary_verdict_non_empty(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import (
+            ParserReadinessTool,
+        )
+
+        tool = ParserReadinessTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(verdict, str) and verdict, (
+            f"N4: parser_readiness agent_summary.verdict must be a "
+            f"non-empty string — got {verdict!r}"
+        )
+
+    def test_agent_summary_verdict_in_vocabulary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import (
+            ParserReadinessTool,
+        )
+
+        tool = ParserReadinessTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        verdict = result["agent_summary"]["verdict"]
+        # Brief specifies the informational-tool subset for this tool —
+        # parser_readiness never escalates to UNSAFE / NOT_FOUND etc.
+        assert verdict in {"INFO", "CAUTION", "REVIEW"}, (
+            f"N4: parser_readiness agent_summary.verdict must be one of "
+            f"INFO / CAUTION / REVIEW — got {verdict!r}"
+        )
+
+    def test_top_level_verdict_mirrors_agent_summary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import (
+            ParserReadinessTool,
+        )
+
+        tool = ParserReadinessTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        top = result.get("verdict")
+        agent = result.get("agent_summary", {}).get("verdict")
+        assert top == agent, (
+            f"N4: parser_readiness top-level verdict must mirror "
+            f"agent_summary['verdict'] — got top={top!r} agent={agent!r}"
+        )
+
+
+class TestN5AgentSkillsEnvelope:
+    """N5 (round-29): agent_skills shipped ``summary_line=None`` at the
+    top level and omitted ``agent_summary.verdict`` entirely. Direct
+    callers that bypass the dispatch hook (CLI, tests, hive-mind
+    workers) saw the drift. Contract now: top-level ``summary_line``
+    is non-empty and mirrors ``agent_summary['summary_line']``;
+    ``agent_summary.verdict`` is populated from the canonical
+    vocabulary and mirrors top-level ``verdict``.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_top_summary_line_non_empty(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        tool = AgentSkillsTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        top_sl = result.get("summary_line")
+        assert isinstance(top_sl, str) and top_sl, (
+            f"N5: agent_skills top-level summary_line must be a non-empty "
+            f"string — got {top_sl!r}"
+        )
+
+    def test_summary_line_mirrors_agent_summary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        tool = AgentSkillsTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        top_sl = result.get("summary_line")
+        agent_sl = result.get("agent_summary", {}).get("summary_line")
+        assert top_sl == agent_sl, (
+            f"N5: agent_skills top-level summary_line must mirror "
+            f"agent_summary['summary_line'] — got top={top_sl!r} "
+            f"agent={agent_sl!r}"
+        )
+
+    def test_agent_summary_verdict_non_empty(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        tool = AgentSkillsTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(verdict, str) and verdict, (
+            f"N5: agent_skills agent_summary.verdict must be a non-empty "
+            f"string — got {verdict!r}"
+        )
+
+    def test_agent_summary_verdict_in_vocabulary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        tool = AgentSkillsTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        verdict = result["agent_summary"]["verdict"]
+        assert verdict in _N_VERDICT_VOCABULARY, (
+            f"N5: agent_skills agent_summary.verdict must be in the "
+            f"canonical vocabulary {sorted(_N_VERDICT_VOCABULARY)} — "
+            f"got {verdict!r}"
+        )
+
+    def test_top_level_verdict_mirrors_agent_summary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        tool = AgentSkillsTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        top = result.get("verdict")
+        agent = result.get("agent_summary", {}).get("verdict")
+        assert top == agent, (
+            f"N5: agent_skills top-level verdict must mirror "
+            f"agent_summary['verdict'] — got top={top!r} agent={agent!r}"
         )
 
 
@@ -7320,3 +7586,666 @@ class TestM10CentralVerdictMirrorHook:
         )
         assert result["verdict"] == "SAFE"
         assert result["agent_summary"]["verdict"] == "REVIEW"
+
+
+class TestN2DependenciesFullParity:
+    """N2 (round-28 dogfood): CLI ``--dependencies full`` worked but MCP
+    ``execute({mode: 'full'})`` raised ``ValueError: Unknown mode: full``.
+
+    The CLI silently aliases ``full`` -> ``summary`` via
+    ``_DEPENDENCY_MODE_ALIASES`` in ``mcp_commands.py``, but the MCP tool
+    schema enum did not include ``full`` and the dispatcher had no alias
+    handling — so the same word was accepted on one surface and rejected
+    on the other. The fix: ``DependencyAnalysisTool._MODE_ALIASES``
+    normalises ``full`` -> ``summary`` at execute time, the schema enum
+    accepts both, and the response echoes the canonical name ``summary``
+    so callers see byte-identical output regardless of which alias they
+    sent.
+
+    Canonical name is ``summary`` (matches the CLI alias map and every
+    internal reference: smart_prompts, analyze_scale_helpers,
+    project_overview_tool, query_symbol_search).
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "a.py"
+        src.write_text("def f(): return 1\n", encoding="utf-8")
+        return tmp_path
+
+    def test_mcp_execute_mode_full_succeeds(self, tiny_project: Path) -> None:
+        """``execute({mode: 'full'})`` must succeed — the schema enum now
+        accepts ``full`` and the dispatcher normalises it to ``summary``."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(tiny_project))
+        result = _run(tool.execute({"mode": "full", "output_format": "json"}))
+        assert result["success"] is True, (
+            f"N2: mode=full must succeed (CLI parity). Got {result!r}"
+        )
+        # The success-envelope contract still holds — top-level summary_line
+        # and agent_summary are populated.
+        assert isinstance(result.get("summary_line"), str)
+        assert isinstance(result.get("agent_summary"), dict)
+
+    def test_mcp_execute_mode_full_echoes_summary(self, tiny_project: Path) -> None:
+        """The response must echo the *canonical* mode name ``summary``
+        even when the caller sent the ``full`` alias. This matches what
+        the CLI does today and keeps the response byte-identical across
+        the two spellings — so caching/dedup layers downstream don't see
+        spurious deltas."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(tiny_project))
+        result = _run(tool.execute({"mode": "full", "output_format": "json"}))
+        assert result.get("mode") == "summary", (
+            f"N2: mode=full must echo the canonical name 'summary' "
+            f"(matches CLI alias behaviour). Got mode={result.get('mode')!r}"
+        )
+
+    def test_mcp_execute_mode_summary_unchanged(self, tiny_project: Path) -> None:
+        """Regression guard: ``mode=summary`` (canonical) keeps echoing
+        ``summary`` unchanged. The alias must not break the non-aliased
+        path."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(tiny_project))
+        result = _run(tool.execute({"mode": "summary", "output_format": "json"}))
+        assert result["success"] is True
+        assert result.get("mode") == "summary"
+
+    def test_schema_enum_includes_full(self) -> None:
+        """The MCP schema must list ``full`` so JSON-schema-validating
+        clients (Claude Code, Cursor, Cline) accept the alias instead of
+        rejecting the input before the call reaches the tool."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+
+        tool = DependencyAnalysisTool(project_root=".")
+        schema = tool.get_tool_schema()
+        mode_enum = schema["properties"]["mode"]["enum"]
+        for canonical in ("blast_radius", "file_deps", "cycles", "summary"):
+            assert canonical in mode_enum, (
+                f"N2: canonical mode {canonical!r} dropped from schema enum: {mode_enum!r}"
+            )
+        assert "full" in mode_enum, (
+            f"N2: 'full' alias must be in the schema enum so JSON-schema "
+            f"validators accept --dependencies full from the CLI bridge. "
+            f"Got enum={mode_enum!r}"
+        )
+
+    def test_cli_dependencies_full_succeeds(self, tiny_project: Path) -> None:
+        """End-to-end CLI parity: ``--dependencies full --format json``
+        must produce a success envelope with ``mode: summary`` (canonical
+        echo). The CLI emits indented multi-line JSON on success, so we
+        parse the whole stdout payload as a single JSON document (vs the
+        error path which uses one-line envelopes)."""
+        import json as _json
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "--dependencies",
+                "full",
+                "--format",
+                "json",
+                "--project-root",
+                str(tiny_project),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert proc.returncode == 0, (
+            f"N2 CLI: --dependencies full must exit RC=0. "
+            f"stderr={proc.stderr!r} stdout={proc.stdout[:500]!r}"
+        )
+        # Find the first ``{`` and parse from there to end-of-output —
+        # the success envelope is pretty-printed (multi-line) JSON.
+        stdout = proc.stdout
+        first_brace = stdout.find("{")
+        assert first_brace >= 0, (
+            f"N2 CLI: expected a JSON object on stdout. Got: {stdout!r}"
+        )
+        try:
+            envelope = _json.loads(stdout[first_brace:])
+        except _json.JSONDecodeError as exc:
+            raise AssertionError(
+                f"N2 CLI: failed to parse JSON envelope: {exc}. Stdout: {stdout!r}"
+            ) from exc
+        assert envelope.get("success") is True
+        assert envelope.get("mode") == "summary", (
+            f"N2 CLI: --dependencies full must echo mode=summary, "
+            f"got mode={envelope.get('mode')!r}"
+        )
+
+
+class TestN6DependenciesErrorEchoesMode:
+    """N6 (round-28 dogfood): the success-path envelope for
+    ``--dependencies <mode>`` includes ``mode: <requested>`` so callers
+    can branch on which analysis was run. The validation-error path
+    (e.g. missing ``--file-path`` for ``file_deps``/``blast_radius``)
+    used to drop ``mode`` entirely. Now the CLI mirrors the same
+    identifier onto error envelopes via ``_collect_echo_fields`` so the
+    failure carries the same context as the success.
+    """
+
+    def test_cli_file_deps_missing_file_echoes_mode(self, tmp_path: Path) -> None:
+        """``--dependencies file_deps`` without ``--file-path`` must
+        validate-fail with ``mode: file_deps`` mirrored onto the
+        envelope. Pre-N6 this dropped ``mode`` entirely, leaving
+        callers with no signal about what they requested."""
+        import json as _json
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "--dependencies",
+                "file_deps",
+                "--format",
+                "json",
+                "--project-root",
+                str(tmp_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert proc.returncode == 1, (
+            f"N6: missing file_path must exit RC=1. "
+            f"stderr={proc.stderr!r} stdout={proc.stdout[:500]!r}"
+        )
+        envelope = None
+        for line in proc.stdout.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("{"):
+                try:
+                    envelope = _json.loads(stripped)
+                    break
+                except _json.JSONDecodeError:
+                    continue
+        assert envelope is not None, (
+            f"N6: expected a JSON envelope on stdout. Got: {proc.stdout!r}"
+        )
+        assert envelope.get("success") is False
+        assert envelope.get("mode") == "file_deps", (
+            f"N6: validation-error envelope must echo the requested mode. "
+            f"Got mode={envelope.get('mode')!r} keys={sorted(envelope.keys())!r}"
+        )
+
+    def test_cli_blast_radius_missing_file_echoes_mode(self, tmp_path: Path) -> None:
+        """Mirror check for blast_radius — same parity contract."""
+        import json as _json
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "--dependencies",
+                "blast_radius",
+                "--format",
+                "json",
+                "--project-root",
+                str(tmp_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert proc.returncode == 1
+        envelope = None
+        for line in proc.stdout.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("{"):
+                try:
+                    envelope = _json.loads(stripped)
+                    break
+                except _json.JSONDecodeError:
+                    continue
+        assert envelope is not None
+        assert envelope.get("success") is False
+        assert envelope.get("mode") == "blast_radius", (
+            f"N6: blast_radius validation-error envelope must echo "
+            f"mode=blast_radius. Got mode={envelope.get('mode')!r}"
+        )
+
+    def test_collect_echo_fields_normalises_full_alias(self) -> None:
+        """``_collect_echo_fields`` runs the same alias normalisation as
+        the tool — so a caller who sent ``--dependencies full`` and hit
+        an error sees ``mode: summary`` (canonical), not the raw alias.
+        Matches what the success path echoes."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            MCP_COMMAND_SPECS,
+            _collect_echo_fields,
+        )
+
+        spec = next(s for s in MCP_COMMAND_SPECS if s.flag_name == "dependencies")
+
+        class _Args:
+            dependencies = "full"
+
+        echo = _collect_echo_fields(spec, _Args())
+        assert echo.get("mode") == "summary", (
+            f"N6: echo fields must normalise 'full' -> 'summary'. Got {echo!r}"
+        )
+
+    def test_collect_echo_fields_passes_explicit_mode_through(self) -> None:
+        """Non-aliased modes pass through unchanged."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            MCP_COMMAND_SPECS,
+            _collect_echo_fields,
+        )
+
+        spec = next(s for s in MCP_COMMAND_SPECS if s.flag_name == "dependencies")
+        for mode in ("summary", "cycles", "file_deps", "blast_radius"):
+
+            class _Args:
+                dependencies = mode
+
+            echo = _collect_echo_fields(spec, _Args())
+            assert echo.get("mode") == mode, (
+                f"N6: echo fields must pass {mode!r} through unchanged. Got {echo!r}"
+            )
+
+    def test_build_error_envelope_carries_echo_fields(self) -> None:
+        """Unit-level: ``_build_error_envelope`` accepts ``echo_fields``
+        and mirrors them onto the response root without stomping on the
+        canonical envelope keys (success/error/error_type/summary_line/
+        agent_summary)."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            _build_error_envelope,
+        )
+
+        envelope = _build_error_envelope(
+            "dependencies",
+            "Dependency analysis",
+            ValueError("--dependencies requires a file path"),
+            echo_fields={"mode": "file_deps"},
+        )
+        assert envelope["success"] is False
+        assert envelope["mode"] == "file_deps"
+        # echo_fields must never stomp canonical keys.
+        assert envelope["error_type"] == "validation"
+        assert "agent_summary" in envelope
+
+
+class TestN8DependenciesTOONIncludesScalars:
+    """N8 (round-28 dogfood): the TOON output for ``mode=summary`` /
+    ``mode=cycles`` must include the scalar fields that callers need
+    most — ``cycle_count``, ``recommendation``, ``elapsed_ms`` — even
+    though F7 deliberately drops the redundant nested ``results`` /
+    ``summary_line`` for token efficiency. ``agent_summary`` and the
+    top-level ``summary_line`` ALSO stay (F6 design). This regression
+    guard pins the contract so a future TOON refactor cannot silently
+    elide the cycle count or runtime metadata.
+
+    Note: the original brief's `head -10` reproduction was misleading
+    — the fields appear later in the TOON payload. This test pins the
+    real shape regardless of vertical ordering.
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "a.py"
+        src.write_text("def f(): return 1\n", encoding="utf-8")
+        return tmp_path
+
+    def _toon_text(self, project: Path, mode: str) -> str:
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(project))
+        result = _run(tool.execute({"mode": mode, "output_format": "toon"}))
+        text = result.get("toon_content")
+        assert isinstance(text, str) and text, (
+            f"N8: toon_content must be a non-empty string for mode={mode}. "
+            f"Got {result!r}"
+        )
+        return text
+
+    def test_summary_toon_includes_cycle_count(self, tiny_project: Path) -> None:
+        """``cycle_count`` is the most useful scalar from summary mode —
+        callers branch on cycles>0 to decide whether to call cycles
+        mode. Must appear as a TOON scalar line."""
+        text = self._toon_text(tiny_project, "summary")
+        assert "cycle_count:" in text, (
+            f"N8: TOON summary must include 'cycle_count:' line. Got:\n{text}"
+        )
+
+    def test_summary_toon_includes_recommendation(self, tiny_project: Path) -> None:
+        """``recommendation`` is the actionable next step the caller
+        runs against. Must appear in TOON."""
+        text = self._toon_text(tiny_project, "summary")
+        assert "recommendation:" in text, (
+            f"N8: TOON summary must include 'recommendation:' line. Got:\n{text}"
+        )
+
+    def test_summary_toon_includes_elapsed_ms(self, tiny_project: Path) -> None:
+        """``elapsed_ms`` is the runtime metadata that callers use to
+        decide whether to cache."""
+        text = self._toon_text(tiny_project, "summary")
+        assert "elapsed_ms:" in text, (
+            f"N8: TOON summary must include 'elapsed_ms:' line. Got:\n{text}"
+        )
+
+    def test_cycles_toon_includes_scalars(self, tiny_project: Path) -> None:
+        """The same scalar contract applies to ``mode=cycles`` so
+        callers can read cycle_count without parsing the cycles list."""
+        text = self._toon_text(tiny_project, "cycles")
+        for scalar in ("cycle_count:", "recommendation:", "elapsed_ms:"):
+            assert scalar in text, (
+                f"N8: TOON cycles must include {scalar!r}. Got:\n{text}"
+            )
+
+    def test_summary_envelope_metadata_present_alongside_toon(
+        self, tiny_project: Path
+    ) -> None:
+        """The MCP envelope keeps the metadata copy of these scalars
+        alongside ``toon_content`` so callers that don't parse TOON can
+        still read them — this is what ``apply_toon_format_to_response``
+        guarantees."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(tiny_project))
+        result = _run(tool.execute({"mode": "summary", "output_format": "toon"}))
+        # The envelope keeps the scalars at the root next to toon_content
+        # so a caller never has to TOON-parse to get them.
+        assert "cycle_count" in result
+        assert "recommendation" in result
+        assert "elapsed_ms" in result
+        assert "toon_content" in result
+
+
+# ============================================================================
+# N9 — file_health refuses Python files with null bytes in string literals
+# ============================================================================
+
+
+class TestN9FileHealthNullBytesInStringLiterals:
+    """N9 (round-28 dogfood): a Python file with ``x = "\\x00"`` is legal
+    source — the null byte lives inside a string literal. Tree-sitter's
+    tokenizer trips on the raw 0x00 even though the *source language*
+    allows it, so the M3 syntax-validity gate fired and ``file_health``
+    short-circuited to ``signal=syntax_error verdict=ERROR``. Worse, the
+    response envelope ended up with ``line_count``/``binary`` slots
+    missing entirely (returned as ``None`` to consumers), so an agent
+    couldn't even tell whether the rejection was about size, encoding,
+    or syntax.
+
+    Fix (Option A — accept the file):
+
+    * ``parse_validity.is_file_parse_broken`` now retries with null
+      bytes substituted by spaces; if the substituted source parses
+      cleanly and the file has a known source extension, the original
+      is accepted as syntactically valid.
+    * ``file_health_tool._looks_binary`` was tightened: source-extension
+      files (``.py``, ``.c``, ``.java``…) with isolated null bytes are
+      NOT classified as binary. A file is binary only when null bytes
+      dominate over printable chars AND utf-8 decode fails.
+    * Every ``file_health`` response now carries ``line_count``,
+      ``lines`` (alias), and ``binary`` — including the empty / non-code /
+      syntax-error / binary branches — so a downstream consumer sees the
+      same vocabulary regardless of which branch the file took.
+
+    The heuristic for "is binary" after this fix:
+
+    1. Known source extension (``.py``, ``.js``, ``.java``, ``.go``,
+       ``.rs``, etc.) → only binary if utf-8 decode fails *and* null
+       bytes outnumber printable chars in the first 1024 bytes.
+    2. Unknown / non-source extension → legacy heuristic (any null byte
+       or decode failure is enough).
+    """
+
+    @pytest.fixture
+    def project_with_null_string_literal(self, tmp_path: Path) -> Path:
+        """Project with a Python file that has ``"\\x00"`` in a string."""
+        src = tmp_path / "null_string.py"
+        src.write_bytes(b'def hello():\n    x = "\x00"\n    return 1\n')
+        return tmp_path
+
+    def test_python_null_byte_string_literal_accepted(
+        self, project_with_null_string_literal: Path
+    ) -> None:
+        """Python source with ``x = "\\x00"`` must not short-circuit
+        to ``signal=syntax_error``. The file is legal Python and should
+        receive a real grade."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(project_with_null_string_literal))
+        result = _run(
+            tool.execute({"file_path": "null_string.py", "output_format": "json"})
+        )
+        assert result.get("signal") != "syntax_error", (
+            "N9: a Python file with ``\\x00`` in a string literal must "
+            "NOT short-circuit to signal=syntax_error — got "
+            f"signal={result.get('signal')!r}"
+        )
+        assert result.get("verdict") != "ERROR", (
+            "N9: a Python file with ``\\x00`` in a string literal must "
+            f"NOT have verdict=ERROR — got {result.get('verdict')!r}"
+        )
+        # The file is 3 lines; line_count must reflect content.
+        line_count = result.get("line_count") or result.get("lines")
+        assert line_count == 3, (
+            f"N9: line_count must reflect file content (3 lines) — got {line_count!r}"
+        )
+        # ``binary`` must be False — the file is source code, not binary.
+        assert result.get("binary") is False, (
+            "N9: ``binary`` must be False for a source file with a null "
+            f"byte in a string literal — got {result.get('binary')!r}"
+        )
+
+    def test_envelope_has_line_count_and_binary_on_success(
+        self, project_with_null_string_literal: Path
+    ) -> None:
+        """N9: every file_health success response should carry
+        ``line_count`` and ``binary`` keys explicitly. Pre-fix, they
+        defaulted to ``None`` because the keys were absent."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(project_with_null_string_literal))
+        result = _run(
+            tool.execute({"file_path": "null_string.py", "output_format": "json"})
+        )
+        assert "line_count" in result, (
+            "N9: file_health envelope must include ``line_count`` — "
+            f"keys={sorted(result.keys())}"
+        )
+        assert "binary" in result, (
+            "N9: file_health envelope must include ``binary`` — "
+            f"keys={sorted(result.keys())}"
+        )
+        assert isinstance(result["line_count"], int), (
+            f"N9: line_count must be an int — got {type(result['line_count']).__name__}"
+        )
+        assert isinstance(result["binary"], bool), (
+            f"N9: binary must be a bool — got {type(result['binary']).__name__}"
+        )
+
+    def test_c_file_null_char_literal_accepted(self, tmp_path: Path) -> None:
+        """N9: C source with ``'\\0'`` (char literal containing the null
+        byte) parses identically — the same false-positive applies."""
+        src = tmp_path / "null_char.c"
+        src.write_bytes(b"int main() {\n    char c = '\x00';\n    return 0;\n}\n")
+
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(
+            tool.execute({"file_path": "null_char.c", "output_format": "json"})
+        )
+        assert result.get("signal") != "syntax_error", (
+            "N9: a C file with ``'\\0'`` must not short-circuit as "
+            f"syntax_error — got signal={result.get('signal')!r}"
+        )
+        assert result.get("verdict") != "ERROR", (
+            "N9: a C file with a null char literal must NOT verdict=ERROR "
+            f"— got {result.get('verdict')!r}"
+        )
+        assert result.get("binary") is False, (
+            "N9: ``binary`` must be False for a C file with a null char "
+            f"literal — got {result.get('binary')!r}"
+        )
+
+    def test_truly_binary_file_still_rejected(self, tmp_path: Path) -> None:
+        """N9 guardrail: the fix must not silently accept genuine binary
+        files. A blob of pure null/high bytes without a source extension
+        still gets rejected."""
+        src = tmp_path / "blob.bin"
+        src.write_bytes(b"\x00" * 64 + b"\xff" * 64)
+
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "blob.bin", "output_format": "json"}))
+        # Truly binary file → success=False + error_type=binary_file.
+        assert result.get("success") is False, (
+            "N9: a binary blob must still be rejected — got "
+            f"success={result.get('success')!r}"
+        )
+        assert result.get("error_type") == "binary_file", (
+            "N9: binary blob must carry error_type=binary_file — got "
+            f"{result.get('error_type')!r}"
+        )
+        # The new ``binary`` field must be True on the rejection envelope.
+        assert result.get("binary") is True, (
+            f"N9: binary envelope must set binary=True — got {result.get('binary')!r}"
+        )
+
+    def test_real_syntax_error_with_null_still_errors(self, tmp_path: Path) -> None:
+        """N9 guardrail: the null-byte escape hatch must NOT bail out
+        the M3 gate when there's an *actual* syntax error too. A
+        ``def broken(:`` plus a null byte still parses broken when
+        we substitute the null bytes."""
+        src = tmp_path / "broken_and_null.py"
+        src.write_bytes(b'def broken(:\n    x = "\x00"\n')
+
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(
+            tool.execute({"file_path": "broken_and_null.py", "output_format": "json"})
+        )
+        assert result.get("signal") == "syntax_error", (
+            "N9: a file with a *real* syntax error must still emit "
+            f"signal=syntax_error — got signal={result.get('signal')!r}"
+        )
+        assert result.get("verdict") == "ERROR", (
+            f"N9: real syntax error must verdict=ERROR — got {result.get('verdict')!r}"
+        )
+        # Even on ERROR we must still fill ``line_count`` + ``binary``.
+        assert isinstance(result.get("line_count"), int), (
+            "N9: ERROR envelope must still carry int line_count — got "
+            f"{type(result.get('line_count')).__name__}"
+        )
+        assert result.get("binary") is False, (
+            "N9: a Python source file (even with syntax error and a null "
+            f"byte) must report binary=False — got {result.get('binary')!r}"
+        )
+
+    def test_clean_python_keeps_line_count_and_binary(self, tmp_path: Path) -> None:
+        """N9: the new fields apply to the normal scoring path too. A
+        clean Python file must carry ``line_count`` + ``binary=False``."""
+        src = tmp_path / "ok.py"
+        src.write_text(
+            "def greet(name: str) -> str:\n"
+            "    return f'hello {name}'\n"
+            "\n"
+            "def goodbye(name: str) -> str:\n"
+            "    return f'bye {name}'\n",
+            encoding="utf-8",
+        )
+
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "ok.py", "output_format": "json"}))
+        assert result.get("line_count") == 5, (
+            "N9: clean Python (5 lines) must report line_count=5 — got "
+            f"{result.get('line_count')!r}"
+        )
+        assert result.get("binary") is False, (
+            f"N9: clean Python must report binary=False — got {result.get('binary')!r}"
+        )
+
+    def test_empty_file_envelope_includes_line_count_zero(self, tmp_path: Path) -> None:
+        """N9: the 0-byte branch also includes the new fields."""
+        (tmp_path / "empty.py").write_text("", encoding="utf-8")
+
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "empty.py", "output_format": "json"}))
+        assert result.get("signal") == "empty_file"
+        assert result.get("line_count") == 0, (
+            f"N9: empty file must report line_count=0 — got "
+            f"{result.get('line_count')!r}"
+        )
+        assert result.get("binary") is False, (
+            f"N9: empty file must report binary=False — got {result.get('binary')!r}"
+        )
+
+    def test_is_file_parse_broken_accepts_null_byte_python(
+        self, tmp_path: Path
+    ) -> None:
+        """Direct unit test on the gate: ``is_file_parse_broken`` must
+        return False for a Python file whose only issue is null bytes
+        in string literals."""
+        src = tmp_path / "null.py"
+        src.write_bytes(b'x = "\x00"\n')
+
+        from tree_sitter_analyzer.mcp.tools.utils.parse_validity import (
+            is_file_parse_broken,
+        )
+
+        assert is_file_parse_broken(str(src), "python") is False, (
+            "N9: is_file_parse_broken must return False for Python with "
+            "null bytes only in string literals"
+        )
+
+    def test_is_file_parse_broken_still_catches_real_errors(
+        self, tmp_path: Path
+    ) -> None:
+        """Direct unit test: real syntax errors still trip the gate."""
+        src = tmp_path / "broken.py"
+        src.write_text("def broken(:\n", encoding="utf-8")
+
+        from tree_sitter_analyzer.mcp.tools.utils.parse_validity import (
+            is_file_parse_broken,
+        )
+
+        assert is_file_parse_broken(str(src), "python") is True, (
+            "N9: is_file_parse_broken must still return True for real "
+            "syntax errors (no null bytes involved)"
+        )

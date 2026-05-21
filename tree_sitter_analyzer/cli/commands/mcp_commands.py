@@ -409,17 +409,26 @@ def _build_error_envelope(
     flag_name: str,
     label: str,
     exc: BaseException,
+    echo_fields: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Construct a canonical error envelope for a failed MCP CLI command.
 
     Mirrors the success-envelope shape (``success``, ``summary_line``,
     ``agent_summary``) so a programmatic consumer can use the same
     parser for success and failure cases.
+
+    ``echo_fields`` (N6, round-28 dogfood): per-command identifier fields
+    to mirror onto the response root so the failure envelope carries the
+    same context as the success envelope. For ``--dependencies`` this is
+    ``{"mode": "<requested>"}`` so the caller sees their requested mode
+    even when validation failed *before* any tool-level mode handling.
+    Canonical envelope keys (``success``, ``error``, ``error_type``,
+    ``summary_line``, ``agent_summary``) are never overwritten.
     """
     err_type = _classify_error_type(exc)
     exc_name = type(exc).__name__
     message = str(exc) or exc_name
-    return {
+    envelope: dict[str, Any] = {
         "success": False,
         "error_type": err_type,
         "error": message,
@@ -431,6 +440,41 @@ def _build_error_envelope(
             "label": label,
         },
     }
+    if echo_fields:
+        for key, value in echo_fields.items():
+            if value is None or value == "":
+                continue
+            # Don't let echoes stomp on canonical envelope keys.
+            envelope.setdefault(key, value)
+    return envelope
+
+
+def _collect_echo_fields(spec: McpCommandSpec, args: Any) -> dict[str, Any]:
+    """Collect identifier fields to echo into a failure envelope.
+
+    N6 (round-28 dogfood): the success path for ``--dependencies`` echoes
+    ``mode: <requested>`` so callers can branch on the requested analysis
+    mode. The validation-error path used to drop ``mode`` entirely,
+    leaving callers with no signal about what they requested. Mirror the
+    same field set onto the error envelope.
+
+    Other commands can grow their own echo fields here without touching
+    the envelope builder. Keep this conservative — only echo fields the
+    caller can directly use to retry.
+    """
+    echo: dict[str, Any] = {}
+    if spec.flag_name == "dependencies":
+        # Normalise via the same alias table the tool uses so a caller
+        # who requested ``mode=full`` and got a validation error still
+        # sees ``mode: summary`` in the response — matching what the
+        # success path echoes.
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+
+        raw_mode = getattr(args, "dependencies", None) or "summary"
+        echo["mode"] = DependencyAnalysisTool._normalize_mode(raw_mode)
+    return echo
 
 
 def _emit_error_envelope(
@@ -440,6 +484,7 @@ def _emit_error_envelope(
     output_format: str,
     output_json_fn: Callable[[dict[str, Any]], None],
     output_error_fn: Callable[[str], None],
+    echo_fields: Mapping[str, Any] | None = None,
 ) -> int:
     """Print a format-respecting error envelope and return exit code 1.
 
@@ -451,7 +496,7 @@ def _emit_error_envelope(
     back to JSON on encoder failure) when ``output_format == 'toon'``,
     and the original plain-text message in every other case.
     """
-    envelope = _build_error_envelope(flag_name, label, exc)
+    envelope = _build_error_envelope(flag_name, label, exc, echo_fields)
     if output_format == "json":
         print(json.dumps(envelope, ensure_ascii=False))
         return 1
@@ -501,6 +546,8 @@ def _run_tool(
         # caller's requested format. The contract test
         # ``TestJ2ErrorEnvelopeOnJsonFormat`` enforces this for both
         # path-validation and tool-internal failures.
+        # N6: pass per-command echo fields (e.g. dependencies ``mode``)
+        # so the failure envelope mirrors the success-path identifier.
         return _emit_error_envelope(
             spec.flag_name,
             spec.label,
@@ -508,6 +555,7 @@ def _run_tool(
             output_format,
             output_json_fn,
             output_error_fn,
+            echo_fields=_collect_echo_fields(spec, args),
         )
 
 
@@ -565,6 +613,7 @@ def _format_aware_error_sink(
     output_format: str,
     output_json_fn: Callable[[dict[str, Any]], None],
     output_error_fn: Callable[[str], None],
+    echo_fields: Mapping[str, Any] | None = None,
 ) -> Callable[[str], None]:
     """Return a ``output_error_fn`` that respects the requested format.
 
@@ -573,6 +622,11 @@ def _format_aware_error_sink(
     via the same plain-text sink. When the caller asked for JSON or
     TOON, we wrap the sink so the failure surfaces as a structured
     envelope instead of an unparseable ``ERROR: ...`` line.
+
+    N6 (round-28): ``echo_fields`` mirrors per-command identifiers
+    (e.g. dependencies ``mode``) onto the validation-error envelope so
+    callers see what they requested even when the request never reached
+    the tool.
     """
 
     def _sink(message: str) -> None:
@@ -584,6 +638,7 @@ def _format_aware_error_sink(
                 output_format,
                 output_json_fn,
                 output_error_fn,
+                echo_fields=echo_fields,
             )
         else:
             output_error_fn(message)
@@ -603,12 +658,17 @@ def handle_mcp_commands(
         return None
 
     output_format = output_format_fn()
+    # N6: collect per-command echo fields once so both the pre-execution
+    # validator and the tool-execution exception path return identical
+    # context (e.g. ``mode: file_deps`` on a dependencies failure).
+    echo_fields = _collect_echo_fields(spec, args)
     validate_sink = _format_aware_error_sink(
         spec.flag_name,
         spec.label,
         output_format,
         output_json_fn,
         output_error_fn,
+        echo_fields=echo_fields,
     )
     if not validate_mcp_command_args(args, spec, validate_sink):
         return 1

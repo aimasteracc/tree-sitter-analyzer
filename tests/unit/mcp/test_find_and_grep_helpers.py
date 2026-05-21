@@ -258,13 +258,19 @@ class TestBuildSearchMeta:
         )
         # ``elapsed_ms`` is the additive fd+rg sum exposed for the
         # canonical search envelope; the per-phase keys still ship.
+        # N7 / N1 (round-28): ``case_sensitive`` is echoed as a strict
+        # bool so callers can tell which ``--case`` value actually won.
         assert set(meta.keys()) == {
             "searched_file_count",
             "truncated",
             "fd_elapsed_ms",
             "rg_elapsed_ms",
             "elapsed_ms",
+            "case_sensitive",
         }
+        # And the bool default for missing ``case`` is False (never None).
+        assert meta["case_sensitive"] is False
+        assert isinstance(meta["case_sensitive"], bool)
 
     def test_meta_with_truncated_true(self):
         meta = build_search_meta(

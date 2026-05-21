@@ -123,4 +123,11 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
     summary_line = result.get("summary_line")
     if isinstance(summary_line, str) and summary_line:
         response["summary_line"] = summary_line
+    # N4: mirror ``verdict`` to the top-level envelope so direct callers
+    # see the same shape on TOON output as on JSON output. Source of
+    # truth is the agent_summary surface, populated in
+    # :func:`_build_agent_summary`.
+    verdict = result.get("verdict")
+    if isinstance(verdict, str) and verdict:
+        response["verdict"] = verdict
     return response

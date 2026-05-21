@@ -192,6 +192,7 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
             truncated=context.truncated_fd or truncated_rg,
             fd_elapsed_ms=context.fd_elapsed_ms,
             rg_elapsed_ms=context.rg_elapsed_ms,
+            case=arguments.get("case"),
         )
 
         if arguments.get("group_by_file", False) and matches:

@@ -21,6 +21,60 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+# N9 (round-28 dogfood): null bytes inside Python (and other) string
+# literals are perfectly legal source — ``x = "\x00"`` compiles and runs.
+# Tree-sitter, however, treats the raw 0x00 byte as a tokenizer error
+# even when it lives inside a string, so ``has_error`` becomes ``True``
+# for files the parser *can* otherwise understand. We refuse to label
+# such files ``syntax_error`` when their extension is a known source
+# language and a parse of the same content with null bytes stripped
+# comes back clean. The list mirrors ``language_detector``'s common
+# source extensions; we deliberately exclude ``.md`` / ``.html`` /
+# ``.json`` / ``.yaml`` — those have separate ``non_code_file`` /
+# scoring branches in the calling tools.
+_KNOWN_SOURCE_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        # Java / JVM
+        ".java",
+        ".kt",
+        ".kts",
+        ".scala",
+        # JavaScript / TypeScript
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".mjs",
+        ".cjs",
+        ".mts",
+        ".cts",
+        # Python
+        ".py",
+        ".pyx",
+        ".pyi",
+        ".pyw",
+        # C / C++
+        ".c",
+        ".cpp",
+        ".cxx",
+        ".cc",
+        ".h",
+        ".hpp",
+        ".hxx",
+        # Other compiled / systems
+        ".rs",
+        ".go",
+        ".swift",
+        ".cs",
+        ".dart",
+        # Scripting
+        ".rb",
+        ".php",
+        ".lua",
+        ".pl",
+    }
+)
+
 
 def is_parse_broken(tree: Any) -> bool:
     """Return ``True`` when tree-sitter detected syntax errors.
@@ -92,7 +146,60 @@ def is_file_parse_broken(file_path: str, language: str | None = None) -> bool:
         # signal as a syntax error. Caller's existing error branches own
         # those cases.
         return False
-    return is_parse_broken(result.tree)
+    if not is_parse_broken(result.tree):
+        return False
+    # N9: tree-sitter flagged ``has_error``. Before declaring this a
+    # syntax error, check if the only thing tripping the parser is null
+    # bytes inside string / char literals — those are legal source in
+    # Python ("\\x00"), C ('\\0'), Java ('\\0'), etc., but tree-sitter's
+    # tokenizer treats raw 0x00 as a hard stop. Re-parse with null
+    # bytes substituted; if that parse is clean, accept the original.
+    if _is_null_byte_false_positive(file_path, detected):
+        return False
+    return True
+
+
+def _is_null_byte_false_positive(file_path: str, language: str) -> bool:
+    """Return ``True`` when ``file_path``'s ``has_error`` is caused only
+    by raw 0x00 bytes — not by an actual syntax error.
+
+    The check is conservative:
+
+    * The file must have a known source-code extension (``.py`` / ``.js``
+      / ``.java`` / etc.). We don't want to bail out the syntax gate on
+      arbitrary text files just because they happen to decode as utf-8.
+    * The raw bytes must actually contain ``\\x00`` (so we don't pay the
+      double-parse cost when nothing changes).
+    * The substituted source — null bytes replaced with a benign ASCII
+      space — must parse with ``has_error == False``. This is the
+      load-bearing check: if other syntax problems remain, the file
+      really is broken and we keep the original verdict.
+    """
+    suffix = Path(file_path).suffix.lower()
+    if suffix not in _KNOWN_SOURCE_EXTENSIONS:
+        return False
+    try:
+        raw_bytes = Path(file_path).read_bytes()
+    except OSError:
+        return False
+    if b"\x00" not in raw_bytes:
+        return False
+    try:
+        # Tree-sitter is happy with a printable replacement; a space
+        # preserves token / line offsets so any *other* syntax error
+        # the file might have stays at the same position.
+        substituted = raw_bytes.replace(b"\x00", b" ").decode("utf-8", errors="replace")
+    except Exception:
+        return False
+    try:
+        from ....core.parser import Parser
+
+        retry = Parser().parse_code(substituted, language)
+    except Exception:
+        return False
+    if not getattr(retry, "success", False):
+        return False
+    return not is_parse_broken(retry.tree)
 
 
 def syntax_error_envelope(

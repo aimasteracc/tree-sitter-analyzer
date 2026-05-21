@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ..security_scanner import detect_security_issues
+from .anti_patterns import detect_anti_patterns
 from .element_extractor import get_classes, get_functions
 from .file_health_blocks import find_long_blocks_heuristic
 from .file_health_locations import (
@@ -14,6 +15,32 @@ from .file_health_locations import (
     first_import_line,
     largest_function,
 )
+
+# N7 (round-28): canonical smell-type normalization. ``code_patterns``
+# emits security findings as bare names (e.g. ``eval_usage``) while
+# ``file_health`` used to prefix them with ``security:``. Same rule,
+# different ``type`` string — agents that chained the two tools had to
+# branch on both. Strip the prefix here so both surfaces agree on the
+# canonical name. The ``category`` / ``smell_kind`` flag below is the
+# load-bearing distinguisher between a smell-mirror of a security
+# finding and the dedicated security pass.
+_SECURITY_SMELL_PREFIX = "security:"
+
+
+def canonical_smell_type(smell: dict[str, Any]) -> str:
+    """Return the canonical type name for a smell.
+
+    Strips the legacy ``security:`` prefix so cross-tool consumers see the
+    same string regardless of whether the smell came from ``file_health``
+    (which used to prefix) or ``code_patterns`` (which never did). Falls
+    through ``smell`` → ``type`` → ``id`` → ``"unknown"`` so the helper
+    works on every shape the codebase emits.
+    """
+    raw = smell.get("smell") or smell.get("type") or smell.get("id") or "unknown"
+    if isinstance(raw, str) and raw.startswith(_SECURITY_SMELL_PREFIX):
+        return raw[len(_SECURITY_SMELL_PREFIX) :]
+    return str(raw)
+
 
 TECH_DEBT_MARKERS = ("TODO", "FIXME", "HACK", "XXX")
 COMMENT_DELIMITERS = ("#", "//", "/*", "*", "<!--", "--")
@@ -55,6 +82,13 @@ def detect_code_smells(
     _check_element_smells(smells, lines, line_count, analysis)
     _check_technical_debt(smells, lines)
     _check_security_smells(smells, source, language, file_path)
+    # N7 (round-28): file_health was missing anti-pattern coverage that
+    # ``code_patterns`` already had — ``mutable_default_argument``,
+    # ``bare_except``, ``print_in_production`` (Python), and similar
+    # JS/Java rules. Sharing ``detect_anti_patterns`` means the two
+    # tools surface the same set of findings on the same file, which is
+    # what an agent walking either response shape expects.
+    _check_anti_pattern_smells(smells, file_path, language)
     # K9: catch files that the tree-sitter element pass never sees as
     # problematic — a 3.5KB minified/bundled blob on one physical line
     # used to score grade A because no smell detector covered it. Run
@@ -64,6 +98,53 @@ def detect_code_smells(
     _check_single_line_file(smells, source)
 
     return smells
+
+
+def _check_anti_pattern_smells(
+    smells: list[dict[str, Any]],
+    file_path: str,
+    language: str | None,
+) -> None:
+    """Emit anti-pattern findings (mutable_default_argument, bare_except, …).
+
+    Mirrors what ``code_patterns._detect_anti_patterns`` does — they share
+    ``detect_anti_patterns`` under the hood — and reshapes each finding to
+    the smell envelope ``detect_code_smells`` returns. ``smell_kind`` is
+    set to ``anti_pattern`` so downstream dedup logic can distinguish
+    these from the smell-mirror of a security finding.
+    """
+    issues = detect_anti_patterns(file_path, language)
+    for issue in issues:
+        smells.append(
+            {
+                "smell": issue.get("type") or issue.get("id") or "unknown",
+                "smell_kind": "anti_pattern",
+                "detail": issue.get("message", ""),
+                "severity": issue.get("severity", "info"),
+                "line": issue.get("line"),
+                "fix": _anti_pattern_fix_hint(issue.get("type")),
+            }
+        )
+
+
+_ANTI_PATTERN_FIX_HINTS: dict[str, str] = {
+    "mutable_default_argument": (
+        "Use ``None`` as the default and create the mutable inside the function"
+    ),
+    "bare_except": "Catch a specific exception type, or use ``except Exception:``",
+    "print_in_production": "Use the project logger instead of ``print()``",
+    "var_usage": "Use ``const`` (or ``let``) instead of ``var``",
+    "loose_equality": "Use ``===`` / ``!==`` instead of ``==`` / ``!=``",
+    "system_out_println": "Use a logging framework instead of ``System.out``",
+    "print_stacktrace": "Use proper logging instead of ``printStackTrace()``",
+}
+
+
+def _anti_pattern_fix_hint(anti_type: str | None) -> str:
+    """Return a one-line fix hint for an anti-pattern smell."""
+    if not anti_type:
+        return ""
+    return _ANTI_PATTERN_FIX_HINTS.get(anti_type, "")
 
 
 def _check_long_lines(smells: list[dict[str, Any]], lines: list[str]) -> None:
@@ -390,14 +471,23 @@ def _check_security_smells(
     language: str | None,
     file_path: str,
 ) -> None:
-    """Add security scanner issues as file-health smells."""
+    """Add security scanner issues as file-health smells.
+
+    N7 (round-28): emit the bare smell name (``eval_usage``) without the
+    legacy ``security:`` prefix so ``file_health.code_smells[].type``
+    matches the string ``code_patterns.results[].type`` emits for the
+    same finding. ``smell_kind="security"`` carries the same information
+    the prefix used to, but in a structured field downstream dedup logic
+    can still read.
+    """
     if not language:
         return
     sec_issues = detect_security_issues(source, language, file_path=file_path)
     for issue in sec_issues[:10]:
         smells.append(
             {
-                "smell": f"security:{issue['issue']}",
+                "smell": issue["issue"],
+                "smell_kind": "security",
                 "detail": f"{issue['description']} (line {issue['lines'][0]})",
                 "severity": issue["severity"],
                 "line": issue["lines"][0],
