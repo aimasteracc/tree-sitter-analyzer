@@ -493,3 +493,43 @@ class TestStructureCommandOutputTextFormat:
             calls = [str(call) for call in mock_data.call_args_list]
             assert any("Fields:" in call for call in calls)
             assert any("testField" in call for call in calls)
+
+
+class TestR37aaStructureCanonicalEnvelope:
+    """r37aa (dogfood): CLI ``--structure`` was the third CLI surface
+    (after --advanced r37y and --summary r37z) emitting all-None
+    envelope keys. This test pins the canonical contract.
+    """
+
+    def test_structure_emits_canonical_envelope(self, command):
+        from unittest.mock import MagicMock
+
+        analysis_result = MagicMock()
+        analysis_result.file_path = "/test/foo.py"
+        analysis_result.language = "python"
+        analysis_result.line_count = 100
+        analysis_result.elements = []
+        analysis_result.analysis_time = 0.5
+
+        legacy = command._convert_to_legacy_format(analysis_result)
+        assert legacy.get("verdict") == "INFO"
+        assert isinstance(legacy.get("summary_line"), str)
+        assert legacy["summary_line"]
+        assert legacy["agent_summary"]["verdict"] == "INFO"
+        assert legacy["agent_summary"]["summary_line"] == legacy["summary_line"]
+        # File path and language must appear in headline.
+        assert "/test/foo.py" in legacy["summary_line"]
+        assert "(python)" in legacy["summary_line"]
+
+    def test_structure_success_key_present(self, command):
+        from unittest.mock import MagicMock
+
+        analysis_result = MagicMock()
+        analysis_result.file_path = "/test/foo.py"
+        analysis_result.language = "python"
+        analysis_result.line_count = 10
+        analysis_result.elements = []
+        analysis_result.analysis_time = 0.0
+
+        legacy = command._convert_to_legacy_format(analysis_result)
+        assert legacy.get("success") is True

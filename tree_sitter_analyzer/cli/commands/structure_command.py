@@ -5,7 +5,7 @@ Structure Command
 Handles structure analysis functionality with appropriate Japanese output.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ...constants import (
     ELEMENT_TYPE_CLASS,
@@ -89,7 +89,7 @@ class StructureCommand(BaseCommand):
             if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)
         ]
 
-        return {
+        legacy_dict: dict[str, Any] = {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
             "package": (
@@ -166,6 +166,29 @@ class StructureCommand(BaseCommand):
                 "timestamp": time.time(),
             },
         }
+        # r37aa (dogfood): canonical envelope. Third CLI surface (after
+        # ``--advanced`` r37y and ``--summary`` r37z) that was emitting
+        # ``summary_line=None`` / ``verdict=None`` / ``agent_summary=None``
+        # — agents reading the response shape couldn't tell the call
+        # succeeded vs. silently failed.
+        summary_line = (
+            f"{analysis_result.file_path} ({analysis_result.language}) structure: "
+            f"classes={len(classes)} methods={len(methods)} "
+            f"fields={len(fields)} imports={len(imports)} "
+            f"lines={analysis_result.line_count}"
+        )
+        legacy_dict["success"] = True
+        legacy_dict["summary_line"] = summary_line
+        legacy_dict["verdict"] = "INFO"
+        legacy_dict["agent_summary"] = {
+            "summary_line": summary_line,
+            "next_step": (
+                "Use --table for a Markdown breakdown, or extract_code_section "
+                "(MCP) to read specific elements by line range."
+            ),
+            "verdict": "INFO",
+        }
+        return legacy_dict
 
     def _output_text_format(self, structure_dict: dict) -> None:
         """Output structure analysis in human-readable text format."""
