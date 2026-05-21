@@ -9,7 +9,7 @@ Enhanced for LLM-friendly analysis workflow.
 """
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from ...constants import (
     is_element_of_type,
@@ -37,6 +37,11 @@ from .base_tool import (
 
 # JSON schema for tool input validation
 logger = setup_logger(__name__)
+
+# r37bb: batch-mode limits — module-level so the validator + envelope
+# stay in sync (previously a magic 200 literal lived in two places).
+_BATCH_MAX_FILES = 200
+_BATCH_CONCURRENCY = 4
 
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -148,30 +153,40 @@ class AnalyzeScaleTool(BaseMCPTool):
 
     # Main entry point - dispatches to mode-specific handler
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute code scale analysis for single or batch files."""
-        # Issue 1: validate ``mode`` early so unknown values raise instead
-        # of silently no-op'ing. The full validator is heavier (file_paths
-        # / file_path checks), so this only enforces the mode-typo gate.
-        if "mode" in arguments and arguments["mode"] is not None:
-            mode_value = arguments["mode"]
-            if mode_value not in ("single", "batch", "batch_metrics"):
-                raise ValueError(
-                    f"mode={mode_value!r} not supported. AnalyzeScale dispatches "
-                    "on file_paths presence: pass file_paths=[...] for batch, "
-                    "file_path='...' for single."
-                )
+        """Execute code scale analysis for single or batch files.
 
-        # Conditional check
+        r37bb (dogfood): tool flagged this at 118 lines. Split into
+        argument validation + dispatch + single-file pipeline. Behaviour
+        preserved (Issue 1 mode gate, K12 path normalize, O3 mismatch,
+        F12 format echo, M9 verdict — all kept exactly).
+        """
+        self._validate_mode_argument(arguments)
+
         if "file_paths" in arguments and arguments["file_paths"] is not None:
             return await self._execute_metrics_batch(arguments)
 
-        # Conditional check
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
 
+        return await self._execute_single_file(arguments)
+
+    @staticmethod
+    def _validate_mode_argument(arguments: dict[str, Any]) -> None:
+        """Issue 1: reject unknown ``mode`` early instead of silent no-op."""
+        if "mode" not in arguments or arguments["mode"] is None:
+            return
+        mode_value = arguments["mode"]
+        if mode_value not in ("single", "batch", "batch_metrics"):
+            raise ValueError(
+                f"mode={mode_value!r} not supported. AnalyzeScale dispatches "
+                "on file_paths presence: pass file_paths=[...] for batch, "
+                "file_path='...' for single."
+            )
+
+    async def _execute_single_file(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Single-file analysis path — orchestrates the 4 phases linearly."""
         # K12: normalize the echoed file_path so ``./X`` and ``X`` produce
-        # byte-identical responses — confuses downstream dedup/caching/
-        # display otherwise.
+        # byte-identical responses — confuses downstream dedup/caching otherwise.
         file_path = self._normalize_file_path(arguments["file_path"])
         language = arguments.get("language")
         include_details = arguments.get("include_details", False)
@@ -181,90 +196,104 @@ class AnalyzeScaleTool(BaseMCPTool):
         resolved = self.resolve_and_validate_file_path(file_path)
         logger.info(f"Analyzing file: {file_path} (resolved to: {resolved})")
 
-        # Conditional check
         if language:
             language = self.security_validator.sanitize_input(language, max_length=50)
-
-        # Conditional check
         if not Path(resolved).exists():
             raise ValueError(f"Invalid file path: File not found: {file_path}")
 
-        # O3 (round-30 dogfood): strict mismatch gate — refuse
-        # ``language='java'`` on a ``.py`` file with a canonical
-        # validation envelope. Without this analyze_scale silently
-        # produced bogus structural counts.
+        mismatch_response = self._check_language_mismatch(
+            file_path, resolved, language, output_format
+        )
+        if mismatch_response is not None:
+            return mismatch_response
+
+        language = self._resolve_language(resolved, language)
+        logger.info(f"Analyzing code scale for {resolved} (language: {language})")
+
+        try:
+            return await self._build_single_file_response(
+                file_path,
+                resolved,
+                language,
+                include_details,
+                include_guidance,
+                output_format,
+            )
+        except Exception as e:
+            logger.error(f"Error analyzing {file_path}: {e}")
+            raise
+
+    def _check_language_mismatch(
+        self,
+        file_path: str,
+        resolved: str,
+        language: str | None,
+        output_format: str,
+    ) -> dict[str, Any] | None:
+        """O3 dogfood: refuse ``language='java'`` on a ``.py`` file, return envelope."""
         mismatch = detect_language_mismatch(
             resolved,
             language,
             project_root=self.project_root,
         )
-        if mismatch:
-            response = language_mismatch_error_response(
-                tool_name="analyze_scale",
-                file_path=file_path,
-                warning=mismatch,
+        if not mismatch:
+            return None
+        response = language_mismatch_error_response(
+            tool_name="analyze_scale",
+            file_path=file_path,
+            warning=mismatch,
+        )
+        response["output_format"] = output_format
+        response["mode"] = "single"
+        response["format"] = output_format
+        return response
+
+    async def _build_single_file_response(
+        self,
+        file_path: str,
+        resolved: str,
+        language: str,
+        include_details: bool,
+        include_guidance: bool,
+        output_format: str,
+    ) -> dict[str, Any]:
+        """Run the actual metrics+structural pipeline inside the perf monitor."""
+        from ...mcp.utils import get_performance_monitor
+
+        with get_performance_monitor().measure_operation("analyze_code_scale_enhanced"):
+            file_metrics = self._calculate_file_metrics(resolved, language)
+
+            if language == "json":
+                return self._create_json_file_analysis(
+                    resolved, file_metrics, include_guidance, output_format
+                )
+
+            (
+                analysis_result,
+                structural_overview,
+            ) = await self._run_structural_analysis(resolved, language, include_details)
+
+            result = self._build_enhanced_result(
+                file_path,
+                language,
+                file_metrics,
+                analysis_result,
+                structural_overview,
+                include_guidance,
+                include_details,
             )
-            response["output_format"] = output_format
-            response["mode"] = "single"
-            response["format"] = output_format
-            return response
+            # Issue 2 + F12: echo dispatch mode + format aliases.
+            result["mode"] = "single"
+            result["output_format"] = output_format
+            result["format"] = output_format
 
-        language = self._resolve_language(resolved, language)
-        logger.info(f"Analyzing code scale for {resolved} (language: {language})")
+            logger.info(
+                f"Successfully analyzed {file_path}: "
+                f"{file_metrics['total_lines']} lines, "
+                f"~{file_metrics['estimated_tokens']} tokens"
+            )
 
-        # Error handling
-        try:
-            from ...mcp.utils import get_performance_monitor
-
-            with get_performance_monitor().measure_operation(
-                "analyze_code_scale_enhanced"
-            ):
-                file_metrics = self._calculate_file_metrics(resolved, language)
-
-                # Conditional check
-                if language == "json":
-                    return self._create_json_file_analysis(
-                        resolved, file_metrics, include_guidance, output_format
-                    )
-
-                (
-                    analysis_result,
-                    structural_overview,
-                ) = await self._run_structural_analysis(
-                    resolved, language, include_details
-                )
-
-                result = self._build_enhanced_result(
-                    file_path,
-                    language,
-                    file_metrics,
-                    analysis_result,
-                    structural_overview,
-                    include_guidance,
-                    include_details,
-                )
-                # Issue 2: echo dispatch mode + output_format on the
-                # single-file path so callers can audit envelope parity.
-                # F12: ``format`` is kept as a back-compat alias of
-                # ``output_format`` so JSON callers see the same key the
-                # TOON envelope already exposes (round-16b dogfood saw the
-                # JSON path miss ``format`` entirely).
-                result["mode"] = "single"
-                result["output_format"] = output_format
-                result["format"] = output_format
-
-                logger.info(
-                    f"Successfully analyzed {file_path}: "
-                    f"{file_metrics['total_lines']} lines, "
-                    f"~{file_metrics['estimated_tokens']} tokens"
-                )
-
-                return apply_toon_format_to_response(result, output_format)
-        # Language detection with argument override
-
-        except Exception as e:
-            logger.error(f"Error analyzing {file_path}: {e}")
-            raise
+            return apply_toon_format_to_response(result, output_format)
 
     # _resolve_language: implementation
     def _resolve_language(self, resolved: str, language: str | None) -> str:
@@ -358,89 +387,105 @@ class AnalyzeScaleTool(BaseMCPTool):
 
         return result
 
-    # _execute_metrics_batch: implementation
     async def _execute_metrics_batch(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute batch metrics computation for multiple files."""
+        """Execute batch metrics computation for multiple files.
+
+        r37bb (dogfood): split into validation + parallel scatter +
+        envelope assembly. Behaviour preserved (Issue 2/3 echo, F12
+        format alias, M9 verdict, max_files=200, concurrency=4).
+        """
         output_format = arguments.get("output_format", "toon")
         metrics_only = bool(arguments.get("metrics_only", False))
         file_paths = arguments.get("file_paths")
 
-        # Conditional check
+        self._validate_batch_arguments(metrics_only, file_paths)
+        # After validation we know ``file_paths`` is a non-empty ``list[str]``.
+        # Use ``cast`` (typing-only, no runtime assert) so we don't trip the
+        # ``assert_in_prod`` smell — production code that runs with ``-O``
+        # would strip a real ``assert`` and break mypy's narrowing here.
+        file_paths_list = cast("list[str]", file_paths)
+
+        per_file = await self._scatter_batch_metrics(file_paths_list)
+        return self._assemble_batch_response(
+            per_file, file_paths_list, output_format, metrics_only
+        )
+
+    @staticmethod
+    def _validate_batch_arguments(metrics_only: bool, file_paths: object) -> None:
+        """Reject malformed batch inputs early with a precise message."""
         if not metrics_only:
             raise ValueError(
                 "metrics_only must be true when using file_paths batch mode"
             )
-        # Conditional check
         if not isinstance(file_paths, list) or not file_paths:
             raise ValueError("file_paths must be a non-empty list of strings")
-
-        max_files = 200
-        # Conditional check
+        max_files = _BATCH_MAX_FILES
         if len(file_paths) > max_files:
             raise ValueError(
                 f"Too many files: {len(file_paths)} > max_files={max_files}"
             )
 
+    async def _scatter_batch_metrics(
+        self, file_paths: list[str]
+    ) -> list[dict[str, Any]]:
+        """Fan out per-file analysis with a 4-way semaphore — order preserved."""
         import asyncio
 
-        sem = asyncio.Semaphore(4)
+        sem = asyncio.Semaphore(_BATCH_CONCURRENCY)
+        return list(
+            await asyncio.gather(
+                *[self._analyze_one_in_batch(fp, sem) for fp in file_paths]
+            )
+        )
 
-        # _one: implementation
-        async def _one(fp: str) -> dict[str, Any]:
-            """Analyze a single file in batch mode."""
-            async with sem:
-                # Conditional check
-                if not isinstance(fp, str) or not fp.strip():
-                    return {
-                        "file_path": fp,
-                        "error": "file_path must be a non-empty string",
-                    }
-                # Error handling
-                try:
-                    resolved = self.resolve_and_validate_file_path(fp)
-                except ValueError as e:
-                    return {
-                        "file_path": fp,
-                        "error": safe_error_message(e, self.project_root),
-                    }
-
-                # Conditional check
-                if not Path(resolved).exists():
-                    return {
-                        "file_path": fp,
-                        "resolved_path": resolved,
-                        "error": "Invalid file path: file does not exist",
-                    }
-
-                lang: str | None = detect_language_from_file(
-                    resolved, project_root=self.project_root
-                )
-                # Conditional check
-                if lang == "unknown":
-                    lang = None
-
-                metrics = self._calculate_file_metrics(resolved, lang)
+    async def _analyze_one_in_batch(self, fp: str, sem: Any) -> dict[str, Any]:
+        """One file slot of the scatter: validate → resolve → metrics."""
+        async with sem:
+            if not isinstance(fp, str) or not fp.strip():
+                return {
+                    "file_path": fp,
+                    "error": "file_path must be a non-empty string",
+                }
+            try:
+                resolved = self.resolve_and_validate_file_path(fp)
+            except ValueError as e:
+                return {
+                    "file_path": fp,
+                    "error": safe_error_message(e, self.project_root),
+                }
+            if not Path(resolved).exists():
                 return {
                     "file_path": fp,
                     "resolved_path": resolved,
-                    "language": lang or "unknown",
-                    "metrics": metrics,
+                    "error": "Invalid file path: file does not exist",
                 }
 
-        per_file = await asyncio.gather(*[_one(fp) for fp in file_paths])
+            lang: str | None = detect_language_from_file(
+                resolved, project_root=self.project_root
+            )
+            if lang == "unknown":
+                lang = None
+            metrics = self._calculate_file_metrics(resolved, lang)
+            return {
+                "file_path": fp,
+                "resolved_path": resolved,
+                "language": lang or "unknown",
+                "metrics": metrics,
+            }
+
+    def _assemble_batch_response(
+        self,
+        per_file: list[dict[str, Any]],
+        file_paths: list[str],
+        output_format: str,
+        metrics_only: bool,
+    ) -> dict[str, Any]:
+        """Compose the canonical batch envelope + apply TOON formatting."""
         errors = [x for x in per_file if "error" in x]
         ok = [x for x in per_file if "error" not in x]
-
-        # One-line headline for batch mode — surface the success ratio at a glance.
         summary_line = (
             f"batch metrics: {len(ok)}/{len(file_paths)} files ok, {len(errors)} errors"
         )
-        # Issue 2: echo ``mode`` + ``output_format`` so agents can audit
-        # which dispatch path ran without re-reading their own call site.
-        # Issue 3: ``summary_line`` lives only on ``agent_summary`` in batch
-        # mode — the previous top-level mirror duplicated tokens for no win.
-        # F12: keep ``format`` as a back-compat alias of ``output_format``
-        # so the JSON and TOON paths expose the same key everywhere.
         response: dict[str, Any] = {
             "success": len(ok) > 0,
             "mode": "batch_metrics" if metrics_only else "batch",
@@ -449,19 +494,19 @@ class AnalyzeScaleTool(BaseMCPTool):
             "count_files": len(file_paths),
             "count_ok": len(ok),
             "count_errors": len(errors),
-            "limits": {"max_files": max_files, "concurrency": 4},
+            "limits": {
+                "max_files": _BATCH_MAX_FILES,
+                "concurrency": _BATCH_CONCURRENCY,
+            },
             "results": per_file,
-            # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
-            "verdict": "INFO",
+            "verdict": "INFO",  # r37x: top-level verdict mirror
             "agent_summary": {
                 "summary_line": summary_line,
                 "next_step": (
-                    "analyze_code_structure on the highest-line files for deeper inspection"
+                    "analyze_code_structure on the highest-line files for "
+                    "deeper inspection"
                 ),
-                # M9: analyze_scale is a measurement tool — emit ``INFO``
-                # so every dispatch mode (single + batch) exposes the
-                # same ``verdict`` key.
-                "verdict": "INFO",
+                "verdict": "INFO",  # M9: measurement tool emits INFO
             },
         }
         return apply_toon_format_to_response(response, output_format)
