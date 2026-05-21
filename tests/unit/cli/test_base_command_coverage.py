@@ -73,15 +73,31 @@ class TestDetectLanguage:
             result = cmd.detect_language()
             assert result is None
 
-    def test_unsupported_language_java_fallback(self, cmd):
-        """Non-java unsupported language falls back to java (lines 117-122)"""
+    def test_unsupported_language_returns_none_and_emits_envelope(self, cmd, capsys):
+        """Q2 (round-33): non-java unsupported language no longer silently
+        falls back to Java. ``detect_language`` returns ``None`` and emits
+        a canonical error envelope on stdout (when ``output_format=json``)
+        so callers can ``json.load`` the result.
+        """
         cmd.args.language = "cobol"
         cmd.args.table = False
         cmd.args.quiet = False
+        cmd.args.output_format = "json"
 
         result = cmd.detect_language()
-        # COBOL is not a supported language, should fallback to java
-        assert result == "java"
+        # No more silent Java fallback.
+        assert result is None
+
+        captured = capsys.readouterr()
+        # The envelope is the only thing on stdout — must parse as JSON.
+        import json as _json
+
+        envelope = _json.loads(captured.out.strip())
+        assert envelope["success"] is False
+        assert envelope["error_type"] == "validation"
+        assert envelope["agent_summary"]["verdict"] == "ERROR"
+        assert "cobol" in envelope["error"].lower()
+        assert "cobol" in envelope["summary_line"].lower()
 
 
 class TestExecute:

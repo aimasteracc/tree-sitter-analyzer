@@ -415,14 +415,22 @@ class TestCLIOutputFormatProperties:
         captured = capsys.readouterr()
 
         if quiet:
-            # Property: Quiet mode should suppress info messages
+            # Property: Quiet mode should suppress info messages on both streams.
             assert "Test info message" not in captured.out, (
-                "Quiet mode should suppress info messages"
+                "Quiet mode should suppress info messages on stdout"
+            )
+            assert "Test info message" not in captured.err, (
+                "Quiet mode should suppress info messages on stderr"
             )
         else:
-            # Property: Non-quiet mode should show info messages
-            assert "Test info message" in captured.out, (
-                "Non-quiet mode should show info messages"
+            # Q2 (round-33): info goes to stderr to keep stdout clean
+            # for JSON/TOON payloads.
+            assert captured.out == "", (
+                "info() must never write to stdout — that channel "
+                "is reserved for machine-readable JSON/TOON data."
+            )
+            assert "Test info message" in captured.err, (
+                "Non-quiet mode should show info messages on stderr"
             )
 
     @PROPERTY_SETTINGS

@@ -1,5 +1,6 @@
 """Result-shaping helpers for the public API facade."""
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -19,10 +20,14 @@ _OPTIONAL_ELEM_FIELDS = [
     "complexity_score",
     "superclass",
     "class_type",
+    "visibility",
+    "modifiers",
 ]
 
 
-def element_to_dict(elem: Any, all_elements: list[Any] | None = None) -> dict[str, Any]:
+def element_to_dict(
+    elem: Any, all_elements: Sequence[Any] | None = None
+) -> dict[str, Any]:
     """Convert an analysis element to the stable API dict representation."""
     result: dict[str, Any] = {
         "name": elem.name,
@@ -42,7 +47,7 @@ def element_to_dict(elem: Any, all_elements: list[Any] | None = None) -> dict[st
     return result
 
 
-def find_class_name(elem: Any, elements: list[Any]) -> str | None:
+def find_class_name(elem: Any, elements: Sequence[Any]) -> str | None:
     """Find the containing class name for a method element."""
     for other in elements:
         if (

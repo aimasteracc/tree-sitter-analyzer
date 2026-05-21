@@ -7,6 +7,7 @@ Handles advanced analysis functionality.
 
 from typing import TYPE_CHECKING
 
+from ..._api_result_helpers import element_to_dict
 from ...constants import (
     ELEMENT_TYPE_CLASS,
     ELEMENT_TYPE_FUNCTION,
@@ -93,26 +94,32 @@ class AdvancedCommand(BaseCommand):
             total_complexity / len(complexity_scores) if complexity_scores else 0
         )
 
-        result_dict = {
+        elements_payload: list[dict[str, object]] = []
+        for element in analysis_result.elements:
+            # Q1 (round-33 dogfood): use the canonical helper instead of
+            # hand-rolling 9 keys. The helper iterates the documented
+            # ``_OPTIONAL_ELEM_FIELDS`` list, so plugin-populated values
+            # like ``is_async``, ``is_static``, ``is_constructor``,
+            # ``is_method``, ``superclass``, ``class_type``,
+            # ``module_path``, ``is_constant`` reach the JSON output
+            # instead of being silently stripped.
+            elem_dict = element_to_dict(element, analysis_result.elements)
+            # Preserve the canonical ``type`` (lowercased class name) from
+            # the helper, but also preserve the legacy element_type used
+            # by older consumers — they agree for normal elements.
+            elem_dict["type"] = get_element_type(element)
+            # Back-compat shim: CLI historically exposed ``complexity``
+            # as the element-level shortcut for ``complexity_score``.
+            elem_dict["complexity"] = elem_dict.get("complexity_score")
+            elements_payload.append(elem_dict)
+
+        result_dict: dict[str, object] = {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
             "line_count": analysis_result.line_count,
             "element_count": len(analysis_result.elements),
             "node_count": analysis_result.node_count,
-            "elements": [
-                {
-                    "name": getattr(element, "name", str(element)),
-                    "type": get_element_type(element),
-                    "start_line": getattr(element, "start_line", 0),
-                    "end_line": getattr(element, "end_line", 0),
-                    "visibility": getattr(element, "visibility", None),
-                    "modifiers": getattr(element, "modifiers", []),
-                    "parameters": getattr(element, "parameters", []),
-                    "return_type": getattr(element, "return_type", None),
-                    "complexity": getattr(element, "complexity_score", None),
-                }
-                for element in analysis_result.elements
-            ],
+            "elements": elements_payload,
             "complexity": {
                 "total": total_complexity,
                 "average": round(avg_complexity, 2),

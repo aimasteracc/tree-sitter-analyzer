@@ -548,13 +548,16 @@ class TestOutputManagerCoverage:
         assert captured.out == ""
 
     def test_info_not_quiet(self, capsys):
-        """Test info message when not quiet."""
+        """Test info message when not quiet — goes to stderr (Q2)."""
         from tree_sitter_analyzer.output_manager import OutputManager
 
         manager = OutputManager(quiet=False)
         manager.info("Test message")
         captured = capsys.readouterr()
-        assert "Test message" in captured.out
+        # Q2 (round-33): info must NOT pollute stdout — that's reserved
+        # for the JSON/TOON data payload.
+        assert captured.out == ""
+        assert "Test message" in captured.err
 
     def test_data_json(self, capsys):
         """Test data output in JSON format."""

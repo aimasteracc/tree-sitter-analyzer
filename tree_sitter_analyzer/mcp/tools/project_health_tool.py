@@ -425,6 +425,14 @@ def _build_project_agent_summary(
         "verdict": verdict,
         "risk": risk,
         "total_files": total_files,
+        # Q5 (round-33 dogfood): ``agent_summary`` is the canonical
+        # self-contained envelope for consumers that don't want to
+        # parse ``summary_line``. Expose ``file_count`` as the
+        # cross-tool alias for ``total_files`` and inline the full
+        # grade distribution so callers don't have to fall back to
+        # string-parsing the headline.
+        "file_count": total_files,
+        "grade_distribution": dict(grade_distribution),
         "weakest_dimension": weakest_dim,
         "d_count": grade_distribution.get("D", 0),
         "f_count": grade_distribution.get("F", 0),

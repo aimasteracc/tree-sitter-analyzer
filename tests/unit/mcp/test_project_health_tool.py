@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import Counter
+from pathlib import Path
 from types import SimpleNamespace
 
 from tree_sitter_analyzer.mcp.tools import project_health_tool
@@ -368,3 +369,173 @@ class TestF9DescriptionAndBudget:
         assert _estimate_seconds(2500) <= _estimate_seconds(5000)
         # 4k-file repo (round-16b case) should land in the 5min+ bucket.
         assert _estimate_seconds(4500) >= 300
+
+
+class TestQ4ProjectHealthExcludesNonCode:
+    """Round-33 Q4: project_health was inflating total_files ~3x by
+    grading ``.md`` / ``.yaml`` / ``.html`` golden_masters as code. The
+    walker must pre-filter to extensions that map to a registered
+    language plugin so the docs/fixtures bucket never reaches the
+    scorer."""
+
+    def test_source_extension_set_is_code_only(self) -> None:
+        """``PROJECT_HEALTH_SOURCE_EXTS`` must be a strict subset of the
+        extensions that ``_EXT_TO_LANG`` actually maps to a language —
+        otherwise the scorer falls back to ``language=None`` and grades
+        documentation as if it were code."""
+        from tree_sitter_analyzer.health_scorer import (
+            _EXT_TO_LANG,
+            PROJECT_HEALTH_SOURCE_EXTS,
+        )
+
+        unknown = PROJECT_HEALTH_SOURCE_EXTS - set(_EXT_TO_LANG.keys())
+        assert unknown == set(), (
+            f"project_health would score files with no language plugin: "
+            f"{sorted(unknown)}"
+        )
+        # Spot-check: the doc/markup extensions that round-33 surfaced as
+        # offenders must not be in the scan set.
+        for ext in (".md", ".yaml", ".yml", ".html", ".css", ".sql", ".txt"):
+            assert ext not in PROJECT_HEALTH_SOURCE_EXTS, (
+                f"{ext} is documentation/markup, not code — must not be scored"
+            )
+
+    def test_walker_skips_markdown_in_project_scan(self, tmp_path) -> None:
+        """Even when a ``.md`` file sits next to source code, the project
+        walker must not enumerate it. The pre-filter happens before
+        score_file is called."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        (tmp_path / "main.py").write_text("def f():\n    return 1\n")
+        (tmp_path / "README.md").write_text("# docs\n\nsome paragraph\n")
+        (tmp_path / "config.yaml").write_text("key: value\n")
+        (tmp_path / "page.html").write_text("<html><body>hi</body></html>")
+
+        results = HealthScorer().score_project(str(tmp_path))
+        names = {Path(score.file_path).name for score in results}
+
+        assert "main.py" in names
+        assert "README.md" not in names
+        assert "config.yaml" not in names
+        assert "page.html" not in names
+
+
+class TestQ4ProjectHealthExcludesGoldenMasters:
+    """Round-33 Q4: ``tests/golden_masters/**`` holds snapshots of
+    expected MCP output. Even when an ``.md`` golden master sneaks back
+    in via a future extension change, the walker must drop the entire
+    fixture tree so it never leaks into the C-grade bucket."""
+
+    def test_walker_skips_golden_masters_directory(self, tmp_path) -> None:
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        # Real source file that should be scored.
+        (tmp_path / "main.py").write_text("def f():\n    return 1\n")
+
+        # Golden masters that must NOT be enumerated.
+        gm = tmp_path / "tests" / "golden_masters"
+        gm.mkdir(parents=True)
+        (gm / "snapshot.py").write_text("x = 1\n")  # even .py under gm
+        (gm / "java_bigservice_full.py").write_text(
+            "def something():\n    return None\n"
+        )
+
+        results = HealthScorer().score_project(str(tmp_path))
+        names = {Path(score.file_path).name for score in results}
+
+        assert "main.py" in names
+        assert "snapshot.py" not in names
+        assert "java_bigservice_full.py" not in names
+
+    def test_walker_skips_fixture_and_test_data_directories(self, tmp_path) -> None:
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        (tmp_path / "main.py").write_text("def f():\n    return 1\n")
+        for sub in ("fixtures", "test_data", "golden"):
+            d = tmp_path / "tests" / sub
+            d.mkdir(parents=True)
+            (d / "sample.py").write_text("x = 1\n")
+
+        results = HealthScorer().score_project(str(tmp_path))
+        names = {Path(score.file_path).name for score in results}
+
+        # Only the project source survives the walker filter.
+        assert names == {"main.py"}
+
+    def test_existing_fixture_self_scan_still_works(self) -> None:
+        """When the scanned root *is* a fixture sub-tree, the walker
+        must compute the exclusion relative to the scanned root so the
+        fixture-self-test in ``test_health_scorer.py:test_score_project``
+        keeps working."""
+        from tree_sitter_analyzer.health_scorer import HealthScorer
+
+        fixture = (
+            Path(__file__).parent.parent.parent
+            / "fixtures"
+            / "project_graph"
+            / "health_project"
+        )
+        results = HealthScorer().score_project(str(fixture))
+        names = {Path(score.file_path).name for score in results}
+        # The two known fixture files must still show up.
+        assert "healthy.py" in names
+        assert "unhealthy.py" in names
+
+
+class TestQ5ProjectHealthAgentSummaryFileCount:
+    """Round-33 Q5: ``agent_summary`` must be self-contained — consumers
+    parsing ``agent_summary`` fields shouldn't have to fall back to
+    string-parsing the headline ``summary_line`` to recover the file
+    count."""
+
+    def test_agent_summary_exposes_file_count(self) -> None:
+        summary = _build_project_agent_summary(
+            root="/repo",
+            total_files=42,
+            grade_distribution={"A": 10, "B": 15, "C": 12, "D": 4, "F": 1},
+            weakest_dim="complexity",
+            agent_backlog=[],
+        )
+
+        assert summary["file_count"] == 42
+        # ``total_files`` stays as the legacy key — file_count is the
+        # cross-tool alias.
+        assert summary["total_files"] == 42
+
+    def test_agent_summary_exposes_grade_distribution(self) -> None:
+        summary = _build_project_agent_summary(
+            root="/repo",
+            total_files=42,
+            grade_distribution={"A": 10, "B": 15, "C": 12, "D": 4, "F": 1},
+            weakest_dim="complexity",
+            agent_backlog=[],
+        )
+
+        assert summary["grade_distribution"] == {
+            "A": 10,
+            "B": 15,
+            "C": 12,
+            "D": 4,
+            "F": 1,
+        }
+
+    def test_file_count_matches_top_level_total_files(self) -> None:
+        """The two file-count fields (top-level ``total_files`` and
+        ``agent_summary.file_count``) must always agree, even on a real
+        end-to-end build_result call."""
+        scores = [
+            _score("src/a.py", "A", 95.0),
+            _score("src/b.py", "B", 85.0),
+            _score("src/c.py", "C", 72.0),
+            _score("src/d.py", "D", 55.0, {"complexity": 30.0}),
+        ]
+
+        result = _build_project_health_result(
+            root="/repo",
+            all_scores=scores,
+            min_grade="D",
+            max_files=10,
+        )
+
+        assert result["agent_summary"]["file_count"] == result["total_files"]
+        assert result["agent_summary"]["file_count"] == 4

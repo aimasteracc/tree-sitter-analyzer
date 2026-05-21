@@ -38,6 +38,12 @@ DIMENSION_WEIGHTS = {
     "git_hotspot": 10,
 }
 
+# Q4 (round-33 dogfood): keep PROJECT_HEALTH_SOURCE_EXTS narrowed to
+# extensions that map to a real language in ``_EXT_TO_LANG`` further down
+# this module. Markdown / YAML / HTML / CSS / SQL have no language plugin
+# wired into the scorer — including them inflates total_files by ~3x and
+# floods the C-grade bucket with golden-master docs that don't represent
+# the project's code health.
 PROJECT_HEALTH_SOURCE_EXTS = {
     ".py",
     ".java",
@@ -57,12 +63,6 @@ PROJECT_HEALTH_SOURCE_EXTS = {
     ".cc",
     ".cxx",
     ".hpp",
-    ".sql",
-    ".html",
-    ".css",
-    ".yaml",
-    ".yml",
-    ".md",
 }
 
 # Thresholds for scoring
@@ -369,6 +369,13 @@ class HealthScorer:
             "git_hotspot": score_git_hotspot(file_path),
         }
 
+    # Q4 (round-33 dogfood): ``golden_masters`` is a snapshot of expected
+    # MCP output stored under tests/ — it is not source code and must be
+    # skipped by the walker. ``fixtures`` and ``test_data`` are tested
+    # sample trees; excluding them at the walker level keeps project_health
+    # focused on the actual codebase. The exclusion is matched against the
+    # path *relative to the scanned root* so the existing test that scores
+    # ``tests/fixtures/project_graph/health_project`` directly still works.
     _EXCLUDE_DIRS = {
         "node_modules",
         ".git",
@@ -389,6 +396,10 @@ class HealthScorer:
         ".idea",
         ".vscode",
         ".claude",
+        "golden_masters",
+        "golden",
+        "fixtures",
+        "test_data",
     }
 
     def score_project(self, project_root: str) -> list[HealthScore]:
@@ -405,7 +416,7 @@ class HealthScorer:
         results: list[HealthScore] = []
         for ext in self.source_extensions:
             for f in root.rglob(f"*{ext}"):
-                if any(part in self._EXCLUDE_DIRS for part in f.parts):
+                if self._is_excluded(f, root):
                     continue
                 try:
                     results.append(self.score_file(str(f)))
@@ -414,6 +425,22 @@ class HealthScorer:
 
         results.sort(key=lambda r: r.total, reverse=True)
         return results
+
+    def _is_excluded(self, file_path: Path, root: Path) -> bool:
+        """Return True when the file lives under an excluded directory.
+
+        The exclusion is matched against the path *relative to the scanned
+        root* so a unit test that explicitly scores a fixture sub-tree
+        (e.g. ``score_project(tests/fixtures/project_graph/health_project)``)
+        is not broken by the broader project-level filter. When the file
+        is not under ``root`` (defensive fallback) we fall back to absolute
+        parts.
+        """
+        try:
+            rel_parts = file_path.relative_to(root).parts
+        except ValueError:
+            rel_parts = file_path.parts
+        return any(part in self._EXCLUDE_DIRS for part in rel_parts)
 
     # ---- Dimension scoring helpers ----
 

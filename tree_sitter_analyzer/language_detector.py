@@ -254,10 +254,36 @@ class LanguageDetector:
 
     def get_supported_extensions(self) -> list[str]:
         """
-        Get list of supported extensions
+        Get list of supported file extensions.
+
+        Only returns extensions whose mapped language has a real tree-sitter
+        parser available (i.e. appears in :attr:`SUPPORTED_LANGUAGES`). Many
+        extensions in :attr:`EXTENSION_MAPPING` (``.scala``, ``.lua``, ``.hs``,
+        ``.dart``, ``.elm`` etc.) resolve to languages that do not currently
+        have a registered parser, so listing them would be advertising support
+        that the analyzer cannot deliver.
 
         Returns:
-            List of extensions
+            Sorted list of supported extensions (e.g. ``[".c", ".cpp", ...]``).
+        """
+        return sorted(
+            ext
+            for ext, language in self.EXTENSION_MAPPING.items()
+            if language in self.SUPPORTED_LANGUAGES
+        )
+
+    def get_all_known_extensions(self) -> list[str]:
+        """
+        Get every extension recognised by the detector, even if its language
+        has no registered parser.
+
+        This is the raw :attr:`EXTENSION_MAPPING` keys and is useful for
+        diagnostics or admins inspecting future-work plugins; it is NOT what
+        ``--show-supported-extensions`` advertises to users.
+
+        Returns:
+            Sorted list of all known extensions, including ones whose language
+            currently lacks parser support.
         """
         return sorted(self.EXTENSION_MAPPING.keys())
 

@@ -37,15 +37,22 @@ class TestOutputManagerInit:
 class TestOutputManagerInfo:
     """Tests for info/warning/success/error methods."""
 
-    def test_info_prints_to_stdout(self, capsys):
+    def test_info_prints_to_stderr(self, capsys):
+        """Q2 (round-33): ``info`` is diagnostic, must NOT pollute stdout
+        because callers pipe stdout into ``json.load`` / TOON parsers.
+        Matches ``warning``/``error`` semantics."""
         om = OutputManager()
         om.info("hello")
-        assert capsys.readouterr().out.strip() == "hello"
+        captured = capsys.readouterr()
+        assert captured.out == "", f"stdout must stay clean, got {captured.out!r}"
+        assert captured.err.strip() == "hello"
 
     def test_info_suppressed_in_quiet(self, capsys):
         om = OutputManager(quiet=True)
         om.info("hello")
-        assert capsys.readouterr().out == ""
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
 
     def test_error_always_prints(self, capsys):
         om = OutputManager(quiet=True)
@@ -63,10 +70,14 @@ class TestOutputManagerInfo:
         err = capsys.readouterr().err
         assert err == ""
 
-    def test_success_prints_checkmark(self, capsys):
+    def test_success_prints_checkmark_to_stderr(self, capsys):
+        """Q2 (round-33): ``success`` is diagnostic and must go to stderr,
+        matching ``info``/``warning``/``error``."""
         om = OutputManager()
         om.success("done")
-        assert "✓" in capsys.readouterr().out
+        captured = capsys.readouterr()
+        assert captured.out == "", f"stdout must stay clean, got {captured.out!r}"
+        assert "✓" in captured.err
 
 
 class TestOutputManagerData:
@@ -216,9 +227,13 @@ class TestGlobalFunctions:
         set_output_mode(quiet=False, json_output=False)
 
     def test_output_info_delegates(self, capsys):
+        """Q2 (round-33): convenience wrapper inherits the stderr
+        contract — stdout must stay clean for downstream JSON parsing."""
         set_output_mode(quiet=False, json_output=False)
         output_info("test message")
-        assert "test message" in capsys.readouterr().out
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "test message" in captured.err
 
     def test_output_json_delegates(self, capsys):
         output_json({"key": "val"})

@@ -9194,3 +9194,304 @@ class TestP1LineCountParityAcrossPlugins:
             f"!= MCP line_count={mcp_line_count!r}. Cross-tool numeric "
             f"disagreement breaks downstream consumers."
         )
+
+
+# ============================================================================
+# Q2 (round-33 critical) — CLI ``--advanced`` no longer silently rewrites the
+# language to ``java`` when the real language isn't supported, and no longer
+# pollutes ``stdout`` with the diagnostic INFO line that broke ``json.load``.
+# ============================================================================
+
+
+def _run_cli_advanced(
+    file_path: Path, project_root: Path, output_format: str = "json"
+) -> tuple[int, str, str]:
+    """Invoke the CLI ``--advanced`` path in-process and return
+    ``(exit_code, stdout, stderr)``. We can't use ``subprocess.run`` here
+    without a slow ``uv`` boot, so we monkey-patch ``sys.argv`` and capture
+    streams instead — matching how other CLI-contract tests run."""
+    import contextlib
+    import io
+    import sys
+
+    from tree_sitter_analyzer.cli_main import main
+
+    argv_backup = sys.argv[:]
+    sys.argv = [
+        "tree-sitter-analyzer",
+        str(file_path),
+        "--project-root",
+        str(project_root),
+        "--advanced",
+        "--format",
+        output_format,
+    ]
+    out_buf = io.StringIO()
+    err_buf = io.StringIO()
+    exit_code = 0
+    try:
+        with (
+            contextlib.redirect_stdout(out_buf),
+            contextlib.redirect_stderr(err_buf),
+        ):
+            try:
+                rc = main()
+                exit_code = rc if isinstance(rc, int) else 0
+            except SystemExit as exc:
+                exit_code = int(exc.code) if isinstance(exc.code, int) else 1
+    finally:
+        sys.argv = argv_backup
+    return exit_code, out_buf.getvalue(), err_buf.getvalue()
+
+
+class TestQ2UnsupportedLanguageErrorEnvelope:
+    """Q2 (round-33 critical): ``.lua`` with ``--advanced --format json``
+    used to print:
+
+        INFO: Trying with Java analysis engine. May not work correctly.   <- stdout, breaks json.load
+        {"file_path":"/tmp/q2.lua","language":"java",...,"success":true}  <- silent misclassification
+
+    Two anti-patterns at once. The fix is twofold: (a) ``info()`` writes
+    to ``stderr`` so ``json.load(stdout)`` works; (b) unsupported
+    languages emit the canonical error envelope (``success=False``,
+    ``error_type='validation'``, ``agent_summary.verdict='ERROR'``)
+    matching the MCP ``UniversalAnalyzeTool`` behavior at
+    ``mcp/tools/universal_analyze_tool.py:226-227``.
+    """
+
+    def test_lua_returns_canonical_error_envelope(self, tmp_path: Path) -> None:
+        lua_file = tmp_path / "sample.lua"
+        lua_file.write_text("x = 1\n", encoding="utf-8")
+
+        exit_code, stdout, _stderr = _run_cli_advanced(lua_file, tmp_path, "json")
+
+        # 1. stdout MUST be parseable as JSON. The bug was that the
+        #    "INFO: Trying with Java..." line got prepended, breaking
+        #    every downstream ``json.loads(subprocess.check_output(...))``.
+        import json as _json
+
+        envelope = _json.loads(stdout.strip())
+
+        # 2. Canonical error envelope shape.
+        assert envelope["success"] is False, (
+            "Q2: unsupported language must NOT report success=True — "
+            "that hides the misclassification."
+        )
+        assert envelope["error_type"] == "validation"
+        assert envelope["agent_summary"]["verdict"] == "ERROR"
+        assert "lua" in envelope["error"].lower()
+        assert "lua" in envelope["summary_line"].lower()
+        # 3. file_path echoed so agents can correlate.
+        assert envelope["file_path"].endswith("sample.lua")
+        # 4. Non-zero exit code.
+        assert exit_code == 1, (
+            f"Q2: unsupported language must exit non-zero (got {exit_code}) "
+            "so shell pipelines fail loudly."
+        )
+
+    def test_stdout_carries_no_diagnostic_info_lines(self, tmp_path: Path) -> None:
+        """The original bug was diagnostic ``INFO: ...`` lines landing on
+        stdout *before* the JSON payload, so ``json.loads(stdout)`` blew
+        up with ``Extra data`` errors. After the fix, stdout contains
+        exactly one JSON object — nothing else."""
+        lua_file = tmp_path / "sample.lua"
+        lua_file.write_text("x = 1\n", encoding="utf-8")
+
+        _, stdout, _ = _run_cli_advanced(lua_file, tmp_path, "json")
+
+        # No leading 'INFO:' marker.
+        assert "INFO:" not in stdout, (
+            f"Q2: ``INFO:`` lines must go to stderr, not stdout. "
+            f"Got stdout starting with: {stdout[:200]!r}"
+        )
+        # stdout parses as a single JSON object — not "json + garbage".
+        import json as _json
+
+        # Round-trip: parse and re-serialise should produce the same key set.
+        envelope = _json.loads(stdout.strip())
+        assert isinstance(envelope, dict)
+
+    def test_supported_language_still_succeeds(self, tmp_path: Path) -> None:
+        """Negative-space check: the strict-unsupported-language path must
+        NOT regress the happy path. A normal ``.py`` file still analyses."""
+        py_file = tmp_path / "sample.py"
+        py_file.write_text("def f(): pass\n", encoding="utf-8")
+
+        exit_code, stdout, _ = _run_cli_advanced(py_file, tmp_path, "json")
+
+        import json as _json
+
+        data = _json.loads(stdout.strip())
+        assert data["success"] is True
+        assert data["language"] == "python"
+        assert exit_code == 0
+
+
+class TestQ2OutputManagerInfoToStderr:
+    """Q2 sub-test (round-33): ``OutputManager.info()`` must keep stdout
+    clean — every CLI flow that emits JSON or TOON depends on this.
+    """
+
+    def test_info_writes_to_stderr_not_stdout(self, capsys) -> None:
+        from tree_sitter_analyzer.output_manager import OutputManager
+
+        manager = OutputManager()
+        manager.info("diagnostic — must not pollute stdout")
+
+        captured = capsys.readouterr()
+        assert captured.out == "", (
+            "Q2: info() leak to stdout breaks downstream json.load(). "
+            f"Got stdout={captured.out!r}"
+        )
+        assert "diagnostic" in captured.err
+
+    def test_success_writes_to_stderr_not_stdout(self, capsys) -> None:
+        from tree_sitter_analyzer.output_manager import OutputManager
+
+        manager = OutputManager()
+        manager.success("done")
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "✓" in captured.err
+        assert "done" in captured.err
+
+    def test_quiet_mode_suppresses_info_entirely(self, capsys) -> None:
+        from tree_sitter_analyzer.output_manager import OutputManager
+
+        manager = OutputManager(quiet=True)
+        manager.info("should be silent")
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+
+# ============================================================================
+# Q1 (round-33 major) — plugin-populated fields like ``is_async``,
+# ``is_static``, ``is_method``, ``is_constructor``, ``module_path``,
+# ``superclass``, ``class_type``, ``is_constant`` are now exposed in the
+# CLI ``--advanced --format json`` output. The hand-rolled dict in
+# ``advanced_command.py`` was stripping them; switching to the canonical
+# ``element_to_dict`` helper from ``_api_result_helpers.py`` fixes it.
+# ============================================================================
+
+
+class TestQ1AsyncFieldPreserved:
+    """Async-ness is the canonical example, but the bug class is general
+    (any plugin-populated optional field was being dropped). Parametrise
+    across Python / JavaScript / TypeScript / Rust so we cover the four
+    plugin call-paths that set ``is_async``.
+    """
+
+    @staticmethod
+    def _extract_function_element(tmp_path: Path, file_name: str, content: str) -> dict:
+        """Run the CLI ``--advanced`` path and return the first ``function``
+        element from the parsed JSON output. Skips imports/classes."""
+        sample = tmp_path / file_name
+        sample.write_text(content, encoding="utf-8")
+        _, stdout, _ = _run_cli_advanced(sample, tmp_path, "json")
+
+        import json as _json
+
+        data = _json.loads(stdout.strip())
+        assert data["success"] is True, f"analysis failed: {data}"
+        functions = [el for el in data["elements"] if el.get("type") == "function"]
+        assert functions, (
+            f"Q1: expected at least one function element, got "
+            f"types={sorted({el.get('type') for el in data['elements']})}"
+        )
+        return functions[0]
+
+    def test_python_async_function_has_is_async_true(self, tmp_path: Path) -> None:
+        elem = self._extract_function_element(
+            tmp_path, "q1.py", "async def fetch(): pass\n"
+        )
+        assert "is_async" in elem, (
+            "Q1: async-ness must reach the CLI JSON output. Element keys "
+            f"received: {sorted(elem.keys())}"
+        )
+        assert elem["is_async"] is True
+
+    def test_python_sync_function_has_is_async_false(self, tmp_path: Path) -> None:
+        elem = self._extract_function_element(tmp_path, "q1.py", "def fetch(): pass\n")
+        assert "is_async" in elem
+        assert elem["is_async"] is False
+
+    def test_javascript_async_function_has_is_async_true(self, tmp_path: Path) -> None:
+        elem = self._extract_function_element(
+            tmp_path, "q1.js", "async function fetch() { return 1; }\n"
+        )
+        assert "is_async" in elem
+        assert elem["is_async"] is True
+
+    def test_javascript_sync_function_has_is_async_false(self, tmp_path: Path) -> None:
+        elem = self._extract_function_element(
+            tmp_path, "q1.js", "function fetch() { return 1; }\n"
+        )
+        assert "is_async" in elem
+        assert elem["is_async"] is False
+
+    def test_typescript_async_function_has_is_async_true(self, tmp_path: Path) -> None:
+        elem = self._extract_function_element(
+            tmp_path,
+            "q1.ts",
+            "async function fetch(): Promise<number> { return 1; }\n",
+        )
+        assert "is_async" in elem
+        assert elem["is_async"] is True
+
+    def test_rust_async_function_has_is_async_true(self, tmp_path: Path) -> None:
+        elem = self._extract_function_element(
+            tmp_path, "q1.rs", "async fn fetch() -> u32 { 1 }\n"
+        )
+        assert "is_async" in elem
+        assert elem["is_async"] is True
+
+    def test_rust_sync_function_has_is_async_false(self, tmp_path: Path) -> None:
+        elem = self._extract_function_element(
+            tmp_path, "q1.rs", "fn fetch() -> u32 { 1 }\n"
+        )
+        assert "is_async" in elem
+        assert elem["is_async"] is False
+
+    def test_other_optional_fields_exposed_too(self, tmp_path: Path) -> None:
+        """Beyond ``is_async``, the helper exposes every documented
+        optional field. Spot-check that the union of CLI element keys
+        for a non-trivial Python file includes the ones the dogfood
+        report named explicitly: ``is_static``, ``is_constructor``,
+        ``is_method`` (and the legacy back-compat ``complexity``)."""
+        py_file = tmp_path / "q1.py"
+        py_file.write_text(
+            "class Greeter:\n"
+            "    def __init__(self): pass\n"
+            "    def hello(self): return 'hi'\n"
+            "    @staticmethod\n"
+            "    def util(): pass\n"
+            "    async def fetch(self): pass\n",
+            encoding="utf-8",
+        )
+        _, stdout, _ = _run_cli_advanced(py_file, tmp_path, "json")
+
+        import json as _json
+
+        data = _json.loads(stdout.strip())
+        assert data["success"] is True
+        all_keys: set[str] = set()
+        for el in data["elements"]:
+            all_keys.update(el.keys())
+
+        for field in (
+            "is_async",
+            "is_static",
+            "is_constructor",
+            "is_method",
+            "complexity",  # back-compat alias for complexity_score
+            "complexity_score",
+            "visibility",
+            "modifiers",
+        ):
+            assert field in all_keys, (
+                f"Q1: expected '{field}' in union of element keys, "
+                f"got {sorted(all_keys)!r}"
+            )

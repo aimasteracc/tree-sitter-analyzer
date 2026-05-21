@@ -80,9 +80,9 @@ class OutputManager:
         return formatters
 
     def info(self, message: str) -> None:
-        """Output informational message to user"""
+        """Output informational message to user (stderr — keeps stdout clean for JSON/TOON)."""
         if not self.quiet:
-            print(message)
+            print(message, file=sys.stderr)
 
     def warning(self, message: str) -> None:
         """Output warning message"""
@@ -95,9 +95,9 @@ class OutputManager:
         print(f"ERROR: {message}", file=sys.stderr)
 
     def success(self, message: str) -> None:
-        """Output success message"""
+        """Output success message (stderr — diagnostic, not machine-readable data)."""
         if not self.quiet:
-            print(f"✓ {message}")
+            print(f"✓ {message}", file=sys.stderr)
 
     def output_info(self, message: str) -> None:
         """Output info message (alias for info)"""

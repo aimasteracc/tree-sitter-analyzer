@@ -62,12 +62,20 @@ class TestOutputManagerBasicOutput:
     """OutputManager 基本输出测试"""
 
     def test_output_info(self, monkeypatch, output_manager):
-        """Test info output"""
+        """Test info output goes to stderr.
+
+        Q2 (round-33): ``info`` must NOT pollute stdout because
+        ``--format json`` consumers ``json.load`` the entire stdout."""
         mock_stdout = StringIO()
+        mock_stderr = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
         output_manager.output_info("Test info message")
-        output = mock_stdout.getvalue()
-        assert "Test info message" in output
+        assert mock_stdout.getvalue() == "", (
+            "info() must not write to stdout — that channel is reserved "
+            "for machine-readable data (JSON/TOON)."
+        )
+        assert "Test info message" in mock_stderr.getvalue()
 
     def test_output_warning(self, monkeypatch, output_manager):
         """Test warning output"""
@@ -86,12 +94,17 @@ class TestOutputManagerBasicOutput:
         assert "ERROR: Test error message" in output
 
     def test_output_success(self, monkeypatch, output_manager):
-        """Test success output"""
+        """Test success output goes to stderr.
+
+        Q2 (round-33): like ``info``/``warning``/``error``, ``success``
+        is a diagnostic message and must keep stdout clean."""
         mock_stdout = StringIO()
+        mock_stderr = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
         output_manager.output_success("Test success message")
-        output = mock_stdout.getvalue()
-        assert "✓ Test success message" in output
+        assert mock_stdout.getvalue() == ""
+        assert "✓ Test success message" in mock_stderr.getvalue()
 
     def test_output_json(self, monkeypatch, output_manager):
         """Test JSON output"""
@@ -221,12 +234,14 @@ class TestModuleLevelFunctions:
     """模块级别便捷函数测试"""
 
     def test_output_info_function(self, monkeypatch):
-        """Test module-level output_info function"""
+        """Test module-level output_info function — goes to stderr (Q2)."""
         mock_stdout = StringIO()
+        mock_stderr = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
         output_info("Test module info")
-        output = mock_stdout.getvalue()
-        assert "Test module info" in output
+        assert mock_stdout.getvalue() == ""
+        assert "Test module info" in mock_stderr.getvalue()
 
     def test_output_warning_function(self, monkeypatch):
         """Test module-level output_warning function"""
@@ -245,12 +260,14 @@ class TestModuleLevelFunctions:
         assert "ERROR: Test module error" in output
 
     def test_output_success_function(self, monkeypatch):
-        """Test module-level output_success function"""
+        """Test module-level output_success function — goes to stderr (Q2)."""
         mock_stdout = StringIO()
+        mock_stderr = StringIO()
         monkeypatch.setattr("sys.stdout", mock_stdout)
+        monkeypatch.setattr("sys.stderr", mock_stderr)
         output_success("Test module success")
-        output = mock_stdout.getvalue()
-        assert "✓ Test module success" in output
+        assert mock_stdout.getvalue() == ""
+        assert "✓ Test module success" in mock_stderr.getvalue()
 
     def test_output_json_function(self, monkeypatch):
         """Test module-level output_json function"""
