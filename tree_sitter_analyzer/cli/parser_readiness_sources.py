@@ -92,23 +92,37 @@ def detect_parser_package_warnings(
         requirements = info.get("requirements") or []
         if len(requirements) <= 1:
             continue
-        sources = list(info.get("sources") or [])
-        warnings.append(
-            {
-                "language": language,
-                "package": info.get("package", ""),
-                "declarations": list(requirements),
-                "sources": sources,
-                "hint": (
-                    f"{language}: tree-sitter parser declared in "
-                    f"{len(sources) or len(requirements)} pyproject.toml "
-                    "location(s) with diverging version constraints — "
-                    "consolidate into a single canonical declaration so "
-                    "the binding constraint is unambiguous."
-                ),
-            }
-        )
+        warnings.append(_build_parser_package_warning(language, info, requirements))
     return warnings
+
+
+def _build_parser_package_warning(
+    language: str,
+    info: dict[str, Any],
+    requirements: list[str],
+) -> dict[str, Any]:
+    """Construct one ``parser_package_warnings`` entry.
+
+    Split out of :func:`detect_parser_package_warnings` so the loop body
+    stays shallow — our own ``code_patterns`` deep-nesting smell flagged
+    the inline construction at depth 5 (dogfood r37p).
+    """
+    sources = list(info.get("sources") or [])
+    location_count = len(sources) or len(requirements)
+    hint = (
+        f"{language}: tree-sitter parser declared in "
+        f"{location_count} pyproject.toml "
+        "location(s) with diverging version constraints — "
+        "consolidate into a single canonical declaration so "
+        "the binding constraint is unambiguous."
+    )
+    return {
+        "language": language,
+        "package": info.get("package", ""),
+        "declarations": list(requirements),
+        "sources": sources,
+        "hint": hint,
+    }
 
 
 def normalize_language(language: str) -> str:
