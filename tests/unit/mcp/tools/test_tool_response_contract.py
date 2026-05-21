@@ -10028,13 +10028,13 @@ class TestT3CLIMCPParityMatrix:
 _DESCRIPTION_QUALITY_EXEMPT_BELOW_200: frozenset[str] = frozenset(
     {
         "agent_skills",
-        "analyze_code_structure",
+        # analyze_code_structure migrated out in r37l — table-format detail.
         # analyze_scale migrated out in r37j — WHEN TO USE guidance added.
         # change_impact migrated out in r37k — post-edit blast-radius detail.
         # file_health migrated out in r37j — WHEN TO USE / WHEN NOT TO USE.
-        "find_and_grep",
+        # find_and_grep migrated out in r37l — two-stage filter/search detail.
         # list_files migrated out in r37i — now has WHEN TO USE guidance.
-        "project_overview",
+        # project_overview migrated out in r37l — first-call orientation.
         "query",
         "read_partial",
         # refactoring_suggestions migrated out in r37k.
@@ -10149,7 +10149,8 @@ class TestT7DescriptionQualityFloor:
         #   15 → 14 (r37i: list_files)
         #   14 → 11 (r37j: analyze_scale + file_health + safe_to_edit)
         #   11 →  8 (r37k: change_impact + refactoring_suggestions + smart_context)
-        BASELINE_EXEMPT_COUNT = 8
+        #    8 →  5 (r37l: project_overview + analyze_code_structure + find_and_grep)
+        BASELINE_EXEMPT_COUNT = 5
         assert len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200) <= BASELINE_EXEMPT_COUNT, (
             f"T7: exemption set grew to {len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200)} "
             f"(baseline: {BASELINE_EXEMPT_COUNT}). New tools must meet the "

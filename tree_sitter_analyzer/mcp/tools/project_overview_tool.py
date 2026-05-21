@@ -126,8 +126,26 @@ class ProjectOverviewTool(BaseMCPTool):
         return {
             "name": "get_project_overview",
             "description": (
-                "Project portrait in one call: languages, file counts, largest files, "
-                "tool routing guide. Use FIRST on any project. Replaces multiple Glob calls."
+                "One-shot project portrait — the agent's first call on any "
+                "new repo. Returns language distribution, file/line totals, "
+                "largest files, top-level directory structure, key entry "
+                "points, and a tool_routing guide that maps common questions "
+                "to the right MCP tool. Optionally includes per-language "
+                "health rollup when ``include_health=true`` (default).\n\n"
+                "WHEN TO USE:\n"
+                "- FIRST call when opening an unfamiliar repository\n"
+                "- To decide whether the project is small/medium/large "
+                "(affects which deeper tools are affordable)\n"
+                "- To find the entry points before navigating to a specific "
+                "file\n"
+                "- For periodic project-health rollups paired with "
+                "project_health\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To read a single file — use partial_read or get_code_outline\n"
+                "- For per-file quality grades — use file_health\n"
+                "- To list files matching a pattern — use list_files\n"
+                "- For dependency graph queries — use dependency_analysis"
             ),
             "inputSchema": TOOL_SCHEMA,
         }

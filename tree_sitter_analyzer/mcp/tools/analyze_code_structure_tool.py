@@ -410,8 +410,26 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
         return {
             "name": "analyze_code_structure",
             "description": (
-                "Analyze: structure tables (classes, methods, fields, line positions). "
-                "Formats: full|compact|csv."
+                "Per-file structural table: classes, methods, fields, "
+                "imports each with their line range and signature. Three "
+                "table formats (``full`` = everything, ``compact`` = "
+                "essentials only, ``csv`` = machine-readable rows). Returns "
+                "both the parsed table and a free-form ``table_output`` "
+                "rendering. Same data as ``get_code_outline`` but presented "
+                "as a table the agent can scan visually.\n\n"
+                "WHEN TO USE:\n"
+                "- To see a class's full method list with signatures and "
+                "line numbers in one render\n"
+                "- For CSV export of file structure (e.g. for a refactor "
+                "planning sheet)\n"
+                "- To verify an extraction plan against actual member lists\n"
+                "- When you want a flat table rather than the hierarchical "
+                "outline from get_code_outline\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- For a hierarchical outline — use get_code_outline\n"
+                "- For just the counts — use analyze_scale (cheaper)\n"
+                "- To read implementation bodies — use partial_read"
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

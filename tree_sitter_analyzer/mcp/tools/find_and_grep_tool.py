@@ -59,8 +59,28 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
         return {
             "name": "find_and_grep",
             "description": (
-                "Map+Trace: find files by name then grep inside them. "
-                "Prefer total_only/count_only/summary over full results."
+                "Two-stage search: first ``fd`` discovers candidate files "
+                "by name/glob/extension, then ``rg`` searches their content "
+                "for the pattern. Much cheaper than running ``rg`` over the "
+                "whole tree when you can narrow the scope by filename. "
+                "Supports ``total_only`` (just a count) / ``count_only`` "
+                "(per-file counts) / ``summary`` (grouped) modes to save "
+                "tokens — prefer those over full result lists.\n\n"
+                "WHEN TO USE:\n"
+                "- Searching content within files matching a glob "
+                "(e.g. ``*_test.py``)\n"
+                "- Filter-then-search workflow (start broad, drill into "
+                "matches)\n"
+                "- Counting occurrences across a targeted file subset\n"
+                "- When ``search_content`` over the whole project would be "
+                "too noisy\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To search ALL files regardless of name — use "
+                "search_content directly\n"
+                "- To LIST files without grepping — use list_files\n"
+                "- For semantic / symbol-level queries — use query or "
+                "trace_impact"
             ),
             "inputSchema": _TOOL_SCHEMA,
         }
