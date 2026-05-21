@@ -124,8 +124,19 @@ def build_query_agent_summary(
             "Inspect listed start_line/end_line ranges, then read_partial for details."
         )
         risk = "low"
+    # T4 (round-37f): canonical envelope contract — every agent_summary
+    # must have ``verdict``. query is informational (it just returns
+    # matches), so map risk → verdict using the same vocabulary as
+    # safe_to_edit / modification_guard (low→INFO, high→REVIEW).
+    if risk == "high":
+        verdict = "REVIEW"
+    elif risk == "medium":
+        verdict = "CAUTION"
+    else:
+        verdict = "INFO"
     return {
         "risk": risk,
+        "verdict": verdict,
         "mode": "query",
         "count": count,
         "elapsed_ms": elapsed_ms,

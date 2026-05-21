@@ -6133,6 +6133,9 @@ class TestEnvelopeContractSnapshot:
             DependencyAnalysisTool,
         )
         from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+        from tree_sitter_analyzer.mcp.tools.get_project_summary_tool import (
+            GetProjectSummaryTool,
+        )
         from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
             ModificationGuardTool,
         )
@@ -6145,6 +6148,7 @@ class TestEnvelopeContractSnapshot:
         from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
             ProjectOverviewTool,
         )
+        from tree_sitter_analyzer.mcp.tools.query_tool import QueryTool
         from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
             RouteDetectorTool,
         )
@@ -6199,6 +6203,21 @@ class TestEnvelopeContractSnapshot:
                 "AgentSkillsTool",
                 AgentSkillsTool(root),
                 {"output_format": "json"},
+            ),
+            # T4 (round-37f): two more drifters found by extending the
+            # snapshot scan. GetProjectSummaryTool emits no verdict at
+            # all; QueryTool emits a ``risk`` but not ``verdict``. Both
+            # fixed at the tool layer + added here so future regressions
+            # of the same class trip the gate.
+            (
+                "GetProjectSummaryTool",
+                GetProjectSummaryTool(root),
+                {"output_format": "json"},
+            ),
+            (
+                "QueryTool",
+                QueryTool(root),
+                {"file_path": sample, "query_key": "methods"},
             ),
         ]
 

@@ -290,6 +290,7 @@ class GetProjectSummaryTool(BaseMCPTool):
                         idx_for_summary, project_root
                     )
                     return {
+                        "success": True,
                         "format": resolved_fmt,
                         "output_format": resolved_fmt,
                         "summary": text,
@@ -297,6 +298,8 @@ class GetProjectSummaryTool(BaseMCPTool):
                         "agent_summary": {
                             "summary_line": summary_line,
                             "next_step": next_step,
+                            # T4 (round-37f): canonical envelope contract
+                            "verdict": "INFO",
                         },
                     }
                 except OSError:
@@ -319,6 +322,7 @@ class GetProjectSummaryTool(BaseMCPTool):
                 )
             summary_line, next_step = _build_project_summary_line(index, project_root)
             return {
+                "success": True,
                 "format": resolved_fmt,
                 "output_format": resolved_fmt,
                 "summary": text,
@@ -326,6 +330,8 @@ class GetProjectSummaryTool(BaseMCPTool):
                 "agent_summary": {
                     "summary_line": summary_line,
                     "next_step": next_step,
+                    # T4 (round-37f): canonical envelope contract
+                    "verdict": "INFO",
                 },
             }
 
@@ -347,6 +353,7 @@ class GetProjectSummaryTool(BaseMCPTool):
         # it to ``"toon"``, leaving JSON callers blind to the envelope
         # shape. F12 expects both keys to carry the resolved value.
         result: dict[str, Any] = {
+            "success": True,
             "format": "json",
             "output_format": "json",
             "project_root": idx.project_root,
@@ -365,6 +372,8 @@ class GetProjectSummaryTool(BaseMCPTool):
             "agent_summary": {
                 "summary_line": summary_line,
                 "next_step": next_step,
+                # T4 (round-37f): canonical envelope contract
+                "verdict": "INFO",
             },
         }
         if include_notes:
