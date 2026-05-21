@@ -6097,6 +6097,35 @@ class TestEnvelopeContractSnapshot:
     # can be tracked here while the full-snapshot test still flags it.
     KNOWN_DRIFT: frozenset[str] = frozenset()
 
+    # r37u (round-37u): tightened the top-level verdict gate.
+    # ``agent_summary.verdict`` set but top-level ``verdict`` None used to
+    # slip past the snapshot. Now flagged as drift. These 14 tools are the
+    # current snapshot of "agent_summary populated, top-level missing" —
+    # tracked here as a ratchet so each can be fixed one at a time.
+    # SymbolLineageTool was fixed in r37u and removed from this list.
+    # DO NOT add new tools here — write a 3-line fix at the tool layer
+    # (mirror agent_summary.verdict into the top-level response dict).
+    KNOWN_VERDICT_DRIFT: frozenset[str] = frozenset(
+        {
+            "AgentWorkflowTool",
+            "AnalyzeCodeStructureTool",
+            "AnalyzeScaleTool",
+            "AstCacheTool",
+            "BatchSearchTool",
+            "BuildProjectIndexTool",
+            "CallGraphTool",
+            "FindAndGrepTool",
+            "GetCodeOutlineTool",
+            "GetProjectSummaryTool",
+            "ListFilesTool",
+            "QueryTool",
+            "ReadPartialTool",
+            "RouteDetectorTool",
+            "SearchContentTool",
+            "UniversalAnalyzeTool",
+        }
+    )
+
     @pytest.fixture
     def envelope_project(self, tmp_path: Path) -> Path:
         """A project with one Python file every tool can analyse."""
@@ -6363,11 +6392,25 @@ class TestEnvelopeContractSnapshot:
                 )
                 continue
 
-            # Verdict consistency: when both top-level and agent_summary
-            # carry ``verdict``, they must agree.
+            # Verdict consistency: when ``agent_summary.verdict`` is set,
+            # the top-level ``verdict`` MUST mirror it. The previous gate
+            # only caught the case where BOTH were set and disagreed —
+            # missing the (None, "CAUTION") drift r37u fixed in
+            # ``symbol_lineage``. Now ``top is None`` while ``agent`` is
+            # set is a hard fail UNLESS the tool is on the
+            # ``KNOWN_VERDICT_DRIFT`` ratchet list (14 entries today).
             top_verdict = result.get("verdict")
             agent_verdict = agent.get("verdict")
-            if top_verdict and agent_verdict and top_verdict != agent_verdict:
+            if (
+                agent_verdict
+                and top_verdict is None
+                and name not in self.KNOWN_VERDICT_DRIFT
+            ):
+                drift.append(
+                    f"{name}: agent.verdict={agent_verdict!r} but top.verdict is None "
+                    "(r37u contract: top-level must mirror agent_summary.verdict)"
+                )
+            elif top_verdict and agent_verdict and top_verdict != agent_verdict:
                 drift.append(
                     f"{name}: top.verdict={top_verdict!r} != "
                     f"agent.verdict={agent_verdict!r}"
@@ -6405,6 +6448,40 @@ class TestEnvelopeContractSnapshot:
         assert not drift, (
             "Envelope contract drift detected across MCP tools:\n  - "
             + "\n  - ".join(drift)
+        )
+
+    def test_verdict_drift_ratchet_does_not_grow(self, tool_cases) -> None:  # type: ignore[no-untyped-def]
+        """r37u ratchet: the ``KNOWN_VERDICT_DRIFT`` allowlist must not grow.
+
+        Pattern mirrors T7 (description quality ratchet). Each MCP tool
+        that sets ``agent_summary.verdict`` but leaves the top-level
+        ``verdict`` as ``None`` is tracked in
+        :attr:`KNOWN_VERDICT_DRIFT`. The full snapshot test exempts them
+        so the gate stays green while we work them off. THIS test pins
+        the baseline so adding a new drifter — or shipping a new tool
+        without a top-level ``verdict`` — fails CI immediately.
+
+        Migration progress (target: 0):
+          r37u baseline: 16 (after symbol_lineage fixed)
+        """
+        # The baseline established when r37u tightened the gate.
+        # Do NOT raise this — write a 3-line fix at the tool layer
+        # (mirror ``verdict`` into the response dict at the same level
+        # as ``summary_line`` / ``agent_summary``).
+        BASELINE = 16
+        # Sanity: every name in the drift list must be a real tool in
+        # the snapshot — otherwise stale entries hide live drift.
+        case_names = {name for (name, _, _) in tool_cases}
+        stale = self.KNOWN_VERDICT_DRIFT - case_names
+        assert not stale, (
+            f"r37u: KNOWN_VERDICT_DRIFT contains tool names not in the "
+            f"snapshot: {sorted(stale)}. Remove or rename."
+        )
+        assert len(self.KNOWN_VERDICT_DRIFT) <= BASELINE, (
+            f"r37u: KNOWN_VERDICT_DRIFT grew to {len(self.KNOWN_VERDICT_DRIFT)} "
+            f"(baseline: {BASELINE}). New tools must mirror "
+            "``agent_summary.verdict`` to the top-level ``verdict`` field. "
+            "Fix at the tool layer instead of exempting."
         )
 
 
