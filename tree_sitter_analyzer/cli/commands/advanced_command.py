@@ -5,6 +5,7 @@ Advanced Command
 Handles advanced analysis functionality.
 """
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ..._api_result_helpers import element_to_dict
@@ -30,6 +31,34 @@ except ImportError:
 
 if TYPE_CHECKING:
     from ...models import AnalysisResult
+
+
+def _per_element_counts(elements: Sequence[object]) -> dict[str, int]:
+    """Compute per-kind element aggregations for parity with MCP analyze_scale.
+
+    S1 (round-37 dogfood): CLI ``--advanced`` previously emitted only
+    ``element_count`` (total), while MCP ``analyze_scale`` emits
+    ``method_count`` / ``class_count`` / ``field_count`` / ``import_count``.
+    Both views are useful — neither tool should hide the other's
+    aggregation. Returns four counters keyed by the canonical name MCP
+    callers already expect.
+    """
+    counts = {
+        "method_count": 0,
+        "class_count": 0,
+        "field_count": 0,
+        "import_count": 0,
+    }
+    for element in elements:
+        if is_element_of_type(element, ELEMENT_TYPE_FUNCTION):
+            counts["method_count"] += 1
+        elif is_element_of_type(element, ELEMENT_TYPE_CLASS):
+            counts["class_count"] += 1
+        elif is_element_of_type(element, ELEMENT_TYPE_VARIABLE):
+            counts["field_count"] += 1
+        elif is_element_of_type(element, ELEMENT_TYPE_IMPORT):
+            counts["import_count"] += 1
+    return counts
 
 
 class AdvancedCommand(BaseCommand):
@@ -62,9 +91,22 @@ class AdvancedCommand(BaseCommand):
 
     def _output_statistics(self, analysis_result: "AnalysisResult") -> None:
         """Output statistics only."""
+        # S1 (round-37 dogfood): include the per-kind aggregations that MCP
+        # ``analyze_scale`` already emits (method_count, class_count,
+        # field_count, import_count). The two surfaces analyse the same
+        # tree but only emit one half of the picture each — agents that
+        # ask "how many methods does this file have" via the CLI got
+        # ``method_count: None`` while MCP returned ``3``. Adding the
+        # per-kind counts here closes the cross-tool gap without changing
+        # the legacy ``element_count`` aggregate that older consumers read.
+        counts = _per_element_counts(analysis_result.elements)
         stats = {
             "line_count": analysis_result.line_count,
             "element_count": len(analysis_result.elements),
+            "method_count": counts["method_count"],
+            "class_count": counts["class_count"],
+            "field_count": counts["field_count"],
+            "import_count": counts["import_count"],
             "node_count": analysis_result.node_count,
             "language": analysis_result.language,
         }
@@ -113,11 +155,18 @@ class AdvancedCommand(BaseCommand):
             elem_dict["complexity"] = elem_dict.get("complexity_score")
             elements_payload.append(elem_dict)
 
+        # S1 (round-37 dogfood): add per-kind aggregations for parity with
+        # MCP ``analyze_scale`` (see _output_statistics for the same fix).
+        counts = _per_element_counts(analysis_result.elements)
         result_dict: dict[str, object] = {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
             "line_count": analysis_result.line_count,
             "element_count": len(analysis_result.elements),
+            "method_count": counts["method_count"],
+            "class_count": counts["class_count"],
+            "field_count": counts["field_count"],
+            "import_count": counts["import_count"],
             "node_count": analysis_result.node_count,
             "elements": elements_payload,
             "complexity": {
