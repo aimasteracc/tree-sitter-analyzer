@@ -3,7 +3,37 @@
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 from typing import Any
+
+
+def _to_project_relative(file_path: str, project_root: str | None) -> str:
+    """Return ``file_path`` rendered as a project-relative path when possible.
+
+    G9: ``build_success_response`` and ``error_response`` were emitting
+    raw absolute paths (``/Users/.../foo.py``) in both ``file`` and
+    ``file_path``. Every other tool returns a project-relative path. This
+    helper normalises both fields so the response no longer leaks the
+    user's home directory while preserving the back-compat ``file``
+    alias mentioned in the comment below.
+
+    Returns the original path unchanged when there is no project root or
+    the path lies outside the root (e.g. tests that pass an absolute
+    path under /tmp). The output never includes a leading ``./``.
+    """
+    if not file_path:
+        return file_path
+    if not project_root:
+        return file_path
+    try:
+        rel = Path(file_path).resolve().relative_to(Path(project_root).resolve())
+    except (ValueError, OSError):
+        # Path is outside the project root — return as-is so the caller
+        # at least gets a usable identifier. The MCP boundary blocks
+        # truly external paths upstream.
+        return file_path
+    rel_str = str(rel)
+    return rel_str if rel_str != "." else file_path
 
 
 def get_nesting_depth(node: ast.AST) -> int:
@@ -198,18 +228,28 @@ def build_success_response(
     suggestions: list[dict[str, Any]],
     max_suggestions: int,
     include_skeleton: bool,
+    *,
+    project_root: str | None = None,
 ) -> dict[str, Any]:
-    """Build the final successful refactoring response."""
+    """Build the final successful refactoring response.
+
+    G9: ``project_root`` lets us emit a project-relative ``file_path``
+    in the envelope. ``file`` keeps the same value so the (single
+    test-only) back-compat alias still resolves without leaking the
+    user's absolute home path.
+    """
     finalized = finalize_suggestions(suggestions, max_suggestions, include_skeleton)
     from ..base_tool import mirror_summary_line
 
+    display_path = _to_project_relative(file_path, project_root)
     return mirror_summary_line(
         {
             "success": True,
             # ``file_path`` is the canonical field used across every other
-            # tool; ``file`` is kept as a backward-compat alias.
-            "file": file_path,
-            "file_path": file_path,
+            # tool; ``file`` is kept as a backward-compat alias. Both
+            # are normalised to a project-relative path (G9).
+            "file": display_path,
+            "file_path": display_path,
             "total_suggestions": len(finalized),
             # ``count``/``results`` are cross-tool canonical aliases so an
             # agent walking a generic envelope finds the data without
@@ -217,7 +257,7 @@ def build_success_response(
             "count": len(finalized),
             "results": finalized,
             "summary": make_summary(finalized),
-            "agent_summary": make_agent_summary(file_path, finalized),
+            "agent_summary": make_agent_summary(display_path, finalized),
             "suggestions": finalized,
         }
     )
@@ -246,12 +286,23 @@ def strip_precise_plan_skeletons(suggestions: list[dict[str, Any]]) -> None:
             ext_target.pop("skeleton", None)
 
 
-def error_response(file_path: str, error: str) -> dict[str, Any]:
-    """Return a standardized error response."""
+def error_response(
+    file_path: str,
+    error: str,
+    *,
+    project_root: str | None = None,
+) -> dict[str, Any]:
+    """Return a standardized error response.
+
+    G9: when a project root is known, both ``file`` and ``file_path``
+    are emitted as project-relative so the error envelope does not leak
+    absolute paths either.
+    """
+    display_path = _to_project_relative(file_path, project_root)
     return {
         "success": False,
-        "file": file_path,
-        "file_path": file_path,
+        "file": display_path,
+        "file_path": display_path,
         "error": error,
         "suggestions": [],
         "results": [],

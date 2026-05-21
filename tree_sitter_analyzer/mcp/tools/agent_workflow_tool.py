@@ -94,7 +94,7 @@ class AgentWorkflowTool(BaseMCPTool):
 
 def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return a compact MCP response when callers request TOON output."""
-    return {
+    response: dict[str, Any] = {
         "success": result["success"],
         "format": "toon",
         "workflow": result["workflow"],
@@ -111,3 +111,9 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
         "sprint_contract": result["sprint_contract"],
         "toon_content": result["toon_content"],
     }
+    # G8: mirror summary_line to the TOON envelope as well so both
+    # output formats expose the canonical headline.
+    summary_line = result.get("summary_line")
+    if isinstance(summary_line, str) and summary_line:
+        response["summary_line"] = summary_line
+    return response

@@ -498,6 +498,85 @@ def test_change_impact_cli_forwards_agent_summary_only(monkeypatch) -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "requested_mode",
+    ["summary", "all_functions", "callers", "callees", "chain"],
+)
+def test_call_graph_cli_forwards_requested_mode(
+    monkeypatch, requested_mode: str
+) -> None:
+    """G1: ``--call-graph <mode>`` must reach the tool with the requested mode.
+
+    Before the fix, the dispatcher read ``args.call_graph_mode`` which does
+    not exist (argparse stores the value into ``args.call_graph`` because the
+    ``--call-graph`` definition does not set ``dest=``). The fallback default
+    ``"summary"`` always won, so non-summary modes were silently ignored.
+    """
+    seen: dict[str, Any] = {}
+
+    class FakeCodeGraphCallTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            # Echo the mode back so the test can assert on a real
+            # ``response["mode"]`` field too.
+            return {
+                "success": True,
+                "mode": arguments["mode"],
+                "function_count": 0,
+                "call_edge_count": 0,
+            }
+
+    monkeypatch.setattr(mcp_commands, "CodeGraphCallTool", FakeCodeGraphCallTool)
+
+    output: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    # ``find_selected_mcp_command`` treats truthy ``args.call_graph`` as the
+    # selector; argparse sets that to the chosen mode string when the flag
+    # is present.
+    result = mcp_commands.handle_mcp_commands(
+        _args(call_graph=requested_mode, call_graph_function="execute"),
+        output.append,
+        errors.append,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert errors == []
+    assert seen["arguments"]["mode"] == requested_mode
+    assert output and output[0]["mode"] == requested_mode
+
+
+def test_call_graph_cli_defaults_to_summary_when_no_mode_value(monkeypatch) -> None:
+    """Bare ``--call-graph`` (no value) selects ``summary`` via argparse's
+    ``const="summary"``. The dispatcher must preserve that and not crash on
+    the missing attribute path."""
+    seen: dict[str, Any] = {}
+
+    class FakeCodeGraphCallTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "mode": arguments["mode"]}
+
+    monkeypatch.setattr(mcp_commands, "CodeGraphCallTool", FakeCodeGraphCallTool)
+
+    result = mcp_commands.handle_mcp_commands(
+        _args(call_graph="summary"),
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen["arguments"]["mode"] == "summary"
+
+
 def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) -> None:
     seen: dict[str, Any] = {}
 

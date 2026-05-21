@@ -3,12 +3,17 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from ...services import (
     build_parser_readiness_advice,  # ARCH-A1: was ...cli.parser_readiness
 )
 from .base_tool import BaseMCPTool
+
+# Strict allowlist pattern: lowercase letter start, then alphanumeric/underscore/hyphen,
+# max 32 chars total.  Rejects path traversal, shell metacharacters, and invented names.
+_LANG_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -64,6 +69,16 @@ class ParserReadinessTool(BaseMCPTool):
             raise ValueError("language must be a string")
         if isinstance(language, str) and not language.strip():
             raise ValueError("language must be a non-empty string")
+        if (
+            isinstance(language, str)
+            and language.strip()
+            and not _LANG_NAME_RE.match(language)
+        ):
+            raise ValueError(
+                f"unknown language {language!r}; "
+                "language names must match ^[a-z][a-z0-9_-]{{0,31}}$ — "
+                "see implemented_languages list"
+            )
 
         include_supported = arguments.get("include_supported", False)
         if not isinstance(include_supported, bool):
@@ -92,7 +107,7 @@ class ParserReadinessTool(BaseMCPTool):
 
 def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return a compact MCP response when callers request TOON output."""
-    return {
+    response = {
         "success": result["success"],
         "format": "toon",
         "advisor": result["advisor"],
@@ -102,3 +117,10 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
         "recommendations": result["recommendations"],
         "toon_content": result["toon_content"],
     }
+    # G7: mirror summary_line so the TOON envelope also carries the
+    # top-level one-liner (JSON path passes the full ``result`` dict
+    # which already has it).
+    summary_line = result.get("summary_line")
+    if isinstance(summary_line, str) and summary_line:
+        response["summary_line"] = summary_line
+    return response

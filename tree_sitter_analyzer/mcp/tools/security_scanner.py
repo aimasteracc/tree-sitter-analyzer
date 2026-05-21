@@ -19,15 +19,36 @@ _SECRET_PATTERNS = re.compile(
     r"|private_key|aws_secret|credentials)\s*[:=]\s*['\"][^'\"]{6,}['\"]"
 )
 
+# SQL-injection patterns. The f-string variant must require an actual SQL
+# clause inside the same f-string — without that anchor, benign English
+# text like ``f"please update {n} call sites"`` matched and showed up as
+# ``critical: sql_injection`` (G3 dogfood bug).
+#
+# Approach B (clause indicator): require a SQL keyword AND a clause keyword
+# in the same f-string body, both before the closing quote. We split
+# single/double quoted variants so the body-matcher can reject only the
+# OUTER quote — that way ``f"... '{name}' ..."`` still scans cleanly.
 _SQL_INJECTION = re.compile(
-    r"(?i)"
+    r"(?ix)"
     r"(?:execute|exec|cursor\.execute|\.query)\s*\("
     r"[^)]*%[sd]"
     r"|"
     r"(?:execute|exec|cursor\.execute|\.query)\s*\("
     r"[^)]*\.format\("
     r"|"
-    r"f['\"].*?(?:SELECT|INSERT|UPDATE|DELETE|DROP)\s"
+    # Double-quoted f-string body cannot contain unescaped ".
+    r'f"(?:[^"\\]|\\.)*?'
+    r"(?:SELECT|INSERT|UPDATE|DELETE|DROP)"
+    r'(?:[^"\\]|\\.)*?'
+    r"(?:FROM\s+\w+|INTO\s+\w+|WHERE\s+[\w\.{}]+\s*[=<>!]"
+    r"|TABLE\s+\S+|VALUES\s*\(|SET\s+\w+\s*=)"
+    r"|"
+    # Single-quoted f-string body cannot contain unescaped '.
+    r"f'(?:[^'\\]|\\.)*?"
+    r"(?:SELECT|INSERT|UPDATE|DELETE|DROP)"
+    r"(?:[^'\\]|\\.)*?"
+    r"(?:FROM\s+\w+|INTO\s+\w+|WHERE\s+[\w\.{}]+\s*[=<>!]"
+    r"|TABLE\s+\S+|VALUES\s*\(|SET\s+\w+\s*=)"
 )
 
 _EVAL_USAGE = re.compile(r"\beval\s*\(")

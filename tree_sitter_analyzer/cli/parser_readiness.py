@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,11 @@ from tree_sitter_analyzer.cli.parser_readiness_sources import (
     select_report_languages,
 )
 
+# Strict allowlist pattern: must be a safe language identifier token.
+# Rejects path traversal ('../'), shell metacharacters (';', '|', '&', ' '),
+# and any other string that cannot be a valid language name.
+_LANG_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+
 
 def build_parser_readiness_advice(
     project_root: str,
@@ -22,6 +28,27 @@ def build_parser_readiness_advice(
     include_supported: bool = False,
 ) -> dict[str, Any]:
     """Build a local parser-readiness report for language plugin planning."""
+    if language is not None:
+        raw = language.strip()
+        if not raw or not _LANG_NAME_RE.match(raw):
+            return {
+                "success": False,
+                "error": (
+                    f"unknown language {language!r}; "
+                    "language names must match ^[a-z][a-z0-9_-]{{0,31}}$ — "
+                    "see implemented_languages list"
+                ),
+                "error_type": "validation",
+                "agent_summary": {
+                    "summary_line": "parser-readiness: invalid language name",
+                    "next_step": (
+                        "Provide a valid language name such as 'python', 'javascript', "
+                        "or 'typescript'. Run without --parser-readiness-language to "
+                        "see implemented_languages."
+                    ),
+                    "verdict": "ERROR",
+                },
+            }
     root = Path(project_root).expanduser().resolve()
     inputs = collect_readiness_inputs(root)
     requested_language = normalize_language(language) if language else None
@@ -65,8 +92,32 @@ def _build_result(
         }
     )
     _ensure_no_gap_consistency(result)
+    # G7: build a one-line top-level summary so callers reading
+    # ``response["summary_line"]`` get a non-None value. The agent_summary
+    # mirror is set in the same step so both stay in sync.
+    summary_line = _build_summary_line(result, recommendations)
+    agent_summary["summary_line"] = summary_line
+    result["summary_line"] = summary_line
     result["toon_content"] = _build_toon_content(result)
     return result
+
+
+def _build_summary_line(
+    result: dict[str, Any],
+    recommendations: list[dict[str, Any]],
+) -> str:
+    """Build the canonical one-line headline for parser-readiness output."""
+    implemented = result.get("implemented_language_count", 0)
+    candidates = len(recommendations)
+    risk = result.get("agent_summary", {}).get("risk", "low")
+    top = recommendations[0]["language"] if recommendations else ""
+    line = (
+        f"parser_readiness implemented={implemented} "
+        f"candidates={candidates} risk={risk}"
+    )
+    if top:
+        line += f" top={top}"
+    return line
 
 
 def _base_result(root: Path, requested_language: str | None) -> dict[str, Any]:

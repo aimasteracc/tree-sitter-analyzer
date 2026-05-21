@@ -59,6 +59,13 @@ def build_agent_workflow_pack(
         steps,
         queue_boundary,
     )
+    agent_summary = _build_agent_summary(
+        target_path,
+        steps,
+        queue_boundary,
+        current_phase,
+        recommended_commands,
+    )
     result = {
         "success": True,
         "workflow": "SMART agent workflow pack",
@@ -73,13 +80,11 @@ def build_agent_workflow_pack(
         "steps": steps,
         "queue_boundary_commands": queue_boundary,
         "sprint_contract": sprint_contract,
-        "agent_summary": _build_agent_summary(
-            target_path,
-            steps,
-            queue_boundary,
-            current_phase,
-            recommended_commands,
-        ),
+        "agent_summary": agent_summary,
+        # G8: mirror agent_summary.summary_line to top-level so callers
+        # walking the generic envelope find it without reaching into the
+        # nested dict.
+        "summary_line": agent_summary["summary_line"],
     }
     result["toon_content"] = _build_toon_content(result)
     return result
@@ -267,11 +272,22 @@ def _build_agent_summary(
     queue_ledger_command = (
         _scoped_change_impact_command(target_path) if target_path else ""
     )
+    next_phase = _build_next_phase(current_phase)
+    # G8: build summary_line + verdict so this planning tool obeys the
+    # cross-tool envelope contract. ``verdict`` is "n/a" — workflow
+    # planning has no analysis result to gate on; callers should branch
+    # on ``current_phase`` / ``next_phase`` instead.
+    summary_line = (
+        f"agent_workflow phase={current_phase} next={next_phase} "
+        f"recommended={len(recommended_commands)}"
+    )
     return {
+        "summary_line": summary_line,
+        "verdict": "n/a",
         "risk": "none",
         "next_step": first_command,
         "current_phase": current_phase,
-        "next_phase": _build_next_phase(current_phase),
+        "next_phase": next_phase,
         "transition_signal": _build_transition_signal(current_phase),
         "phase_order": [step["step"] for step in steps],
         "recommended_commands": recommended_commands,

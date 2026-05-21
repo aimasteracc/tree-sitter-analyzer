@@ -121,13 +121,19 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         resolved = self.resolve_and_validate_file_path(file_path)
         if not resolved:
             return error_response(
-                file_path, "File not found or outside project boundary"
+                file_path,
+                "File not found or outside project boundary",
+                project_root=self.project_root,
             )
 
         try:
             source = Path(resolved).read_text(encoding="utf-8", errors="replace")
         except Exception as e:
-            return error_response(file_path, f"Cannot read file: {e}")
+            return error_response(
+                file_path,
+                f"Cannot read file: {e}",
+                project_root=self.project_root,
+            )
 
         analysis = extract_elements(resolved, self.project_root)
         # Tree-sitter based pattern analysis
@@ -153,7 +159,11 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         build_precise_plans(resolved, source, analysis, suggestions)
 
         result = build_success_response(
-            resolved, suggestions, max_suggestions, include_skeleton
+            resolved,
+            suggestions,
+            max_suggestions,
+            include_skeleton,
+            project_root=self.project_root,
         )
 
         from ..utils.format_helper import apply_toon_format_to_response

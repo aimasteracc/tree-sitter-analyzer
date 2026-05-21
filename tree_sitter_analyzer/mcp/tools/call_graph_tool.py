@@ -66,7 +66,15 @@ def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
         # the symbol is missing, regardless of which mode they tried.
         summary_line = f"call_graph: symbol '{func}' not found"
     elif mode == "summary":
-        edges = result.get("edges", result.get("edge_count", 0))
+        # G2: CallGraph.summary() returns ``call_edge_count`` / ``function_count``
+        # (see call_graph.py); the legacy ``edges`` / ``edge_count`` keys never
+        # land here, so the old fallback chain always fell through to 0 and the
+        # top-level summary_line reported edges=0 even when the response data
+        # held the real count. Extend the chain to read the canonical field
+        # name last so the visible number matches ``call_edge_count``.
+        edges = result.get(
+            "edges", result.get("edge_count", result.get("call_edge_count", 0))
+        )
         nodes = result.get("nodes", result.get("function_count", 0))
         summary_line = f"call_graph summary nodes={nodes} edges={edges}"
     elif mode == "all_functions":

@@ -226,8 +226,12 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="call_graph",
         tool_attr="CodeGraphCallTool",
         label="Function-level call graph (CodeGraph parity)",
+        # ``--call-graph <mode>`` uses ``nargs="?"`` with ``const="summary"``
+        # in argument_parser_builder.py. argparse stores the chosen mode
+        # in ``args.call_graph`` (no explicit ``dest=``), so the dispatcher
+        # must read ``call_graph`` — not ``call_graph_mode`` (G1).
         build_tool_args=lambda args, output_format: {
-            "mode": getattr(args, "call_graph_mode", "summary") or "summary",
+            "mode": getattr(args, "call_graph", "summary") or "summary",
             "function_name": getattr(args, "call_graph_function", None),
             "file_path": getattr(args, "call_graph_file", None),
             "depth": getattr(args, "call_graph_depth", 5),

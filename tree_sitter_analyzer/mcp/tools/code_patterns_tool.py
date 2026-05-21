@@ -113,6 +113,16 @@ class CodePatternsTool(BaseMCPTool):
         if scan_all or "anti_patterns" in categories:
             all_patterns.extend(_detect_anti_patterns(resolved, language))
 
+        # G4 dedup: ``_detect_smells`` already re-emits security issues via
+        # ``_check_security_smells`` (so ``file_health`` users see them). When
+        # ``_detect_security`` also runs, the same finding shows up twice —
+        # once under ``smells`` with id ``security:<name>``, once under
+        # ``security`` with id ``<name>``. Drop the ``smells`` mirror; keep
+        # the ``security``-namespaced entry as the canonical record. This
+        # only fires when the same ``(line, normalized_type)`` is present
+        # under both categories, so non-security smells are unaffected.
+        all_patterns = _dedup_security_mirror(all_patterns)
+
         filtered = [
             p
             for p in all_patterns
@@ -181,6 +191,41 @@ class CodePatternsTool(BaseMCPTool):
         }
 
         return apply_toon_format_to_response(response, output_format)
+
+
+def _dedup_security_mirror(
+    patterns: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Remove ``smells`` entries that mirror a ``security`` finding.
+
+    ``file_health_smells.detect_code_smells`` re-emits security issues under
+    the smell namespace (id ``security:<name>``) so that file-health reports
+    can surface them as a single signal. When ``code_patterns`` *also* runs
+    the dedicated security pass, the same underlying finding appears twice:
+    once with category ``smells`` and id ``security:sql_injection``, once
+    with category ``security`` and id ``sql_injection``. The second one is
+    the canonical record, so we drop the smell-namespaced mirror whenever a
+    matching ``(line, security-name)`` exists under the ``security``
+    category.
+    """
+    security_keys: set[tuple[int | None, str]] = {
+        (p.get("line"), str(p.get("type") or p.get("id") or ""))
+        for p in patterns
+        if p.get("category") == "security"
+    }
+    if not security_keys:
+        return patterns
+
+    deduped: list[dict[str, Any]] = []
+    for pattern in patterns:
+        if pattern.get("category") == "smells":
+            raw_type = str(pattern.get("type") or pattern.get("id") or "")
+            if raw_type.startswith("security:"):
+                normalized = raw_type.split(":", 1)[1]
+                if (pattern.get("line"), normalized) in security_keys:
+                    continue
+        deduped.append(pattern)
+    return deduped
 
 
 def _detect_smells(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import re
+import shlex
 from pathlib import Path
 from typing import Any
 
@@ -396,8 +397,12 @@ def _maintenance_check_url(signals: dict[str, Any]) -> str:
 
 
 def _verification_commands(language: str) -> list[str]:
+    # shlex.quote() is belt-and-suspenders: the regex gate in
+    # build_parser_readiness_advice already blocks shell-unsafe input before
+    # we reach this point, but defense-in-depth requires sanitising here too.
+    safe_lang = shlex.quote(language)
     return [
-        f"uv run tree-sitter-analyzer parser-readiness {language} --format json",
-        f"uv run pytest tests/unit/languages/test_{language}_plugin.py -q",
+        f"uv run tree-sitter-analyzer parser-readiness {safe_lang} --format json",
+        f"uv run pytest tests/unit/languages/test_{safe_lang}_plugin.py -q",
         "uv run pytest tests/unit/test_agent_contracts.py::test_registered_mcp_tools_have_cli_parity -q",
     ]

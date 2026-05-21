@@ -226,11 +226,36 @@ class SymbolLineageTool(BaseMCPTool):
             f for f in (all_downstream_files | all_symbol_files) if _is_test_file(f)
         )
 
+        # G6: explicit truncation transparency. Lists were silently
+        # capped without an indicator — agents reading
+        # ``len(references)`` got a number that disagreed with
+        # ``reference_count``. Surface truncation flags + the real total
+        # so a caller can fan out a second tool to fetch the rest.
+        _DEF_LIMIT = 20
+        _REF_LIMIT = 30
+        _DOWNSTREAM_LIMIT = 50
+        _UPSTREAM_LIMIT = 20
+        _TEST_LIMIT = 20
+        sorted_downstream = sorted(all_downstream_files)
+        sorted_upstream = sorted(all_upstream_files)
+
+        references_truncated = len(references) > _REF_LIMIT
+        downstream_truncated = len(sorted_downstream) > _DOWNSTREAM_LIMIT
+        truncations: list[str] = []
+        if references_truncated:
+            truncations.append("references")
+        if downstream_truncated:
+            truncations.append("downstream_files")
+
         # One-line headline + next-step hint for LLM consumers.
         summary_line = (
             f"{symbol} defs={len(definitions)} refs={len(references)} "
             f"downstream={len(all_downstream_files)} risk={risk['level']}"
         )
+        if truncations:
+            # G6: surface the truncated-list signal on the headline so an
+            # agent scanning summary_line alone notices the partial view.
+            summary_line += f" truncated={'+'.join(truncations)}"
         # Verdict mirrors trace_impact / safe_to_edit vocabulary so an agent
         # can chain decisions across tools.
         risk_to_verdict = {
@@ -251,19 +276,37 @@ class SymbolLineageTool(BaseMCPTool):
         else:
             next_step = "verify symbol name — no definitions found"
 
+        agent_summary: dict[str, Any] = {
+            "summary_line": summary_line,
+            "next_step": next_step,
+            "verdict": verdict,
+        }
+        if truncations:
+            agent_summary["truncations"] = truncations
+
         response: dict[str, Any] = {
             "success": True,
             "symbol": symbol,
-            "definitions": definitions[:20],
+            "definitions": definitions[:_DEF_LIMIT],
             "definition_count": len(definitions),
-            "references": references[:30],
+            "references": references[:_REF_LIMIT],
             "reference_count": len(references),
+            # G6: explicit truncation flags + caps. Existing
+            # ``reference_count`` / ``downstream_file_count`` already
+            # carry the real totals; these fields make the partial-view
+            # state machine-readable without a length-vs-count compare.
+            "references_truncated": references_truncated,
+            "references_limit": _REF_LIMIT,
+            "references_available": len(references),
             "files_containing_symbol": sorted(all_symbol_files),
-            "downstream_files": sorted(all_downstream_files)[:50],
+            "downstream_files": sorted_downstream[:_DOWNSTREAM_LIMIT],
             "downstream_file_count": len(all_downstream_files),
-            "upstream_files": sorted(all_upstream_files)[:20],
+            "downstream_files_truncated": downstream_truncated,
+            "downstream_files_limit": _DOWNSTREAM_LIMIT,
+            "downstream_files_available": len(all_downstream_files),
+            "upstream_files": sorted_upstream[:_UPSTREAM_LIMIT],
             "upstream_file_count": len(all_upstream_files),
-            "test_files_to_run": test_files[:20],
+            "test_files_to_run": test_files[:_TEST_LIMIT],
             "test_file_count": len(test_files),
             "risk": risk,
             "smart_workflow_hint": (
@@ -273,11 +316,7 @@ class SymbolLineageTool(BaseMCPTool):
                 "Use analyze_change_impact after editing for git-diff level detail."
             ),
             "summary_line": summary_line,
-            "agent_summary": {
-                "summary_line": summary_line,
-                "next_step": next_step,
-                "verdict": verdict,
-            },
+            "agent_summary": agent_summary,
         }
 
         # Stash a deep-copy so subsequent identical lookups skip the
