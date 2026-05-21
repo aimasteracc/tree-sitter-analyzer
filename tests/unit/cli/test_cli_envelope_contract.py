@@ -339,6 +339,44 @@ class TestR37afCLIEnvelopeContract:
         )
         _assert_envelope(payload, "ShowExtensionsCommand")
 
+    def test_mcp_command_error_envelope_has_top_verdict(self):
+        """r37ah: MCP-bridged commands' error envelope must mirror verdict.
+
+        ``_build_validation_error_envelope`` (mcp_commands.py) used to
+        set ``agent_summary.verdict='ERROR'`` but leave top-level
+        ``verdict`` as ``None``. CLI envelope gate caught the drift
+        on ``--batch-search`` with no queries. The fix adds top-level
+        ``verdict='ERROR'``.
+
+        NOTE: this is the **error** path — the assertion shape differs
+        from happy-path. Top-level keys present + verdict mirrored.
+        """
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            _build_error_envelope,
+        )
+
+        envelope = _build_error_envelope(
+            "batch_search",
+            "Run 2-10 ripgrep searches in parallel",
+            ValueError("missing required field"),
+        )
+        # Required keys present
+        for key in (
+            "success",
+            "summary_line",
+            "verdict",
+            "agent_summary",
+            "error",
+            "error_type",
+        ):
+            assert key in envelope, f"error envelope missing {key!r}"
+        # Error path has success=False, but verdict / summary_line must be populated.
+        assert envelope["success"] is False
+        assert envelope["verdict"] == "ERROR"
+        assert envelope["agent_summary"]["verdict"] == "ERROR"
+        assert envelope["verdict"] == envelope["agent_summary"]["verdict"]
+        assert isinstance(envelope["summary_line"], str) and envelope["summary_line"]
+
     def test_partial_read_command_envelope(self):
         """PartialReadCommand → envelope.
 
@@ -390,10 +428,11 @@ class TestR37afCLISurfaceBaseline:
     replacing it (which would silently shrink the gate).
     """
 
-    # 11 envelope-contract tests at r37af. r37ag adds PartialReadCommand
-    # bringing the baseline to 12. Direction is intentional: count can
-    # GROW but not SHRINK.
-    BASELINE_COVERAGE = 12
+    # Migration:
+    #   r37af: 11 (initial coverage of MCP/CLI surfaces)
+    #   r37ag: 12 (+ PartialReadCommand)
+    #   r37ah: 13 (+ MCP-bridged error envelope)
+    BASELINE_COVERAGE = 13
 
     def test_envelope_test_count_does_not_shrink(self):
         """If you delete a test from TestR37afCLIEnvelopeContract,

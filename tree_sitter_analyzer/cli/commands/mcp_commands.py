@@ -576,6 +576,13 @@ def _build_error_envelope(
         "error_type": err_type,
         "error": message,
         "summary_line": f"{flag_name}: error — {reason}",
+        # r37ah (dogfood): top-level verdict mirror so CLI envelope gate
+        # accepts MCP-bridged error responses (r37u contract). Without
+        # this, ``--batch-search`` / ``--detect-routes`` / others that
+        # route through this builder emitted verdict=None on the
+        # validation-error path even though agent_summary.verdict='ERROR'
+        # was set.
+        "verdict": "ERROR",
         "agent_summary": {
             "verdict": "ERROR",
             "summary_line": f"{flag_name}: error — {reason}",
