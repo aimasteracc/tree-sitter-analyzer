@@ -3924,3 +3924,279 @@ class TestJ8AstCacheSyncActionStatusConsistent:
                 f"J8: ``action`` and ``considered`` must agree (alias). "
                 f"Got action={d['action']!r} vs considered={d['considered']!r}"
             )
+
+
+class TestJ3PackageInitImports:
+    """J3 (round-22): the dependency-graph resolver previously only
+    looked at ``foo/bar.py`` candidates. When a project imports
+    ``from foo.bar import X`` and ``foo/bar`` is a *package* (so
+    ``foo/bar.py`` does not exist but ``foo/bar/__init__.py`` does),
+    the edge was silently dropped.
+
+    This undercounted dependencies for every consumer of a package's
+    top-level export — cascading into ``blast_radius`` reverse
+    counts, ``safe_to_edit`` downstream estimates, ``find_cycles``
+    routes through ``__init__.py``, and ``fan_in`` hub rankings.
+
+    Fix: ``_resolve_to_project_file`` now matches Python's actual
+    import semantics — it tries the file-module candidate first, then
+    falls back to ``<rest>/__init__.py``. The extractor was also
+    extended to emit dependency entries for ``from . import x, y``
+    (previously silently dropped) and ``from .. import z``.
+    """
+
+    @pytest.fixture
+    def pkg_project(self, tmp_path: Path) -> Path:
+        """Layout:
+        top/
+          __init__.py
+          consumer.py    -> from top.security import Guard
+          utils.py
+          security/
+            __init__.py  -> exposes Guard
+            impl.py
+        """
+        top = tmp_path / "top"
+        top.mkdir()
+        (top / "__init__.py").write_text("", encoding="utf-8")
+        (top / "consumer.py").write_text(
+            "from top.security import Guard\nfrom top import utils\n",
+            encoding="utf-8",
+        )
+        (top / "utils.py").write_text("def helper(): pass\n", encoding="utf-8")
+        sec = top / "security"
+        sec.mkdir()
+        (sec / "__init__.py").write_text("from .impl import Guard\n", encoding="utf-8")
+        (sec / "impl.py").write_text("class Guard: pass\n", encoding="utf-8")
+        return tmp_path
+
+    def _file_deps(self, project: Path, rel: str) -> dict[str, Any]:
+        # Clear the global graph cache so this fixture's nodes do not
+        # collide with another suite's project_root.
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(project))
+        return _run(
+            tool.execute(
+                {"mode": "file_deps", "file_path": rel, "output_format": "json"}
+            )
+        )
+
+    def test_absolute_from_pkg_import_x_resolves_to_init(
+        self, pkg_project: Path
+    ) -> None:
+        """``from top.security import Guard`` must produce an edge
+        ``top/consumer.py -> top/security/__init__.py`` because
+        ``top/security.py`` does not exist — only the package
+        ``top/security/__init__.py`` does. This is the canonical J3
+        bug reproduction."""
+        result = self._file_deps(pkg_project, "top/consumer.py")
+        deps = result["depends_on"]
+        assert "top/security/__init__.py" in deps, (
+            f"J3: ``from top.security import Guard`` must resolve to "
+            f"``top/security/__init__.py``. Got deps={deps!r}"
+        )
+
+    def test_absolute_bare_pkg_import_resolves_to_package_init(
+        self, pkg_project: Path
+    ) -> None:
+        """``from top import utils`` resolves to ``top/__init__.py``.
+
+        Python's import system reads ``top/__init__.py`` first for any
+        ``from top import …``. Whether ``utils`` is a submodule or an
+        attribute defined in ``__init__`` is resolved at runtime; for
+        the dependency graph the syntactic dep is on the package
+        itself. (If ``utils`` is also a submodule, that's reached
+        transitively via the package.)
+        """
+        result = self._file_deps(pkg_project, "top/consumer.py")
+        deps = result["depends_on"]
+        assert "top/__init__.py" in deps, (
+            f"J3: ``from top import utils`` must resolve to the "
+            f"package ``top/__init__.py``. Got deps={deps!r}"
+        )
+
+    def test_relative_from_pkg_dot_import_falls_back_to_init(
+        self, tmp_path: Path
+    ) -> None:
+        """``from . import submodule`` where ``submodule`` is a
+        subpackage (only ``__init__.py``, no ``submodule.py``) must
+        resolve to ``<current_pkg>/submodule/__init__.py``."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "pkg" / "consumer.py").write_text(
+            "from . import sub\n", encoding="utf-8"
+        )
+        (tmp_path / "pkg" / "sub").mkdir()
+        (tmp_path / "pkg" / "sub" / "__init__.py").write_text("", encoding="utf-8")
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "mode": "file_deps",
+                    "file_path": "pkg/consumer.py",
+                    "output_format": "json",
+                }
+            )
+        )
+        assert "pkg/sub/__init__.py" in result["depends_on"], (
+            f"J3: ``from . import sub`` (sub is a package) must resolve "
+            f"to ``pkg/sub/__init__.py``. Got {result['depends_on']!r}"
+        )
+
+    def test_relative_triple_dot_resolves_to_init(self, tmp_path: Path) -> None:
+        """The exact ``base_tool.py`` shape: ``from ...security import X``
+        from a deeply nested module must resolve to the ancestor
+        package's ``__init__.py`` when no sibling ``.py`` exists."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        # top/mcp/tools/base.py — depth 3
+        # top/security/__init__.py — sibling of mcp/
+        (tmp_path / "top").mkdir()
+        (tmp_path / "top" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "top" / "mcp").mkdir()
+        (tmp_path / "top" / "mcp" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "top" / "mcp" / "tools").mkdir()
+        (tmp_path / "top" / "mcp" / "tools" / "__init__.py").write_text(
+            "", encoding="utf-8"
+        )
+        (tmp_path / "top" / "mcp" / "tools" / "base.py").write_text(
+            "from ...security import Guard\n", encoding="utf-8"
+        )
+        (tmp_path / "top" / "security").mkdir()
+        (tmp_path / "top" / "security" / "__init__.py").write_text(
+            "class Guard: pass\n", encoding="utf-8"
+        )
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "mode": "file_deps",
+                    "file_path": "top/mcp/tools/base.py",
+                    "output_format": "json",
+                }
+            )
+        )
+        assert "top/security/__init__.py" in result["depends_on"], (
+            f"J3: ``from ...security import Guard`` (3 dots) must "
+            f"resolve to ``top/security/__init__.py``. Got "
+            f"{result['depends_on']!r}"
+        )
+
+    def test_base_tool_depends_on_security_and_utils_init(self) -> None:
+        """Real repro from this repo: ``base_tool.py`` has
+        ``from ...security import SecurityValidator`` and
+        ``from ...utils import setup_logger``. Both must be edges in
+        the dependency graph — they were silently dropped before J3."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        # Walk up from this test file to the repo root.
+        repo_root = Path(__file__).resolve().parents[4]
+        assert (
+            repo_root / "tree_sitter_analyzer" / "security" / "__init__.py"
+        ).exists(), (
+            f"J3: repo layout sanity — security/__init__.py should exist at {repo_root}"
+        )
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(repo_root))
+        result = _run(
+            tool.execute(
+                {
+                    "mode": "file_deps",
+                    "file_path": "tree_sitter_analyzer/mcp/tools/base_tool.py",
+                    "output_format": "json",
+                }
+            )
+        )
+        deps = result["depends_on"]
+        assert "tree_sitter_analyzer/security/__init__.py" in deps, (
+            f"J3: base_tool.py must depend on security/__init__.py — "
+            f"the ``from ...security import SecurityValidator`` edge. "
+            f"Got {deps!r}"
+        )
+        assert "tree_sitter_analyzer/utils/__init__.py" in deps, (
+            f"J3: base_tool.py must depend on utils/__init__.py — "
+            f"the ``from ...utils import setup_logger`` edge. "
+            f"Got {deps!r}"
+        )
+
+    def test_fan_in_counts_init_consumers(self, pkg_project: Path) -> None:
+        """A package's ``__init__.py`` must report a positive fan-in
+        (``depended_by``) when any file imports from the package. The
+        old undercounting bug made popular packages look unpopular."""
+        result = self._file_deps(pkg_project, "top/security/__init__.py")
+        depended_by = result["depended_by"]
+        assert "top/consumer.py" in depended_by, (
+            f"J3: ``top/security/__init__.py`` must list "
+            f"``top/consumer.py`` in ``depended_by`` — the consumer's "
+            f"``from top.security import Guard`` is a real edge. "
+            f"Got {depended_by!r}"
+        )
+        assert result["dependent_count"] >= 1, (
+            f"J3: package ``__init__.py`` fan-in must be ≥1 when a "
+            f"consumer file imports from the package. "
+            f"Got dependent_count={result['dependent_count']!r}"
+        )
+
+    def test_no_duplicate_edges_for_submodule_import(self, tmp_path: Path) -> None:
+        """``from pkg.a import X`` must produce a single edge.
+
+        When ``pkg/a.py`` exists and ``pkg/a/__init__.py`` does not,
+        the resolver picks ``pkg/a.py`` — it must not also emit an
+        edge to ``pkg/__init__.py`` from the same import statement.
+        Duplicate edges would inflate ``edge_count``, ``fan_in`` and
+        ``cycle_count`` and break the H3 determinism contract."""
+        from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
+            DependencyAnalysisTool,
+        )
+        from tree_sitter_analyzer.project_graph import DependencyGraph
+
+        (tmp_path / "pkg").mkdir()
+        (tmp_path / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "pkg" / "a.py").write_text("X = 1\n", encoding="utf-8")
+        (tmp_path / "consumer.py").write_text("from pkg.a import X\n", encoding="utf-8")
+
+        DependencyGraph._global_cache.clear()
+        tool = DependencyAnalysisTool(project_root=str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "mode": "file_deps",
+                    "file_path": "consumer.py",
+                    "output_format": "json",
+                }
+            )
+        )
+        deps = result["depends_on"]
+        assert "pkg/a.py" in deps, (
+            f"J3: ``from pkg.a import X`` must resolve to the existing "
+            f"``pkg/a.py``. Got {deps!r}"
+        )
+        # The parent package init must NOT be emitted as a duplicate
+        # edge for the same import statement — the only edge is to
+        # ``pkg/a.py``.
+        assert "pkg/__init__.py" not in deps, (
+            f"J3: ``from pkg.a import X`` must produce a single edge to "
+            f"``pkg/a.py`` only — not a duplicate edge to "
+            f"``pkg/__init__.py``. Got {deps!r}"
+        )

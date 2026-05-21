@@ -48,6 +48,13 @@ def _resolve_relative_import(module_path: str, current_file_rel: str) -> str | N
     Resolve a relative Python import ('.utils', '..pkg.sub') to a relative file path.
 
     Returns None if the import is not project-internal.
+
+    Note: Only the ``.py`` (file-module) candidate is returned here.
+    Package-module resolution (``<rest>/__init__.py``) is performed by
+    ``DependencyGraph._resolve_to_project_file`` because it requires the
+    set of project nodes to decide which candidate actually exists.
+    Returning the ``.py`` form keeps the public helper's contract stable
+    for callers that only care about the file-module shape.
     """
     if not module_path.startswith("."):
         return None  # absolute import → external or stdlib
@@ -68,10 +75,78 @@ def _resolve_relative_import(module_path: str, current_file_rel: str) -> str | N
 
     # Convert module path to file path
     module_rest = module_path[dots:]  # e.g., "utils" or "models.user"
+    if not module_rest:
+        # Bare dots-only ``module_path`` (e.g. "." or ".."). The
+        # extractor always pairs dots with a submodule name before
+        # calling us, so this branch should not be hit in practice.
+        # Return None to signal "no file-module candidate".
+        return None
     module_file = module_rest.replace(".", "/") + ".py"
 
     resolved = target_dir / module_file
     return str(resolved)
+
+
+def _relative_init_candidate(module_path: str, current_file_rel: str) -> str | None:
+    """Return the ``__init__.py`` (package-module) candidate for a relative import.
+
+    Mirrors ``_resolve_relative_import`` but returns the path that would
+    resolve when the imported name names a package rather than a single
+    file. Used by the resolver to fall back when the ``.py`` form does
+    not exist in the project.
+    """
+    if not module_path.startswith("."):
+        return None
+
+    dots = 0
+    for ch in module_path:
+        if ch == ".":
+            dots += 1
+        else:
+            break
+
+    current_dir = Path(current_file_rel).parent
+    target_dir = current_dir
+    for _ in range(dots - 1):
+        target_dir = target_dir.parent
+
+    module_rest = module_path[dots:]
+    if not module_rest:
+        candidate = target_dir / "__init__.py"
+    else:
+        candidate = target_dir / module_rest.replace(".", "/") / "__init__.py"
+    return str(candidate)
+
+
+def _relative_anchor_init(module_path: str, current_file_rel: str) -> str | None:
+    """Return the ancestor package's ``__init__.py`` for a relative import.
+
+    This is the fallback Python uses when ``from . import name`` (or
+    ``from .. import name``) names neither a sub-module file nor a
+    sub-package — in that case the import binds the attribute ``name``
+    that the ancestor package's ``__init__.py`` defines.
+
+    For ``from .x.y import …`` with ``N`` leading dots, the anchor
+    package is the directory you reach by walking up ``N-1`` levels
+    from the current file. Strips any sub-module path because the
+    fallback always targets the anchor itself, not the deeper sub-path.
+    """
+    if not module_path.startswith("."):
+        return None
+
+    dots = 0
+    for ch in module_path:
+        if ch == ".":
+            dots += 1
+        else:
+            break
+
+    current_dir = Path(current_file_rel).parent
+    target_dir = current_dir
+    for _ in range(dots - 1):
+        target_dir = target_dir.parent
+
+    return str(target_dir / "__init__.py")
 
 
 def extract_imports_from_file(
@@ -270,17 +345,39 @@ class DependencyGraph:
 
         if language == "python":
             if is_relative:
-                resolved = _resolve_relative_import(module, source_rel)
-                return resolved
+                # Match Python's actual import semantics: a package
+                # (``foo/bar/__init__.py``) takes precedence over a
+                # sibling file module (``foo/bar.py``) when both
+                # exist. In practice projects use one or the other, so
+                # the choice rarely matters — but we pin the package
+                # form to match the interpreter.
+                init_candidate = _relative_init_candidate(module, source_rel)
+                if init_candidate and init_candidate in self._nodes:
+                    return init_candidate
+                file_candidate = _resolve_relative_import(module, source_rel)
+                if file_candidate and file_candidate in self._nodes:
+                    return file_candidate
+                # ``from . import name`` / ``from .. import name`` where
+                # ``name`` is neither a file-module nor a sub-package:
+                # Python falls back to the attribute defined in the
+                # ancestor package's ``__init__.py``. Emit the edge to
+                # that ``__init__.py`` so e.g. ``from . import
+                # __version__`` is not silently dropped.
+                anchor_init = _relative_anchor_init(module, source_rel)
+                if anchor_init and anchor_init in self._nodes:
+                    return anchor_init
+                return file_candidate  # legacy: return file form even if absent
             else:
                 # Absolute import: e.g., "pkg.submodule" → pkg/submodule.py
+                # Package-module form (``pkg/submodule/__init__.py``)
+                # takes precedence over file-module form (``pkg/submodule.py``)
+                # when both exist — matches Python's import semantics.
+                init_candidate_abs: str = module.replace(".", "/") + "/__init__.py"
+                if init_candidate_abs in self._nodes:
+                    return init_candidate_abs
                 candidate: str = module.replace(".", "/") + ".py"
                 if candidate in self._nodes:
                     return candidate
-                # Also try matching without .py (e.g., __init__.py packages)
-                init_candidate: str = module.replace(".", "/") + "/__init__.py"
-                if init_candidate in self._nodes:
-                    return init_candidate
                 return None
 
         elif language in ("javascript", "typescript"):

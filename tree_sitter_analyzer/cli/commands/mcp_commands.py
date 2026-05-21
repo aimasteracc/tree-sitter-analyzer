@@ -19,11 +19,17 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
 # module level — see ``tests/unit/cli/test_mcp_commands.py``.
 # noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.build_project_index_tool import (
+    BuildProjectIndexTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
     CodeGraphCallTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
     ChangeImpactTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.check_tools_tool import (
+    CheckToolsTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
     CodePatternsTool,  # noqa: F401
@@ -55,6 +61,9 @@ from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
 )
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,  # noqa: F401
+)
+from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+    TraceImpactTool,  # noqa: F401
 )
 
 _DEPENDENCY_FILE_SCOPED_MODES = {"blast_radius", "file_deps"}
@@ -109,6 +118,58 @@ def _build_parser_readiness_tool_args(args: Any, output_format: str) -> dict[str
         ),
         "output_format": output_format,
     }
+
+
+def _build_trace_impact_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """Build tool args for --trace-impact, omitting empty optional keys.
+
+    The TraceImpactTool schema does not accept ``output_format``, so the
+    dispatcher must not forward it here — callers receive JSON envelopes
+    by default and can post-process to TOON via the ``toon_content`` field
+    if the tool produces one.
+    """
+    tool_args: dict[str, Any] = {
+        "symbol": getattr(args, "trace_impact_symbol", "") or "",
+    }
+    file_path = getattr(args, "trace_impact_file", None) or getattr(
+        args, "file_path", None
+    )
+    if file_path:
+        tool_args["file_path"] = file_path
+    roots = getattr(args, "trace_impact_roots", None)
+    if roots:
+        tool_args["project_root"] = roots
+    return tool_args
+
+
+def _build_check_tools_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """Build tool args for --check-tools.
+
+    The CheckToolsTool schema accepts no input properties (only checks
+    whether fd/rg are available), so we forward an empty dict.
+    """
+    del args, output_format  # CheckToolsTool takes no inputs
+    return {}
+
+
+def _build_build_project_index_tool_args(
+    args: Any, output_format: str
+) -> dict[str, Any]:
+    """Build tool args for --build-project-index.
+
+    Mirrors :class:`BuildProjectIndexTool`'s schema — ``roots`` (list of
+    directories) and ``add_notes`` (string). ``output_format`` is not on
+    the schema so we omit it.
+    """
+    del output_format  # BuildProjectIndexTool currently ignores output_format
+    tool_args: dict[str, Any] = {}
+    roots = getattr(args, "build_project_index_roots", None)
+    if roots:
+        tool_args["roots"] = roots
+    notes = getattr(args, "build_project_index_notes", None)
+    if notes:
+        tool_args["add_notes"] = notes
+    return tool_args
 
 
 MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
@@ -258,6 +319,24 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         label="Framework route detection (CodeGraph parity)",
         build_tool_args=_build_detect_routes_tool_args,
     ),
+    McpCommandSpec(
+        flag_name="trace_impact",
+        tool_attr="TraceImpactTool",
+        label="Trace symbol impact (callers + usages across project)",
+        build_tool_args=_build_trace_impact_tool_args,
+    ),
+    McpCommandSpec(
+        flag_name="check_tools",
+        tool_attr="CheckToolsTool",
+        label="Check fd / ripgrep availability",
+        build_tool_args=_build_check_tools_tool_args,
+    ),
+    McpCommandSpec(
+        flag_name="build_project_index",
+        tool_attr="BuildProjectIndexTool",
+        label="Rebuild persistent project index",
+        build_tool_args=_build_build_project_index_tool_args,
+    ),
 )
 
 
@@ -397,6 +476,9 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphCallTool",
         "ASTCacheTool",
         "RouteDetectorTool",
+        "TraceImpactTool",
+        "CheckToolsTool",
+        "BuildProjectIndexTool",
     }
 )
 

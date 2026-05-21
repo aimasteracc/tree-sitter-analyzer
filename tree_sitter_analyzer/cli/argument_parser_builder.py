@@ -504,3 +504,53 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default="all",
         help="Framework filter for --detect-routes (default: all)",
     )
+    parser.add_argument(
+        "--trace-impact",
+        action="store_true",
+        help="Trace symbol impact: find all callers and usage sites of a symbol",
+    )
+    parser.add_argument(
+        "--trace-impact-symbol",
+        metavar="NAME",
+        help="Symbol name to trace for --trace-impact (required)",
+    )
+    parser.add_argument(
+        "--trace-impact-file",
+        metavar="PATH",
+        help=(
+            "Optional source file for --trace-impact "
+            "(filters to the same language to reduce false positives)"
+        ),
+    )
+    parser.add_argument(
+        "--trace-impact-roots",
+        metavar="PATHS",
+        help=(
+            "Optional project root(s) for --trace-impact, comma-separated. "
+            "Defaults to the project root."
+        ),
+    )
+    parser.add_argument(
+        "--check-tools",
+        action="store_true",
+        help="Check whether fd and ripgrep are installed and return their versions",
+    )
+    parser.add_argument(
+        "--build-project-index",
+        action="store_true",
+        help=(
+            "Rebuild the persistent project index from scratch and save it to disk. "
+            "For full options (per-root indexing, notes), call the MCP tool directly."
+        ),
+    )
+    parser.add_argument(
+        "--build-project-index-roots",
+        nargs="+",
+        metavar="PATH",
+        help="Optional directories to index for --build-project-index (defaults to project root)",
+    )
+    parser.add_argument(
+        "--build-project-index-notes",
+        metavar="TEXT",
+        help="Optional architecture notes to attach to the rebuilt index",
+    )

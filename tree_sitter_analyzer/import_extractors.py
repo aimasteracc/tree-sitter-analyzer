@@ -323,7 +323,22 @@ def extract_python_import_simple(
 def extract_python_import_from(
     node: Any, source: str, imports: list[dict[str, Any]]
 ) -> None:
-    """Handle: from [.][.]module import name1, name2"""
+    """Handle: from [.][.]module import name1, name2
+
+    Two shapes are emitted:
+    1. ``from <prefix>module import a, b`` → one entry whose
+       ``module_name`` is ``<prefix>module`` and ``names`` are the
+       imported symbols.
+    2. ``from . import a, b`` / ``from .. import a, b`` (no dotted name
+       inside the ``relative_import``) → one entry **per imported
+       name**, with ``module_name = <prefix><name>``. Each ``name`` is
+       a candidate submodule of the current package; the resolver tries
+       both ``<pkg>/<name>.py`` and ``<pkg>/<name>/__init__.py``. This
+       matches Python's import semantics — ``from . import sub``
+       imports the ``sub`` submodule (or, if there is no such
+       submodule, the attribute ``sub`` from the current package's
+       ``__init__.py``).
+    """
     module_name = ""
     dots_prefix = ""
     imported_names: list[str] = []
@@ -347,6 +362,24 @@ def extract_python_import_from(
 
         elif ct == "aliased_import":
             imported_names.extend(_extract_import_names(child, source))
+
+    # Case 2: ``from . import x, y`` — relative_import had no
+    # dotted_name, so ``module_name`` is empty but ``dots_prefix`` is
+    # set. Emit one entry per imported name treating each as a
+    # candidate submodule of the current package.
+    if dots_prefix and not module_name:
+        for name in imported_names:
+            full_module = dots_prefix + name
+            imports.append(
+                {
+                    "module_name": full_module,
+                    "resolved_path": full_module.replace(".", "/") + ".py",
+                    "names": [name],
+                    "is_relative": True,
+                    "language": "python",
+                }
+            )
+        return
 
     if not module_name:
         return
@@ -477,9 +510,7 @@ def _node_text(node: Any, source: str) -> str:
         return ""
 
 
-def _extract_go_imports(
-    node: Any, source: str, imports: list[dict[str, Any]]
-) -> None:
+def _extract_go_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
     """Extract Go import declarations.
 
     Handles:
@@ -585,9 +616,7 @@ def _parse_rust_use_path(raw: str) -> str | None:
     return None
 
 
-def _extract_cpp_imports(
-    node: Any, source: str, imports: list[dict[str, Any]]
-) -> None:
+def _extract_cpp_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
     """Extract C/C++ #include directives.
 
     Handles:
@@ -748,7 +777,7 @@ def _extract_kotlin_imports(
     if not raw.startswith("import "):
         return
 
-    path = raw[len("import "):].strip().rstrip(";")
+    path = raw[len("import ") :].strip().rstrip(";")
     if path.endswith(".*"):
         path = path[:-2]
 
@@ -815,7 +844,11 @@ def _extract_ruby_imports(
     if node_type != "call":
         return
 
-    func = node.child_by_field_name("function") if hasattr(node, "child_by_field_name") else None
+    func = (
+        node.child_by_field_name("function")
+        if hasattr(node, "child_by_field_name")
+        else None
+    )
     if not func:
         return
 
@@ -824,7 +857,11 @@ def _extract_ruby_imports(
     if func_name not in ("require", "require_relative"):
         return
 
-    args_node = node.child_by_field_name("arguments") if hasattr(node, "child_by_field_name") else None
+    args_node = (
+        node.child_by_field_name("arguments")
+        if hasattr(node, "child_by_field_name")
+        else None
+    )
     if not args_node or not hasattr(args_node, "children"):
         return
 
@@ -850,9 +887,7 @@ def _extract_ruby_imports(
                 return
 
 
-def _extract_php_imports(
-    node: Any, source: str, imports: list[dict[str, Any]]
-) -> None:
+def _extract_php_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
     """Extract PHP use declarations (namespace imports).
 
     Handles:
@@ -868,12 +903,12 @@ def _extract_php_imports(
     if not raw.startswith("use "):
         return
 
-    path = raw[len("use "):].strip().rstrip(";")
+    path = raw[len("use ") :].strip().rstrip(";")
 
     if path.startswith("function "):
-        path = path[len("function "):].strip()
+        path = path[len("function ") :].strip()
     elif path.startswith("const "):
-        path = path[len("const "):].strip()
+        path = path[len("const ") :].strip()
 
     if " as " in path:
         path = path[: path.index(" as ")].strip()

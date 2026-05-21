@@ -628,3 +628,247 @@ def test_change_impact_cli_forwards_mode_and_test_discovery_toggle(monkeypatch) 
             "agent_summary_only": False,
         },
     }
+
+
+# J12: CLI parity for previously-MCP-only tools.
+# These tests mirror the pattern used for --call-graph and --ast-cache:
+# - drive the dispatcher with a Namespace
+# - monkeypatch the tool class in mcp_commands
+# - assert the dispatcher constructs the tool, forwards the right arguments,
+#   and prints the result envelope through the JSON sink.
+
+
+def test_trace_impact_cli_invokes_tool(monkeypatch) -> None:
+    """``--trace-impact --trace-impact-symbol NAME`` reaches TraceImpactTool."""
+    seen: dict[str, Any] = {}
+
+    class FakeTraceImpactTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {
+                "success": True,
+                "symbol": arguments["symbol"],
+                "source_call_count": 0,
+                "usages": [],
+                "agent_summary": {
+                    "summary_line": "trace_impact: 0 callers",
+                    "next_step": "Confirm the symbol name is correct.",
+                    "verdict": "LOW",
+                },
+            }
+
+    monkeypatch.setattr(mcp_commands, "TraceImpactTool", FakeTraceImpactTool)
+
+    output: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    args = Namespace(
+        trace_impact=True,
+        trace_impact_symbol="BaseMCPTool",
+        trace_impact_file=None,
+        trace_impact_roots=None,
+        file_path=None,
+        project_root="/repo",
+    )
+    result = mcp_commands.handle_mcp_commands(
+        args,
+        output.append,
+        errors.append,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert errors == []
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {"symbol": "BaseMCPTool"},
+    }
+    assert output and output[0]["symbol"] == "BaseMCPTool"
+
+
+def test_trace_impact_cli_forwards_optional_file_and_roots(monkeypatch) -> None:
+    """Optional --trace-impact-file and --trace-impact-roots reach the tool."""
+    seen: dict[str, Any] = {}
+
+    class FakeTraceImpactTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True, "symbol": arguments["symbol"]}
+
+    monkeypatch.setattr(mcp_commands, "TraceImpactTool", FakeTraceImpactTool)
+
+    args = Namespace(
+        trace_impact=True,
+        trace_impact_symbol="process_payment",
+        trace_impact_file="src/payments.py",
+        trace_impact_roots="/repo/src,/repo/lib",
+        file_path=None,
+        project_root="/repo",
+    )
+    result = mcp_commands.handle_mcp_commands(
+        args,
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen["arguments"] == {
+        "symbol": "process_payment",
+        "file_path": "src/payments.py",
+        "project_root": "/repo/src,/repo/lib",
+    }
+
+
+def test_check_tools_cli_invokes_tool(monkeypatch) -> None:
+    """``--check-tools`` reaches CheckToolsTool with an empty argument dict."""
+    seen: dict[str, Any] = {}
+
+    class FakeCheckToolsTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {
+                "success": True,
+                "fd": {"available": True, "version": "fd 10"},
+                "rg": {"available": True, "version": "ripgrep 14"},
+                "status": "all_tools_available",
+                "recommendation": None,
+                "summary_line": "check_tools status=all_tools_available fd=ok rg=ok",
+                "agent_summary": {
+                    "summary_line": "check_tools status=all_tools_available",
+                    "next_step": "list_files / search_content are ready to run",
+                    "verdict": "READY",
+                },
+            }
+
+    monkeypatch.setattr(mcp_commands, "CheckToolsTool", FakeCheckToolsTool)
+
+    output: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    args = Namespace(
+        check_tools=True,
+        file_path=None,
+        project_root="/repo",
+    )
+    result = mcp_commands.handle_mcp_commands(
+        args,
+        output.append,
+        errors.append,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert errors == []
+    # CheckToolsTool's MCP schema takes no input properties, so the
+    # dispatcher must forward an empty dict (in particular, no
+    # ``output_format`` key — that would be rejected by
+    # ``additionalProperties: False``).
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {},
+    }
+    assert output and output[0]["status"] == "all_tools_available"
+
+
+def test_build_project_index_cli_invokes_tool(monkeypatch) -> None:
+    """``--build-project-index`` reaches BuildProjectIndexTool with an empty
+    argument dict by default (the tool defaults ``roots=["."]`` internally).
+    """
+    seen: dict[str, Any] = {}
+
+    class FakeBuildProjectIndexTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {
+                "success": True,
+                "status": "built",
+                "build_duration_ms": 12,
+                "files_scanned": 42,
+                "languages_found": {"python": 42},
+                "summary_line": "build_project_index built files=42 languages=1",
+                "agent_summary": {
+                    "summary_line": "build_project_index built files=42",
+                    "next_step": "get_project_summary to retrieve this index",
+                    "verdict": "n/a",
+                },
+            }
+
+    monkeypatch.setattr(
+        mcp_commands, "BuildProjectIndexTool", FakeBuildProjectIndexTool
+    )
+
+    output: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    args = Namespace(
+        build_project_index=True,
+        build_project_index_roots=None,
+        build_project_index_notes=None,
+        file_path=None,
+        project_root="/repo",
+    )
+    result = mcp_commands.handle_mcp_commands(
+        args,
+        output.append,
+        errors.append,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert errors == []
+    assert seen == {
+        "project_root": "/repo",
+        "arguments": {},
+    }
+    assert output and output[0]["files_scanned"] == 42
+
+
+def test_build_project_index_cli_forwards_roots_and_notes(monkeypatch) -> None:
+    """Explicit --build-project-index-roots / --build-project-index-notes
+    forward to the tool's ``roots`` and ``add_notes`` schema fields."""
+    seen: dict[str, Any] = {}
+
+    class FakeBuildProjectIndexTool:
+        def __init__(self, project_root: str | None = None) -> None:
+            seen["project_root"] = project_root
+
+        async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+            seen["arguments"] = arguments
+            return {"success": True}
+
+    monkeypatch.setattr(
+        mcp_commands, "BuildProjectIndexTool", FakeBuildProjectIndexTool
+    )
+
+    args = Namespace(
+        build_project_index=True,
+        build_project_index_roots=["src", "tests"],
+        build_project_index_notes="Monorepo entry: src/main.py",
+        file_path=None,
+        project_root="/repo",
+    )
+    result = mcp_commands.handle_mcp_commands(
+        args,
+        lambda payload: None,
+        lambda error: None,
+        lambda: "json",
+    )
+
+    assert result == 0
+    assert seen["arguments"] == {
+        "roots": ["src", "tests"],
+        "add_notes": "Monorepo entry: src/main.py",
+    }
