@@ -87,8 +87,24 @@ class SmartContextTool(BaseMCPTool):
         return {
             "name": "smart_context",
             "description": (
-                "File profile in one call: health grade, exports, deps, tests, edit risk. "
-                "Use instead of: Read + check_file_health + analyze_dependencies separately."
+                "One-shot file orientation: combines file_health grade, "
+                "exported symbols (the file's public API), upstream/down"
+                "stream dependencies, associated test files, and edit-risk "
+                "estimate into a single envelope. Designed as the first "
+                "tool an agent calls when handed an unfamiliar file — "
+                "replaces 3-4 separate calls (Read + file_health + "
+                "dependency_analysis + safe_to_edit) with one.\n\n"
+                "WHEN TO USE:\n"
+                "- First tool when picking up an unfamiliar file\n"
+                "- To pre-load context before a multi-step edit\n"
+                "- To get the file's public surface (exports) at a glance\n"
+                "- Before deciding which deeper tool to call next\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To READ the file content — use partial_read\n"
+                "- For a project-wide map — use project_overview\n"
+                "- For symbol-level rename — use modification_guard\n"
+                "- For a quick line/method count only — use analyze_scale"
             ),
             "inputSchema": self.get_tool_schema(),
         }

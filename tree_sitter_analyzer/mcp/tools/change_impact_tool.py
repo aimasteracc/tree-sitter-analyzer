@@ -115,8 +115,24 @@ class ChangeImpactTool(BaseMCPTool):
         return {
             "name": "analyze_change_impact",
             "description": (
-                "After editing: git diff + dep graph → affected files, tests to run, risk. "
-                "MUST call after edits. No built-in tool provides this."
+                "Post-edit blast-radius scan: combines ``git diff`` (staged "
+                "+ unstaged) with the project dependency graph to compute "
+                "which files are affected, which test files must re-run, "
+                "and a risk verdict (CLEAN / REVIEW / WARN). Optionally "
+                "accepts ``scope_paths`` to restrict the analysis to a "
+                "subset of the diff. MUST be called after every non-trivial "
+                "edit before declaring work done — the built-in tools have "
+                "no view of dependency edges or test coverage.\n\n"
+                "WHEN TO USE:\n"
+                "- After ANY non-trivial edit before declaring 'done'\n"
+                "- To pick which tests are worth running (vs the full suite)\n"
+                "- To detect changes to high-fan-in files needing extra review\n"
+                "- For PR risk summaries (diff against base branch)\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- Before editing — use safe_to_edit instead\n"
+                "- For symbol-level rename — use modification_guard\n"
+                "- To see WHO calls a symbol — use trace_impact"
             ),
             "inputSchema": self.get_tool_schema(),
         }

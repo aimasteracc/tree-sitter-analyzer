@@ -10030,17 +10030,17 @@ _DESCRIPTION_QUALITY_EXEMPT_BELOW_200: frozenset[str] = frozenset(
         "agent_skills",
         "analyze_code_structure",
         # analyze_scale migrated out in r37j — WHEN TO USE guidance added.
-        "change_impact",
+        # change_impact migrated out in r37k — post-edit blast-radius detail.
         # file_health migrated out in r37j — WHEN TO USE / WHEN NOT TO USE.
         "find_and_grep",
         # list_files migrated out in r37i — now has WHEN TO USE guidance.
         "project_overview",
         "query",
         "read_partial",
-        "refactoring_suggestions",
+        # refactoring_suggestions migrated out in r37k.
         # safe_to_edit migrated out in r37j — full pre-edit guidance.
         "search_content",
-        "smart_context",
+        # smart_context migrated out in r37k — one-shot orientation detail.
         "universal_analyze",
     }
 )
@@ -10148,7 +10148,8 @@ class TestT7DescriptionQualityFloor:
         # Migration progress:
         #   15 → 14 (r37i: list_files)
         #   14 → 11 (r37j: analyze_scale + file_health + safe_to_edit)
-        BASELINE_EXEMPT_COUNT = 11
+        #   11 →  8 (r37k: change_impact + refactoring_suggestions + smart_context)
+        BASELINE_EXEMPT_COUNT = 8
         assert len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200) <= BASELINE_EXEMPT_COUNT, (
             f"T7: exemption set grew to {len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200)} "
             f"(baseline: {BASELINE_EXEMPT_COUNT}). New tools must meet the "

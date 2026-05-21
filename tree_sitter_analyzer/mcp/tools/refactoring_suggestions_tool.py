@@ -103,9 +103,26 @@ class RefactoringSuggestionsTool(BaseMCPTool):
         return {
             "name": "refactoring_suggestions",
             "description": (
-                "Refactoring plan with precise extraction targets. "
-                "Returns helper names, line ranges, params, returns, code skeletons. "
-                "No built-in tool provides this."
+                "Concrete refactoring plan for a single file: surfaces "
+                "structural smells (god class, long method, deep nesting, "
+                "duplicated code) AND anti-patterns / security issues "
+                "(eval, bare except, mutable default, SQL-injection-shaped "
+                "f-strings) — same detectors as code_patterns, packaged as "
+                "actionable extraction targets with helper names, line "
+                "ranges, parameters, return types, and (optional) code "
+                "skeletons.\n\n"
+                "WHEN TO USE:\n"
+                "- After file_health flags a file as B/C/D/F grade\n"
+                "- Before splitting a god class — get extraction plan first\n"
+                "- To find safe-to-extract helpers in a long function\n"
+                "- Coupled with safe_to_edit before applying the refactor\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- Just to LIST smells with no extraction plan — use "
+                "code_patterns (faster, no skeleton generation)\n"
+                "- For a project-wide smell sweep — use file_health on each "
+                "weakest file in project_health output\n"
+                "- For pure renames — use modification_guard"
             ),
             "inputSchema": self.get_tool_schema(),
         }
