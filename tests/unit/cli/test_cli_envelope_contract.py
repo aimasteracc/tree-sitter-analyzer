@@ -339,6 +339,48 @@ class TestR37afCLIEnvelopeContract:
         )
         _assert_envelope(payload, "ShowExtensionsCommand")
 
+    def test_partial_read_command_envelope(self):
+        """PartialReadCommand → envelope.
+
+        r37ag (dogfood): added because the CLI envelope gate caught
+        ``--partial-read`` returning ``verdict: None`` at the top
+        level while ``agent_summary.verdict`` was populated. The fix
+        mirrors ``agent_summary.verdict`` upward like every other
+        Command in the suite.
+        """
+        import os
+
+        # Minimal real file is easier than mocking ``file_handler``.
+        import tempfile
+
+        from tree_sitter_analyzer.cli.commands.partial_read_command import (
+            PartialReadCommand,
+        )
+
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False) as fh:
+            fh.write("def greet(name):\n    return f'hi {name}'\n")
+            path = fh.name
+        try:
+            args = Namespace(
+                file_path=path,
+                start_line=1,
+                end_line=2,
+                start_column=None,
+                end_column=None,
+                output_file=None,
+                suppress_output=False,
+                output_format="json",
+                toon_use_tabs=False,
+            )
+            cmd = PartialReadCommand(args)
+            payload = _capture_output_json(
+                cmd.execute,
+                target_attr="tree_sitter_analyzer.cli.commands.partial_read_command.output_json",
+            )
+            _assert_envelope(payload, "PartialReadCommand")
+        finally:
+            os.unlink(path)
+
 
 class TestR37afCLISurfaceBaseline:
     """Ratchet — pins the count of CLI surfaces under coverage.
@@ -348,7 +390,10 @@ class TestR37afCLISurfaceBaseline:
     replacing it (which would silently shrink the gate).
     """
 
-    BASELINE_COVERAGE = 11  # 11 envelope-contract tests as of r37af.
+    # 11 envelope-contract tests at r37af. r37ag adds PartialReadCommand
+    # bringing the baseline to 12. Direction is intentional: count can
+    # GROW but not SHRINK.
+    BASELINE_COVERAGE = 12
 
     def test_envelope_test_count_does_not_shrink(self):
         """If you delete a test from TestR37afCLIEnvelopeContract,

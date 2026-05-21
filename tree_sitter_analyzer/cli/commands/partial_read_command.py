@@ -180,6 +180,13 @@ class PartialReadCommand(BaseCommand):
         summary_line = result_data["agent_summary"].get("summary_line")
         if summary_line:
             result_data["summary_line"] = summary_line
+        # r37ag (dogfood): mirror ``agent_summary.verdict`` to top-level
+        # (r37u envelope contract). Without this the CLI envelope gate
+        # caught ``--partial-read`` returning ``verdict: None``.
+        verdict = result_data["agent_summary"].get("verdict")
+        if isinstance(verdict, str) and verdict:
+            result_data["verdict"] = verdict
+        result_data.setdefault("success", True)
 
         # Build range info for header
         range_info = f"Line {self.args.start_line}"
