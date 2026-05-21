@@ -395,6 +395,7 @@ def _build_project_agent_summary(
     """
     queue_head = agent_backlog[0] if agent_backlog else None
     risk = _project_risk(grade_distribution)
+    verdict = _project_risk_to_verdict(risk)
     estimated_seconds = _estimate_seconds(total_files)
     # Finding 6: include summary_line so the dispatch post-hook can
     # mirror it to the top-level envelope (round-16b dogfood saw None).
@@ -415,6 +416,13 @@ def _build_project_agent_summary(
     )
     summary: dict[str, Any] = {
         "summary_line": summary_line,
+        # N3 (round-27): emit ``verdict`` so the cross-tool envelope
+        # contract (``TestEnvelopeContractSnapshot``) is satisfied.
+        # ``risk`` already drives the headline message; ``verdict``
+        # mirrors it to the safety-tool vocabulary so agents that
+        # branch on ``verdict`` see the same answer here as they get
+        # from modification_guard / safe_to_edit.
+        "verdict": verdict,
         "risk": risk,
         "total_files": total_files,
         "weakest_dimension": weakest_dim,
@@ -474,6 +482,28 @@ def _project_risk(grade_distribution: dict[str, int]) -> str:
     if grade_distribution.get("C", 0) > 0:
         return "medium"
     return "low"
+
+
+def _project_risk_to_verdict(risk: str) -> str:
+    """Map project-level risk to the cross-tool verdict vocabulary.
+
+    N3 (round-27): keeps the safety-tool verdict alphabet consistent
+    across modification_guard / safe_to_edit / project_health.
+
+    - ``critical`` (F-grade files exist) → ``REVIEW`` (the F count is
+      surfaced separately; an agent has to inspect the worst files
+      before acting). Not ``UNSAFE`` — project_health describes the
+      project, not a specific edit.
+    - ``high`` (D-grade files) → ``REVIEW``
+    - ``medium`` (C-grade only) → ``CAUTION``
+    - ``low`` (A/B only) → ``SAFE``
+    """
+    risk_lower = (risk or "").lower()
+    if risk_lower in ("critical", "high"):
+        return "REVIEW"
+    if risk_lower == "medium":
+        return "CAUTION"
+    return "SAFE"
 
 
 def _build_agent_backlog_item(score: Any) -> dict[str, Any]:

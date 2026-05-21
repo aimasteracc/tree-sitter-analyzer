@@ -184,11 +184,25 @@ def build_agent_summary(
     context: AgentWorkflowContext,
     workflow: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build the compact first-read decision summary for agents."""
+    """Build the compact first-read decision summary for agents.
+
+    N1 (round-27): include ``summary_line`` + ``verdict`` so the
+    cross-tool envelope contract (``TestEnvelopeContractSnapshot``) is
+    satisfied. ``mirror_summary_line`` then copies the line to the
+    top-level envelope for direct callers that bypass the dispatch hook.
+    """
     before = workflow["before_edit_commands"]
     after = workflow["after_edit_commands"]
     boundary = workflow["queue_boundary_commands"]
+    verdict = _risk_to_verdict(context.risk)
+    summary_line = (
+        f"{context.file_path} risk={context.risk} verdict={verdict} "
+        f"health={context.health_grade} "
+        f"tests={'yes' if context.has_tests else 'no'}"
+    )
     summary = {
+        "summary_line": summary_line,
+        "verdict": verdict,
         "risk": context.risk,
         "edit_strategy": workflow["edit_strategy"],
         "next_step": _agent_next_step(context, workflow),

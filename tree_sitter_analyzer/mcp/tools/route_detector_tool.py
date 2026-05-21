@@ -284,9 +284,17 @@ def _attach_route_summary(result: dict[str, Any], mode: str) -> None:
         next_step = "review the result fields"
 
     result["summary_line"] = summary_line
+    # N2 (round-27): emit ``verdict`` so the cross-tool envelope contract
+    # (``TestEnvelopeContractSnapshot``) is satisfied. detect_routes is
+    # purely informational — it discovers route declarations, it does
+    # NOT make a safety judgement — so ``INFO`` is the canonical label
+    # (matches the verdict vocabulary used by other informational
+    # tools). Agents that branch on ``verdict`` see a consistent shape
+    # regardless of which tool ran.
     result["agent_summary"] = {
         "summary_line": summary_line,
         "next_step": next_step,
+        "verdict": "INFO",
     }
 
 

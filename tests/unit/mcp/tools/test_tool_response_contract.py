@@ -6063,43 +6063,30 @@ class TestEnvelopeContractSnapshot:
     (single-file analysis, project-wide analysis, search, graph,
     cache, route detection, lineage, change-impact).
 
-    Known drift (xfail until follow-up round):
+    Round-27 update: the four known drifters that round-26 flagged
+    (SafeToEditTool top-level ``summary_line``, RouteDetectorTool /
+    ProjectHealthTool / ProjectOverviewTool ``agent_summary.verdict``)
+    are now fixed at the tool layer. The full snapshot test is no
+    longer ``xfail`` — both tests in this class are hard gates.
 
-    - **SafeToEditTool** — no ``summary_line`` at top level; only in
-      ``agent_summary``. (As of round-26 the tool emits ``verdict``
-      and ``recommendation`` at top level but skips the canonical
-      ``summary_line`` mirror.)
-    - **RouteDetectorTool / ProjectHealthTool / ProjectOverviewTool** —
-      ``agent_summary`` is populated but missing the ``verdict`` key.
-      Those tools surface their "headline" via ``risk`` /
-      ``next_step`` instead. Future round should normalise.
+    Two-test split (kept for documentation):
 
-    The two-test split below ensures:
-
-    - ``test_canonical_envelope_passing_tools`` is a hard gate (must
-      pass every CI run; covers 8 tools that already conform).
-    - ``test_canonical_envelope_full_snapshot`` is the full
-      cross-tool snapshot — currently ``xfail(strict=False)`` because
-      of the known drift listed above. When that drift is fixed it
-      will flip to passing automatically and ``strict=True`` can be
-      set so further regressions fail loudly.
+    - ``test_canonical_envelope_passing_tools`` is the legacy passing
+      subset (filtered by :attr:`KNOWN_DRIFT`). With the drift now
+      empty, the two tests check the same tool list but the split
+      preserves a clear migration path if a future drifter appears.
+    - ``test_canonical_envelope_full_snapshot`` covers every tool in
+      :func:`tool_cases` and is a hard gate.
     """
 
     REQUIRED_KEYS = frozenset({"success", "summary_line", "agent_summary"})
     REQUIRED_AGENT_SUMMARY_KEYS = frozenset({"summary_line", "verdict"})
 
-    # Tools currently failing the envelope snapshot — listed here so
-    # the passing-subset test still catches any *new* drift among the
-    # canonical tools. Add an entry only after confirming the drift is
-    # known and tracked.
-    KNOWN_DRIFT: frozenset[str] = frozenset(
-        {
-            "SafeToEditTool",  # missing top-level summary_line
-            "RouteDetectorTool",  # missing agent_summary.verdict
-            "ProjectHealthTool",  # missing agent_summary.verdict
-            "ProjectOverviewTool",  # missing agent_summary.verdict
-        }
-    )
+    # Tools currently failing the envelope snapshot. Round-27 brought
+    # this set to empty — every tool now emits the canonical envelope.
+    # The attribute is kept (intentionally empty) so a future drifter
+    # can be tracked here while the full-snapshot test still flags it.
+    KNOWN_DRIFT: frozenset[str] = frozenset()
 
     @pytest.fixture
     def envelope_project(self, tmp_path: Path) -> Path:
@@ -6243,25 +6230,236 @@ class TestEnvelopeContractSnapshot:
             + "\n  - ".join(drift)
         )
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "Known envelope drift in SafeToEditTool / RouteDetectorTool / "
-            "ProjectHealthTool / ProjectOverviewTool — see "
-            "TestEnvelopeContractSnapshot docstring. Future round will "
-            "normalise these; this xfail flips to PASS automatically when "
-            "they do, at which point ``strict=True`` can be set."
-        ),
-    )
     def test_canonical_envelope_full_snapshot(self, tool_cases) -> None:  # type: ignore[no-untyped-def]
-        """Full cross-tool snapshot — expected to fail until the known
-        drift in :attr:`KNOWN_DRIFT` is fixed in a follow-up round.
-        Uses ``xfail(strict=False)`` so a future fix doesn't break CI;
-        once every tool conforms, flip to ``strict=True``."""
+        """Full cross-tool snapshot — every MCP tool must emit the
+        canonical envelope (top-level ``summary_line`` + ``agent_summary``
+        with ``summary_line`` and ``verdict``).
+
+        Round-27 fixed the four known drifters
+        (SafeToEditTool top-level ``summary_line``,
+        RouteDetectorTool / ProjectHealthTool / ProjectOverviewTool
+        ``agent_summary.verdict``) so this snapshot is now a strict
+        hard gate. The companion :meth:`test_canonical_envelope_passing_tools`
+        retains the legacy ``KNOWN_DRIFT`` allowlist as documentation —
+        it should now be empty in practice.
+        """
         drift = self._collect_drift(tool_cases)
         assert not drift, (
             "Envelope contract drift detected across MCP tools:\n  - "
             + "\n  - ".join(drift)
+        )
+
+
+# ============================================================================
+# N1–N4 — round-27 per-tool regressions for the four known drifters that
+# the round-26 ``TestEnvelopeContractSnapshot`` caught. These complement
+# the snapshot test by pinning the specific contract each tool must
+# honour, so a future regression fails at the exact tool boundary
+# (instead of as a diffuse cross-tool snapshot failure).
+# ============================================================================
+
+
+_N_VERDICT_VOCABULARY = frozenset(
+    {"SAFE", "CAUTION", "REVIEW", "UNSAFE", "INFO", "ERROR", "NOT_FOUND"}
+)
+
+
+class TestN1SafeToEditTopSummaryLine:
+    """N1 (round-27): safe_to_edit used to ship ``summary_line=None`` at
+    the top level — only ``agent_summary`` carried a useful one-liner.
+    Direct callers (CLI, tests, hive-mind workers) that bypass the
+    dispatch hook saw the drift. Contract now: top-level
+    ``summary_line`` is non-empty and equal to
+    ``agent_summary["summary_line"]``.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_top_summary_line_non_empty(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+
+        tool = SafeToEditTool(str(project))
+        result = _run(tool.execute({"file_path": "sample.py", "output_format": "json"}))
+        top_sl = result.get("summary_line")
+        assert isinstance(top_sl, str) and top_sl, (
+            f"N1: safe_to_edit top-level summary_line must be a non-empty "
+            f"string — got {top_sl!r}"
+        )
+
+    def test_top_summary_line_matches_agent_summary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+
+        tool = SafeToEditTool(str(project))
+        result = _run(tool.execute({"file_path": "sample.py", "output_format": "json"}))
+        top_sl = result.get("summary_line")
+        agent_sl = result.get("agent_summary", {}).get("summary_line")
+        assert top_sl == agent_sl, (
+            f"N1: safe_to_edit top-level summary_line must mirror "
+            f"agent_summary['summary_line'] — got top={top_sl!r} "
+            f"agent={agent_sl!r}"
+        )
+
+
+class TestN2RouteDetectorVerdict:
+    """N2 (round-27): detect_routes's ``agent_summary`` carried
+    ``summary_line`` + ``next_step`` + ``risk`` but no ``verdict``,
+    breaking the cross-tool envelope contract. Route detection is
+    informational — it discovers route declarations without making a
+    safety judgement — so the canonical verdict for this tool is
+    ``INFO``.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        "mode,extra",
+        [
+            ("summary", {}),
+            ("all", {}),
+        ],
+    )
+    def test_agent_summary_verdict_non_empty(
+        self, project: Path, mode: str, extra: dict[str, Any]
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            RouteDetectorTool,
+        )
+
+        tool = RouteDetectorTool(str(project))
+        args: dict[str, Any] = {"mode": mode, "output_format": "json"}
+        args.update(extra)
+        result = _run(tool.execute(args))
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(verdict, str) and verdict, (
+            f"N2: detect_routes agent_summary.verdict must be a non-empty "
+            f"string — got {verdict!r} (mode={mode})"
+        )
+
+    def test_agent_summary_verdict_in_vocabulary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            RouteDetectorTool,
+        )
+
+        tool = RouteDetectorTool(str(project))
+        result = _run(tool.execute({"mode": "summary", "output_format": "json"}))
+        verdict = result["agent_summary"]["verdict"]
+        assert verdict in _N_VERDICT_VOCABULARY, (
+            f"N2: detect_routes agent_summary.verdict must be in the "
+            f"canonical vocabulary {sorted(_N_VERDICT_VOCABULARY)} — "
+            f"got {verdict!r}"
+        )
+
+
+class TestN3ProjectHealthVerdict:
+    """N3 (round-27): project_health's ``agent_summary`` carried
+    ``summary_line`` + ``risk`` (low/medium/high/critical) but no
+    ``verdict``. Cross-tool agents that branch on ``verdict`` saw a
+    missing field. Contract now: ``verdict`` is populated using the
+    same vocabulary as modification_guard / safe_to_edit.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_agent_summary_verdict_non_empty(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_health_tool import (
+            ProjectHealthTool,
+        )
+
+        tool = ProjectHealthTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(verdict, str) and verdict, (
+            f"N3: project_health agent_summary.verdict must be a non-empty "
+            f"string — got {verdict!r}"
+        )
+
+    def test_agent_summary_verdict_in_vocabulary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_health_tool import (
+            ProjectHealthTool,
+        )
+
+        tool = ProjectHealthTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        verdict = result["agent_summary"]["verdict"]
+        assert verdict in _N_VERDICT_VOCABULARY, (
+            f"N3: project_health agent_summary.verdict must be in the "
+            f"canonical vocabulary {sorted(_N_VERDICT_VOCABULARY)} — "
+            f"got {verdict!r}"
+        )
+
+
+class TestN4ProjectOverviewVerdict:
+    """N4 (round-27): project_overview's ``agent_summary`` carried
+    ``summary_line`` + ``risk`` (low/medium/high) but no ``verdict``.
+    Mirroring N3: ``verdict`` is now derived from ``risk`` so agents
+    that branch on ``verdict`` see the same vocabulary across tools.
+    """
+
+    @pytest.fixture
+    def project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_agent_summary_verdict_non_empty(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(verdict, str) and verdict, (
+            f"N4: project_overview agent_summary.verdict must be a "
+            f"non-empty string — got {verdict!r}"
+        )
+
+    def test_agent_summary_verdict_in_vocabulary(self, project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(project))
+        result = _run(tool.execute({"output_format": "json"}))
+        verdict = result["agent_summary"]["verdict"]
+        assert verdict in _N_VERDICT_VOCABULARY, (
+            f"N4: project_overview agent_summary.verdict must be in the "
+            f"canonical vocabulary {sorted(_N_VERDICT_VOCABULARY)} — "
+            f"got {verdict!r}"
+        )
+
+    def test_agent_summary_verdict_with_health(self, project: Path) -> None:
+        """include_health=True path still emits a populated verdict."""
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(project))
+        result = _run(tool.execute({"output_format": "json", "include_health": True}))
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(verdict, str) and verdict in _N_VERDICT_VOCABULARY, (
+            f"N4: project_overview agent_summary.verdict must be populated "
+            f"under include_health=True — got {verdict!r}"
         )
 
 

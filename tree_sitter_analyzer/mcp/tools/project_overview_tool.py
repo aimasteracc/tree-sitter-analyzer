@@ -348,9 +348,16 @@ def _build_agent_summary(
         f"languages={summary['languages_count']} "
         f"top_language={top_language or 'unknown'}"
     )
+    risk = _overview_risk(result, include_health)
     return {
         "summary_line": summary_line,
-        "risk": _overview_risk(result, include_health),
+        # N4 (round-27): emit ``verdict`` so the cross-tool envelope
+        # contract (``TestEnvelopeContractSnapshot``) is satisfied.
+        # ``risk`` is the project-overview headline; ``verdict`` mirrors
+        # it to the safety-tool vocabulary so agents that branch on
+        # ``verdict`` see a consistent shape across tools.
+        "verdict": _overview_risk_to_verdict(risk),
+        "risk": risk,
         "next_step": _overview_next_step(result, include_health),
         "verification_command": "uv run python -m tree_sitter_analyzer --overview --format json",
         "project_health_command": "uv run python -m tree_sitter_analyzer --project-health --format json",
@@ -361,6 +368,28 @@ def _build_agent_summary(
         "largest_file": largest[0]["path"] if largest else "",
         "health_checked": include_health,
     }
+
+
+def _overview_risk_to_verdict(risk: str) -> str:
+    """Map project-overview risk to the cross-tool verdict vocabulary.
+
+    N4 (round-27): keeps the verdict alphabet aligned with
+    ``project_health`` and the modification-guard family. Overview's
+    risk is inferred from observable signals (file sizes, language
+    spread) — it does NOT make a per-edit judgement — so the verdict
+    here describes the project's state, not a specific change.
+
+    - ``high`` → ``REVIEW`` (oversized files / health alerts — agent
+      should look closer before editing)
+    - ``medium`` → ``CAUTION`` (some signals worth a glance)
+    - ``low`` → ``SAFE`` (clean project, no red flags)
+    """
+    risk_lower = (risk or "").lower()
+    if risk_lower == "high":
+        return "REVIEW"
+    if risk_lower == "medium":
+        return "CAUTION"
+    return "SAFE"
 
 
 def _overview_risk(result: dict[str, Any], include_health: bool) -> str:
