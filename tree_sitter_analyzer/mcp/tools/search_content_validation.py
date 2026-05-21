@@ -55,6 +55,18 @@ def _validate_query_and_inputs(arguments: dict[str, Any]) -> None:
         raise ValueError("query is required and must be a non-empty string")
     if "roots" not in arguments and "files" not in arguments:
         raise ValueError("Either roots or files must be provided")
+    # O7 parity: explicit empty roots/files are a user error, not a
+    # convenience fallback. Silently scanning CWD masked typos.
+    if "roots" in arguments and arguments["roots"] in (None, [], ""):
+        raise ValueError(
+            "roots must be a non-empty array of strings "
+            "(or omit the key to scan project_root)"
+        )
+    if "files" in arguments and arguments["files"] in (None, [], ""):
+        raise ValueError(
+            "files must be a non-empty array of strings "
+            "(or omit the key when scanning by roots)"
+        )
 
 
 def _validate_option_types(arguments: dict[str, Any]) -> None:

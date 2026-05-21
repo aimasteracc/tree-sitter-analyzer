@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..utils.error_handler import handle_mcp_errors
 from . import fd_rg_utils
 from .base_tool import BaseMCPTool, mirror_summary_line
 
@@ -86,11 +87,20 @@ class BatchSearchTool(BaseMCPTool):
         if not isinstance(queries, list):
             raise ValueError("queries must be an array")
         if len(queries) < 2:
+            # O1: phrase as "must be at least N queries" so the canonical
+            # ``_classify`` hint matches "must be" → ``error_type=validation``
+            # (the same bucket every other tool reaches for a parameter-
+            # shape failure). Pre-O1 the wording was "requires at least",
+            # which fell through to the generic ``internal`` bucket because
+            # ``required`` is not a substring of ``requires``. Keep the
+            # "at least 2 queries" token in the message so existing tests
+            # that match on that substring still pass.
             raise ValueError(
-                "batch_search requires at least 2 queries; use search_content for a single search"
+                "queries must be at least 2 queries; "
+                "use search_content for a single search"
             )
         if len(queries) > 10:
-            raise ValueError("batch_search supports at most 10 queries per batch")
+            raise ValueError("queries must be at most 10 queries per batch")
         for i, q in enumerate(queries):
             if not isinstance(q, dict):
                 raise ValueError(f"queries[{i}] must be an object")
@@ -149,8 +159,19 @@ class BatchSearchTool(BaseMCPTool):
             files_from=None,
         )
 
+    @handle_mcp_errors("batch_search")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute all queries in parallel and aggregate results."""
+        """Execute all queries in parallel and aggregate results.
+
+        O1 (round-30 dogfood): wrapped with ``@handle_mcp_errors`` so
+        validation failures (empty queries, malformed query missing
+        ``pattern``) raise ``AnalysisError`` instead of bare
+        ``ValueError``. The MCP server boundary then converts that
+        into the canonical ``{success: false, error_type: validation,
+        agent_summary.verdict='ERROR', summary_line}`` envelope —
+        matching every other search tool (``search_content``,
+        ``list_files``, ``find_and_grep``).
+        """
         self.validate_arguments(arguments)
 
         queries: list[dict[str, Any]] = arguments["queries"]

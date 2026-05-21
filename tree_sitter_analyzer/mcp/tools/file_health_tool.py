@@ -13,7 +13,11 @@ from typing import Any
 
 from ...health_scorer import HealthScorer
 from ...utils import setup_logger
-from .base_tool import BaseMCPTool
+from .base_tool import (
+    BaseMCPTool,
+    detect_language_mismatch,
+    language_mismatch_error_response,
+)
 from .utils.element_extractor import extract_elements
 from .utils.file_health_response import (
     _build_signal as _build_signal,
@@ -132,6 +136,24 @@ class FileHealthTool(BaseMCPTool):
             raise ValueError(f"File not found: {file_path}")
 
         from ..utils.format_helper import apply_toon_format_to_response
+
+        # O3 (round-30 dogfood): strict mismatch gate. ``file_health
+        # foo.py language=java`` would otherwise inherit ``language``
+        # downstream into the smell-detector dispatch table and grade
+        # the file against the wrong rules.
+        mismatch = detect_language_mismatch(
+            resolved,
+            language if isinstance(language, str) else None,
+            project_root=self.project_root,
+        )
+        if mismatch:
+            response = language_mismatch_error_response(
+                tool_name="file_health",
+                file_path=file_path,
+                warning=mismatch,
+            )
+            response["output_format"] = output_format
+            return apply_toon_format_to_response(response, output_format)
 
         # H7 fix: non-code files (Markdown, YAML, JSON, …) must not be
         # graded A-F. Without this guard ``HealthScorer`` falls through

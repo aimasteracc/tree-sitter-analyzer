@@ -27,8 +27,13 @@ class FindAndGrepRespondMixin:
         arguments: dict[str, Any],
         matches: list[dict[str, Any]],
         meta: dict[str, Any],
+        *,
+        real_total: int | None = None,
+        total_count_known: bool = True,
     ) -> dict[str, Any]:
         """Return matches grouped by file path."""
+        displayed = len(matches)
+        total_for_envelope = real_total if real_total is not None else displayed
         grouped = fd_rg_utils.group_matches_by_file(matches)
         if arguments.get("summary_only", False):
             grouped["summary"] = fd_rg_utils.summarize_search_results(matches)
@@ -37,11 +42,18 @@ class FindAndGrepRespondMixin:
         grouped["agent_summary"] = build_agent_summary_from_meta(
             arguments,
             mode="group_by_file",
-            count=len(matches),
+            count=displayed,
             meta=meta,
             file_count=count_match_files(matches),
         )
-        normalize_envelope(grouped, total_count=len(matches))
+        normalize_envelope(grouped, total_count=total_for_envelope)
+        _attach_total_count_metadata(
+            grouped,
+            displayed_count=displayed,
+            real_total=real_total,
+            total_count_known=total_count_known,
+            truncated=bool(meta.get("truncated", False)),
+        )
 
         suppressed = handle_output(
             grouped, arguments, self.file_output_manager, matches
@@ -59,12 +71,17 @@ class FindAndGrepRespondMixin:
         arguments: dict[str, Any],
         matches: list[dict[str, Any]],
         meta: dict[str, Any],
+        *,
+        real_total: int | None = None,
+        total_count_known: bool = True,
     ) -> dict[str, Any]:
         """Return a summary-only response without full match data."""
+        displayed = len(matches)
+        total_for_envelope = real_total if real_total is not None else displayed
         result: dict[str, Any] = {
             "success": True,
             "summary_only": True,
-            "count": len(matches),
+            "count": displayed,
             "results": [],
             "summary": fd_rg_utils.summarize_search_results(matches),
             "meta": meta,
@@ -72,12 +89,19 @@ class FindAndGrepRespondMixin:
             "agent_summary": build_agent_summary_from_meta(
                 arguments,
                 mode="summary",
-                count=len(matches),
+                count=displayed,
                 meta=meta,
                 file_count=count_match_files(matches),
             ),
         }
-        normalize_envelope(result, total_count=len(matches))
+        normalize_envelope(result, total_count=total_for_envelope)
+        _attach_total_count_metadata(
+            result,
+            displayed_count=displayed,
+            real_total=real_total,
+            total_count_known=total_count_known,
+            truncated=bool(meta.get("truncated", False)),
+        )
 
         suppressed = handle_output(result, arguments, self.file_output_manager, matches)
         if suppressed:
@@ -91,17 +115,22 @@ class FindAndGrepRespondMixin:
         matches: list[dict[str, Any]],
         meta: dict[str, Any],
         output_format: str,
+        *,
+        real_total: int | None = None,
+        total_count_known: bool = True,
     ) -> dict[str, Any]:
         """Return full match results with optional next_steps."""
+        displayed = len(matches)
+        total_for_envelope = real_total if real_total is not None else displayed
         result: dict[str, Any] = {
             "success": True,
-            "count": len(matches),
+            "count": displayed,
             "meta": meta,
             "output_format": output_format,
             "agent_summary": build_agent_summary_from_meta(
                 arguments,
                 mode="normal",
-                count=len(matches),
+                count=displayed,
                 meta=meta,
                 file_count=count_match_files(matches),
             ),
@@ -115,13 +144,46 @@ class FindAndGrepRespondMixin:
             if matches and not suppress_output:
                 result["next_steps"] = _build_next_steps(matches)
 
-        normalize_envelope(result, total_count=len(matches))
+        normalize_envelope(result, total_count=total_for_envelope)
+        _attach_total_count_metadata(
+            result,
+            displayed_count=displayed,
+            real_total=real_total,
+            total_count_known=total_count_known,
+            truncated=bool(meta.get("truncated", False)),
+        )
 
         suppressed = handle_output(result, arguments, self.file_output_manager, matches)
         if suppressed:
             return normalize_envelope(suppressed)
 
         return apply_toon_format_to_response(result, output_format)
+
+
+def _attach_total_count_metadata(
+    result: dict[str, Any],
+    *,
+    displayed_count: int,
+    real_total: int | None,
+    total_count_known: bool,
+    truncated: bool,
+) -> None:
+    """Attach H2-style ``total_count_known``/``total_count_at_least`` flags.
+
+    Mirrors ``search_content_response_modes._attach_total_count_metadata``:
+    - When not truncated, ``total_count_known`` is True.
+    - When truncated and recount succeeded, ``total_count_known`` is True
+      and ``total_count`` reflects the real pre-truncation total.
+    - When truncated and recount was skipped/over budget,
+      ``total_count_known`` is False and ``total_count_at_least`` exposes
+      the displayed count as a safe lower bound.
+    """
+    if not truncated:
+        result["total_count_known"] = True
+        return
+    result["total_count_known"] = bool(total_count_known)
+    if not total_count_known:
+        result["total_count_at_least"] = displayed_count
 
 
 def _build_next_steps(matches: list[dict[str, Any]]) -> list[str]:

@@ -25,7 +25,12 @@ from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_metrics import compute_file_metrics
 from ..utils.format_helper import apply_toon_format_to_response
 from .analyze_code_structure_helpers import convert_analysis_result_to_structure_dict
-from .base_tool import BaseMCPTool, format_summary_line
+from .base_tool import (
+    BaseMCPTool,
+    detect_language_mismatch,
+    format_summary_line,
+    language_mismatch_error_response,
+)
 from .universal_analyze_helpers import (
     TOOL_SCHEMA as _TOOL_SCHEMA,
 )
@@ -183,6 +188,26 @@ class UniversalAnalyzeTool(BaseMCPTool):
         resolved = self.resolve_and_validate_file_path(file_path)
         if language:
             language = self.security_validator.sanitize_input(language, max_length=50)
+
+        # O3 (round-30 dogfood): silent acceptance of mismatched
+        # ``--language``/``language:`` override. ``foo.py`` with
+        # ``language='java'`` previously emitted success=true with zero
+        # results — the agent passing the wrong tag had no signal that
+        # something was wrong. Strict gate (Option A): refuse the bad
+        # input with a canonical validation envelope.
+        mismatch = detect_language_mismatch(
+            resolved,
+            language,
+            project_root=self.project_root,
+        )
+        if mismatch:
+            response = language_mismatch_error_response(
+                tool_name="universal_analyze",
+                file_path=file_path,
+                warning=mismatch,
+            )
+            response["output_format"] = output_format
+            return response
         if analysis_type:
             analysis_type = self.security_validator.sanitize_input(
                 analysis_type, max_length=50

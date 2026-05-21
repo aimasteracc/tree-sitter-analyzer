@@ -8249,3 +8249,854 @@ class TestN9FileHealthNullBytesInStringLiterals:
             "N9: is_file_parse_broken must still return True for real "
             "syntax errors (no null bytes involved)"
         )
+
+
+class TestO3UniversalAnalyzeLanguageMismatch:
+    """O3 (round-30 dogfood): universal_analyze must refuse a mismatched
+    ``--language`` override instead of silently analysing the file
+    against the wrong tree-sitter grammar.
+
+    Before this gate, ``foo.py`` with ``language='java'`` returned
+    ``success=True`` with zero classes/methods — the agent passing the
+    wrong tag had no signal. Option A (strict) returns a canonical
+    validation envelope so callers must omit ``--language`` to
+    auto-detect, or fix the override.
+    """
+
+    def test_py_with_language_java_returns_validation_error(
+        self, tmp_path: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import (
+            UniversalAnalyzeTool,
+        )
+
+        src = tmp_path / "sample.py"
+        src.write_text("def greet(name):\n    return name\n", encoding="utf-8")
+
+        tool = UniversalAnalyzeTool(str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": "sample.py",
+                    "language": "java",
+                    "output_format": "json",
+                }
+            )
+        )
+        assert result.get("success") is False, (
+            f"O3: .py with language=java must fail — got success={result.get('success')!r}"
+        )
+        assert result.get("error_type") == "validation", (
+            f"O3: error_type must be 'validation' — got {result.get('error_type')!r}"
+        )
+        error_msg = result.get("error") or ""
+        assert "language='java' doesn't match" in error_msg, (
+            f"O3: error must explain the mismatch — got {error_msg!r}"
+        )
+        agent = result.get("agent_summary") or {}
+        assert agent.get("verdict") == "ERROR", (
+            f"O3: agent_summary.verdict must be ERROR — got {agent.get('verdict')!r}"
+        )
+        assert "auto-detect" in (agent.get("next_step") or ""), (
+            "O3: agent_summary.next_step must mention auto-detect to recover"
+        )
+
+    def test_py_with_language_python_matches_and_succeeds(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import (
+            UniversalAnalyzeTool,
+        )
+
+        src = tmp_path / "sample.py"
+        src.write_text("def greet(name):\n    return name\n", encoding="utf-8")
+
+        tool = UniversalAnalyzeTool(str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": "sample.py",
+                    "language": "python",
+                    "output_format": "json",
+                }
+            )
+        )
+        assert result.get("success") is True, (
+            "O3: .py with language=python (matching) must succeed — "
+            f"got success={result.get('success')!r} error={result.get('error')!r}"
+        )
+
+    def test_py_without_language_override_auto_detects(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import (
+            UniversalAnalyzeTool,
+        )
+
+        src = tmp_path / "sample.py"
+        src.write_text("def greet(name):\n    return name\n", encoding="utf-8")
+
+        tool = UniversalAnalyzeTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "sample.py", "output_format": "json"}))
+        assert result.get("success") is True, (
+            "O3: no language override must auto-detect and succeed — "
+            f"got success={result.get('success')!r} error={result.get('error')!r}"
+        )
+
+    def test_unknown_extension_does_not_trip_gate(self, tmp_path: Path) -> None:
+        """Unknown extensions can't be validated against — the gate
+        must let the call through so the underlying analyser can decide
+        whether the language tag is usable. Defensive: do not surprise
+        callers with a false-positive validation error on extensions we
+        don't know how to compare."""
+        from tree_sitter_analyzer.mcp.tools.universal_analyze_tool import (
+            UniversalAnalyzeTool,
+        )
+
+        src = tmp_path / "weird.xyzfoo"  # extension the detector won't know
+        src.write_text("not real code\n", encoding="utf-8")
+
+        from tree_sitter_analyzer.mcp.tools.base_tool import (
+            detect_language_mismatch,
+        )
+
+        # The helper must return None for unknown-extension files so the
+        # tool falls through to its normal handling (which may raise
+        # "unsupported" but must not return a language_mismatch error).
+        assert (
+            detect_language_mismatch(str(src), "java", project_root=str(tmp_path))
+            is None
+        ), "O3: unknown extension must not be flagged as a mismatch"
+
+        tool = UniversalAnalyzeTool(str(tmp_path))
+        # The downstream analyser may legitimately fail for unsupported
+        # languages — the contract here is only that we DON'T return a
+        # language_mismatch envelope.
+        try:
+            result = _run(
+                tool.execute(
+                    {
+                        "file_path": "weird.xyzfoo",
+                        "language": "java",
+                        "output_format": "json",
+                    }
+                )
+            )
+        except Exception:
+            return  # acceptable: tool raised because language isn't supported
+        # If the tool returned, it must NOT carry the mismatch warning.
+        assert "language_mismatch_warning" not in result, (
+            "O3: unknown extension must not produce a mismatch warning — "
+            f"got result keys: {sorted(result.keys())}"
+        )
+
+
+class TestO8RefactorLanguageMismatch:
+    """O8 (round-30 dogfood): refactoring_suggestions must refuse a
+    mismatched ``--language`` override instead of returning verdict=SAFE
+    with zero suggestions on a file written in another language.
+
+    Same shape as O3: strict envelope, ``error_type=validation``,
+    ``agent_summary.verdict=ERROR``.
+    """
+
+    def test_py_with_language_java_returns_validation_error(
+        self, tmp_path: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        src = tmp_path / "sample.py"
+        src.write_text("def greet(name):\n    return name\n", encoding="utf-8")
+
+        tool = RefactoringSuggestionsTool(str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": "sample.py",
+                    "language": "java",
+                    "output_format": "json",
+                }
+            )
+        )
+        assert result.get("success") is False, (
+            f"O8: refactor with language=java on .py must fail — "
+            f"got success={result.get('success')!r}"
+        )
+        assert result.get("error_type") == "validation", (
+            f"O8: error_type must be 'validation' — got {result.get('error_type')!r}"
+        )
+        error_msg = result.get("error") or ""
+        assert "language='java' doesn't match" in error_msg, (
+            f"O8: error must explain the mismatch — got {error_msg!r}"
+        )
+        assert result.get("verdict") != "SAFE", (
+            "O8: the mismatch envelope must NOT preserve a verdict=SAFE — "
+            "that was the original bug"
+        )
+
+    def test_py_with_language_python_matches_and_succeeds(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        src = tmp_path / "sample.py"
+        src.write_text("def greet(name):\n    return name\n", encoding="utf-8")
+
+        tool = RefactoringSuggestionsTool(str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": "sample.py",
+                    "language": "python",
+                    "output_format": "json",
+                }
+            )
+        )
+        assert result.get("success") is True, (
+            "O8: refactor with matching language=python must succeed — "
+            f"got success={result.get('success')!r}"
+        )
+
+    def test_py_without_language_override_auto_detects(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        src = tmp_path / "sample.py"
+        src.write_text("def greet(name):\n    return name\n", encoding="utf-8")
+
+        tool = RefactoringSuggestionsTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "sample.py", "output_format": "json"}))
+        assert result.get("success") is True, (
+            "O8: no language override must auto-detect and succeed — "
+            f"got success={result.get('success')!r}"
+        )
+
+    def test_unknown_extension_does_not_trip_gate(self, tmp_path: Path) -> None:
+        """Mirror of the O3 guard for the refactor tool — extensions
+        the detector doesn't know must not produce a false-positive
+        mismatch error."""
+        from tree_sitter_analyzer.mcp.tools.base_tool import (
+            detect_language_mismatch,
+        )
+
+        src = tmp_path / "weird.xyzfoo"
+        src.write_text("blah\n", encoding="utf-8")
+        assert (
+            detect_language_mismatch(str(src), "java", project_root=str(tmp_path))
+            is None
+        ), "O8: unknown extension must not be flagged as a mismatch"
+
+
+class TestLanguageMismatchHelperUnit:
+    """Direct unit tests on the shared helper — guards against future
+    refactors that accidentally narrow or widen its match criteria."""
+
+    def test_none_language_returns_none(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.base_tool import (
+            detect_language_mismatch,
+        )
+
+        src = tmp_path / "x.py"
+        src.write_text("x = 1\n", encoding="utf-8")
+        assert (
+            detect_language_mismatch(str(src), None, project_root=str(tmp_path)) is None
+        )
+
+    def test_empty_language_returns_none(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.base_tool import (
+            detect_language_mismatch,
+        )
+
+        src = tmp_path / "x.py"
+        src.write_text("x = 1\n", encoding="utf-8")
+        assert (
+            detect_language_mismatch(str(src), "", project_root=str(tmp_path)) is None
+        )
+
+    def test_case_insensitive_match(self, tmp_path: Path) -> None:
+        """``Python`` (mixed case) must match ``python`` from the detector."""
+        from tree_sitter_analyzer.mcp.tools.base_tool import (
+            detect_language_mismatch,
+        )
+
+        src = tmp_path / "x.py"
+        src.write_text("x = 1\n", encoding="utf-8")
+        assert (
+            detect_language_mismatch(str(src), "Python", project_root=str(tmp_path))
+            is None
+        )
+        assert (
+            detect_language_mismatch(str(src), "PYTHON", project_root=str(tmp_path))
+            is None
+        )
+
+    def test_mismatch_returns_warning_string(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.base_tool import (
+            detect_language_mismatch,
+        )
+
+        src = tmp_path / "x.py"
+        src.write_text("x = 1\n", encoding="utf-8")
+        warning = detect_language_mismatch(str(src), "java", project_root=str(tmp_path))
+        assert isinstance(warning, str) and warning, (
+            "mismatch must return a non-empty warning string"
+        )
+        assert "java" in warning and "python" in warning, (
+            f"warning must name both languages — got {warning!r}"
+        )
+
+
+class TestO4FileHealthLinesAliasUnderTOON:
+    """O4 (round-30): the ``lines`` scalar alias must survive the
+    TOON-format response stripping.
+
+    Before O4 the ``apply_toon_format_to_response`` helper unconditionally
+    stripped the top-level ``lines`` key, treating it as bulk content.
+    N9 (round-29) added ``lines`` as a scalar alias for ``line_count`` on
+    file_health responses — under the default TOON format the alias was
+    silently dropped, breaking cross-format consumers that read
+    ``response["lines"]`` without checking format.
+    """
+
+    @pytest.fixture
+    def tiny_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "sample.py"
+        src.write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_lines_present_under_explicit_json(self, tiny_project: Path) -> None:
+        """Sanity baseline: ``lines`` is present under ``output_format='json'``."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tiny_project))
+        result = _run(
+            tool.execute(
+                {
+                    "file_path": str(tiny_project / "sample.py"),
+                    "output_format": "json",
+                }
+            )
+        )
+        assert "lines" in result, (
+            "O4: file_health JSON response must include scalar ``lines`` alias"
+        )
+        assert isinstance(result["lines"], int), (
+            f"O4: ``lines`` must be int — got {type(result['lines']).__name__}"
+        )
+
+    def test_lines_present_under_default_toon(self, tiny_project: Path) -> None:
+        """O4: ``lines`` must STILL be present in the dict under default TOON."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tiny_project))
+        # No output_format → defaults to TOON.
+        result = _run(tool.execute({"file_path": str(tiny_project / "sample.py")}))
+        assert "lines" in result, (
+            "O4: file_health default-TOON response must NOT strip the "
+            "scalar ``lines`` alias — got keys: " + repr(sorted(result.keys()))
+        )
+        assert isinstance(result["lines"], int), (
+            f"O4: ``lines`` must be int under TOON — got "
+            f"{type(result['lines']).__name__}"
+        )
+
+    def test_lines_alias_matches_line_count_in_both_formats(
+        self, tiny_project: Path
+    ) -> None:
+        """O4: the alias must equal ``line_count`` regardless of format."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tiny_project))
+        r_json = _run(
+            tool.execute(
+                {
+                    "file_path": str(tiny_project / "sample.py"),
+                    "output_format": "json",
+                }
+            )
+        )
+        r_toon = _run(tool.execute({"file_path": str(tiny_project / "sample.py")}))
+        assert r_json.get("lines") == r_json.get("line_count"), (
+            f"O4: lines={r_json.get('lines')!r} must match "
+            f"line_count={r_json.get('line_count')!r} (json)"
+        )
+        assert r_toon.get("lines") == r_toon.get("line_count"), (
+            f"O4: lines={r_toon.get('lines')!r} must match "
+            f"line_count={r_toon.get('line_count')!r} (toon default)"
+        )
+        # Cross-format consistency: same file → same value in both formats.
+        assert r_json.get("lines") == r_toon.get("lines"), (
+            f"O4: scalar ``lines`` must be identical across json "
+            f"({r_json.get('lines')!r}) and toon ({r_toon.get('lines')!r})"
+        )
+
+    def test_list_lines_field_still_stripped_under_toon(self) -> None:
+        """Guardrail: when ``lines`` is genuinely a list of content,
+        ``apply_toon_format_to_response`` must still strip it. The fix
+        is conditional, not blanket — bulk arrays remain stripped to
+        preserve token savings."""
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            apply_toon_format_to_response,
+        )
+
+        result_with_list = {
+            "success": True,
+            "file_path": "/x.py",
+            "lines": ["line a", "line b", "line c"],  # bulk content
+        }
+        out = apply_toon_format_to_response(result_with_list, "toon")
+        assert out.get("format") == "toon"
+        assert "lines" not in out, (
+            "O4: when ``lines`` is a list, the field is bulk content "
+            "and must still be stripped under TOON"
+        )
+
+    def test_scalar_lines_survives_helper_directly(self) -> None:
+        """Direct unit test on ``apply_toon_format_to_response``: scalar
+        ``lines`` (int/str/dict) must NOT be stripped — only list values
+        are considered bulk content."""
+        from tree_sitter_analyzer.mcp.utils.format_helper import (
+            apply_toon_format_to_response,
+        )
+
+        result_with_int = {"success": True, "lines": 42}
+        out_int = apply_toon_format_to_response(result_with_int, "toon")
+        assert out_int.get("lines") == 42, (
+            f"O4: scalar int ``lines`` must survive — got {out_int!r}"
+        )
+
+        result_with_dict = {"success": True, "lines": {"start": 1, "end": 10}}
+        out_dict = apply_toon_format_to_response(result_with_dict, "toon")
+        assert out_dict.get("lines") == {"start": 1, "end": 10}, (
+            f"O4: dict-shaped ``lines`` (range) must survive — got {out_dict!r}"
+        )
+
+
+class TestO5ProjectOverviewSummaryByLanguage:
+    """O5 (round-30): project_overview must mirror ``language_distribution``
+    into ``summary.by_language`` so consumers building a summary block
+    don't have to read two different sub-trees of the response. The
+    top-level ``language_distribution`` field stays for back-compat —
+    the new field is purely additive.
+    """
+
+    @pytest.fixture
+    def multi_lang_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "main.py").write_text("def f(): return 1\n", encoding="utf-8")
+        (tmp_path / "README.md").write_text("# project\n", encoding="utf-8")
+        (tmp_path / "config.yaml").write_text("k: v\n", encoding="utf-8")
+        return tmp_path
+
+    def test_summary_by_language_present(self, multi_lang_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(multi_lang_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        summary = result.get("summary", {})
+        assert isinstance(summary, dict), "summary must be a dict"
+        assert "by_language" in summary, (
+            "O5: summary must include ``by_language`` mirror — got keys: "
+            + repr(sorted(summary.keys()))
+        )
+        assert isinstance(summary["by_language"], dict), (
+            f"O5: ``summary.by_language`` must be a dict — got "
+            f"{type(summary['by_language']).__name__}"
+        )
+
+    def test_summary_by_language_matches_top_level(
+        self, multi_lang_project: Path
+    ) -> None:
+        """O5: ``summary.by_language`` and top-level ``language_distribution``
+        must hold the same content (mirror, not transformation)."""
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(multi_lang_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        top_level = result.get("language_distribution")
+        summary_view = result.get("summary", {}).get("by_language")
+        assert top_level == summary_view, (
+            f"O5: summary.by_language ({summary_view!r}) must equal "
+            f"language_distribution ({top_level!r})"
+        )
+
+    def test_top_level_language_distribution_preserved(
+        self, multi_lang_project: Path
+    ) -> None:
+        """O5 back-compat: ``language_distribution`` must STILL be at the
+        top level so existing consumers don't break."""
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(multi_lang_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        assert "language_distribution" in result, (
+            "O5: top-level ``language_distribution`` must be preserved "
+            "for back-compat — got keys: " + repr(sorted(result.keys()))
+        )
+        assert isinstance(result["language_distribution"], dict), (
+            "O5: top-level ``language_distribution`` must be a dict"
+        )
+        assert len(result["language_distribution"]) > 0, (
+            "O5: multi-language fixture must produce a populated "
+            "``language_distribution``"
+        )
+
+    def test_languages_count_matches_by_language_length(
+        self, multi_lang_project: Path
+    ) -> None:
+        """O5: ``summary.languages_count`` must equal
+        ``len(summary.by_language)`` so the two cannot drift."""
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(multi_lang_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        summary = result.get("summary", {})
+        by_lang = summary.get("by_language", {})
+        count = summary.get("languages_count")
+        assert count == len(by_lang), (
+            f"O5: summary.languages_count ({count!r}) must equal "
+            f"len(summary.by_language) ({len(by_lang)!r}) — drift detected"
+        )
+
+
+class TestO1BatchSearchCanonicalErrorEnvelope:
+    """O1 (round-30 dogfood): ``batch_search`` previously raised a raw
+    ``ValueError`` from ``validate_arguments`` because its ``execute``
+    was not wrapped with ``@handle_mcp_errors`` like every other search
+    tool. Programmatic callers (CLI bridges, tests, agents that invoke
+    the tool outside the MCP dispatch boundary) crashed instead of
+    receiving the canonical error envelope.
+    """
+
+    def test_empty_queries_no_raw_value_error(self, tiny_project: Path) -> None:
+        """Empty ``queries`` list must NOT raise a raw ``ValueError``."""
+        from tree_sitter_analyzer.mcp.tools.batch_search_tool import BatchSearchTool
+
+        tool = BatchSearchTool(str(tiny_project))
+        with pytest.raises(Exception) as exc_info:
+            _run(tool.execute({"queries": []}))
+        # The decorator re-raises as ``AnalysisError`` (an ``MCPError``
+        # subclass) — never as a bare ``ValueError``. This mirrors what
+        # ``search_content`` / ``list_files`` / ``find_and_grep`` do.
+        assert type(exc_info.value).__name__ != "ValueError", (
+            "O1: batch_search must NOT raise raw ValueError — the "
+            "@handle_mcp_errors decorator should re-raise as MCPError "
+            "so the MCP server boundary can build the canonical envelope."
+        )
+
+    def test_empty_queries_envelope_through_mcp_boundary(
+        self, tiny_project: Path
+    ) -> None:
+        """Through the MCP dispatch path the failure becomes a canonical
+        error envelope (``success: false``, ``error_type: validation``,
+        ``agent_summary.verdict='ERROR'``)."""
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            build_agent_friendly_error,
+        )
+        from tree_sitter_analyzer.mcp.tools.batch_search_tool import BatchSearchTool
+
+        tool = BatchSearchTool(str(tiny_project))
+        args = {"queries": []}
+        try:
+            _run(tool.execute(args))
+            pytest.fail("expected validation failure")
+        except Exception as e:
+            envelope = build_agent_friendly_error("batch_search", e, arguments=args)
+        assert envelope["success"] is False
+        assert envelope["error_type"] == "validation", (
+            f"O1: empty queries must classify as validation — got "
+            f"{envelope['error_type']!r}"
+        )
+        assert envelope["agent_summary"]["verdict"] == "ERROR"
+        assert (
+            isinstance(envelope.get("summary_line"), str) and envelope["summary_line"]
+        )
+
+    def test_malformed_query_missing_pattern_no_raw_value_error(
+        self, tiny_project: Path
+    ) -> None:
+        """A query missing the required ``pattern`` key must also wrap
+        cleanly — same shape as the empty-queries case."""
+        from tree_sitter_analyzer.mcp.tools.batch_search_tool import BatchSearchTool
+
+        tool = BatchSearchTool(str(tiny_project))
+        with pytest.raises(Exception) as exc_info:
+            _run(
+                tool.execute(
+                    {"queries": [{"label": "no-pattern"}, {"pattern": "alpha"}]}
+                )
+            )
+        assert type(exc_info.value).__name__ != "ValueError", (
+            "O1: malformed query (missing pattern) must NOT raise raw "
+            "ValueError — must be wrapped by @handle_mcp_errors."
+        )
+
+    def test_malformed_query_envelope_through_mcp_boundary(
+        self, tiny_project: Path
+    ) -> None:
+        """Through MCP dispatch, malformed query also yields the
+        canonical envelope."""
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            build_agent_friendly_error,
+        )
+        from tree_sitter_analyzer.mcp.tools.batch_search_tool import BatchSearchTool
+
+        tool = BatchSearchTool(str(tiny_project))
+        args = {"queries": [{"label": "no-pattern"}, {"pattern": "alpha"}]}
+        try:
+            _run(tool.execute(args))
+            pytest.fail("expected validation failure")
+        except Exception as e:
+            envelope = build_agent_friendly_error("batch_search", e, arguments=args)
+        assert envelope["success"] is False
+        assert envelope["error_type"] == "validation"
+        assert envelope["agent_summary"]["verdict"] == "ERROR"
+
+    def test_valid_queries_still_succeed(self, tiny_project: Path) -> None:
+        """Sanity: a well-formed batch still completes."""
+        from tree_sitter_analyzer.mcp.tools.batch_search_tool import BatchSearchTool
+
+        tool = BatchSearchTool(str(tiny_project))
+        result = _run(
+            tool.execute(
+                {
+                    "queries": [
+                        {"pattern": "def", "roots": [str(tiny_project)]},
+                        {"pattern": "return", "roots": [str(tiny_project)]},
+                    ]
+                }
+            )
+        )
+        assert result["success"] is True
+
+
+class TestO6ErrorSummaryLineMessage:
+    """O6 (round-30 dogfood): the canonical CLI error envelope's
+    ``summary_line`` field used to embed the Python exception class
+    name (e.g. ``"detect_routes: error — ValueError"``) instead of the
+    actual reason. Agents that only read the headline saw no signal
+    about *what* failed.
+    """
+
+    def test_value_error_message_in_summary_line(self) -> None:
+        """A ``ValueError`` with a clear message must put that message
+        — not the class name — into the summary_line."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            _build_error_envelope,
+        )
+
+        exc = ValueError("url_pattern is required for mode 'lookup'")
+        envelope = _build_error_envelope("detect_routes", "Detect routes", exc)
+        sl = envelope["summary_line"]
+        assert isinstance(sl, str) and sl
+        # Pre-O6: "detect_routes: error — ValueError" — class name only.
+        # Post-O6: the actionable message text is embedded.
+        assert "url_pattern is required" in sl, (
+            f"O6: summary_line must contain the actual error reason — got {sl!r}"
+        )
+        # ValueError is the class name; it must not be the *only* signal.
+        assert sl != "detect_routes: error — ValueError"
+        assert sl != "detect_routes: ValueError"
+
+    def test_agent_summary_summary_line_also_uses_message(self) -> None:
+        """The nested ``agent_summary.summary_line`` is what most agents
+        read for the headline; it must carry the same actionable
+        information (not the class name)."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            _build_error_envelope,
+        )
+
+        exc = ValueError("url_pattern is required for mode 'lookup'")
+        envelope = _build_error_envelope("detect_routes", "Detect routes", exc)
+        agent_sl = envelope["agent_summary"]["summary_line"]
+        assert "url_pattern is required" in agent_sl, (
+            f"O6: agent_summary.summary_line must contain the actual error "
+            f"reason — got {agent_sl!r}"
+        )
+        assert agent_sl != "detect_routes: ValueError"
+
+    @pytest.mark.parametrize(
+        "exc,reason_token",
+        [
+            (
+                ValueError("url_pattern is required for mode 'lookup'"),
+                "url_pattern is required",
+            ),
+            (
+                FileNotFoundError("No such file: /tmp/missing.py"),
+                "No such file",
+            ),
+            (
+                ValueError("file_path is required"),
+                "file_path is required",
+            ),
+            (
+                ValueError("mode must be one of summary|file|all"),
+                "mode must be one of",
+            ),
+        ],
+    )
+    def test_summary_line_uses_message_across_exception_types(
+        self, exc: BaseException, reason_token: str
+    ) -> None:
+        """Multiple exception sources — each must put the actual reason
+        into the summary_line, not just the Python class name."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            _build_error_envelope,
+        )
+
+        envelope = _build_error_envelope("tool", "Tool label", exc)
+        sl = envelope["summary_line"]
+        agent_sl = envelope["agent_summary"]["summary_line"]
+        # The actionable token must appear in both surfaces.
+        assert reason_token in sl, (
+            f"O6: summary_line must contain reason {reason_token!r} — got {sl!r}"
+        )
+        assert reason_token in agent_sl, (
+            f"O6: agent_summary.summary_line must contain reason "
+            f"{reason_token!r} — got {agent_sl!r}"
+        )
+
+    @pytest.mark.parametrize(
+        "exc,class_name",
+        [
+            (
+                ValueError("url_pattern is required for mode 'lookup'"),
+                "ValueError",
+            ),
+            (
+                FileNotFoundError("No such file: /tmp/missing.py"),
+                "FileNotFoundError",
+            ),
+        ],
+    )
+    def test_summary_line_does_not_leak_class_name_alone(
+        self, exc: BaseException, class_name: str
+    ) -> None:
+        """The class name must not appear *unless* it legitimately
+        appears inside the message text. The class name alone is not a
+        useful signal."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            _build_error_envelope,
+        )
+
+        envelope = _build_error_envelope("tool", "Tool label", exc)
+        sl = envelope["summary_line"]
+        agent_sl = envelope["agent_summary"]["summary_line"]
+        # The class name must not appear in the headline (the messages
+        # used above don't contain those tokens, so we can check directly).
+        assert class_name not in sl, (
+            f"O6: summary_line must not leak class name {class_name!r} — got {sl!r}"
+        )
+        assert class_name not in agent_sl, (
+            f"O6: agent_summary.summary_line must not leak class name "
+            f"{class_name!r} — got {agent_sl!r}"
+        )
+
+    def test_long_message_truncated_with_ellipsis(self) -> None:
+        """A very long error message must be truncated to roughly the
+        summary-line budget (~80 chars) with ``...`` so the headline
+        stays readable. The full text remains on the ``error`` field."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            _build_error_envelope,
+        )
+
+        long_msg = "x" * 250
+        exc = ValueError(long_msg)
+        envelope = _build_error_envelope("tool", "Tool label", exc)
+        sl = envelope["summary_line"]
+        # Headline must be bounded (not 250+ characters).
+        assert len(sl) < 120, (
+            f"O6: long error messages must be truncated — got len={len(sl)} ({sl!r})"
+        )
+        assert sl.endswith("..."), (
+            f"O6: truncated headline must end with '...' — got {sl!r}"
+        )
+        # The full message stays on the ``error`` field for callers
+        # that need it.
+        assert envelope["error"].endswith(long_msg) or long_msg in envelope["error"]
+
+    def test_empty_message_falls_back_to_class_name(self) -> None:
+        """When the exception has no message at all, fall back to the
+        class name so the headline is still informative (rather than
+        ``error — ``)."""
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            _build_error_envelope,
+        )
+
+        class _MysteryError(Exception):
+            pass
+
+        envelope = _build_error_envelope("tool", "Tool label", _MysteryError())
+        sl = envelope["summary_line"]
+        # Either the class name or a sensible fallback — we just require
+        # that the headline is non-empty and doesn't end on a dangling em-dash.
+        assert isinstance(sl, str) and sl
+        assert not sl.rstrip().endswith("—"), (
+            f"O6: empty-message exception must not leave a dangling em-dash — "
+            f"got {sl!r}"
+        )
+
+    def test_end_to_end_detect_routes_lookup_no_class_name_leak(
+        self, tmp_path: Path
+    ) -> None:
+        """E2E: the failure path the dogfood report reproduced —
+        ``--detect-routes --detect-routes-mode lookup`` with no
+        ``url_pattern`` — must not show ``ValueError`` in the headline."""
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "--project-root",
+                str(tmp_path),
+                "--detect-routes",
+                "--detect-routes-mode",
+                "lookup",
+                "--format",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+        )
+        # The command must emit a parseable JSON envelope.
+        import json as _json
+
+        payload: dict[str, Any] = {}
+        for line in proc.stdout.splitlines():
+            try:
+                payload = _json.loads(line)
+                if isinstance(payload, dict) and "summary_line" in payload:
+                    break
+            except _json.JSONDecodeError:
+                continue
+        assert payload, (
+            f"O6: detect_routes lookup with missing url_pattern must emit a "
+            f"JSON envelope on stdout — got stdout={proc.stdout!r} "
+            f"stderr={proc.stderr!r}"
+        )
+        sl = payload.get("summary_line", "")
+        agent_sl = payload.get("agent_summary", {}).get("summary_line", "")
+        assert "ValueError" not in sl, (
+            f"O6: summary_line must not leak 'ValueError' — got {sl!r}"
+        )
+        assert "ValueError" not in agent_sl, (
+            f"O6: agent_summary.summary_line must not leak 'ValueError' — "
+            f"got {agent_sl!r}"
+        )
+        assert "url_pattern" in sl, (
+            f"O6: summary_line must contain the actual error reason — got {sl!r}"
+        )

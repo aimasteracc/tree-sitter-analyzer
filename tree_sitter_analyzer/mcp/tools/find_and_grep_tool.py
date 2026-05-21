@@ -23,6 +23,7 @@ from .find_and_grep_execution import (
     build_rg_error_response,
     parse_fd_output,
     resolve_fd_no_ignore,
+    resolve_real_total,
     sort_files,
 )
 from .find_and_grep_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
@@ -78,21 +79,28 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate roots and query arguments.
 
-        ``roots`` is optional: when omitted or empty (``None``, ``[]``,
-        ``""``), the tool falls back to ``self.project_root`` so callers
-        don't have to repeat the project path they already configured on
-        the tool instance.
+        ``roots`` is optional: when the key is **missing** entirely the
+        tool falls back to ``self.project_root`` so callers don't have
+        to repeat the project path they already configured on the tool
+        instance.
 
-        Passing a non-list value (e.g. a bare string) is still an error —
-        the fallback only triggers when ``roots`` is genuinely absent or
-        empty, never when the caller meant to pass something invalid.
+        An **explicit empty value** (``roots=[]``, ``roots=None``, or
+        ``roots=""``) is treated as a user error per O7. Silently
+        defaulting these masked typos and made downstream validation
+        unreachable. Passing a non-list value (e.g. a bare string) is
+        still an error too.
         """
-        if "roots" not in arguments or arguments["roots"] in (None, [], ""):
+        if "roots" not in arguments:
             if not self.project_root:
                 raise ValueError(
                     "roots is required when the tool has no project_root configured"
                 )
             arguments["roots"] = [self.project_root]
+        elif arguments["roots"] in (None, [], ""):
+            raise ValueError(
+                "roots must be a non-empty array of strings "
+                "(or omit the key to scan project_root)"
+            )
         if not isinstance(arguments["roots"], list):
             raise ValueError("roots is required and must be an array")
         if (
@@ -163,7 +171,7 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
                 rg_elapsed_ms,
             )
             return build_count_only_response(count_context)
-        return self._execute_full_match_mode(
+        return await self._execute_full_match_mode(
             FindAndGrepFullMatchContext(
                 arguments=arguments,
                 rg_out=rg_out,
@@ -172,12 +180,15 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
                 searched_file_count=searched_file_count,
                 truncated_fd=context.truncated_fd,
                 output_format=context.output_format,
-            )
+            ),
+            files=context.files,
         )
 
-    def _execute_full_match_mode(
+    async def _execute_full_match_mode(
         self,
         context: FindAndGrepFullMatchContext,
+        *,
+        files: list[str],
     ) -> dict[str, Any]:
         """Parse rg matches and dispatch the selected response mode."""
         arguments = context.arguments
@@ -186,6 +197,16 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
 
         if arguments.get("optimize_paths", False) and matches:
             matches = fd_rg_utils.optimize_match_paths(matches)
+
+        # O2 fix (mirrors H2 in search_content): when rg truncated via
+        # max_count or the global hard cap, run a follow-up rg --count-matches
+        # pass over the same fd-discovered files to learn the honest total.
+        real_total, total_count_known = await resolve_real_total(
+            truncated=truncated_rg,
+            displayed_count=len(matches),
+            arguments=arguments,
+            files=files,
+        )
 
         meta = build_search_meta(
             searched_file_count=context.searched_file_count,
@@ -196,10 +217,29 @@ class FindAndGrepTool(FindAndGrepRespondMixin, BaseMCPTool):
         )
 
         if arguments.get("group_by_file", False) and matches:
-            return self._respond_grouped(arguments, matches, meta)
+            return self._respond_grouped(
+                arguments,
+                matches,
+                meta,
+                real_total=real_total,
+                total_count_known=total_count_known,
+            )
         if arguments.get("summary_only", False):
-            return self._respond_summary(arguments, matches, meta)
-        return self._respond_full(arguments, matches, meta, context.output_format)
+            return self._respond_summary(
+                arguments,
+                matches,
+                meta,
+                real_total=real_total,
+                total_count_known=total_count_known,
+            )
+        return self._respond_full(
+            arguments,
+            matches,
+            meta,
+            context.output_format,
+            real_total=real_total,
+            total_count_known=total_count_known,
+        )
 
     async def _run_fd(
         self, arguments: dict[str, Any], roots: list[str]

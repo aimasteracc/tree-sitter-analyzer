@@ -81,6 +81,21 @@ def _dependency_mode_requires_file(args: Any) -> bool:
     )
 
 
+def _maybe_add_language(tool_args: dict[str, Any], args: Any) -> dict[str, Any]:
+    """Forward ``--language`` from CLI args into the MCP tool's args dict.
+
+    O8 (round-30 dogfood): the CLI used to drop ``--language`` for tools
+    like ``--refactor`` so the MCP-side mismatch gate never fired. This
+    helper copies the value across only when the user actually passed
+    one — keeping the auto-detect path untouched for callers that omit
+    the flag.
+    """
+    language = getattr(args, "language", None)
+    if isinstance(language, str) and language.strip():
+        tool_args["language"] = language
+    return tool_args
+
+
 def _build_dependency_tool_args(args: Any, output_format: str) -> dict[str, Any]:
     mode = _normalize_dependency_mode(getattr(args, "dependencies", None))
     tool_args = {
@@ -219,10 +234,16 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="FileHealthTool",
         label="File health check",
         required_file_error="--file-health requires a file path",
-        build_tool_args=lambda args, output_format: {
-            "file_path": args.file_path,
-            "output_format": output_format,
-        },
+        # O3 (round-30 dogfood): forward ``--language`` so the tool's
+        # strict mismatch gate can refuse e.g. ``--file-health foo.py
+        # --language java``.
+        build_tool_args=lambda args, output_format: _maybe_add_language(
+            {
+                "file_path": args.file_path,
+                "output_format": output_format,
+            },
+            args,
+        ),
     ),
     McpCommandSpec(
         flag_name="project_health",
@@ -288,10 +309,16 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="RefactoringSuggestionsTool",
         label="Refactoring suggestions",
         required_file_error="--refactor requires a file path",
-        build_tool_args=lambda args, output_format: {
-            "file_path": args.file_path,
-            "output_format": output_format,
-        },
+        # O8 (round-30 dogfood): forward ``--language`` so the tool's
+        # strict mismatch gate can refuse e.g. ``--refactor foo.py
+        # --language java`` instead of silently returning verdict=SAFE.
+        build_tool_args=lambda args, output_format: _maybe_add_language(
+            {
+                "file_path": args.file_path,
+                "output_format": output_format,
+            },
+            args,
+        ),
     ),
     McpCommandSpec(
         flag_name="smart_context",
@@ -405,6 +432,30 @@ def _classify_error_type(exc: BaseException) -> str:
     return "internal"
 
 
+_SUMMARY_LINE_MAX_LEN = 80
+
+
+def _summary_line_reason(exc: BaseException) -> str:
+    """O6 (round-30 dogfood): the human-readable reason for a summary line.
+
+    Pre-O6 the envelope's ``summary_line`` rendered ``error — ValueError``
+    — the Python class name, not the actionable message. Agents that
+    only read the headline saw no signal about *what* failed. Now we
+    prefer ``str(exc)`` (the same text the ``error`` field exposes) and
+    fall back to the class name when the exception has no message.
+
+    The headline budget is small (~80 chars) so multi-sentence messages
+    are truncated with ``...``; the full message stays available on
+    the ``error`` field for callers that want the long form.
+    """
+    message = str(exc).strip()
+    if not message:
+        return type(exc).__name__
+    if len(message) > _SUMMARY_LINE_MAX_LEN:
+        return message[: _SUMMARY_LINE_MAX_LEN - 3].rstrip() + "..."
+    return message
+
+
 def _build_error_envelope(
     flag_name: str,
     label: str,
@@ -424,18 +475,24 @@ def _build_error_envelope(
     even when validation failed *before* any tool-level mode handling.
     Canonical envelope keys (``success``, ``error``, ``error_type``,
     ``summary_line``, ``agent_summary``) are never overwritten.
+
+    O6 (round-30 dogfood): ``summary_line`` now embeds the actual error
+    reason (``str(exc)``) instead of the Python exception class name.
+    The ``error`` field already carried the actionable text; agents
+    that only read the headline now see the same signal.
     """
     err_type = _classify_error_type(exc)
     exc_name = type(exc).__name__
     message = str(exc) or exc_name
+    reason = _summary_line_reason(exc)
     envelope: dict[str, Any] = {
         "success": False,
         "error_type": err_type,
         "error": message,
-        "summary_line": f"{flag_name}: error — {exc_name}",
+        "summary_line": f"{flag_name}: error — {reason}",
         "agent_summary": {
             "verdict": "ERROR",
-            "summary_line": f"{flag_name}: {exc_name}",
+            "summary_line": f"{flag_name}: error — {reason}",
             "next_step": "Fix the input and retry.",
             "label": label,
         },

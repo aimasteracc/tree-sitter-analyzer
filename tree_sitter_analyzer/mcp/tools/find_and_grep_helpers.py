@@ -241,6 +241,10 @@ def build_empty_response(
             meta=meta,
             file_count=0,
         ),
+        # O2 parity: even on an empty pre-grep pass we know the total is 0.
+        # Setting the flag keeps the envelope shape consistent with the
+        # non-empty truncated/non-truncated branches in find_and_grep_response.
+        "total_count_known": True,
     }
     normalize_envelope(result, total_count=0)
     return result

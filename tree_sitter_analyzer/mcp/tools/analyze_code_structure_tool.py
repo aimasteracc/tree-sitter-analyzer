@@ -23,7 +23,12 @@ from .analyze_code_structure_helpers import (
     convert_analysis_result_to_structure_dict,
     extract_metadata,
 )
-from .base_tool import BaseMCPTool, format_summary_line
+from .base_tool import (
+    BaseMCPTool,
+    detect_language_mismatch,
+    format_summary_line,
+    language_mismatch_error_response,
+)
 
 logger = setup_logger(__name__)
 
@@ -430,6 +435,33 @@ class AnalyzeCodeStructureTool(BaseMCPTool):
     async def execute(self, args: dict[str, Any]) -> dict[str, Any]:
         """Execute AST structure analysis and return formatted results."""
         try:
+            # O3 (round-30 dogfood): strict mismatch gate. Resolve the
+            # path FIRST so we can validate the explicit language
+            # against the real extension; the heavy
+            # ``_prepare_execution_options`` (language detection +
+            # security sanitisation) only runs if the gate passes.
+            file_path = args.get("file_path")
+            if isinstance(file_path, str) and file_path.strip():
+                try:
+                    resolved_for_check = self.resolve_and_validate_file_path(file_path)
+                except Exception:
+                    resolved_for_check = file_path
+                mismatch = detect_language_mismatch(
+                    resolved_for_check,
+                    args.get("language")
+                    if isinstance(args.get("language"), str)
+                    else None,
+                    project_root=self.project_root,
+                )
+                if mismatch:
+                    response = language_mismatch_error_response(
+                        tool_name="analyze_code_structure",
+                        file_path=file_path,
+                        warning=mismatch,
+                    )
+                    response["output_format"] = args.get("output_format", "toon")
+                    return response
+
             options = self._prepare_execution_options(args)
             result = await self._analyze_structure(options)
             return self._format_response(result, options)

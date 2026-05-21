@@ -14,7 +14,11 @@ from ...core.query_service import QueryService
 from ...language_detector import detect_language_from_file
 from ..utils.error_sanitizer import safe_error_message
 from ..utils.file_output_manager import FileOutputManager
-from .base_tool import BaseMCPTool
+from .base_tool import (
+    BaseMCPTool,
+    detect_language_mismatch,
+    language_mismatch_error_response,
+)
 from .query_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
 from .query_helpers import (
     build_next_steps,
@@ -113,6 +117,25 @@ class QueryTool(BaseMCPTool):
 
         resolved = self.resolve_and_validate_file_path(file_path)
         logger.info(f"Querying file: {file_path} (resolved to: {resolved})")
+
+        # O3 (round-30 dogfood): strict mismatch gate. Refuse a query
+        # against a Python file with ``language='java'`` rather than
+        # silently returning zero results.
+        explicit_language = arguments.get("language")
+        if isinstance(explicit_language, str) and explicit_language.strip():
+            mismatch = detect_language_mismatch(
+                resolved,
+                explicit_language,
+                project_root=self.project_root,
+            )
+            if mismatch:
+                response = language_mismatch_error_response(
+                    tool_name="query_code",
+                    file_path=file_path,
+                    warning=mismatch,
+                )
+                response["output_format"] = arguments.get("output_format", "json")
+                return response
 
         language = self._detect_language(resolved, arguments)
         if not language:

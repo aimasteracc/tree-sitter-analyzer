@@ -29,7 +29,11 @@ from .analyze_scale_helpers import (
     generate_llm_guidance,
     validate_scale_arguments,
 )
-from .base_tool import BaseMCPTool
+from .base_tool import (
+    BaseMCPTool,
+    detect_language_mismatch,
+    language_mismatch_error_response,
+)
 
 # JSON schema for tool input validation
 logger = setup_logger(__name__)
@@ -184,6 +188,26 @@ class AnalyzeScaleTool(BaseMCPTool):
         # Conditional check
         if not Path(resolved).exists():
             raise ValueError(f"Invalid file path: File not found: {file_path}")
+
+        # O3 (round-30 dogfood): strict mismatch gate — refuse
+        # ``language='java'`` on a ``.py`` file with a canonical
+        # validation envelope. Without this analyze_scale silently
+        # produced bogus structural counts.
+        mismatch = detect_language_mismatch(
+            resolved,
+            language,
+            project_root=self.project_root,
+        )
+        if mismatch:
+            response = language_mismatch_error_response(
+                tool_name="analyze_scale",
+                file_path=file_path,
+                warning=mismatch,
+            )
+            response["output_format"] = output_format
+            response["mode"] = "single"
+            response["format"] = output_format
+            return response
 
         language = self._resolve_language(resolved, language)
         logger.info(f"Analyzing code scale for {resolved} (language: {language})")

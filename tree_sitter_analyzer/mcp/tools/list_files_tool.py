@@ -53,7 +53,13 @@ class ListFilesTool(BaseMCPTool):
         }
 
     def _validate_roots(self, roots: list[str]) -> list[str]:
-        """Resolve and validate each root directory path."""
+        """Resolve and validate each root directory path.
+
+        Empty lists are rejected by ``validate_arguments`` (O7) before they
+        reach this method — when they do reach here, the explicit-empty
+        case has already been caught and this guard handles defensive
+        callers that hit the method directly.
+        """
         if not roots or not isinstance(roots, list):
             raise ValueError("roots must be a non-empty array of strings")
         validated: list[str] = []
@@ -70,16 +76,27 @@ class ListFilesTool(BaseMCPTool):
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate roots and all option types.
 
-        ``roots`` is optional: when omitted (or empty), the tool falls
-        back to ``self.project_root`` so callers don't have to repeat
-        the project path they already configured on the tool instance.
+        ``roots`` is optional: when the key is **missing** entirely the
+        tool falls back to ``self.project_root`` so callers don't have
+        to repeat the project path they already configured on the tool
+        instance.
+
+        An **explicit empty value** (``roots=[]``, ``roots=None``, or
+        ``roots=""``) is treated as a user error per O7 — silently
+        rewriting it to ``[project_root]`` masked typos and made the
+        downstream ``_validate_roots`` check unreachable.
         """
-        if "roots" not in arguments or arguments["roots"] in (None, [], ""):
+        if "roots" not in arguments:
             if not self.project_root:
                 raise ValueError(
                     "roots is required when the tool has no project_root configured"
                 )
             arguments["roots"] = [self.project_root]
+        elif arguments["roots"] in (None, [], ""):
+            raise ValueError(
+                "roots must be a non-empty array of strings "
+                "(or omit the key to scan project_root)"
+            )
         roots = arguments["roots"]
         if not isinstance(roots, list):
             raise ValueError("roots must be an array")

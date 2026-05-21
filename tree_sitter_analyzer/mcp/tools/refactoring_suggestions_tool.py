@@ -15,7 +15,11 @@ from typing import Any
 
 from ...utils import setup_logger
 from ._refactoring_plan_builder import build_precise_plans
-from .base_tool import BaseMCPTool
+from .base_tool import (
+    BaseMCPTool,
+    detect_language_mismatch,
+    language_mismatch_error_response,
+)
 from .code_patterns_tool import _detect_anti_patterns, _detect_security
 from .utils.element_extractor import extract_elements
 from .utils.refactoring_suggestions_helpers import (
@@ -114,6 +118,7 @@ class RefactoringSuggestionsTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Execute refactoring analysis on a source file."""
         file_path = arguments.get("file_path", "")
+        explicit_language = arguments.get("language")
         max_suggestions = arguments.get("max_suggestions", 10)
         include_extractions = arguments.get("include_extractions", True)
         include_skeleton = arguments.get("include_skeleton", False)
@@ -126,6 +131,26 @@ class RefactoringSuggestionsTool(BaseMCPTool):
                 "File not found or outside project boundary",
                 project_root=self.project_root,
             )
+
+        # O8 (round-30 dogfood): ``--refactor file.py --language java``
+        # previously returned ``verdict=SAFE`` with zero suggestions —
+        # the Java pattern detectors saw nothing in a Python file. Strict
+        # gate refuses the mismatched language with a canonical
+        # validation envelope; callers must omit ``--language`` to
+        # auto-detect, or fix the override.
+        mismatch = detect_language_mismatch(
+            resolved,
+            explicit_language,
+            project_root=self.project_root,
+        )
+        if mismatch:
+            response = language_mismatch_error_response(
+                tool_name="refactoring_suggestions",
+                file_path=file_path,
+                warning=mismatch,
+            )
+            response["output_format"] = output_format
+            return response
 
         try:
             source = Path(resolved).read_text(encoding="utf-8", errors="replace")

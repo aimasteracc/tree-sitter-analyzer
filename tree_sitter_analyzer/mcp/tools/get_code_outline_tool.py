@@ -30,7 +30,11 @@ from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
 from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import BaseMCPTool
+from .base_tool import (
+    BaseMCPTool,
+    detect_language_mismatch,
+    language_mismatch_error_response,
+)
 
 logger = setup_logger(__name__)
 
@@ -477,6 +481,23 @@ class GetCodeOutlineTool(BaseMCPTool):
 
             if not Path(resolved_path).exists():
                 raise ValueError(f"File not found: {file_path}")
+
+            # O3 (round-30 dogfood): strict mismatch gate against the
+            # explicit ``language`` override before we hand it to the
+            # analysis engine.
+            mismatch = detect_language_mismatch(
+                resolved_path,
+                language if isinstance(language, str) else None,
+                project_root=self.project_root,
+            )
+            if mismatch:
+                response = language_mismatch_error_response(
+                    tool_name="get_code_outline",
+                    file_path=file_path,
+                    warning=mismatch,
+                )
+                response["output_format"] = output_format
+                return response
 
             if not language:
                 language = detect_language_from_file(

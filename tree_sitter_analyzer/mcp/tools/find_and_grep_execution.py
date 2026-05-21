@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,11 @@ from ..utils.gitignore_detector import get_default_detector
 from . import fd_rg_utils
 
 logger = logging.getLogger(__name__)
+
+# Time budget (ms) for the follow-up rg --count-matches pass that resolves
+# the real pre-truncation total when ``apply_match_limits`` truncated the
+# first pass. Mirrors the H2 fix in search_content_response.py.
+RECOUNT_BUDGET_MS = 500
 
 
 def resolve_fd_no_ignore(
@@ -197,3 +203,98 @@ def _build_rg_targets(files: list[str]) -> tuple[set[str], list[str]]:
         escaped_name = path.name.replace("[", "[[]").replace("]", "[]]")
         file_globs.append(escaped_name)
     return parent_dirs, file_globs
+
+
+def build_rg_recount_command(
+    arguments: dict[str, Any],
+    files: list[str],
+) -> list[str]:
+    """Build a ripgrep --count-matches command on the same fd-discovered files.
+
+    Mirrors ``build_rg_command_from_arguments`` but forces ``max_count=None``
+    and ``count_only_matches=True`` so the response counts every match (no
+    per-file truncation). Used to compute the honest pre-truncation total
+    when ``apply_match_limits`` truncated the primary pass.
+    """
+    parent_dirs, file_globs = _build_rg_targets(files)
+    combined_globs = (arguments.get("include_globs") or []) + file_globs
+    no_ignore = bool(arguments.get("no_ignore", False))
+
+    return fd_rg_utils.build_rg_command(
+        query=arguments["query"],
+        case=arguments.get("case", "smart"),
+        fixed_strings=bool(arguments.get("fixed_strings", False)),
+        word=bool(arguments.get("word", False)),
+        multiline=bool(arguments.get("multiline", False)),
+        include_globs=combined_globs,
+        exclude_globs=arguments.get("exclude_globs"),
+        follow_symlinks=bool(arguments.get("follow_symlinks", False)),
+        hidden=bool(arguments.get("hidden", False)),
+        no_ignore=no_ignore,
+        max_filesize=arguments.get("max_filesize"),
+        context_before=None,
+        context_after=None,
+        encoding=arguments.get("encoding"),
+        max_count=None,
+        timeout_ms=arguments.get("timeout_ms"),
+        roots=list(parent_dirs),
+        files_from=None,
+        count_only_matches=True,
+    )
+
+
+async def resolve_real_total(
+    *,
+    truncated: bool,
+    displayed_count: int,
+    arguments: dict[str, Any],
+    files: list[str],
+) -> tuple[int, bool]:
+    """Return ``(real_total, total_count_known)`` for find_and_grep.
+
+    Mirrors the H2 fix from ``search_content_response._resolve_real_total``:
+    when ``truncated`` is True we re-run ripgrep with ``--count-matches`` and
+    no ``max_count`` against the same fd-discovered files. If the recount
+    exceeds ``RECOUNT_BUDGET_MS`` or fails, return the displayed count with
+    ``total_count_known=False`` so callers can surface uncertainty honestly.
+    """
+    if not truncated:
+        return displayed_count, True
+
+    if not files:
+        # Nothing to recount over; honest about uncertainty.
+        return displayed_count, False
+
+    try:
+        cmd = build_rg_recount_command(arguments, files)
+        started = time.perf_counter()
+        rc, out_bytes, _err = await fd_rg_utils.run_command_capture(
+            cmd, timeout_ms=RECOUNT_BUDGET_MS
+        )
+        recount_ms = int((time.perf_counter() - started) * 1000)
+
+        if rc not in (0, 1):
+            logger.debug(
+                "find_and_grep recount failed (rc=%s, %sms); dropping to estimate.",
+                rc,
+                recount_ms,
+            )
+            return displayed_count, False
+
+        if recount_ms > RECOUNT_BUDGET_MS:
+            logger.debug(
+                "find_and_grep recount exceeded budget (%sms > %sms); using estimate.",
+                recount_ms,
+                RECOUNT_BUDGET_MS,
+            )
+            return displayed_count, False
+
+        file_counts = fd_rg_utils.parse_rg_count_output(out_bytes)
+        real_total = int(file_counts.get("__total__", 0))
+        if real_total < displayed_count:
+            # Defensive: race/IO undercounts — trust visible matches.
+            return displayed_count, False
+        return real_total, True
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("find_and_grep recount raised %s; using estimate.", exc)
+        return displayed_count, False

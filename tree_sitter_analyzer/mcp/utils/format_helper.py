@@ -186,9 +186,15 @@ def apply_toon_format_to_response(
             "data",  # Generic data field
             "items",  # List items
             "files",  # File listings
-            "lines",  # Line content
             "table_output",  # Formatted table output
         }
+        # O4 (round-30): ``lines`` is treated as bulk *content* only when
+        # it is actually a list/array (e.g. raw line content from
+        # ``extract_code_section``). When a tool emits ``lines`` as a
+        # scalar alias for ``line_count`` (N9 added this for file_health),
+        # the field is metadata, not duplicated content — keep it so
+        # JSON↔TOON callers see the same dict shape.
+        conditionally_redundant_list_fields = {"lines"}
 
         toon_response: dict[str, Any] = {
             "format": "toon",
@@ -198,6 +204,10 @@ def apply_toon_format_to_response(
         # Preserve metadata, but never stomp the format/toon_content keys.
         for key, value in result.items():
             if key in redundant_fields:
+                continue
+            if key in conditionally_redundant_list_fields and isinstance(value, list):
+                # Only strip when the field is genuinely an array of
+                # content; scalar aliases (int/str) pass through.
                 continue
             if key in {"format", "toon_content"}:
                 continue

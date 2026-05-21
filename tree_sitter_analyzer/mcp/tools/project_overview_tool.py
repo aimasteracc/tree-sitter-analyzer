@@ -261,6 +261,12 @@ def _build_base_result(root: Path, scan: dict[str, Any]) -> dict[str, Any]:
     ext_dist = scan["ext_dist"]
     total_files = sum(ext_dist.values())
     source_count = sum(lang_dist.values())
+    # O5 (round-30): mirror the language map into ``summary.by_language``
+    # so consumers building a summary block don't need to read two
+    # different sub-trees of the response. ``language_distribution``
+    # stays at the top level for back-compat with all existing
+    # consumers — the new field is purely additive.
+    sorted_lang_dist = dict(sorted(lang_dist.items(), key=lambda item: -item[1]))
     return {
         "success": True,
         "project_root": str(root),
@@ -269,11 +275,12 @@ def _build_base_result(root: Path, scan: dict[str, Any]) -> dict[str, Any]:
             "source_files": source_count,
             "non_source_files": total_files - source_count,
             "total_lines": sum(item["lines"] for item in source_files),
-            "languages_count": len(lang_dist),
+            # ``languages_count`` is derived from the same map so it can
+            # never drift out of sync with ``summary.by_language``.
+            "languages_count": len(sorted_lang_dist),
+            "by_language": sorted_lang_dist,
         },
-        "language_distribution": dict(
-            sorted(lang_dist.items(), key=lambda item: -item[1])
-        ),
+        "language_distribution": sorted_lang_dist,
         "largest_source_files": source_files[:15],
         "top_directories": dict(
             sorted(scan["dir_tree"].items(), key=lambda item: -item[1])[:20]
