@@ -350,3 +350,88 @@ class TestQueryCommandBehavior:
                 assert result == 0
                 # Should output multiple results
                 assert mock_data.call_count >= 6  # 3 lines per result
+
+
+class TestR37acQueryCanonicalEnvelope:
+    """r37ac (dogfood): CLI ``--query-key X`` previously emitted a bare
+    LIST as JSON output (not a dict). Agents calling
+    ``result.get("verdict")`` got AttributeError. The fix wraps the
+    list in a canonical envelope dict.
+    """
+
+    @pytest.mark.asyncio
+    async def test_query_json_returns_envelope_dict(self, command):
+        """``--query-key methods --format json`` must emit a dict envelope."""
+        command.args.query_key = "methods"
+        command.args.output_format = "json"
+        command.args.file_path = "/test/foo.py"
+        with patch.object(
+            command, "execute_query", new_callable=AsyncMock
+        ) as mock_execute:
+            mock_execute.return_value = [
+                {
+                    "capture_name": "method.definition",
+                    "node_type": "function_definition",
+                    "start_line": 10,
+                    "end_line": 20,
+                    "content": "def foo(): pass",
+                },
+                {
+                    "capture_name": "method.definition",
+                    "node_type": "function_definition",
+                    "start_line": 30,
+                    "end_line": 40,
+                    "content": "def bar(): pass",
+                },
+            ]
+            captured: dict = {}
+            with patch(
+                "tree_sitter_analyzer.cli.commands.query_command.output_json",
+                side_effect=lambda d: (
+                    captured.update(d)
+                    if isinstance(d, dict)
+                    else captured.setdefault("__list__", d)
+                ),
+            ):
+                result = await command.execute_async("python")
+                assert result == 0
+            # MUST be dict, not bare list.
+            assert "__list__" not in captured, (
+                "r37ac: --query-key output must be a dict envelope, not a bare list"
+            )
+            assert captured.get("verdict") == "INFO"
+            assert captured.get("success") is True
+            assert captured.get("match_count") == 2
+            assert isinstance(captured.get("results"), list)
+            assert len(captured["results"]) == 2
+            assert isinstance(captured.get("summary_line"), str)
+            assert "matches=2" in captured["summary_line"]
+            agent_summary = captured.get("agent_summary")
+            assert isinstance(agent_summary, dict)
+            assert agent_summary["verdict"] == "INFO"
+
+    @pytest.mark.asyncio
+    async def test_query_json_zero_matches_still_envelope(self, command):
+        """No matches must also return a dict envelope with match_count=0."""
+        command.args.query_key = "methods"
+        command.args.output_format = "json"
+        command.args.file_path = "/test/empty.py"
+        with patch.object(
+            command, "execute_query", new_callable=AsyncMock
+        ) as mock_execute:
+            mock_execute.return_value = []
+            captured: dict = {}
+            with patch(
+                "tree_sitter_analyzer.cli.commands.query_command.output_json",
+                side_effect=lambda d: (
+                    captured.update(d)
+                    if isinstance(d, dict)
+                    else captured.setdefault("__list__", d)
+                ),
+            ):
+                result = await command.execute_async("python")
+                assert result == 0
+            assert "__list__" not in captured
+            assert captured.get("match_count") == 0
+            assert captured.get("verdict") == "INFO"
+            assert captured.get("results") == []

@@ -102,14 +102,45 @@ class QueryCommand(BaseCommand):
         if results is None:
             return 1
 
+        # r37ac (dogfood): CLI ``--query-key`` previously emitted a bare
+        # list to stdout (``json.dumps(results)``). Agents calling
+        # ``result.get("verdict")`` got ``AttributeError`` because
+        # ``list`` has no ``.get`` — strictly worse than the
+        # ``--advanced`` / ``--summary`` / ``--structure`` drifters
+        # (which at least returned a dict). Wrap the list in the
+        # canonical envelope so JSON callers get a consistent shape.
+        match_count = len(results) if results else 0
+        summary_line = (
+            f"{self.args.file_path} ({language}) query={query_name or query_to_execute[:40]}: "
+            f"matches={match_count}"
+        )
+        envelope = {
+            "success": True,
+            "file_path": self.args.file_path,
+            "language": language,
+            "query": query_name or query_to_execute,
+            "results": results if results else [],
+            "match_count": match_count,
+            "summary_line": summary_line,
+            "verdict": "INFO",
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": (
+                    "extract_code_section (MCP) on the listed line ranges to "
+                    "read full bodies, or refine the query for fewer matches."
+                ),
+                "verdict": "INFO",
+            },
+        }
+
         # Output results
         if results:
             if self.args.output_format == "json":
-                output_json(results)
+                output_json(envelope)
             elif self.args.output_format == "toon" and _toon_available:
                 use_tabs = getattr(self.args, "toon_use_tabs", False)
                 formatter = ToonFormatter(use_tabs=use_tabs)
-                print(formatter.format(results))
+                print(formatter.format(envelope))
             else:
                 for i, query_result in enumerate(results, 1):
                     name = query_result.get("name")
@@ -122,6 +153,16 @@ class QueryCommand(BaseCommand):
                     )
                     output_data(f"   Content:\n{query_result['content']}")
         else:
-            output_info("\nINFO: No results found matching the query.")
+            # No matches — still emit canonical envelope on JSON path so
+            # agents can branch on ``match_count == 0`` instead of
+            # parsing stderr / exit code.
+            if self.args.output_format == "json":
+                output_json(envelope)
+            elif self.args.output_format == "toon" and _toon_available:
+                use_tabs = getattr(self.args, "toon_use_tabs", False)
+                formatter = ToonFormatter(use_tabs=use_tabs)
+                print(formatter.format(envelope))
+            else:
+                output_info("\nINFO: No results found matching the query.")
 
         return 0
