@@ -40,6 +40,13 @@ _EXCLUDE_DIRS = {
     ".claude",
 }
 
+# r37az: extracted from inline ``build()`` so the extension set is a
+# named module-level constant — easier to update + matches the existing
+# pattern of _EXCLUDE_DIRS being a module constant.
+_SUPPORTED_BUILD_EXTS = frozenset(
+    {".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".go", ".c", ".cpp", ".cc", ".cxx"}
+)
+
 
 class FunctionRef:
     """A qualified reference to a function/method in the project."""
@@ -180,59 +187,56 @@ def _extract_recursive(
         _extract_recursive(child, source, language, definitions, calls, enclosing_class)
 
 
+# r37az: per-language allowed identifier node types — extracted from the
+# big if/elif chain that drove the nesting-8 smell. Each language picks
+# the first child matching its type list; C/C++ also recurses into
+# ``function_declarator``.
+_FUNC_NAME_NODE_TYPES: dict[str, tuple[str, ...]] = {
+    "python": ("identifier",),
+    "javascript": ("identifier", "property_identifier"),
+    "typescript": ("identifier", "property_identifier"),
+    "java": ("identifier",),
+    "go": ("identifier",),
+    "c": ("identifier", "field_identifier", "destructor_name"),
+    "cpp": ("identifier", "field_identifier", "destructor_name"),
+}
+
+
 def _get_func_name(node: Any, language: str) -> str | None:
-    """Extract function name from a definition node."""
+    """Extract function name from a definition node.
+
+    r37az: replaced the 6-language if/elif chain (each branch a
+    near-identical ``for child in node.children: if child.type in (...):``
+    loop) with a dispatch table + the C/C++ ``function_declarator``
+    recursion in a single helper. Same per-language behaviour preserved.
+    """
+    accepted = _FUNC_NAME_NODE_TYPES.get(language)
+    if accepted is None:
+        return None
     try:
-        if language == "python":
-            for child in node.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        elif language in ("javascript", "typescript"):
-            for child in node.children:
-                if child.type in ("identifier", "property_identifier"):
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        elif language == "java":
-            for child in node.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        elif language == "go":
-            for child in node.children:
-                if child.type == "identifier":
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-        elif language in ("c", "cpp"):
-            for child in node.children:
-                if child.type in (
-                    "identifier",
-                    "field_identifier",
-                    "destructor_name",
-                ):
-                    text = child.text
-                    return (
-                        text.decode("utf-8") if isinstance(text, bytes) else str(text)
-                    )
-                if child.type == "function_declarator":
-                    for sub in child.children:
-                        if sub.type in ("identifier", "field_identifier"):
-                            text = sub.text
-                            return (
-                                text.decode("utf-8")
-                                if isinstance(text, bytes)
-                                else str(text)
-                            )
+        for child in node.children:
+            if child.type in accepted:
+                return _decode_node_text(child)
+            if language in ("c", "cpp") and child.type == "function_declarator":
+                name = _find_first_identifier(child)
+                if name is not None:
+                    return name
     except Exception:  # nosec B110 - best-effort AST walk; missing field is non-fatal
         pass
+    return None
+
+
+def _decode_node_text(node: Any) -> str:
+    """Return ``node.text`` as a Python str, decoding bytes when needed."""
+    text = node.text
+    return text.decode("utf-8") if isinstance(text, bytes) else str(text)
+
+
+def _find_first_identifier(parent: Any) -> str | None:
+    """Find the first identifier/field_identifier child of ``parent``."""
+    for sub in parent.children:
+        if sub.type in ("identifier", "field_identifier"):
+            return _decode_node_text(sub)
     return None
 
 
@@ -423,55 +427,35 @@ class CallGraph:
     def build(self) -> None:
         """Scan the project and build the call graph.
 
-        H3 fix: two-pass deterministic build.
-
-        Previously this was a single pass that mixed "register definitions"
-        and "resolve calls" per file. ``_resolve_callee`` consulted
-        ``_func_by_name``, which was still being populated, so calls from
-        file A to a function defined in file B were resolved differently
-        depending on whether A or B was parsed first. Combined with
-        ``Path.rglob`` order being filesystem-defined (and Python set/dict
-        iteration order being randomized across processes via
-        ``PYTHONHASHSEED``), ``len(self._call_edges)`` varied by thousands
-        across identical runs of identical inputs.
-
-        Pass 1 (definitions): iterate files in sorted relative-path order,
-        parse, and register every ``FunctionRef`` into the indices. This
-        runs to completion before any call is resolved, so the candidate
-        set ``_func_by_name[name]`` is the same for every call site
-        regardless of which file's calls we resolve next.
-
-        Pass 2 (calls): iterate files in the same sorted order and resolve
-        each call against the now-complete definition index. Edges are
-        appended in a fully deterministic order — same source files, same
-        AST walk order, same candidate lookup — so ``call_edge_count`` is
-        byte-stable across runs.
+        Two-pass deterministic build (H3 fix preserved). r37az: the main
+        ``build`` body was 130 lines — refactored into
+        ``_discover_source_files`` + ``_register_definitions_pass`` +
+        ``_resolve_calls_pass``. Behaviour preserved, including the H3
+        determinism guarantee (file-order = sorted relative path; pass-1
+        completes before pass-2 starts).
         """
         if self._built:
             return
 
-        supported_exts = {
-            ".py",
-            ".js",
-            ".ts",
-            ".jsx",
-            ".tsx",
-            ".java",
-            ".go",
-            ".c",
-            ".cpp",
-            ".cc",
-            ".cxx",
-        }
+        rel_to_abs = self._discover_source_files()
+        parser = Parser()
+        parsed = self._register_definitions_pass(parser, rel_to_abs)
+        self._resolve_calls_pass(parsed, rel_to_abs)
+        self._built = True
 
+    def _discover_source_files(self) -> dict[str, str]:
+        """Pass 0: enumerate source files in deterministic relative-path order.
+
+        Returns an insertion-ordered ``{rel_path: abs_path}`` dict so both
+        passes traverse files identically across runs (no PYTHONHASHSEED
+        sensitivity, no filesystem-order dependency).
+        """
         all_files: list[Path] = []
-        for ext in supported_exts:
+        for ext in _SUPPORTED_BUILD_EXTS:
             for f in self.project_root.rglob(f"*{ext}"):
                 if not self._is_excluded(f):
                     all_files.append(f)
 
-        # H3: sort file iteration order so it does not depend on
-        # filesystem traversal order or PYTHONHASHSEED.
         rel_to_abs_pairs: list[tuple[str, str]] = []
         for f in all_files:
             try:
@@ -480,9 +464,9 @@ class CallGraph:
             except ValueError:
                 continue
         rel_to_abs_pairs.sort(key=lambda p: p[0])
-        # De-dup while preserving sorted order — rglob may yield the same
-        # file twice if multiple extension globs match (extension set is
-        # disjoint here, but be defensive).
+
+        # De-dup while preserving sorted order (defensive — _SUPPORTED_BUILD_EXTS
+        # is disjoint but rglob can still yield duplicates on case-insensitive FS).
         seen_rel: set[str] = set()
         rel_to_abs: dict[str, str] = {}
         for rel, abs_path in rel_to_abs_pairs:
@@ -490,66 +474,110 @@ class CallGraph:
                 continue
             seen_rel.add(rel)
             rel_to_abs[rel] = abs_path
+        return rel_to_abs
 
-        parser = Parser()
+    def _register_definitions_pass(
+        self,
+        parser: Parser,
+        rel_to_abs: dict[str, str],
+    ) -> dict[
+        str,
+        tuple[
+            str, Any, list[dict[str, Any]], list[dict[str, Any]], dict[str, FunctionRef]
+        ],
+    ]:
+        """Pass 1: parse every file, register every FunctionRef, return parsed cache.
 
-        # ----- Pass 1: parse all files, register every definition. -----
-        # Cache parse results so pass 2 doesn't re-parse — parsing dominates
-        # build cost (2-5s on medium repos); doubling it would regress UX.
+        Cache shape is ``{rel_path: (language, tree, definitions, calls, file_funcs)}``.
+        Files that fail to parse are skipped silently — pass 2 will skip them too.
+        """
         parsed: dict[
-            str, tuple[str, Any, list[dict], list[dict], dict[str, FunctionRef]]
+            str,
+            tuple[
+                str,
+                Any,
+                list[dict[str, Any]],
+                list[dict[str, Any]],
+                dict[str, FunctionRef],
+            ],
         ] = {}
         for rel_path, abs_path in rel_to_abs.items():
             language = _language_from_ext(rel_path)
             if language is None:
                 continue
-
             result: ParseResult = parser.parse_file(abs_path, language)
             if not result.success or result.tree is None:
                 continue
 
-            source = result.source_code
-            tree = result.tree
+            definitions, calls = _walk_tree(
+                result.tree.root_node, result.source_code, language
+            )
+            file_funcs = self._register_file_definitions(
+                rel_path, language, definitions
+            )
+            parsed[rel_path] = (language, result.tree, definitions, calls, file_funcs)
+        return parsed
 
-            definitions, calls = _walk_tree(tree.root_node, source, language)
+    def _register_file_definitions(
+        self,
+        rel_path: str,
+        language: str,
+        definitions: list[dict[str, Any]],
+    ) -> dict[str, FunctionRef]:
+        """Append each definition to the global indices and return ``{name: ref}``."""
+        file_funcs: dict[str, FunctionRef] = {}
+        for defn in definitions:
+            ref = FunctionRef(
+                file_path=rel_path,
+                name=defn["name"],
+                start_line=defn["start_line"],
+                language=language,
+                receiver=defn.get("class"),
+            )
+            self._functions.append(ref)
+            self._func_by_name[defn["name"]].append(ref)
+            self._func_by_qualified[ref.qualified_name()] = ref
+            file_funcs[defn["name"]] = ref
+        return file_funcs
 
-            file_funcs: dict[str, FunctionRef] = {}
-            for defn in definitions:
-                ref = FunctionRef(
-                    file_path=rel_path,
-                    name=defn["name"],
-                    start_line=defn["start_line"],
-                    language=language,
-                    receiver=defn.get("class"),
-                )
-                self._functions.append(ref)
-                self._func_by_name[defn["name"]].append(ref)
-                qname = ref.qualified_name()
-                self._func_by_qualified[qname] = ref
-                file_funcs[defn["name"]] = ref
-
-            parsed[rel_path] = (language, tree, definitions, calls, file_funcs)
-
-        # ----- Pass 2: resolve calls against the now-complete index. -----
+    def _resolve_calls_pass(
+        self,
+        parsed: dict[
+            str,
+            tuple[
+                str,
+                Any,
+                list[dict[str, Any]],
+                list[dict[str, Any]],
+                dict[str, FunctionRef],
+            ],
+        ],
+        rel_to_abs: dict[str, str],
+    ) -> None:
+        """Pass 2: resolve every call against the now-complete definition index."""
         for rel_path in rel_to_abs:  # already sorted insertion order
             entry = parsed.get(rel_path)
             if entry is None:
                 continue
             _language, _tree, _definitions, calls, file_funcs = entry
-
             for call in calls:
-                caller_ref = self._find_enclosing_func(file_funcs, call["line"])
-                if caller_ref is None:
-                    continue
+                self._record_edges_for_call(call, rel_path, rel_to_abs, file_funcs)
 
-                callee_refs = self._resolve_callee(call, rel_path, rel_to_abs)
-
-                for callee_ref in callee_refs:
-                    self._callees[caller_ref].append(callee_ref)
-                    self._callers[callee_ref].append(caller_ref)
-                    self._call_edges.append((caller_ref, callee_ref, call["line"]))
-
-        self._built = True
+    def _record_edges_for_call(
+        self,
+        call: dict[str, Any],
+        rel_path: str,
+        rel_to_abs: dict[str, str],
+        file_funcs: dict[str, FunctionRef],
+    ) -> None:
+        """Resolve a single call site and append every (caller, callee) edge."""
+        caller_ref = self._find_enclosing_func(file_funcs, call["line"])
+        if caller_ref is None:
+            return
+        for callee_ref in self._resolve_callee(call, rel_path, rel_to_abs):
+            self._callees[caller_ref].append(callee_ref)
+            self._callers[callee_ref].append(caller_ref)
+            self._call_edges.append((caller_ref, callee_ref, call["line"]))
 
     def _is_excluded(self, path: Path) -> bool:
         return any(part in _EXCLUDE_DIRS for part in path.parts)
