@@ -259,6 +259,20 @@ def detect_security_issues(
     issues: list[dict[str, Any]] = []
     lines = source.splitlines()
     is_test_path = _is_test_path(file_path)
+    # r37as (dogfood): pre-compute the set of Python source lines that live
+    # entirely inside a multi-line string token (docstrings, triple-quoted
+    # literals). The pre-existing single-line ``tokenize`` check in
+    # ``_should_ignore_match`` only sees one line at a time and can't tell
+    # that ``        eval("1+1")`` is wrapped in a ``"""..."""`` block.
+    # The scanner's own ``refactoring_suggestions_tool.py`` docstring tripped
+    # this bug — it documents ``eval()`` as an *example* and the detector
+    # flagged the documentation as a critical security finding. Same class
+    # as task #8 (docstring false-positive) but for security scanner.
+    docstring_lines: set[int] = (
+        _python_lines_inside_multiline_strings(source)
+        if language == "python"
+        else set()
+    )
 
     for name, pattern, severity, description in patterns:
         if is_test_path and name == "assert_in_prod":
@@ -266,6 +280,8 @@ def detect_security_issues(
 
         matches: list[int] = []
         for i, line in enumerate(lines, 1):
+            if i in docstring_lines and name in _PYTHON_STRING_OR_COMMENT_SAFE_ISSUES:
+                continue
             if _line_has_security_match(line, pattern, name, language):
                 matches.append(i)
                 if len(matches) >= 10:
@@ -283,6 +299,40 @@ def detect_security_issues(
             )
 
     return issues
+
+
+def _python_lines_inside_multiline_strings(source: str) -> set[int]:
+    """Return the 1-indexed line numbers covered by any multi-line STRING token.
+
+    r37as (dogfood): the single-line ``tokenize.generate_tokens`` check in
+    ``_is_python_string_or_comment_position`` doesn't span lines, so it
+    misses code that sits *inside* a triple-quoted docstring. This helper
+    walks the full source once and returns every line that falls inside
+    a ``STRING`` token spanning more than one line. ``_PYTHON_STRING_OR_
+    COMMENT_SAFE_ISSUES`` (``eval_usage`` / ``pickle_usage`` / ``bare_except``
+    / ``tls_disabled`` / ``assert_in_prod`` / ``insecure_hash``) are then
+    skipped on those lines, matching the single-line semantics.
+
+    Returns empty set on tokenization failure — the caller falls back to
+    the existing per-line check, never crashing.
+    """
+    covered: set[int] = set()
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+        for token in tokens:
+            if token.type != tokenize.STRING:
+                continue
+            start_line, _start_col = token.start
+            end_line, _end_col = token.end
+            if end_line == start_line:
+                # Single-line string — the existing single-line tokenize
+                # check handles it correctly, no need to cover here.
+                continue
+            covered.update(range(start_line, end_line + 1))
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        # Malformed source — fall back to the per-line check.
+        return set()
+    return covered
 
 
 def _line_has_security_match(

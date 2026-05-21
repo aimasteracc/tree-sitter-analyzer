@@ -78,6 +78,13 @@ def _check_python_anti_patterns(
         if i in docstring_lines:
             continue
         stripped = line.strip()
+        # r37as (dogfood): AP001/AP002 used to fire on `#`-comment lines
+        # that contained example snippets (e.g. ``# ``def f(x=[])`` ``).
+        # AP003 already skipped ``stripped.startswith("#")``; mirror the
+        # same guard onto the structural anti-patterns so docstring +
+        # comment false-positives are caught by a single rule.
+        if stripped.startswith("#"):
+            continue
 
         if "=" in stripped and any(
             f"={t}" in stripped for t in ("[]", "{},", "set()", "[],")
