@@ -116,6 +116,27 @@ def _print_result(
         output_json(result)
 
 
+def _run_mcp_tool_sync(
+    tool_cls: Callable[..., Any],
+    payload: dict[str, Any],
+    *,
+    project_root: str,
+    args: Any,
+    context: SpecialCommandContext,
+) -> int:
+    """Instantiate, sync-run, print, and map an MCP tool to a 0/1 exit code.
+
+    r37at (dogfood): collapses the 4-step inline boilerplate previously
+    duplicated in ``_handle_batch_partial_read`` / ``_handle_health_check`` /
+    ``_handle_batch_metrics``. Each site keeps its own try/_emit_cli_error
+    branch (per-flag error labels).
+    """
+    tool = tool_cls(project_root=project_root)
+    result = context.asyncio_run(tool.execute(payload))
+    _print_result(result, args, context.output_json)
+    return 0 if result.get("success", False) else 1
+
+
 def _load_requests_payload(args: Any) -> list[dict[str, Any]]:
     """Load batch partial-read requests from inline JSON or a file."""
     if getattr(args, "partial_read_requests_json", None):
@@ -175,20 +196,19 @@ def _handle_batch_partial_read(
         from tree_sitter_analyzer.mcp.tools.read_partial_tool import ReadPartialTool
 
         project_root = getattr(args, "project_root", None) or os.getcwd()
-        tool = ReadPartialTool(project_root=project_root)
-        result = context.asyncio_run(
-            tool.execute(
-                {
-                    "requests": _load_requests_payload(args),
-                    "output_format": _tool_output_format(args),
-                    "format": "text",
-                    "allow_truncate": bool(getattr(args, "allow_truncate", False)),
-                    "fail_fast": bool(getattr(args, "fail_fast", False)),
-                }
-            )
+        return _run_mcp_tool_sync(
+            ReadPartialTool,
+            {
+                "requests": _load_requests_payload(args),
+                "output_format": _tool_output_format(args),
+                "format": "text",
+                "allow_truncate": bool(getattr(args, "allow_truncate", False)),
+                "fail_fast": bool(getattr(args, "fail_fast", False)),
+            },
+            project_root=project_root,
+            args=args,
+            context=context,
         )
-        _print_result(result, args, context.output_json)
-        return 0 if result.get("success", False) else 1
     except Exception as exc:
         _emit_cli_error(
             args,
@@ -211,18 +231,17 @@ def _handle_health_check(
         from tree_sitter_analyzer.mcp.tools.project_health_tool import ProjectHealthTool
 
         project_root = getattr(args, "project_root", None) or os.getcwd()
-        tool = ProjectHealthTool(project_root=project_root)
-        result = context.asyncio_run(
-            tool.execute(
-                {
-                    "min_grade": getattr(args, "min_grade", "D"),
-                    "max_files": getattr(args, "max_files", 30),
-                    "output_format": _tool_output_format(args),
-                }
-            )
+        return _run_mcp_tool_sync(
+            ProjectHealthTool,
+            {
+                "min_grade": getattr(args, "min_grade", "D"),
+                "max_files": getattr(args, "max_files", 30),
+                "output_format": _tool_output_format(args),
+            },
+            project_root=project_root,
+            args=args,
+            context=context,
         )
-        _print_result(result, args, context.output_json)
-        return 0 if result.get("success", False) else 1
     except Exception as exc:
         _emit_cli_error(
             args,
@@ -290,18 +309,17 @@ def _handle_batch_metrics(
         from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
 
         project_root = getattr(args, "project_root", None) or os.getcwd()
-        tool = AnalyzeScaleTool(project_root=project_root)
-        result = context.asyncio_run(
-            tool.execute(
-                {
-                    "file_paths": file_paths,
-                    "metrics_only": True,
-                    "output_format": _tool_output_format(args),
-                }
-            )
+        return _run_mcp_tool_sync(
+            AnalyzeScaleTool,
+            {
+                "file_paths": file_paths,
+                "metrics_only": True,
+                "output_format": _tool_output_format(args),
+            },
+            project_root=project_root,
+            args=args,
+            context=context,
         )
-        _print_result(result, args, context.output_json)
-        return 0 if result.get("success", False) else 1
     except Exception as exc:
         _emit_cli_error(
             args,
