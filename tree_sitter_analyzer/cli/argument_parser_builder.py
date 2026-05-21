@@ -371,7 +371,32 @@ def _add_mcp_change_options(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
-    """Add dependency, refactor, and context MCP mirror flags."""
+    """Add dependency, refactor, and context MCP mirror flags.
+
+    r37ap (dogfood): the project's own ``--code-patterns`` tool flagged
+    this function as a 253-line ``long_method`` smell. Split into 13
+    small helpers grouped by MCP mirror surface — each one is now a
+    single-purpose ``parser.add_argument`` block that maps onto one
+    MCP tool family. The dispatcher below keeps the call order intact
+    so argparse-defined defaults / nargs are byte-equivalent.
+    """
+    _add_parser_readiness_options(parser)
+    _add_dependencies_option(parser)
+    _add_refactor_and_smart_context_options(parser)
+    _add_symbol_lineage_options(parser)
+    _add_code_patterns_option(parser)
+    _add_call_graph_options(parser)
+    _add_ast_cache_options(parser)
+    _add_min_grade_option(parser)
+    _add_detect_routes_options(parser)
+    _add_trace_impact_options(parser)
+    _add_environment_probe_options(parser)
+    _add_modification_guard_options(parser)
+    _add_batch_search_options(parser)
+
+
+def _add_parser_readiness_options(parser: argparse.ArgumentParser) -> None:
+    """``--parser-readiness`` family (parser/plugin readiness advisor)."""
     parser.add_argument(
         "--parser-readiness",
         action="store_true",
@@ -386,6 +411,10 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Include already supported languages in --parser-readiness output",
     )
+
+
+def _add_dependencies_option(parser: argparse.ArgumentParser) -> None:
+    """``--dependencies`` (dependency graph analysis)."""
     parser.add_argument(
         "--dependencies",
         nargs="?",
@@ -396,6 +425,10 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
             "(summary, file_deps, blast_radius, cycles; full aliases summary)"
         ),
     )
+
+
+def _add_refactor_and_smart_context_options(parser: argparse.ArgumentParser) -> None:
+    """``--refactor`` / ``--smart-context`` (file-level analysis MCP mirrors)."""
     parser.add_argument(
         "--refactor",
         action="store_true",
@@ -406,6 +439,10 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="One-call file profile: health, exports, structure, deps, edit risk",
     )
+
+
+def _add_symbol_lineage_options(parser: argparse.ArgumentParser) -> None:
+    """``--symbol-lineage`` family (definitions + callers + risk)."""
     parser.add_argument(
         "--symbol-lineage",
         metavar="SYMBOL",
@@ -417,11 +454,19 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default=3,
         help="Max dependency graph depth for --symbol-lineage (1-5, default: 3)",
     )
+
+
+def _add_code_patterns_option(parser: argparse.ArgumentParser) -> None:
+    """``--code-patterns`` (anti-pattern / code smell / security smell detector)."""
     parser.add_argument(
         "--code-patterns",
         action="store_true",
         help="Detect anti-patterns, code smells, and security issues in a file",
     )
+
+
+def _add_call_graph_options(parser: argparse.ArgumentParser) -> None:
+    """``--call-graph`` family (function-level CodeGraph parity)."""
     parser.add_argument(
         "--call-graph",
         nargs="?",
@@ -443,6 +488,10 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default=5,
         help="Max depth for --call-graph chain mode (default: 5)",
     )
+
+
+def _add_ast_cache_options(parser: argparse.ArgumentParser) -> None:
+    """``--ast-cache`` family (persistent AST cache, CodeGraph parity)."""
     parser.add_argument(
         "--ast-cache",
         action="store_true",
@@ -473,12 +522,20 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Force full re-index with --ast-cache",
     )
+
+
+def _add_min_grade_option(parser: argparse.ArgumentParser) -> None:
+    """``--min-grade`` (filter for ``--project-health`` detail list)."""
     parser.add_argument(
         "--min-grade",
         default="D",
         choices=["A", "B", "C", "D", "F"],
         help="Minimum grade for --project-health detail list (default: D)",
     )
+
+
+def _add_detect_routes_options(parser: argparse.ArgumentParser) -> None:
+    """``--detect-routes`` family (HTTP route detection across frameworks)."""
     parser.add_argument(
         "--detect-routes",
         action="store_true",
@@ -504,6 +561,10 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default="all",
         help="Framework filter for --detect-routes (default: all)",
     )
+
+
+def _add_trace_impact_options(parser: argparse.ArgumentParser) -> None:
+    """``--trace-impact`` family (symbol caller / usage trace)."""
     parser.add_argument(
         "--trace-impact",
         action="store_true",
@@ -530,6 +591,10 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
             "Defaults to the project root."
         ),
     )
+
+
+def _add_environment_probe_options(parser: argparse.ArgumentParser) -> None:
+    """``--check-tools`` + ``--build-project-index`` (env probes + index rebuild)."""
     parser.add_argument(
         "--check-tools",
         action="store_true",
@@ -554,10 +619,15 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         metavar="TEXT",
         help="Optional architecture notes to attach to the rebuilt index",
     )
-    # T1 (round-37c dogfood): CLI-MCP parity for modification_guard.
-    # CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
-    # J12 added trace-impact / check-tools / build-project-index; this
-    # closes the same gap for modification_guard.
+
+
+def _add_modification_guard_options(parser: argparse.ArgumentParser) -> None:
+    """``--modification-guard`` family (T1 round-37c CLI-MCP parity).
+
+    CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
+    J12 added trace-impact / check-tools / build-project-index; this
+    closes the same gap for modification_guard.
+    """
     parser.add_argument(
         "--modification-guard",
         action="store_true",
@@ -598,11 +668,16 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
             "--modification-guard (improves accuracy)"
         ),
     )
-    # T2 (round-37d dogfood): CLI-MCP parity for batch_search.
-    # CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
-    # batch_search needs 2-10 queries, each with pattern + optional roots.
-    # The CLI accepts a JSON file with the queries array, mirroring how the
-    # MCP tool consumes them.
+
+
+def _add_batch_search_options(parser: argparse.ArgumentParser) -> None:
+    """``--batch-search`` family (T2 round-37d CLI-MCP parity).
+
+    CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
+    batch_search needs 2-10 queries, each with pattern + optional roots.
+    The CLI accepts a JSON file with the queries array, mirroring how the
+    MCP tool consumes them.
+    """
     parser.add_argument(
         "--batch-search",
         action="store_true",
