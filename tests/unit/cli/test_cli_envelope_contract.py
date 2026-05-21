@@ -370,6 +370,102 @@ class TestR37afCLIEnvelopeContract:
         assert mock_json.call_count == 0, "text mode must not call output_json"
         assert mock_info.call_count > 0
 
+    def test_show_query_languages_json_envelope(self):
+        """r37aj: ``--show-query-languages --format json`` → envelope.
+
+        Probed dogfood-style and caught text-only output. Same fix
+        pattern as r37ad-ae (info command JSON path).
+        """
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.special_commands import (
+            SpecialCommandContext,
+            _handle_query_language_commands,
+        )
+
+        captured: dict = {}
+
+        def _output_json(d):
+            if isinstance(d, dict):
+                captured.update(d)
+
+        # Minimal query_loader mock — real one is fine but slower.
+        class _Loader:
+            def list_supported_languages(self):
+                return ["python", "java", "go"]
+
+            def list_queries_for_language(self, lang):
+                return ["functions", "classes"]
+
+            def get_common_queries(self):
+                return ["functions", "classes"]
+
+        context = SpecialCommandContext(
+            asyncio_run=lambda x: x,
+            output_json=_output_json,
+            output_error=lambda x: None,
+            output_info=lambda x: None,
+            output_list=lambda x: None,
+            query_loader=_Loader(),
+        )
+        args = Namespace(
+            show_query_languages=True,
+            show_common_queries=False,
+            output_format="json",
+            format="json",
+        )
+        rc = _handle_query_language_commands(args, context)
+        assert rc == 0
+        _assert_envelope(captured, "show_query_languages[json]")
+        assert captured.get("language_count") == 3
+        assert isinstance(captured.get("languages"), list)
+        assert captured["languages"][0]["query_count"] == 2
+
+    def test_show_common_queries_json_envelope(self):
+        """r37aj: ``--show-common-queries --format json`` → envelope."""
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.cli.special_commands import (
+            SpecialCommandContext,
+            _handle_query_language_commands,
+        )
+
+        captured: dict = {}
+
+        def _output_json(d):
+            if isinstance(d, dict):
+                captured.update(d)
+
+        class _Loader:
+            def list_supported_languages(self):
+                return ["python"]
+
+            def list_queries_for_language(self, lang):
+                return ["functions"]
+
+            def get_common_queries(self):
+                return ["functions", "classes", "imports"]
+
+        context = SpecialCommandContext(
+            asyncio_run=lambda x: x,
+            output_json=_output_json,
+            output_error=lambda x: None,
+            output_info=lambda x: None,
+            output_list=lambda x: None,
+            query_loader=_Loader(),
+        )
+        args = Namespace(
+            show_query_languages=False,
+            show_common_queries=True,
+            output_format="json",
+            format="json",
+        )
+        rc = _handle_query_language_commands(args, context)
+        assert rc == 0
+        _assert_envelope(captured, "show_common_queries[json]")
+        assert captured.get("query_count") == 3
+        assert captured.get("common_queries") == ["functions", "classes", "imports"]
+
     def test_mcp_command_error_envelope_has_top_verdict(self):
         """r37ah: MCP-bridged commands' error envelope must mirror verdict.
 
@@ -464,7 +560,8 @@ class TestR37afCLISurfaceBaseline:
     #   r37ag: 12 (+ PartialReadCommand)
     #   r37ah: 13 (+ MCP-bridged error envelope)
     #   r37ai: 15 (+ filter_help JSON envelope + text-path preserved)
-    BASELINE_COVERAGE = 15
+    #   r37aj: 17 (+ show_query_languages + show_common_queries)
+    BASELINE_COVERAGE = 17
 
     def test_envelope_test_count_does_not_shrink(self):
         """If you delete a test from TestR37afCLIEnvelopeContract,

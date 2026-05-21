@@ -286,20 +286,85 @@ def _validate_partial_read_options(
     return None
 
 
+def _wants_json(args: Any) -> bool:
+    """r37aj (dogfood): info commands honour ``--format json`` /
+    ``--output-format json``. Same pattern as cli/info_commands.py."""
+    fmt = getattr(args, "format", None) or getattr(args, "output_format", None)
+    return fmt == "json"
+
+
 def _handle_query_language_commands(
     args: Any,
     context: SpecialCommandContext,
 ) -> int | None:
     """Handle query-language discovery commands."""
     if getattr(args, "show_query_languages", False):
+        languages_info = [
+            {
+                "language": language,
+                "query_count": len(
+                    context.query_loader.list_queries_for_language(language)
+                ),
+            }
+            for language in context.query_loader.list_supported_languages()
+        ]
+        if _wants_json(args):
+            summary_line = (
+                f"show_query_languages: {len(languages_info)} languages with "
+                "query support"
+            )
+            context.output_json(
+                {
+                    "success": True,
+                    "languages": languages_info,
+                    "language_count": len(languages_info),
+                    "summary_line": summary_line,
+                    "verdict": "INFO",
+                    "agent_summary": {
+                        "summary_line": summary_line,
+                        "next_step": (
+                            "Run --list-queries --language=<name> for that "
+                            "language's full query catalogue."
+                        ),
+                        "verdict": "INFO",
+                    },
+                }
+            )
+            return 0
         context.output_list(["Languages with query support:"])
-        for language in context.query_loader.list_supported_languages():
-            query_count = len(context.query_loader.list_queries_for_language(language))
-            context.output_list([f"  {language:<15} ({query_count} queries)"])
+        for entry in languages_info:
+            context.output_list(
+                [f"  {entry['language']:<15} ({entry['query_count']} queries)"]
+            )
         return 0
 
     if getattr(args, "show_common_queries", False):
-        common_queries = context.query_loader.get_common_queries()
+        common_queries = list(context.query_loader.get_common_queries())
+        if _wants_json(args):
+            count = len(common_queries)
+            summary_line = (
+                f"show_common_queries: {count} queries common to multiple languages"
+                if count
+                else "show_common_queries: 0 common queries found"
+            )
+            context.output_json(
+                {
+                    "success": True,
+                    "common_queries": common_queries,
+                    "query_count": count,
+                    "summary_line": summary_line,
+                    "verdict": "INFO",
+                    "agent_summary": {
+                        "summary_line": summary_line,
+                        "next_step": (
+                            "Use --query-key <key> --language <lang> to run "
+                            "one of these queries."
+                        ),
+                        "verdict": "INFO",
+                    },
+                }
+            )
+            return 0
         if common_queries:
             context.output_list("Common queries across multiple languages:")
             for query in common_queries:
