@@ -6118,6 +6118,10 @@ class TestEnvelopeContractSnapshot:
         from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
 
         # T5 (round-37g): expand snapshot from 18 → 29 tools.
+        # T6 (round-37h): final 2 tools added → 31 (all non-base tools).
+        from tree_sitter_analyzer.mcp.tools.agent_workflow_tool import (
+            AgentWorkflowTool,
+        )
         from tree_sitter_analyzer.mcp.tools.analyze_code_structure_tool import (
             AnalyzeCodeStructureTool,
         )
@@ -6150,6 +6154,7 @@ class TestEnvelopeContractSnapshot:
         from tree_sitter_analyzer.mcp.tools.get_project_summary_tool import (
             GetProjectSummaryTool,
         )
+        from tree_sitter_analyzer.mcp.tools.list_files_tool import ListFilesTool
         from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
             ModificationGuardTool,
         )
@@ -6304,6 +6309,19 @@ class TestEnvelopeContractSnapshot:
                 "FindAndGrepTool",
                 FindAndGrepTool(root),
                 {"roots": [root], "query": "greet"},
+            ),
+            # T6 (round-37h): final 2 tools — list_files (drifter, fixed
+            # this round) + agent_workflow (already PASS). Snapshot now
+            # covers 31/31 non-base MCP tools.
+            (
+                "ListFilesTool",
+                ListFilesTool(root),
+                {"roots": [root]},
+            ),
+            (
+                "AgentWorkflowTool",
+                AgentWorkflowTool(root),
+                {"target_path": sample, "output_format": "json"},
             ),
         ]
 

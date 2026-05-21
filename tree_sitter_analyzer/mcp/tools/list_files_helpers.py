@@ -511,8 +511,18 @@ def _build_agent_summary(
     truncated_part = " (truncated)" if truncated else ""
     mode = "count_only" if count_only else "list"
     summary_line = f"list_files {mode}: {count} entries{truncated_part}"
+    # T6 (round-37h): canonical envelope requires ``verdict``. list_files
+    # is informational; map risk → verdict matching project-wide vocab
+    # (low→INFO, medium→CAUTION, high→REVIEW).
+    if risk == "high":
+        verdict = "REVIEW"
+    elif risk == "medium":
+        verdict = "CAUTION"
+    else:
+        verdict = "INFO"
     return {
         "risk": risk,
+        "verdict": verdict,
         "result_count": count,
         "truncated": truncated,
         "count_only": count_only,
