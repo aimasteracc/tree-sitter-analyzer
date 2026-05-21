@@ -17,18 +17,7 @@ from ..output_manager import (
     output_list,
 )
 from ..query_loader import query_loader
-
-
-def _wants_json_output(args: Namespace) -> bool:
-    """Return True when the caller asked for JSON via ``--format json``.
-
-    r37ad (dogfood): info commands (--list-queries, --describe-query,
-    --show-supported-*, --filter-help) previously ignored ``--format
-    json`` and always emitted plain text. Agents that piped the output
-    through ``json.loads`` failed with ``Expecting value: line 1 column 1``.
-    """
-    fmt = getattr(args, "format", None) or getattr(args, "output_format", None)
-    return fmt == "json"
+from .output_format import wants_json_output as _wants_json_output  # noqa: F401
 
 
 class InfoCommand(ABC):

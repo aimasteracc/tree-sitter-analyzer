@@ -105,12 +105,9 @@ def _print_filter_help(args: argparse.Namespace | None = None) -> None:
     from tree_sitter_analyzer.core.query_filter import QueryFilter
 
     help_text = QueryFilter().get_filter_help()
-    fmt = (
-        getattr(args, "format", None) or getattr(args, "output_format", None)
-        if args is not None
-        else None
-    )
-    if fmt == "json":
+    from tree_sitter_analyzer.cli.output_format import wants_json_output
+
+    if args is not None and wants_json_output(args):
         from tree_sitter_analyzer.output_manager import output_json
 
         line_count = help_text.count("\n") + 1

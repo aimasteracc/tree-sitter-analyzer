@@ -345,11 +345,7 @@ def _validate_partial_read_options(
     return None
 
 
-def _wants_json(args: Any) -> bool:
-    """r37aj (dogfood): info commands honour ``--format json`` /
-    ``--output-format json``. Same pattern as cli/info_commands.py."""
-    fmt = getattr(args, "format", None) or getattr(args, "output_format", None)
-    return fmt == "json"
+from .output_format import wants_json_output as _wants_json  # noqa: E402
 
 
 def _handle_query_language_commands(
