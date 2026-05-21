@@ -53,9 +53,17 @@ def module_family_test_stems(file_path: str | Path) -> list[str]:
         "_modes",
         "_predicates",
         "_python",
+        # r37q (dogfood): ``parser_readiness_records.py`` is exercised
+        # via ``test_parser_readiness_records.py`` AND via
+        # ``test_parser_readiness.py`` (indirect). Without this
+        # suffix safe_to_edit reports ``tests=no`` for split helper
+        # modules like ``*_records`` and ``*_sources`` even when their
+        # parent module is well-tested.
+        "_records",
         "_response",
         "_risk",
         "_smells",
+        "_sources",
         "_stems",
         "_treesitter",
         "_validation",

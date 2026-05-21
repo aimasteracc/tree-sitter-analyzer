@@ -413,6 +413,50 @@ class TestFindTestFilesPython:
             results = find_test_files(str(source), tmp)
             assert "tests/unit/mcp/test_find_and_grep_tool.py" in results
 
+    def test_finds_python_family_tests_for_sources_helper(self):
+        """r37q dogfood: ``parser_readiness_sources.py`` must inherit
+        ``test_parser_readiness.py`` via the ``_sources`` family suffix.
+
+        Caught by running ``--safe-to-edit`` on the file itself: it
+        reported ``tests=no`` even though the parent module is well
+        tested. Adding ``_sources`` to the suffix strip list fixes the
+        family lookup.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = (
+                root / "tree_sitter_analyzer" / "cli" / "parser_readiness_sources.py"
+            )
+            source.parent.mkdir(parents=True)
+            source.write_text("def collect(): pass")
+
+            test = root / "tests" / "unit" / "cli" / "test_parser_readiness.py"
+            test.parent.mkdir(parents=True)
+            test.write_text("def test_parser_readiness(): pass")
+
+            results = find_test_files(str(source), tmp)
+            assert "tests/unit/cli/test_parser_readiness.py" in results
+
+    def test_finds_python_family_tests_for_records_helper(self):
+        """r37q dogfood: ``parser_readiness_records.py`` must inherit
+        ``test_parser_readiness.py`` via the ``_records`` family suffix.
+        Same root cause as the ``_sources`` case above.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = (
+                root / "tree_sitter_analyzer" / "cli" / "parser_readiness_records.py"
+            )
+            source.parent.mkdir(parents=True)
+            source.write_text("def build(): pass")
+
+            test = root / "tests" / "unit" / "cli" / "test_parser_readiness.py"
+            test.parent.mkdir(parents=True)
+            test.write_text("def test_parser_readiness(): pass")
+
+            results = find_test_files(str(source), tmp)
+            assert "tests/unit/cli/test_parser_readiness.py" in results
+
     def test_returns_python_test_file_itself_as_nearby_test(self):
         """A queried test module is its own runnable verification target."""
         with tempfile.TemporaryDirectory() as tmp:
