@@ -12,6 +12,7 @@ from ._extractor_helpers import (
     ImportExtractionRuntime,
     extract_imports_from_tree,
     import_node_context,
+    node_raw_text,
 )
 
 
@@ -115,7 +116,10 @@ class PythonImportPackageMixin:
             if not self._validate_node(node):
                 return None
 
-            variable_text = source_code[node.start_byte : node.end_byte]
+            # Use ``node_raw_text``: bytes-aware (multibyte-safe) + clamps
+            # end_byte to source length for legacy callers that pass nodes
+            # whose offsets exceed the source.
+            variable_text = node_raw_text(node, source_code)
 
             if "=" in variable_text:
                 name_part = variable_text.split("=")[0].strip()

@@ -55,7 +55,25 @@ def build_agent_summary(context: FindAndGrepSummaryInput) -> dict[str, Any]:
         summary["output_saved"] = True
     if context.arguments.get("suppress_output"):
         summary["suppress_output"] = True
+    summary["summary_line"] = _build_summary_line(context, match_total=match_total)
     return summary
+
+
+def _build_summary_line(context: FindAndGrepSummaryInput, *, match_total: int) -> str:
+    """Build a one-line human/agent-readable digest."""
+    query = _short_query(context.arguments.get("query", ""), limit=60)
+    pattern = context.arguments.get("pattern")
+    pattern_part = f" in '{_short_query(pattern, limit=40)}'" if pattern else ""
+    files_part = (
+        f", {context.searched_file_count} files searched"
+        if context.searched_file_count
+        else ""
+    )
+    truncated_part = " (truncated)" if context.truncated else ""
+    return (
+        f"find_and_grep '{query}'{pattern_part}: {match_total} matches"
+        f"{files_part}{truncated_part}"
+    )
 
 
 def build_agent_summary_from_meta(

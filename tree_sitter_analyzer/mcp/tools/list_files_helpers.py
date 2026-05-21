@@ -189,56 +189,83 @@ def _resolve_effective_types(arguments: dict[str, Any]) -> list[str] | None:
 
 def _respond_count_only(context: CountResponseContext) -> dict[str, Any]:
     """Return count-only response with optional file output."""
+    from .search_envelope import normalize_envelope
+
     total_count = min(len(context.lines), fd_rg_utils.MAX_RESULTS_HARD_CAP)
     truncated = len(context.lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP
 
+    agent_summary = _build_agent_summary(
+        count=total_count,
+        truncated=truncated,
+        count_only=True,
+        limit=context.limit,
+        no_ignore=False,
+    )
     result: dict[str, Any] = {
         "success": True,
         "count_only": True,
+        "count": total_count,
         "total_count": total_count,
+        "displayed_count": 0,
         "truncated": truncated,
         "elapsed_ms": context.elapsed_ms,
-        "agent_summary": _build_agent_summary(
+        "results": [],
+        "next_steps": _build_list_files_next_steps(
             count=total_count,
             truncated=truncated,
             count_only=True,
             limit=context.limit,
-            no_ignore=False,
         ),
+        "agent_summary": agent_summary,
+        "summary_line": agent_summary.get("summary_line", ""),
     }
 
     file_response = _save_count_output(
         context.project_root, context.arguments, context.limit, result
     )
     if _is_suppressed_file_response(file_response):
-        return file_response
+        return normalize_envelope(file_response)
     result.update(file_response)
 
     output_format = context.arguments.get("output_format", "toon")
+    normalize_envelope(result)
     return apply_toon_format_to_response(result, output_format)
 
 
 def _respond_detailed(context: DetailedResponseContext) -> dict[str, Any]:
     """Return detailed file listing with metadata and optional file output."""
+    from .search_envelope import normalize_envelope
+
     lines = context.lines
     truncated = len(lines) > fd_rg_utils.MAX_RESULTS_HARD_CAP
+    pre_truncation_count = len(lines)
     if truncated:
         lines = lines[: fd_rg_utils.MAX_RESULTS_HARD_CAP]
 
     results = _parse_fd_output(lines, context.effective_types)
 
+    agent_summary = _build_agent_summary(
+        count=len(results),
+        truncated=truncated,
+        count_only=False,
+        limit=context.limit,
+        no_ignore=context.no_ignore,
+    )
     final_result: dict[str, Any] = {
         "success": True,
         "count": len(results),
+        "displayed_count": len(results),
+        "total_count": pre_truncation_count if truncated else len(results),
         "truncated": truncated,
         "elapsed_ms": context.elapsed_ms,
-        "agent_summary": _build_agent_summary(
+        "next_steps": _build_list_files_next_steps(
             count=len(results),
             truncated=truncated,
             count_only=False,
             limit=context.limit,
-            no_ignore=context.no_ignore,
         ),
+        "agent_summary": agent_summary,
+        "summary_line": agent_summary.get("summary_line", ""),
         "results": results,
     }
 
@@ -250,10 +277,11 @@ def _respond_detailed(context: DetailedResponseContext) -> dict[str, Any]:
         final_result,
     )
     if _is_suppressed_file_response(file_response):
-        return file_response
+        return normalize_envelope(file_response)
     final_result.update(file_response)
 
     output_format = context.arguments.get("output_format", "toon")
+    normalize_envelope(final_result)
     return apply_toon_format_to_response(final_result, output_format)
 
 
@@ -400,6 +428,9 @@ def _build_agent_summary(
 ) -> dict[str, Any]:
     """Summarize list_files output for immediate agent decision-making."""
     risk = _summary_risk(count, truncated, limit)
+    truncated_part = " (truncated)" if truncated else ""
+    mode = "count_only" if count_only else "list"
+    summary_line = f"list_files {mode}: {count} entries{truncated_part}"
     return {
         "risk": risk,
         "result_count": count,
@@ -410,7 +441,48 @@ def _build_agent_summary(
         "suggested_tool": _summary_suggested_tool(count, truncated, count_only, limit),
         "stop_condition": _summary_stop_condition(count, truncated, limit),
         "no_ignore": no_ignore,
+        "summary_line": summary_line,
     }
+
+
+def _build_list_files_next_steps(
+    *,
+    count: int,
+    truncated: bool,
+    count_only: bool,
+    limit: int,
+) -> list[str]:
+    """Suggest follow-up tools for the list_files response."""
+    steps: list[str] = []
+    if truncated or count >= limit:
+        steps.append(
+            "Narrow with pattern/extensions/depth/exclude filters, or raise limit."
+        )
+    if count == 0:
+        steps.append(
+            "search_content(query=...) to grep across the project when text is known."
+        )
+        steps.append("Broaden roots or relax filters if you expected matches.")
+        return steps
+    if count_only:
+        steps.append("Run list_files without count_only to see actual paths.")
+        return steps
+    if count == 1:
+        steps.append(
+            "read_partial(file_path=<path>) to inspect the single matching file."
+        )
+    elif count <= 20:
+        steps.append(
+            "read_partial on individual files, or analyze_code_structure for one."
+        )
+    else:
+        steps.append(
+            "find_and_grep(query=<text>, pattern=<glob>) to grep inside these files."
+        )
+        steps.append(
+            "smart_context to focus on the most relevant subset before reading."
+        )
+    return steps
 
 
 def _summary_risk(count: int, truncated: bool, limit: int) -> str:

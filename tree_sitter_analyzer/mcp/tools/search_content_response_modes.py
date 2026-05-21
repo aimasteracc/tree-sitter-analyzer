@@ -15,6 +15,7 @@ from .search_content_helpers import (
     handle_output_and_cache,
     save_enriched_output,
 )
+from .search_envelope import normalize_envelope
 
 ToonFormatter = Callable[[dict[str, Any]], dict[str, Any]]
 ToonApplier = Callable[[dict[str, Any], str], dict[str, Any]]
@@ -85,24 +86,29 @@ def respond_count_only(
     """Return per-file match counts."""
     file_counts = fd_rg_utils.parse_rg_count_output(out)
     total_matches = file_counts.pop("__total__", 0)
+    agent_summary = build_agent_summary(
+        SearchAgentSummaryInput(
+            arguments=arguments,
+            mode="count_only",
+            count=len(file_counts),
+            total_matches=total_matches,
+            file_count=len(file_counts),
+            truncated=False,
+            elapsed_ms=elapsed_ms,
+        )
+    )
     result: dict[str, Any] = {
         "success": True,
         "count_only": True,
+        "count": int(total_matches),
+        "results": [],
         "total_matches": total_matches,
         "file_counts": file_counts,
         "elapsed_ms": elapsed_ms,
-        "agent_summary": build_agent_summary(
-            SearchAgentSummaryInput(
-                arguments=arguments,
-                mode="count_only",
-                count=len(file_counts),
-                total_matches=total_matches,
-                file_count=len(file_counts),
-                truncated=False,
-                elapsed_ms=elapsed_ms,
-            )
-        ),
+        "truncated": False,
+        "agent_summary": agent_summary,
     }
+    normalize_envelope(result, total_count=int(total_matches))
     if cache and cache_key:
         cache.set(cache_key, result)
     if output_format == "toon":
@@ -137,12 +143,13 @@ def respond_grouped(
             elapsed_ms=elapsed_ms,
         )
     )
+    normalize_envelope(result, total_count=len(matches))
 
     suppressed = handle_output_and_cache(
         result, arguments, file_output_manager, cache, cache_key, output_format
     )
     if suppressed:
-        return suppressed
+        return normalize_envelope(suppressed)
 
     if output_format == "toon":
         return attach_toon(result)
@@ -166,6 +173,7 @@ def respond_summary(
     result: dict[str, Any] = {
         "success": True,
         "count": len(matches),
+        "results": [],
         "truncated": truncated,
         "elapsed_ms": elapsed_ms,
         "summary": summary,
@@ -180,12 +188,13 @@ def respond_summary(
             )
         ),
     }
+    normalize_envelope(result, total_count=len(matches))
 
     suppressed = handle_output_and_cache(
         result, arguments, file_output_manager, cache, cache_key, output_format
     )
     if suppressed:
-        return suppressed
+        return normalize_envelope(suppressed)
 
     if output_format == "toon":
         return attach_toon(result)
@@ -231,11 +240,12 @@ def respond_full(
     save_enriched_output(
         result, matches, arguments, output_format, file_output_manager, fd_rg_utils
     )
+    normalize_envelope(result, total_count=len(matches))
 
     suppressed = handle_output_and_cache(
         result, arguments, file_output_manager, cache, cache_key, output_format
     )
     if suppressed:
-        return suppressed
+        return normalize_envelope(suppressed)
 
     return apply_toon(result, output_format)

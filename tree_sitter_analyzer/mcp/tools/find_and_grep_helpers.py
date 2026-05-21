@@ -186,12 +186,18 @@ def build_search_meta(
     fd_elapsed_ms: int,
     rg_elapsed_ms: int,
 ) -> dict[str, Any]:
-    """Build the shared metadata block for find_and_grep responses."""
+    """Build the shared metadata block for find_and_grep responses.
+
+    ``elapsed_ms`` is the wall-clock sum of the fd and rg phases, exposed for
+    consumers that just want a single timing number alongside the per-phase
+    breakdown.
+    """
     return {
         "searched_file_count": searched_file_count,
         "truncated": truncated,
         "fd_elapsed_ms": fd_elapsed_ms,
         "rg_elapsed_ms": rg_elapsed_ms,
+        "elapsed_ms": int(fd_elapsed_ms) + int(rg_elapsed_ms),
     }
 
 
@@ -202,13 +208,15 @@ def build_empty_response(
     fd_elapsed_ms: int,
 ) -> dict[str, Any]:
     """Build the response returned when fd finds no candidate files."""
+    from .search_envelope import normalize_envelope
+
     meta = build_search_meta(
         searched_file_count=0,
         truncated=truncated,
         fd_elapsed_ms=fd_elapsed_ms,
         rg_elapsed_ms=0,
     )
-    return {
+    result = {
         "success": True,
         "results": [],
         "count": 0,
@@ -221,10 +229,14 @@ def build_empty_response(
             file_count=0,
         ),
     }
+    normalize_envelope(result, total_count=0)
+    return result
 
 
 def build_count_only_response(context: FindAndGrepCountOnlyContext) -> dict[str, Any]:
     """Build a count-only response from parsed ripgrep count output."""
+    from .search_envelope import normalize_envelope
+
     file_counts = dict(context.count_data)
     total_matches = file_counts.pop("__total__", 0)
     meta = build_search_meta(
@@ -236,6 +248,8 @@ def build_count_only_response(context: FindAndGrepCountOnlyContext) -> dict[str,
     result = {
         "success": True,
         "count_only": True,
+        "count": int(total_matches),
+        "results": [],
         "total_matches": total_matches,
         "file_counts": file_counts,
         "meta": meta,
@@ -248,6 +262,7 @@ def build_count_only_response(context: FindAndGrepCountOnlyContext) -> dict[str,
             file_count=len(file_counts),
         ),
     }
+    normalize_envelope(result, total_count=int(total_matches))
     if context.output_format == "toon":
         return attach_toon_content_to_response(result)
     return result

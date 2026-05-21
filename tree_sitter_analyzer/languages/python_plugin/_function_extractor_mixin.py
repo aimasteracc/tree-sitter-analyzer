@@ -7,6 +7,7 @@ from typing import Any
 
 from ...models import Function
 from ...utils import log_debug, log_error, log_warning
+from ...utils.tree_sitter_compat import get_node_text_safe
 from ._extractor_helpers import (
     DetailedFunctionBuildInput,
     FunctionBuildInput,
@@ -146,7 +147,7 @@ class PythonFunctionExtractionMixin:
 
         for child in node.children:
             if child.type == "type":
-                type_text = source_code[child.start_byte : child.end_byte]
+                type_text = get_node_text_safe(child, source_code)
                 if type_text and not type_text.startswith("@"):
                     return type_text
         return None
@@ -171,5 +172,5 @@ class PythonFunctionExtractionMixin:
         if string_node is None or not self._validate_node(string_node):
             return None
 
-        docstring = source_code[string_node.start_byte : string_node.end_byte]
+        docstring = get_node_text_safe(string_node, source_code)
         return _strip_docstring_quotes(docstring)

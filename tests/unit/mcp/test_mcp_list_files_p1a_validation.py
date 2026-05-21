@@ -122,7 +122,10 @@ file5.py
     assert result["success"] is True
     assert result["count_only"] is True
     assert result["total_count"] == 5
-    assert "results" not in result  # No detailed results in count_only mode
+    # Canonical envelope requires ``results``; in count_only mode it is an
+    # empty list because the count itself lives in ``total_count`` and
+    # ``count`` (see search_envelope.normalize_envelope).
+    assert result["results"] == []
     assert "elapsed_ms" in result
 
 

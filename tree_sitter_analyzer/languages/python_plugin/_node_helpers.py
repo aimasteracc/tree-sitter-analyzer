@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...utils.tree_sitter_compat import get_node_text_safe
+
 _PARAMETER_NODE_TYPES = frozenset(
     {
         "identifier",
@@ -26,7 +28,7 @@ def extract_name_from_node(node: Any, source_code: str) -> str | None:
     """Extract a node identifier name."""
     for child in node.children:
         if child.type == "identifier":
-            return source_code[child.start_byte : child.end_byte]
+            return get_node_text_safe(child, source_code)
     return None
 
 
@@ -43,7 +45,7 @@ def _extract_parameter_children(parameters_node: Any, source_code: str) -> list[
     parameters = []
     for param_child in parameters_node.children:
         if param_child.type in _PARAMETER_NODE_TYPES:
-            param_text = source_code[param_child.start_byte : param_child.end_byte]
+            param_text = get_node_text_safe(param_child, source_code)
             parameters.append(param_text)
     return parameters
 
@@ -65,7 +67,7 @@ def extract_function_body(node: Any, source_code: str) -> str:
     """Extract a function body from a function node."""
     for child in node.children:
         if child.type == "block":
-            return source_code[child.start_byte : child.end_byte]
+            return get_node_text_safe(child, source_code)
     return ""
 
 
@@ -84,7 +86,7 @@ def _extract_superclass_arguments(
     superclasses = []
     for arg in argument_list_node.children:
         if arg.type == "identifier":
-            superclasses.append(source_code[arg.start_byte : arg.end_byte])
+            superclasses.append(get_node_text_safe(arg, source_code))
     return superclasses
 
 
@@ -104,4 +106,6 @@ def _normalize_decorator_text(decorator_text: str) -> str:
 
 
 def _source_text(node: Any, source_code: str) -> str:
-    return source_code[node.start_byte : node.end_byte]
+    # ``node.start_byte``/``end_byte`` are UTF-8 byte offsets; use the bytes-aware
+    # helper so multibyte source code (CJK, accents, em-dash) extracts correctly.
+    return get_node_text_safe(node, source_code)

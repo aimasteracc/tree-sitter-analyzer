@@ -78,6 +78,63 @@ TOOL_SCHEMA: dict[str, Any] = {
 }
 
 
+def build_query_agent_summary(
+    *,
+    file_path: str,
+    language: str,
+    query: str,
+    count: int,
+    elapsed_ms: float,
+    truncated: bool,
+) -> dict[str, Any]:
+    """Build a compact agent summary for a query_code response.
+
+    Returns a dict containing ``summary_line`` and ``next_step`` at minimum.
+    """
+    from pathlib import Path as _Path
+
+    file_name = _Path(file_path).name if file_path else "<unknown>"
+    truncated_part = " (truncated)" if truncated else ""
+    summary_line = (
+        f"{language} query '{query}': {count} results in {file_name}{truncated_part}"
+    )
+    if count == 0:
+        next_step = (
+            "Try a broader query_key, or use search_content to find the symbol by text."
+        )
+        risk = "low"
+    elif truncated:
+        next_step = f"Tighten the query (add filter=) before opening {count} results."
+        risk = "high"
+    elif count == 1:
+        next_step = (
+            f"extract_code_section(file_path='{file_path}', ...) to read the one match."
+        )
+        risk = "low"
+    elif count > 50:
+        next_step = (
+            "Add filter (e.g., 'name=~pattern') to narrow before opening all matches."
+        )
+        risk = "medium"
+    else:
+        next_step = (
+            "Inspect listed start_line/end_line ranges, then read_partial for details."
+        )
+        risk = "low"
+    return {
+        "risk": risk,
+        "mode": "query",
+        "count": count,
+        "elapsed_ms": elapsed_ms,
+        "truncated": truncated,
+        "language": language,
+        "query": query,
+        "file": file_name,
+        "next_step": next_step,
+        "summary_line": summary_line,
+    }
+
+
 # format_summary: implementation
 def format_summary(
     results: list[dict[str, Any]], query_type: str, language: str
@@ -266,13 +323,29 @@ def handle_query_output(
             formatted["file_saved"] = False
 
     if suppress_output and output_file:
+        # Minimal envelope: existing callers/tests expect ``results`` absent
+        # here, so we keep the contract intact. Canonical aliases that don't
+        # require ``results`` are added below.
         minimal: dict[str, Any] = {
             "success": formatted.get("success", True),
             "count": formatted.get("count", 0),
             "file_path": file_path,
             "language": language,
             "query": query,
+            "elapsed_ms": formatted.get("elapsed_ms", 0.0),
+            "truncated": formatted.get("truncated", False),
+            "displayed_count": 0,
+            "total_count": int(formatted.get("count", 0) or 0),
         }
+        if "agent_summary" in formatted:
+            minimal["agent_summary"] = formatted["agent_summary"]
+            agent_summary = formatted["agent_summary"]
+            if isinstance(agent_summary, dict) and isinstance(
+                agent_summary.get("summary_line"), str
+            ):
+                minimal["summary_line"] = agent_summary["summary_line"]
+        if "next_steps" in formatted:
+            minimal["next_steps"] = formatted["next_steps"]
         if "output_file_path" in formatted:
             minimal["output_file_path"] = formatted["output_file_path"]
         if "file_saved" in formatted:

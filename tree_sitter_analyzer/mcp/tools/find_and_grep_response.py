@@ -14,6 +14,7 @@ from .find_and_grep_agent_summary import (
     count_match_files,
 )
 from .find_and_grep_helpers import handle_output
+from .search_envelope import normalize_envelope
 
 
 class FindAndGrepRespondMixin:
@@ -39,12 +40,13 @@ class FindAndGrepRespondMixin:
             meta=meta,
             file_count=count_match_files(matches),
         )
+        normalize_envelope(grouped, total_count=len(matches))
 
         suppressed = handle_output(
             grouped, arguments, self.file_output_manager, matches
         )
         if suppressed:
-            return suppressed
+            return normalize_envelope(suppressed)
 
         output_format = arguments.get("output_format", "toon")
         if output_format == "toon":
@@ -61,6 +63,8 @@ class FindAndGrepRespondMixin:
         result: dict[str, Any] = {
             "success": True,
             "summary_only": True,
+            "count": len(matches),
+            "results": [],
             "summary": fd_rg_utils.summarize_search_results(matches),
             "meta": meta,
             "agent_summary": build_agent_summary_from_meta(
@@ -71,10 +75,11 @@ class FindAndGrepRespondMixin:
                 file_count=count_match_files(matches),
             ),
         }
+        normalize_envelope(result, total_count=len(matches))
 
         suppressed = handle_output(result, arguments, self.file_output_manager, matches)
         if suppressed:
-            return suppressed
+            return normalize_envelope(suppressed)
 
         return result
 
@@ -107,9 +112,11 @@ class FindAndGrepRespondMixin:
             if matches and not suppress_output:
                 result["next_steps"] = _build_next_steps(matches)
 
+        normalize_envelope(result, total_count=len(matches))
+
         suppressed = handle_output(result, arguments, self.file_output_manager, matches)
         if suppressed:
-            return suppressed
+            return normalize_envelope(suppressed)
 
         return apply_toon_format_to_response(result, output_format)
 

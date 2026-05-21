@@ -47,7 +47,18 @@ def build_agent_summary(context: SearchAgentSummaryInput) -> dict[str, Any]:
         summary["output_saved"] = True
     if context.arguments.get("suppress_output"):
         summary["suppress_output"] = True
+    summary["summary_line"] = _build_summary_line(context, match_total=match_total)
     return summary
+
+
+def _build_summary_line(context: SearchAgentSummaryInput, *, match_total: int) -> str:
+    """Build a one-line human/agent-readable digest."""
+    query = _short_query(context.arguments.get("query", ""), limit=60)
+    files_part = f" in {context.file_count} files" if context.file_count else ""
+    truncated_part = " (truncated)" if context.truncated else ""
+    return (
+        f"search_content '{query}': {match_total} matches{files_part}{truncated_part}"
+    )
 
 
 def count_match_files(matches: list[dict[str, Any]]) -> int:

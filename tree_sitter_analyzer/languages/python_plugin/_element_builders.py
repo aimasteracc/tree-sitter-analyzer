@@ -14,10 +14,15 @@ def node_line_range(node: Any) -> tuple[int, int]:
 
 
 def node_raw_text(node: Any, source_code: str) -> str:
-    start_byte = min(node.start_byte, len(source_code))
-    end_byte = min(node.end_byte, len(source_code))
+    # ``node.start_byte``/``end_byte`` are UTF-8 byte offsets, not codepoint
+    # offsets. Slice the bytes form and decode so multibyte source code stays
+    # aligned. ``end_byte`` is clamped because some legacy callers pass nodes
+    # whose offsets exceed the source — matches the original lenient behavior.
+    source_bytes = source_code.encode("utf-8")
+    start_byte = max(0, min(getattr(node, "start_byte", 0), len(source_bytes)))
+    end_byte = max(start_byte, min(getattr(node, "end_byte", 0), len(source_bytes)))
     if start_byte < end_byte:
-        return source_code[start_byte:end_byte]
+        return source_bytes[start_byte:end_byte].decode("utf-8", errors="replace")
     return source_code
 
 
@@ -30,7 +35,7 @@ def function_raw_text(content_lines: list[str], start_line: int, end_line: int) 
 def extract_class_attribute_info(node: Any, source_code: str) -> Variable | None:
     """Extract class attribute information from an assignment node."""
     try:
-        assignment_text = source_code[node.start_byte : node.end_byte]
+        assignment_text = node_raw_text(node, source_code)
         if "=" not in assignment_text:
             return None
 

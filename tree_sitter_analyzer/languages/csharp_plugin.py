@@ -25,6 +25,7 @@ except ImportError:
 from ..models import Class, Function, Import, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
+from ..utils.tree_sitter_compat import get_node_text_safe
 from .csharp_helpers import (
     calculate_complexity as _calc_complexity_standalone,
 )
@@ -134,8 +135,10 @@ class CSharpElementExtractor(ElementExtractor):
         if cache_key in self._node_text_cache:
             return self._node_text_cache[cache_key]
 
-        # Extract text directly from source code string
-        text = self.source_code[node.start_byte : node.end_byte]
+        # Extract text via UTF-8 bytes to handle multibyte chars correctly.
+        # ``node.start_byte``/``end_byte`` are byte offsets — slicing ``str``
+        # directly mis-aligns on any non-ASCII source.
+        text = get_node_text_safe(node, self.source_code)
         self._node_text_cache[cache_key] = text
         return text
 

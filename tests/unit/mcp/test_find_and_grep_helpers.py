@@ -80,7 +80,14 @@ class TestToolSchema:
             assert TOOL_SCHEMA["properties"][name]["type"] == "boolean"
 
     def test_schema_integer_properties(self):
-        int_props = ["depth", "file_limit", "context_before", "context_after", "max_count", "timeout_ms"]
+        int_props = [
+            "depth",
+            "file_limit",
+            "context_before",
+            "context_after",
+            "max_count",
+            "timeout_ms",
+        ]
         for name in int_props:
             assert TOOL_SCHEMA["properties"][name]["type"] == "integer"
 
@@ -106,25 +113,41 @@ class TestFindAndGrepFullMatchContext:
 
     def test_frozen(self):
         ctx = FindAndGrepFullMatchContext(
-            arguments={}, rg_out=b"", fd_elapsed_ms=0,
-            rg_elapsed_ms=0, searched_file_count=0,
-            truncated_fd=False, output_format="json",
+            arguments={},
+            rg_out=b"",
+            fd_elapsed_ms=0,
+            rg_elapsed_ms=0,
+            searched_file_count=0,
+            truncated_fd=False,
+            output_format="json",
         )
         with pytest.raises(AttributeError):
             ctx.fd_elapsed_ms = 99  # type: ignore[misc]
 
     def test_equality(self):
-        kw = {"arguments": {}, "rg_out": b"", "fd_elapsed_ms": 0,
-              "rg_elapsed_ms": 0, "searched_file_count": 0,
-              "truncated_fd": False, "output_format": "json"}
+        kw = {
+            "arguments": {},
+            "rg_out": b"",
+            "fd_elapsed_ms": 0,
+            "rg_elapsed_ms": 0,
+            "searched_file_count": 0,
+            "truncated_fd": False,
+            "output_format": "json",
+        }
         ctx1 = FindAndGrepFullMatchContext(**kw)
         ctx2 = FindAndGrepFullMatchContext(**kw)
         assert ctx1 == ctx2
 
     def test_unhashable_due_to_dict(self):
-        kw = {"arguments": {}, "rg_out": b"", "fd_elapsed_ms": 0,
-              "rg_elapsed_ms": 0, "searched_file_count": 0,
-              "truncated_fd": False, "output_format": "json"}
+        kw = {
+            "arguments": {},
+            "rg_out": b"",
+            "fd_elapsed_ms": 0,
+            "rg_elapsed_ms": 0,
+            "searched_file_count": 0,
+            "truncated_fd": False,
+            "output_format": "json",
+        }
         ctx = FindAndGrepFullMatchContext(**kw)
         with pytest.raises(TypeError, match="unhashable"):
             hash(ctx)
@@ -146,9 +169,13 @@ class TestFindAndGrepCountOnlyContext:
 
     def test_frozen(self):
         ctx = FindAndGrepCountOnlyContext(
-            arguments={}, count_data={}, output_format="json",
-            searched_file_count=0, truncated=False,
-            fd_elapsed_ms=0, rg_elapsed_ms=0,
+            arguments={},
+            count_data={},
+            output_format="json",
+            searched_file_count=0,
+            truncated=False,
+            fd_elapsed_ms=0,
+            rg_elapsed_ms=0,
         )
         with pytest.raises(AttributeError):
             ctx.output_format = "toon"  # type: ignore[misc]
@@ -168,8 +195,11 @@ class TestFindAndGrepRgModeContext:
 
     def test_frozen(self):
         ctx = FindAndGrepRgModeContext(
-            arguments={}, files=[], fd_elapsed_ms=0,
-            truncated_fd=False, output_format="json",
+            arguments={},
+            files=[],
+            fd_elapsed_ms=0,
+            truncated_fd=False,
+            output_format="json",
         )
         with pytest.raises(AttributeError):
             ctx.output_format = "toon"  # type: ignore[misc]
@@ -221,26 +251,37 @@ class TestBuildSearchMeta:
 
     def test_meta_keys(self):
         meta = build_search_meta(
-            searched_file_count=0, truncated=True,
-            fd_elapsed_ms=0, rg_elapsed_ms=0,
+            searched_file_count=0,
+            truncated=True,
+            fd_elapsed_ms=0,
+            rg_elapsed_ms=0,
         )
+        # ``elapsed_ms`` is the additive fd+rg sum exposed for the
+        # canonical search envelope; the per-phase keys still ship.
         assert set(meta.keys()) == {
-            "searched_file_count", "truncated",
-            "fd_elapsed_ms", "rg_elapsed_ms",
+            "searched_file_count",
+            "truncated",
+            "fd_elapsed_ms",
+            "rg_elapsed_ms",
+            "elapsed_ms",
         }
 
     def test_meta_with_truncated_true(self):
         meta = build_search_meta(
-            searched_file_count=2000, truncated=True,
-            fd_elapsed_ms=50, rg_elapsed_ms=100,
+            searched_file_count=2000,
+            truncated=True,
+            fd_elapsed_ms=50,
+            rg_elapsed_ms=100,
         )
         assert meta["truncated"] is True
         assert meta["searched_file_count"] == 2000
 
     def test_meta_preserves_zero_values(self):
         meta = build_search_meta(
-            searched_file_count=0, truncated=False,
-            fd_elapsed_ms=0, rg_elapsed_ms=0,
+            searched_file_count=0,
+            truncated=False,
+            fd_elapsed_ms=0,
+            rg_elapsed_ms=0,
         )
         assert meta["searched_file_count"] == 0
         assert meta["fd_elapsed_ms"] == 0
@@ -395,9 +436,16 @@ class TestHandleFileOutput:
         mgr = MagicMock()
         mgr.save_to_file.return_value = "/tmp/summary.json"
         ret = _handle_file_output(
-            result, "summary.json", False,
-            {"output_file": "summary.json", "summary_only": True, "output_format": "json"},
-            mgr, None,
+            result,
+            "summary.json",
+            False,
+            {
+                "output_file": "summary.json",
+                "summary_only": True,
+                "output_format": "json",
+            },
+            mgr,
+            None,
         )
         assert ret is None
         mgr.save_to_file.assert_called_once()
@@ -408,21 +456,32 @@ class TestHandleFileOutput:
         mgr.save_to_file.return_value = "/tmp/out.json"
         matches = [{"file": "a.py", "line": 1, "text": "found"}]
         ret = _handle_file_output(
-            result, "out.json", False,
+            result,
+            "out.json",
+            False,
             {"output_file": "out.json", "output_format": "json"},
-            mgr, matches,
+            mgr,
+            matches,
         )
         assert ret is None
         mgr.save_to_file.assert_called_once()
 
     def test_suppress_returns_minimal(self):
-        result = {"success": True, "count": 10, "meta": {}, "agent_summary": {"mode": "normal"}}
+        result = {
+            "success": True,
+            "count": 10,
+            "meta": {},
+            "agent_summary": {"mode": "normal"},
+        }
         mgr = MagicMock()
         mgr.save_to_file.return_value = "/tmp/out.json"
         ret = _handle_file_output(
-            result, "out.json", True,
+            result,
+            "out.json",
+            True,
             {"output_file": "out.json", "output_format": "json"},
-            mgr, None,
+            mgr,
+            None,
         )
         assert ret is not None
         assert "file_saved" in ret
@@ -432,9 +491,12 @@ class TestHandleFileOutput:
         mgr = MagicMock()
         mgr.save_to_file.side_effect = OSError("disk full")
         _handle_file_output(
-            result, "out.json", False,
+            result,
+            "out.json",
+            False,
             {"output_file": "out.json", "output_format": "json"},
-            mgr, None,
+            mgr,
+            None,
         )
         assert "file_save_error" in result
         assert result["file_saved"] is False

@@ -6,6 +6,7 @@ from typing import Any
 
 from ...models import Class, Variable
 from ...utils import log_debug, log_warning
+from ...utils.tree_sitter_compat import get_node_text_safe
 from ._extractor_helpers import (
     ClassBodyQueryRuntime,
     ClassBuildInput,
@@ -155,7 +156,7 @@ class PythonClassExtractionMixin:
                 name=name,
                 start_line=node.start_point[0] + 1,
                 end_line=node.end_point[0] + 1,
-                raw_text=source_code[node.start_byte : node.end_byte],
+                raw_text=get_node_text_safe(node, source_code),
                 language="python",
                 class_type="class",
                 full_qualified_name=full_qualified_name,

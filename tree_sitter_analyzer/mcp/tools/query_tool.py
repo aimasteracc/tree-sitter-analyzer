@@ -7,6 +7,7 @@ Supports both predefined query keys and custom query strings.
 """
 
 import logging
+import time
 from typing import Any, cast
 
 from ...core.query_service import QueryService
@@ -17,6 +18,7 @@ from .base_tool import BaseMCPTool
 from .query_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
 from .query_helpers import (
     build_next_steps,
+    build_query_agent_summary,
     format_summary,
     handle_query_output,
     validate_query_arguments,
@@ -26,6 +28,7 @@ from .query_symbol_search import (
     execute_find_references,
     execute_symbol_search,
 )
+from .search_envelope import normalize_envelope
 
 logger = logging.getLogger(__name__)
 
@@ -128,20 +131,38 @@ class QueryTool(BaseMCPTool):
                     "hint": "Use one of the available query keys, or provide query_string for a custom tree-sitter query.",
                 }
 
-        # Execute query
+        # Execute query (timed)
+        started = time.perf_counter()
         results = await self.query_service.execute_query(
             resolved, language, query_key, query_string, arguments.get("filter")
         )
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
 
         if not results:
             return await self._empty_result(
-                file_path, language, query_key, query_string, resolved
+                file_path,
+                language,
+                query_key,
+                query_string,
+                resolved,
+                elapsed_ms=elapsed_ms,
             )
+
+        # Detect truncation against optional max_count
+        max_count = arguments.get("max_count")
+        total_results = len(results)
+        truncated = False
+        if isinstance(max_count, int) and max_count > 0 and total_results > max_count:
+            results = results[:max_count]
+            truncated = True
+
+        query_used = query_key or query_string or ""
 
         # Format results
         result_format = arguments.get("result_format", "json")
         if result_format == "summary":
             formatted = format_summary(results, query_key or "custom", language)
+            formatted.setdefault("results", results)
         else:
             formatted = {
                 "success": True,
@@ -149,15 +170,31 @@ class QueryTool(BaseMCPTool):
                 "count": len(results),
                 "file_path": file_path,
                 "language": language,
-                "query": query_key or query_string,
+                "query": query_used,
             }
 
-        steps = build_next_steps(results, file_path, query_key or query_string or "")
+        formatted["elapsed_ms"] = elapsed_ms
+        formatted["truncated"] = truncated
+        formatted["agent_summary"] = build_query_agent_summary(
+            file_path=file_path,
+            language=language,
+            query=query_used,
+            count=len(results),
+            elapsed_ms=elapsed_ms,
+            truncated=truncated,
+        )
+
+        steps = build_next_steps(results, file_path, query_used)
         if steps:
             formatted["next_steps"] = steps
 
+        normalize_envelope(
+            formatted,
+            total_count=total_results,
+        )
+
         return self._handle_output(
-            formatted, arguments, file_path, language, query_key or query_string
+            formatted, arguments, file_path, language, query_used
         )
 
     # _detect_language: implementation
@@ -178,22 +215,36 @@ class QueryTool(BaseMCPTool):
         query_key: str | None,
         query_string: str | None,
         resolved: str,
+        *,
+        elapsed_ms: float | None = None,
     ) -> dict[str, Any]:
         """Build helpful response for empty query results."""
         productive = await self._find_productive_queries(resolved, language)
+        query_used = query_key or query_string or ""
         response: dict[str, Any] = {
             "success": True,
-            "message": f"No results for query '{query_key or query_string}' in this {language} file",
+            "message": f"No results for query '{query_used}' in this {language} file",
             "results": [],
             "count": 0,
             "file_path": file_path,
             "language": language,
+            "elapsed_ms": float(elapsed_ms) if elapsed_ms is not None else 0.0,
+            "truncated": False,
         }
         if productive:
             response["productive_queries"] = productive
             response["hint"] = (
-                f"This file has no '{query_key or query_string}' elements. Queries with results: {productive}"
+                f"This file has no '{query_used}' elements. Queries with results: {productive}"
             )
+        response["agent_summary"] = build_query_agent_summary(
+            file_path=file_path,
+            language=language,
+            query=query_used,
+            count=0,
+            elapsed_ms=response["elapsed_ms"],
+            truncated=False,
+        )
+        normalize_envelope(response, total_count=0)
         return response
 
     # _find_productive_queries: implementation
