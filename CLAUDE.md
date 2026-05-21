@@ -15,12 +15,13 @@
 
 These look like inconsistencies in a dogfood pass, but they are intentional and reflect the project's design priorities. Reverting them costs real value. **If a dogfood agent proposes any of the items below as a "finding", REJECT the finding and link the agent back to this section.**
 
-### 1. MCP defaults to TOON; CLI defaults to JSON
+### 1. MCP defaults to TOON; CLI defaults to JSON — LOCKED
 
 - **Why**: TOON is 50-70% more token-efficient than JSON. MCP callers are LLM agents — token cost is real money. CLI callers are humans / shells — JSON is human-readable and pipes into `jq`.
 - **Symptom that looks like a bug**: `MCP execute()` returns `{format: "toon", toon_content: "..."}` while CLI returns a parsed dict.
 - **Correct action**: leave the defaults alone. If TOON-vs-JSON divergence causes a real bug, fix the divergence (e.g. make TOON carry the same scalar fields, per F7/N8), don't flip the default.
 - **Past incident**: r36 attempted "R3: flip MCP output_format default to json" — rolled back. The token savings outweigh the parity argument.
+- **🔒 LOCKED BY USER (r37b)**: 用户明确指示「默认使用 toon，不用使用 json，不让 ai agent 修改这个」. Any AI agent that proposes flipping MCP defaults from `toon` → `json`, or removes the `"toon"` default literal in `arguments.get("output_format", "toon")` for any MCP tool, is **violating a user-locked design decision**. The cost analysis is settled: token savings win over parity. **REJECT such proposals at the brief stage. Do not even read the dogfood agent's reasoning beyond seeing the words "flip default" or "toon to json".**
 
 ### 2. project_root canonicalisation is a foundational change
 
