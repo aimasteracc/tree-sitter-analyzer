@@ -687,7 +687,10 @@ def _run_tool(
         tool = tool_cls(project_root=project_root)
         result: dict[str, Any] = asyncio.run(tool.execute(dict(tool_args)))
         if output_format == "toon":
-            print(result.get("toon_content", ""))
+            # r37aq (dogfood): shared output_toon helper (AP003-clean).
+            from tree_sitter_analyzer.output_manager import output_toon
+
+            output_toon(result.get("toon_content", ""))
         else:
             output_json_fn(result)
         return 0 if result.get("success", False) else 1

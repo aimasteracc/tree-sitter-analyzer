@@ -101,9 +101,17 @@ def _print_result(
     args: Any,
     output_json: OutputJsonFn,
 ) -> None:
-    """Print tool output in the requested visible format."""
+    """Print tool output in the requested visible format.
+
+    r37aq (dogfood): replaced inline ``print(result.get("toon_content", ""))``
+    with the shared ``output_toon`` helper. ``--code-patterns`` flagged
+    the inline ``print`` as ``AP003``; the helper is the canonical TOON
+    output channel (matches ``cli/commands/mcp_commands.py``).
+    """
     if _effective_output_format(args) == "toon":
-        print(result.get("toon_content", ""))
+        from tree_sitter_analyzer.output_manager import output_toon
+
+        output_toon(result.get("toon_content", ""))
     else:
         output_json(result)
 
@@ -352,82 +360,102 @@ def _handle_query_language_commands(
     args: Any,
     context: SpecialCommandContext,
 ) -> int | None:
-    """Handle query-language discovery commands."""
-    if getattr(args, "show_query_languages", False):
-        languages_info = [
-            {
-                "language": language,
-                "query_count": len(
-                    context.query_loader.list_queries_for_language(language)
-                ),
-            }
-            for language in context.query_loader.list_supported_languages()
-        ]
-        if _wants_json(args):
-            summary_line = (
-                f"show_query_languages: {len(languages_info)} languages with "
-                "query support"
-            )
-            context.output_json(
-                {
-                    "success": True,
-                    "languages": languages_info,
-                    "language_count": len(languages_info),
-                    "summary_line": summary_line,
-                    "verdict": "INFO",
-                    "agent_summary": {
-                        "summary_line": summary_line,
-                        "next_step": (
-                            "Run --list-queries --language=<name> for that "
-                            "language's full query catalogue."
-                        ),
-                        "verdict": "INFO",
-                    },
-                }
-            )
-            return 0
-        context.output_list(["Languages with query support:"])
-        for entry in languages_info:
-            context.output_list(
-                [f"  {entry['language']:<15} ({entry['query_count']} queries)"]
-            )
-        return 0
+    """Handle query-language discovery commands.
 
+    r37aq (dogfood): the project's own ``--code-patterns`` flagged this
+    as an 80-line ``long_method`` + ``deep_nesting`` depth-5. Split the
+    two ``show_*`` branches into named helpers — same pattern as r37ao
+    ``DescribeQueryCommand.execute`` refactor.
+    """
+    if getattr(args, "show_query_languages", False):
+        return _emit_show_query_languages(args, context)
     if getattr(args, "show_common_queries", False):
-        common_queries = list(context.query_loader.get_common_queries())
-        if _wants_json(args):
-            count = len(common_queries)
-            summary_line = (
-                f"show_common_queries: {count} queries common to multiple languages"
-                if count
-                else "show_common_queries: 0 common queries found"
-            )
-            context.output_json(
-                {
-                    "success": True,
-                    "common_queries": common_queries,
-                    "query_count": count,
-                    "summary_line": summary_line,
-                    "verdict": "INFO",
-                    "agent_summary": {
-                        "summary_line": summary_line,
-                        "next_step": (
-                            "Use --query-key <key> --language <lang> to run "
-                            "one of these queries."
-                        ),
-                        "verdict": "INFO",
-                    },
-                }
-            )
-            return 0
-        if common_queries:
-            context.output_list("Common queries across multiple languages:")
-            for query in common_queries:
-                context.output_list(f"  {query}")
-        else:
-            context.output_info("No common queries found.")
-        return 0
+        return _emit_show_common_queries(args, context)
     return None
+
+
+def _emit_show_query_languages(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int:
+    """Emit ``--show-query-languages`` in the active JSON-or-text format."""
+    languages_info = [
+        {
+            "language": language,
+            "query_count": len(
+                context.query_loader.list_queries_for_language(language)
+            ),
+        }
+        for language in context.query_loader.list_supported_languages()
+    ]
+    if _wants_json(args):
+        summary_line = (
+            f"show_query_languages: {len(languages_info)} languages with query support"
+        )
+        context.output_json(
+            {
+                "success": True,
+                "languages": languages_info,
+                "language_count": len(languages_info),
+                "summary_line": summary_line,
+                "verdict": "INFO",
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": (
+                        "Run --list-queries --language=<name> for that "
+                        "language's full query catalogue."
+                    ),
+                    "verdict": "INFO",
+                },
+            }
+        )
+        return 0
+    context.output_list(["Languages with query support:"])
+    for entry in languages_info:
+        context.output_list(
+            [f"  {entry['language']:<15} ({entry['query_count']} queries)"]
+        )
+    return 0
+
+
+def _emit_show_common_queries(
+    args: Any,
+    context: SpecialCommandContext,
+) -> int:
+    """Emit ``--show-common-queries`` in the active JSON-or-text format."""
+    common_queries = list(context.query_loader.get_common_queries())
+    if _wants_json(args):
+        count = len(common_queries)
+        summary_line = (
+            f"show_common_queries: {count} queries common to multiple languages"
+            if count
+            else "show_common_queries: 0 common queries found"
+        )
+        context.output_json(
+            {
+                "success": True,
+                "common_queries": common_queries,
+                "query_count": count,
+                "summary_line": summary_line,
+                "verdict": "INFO",
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": (
+                        "Use --query-key <key> --language <lang> to run "
+                        "one of these queries."
+                    ),
+                    "verdict": "INFO",
+                },
+            }
+        )
+        return 0
+    if common_queries:
+        context.output_list("Common queries across multiple languages:")
+        for query in common_queries:
+            context.output_list(f"  {query}")
+    else:
+        context.output_info("No common queries found.")
+    return 0
 
 
 def _handle_sql_platform_commands(

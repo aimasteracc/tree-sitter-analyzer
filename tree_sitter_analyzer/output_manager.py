@@ -318,6 +318,25 @@ def output_json(data: Any) -> None:
     _output_manager.output_json(data)
 
 
+def output_toon(toon_content: str) -> None:
+    """Emit a pre-rendered TOON payload to stdout.
+
+    r37aq (dogfood): the project's own ``--code-patterns`` flagged
+    inline ``print(result.get("toon_content", ""))`` in two CLI modules
+    as ``AP003`` (use logging instead of ``print``). The right fix is
+    not ``logging`` (TOON is the user-facing data channel, not a log),
+    but a named canonical helper so:
+
+    * Both ``cli/commands/mcp_commands.py`` and
+      ``cli/special_commands.py`` route through one function.
+    * Future toon-channel changes (e.g. line-ending normalization,
+      ``--output-file`` redirection) live in one place.
+    * AP003 stops firing at those call sites — the helper is the
+      canonical TOON output path.
+    """
+    print(toon_content)  # noqa: T201 — canonical TOON output channel
+
+
 def output_list(items: str | list[Any], title: str | None = None) -> None:
     """Output a list of items"""
     _output_manager.output_list(items, title)
