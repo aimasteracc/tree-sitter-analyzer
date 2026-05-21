@@ -103,6 +103,67 @@ class SearchContentTool(BaseMCPTool):
                 raise ValueError(f"Invalid file path '{p}': {e}") from e
         return validated
 
+    # L10: pre-validation hook so file-in-roots emits a canonical envelope
+    # instead of a triple-wrapped AnalysisError.
+    def _check_file_in_roots(self, arguments: dict[str, Any]) -> dict[str, Any] | None:
+        """Detect ``roots=['<file>.py']`` and return a canonical error envelope.
+
+        Users naturally try a file path in ``roots`` because the tool name
+        implies it accepts files. The base path validator rejects them with
+        ``Invalid directory path: Path is not a directory: ...`` which then
+        gets wrapped twice by ``_validate_roots`` and ``handle_mcp_errors``,
+        producing an unhelpful ``AnalysisError: Operation failed: ...`` cascade.
+
+        This pre-check intercepts the common case (any root that resolves to
+        an existing *file*) and returns a flat envelope that points the agent
+        at the ``files=`` parameter instead.
+
+        Returns ``None`` when ``roots`` is absent or every entry is a directory
+        (or otherwise invalid — those still go through the normal validator
+        so non-file errors keep their existing behavior).
+        """
+        raw_roots = arguments.get("roots")
+        if not isinstance(raw_roots, list) or not raw_roots:
+            return None
+
+        file_roots: list[str] = []
+        for r in raw_roots:
+            if not isinstance(r, str) or not r.strip():
+                continue
+            # Resolve without raising — we only care about the file-vs-dir
+            # outcome, not security policy (the normal validator handles that).
+            try:
+                resolved = self.path_resolver.resolve(r)
+            except Exception:  # nosec B112 — fall through to normal validator
+                # Resolution failed — fall through to the normal validator
+                # so its error message describes the real problem.
+                continue
+            resolved_path = Path(resolved)
+            if resolved_path.exists() and resolved_path.is_file():
+                file_roots.append(r)
+
+        if not file_roots:
+            return None
+
+        first = file_roots[0]
+        summary_line = "search_content: roots must be directories"
+        next_step = f"retry with files=['{first}'] for single-file searches"
+        return {
+            "success": False,
+            "error": (
+                "Got file path in 'roots'; pass file paths via the 'files' "
+                "parameter instead."
+            ),
+            "error_type": "validation",
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": "ERROR",
+            },
+            "summary_line": summary_line,
+            "roots": raw_roots,
+        }
+
     # Input validation - fail fast with clear error messages
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         """Validate query, roots/files, and all option types.
@@ -130,6 +191,14 @@ class SearchContentTool(BaseMCPTool):
                 "count": 0,
                 "results": [],
             }
+
+        # L10: detect file-as-root *before* validate_arguments raises a
+        # triple-wrapped ``AnalysisError("Operation failed: ... Path is not
+        # a directory: ...")``. The canonical envelope tells the agent
+        # exactly which parameter to use instead.
+        file_root_envelope = self._check_file_in_roots(arguments)
+        if file_root_envelope is not None:
+            return file_root_envelope
 
         self.validate_arguments(arguments)
         output_format = arguments.get("output_format", "toon")

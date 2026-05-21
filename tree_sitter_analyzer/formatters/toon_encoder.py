@@ -81,6 +81,49 @@ class _Task:
     is_inline: bool = False  # For inline list values
 
 
+# Threshold above which a flat ``list[str]`` renders as a single-column
+# TOON array-table instead of an inline ``[a,b,c]`` blob.
+#
+# Short lists (≤5) keep the inline form because they fit comfortably on one
+# line and the table header (`[N]{col}:`) would cost more tokens than it
+# saves. Long lists are switched to the table form so they don't collapse
+# into a long, hard-to-scan, easy-to-truncate inline value.
+#
+# Round-14b bug M9: with the inline form, downstream tooling truncated
+# ``downstream_files: [a,b,c,...,z]`` mid-content because it looked like
+# a single long string. The table form makes one item per line, which is
+# both more scannable and more truncation-friendly (truncates at row
+# boundaries, not mid-string).
+_FLAT_STR_LIST_THRESHOLD = 5
+
+
+_LIST_STR_COLUMN_NAMES = {
+    # Map common dict-key suffixes to the column label we use when the
+    # value is a flat ``list[str]`` rendered as a single-column array-table.
+    "files": "path",
+    "_files": "path",
+    "paths": "path",
+    "_paths": "path",
+    "modules": "module",
+    "imports": "import",
+}
+
+
+def _pick_list_str_column_name(key: str | None) -> str:
+    """Choose a single-column header for a flat ``list[str]`` value.
+
+    Uses the parent dict key to pick a semantic label (``path`` for
+    ``downstream_files``, ``import`` for ``imports``, etc.). Falls back
+    to ``item`` for unknown keys so the schema is always well-formed.
+    """
+    if not key:
+        return "item"
+    for suffix, column in _LIST_STR_COLUMN_NAMES.items():
+        if key.endswith(suffix):
+            return column
+    return "item"
+
+
 class ToonEncoder:
     """
     Low-level encoder for TOON format.
@@ -250,8 +293,25 @@ class ToonEncoder:
             # Homogeneous array of dicts - use table format
             output.append(f"{indent_str}{key}:")
             stack.append(_Task(_TaskType.ENCODE_ARRAY_TABLE, value, indent + 1))
+        elif (
+            isinstance(value, list)
+            and len(value) > _FLAT_STR_LIST_THRESHOLD
+            and all(isinstance(item, str) for item in value)
+        ):
+            # Long flat list[str] — render as single-column TOON array-table
+            # instead of an inline ``[a,b,c,...]`` blob. The inline form
+            # collapses into one long, hard-to-scan, easy-to-truncate value
+            # (round-14b M9). One item per line is both more scannable and
+            # truncation-friendly (truncates at row boundaries).
+            column = _pick_list_str_column_name(key)
+            output.append(f"{indent_str}{key}:")
+            child_indent_str = "  " * (indent + 1)
+            output.append(f"{child_indent_str}[{len(value)}]{{{column}}}:")
+            row_indent_str = "  " * (indent + 2)
+            for item in value:
+                output.append(f"{row_indent_str}{self.encode_value(item, seen_ids)}")
         elif isinstance(value, list):
-            # Simple list - encode inline
+            # Short list or non-string list - encode inline
             encoded_list = self._encode_simple_list(value, seen_ids)
             output.append(f"{indent_str}{key}: {encoded_list}")
         else:

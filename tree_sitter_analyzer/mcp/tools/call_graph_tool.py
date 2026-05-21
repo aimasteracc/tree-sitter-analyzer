@@ -173,8 +173,15 @@ class CodeGraphCallTool(BaseMCPTool):
             "additionalProperties": False,
         }
 
+    _VALID_MODES = ("callers", "callees", "chain", "summary", "all_functions")
+
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
         mode = arguments.get("mode", "summary")
+        if mode not in self._VALID_MODES:
+            raise ValueError(
+                f"Invalid mode '{mode}'; expected one of: "
+                f"{', '.join(self._VALID_MODES)}."
+            )
         if mode in ("callers", "callees", "chain") and "function_name" not in arguments:
             raise ValueError(f"function_name is required for mode '{mode}'")
         return True
@@ -244,8 +251,11 @@ class CodeGraphCallTool(BaseMCPTool):
             hint = _maybe_bare_name_hint(graph, func_name, len(chain), "chain")
             if hint:
                 result["hint"] = hint
-        else:
-            raise ValueError(f"Unknown mode: {mode}")
+        else:  # pragma: no cover - validate_arguments rejects unknown modes
+            raise ValueError(
+                f"Invalid mode '{mode}'; expected one of: "
+                f"{', '.join(self._VALID_MODES)}."
+            )
 
         result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         # H4 introspection: tell callers when this response came from a

@@ -142,11 +142,11 @@ def compute_graph_fingerprint(
                             file_count += 1
                             if stat.st_mtime_ns > max_mtime_ns:
                                 max_mtime_ns = stat.st_mtime_ns
-                    except OSError:
+                    except OSError:  # nosec B112 — file disappeared / unreadable mid-walk
                         # Skip files we can't stat — they don't break the
                         # fingerprint, they just don't contribute to it.
                         continue
-        except OSError:
+        except OSError:  # nosec B112 — directory disappeared mid-walk
             # Directory disappeared or unreadable — skip silently.
             continue
 

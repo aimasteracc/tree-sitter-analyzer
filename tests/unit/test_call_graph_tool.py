@@ -116,6 +116,33 @@ class TestCodeGraphCallToolValidation:
     def test_validate_default_mode(self, tool):
         assert tool.validate_arguments({})
 
+    # Regression: M8 — `mode='tree'` (a reasonable typo for 'chain')
+    # used to fall through to the deep ``else: raise ValueError("Unknown mode")``
+    # *after* the graph was built (2-5s on medium repos). Now it must fail
+    # fast in validate_arguments with the enum spelled out.
+    def test_validate_invalid_mode_lists_valid_modes(self, tool):
+        with pytest.raises(ValueError) as exc_info:
+            tool.validate_arguments({"mode": "tree", "function_name": "foo"})
+        msg = str(exc_info.value)
+        assert "tree" in msg
+        # All five valid modes must appear in the error message
+        for valid in ("callers", "callees", "chain", "summary", "all_functions"):
+            assert valid in msg, f"Missing '{valid}' in error: {msg}"
+
+    def test_validate_invalid_mode_without_function_name(self, tool):
+        # Even without function_name, the invalid-mode check fires first.
+        with pytest.raises(ValueError, match="Invalid mode 'bogus'"):
+            tool.validate_arguments({"mode": "bogus"})
+
+    @pytest.mark.asyncio
+    async def test_execute_invalid_mode_fails_before_graph_build(self, tool):
+        # Pre-condition: no graph built yet.
+        assert tool._call_graph is None
+        with pytest.raises(ValueError, match="Invalid mode 'tree'"):
+            await tool.execute({"mode": "tree"})
+        # Post-condition: still no graph — validation rejected before build.
+        assert tool._call_graph is None
+
 
 # ============================================================
 # Execute — summary mode
@@ -359,7 +386,11 @@ class TestCodeGraphCallToolChain:
 class TestCodeGraphCallToolUnknownMode:
     @pytest.mark.asyncio
     async def test_unknown_mode_raises(self, tool):
-        with pytest.raises(ValueError, match="Unknown mode"):
+        # Updated for round-15 M8: validate_arguments now raises early
+        # with the full enum spelled out instead of the deep
+        # ``Unknown mode`` fallback. We assert on the canonical
+        # ``Invalid mode`` prefix that the new validator emits.
+        with pytest.raises(ValueError, match="Invalid mode 'unknown'"):
             await tool.execute({"mode": "unknown", "output_format": "json"})
 
 
