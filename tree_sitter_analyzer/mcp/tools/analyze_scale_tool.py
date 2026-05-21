@@ -383,6 +383,10 @@ class AnalyzeScaleTool(BaseMCPTool):
         errors = [x for x in per_file if "error" in x]
         ok = [x for x in per_file if "error" not in x]
 
+        # One-line headline for batch mode — surface the success ratio at a glance.
+        summary_line = (
+            f"batch metrics: {len(ok)}/{len(file_paths)} files ok, {len(errors)} errors"
+        )
         response: dict[str, Any] = {
             "success": len(ok) > 0,
             "count_files": len(file_paths),
@@ -390,6 +394,13 @@ class AnalyzeScaleTool(BaseMCPTool):
             "count_errors": len(errors),
             "limits": {"max_files": max_files, "concurrency": 4},
             "results": per_file,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": (
+                    "analyze_code_structure on the highest-line files for deeper inspection"
+                ),
+            },
         }
         return apply_toon_format_to_response(response, output_format)
 

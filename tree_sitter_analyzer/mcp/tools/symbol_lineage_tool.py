@@ -127,6 +127,31 @@ class SymbolLineageTool(BaseMCPTool):
             f for f in (all_downstream_files | all_symbol_files) if _is_test_file(f)
         )
 
+        # One-line headline + next-step hint for LLM consumers.
+        summary_line = (
+            f"{symbol} defs={len(definitions)} refs={len(references)} "
+            f"downstream={len(all_downstream_files)} risk={risk['level']}"
+        )
+        # Verdict mirrors trace_impact / safe_to_edit vocabulary so an agent
+        # can chain decisions across tools.
+        risk_to_verdict = {
+            "high": "UNSAFE",
+            "medium": "CAUTION",
+            "low": "SAFE",
+            "unknown": "n/a",
+        }
+        verdict = risk_to_verdict.get(risk["level"], "n/a")
+        if risk["level"] == "high":
+            next_step = (
+                "trace_impact and run listed test files before changing signature"
+            )
+        elif risk["level"] == "medium":
+            next_step = "review callers in listed files, then run downstream tests"
+        elif risk["level"] == "low":
+            next_step = "proceed with edit, run nearest test file"
+        else:
+            next_step = "verify symbol name — no definitions found"
+
         response: dict[str, Any] = {
             "success": True,
             "symbol": symbol,
@@ -148,6 +173,12 @@ class SymbolLineageTool(BaseMCPTool):
                 f"{'Run the listed test files before committing.' if test_files else 'No test files detected.'} "
                 "Use analyze_change_impact after editing for git-diff level detail."
             ),
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": verdict,
+            },
         }
 
         return apply_toon_format_to_response(response, output_format)

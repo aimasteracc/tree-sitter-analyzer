@@ -542,6 +542,23 @@ class GetCodeOutlineTool(BaseMCPTool):
                         if key in stats and key not in result:
                             result[key] = stats[key]
 
+            # Top-level summary_line + agent_summary — a one-line headline an
+            # LLM (or grep) can read without parsing the nested outline.
+            class_count = int(result.get("class_count") or 0)
+            method_count = int(result.get("method_count") or 0)
+            field_count = int(result.get("field_count") or 0)
+            summary_line = (
+                f"{file_path} outline: {class_count} classes, "
+                f"{method_count} methods, {field_count} fields"
+            )
+            result["summary_line"] = summary_line
+            result["agent_summary"] = {
+                "summary_line": summary_line,
+                "next_step": (
+                    "extract_code_section for the method you need (use line ranges from outline)"
+                ),
+            }
+
             # Backwards-compat: legacy MCP callers still expect the
             # ``{"content": [{"type": "text", "text": ...}]}`` envelope
             # (it's the wire format the SDK accepts). For ``output_format

@@ -126,6 +126,25 @@ class CodePatternsTool(BaseMCPTool):
             cat = p["category"]
             by_category.setdefault(cat, []).append(p)
 
+        critical_count = sum(1 for p in filtered if p.get("severity") == "critical")
+        warning_count = sum(1 for p in filtered if p.get("severity") == "warning")
+
+        # One-line headline an LLM (or grep) can read at a glance.
+        summary_line = (
+            f"{file_path} {len(filtered)} patterns  "
+            f"critical={critical_count} warning={warning_count}"
+        )
+        # Verdict mirrors the safety-tool vocabulary so callers can chain.
+        if critical_count:
+            verdict = "UNSAFE"
+            next_step = "refactoring_suggestions for concrete fix recipes — start with critical findings"
+        elif warning_count:
+            verdict = "CAUTION"
+            next_step = "refactoring_suggestions or address warnings before shipping"
+        else:
+            verdict = "SAFE"
+            next_step = "no patterns flagged — proceed with planned change"
+
         response: dict[str, Any] = {
             "success": True,
             "file_path": file_path,
@@ -140,16 +159,24 @@ class CodePatternsTool(BaseMCPTool):
             "results": filtered[:50],
             "patterns": filtered[:50],
             "by_category": {k: len(v) for k, v in by_category.items()},
+            "critical_count": critical_count,
+            "warning_count": warning_count,
             "summary": _build_summary(filtered),
             "smart_workflow_hint": (
                 f"Found {len(filtered)} pattern(s) in {file_path}. "
                 + (
                     "Critical issues found — fix these first. "
-                    if any(p["severity"] == "critical" for p in filtered)
+                    if critical_count
                     else "Review warnings and decide which to address. "
                 )
                 + "Use refactoring_suggestions for concrete fix recipes."
             ),
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": verdict,
+            },
         }
 
         return apply_toon_format_to_response(response, output_format)

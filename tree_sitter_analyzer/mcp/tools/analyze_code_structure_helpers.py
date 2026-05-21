@@ -161,9 +161,14 @@ def _convert_field(field: Any, get_mods: Any) -> dict[str, Any]:
 
 # _convert_import: implementation
 def _convert_import(imp: Any) -> dict[str, Any]:
+    # ``raw_text`` and ``module_name`` are required so the formatter can
+    # reconstruct ``from X import Y`` lines; without them the formatter falls
+    # back to ``import {name}`` and silently drops the ``from`` prefix.
     return {
         "name": getattr(imp, "name", "unknown"),
         "statement": getattr(imp, "import_statement", getattr(imp, "name", "")),
+        "raw_text": getattr(imp, "raw_text", ""),
+        "module_name": getattr(imp, "module_name", ""),
         "is_static": getattr(imp, "is_static", False),
         "is_wildcard": getattr(imp, "is_wildcard", False),
     }

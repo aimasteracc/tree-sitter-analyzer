@@ -270,7 +270,21 @@ class GetProjectSummaryTool(BaseMCPTool):
                             and idx_for_notes.custom_notes not in text
                         ):
                             text += f"\nnotes:    {idx_for_notes.custom_notes}"
-                    return {"format": "toon", "summary": text}
+                    # Best-effort agent_summary — needs the structured index
+                    # for the headline, so load lazily if not already loaded.
+                    idx_for_summary = manager.load()
+                    summary_line, next_step = _build_project_summary_line(
+                        idx_for_summary, project_root
+                    )
+                    return {
+                        "format": "toon",
+                        "summary": text,
+                        "summary_line": summary_line,
+                        "agent_summary": {
+                            "summary_line": summary_line,
+                            "next_step": next_step,
+                        },
+                    }
                 except OSError:
                     pass  # fall through to rebuild
 
@@ -289,7 +303,16 @@ class GetProjectSummaryTool(BaseMCPTool):
                     if toon_path.exists()
                     else manager.render_toon(index)
                 )
-            return {"format": "toon", "summary": text}
+            summary_line, next_step = _build_project_summary_line(index, project_root)
+            return {
+                "format": "toon",
+                "summary": text,
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": next_step,
+                },
+            }
 
         # JSON format: load full index
         index_or_none: ProjectIndex | None = None
@@ -303,6 +326,7 @@ class GetProjectSummaryTool(BaseMCPTool):
         age_hours = round((time.time() - idx.updated_at) / 3600, 2)
         is_fresh = age_hours < 1.0
         quick_start = _make_quick_start(idx)
+        summary_line, next_step = _build_project_summary_line(idx, project_root)
         result: dict[str, Any] = {
             "project_root": idx.project_root,
             "index_age_hours": age_hours,
@@ -316,7 +340,61 @@ class GetProjectSummaryTool(BaseMCPTool):
             "quick_start": quick_start,
             "readme_excerpt": idx.readme_excerpt,
             "module_descriptions": idx.module_descriptions,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+            },
         }
         if include_notes:
             result["custom_notes"] = idx.custom_notes
         return result
+
+
+def _build_project_summary_line(
+    idx: ProjectIndex | None, project_root: str
+) -> tuple[str, str]:
+    """Build the (summary_line, next_step) tuple for get_project_summary.
+
+    Pattern: "<project_name> <lang> <pct>%  critical: <top3 names>"
+    Falls back gracefully when ``idx`` is None (e.g. TOON cache hit
+    before the index loader has been invoked).
+    """
+    resolved = Path(project_root).resolve()
+    project_name = resolved.name or resolved.parent.name or "project"
+
+    if idx is None or not idx.language_distribution:
+        summary_line = f"{project_name} (no index — call build_project_index)"
+        next_step = "build_project_index to populate the project summary"
+        return summary_line, next_step
+
+    total_files = max(idx.file_count, 1)
+    # Pick the dominant code language for the headline.
+    code_langs = [
+        (k, v)
+        for k, v in idx.language_distribution.items()
+        if k not in _NON_CODE_LANGUAGES and (v >= 10 or v / total_files >= 0.02)
+    ]
+    code_langs.sort(key=lambda kv: -kv[1])
+    if code_langs:
+        top_lang, top_count = code_langs[0]
+        pct = int(round(100 * top_count / total_files))
+        lang_part = f"{top_lang} {pct}%"
+    else:
+        lang_part = "mixed"
+
+    # Top-3 critical nodes by PageRank.
+    top_critical = [str(n.get("name", "?")) for n in (idx.critical_nodes or [])[:3]]
+    critical_part = (
+        f"critical: {', '.join(top_critical)}" if top_critical else "critical: n/a"
+    )
+    summary_line = f"{project_name} {lang_part}  {critical_part}"
+
+    # Next-step hint — orient the agent on what to do after orientation.
+    if top_critical:
+        next_step = f"get_code_outline {top_critical[0]} for the most-referenced file's structure"
+    elif idx.entry_points:
+        next_step = f"read_partial {idx.entry_points[0]} to inspect the entry point"
+    else:
+        next_step = "list_files for a per-directory view"
+    return summary_line, next_step

@@ -498,6 +498,10 @@ def create_json_file_analysis(
     from ..utils.format_helper import apply_toon_format_to_response as _apply_toon
 
     total_lines = file_metrics["total_lines"]
+    summary_line = (
+        f"{file_path} json {total_lines} lines  "
+        "classes=0 methods=0 fields=0 (data file)"
+    )
     result: dict[str, Any] = {
         "success": True,
         "file_path": file_path,
@@ -523,6 +527,12 @@ def create_json_file_analysis(
             "suitable_for_full_analysis": total_lines < 1000,
             "recommended_approach": "JSON files are configuration/data files - structural analysis not applicable",
             "token_efficiency_notes": "JSON files can be read directly without tree-sitter parsing",  # nosec
+        },
+        # One-line headline + next-step hint for LLM consumers.
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": "read_partial to inspect file content directly",
         },
     }
 
@@ -554,6 +564,23 @@ def build_analysis_result(
     method_count = count_elements_fn(elements, ELEMENT_TYPE_FUNCTION, "function")
     field_count = count_elements_fn(elements, ELEMENT_TYPE_VARIABLE, "variable")
     import_count = count_elements_fn(elements, ELEMENT_TYPE_IMPORT, "import")
+    total_lines = file_metrics.get("total_lines") if file_metrics else None
+    # Build a one-line headline an LLM (or grep) can parse.
+    summary_line = (
+        f"{file_path} {language} {total_lines if total_lines is not None else 0} lines  "
+        f"classes={class_count} methods={method_count} fields={field_count}"
+    )
+    # Suggest the next step — mirrors the workflow hint in
+    # ``generate_llm_guidance`` but kept self-contained so it survives
+    # ``include_guidance=False``.
+    if total_lines and total_lines >= 500:
+        next_step = "analyze_code_structure format=compact then extract_code_section for hotspots"
+    else:
+        next_step = "analyze_code_structure for full structure table"
+    agent_summary: dict[str, Any] = {
+        "summary_line": summary_line,
+        "next_step": next_step,
+    }
     # Build result with metrics, element summary, and structural overview
     return {
         "success": True,
@@ -584,7 +611,11 @@ def build_analysis_result(
         "method_count": method_count,
         "field_count": field_count,
         "import_count": import_count,
-        "line_count": file_metrics.get("total_lines") if file_metrics else None,
+        "line_count": total_lines,
+        # Top-level summary_line (mirror of agent_summary.summary_line) for
+        # cross-tool consistency with modification_guard / safe_to_edit.
+        "summary_line": summary_line,
+        "agent_summary": agent_summary,
     }
 
 

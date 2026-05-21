@@ -108,6 +108,10 @@ class DependencyAnalysisTool(BaseMCPTool):
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
+        # Attach a one-line headline + next-step hint for LLM consumers.
+        # Each mode emits a distinct shape, so build per-mode here.
+        _attach_agent_summary(result, mode, graph)
+
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
@@ -217,3 +221,71 @@ def _blast_recommendation(analysis: dict[str, Any]) -> str:
     if forward > 0:
         return f"Low impact — only {forward} file(s) affected. Safe to change with basic testing."
     return "No downstream impact detected."
+
+
+def _attach_agent_summary(
+    result: dict[str, Any], mode: str, graph: DependencyGraph
+) -> None:
+    """Mutate ``result`` in place to add summary_line + agent_summary.
+
+    Each mode shapes the headline differently:
+    - summary: nodes / edges / cycles
+    - cycles: N cycles found
+    - file_deps: <file> depends_on=N depended_by=N
+    - blast_radius: <file> forward=N reverse=N
+    """
+    if mode == "summary":
+        cycle_count = len(graph.find_cycles())
+        node_count = result.get("node_count", 0)
+        edge_count = result.get("edge_count", 0)
+        summary_line = (
+            f"summary: {node_count} nodes / {edge_count} edges / {cycle_count} cycles"
+        )
+        if cycle_count:
+            next_step = (
+                "analyze_dependencies mode=cycles to enumerate circular dependencies"
+            )
+        else:
+            next_step = "analyze_dependencies mode=blast_radius file_path=<file> to assess change impact"
+        result["cycle_count"] = cycle_count
+    elif mode == "cycles":
+        cycle_count = int(result.get("cycle_count", 0))
+        summary_line = f"cycles: {cycle_count} circular dependencies"
+        next_step = (
+            "break each cycle by extracting shared types or inverting an import"
+            if cycle_count
+            else "no cycles — proceed with planned refactor"
+        )
+    elif mode == "file_deps":
+        file = result.get("file", "?")
+        dep_count = int(result.get("dependency_count", 0))
+        ent_count = int(result.get("dependent_count", 0))
+        summary_line = (
+            f"file_deps {file}: depends_on={dep_count} depended_by={ent_count}"
+        )
+        next_step = "analyze_dependencies mode=blast_radius for full ripple-effect view"
+    elif mode == "blast_radius":
+        file = result.get("file", "?")
+        forward = int(result.get("forward_impact_count", 0))
+        reverse = int(result.get("reverse_dependency_count", 0))
+        summary_line = f"blast_radius {file}: forward={forward} reverse={reverse}"
+        if forward > 20:
+            next_step = (
+                "trace_impact on key symbols and run downstream tests before editing"
+            )
+        elif forward > 5:
+            next_step = "verify downstream behavior in the listed forward_impact files"
+        elif forward > 0:
+            next_step = "run basic tests on the few downstream files"
+        else:
+            next_step = "isolated file — safe to edit"
+    else:
+        # Defensive — should not happen because execute validates mode.
+        summary_line = f"dependency_analysis mode={mode}"
+        next_step = "review the result fields"
+
+    result["summary_line"] = summary_line
+    result["agent_summary"] = {
+        "summary_line": summary_line,
+        "next_step": next_step,
+    }

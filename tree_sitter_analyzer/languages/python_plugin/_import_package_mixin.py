@@ -7,6 +7,7 @@ from typing import Any
 
 from ...models import Import, Package, Variable
 from ...utils import log_debug, log_warning
+from ...utils.tree_sitter_compat import get_node_text_safe
 from ._extractor_helpers import (
     ImportExtractionRuntime,
     extract_imports_from_tree,
@@ -146,13 +147,11 @@ class PythonImportPackageMixin:
             if not self._validate_node(node):
                 return None
 
-            start_byte = min(node.start_byte, len(source_code))
-            end_byte = min(node.end_byte, len(source_code))
-            import_text = (
-                source_code[start_byte:end_byte]
-                if start_byte < end_byte
-                else source_code
-            )
+            # Tree-sitter node offsets are byte positions; slicing the source
+            # string directly corrupts results when the file contains multi-byte
+            # characters (e.g. em-dash in a docstring shifts every downstream
+            # offset). Use the byte-aware helper instead.
+            import_text = get_node_text_safe(node, source_code) or source_code
 
             if import_type == "from_import":
                 if "from" in import_text and "import" in import_text:

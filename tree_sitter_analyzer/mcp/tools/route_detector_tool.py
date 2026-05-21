@@ -153,6 +153,69 @@ class RouteDetectorTool(BaseMCPTool):
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
+        # Top-level summary_line + agent_summary for LLM consumers.
+        _attach_route_summary(result, mode)
+
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+
+def _attach_route_summary(result: dict[str, Any], mode: str) -> None:
+    """Attach summary_line + agent_summary to a route_detector result.
+
+    Headline depends on mode — summary mode shows the global "N routes across
+    M frameworks" line, the lookup/prefix/file modes show their match count.
+    """
+    if mode == "summary":
+        total = int(result.get("total_routes", 0))
+        by_framework = result.get("by_framework", {}) or {}
+        framework_count = len(by_framework)
+        summary_line = f"{total} routes across {framework_count} frameworks"
+        next_step = (
+            "detect_routes mode=all for full list, or mode=lookup url_pattern=<url> for one URL"
+            if total
+            else "no routes detected — verify project_root or supported framework usage"
+        )
+    elif mode == "all":
+        count = int(result.get("route_count", 0))
+        summary_line = f"{count} routes"
+        next_step = (
+            "detect_routes mode=lookup url_pattern=<url> to find a specific handler"
+        )
+    elif mode == "lookup":
+        url = result.get("url_pattern", "?")
+        count = int(result.get("match_count", 0))
+        summary_line = f"lookup {url}: {count} match(es)"
+        next_step = (
+            "read_partial on the handler file at the matched line range"
+            if count
+            else "try detect_routes mode=prefix to widen the search"
+        )
+    elif mode == "prefix":
+        prefix = result.get("prefix", "?")
+        count = int(result.get("match_count", 0))
+        summary_line = f"prefix {prefix}: {count} route(s)"
+        next_step = (
+            "detect_routes mode=lookup url_pattern=<exact> to drill into one"
+            if count
+            else "no routes matching this prefix"
+        )
+    elif mode == "file":
+        fp = result.get("file_path", "?")
+        count = int(result.get("route_count", 0))
+        summary_line = f"file {fp}: {count} route(s)"
+        next_step = (
+            "analyze_code_structure on the file to map handler bodies"
+            if count
+            else "file declares no recognized routes"
+        )
+    else:
+        summary_line = f"detect_routes mode={mode}"
+        next_step = "review the result fields"
+
+    result["summary_line"] = summary_line
+    result["agent_summary"] = {
+        "summary_line": summary_line,
+        "next_step": next_step,
+    }

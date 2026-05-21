@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ...models import Import
-from ...utils.tree_sitter_compat import TreeSitterQueryCompat
+from ...utils.tree_sitter_compat import TreeSitterQueryCompat, get_node_text_safe
 
 
 @dataclass(slots=True)
@@ -38,10 +38,12 @@ class ImportNodeContext:
 
 
 def import_node_context(node: Any, source_code: str) -> ImportNodeContext:
+    # ``node.start_byte``/``end_byte`` are UTF-8 byte offsets. Slicing a Python
+    # ``str`` by those offsets is off-by-N whenever the source contains any
+    # multi-byte character (e.g. an em-dash in a docstring), which mangles every
+    # downstream import literal. ``get_node_text_safe`` decodes via bytes.
     raw_text = (
-        source_code[node.start_byte : node.end_byte]
-        if hasattr(node, "start_byte")
-        else ""
+        get_node_text_safe(node, source_code) if hasattr(node, "start_byte") else ""
     )
     return ImportNodeContext(
         source_code=source_code,
@@ -127,9 +129,11 @@ def _collect_import_list_items(import_list_node: Any, source_code: str) -> list[
 
 
 def _node_source_text(node: Any, source_code: str) -> str:
+    # Byte-aware slice (see ``import_node_context`` above) — required for files
+    # containing any multi-byte character.
     if not hasattr(node, "start_byte"):
         return ""
-    return source_code[node.start_byte : node.end_byte]
+    return get_node_text_safe(node, source_code)
 
 
 def query_class_body_nodes(runtime: ClassBodyQueryRuntime) -> list[Any]:

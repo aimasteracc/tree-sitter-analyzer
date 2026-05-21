@@ -367,16 +367,28 @@ class TraceImpactTool(BaseMCPTool):
         if rc == 1:
             # 没有匹配
             impact = _get_impact_level(0)
+            summary_line = f"{symbol} callers=0 impact=none"
             return {
                 "success": True,
                 "symbol": symbol,
                 "language": language,
                 "usages": [],
                 "call_count": 0,
+                "count": 0,
+                "results": [],
                 "impact_level": impact["level"],
+                "verdict": impact["level"].upper(),
                 "impact_badge": impact["badge"],
                 "impact_guidance": impact["guidance"],
                 "message": f"No usages of '{symbol}' found in the project.",
+                "summary_line": summary_line,
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": (
+                        "verify symbol name and casing — or proceed if confirming it is unused"
+                    ),
+                    "verdict": "SAFE",
+                },
             }
 
         # 解析 JSON 输出
@@ -420,6 +432,19 @@ class TraceImpactTool(BaseMCPTool):
         # ``count`` mirrors ``call_count`` (cross-tool canonical name).
         # ``verdict`` mirrors ``impact_level`` uppercased — same value,
         # same vocabulary as safe_to_edit / modification_guard.
+        summary_line = f"{symbol} callers={total_count} impact={impact['level']}"
+        # Pick the next step based on impact level — high impact means
+        # mandatory review of every call site, low impact is a quick scan.
+        if impact["level"] in ("high", "medium"):
+            next_step = f"batch_search to enumerate all {total_count} call sites before changing signature"
+            verdict = "UNSAFE" if impact["level"] == "high" else "CAUTION"
+        elif impact["level"] == "low":
+            next_step = "review the few callers, then proceed with the change"
+            verdict = "CAUTION"
+        else:
+            next_step = "no callers — safe to refactor"
+            verdict = "SAFE"
+
         result: dict[str, Any] = {
             "success": True,
             "symbol": symbol,
@@ -431,6 +456,12 @@ class TraceImpactTool(BaseMCPTool):
             "impact_guidance": impact["guidance"],
             "usages": usages,
             "results": usages,
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": next_step,
+                "verdict": verdict,
+            },
         }
 
         # 高影响时加入醒目 warning
