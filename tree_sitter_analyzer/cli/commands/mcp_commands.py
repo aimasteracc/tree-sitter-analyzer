@@ -38,6 +38,9 @@ from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
+    ModificationGuardTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import (
     ParserReadinessTool,  # noqa: F401
 )
@@ -195,6 +198,33 @@ def _build_trace_impact_tool_args(args: Any, output_format: str) -> dict[str, An
     roots = getattr(args, "trace_impact_roots", None)
     if roots:
         tool_args["project_root"] = roots
+    return tool_args
+
+
+def _build_modification_guard_tool_args(
+    args: Any, output_format: str
+) -> dict[str, Any]:
+    """Build tool args for --modification-guard (T1 round-37c parity fix).
+
+    Schema requires ``symbol`` + ``modification_type``; ``file_path`` is
+    optional. ModificationGuardTool's schema does not accept
+    ``output_format`` (same as trace_impact / check_tools /
+    build_project_index — see R4), so we don't forward it. The CLI's
+    own format handler still emits the response in the requested format
+    after the tool returns.
+    """
+    del output_format  # ModificationGuardTool currently ignores output_format
+    symbol = getattr(args, "modification_guard_symbol", None) or ""
+    mod_type = getattr(args, "modification_guard_type", None) or ""
+    tool_args: dict[str, Any] = {
+        "symbol": symbol,
+        "modification_type": mod_type,
+    }
+    file_path = getattr(args, "modification_guard_file", None) or getattr(
+        args, "file_path", None
+    )
+    if file_path:
+        tool_args["file_path"] = file_path
     return tool_args
 
 
@@ -412,6 +442,12 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="BuildProjectIndexTool",
         label="Rebuild persistent project index",
         build_tool_args=_build_build_project_index_tool_args,
+    ),
+    McpCommandSpec(
+        flag_name="modification_guard",
+        tool_attr="ModificationGuardTool",
+        label="Pre-modification safety check (symbol-level)",
+        build_tool_args=_build_modification_guard_tool_args,
     ),
 )
 
@@ -642,6 +678,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "TraceImpactTool",
         "CheckToolsTool",
         "BuildProjectIndexTool",
+        "ModificationGuardTool",
     }
 )
 

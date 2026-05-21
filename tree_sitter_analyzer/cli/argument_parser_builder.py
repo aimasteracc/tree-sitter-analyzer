@@ -554,3 +554,47 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         metavar="TEXT",
         help="Optional architecture notes to attach to the rebuilt index",
     )
+    # T1 (round-37c dogfood): CLI-MCP parity for modification_guard.
+    # CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
+    # J12 added trace-impact / check-tools / build-project-index; this
+    # closes the same gap for modification_guard.
+    parser.add_argument(
+        "--modification-guard",
+        action="store_true",
+        help=(
+            "Pre-modification safety check: report how many sites depend on "
+            "the symbol you are about to modify. Use BEFORE editing any "
+            "public symbol."
+        ),
+    )
+    parser.add_argument(
+        "--modification-guard-symbol",
+        metavar="NAME",
+        help=(
+            "Symbol name to check for --modification-guard "
+            "(required; example: 'processPayment', 'UserService')"
+        ),
+    )
+    parser.add_argument(
+        "--modification-guard-type",
+        choices=[
+            "rename",
+            "signature_change",
+            "delete",
+            "behavior_change",
+            "refactor",
+        ],
+        help=(
+            "Type of modification you plan to make for --modification-guard "
+            "(required: rename / signature_change / delete / behavior_change / "
+            "refactor)"
+        ),
+    )
+    parser.add_argument(
+        "--modification-guard-file",
+        metavar="PATH",
+        help=(
+            "Optional source file where the symbol is defined for "
+            "--modification-guard (improves accuracy)"
+        ),
+    )

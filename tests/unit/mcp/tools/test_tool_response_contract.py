@@ -9621,3 +9621,46 @@ class TestS2AnalyzeCodeStructureStatisticsParity:
         meta = result.get("metadata", {})
         assert meta.get("classes_count") == 1, meta
         assert meta.get("methods_count") == 2, meta
+
+
+class TestT1ModificationGuardCLIParity:
+    """T1 (round-37c dogfood): ``modification_guard`` MCP tool had no CLI
+    equivalent — violating CLAUDE.md ``CLI-MCP Parity`` hard requirement.
+    J12 closed the same gap for trace_impact / check_tools /
+    build_project_index; this closes it for modification_guard."""
+
+    def test_cli_flag_exists_and_invokes_tool(self, tmp_path):
+        """``--modification-guard`` exists, invokes ModificationGuardTool."""
+        import json
+        import subprocess
+
+        fixture = tmp_path / "t1.py"
+        fixture.write_text("class T1Target:\n    def do_thing(self): pass\n")
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "-m",
+                "tree_sitter_analyzer",
+                "--modification-guard",
+                "--modification-guard-symbol",
+                "T1Target",
+                "--modification-guard-type",
+                "rename",
+                "--modification-guard-file",
+                str(fixture),
+                "--project-root",
+                str(tmp_path),
+                "--format",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        payload = json.loads(result.stdout)
+        assert payload.get("success") is True, payload
+        assert payload.get("symbol") == "T1Target", payload
+        agent = payload.get("agent_summary", {})
+        assert agent.get("verdict") in {"SAFE", "CAUTION", "REVIEW", "UNSAFE"}, agent
