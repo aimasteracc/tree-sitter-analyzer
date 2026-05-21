@@ -180,10 +180,10 @@ class TestHandleSpecialCommandsBatchMixin:
         mock_read_tool_cls.assert_called_once_with(project_root="/tmp")
         mock_asyncio.run.assert_called_once()
 
-    @patch("tree_sitter_analyzer.cli_main.output_error")
+    @patch("tree_sitter_analyzer.output_manager.output_json")
     @patch("tree_sitter_analyzer.mcp.tools.read_partial_tool.ReadPartialTool")
-    def test_batch_partial_read_failure(self, mock_read_tool_cls, mock_output_error):
-        """batch partial read handling exception."""
+    def test_batch_partial_read_failure(self, mock_read_tool_cls, mock_output_json):
+        """batch partial read handling exception (r37al: JSON envelope)."""
         mock_read_tool_cls.side_effect = RuntimeError("Tool error")
 
         args = argparse.Namespace(
@@ -211,7 +211,11 @@ class TestHandleSpecialCommandsBatchMixin:
         )
         result = handle_special_commands(args)
         assert result == 1
-        mock_output_error.assert_called_once()
+        mock_output_json.assert_called_once()
+        envelope = mock_output_json.call_args[0][0]
+        assert envelope["success"] is False
+        assert envelope["verdict"] == "ERROR"
+        assert "Tool error" in envelope["error"]
 
     # --- Batch metrics ---
 
@@ -246,7 +250,12 @@ class TestHandleSpecialCommandsBatchMixin:
         mock_asyncio.run.assert_called_once()
 
     def test_batch_metrics_no_paths(self):
-        """batch metrics without file_paths or files_from."""
+        """batch metrics without file_paths or files_from.
+
+        r37al: default format is JSON, so error now emits an envelope
+        via ``output_json`` (not the legacy text ``output_error``).
+        Tests assert against the new behavior.
+        """
         args = argparse.Namespace(
             file_path=None,
             metrics_only=True,
@@ -260,17 +269,20 @@ class TestHandleSpecialCommandsBatchMixin:
             compare_sql_profiles=None,
             quiet=False,
         )
-        with patch("tree_sitter_analyzer.cli_main.output_error") as mock_error:
+        with patch("tree_sitter_analyzer.output_manager.output_json") as mock_json:
             result = handle_special_commands(args)
             assert result == 1
-            mock_error.assert_called_once_with(
-                "--metrics-only requires --file-paths or --files-from"
-            )
+            mock_json.assert_called_once()
+            envelope = mock_json.call_args[0][0]
+            assert envelope["success"] is False
+            assert envelope["verdict"] == "ERROR"
+            assert envelope["error_type"] == "validation"
+            assert "--metrics-only requires" in envelope["error"]
 
     @patch("tree_sitter_analyzer.mcp.tools.analyze_scale_tool.AnalyzeScaleTool")
-    @patch("tree_sitter_analyzer.cli_main.output_error")
-    def test_batch_metrics_failure(self, mock_output_error, mock_scale_tool_cls):
-        """batch metrics failure path."""
+    @patch("tree_sitter_analyzer.output_manager.output_json")
+    def test_batch_metrics_failure(self, mock_output_json, mock_scale_tool_cls):
+        """batch metrics failure path (r37al: now emits JSON envelope)."""
         mock_scale_tool_cls.side_effect = RuntimeError("Scale error")
 
         args = argparse.Namespace(
@@ -290,7 +302,11 @@ class TestHandleSpecialCommandsBatchMixin:
         )
         result = handle_special_commands(args)
         assert result == 1
-        mock_output_error.assert_called_once()
+        mock_output_json.assert_called_once()
+        envelope = mock_output_json.call_args[0][0]
+        assert envelope["success"] is False
+        assert envelope["verdict"] == "ERROR"
+        assert "Scale error" in envelope["error"]
 
     # --- show_query_languages ---
 

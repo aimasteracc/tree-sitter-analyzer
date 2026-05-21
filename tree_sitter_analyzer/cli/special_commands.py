@@ -182,7 +182,13 @@ def _handle_batch_partial_read(
         _print_result(result, args, context.output_json)
         return 0 if result.get("success", False) else 1
     except Exception as exc:
-        context.output_error(f"Batch partial read failed: {exc}")
+        _emit_cli_error(
+            args,
+            context,
+            "partial_read",
+            f"Batch partial read failed: {exc}",
+            error_type="runtime",
+        )
         return 1
 
 
@@ -210,8 +216,50 @@ def _handle_health_check(
         _print_result(result, args, context.output_json)
         return 0 if result.get("success", False) else 1
     except Exception as exc:
-        context.output_error(f"Project health check failed: {exc}")
+        _emit_cli_error(
+            args,
+            context,
+            "health_check",
+            f"Project health check failed: {exc}",
+            error_type="runtime",
+        )
         return 1
+
+
+def _emit_cli_error(
+    args: Any,
+    context: SpecialCommandContext,
+    flag_name: str,
+    message: str,
+    *,
+    error_type: str = "validation",
+) -> None:
+    """r37al (dogfood): emit error in JSON envelope when caller asked for JSON.
+
+    Mirrors the MCP-bridged ``_build_error_envelope`` shape used by
+    ``mcp_commands.py`` (fixed in r37ah). Without this, CLI commands
+    in this module surfaced errors to stderr only — agents using
+    ``--format json`` got empty stdout and a non-zero exit code with
+    no machine-readable context.
+    """
+    if _effective_output_format(args) == "json":
+        summary_line = f"{flag_name}: error — {message}"
+        context.output_json(
+            {
+                "success": False,
+                "error_type": error_type,
+                "error": message,
+                "summary_line": summary_line,
+                "verdict": "ERROR",
+                "agent_summary": {
+                    "summary_line": summary_line,
+                    "next_step": "Fix the input and retry.",
+                    "verdict": "ERROR",
+                },
+            }
+        )
+    else:
+        context.output_error(message)
 
 
 def _handle_batch_metrics(
@@ -223,7 +271,12 @@ def _handle_batch_metrics(
         return None
     file_paths = _load_file_paths(args)
     if not file_paths:
-        context.output_error("--metrics-only requires --file-paths or --files-from")
+        _emit_cli_error(
+            args,
+            context,
+            "metrics_only",
+            "--metrics-only requires --file-paths or --files-from",
+        )
         return 1
     try:
         from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
@@ -242,7 +295,13 @@ def _handle_batch_metrics(
         _print_result(result, args, context.output_json)
         return 0 if result.get("success", False) else 1
     except Exception as exc:
-        context.output_error(f"Batch metrics failed: {exc}")
+        _emit_cli_error(
+            args,
+            context,
+            "metrics_only",
+            f"Batch metrics failed: {exc}",
+            error_type="runtime",
+        )
         return 1
 
 

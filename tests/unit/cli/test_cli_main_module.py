@@ -221,9 +221,13 @@ class TestHandleSpecialCommandsBranchCoverage:
         assert result == 1
         mock_output_error.assert_called()
 
-    @patch("tree_sitter_analyzer.cli_main.output_error")
-    def test_handle_metrics_only_no_file_paths(self, mock_output_error):
-        """Test handling --metrics-only without --file-paths or --files-from."""
+    @patch("tree_sitter_analyzer.output_manager.output_json")
+    def test_handle_metrics_only_no_file_paths(self, mock_output_json):
+        """Test handling --metrics-only without --file-paths or --files-from.
+
+        r37al: default output_format is JSON so the error envelope is
+        emitted via ``output_json`` (not the legacy ``output_error``).
+        """
         args = argparse.Namespace(
             metrics_only=True,
             file_paths=None,
@@ -231,7 +235,10 @@ class TestHandleSpecialCommandsBranchCoverage:
         )
         result = handle_special_commands(args)
         assert result == 1
-        mock_output_error.assert_called()
+        mock_output_json.assert_called_once()
+        envelope = mock_output_json.call_args[0][0]
+        assert envelope["success"] is False
+        assert envelope["verdict"] == "ERROR"
 
     def test_handle_no_special_command(self):
         """Test handling when no special command is given."""
