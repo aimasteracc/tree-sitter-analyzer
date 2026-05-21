@@ -59,7 +59,12 @@ async def test_agent_skills_tool_supports_custom_relative_root(tmp_path):
 
     assert result["format"] == "toon"
     assert result["skills_root"] == "docs/skills"
-    assert "skills" not in result
+    # M2 (round-26): MCP consumers can now see the full skills list, not
+    # just the count. The TOON envelope keeps ``toon_content`` for compact
+    # rendering AND exposes the structured ``skills`` list alongside.
+    assert "skills" in result
+    assert isinstance(result["skills"], list)
+    assert len(result["skills"]) == result["skill_count"]
     assert result["agent_summary"]["ready_for_use_count"] == 0
     assert result["validation"]["status"] == "caution"
     assert "toon_content" in result

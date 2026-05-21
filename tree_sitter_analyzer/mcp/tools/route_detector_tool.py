@@ -8,6 +8,7 @@ Supports Flask, Django, FastAPI, Express, and Spring Boot.
 CodeGraph parity: equivalent to CodeGraph's route-map feature.
 """
 
+import os
 from typing import Any
 
 from ...route_detector import RouteDetector
@@ -103,16 +104,51 @@ class RouteDetectorTool(BaseMCPTool):
         detector = self._get_detector()
 
         if mode == "summary":
-            result = {"success": True, "mode": "summary", **detector.summary()}
+            summary_data = detector.summary()
+            # M6: every mode now exposes the same key set so an agent that
+            # branches on ``total_routes`` / ``routes`` doesn't break when
+            # the caller switches modes. ``mode=summary`` historically
+            # omitted ``routes`` — we add an empty list so the shape
+            # matches the other modes.
+            result = {
+                "success": True,
+                "mode": "summary",
+                "total_routes": summary_data["total_routes"],
+                # ``route_count`` is the deprecated alias kept for back-compat
+                # with any caller pinned to the pre-M6 shape; new code
+                # should branch on ``total_routes``.
+                "route_count": summary_data["total_routes"],
+                "routes": [],
+                "by_framework": summary_data["by_framework"],
+                "by_method": summary_data["by_method"],
+                "file_count": summary_data["file_count"],
+            }
         elif mode == "all":
             routes = detector.detect_all()
             if framework_filter != "all":
                 routes = [r for r in routes if r.framework == framework_filter]
+            # M6: also emit ``total_routes`` (canonical) so the schema is
+            # uniform across modes. Compute ``by_framework`` / ``by_method``
+            # / ``file_count`` here so an agent that ran ``mode=all``
+            # doesn't have to fall back to a second call to
+            # ``mode=summary`` for the same statistics. Same key set as
+            # summary mode, different value content per mode.
+            by_framework: dict[str, int] = {}
+            by_method: dict[str, int] = {}
+            for r in routes:
+                by_framework[r.framework] = by_framework.get(r.framework, 0) + 1
+                by_method[r.http_method] = by_method.get(r.http_method, 0) + 1
+            file_count = len({r.file_path for r in routes})
             result = {
                 "success": True,
                 "mode": "all",
+                "total_routes": len(routes),
+                # Deprecated alias — see note on summary mode above.
                 "route_count": len(routes),
                 "routes": [r.to_dict() for r in routes],
+                "by_framework": by_framework,
+                "by_method": by_method,
+                "file_count": file_count,
             }
         elif mode == "lookup":
             url = arguments["url_pattern"]
@@ -141,7 +177,37 @@ class RouteDetectorTool(BaseMCPTool):
         elif mode == "file":
             # Validate the user-supplied path stays inside project_root and
             # resolve any symlinks before we hand the path to the detector.
-            file_path = self.resolve_and_validate_file_path(arguments["file_path"])
+            raw_file_path = arguments["file_path"]
+            file_path = self.resolve_and_validate_file_path(raw_file_path)
+            # M4 (round-26 dogfood): the previous code silently scanned
+            # an empty universe when ``file_path`` did not exist OR was
+            # a directory. Agents read ``total_routes=0`` as "no routes"
+            # rather than "I never looked at the file you asked about".
+            # Emit a structured validation error envelope instead.
+            if not os.path.exists(file_path):
+                return _validation_error_envelope(
+                    f"file not found: {raw_file_path}",
+                    mode=mode,
+                    output_format=output_format,
+                    file_path=raw_file_path,
+                )
+            if os.path.isdir(file_path):
+                return _validation_error_envelope(
+                    (
+                        f"path is a directory: {raw_file_path} — use mode='all' "
+                        "for a project-wide scan, or pass an individual file"
+                    ),
+                    mode=mode,
+                    output_format=output_format,
+                    file_path=raw_file_path,
+                )
+            if not os.path.isfile(file_path):
+                return _validation_error_envelope(
+                    f"not a regular file: {raw_file_path}",
+                    mode=mode,
+                    output_format=output_format,
+                    file_path=raw_file_path,
+                )
             routes = detector.detect_file(file_path)
             result = {
                 "success": True,
@@ -178,7 +244,10 @@ def _attach_route_summary(result: dict[str, Any], mode: str) -> None:
             else "no routes detected — verify project_root or supported framework usage"
         )
     elif mode == "all":
-        count = int(result.get("route_count", 0))
+        # M6: prefer the canonical ``total_routes`` key. Fallback to the
+        # deprecated ``route_count`` alias keeps older fixtures that still
+        # build the result dict by hand from working.
+        count = int(result.get("total_routes", result.get("route_count", 0)))
         summary_line = f"{count} routes"
         next_step = (
             "detect_routes mode=lookup url_pattern=<url> to find a specific handler"
@@ -219,3 +288,38 @@ def _attach_route_summary(result: dict[str, Any], mode: str) -> None:
         "summary_line": summary_line,
         "next_step": next_step,
     }
+
+
+def _validation_error_envelope(
+    message: str,
+    *,
+    mode: str,
+    output_format: str,
+    file_path: str | None = None,
+) -> dict[str, Any]:
+    """M4 (round-26): canonical validation-error envelope for detect_routes.
+
+    Mirrors the ``--file-health`` / ``--code-patterns`` / ``--safe-to-edit``
+    error shape so agents that consume any of those can reuse the same
+    parser. ``error_type='validation'`` is the standard bucket used by
+    the dispatcher's exception classifier for user-input failures.
+    """
+    summary_line = f"detect_routes: error — {message}"
+    response: dict[str, Any] = {
+        "success": False,
+        "mode": mode,
+        "error_type": "validation",
+        "error": message,
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": "Fix the input path and retry.",
+            "verdict": "ERROR",
+        },
+    }
+    if file_path is not None:
+        response["file_path"] = file_path
+
+    from ..utils.format_helper import apply_toon_format_to_response
+
+    return apply_toon_format_to_response(response, output_format)

@@ -368,6 +368,14 @@ class ASTCacheTool(BaseMCPTool):
             max_files = arguments.get("max_files", 5000)
             sync_result = sync_engine.sync(max_files=max_files)
             sync_dict = sync_result.to_dict()
+            # M15 (round-26 dogfood): J8 renamed per-file ``action`` →
+            # ``considered`` inside ``changes.new[i].action``, but the
+            # top-level sync response only exposed ``scanned`` — agents
+            # reading ``d["considered"]`` saw ``None``. Surface
+            # ``considered`` at the response top level too, as an alias
+            # for ``scanned`` so the J8 vocabulary is consistent
+            # everywhere. ``scanned`` remains for back-compat.
+            sync_dict.setdefault("considered", sync_dict.get("scanned", 0))
             added = int(sync_dict.get("added", sync_dict.get("new", 0)) or 0)
             modified = int(sync_dict.get("modified", 0) or 0)
             deleted = int(sync_dict.get("deleted", 0) or 0)

@@ -103,6 +103,8 @@ def test_file_health_result_marks_healthy_files_as_no_action() -> None:
         "cli_command": "",
         "post_edit_commands": [],
     }
+    # M10 (round-26): file_health's top-level ``verdict`` mirrors into
+    # ``agent_summary`` via ``mirror_summary_line``. Grade A → SAFE.
     assert result["agent_summary"] == {
         "summary_line": (
             "src/healthy.py grade=A score=96.0 smells=0 weakest=complexity"
@@ -118,6 +120,7 @@ def test_file_health_result_marks_healthy_files_as_no_action() -> None:
             "src/healthy.py --file-health --format json"
         ),
         "stop_condition": "File remains grade A/B with no actionable smells.",
+        "verdict": "SAFE",
     }
 
 
@@ -158,6 +161,9 @@ def test_file_health_result_includes_direct_agent_commands_for_smells() -> None:
         ),
         "uv run python -m tree_sitter_analyzer --change-impact --format json",
     ]
+    # M10 (round-26): file_health's top-level ``verdict`` mirrors into
+    # ``agent_summary`` via ``mirror_summary_line`` so chained agents see
+    # the same answer at both surfaces.
     assert result["agent_summary"] == {
         "summary_line": (
             "src/needs work.py grade=C score=72.0 smells=1 weakest=complexity"
@@ -181,6 +187,7 @@ def test_file_health_result_includes_direct_agent_commands_for_smells() -> None:
             "the grade improves or smell_count drops."
         ),
         "target_smell": "long_method",
+        "verdict": "CAUTION",
     }
 
 

@@ -573,9 +573,27 @@ class TraceImpactTool(BaseMCPTool):
 
         # 解析结果
         if rc == 1:
-            # 没有匹配
+            # M11 (round-26 dogfood): ripgrep returned zero matches
+            # anywhere in the project. That covers two semantically
+            # different cases:
+            #
+            # * "real symbol with zero callers" — possible but extremely
+            #   rare: the symbol must be defined nowhere yet still be a
+            #   valid Python/JS/Java identifier the user typed.
+            # * "symbol does not exist" — typo, casing slip, copy-paste
+            #   error. Far more common in practice.
+            #
+            # Returning ``verdict=SAFE`` for both means an agent will
+            # happily delete or refactor based on a typo. The fix:
+            # rc==1 means we found zero definitions AND zero references
+            # — i.e. the symbol does not exist in the project. Surface
+            # that as ``verdict=NOT_FOUND`` and ``found=false`` so an
+            # agent must verify the spelling before acting.
+            #
+            # Matches the ``symbol_lineage`` "no definitions found"
+            # next_step verbatim so the two tools stay aligned.
             impact = _get_impact_level(0)
-            summary_line = f"{symbol} callers=0 impact=none"
+            summary_line = f"trace_impact symbol={symbol} not_found"
             return {
                 "success": True,
                 "symbol": symbol,
@@ -585,24 +603,30 @@ class TraceImpactTool(BaseMCPTool):
                 "count": 0,
                 "results": [],
                 "impact_level": impact["level"],
-                # K5 fix: ``impact_verdict`` is the magnitude vocab
-                # (HIGH/MEDIUM/LOW/NONE) — kept separate from the safety
-                # vocab used by safe_to_edit / modification_guard
-                # (SAFE/CAUTION/UNSAFE). The deprecated ``verdict`` alias
-                # now mirrors ``agent_summary.verdict`` (safety) so
-                # cross-tool readers get the standardized vocabulary.
+                # ``impact_verdict`` is magnitude vocab (HIGH/MEDIUM/
+                # LOW/NONE). ``NONE`` is the correct magnitude for zero
+                # callers — that part is unchanged. The top-level
+                # ``verdict`` is what flipped: ``NOT_FOUND`` instead of
+                # ``SAFE`` so cross-tool readers see the same signal
+                # ``symbol_lineage`` emits when it can't find defs.
                 "impact_verdict": impact["level"].upper(),
-                "verdict": "SAFE",
+                "verdict": "NOT_FOUND",
+                "found": False,
                 "impact_badge": impact["badge"],
                 "impact_guidance": impact["guidance"],
-                "message": f"No usages of '{symbol}' found in the project.",
+                "message": (
+                    f"No usages of '{symbol}' found in the project. "
+                    "Verify symbol name — no definitions or references "
+                    "exist anywhere in the source tree."
+                ),
                 "summary_line": summary_line,
                 "agent_summary": {
                     "summary_line": summary_line,
                     "next_step": (
-                        "verify symbol name and casing — or proceed if confirming it is unused"
+                        "verify symbol name — no definitions or references found"
                     ),
-                    "verdict": "SAFE",
+                    "verdict": "NOT_FOUND",
+                    "risk": "unknown",
                 },
             }
 

@@ -74,12 +74,18 @@ def build_no_changes_result(
     mode: str, scope_paths: list[str] | None = None
 ) -> dict[str, Any]:
     """Build a stable empty-diff response."""
+    # M5 (round-26 dogfood): the no-changes path also went through
+    # ``summary_line=None`` on both surfaces. Build a stable one-liner
+    # so chained tools see ``changed=0 risk=none`` instead of nothing.
+    summary_line = "change_impact changed=0 risk=none pytest_required=False"
     return {
         "success": True,
         "mode": mode,
         "changed_files": [],
         "summary": "No changes detected",
+        "summary_line": summary_line,
         "agent_summary": {
+            "summary_line": summary_line,
             "risk": "none",
             "scope": "scoped" if scope_paths else "workspace",
             "changed_count": 0,
@@ -241,13 +247,30 @@ def build_change_impact_response(
     request = context.request
     verification = context.verification
     strategy = context.strategy
+    # M5 (round-26 dogfood): the previous build emitted ``summary_line=None``
+    # at both surfaces even on successful analysis with ``changed_count > 0``.
+    # F6's post-hook only fires when the tool returns a populated string
+    # at the top level OR inside ``agent_summary`` — neither was set here,
+    # so chained agents lost the one-liner they grep for. Build the
+    # canonical headline here (``change_impact changed=N risk=R
+    # pytest_required=...``) and mirror it into ``agent_summary`` so both
+    # surfaces agree, matching the modification_guard / safe_to_edit
+    # convention.
+    changed_count = len(request.changed_files)
+    summary_line = (
+        f"change_impact changed={changed_count} risk={context.risk} "
+        f"pytest_required={verification['pytest_required']}"
+    )
+    agent_summary = dict(context.agent_summary)
+    agent_summary.setdefault("summary_line", summary_line)
     return {
         "success": True,
         "mode": request.mode,
         "scope_paths": request.scope_paths or [],
         "scope_filtered": bool(request.scope_paths),
-        "agent_summary": context.agent_summary,
-        "changed_count": len(request.changed_files),
+        "summary_line": summary_line,
+        "agent_summary": agent_summary,
+        "changed_count": changed_count,
         "changed_files": request.changed_files[:50],
         "affected_count": len(context.affected),
         "affected_files": sorted(context.affected)[:50] if context.affected else [],

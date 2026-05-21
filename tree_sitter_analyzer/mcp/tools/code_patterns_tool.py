@@ -13,10 +13,11 @@ from typing import Any
 
 from ...utils import setup_logger
 from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
 from .security_scanner import detect_security_issues
 from .utils.element_extractor import extract_elements
 from .utils.file_health_smells import detect_code_smells
+from .utils.parse_validity import is_file_parse_broken
 
 logger = setup_logger(__name__)
 
@@ -110,6 +111,22 @@ class CodePatternsTool(BaseMCPTool):
         from ...language_detector import detect_language_from_file
 
         language = detect_language_from_file(resolved, project_root=self.project_root)
+
+        # M3 (round-26 dogfood): a file containing only ``def broken(:`` used
+        # to be graded ``SAFE``. tree-sitter is permissive — it sprinkles
+        # ``ERROR`` nodes through the tree but still hands back a "result",
+        # so every downstream detector ran against garbled output and
+        # reported zero findings. An agent reading that envelope would
+        # happily "proceed with planned change" on a broken file. The
+        # syntax gate short-circuits before any smell/pattern/security
+        # detector runs and pins ``verdict=ERROR signal=syntax_error`` so
+        # all three syntax-gated tools (code_patterns, file_health,
+        # safe_to_edit) agree on the same envelope.
+        syntax_response = _syntax_error_response(
+            resolved, file_path, language, output_format
+        )
+        if syntax_response is not None:
+            return syntax_response
 
         all_patterns: list[dict[str, Any]] = []
 
@@ -214,6 +231,11 @@ class CodePatternsTool(BaseMCPTool):
             },
         }
 
+        # M10 (round-26): mirror ``agent_summary.verdict`` to the top
+        # level so chained agents reading either surface see the same
+        # answer. code_patterns historically only set the agent-side
+        # value; ``mirror_summary_line`` now copies it to the top.
+        response = mirror_summary_line(response)
         return apply_toon_format_to_response(response, output_format)
 
 
@@ -620,6 +642,60 @@ def _empty_file_response(
             "summary_line": summary_line,
             "next_step": "skip",
             "verdict": "N/A",
+        },
+    }
+    return apply_toon_format_to_response(response, output_format)
+
+
+def _syntax_error_response(
+    resolved: str,
+    file_path: str,
+    language: str | None,
+    output_format: str,
+) -> dict[str, Any] | None:
+    """M3 (round-26): short-circuit when tree-sitter reports a syntax error.
+
+    Returns ``None`` when the file parses cleanly (caller continues with
+    normal smell / security / anti-pattern detection). Otherwise returns
+    a fully-formatted envelope that mirrors the empty/whitespace
+    branches in structure but uses ``verdict=ERROR signal=syntax_error``
+    so cross-tool consumers can distinguish "couldn't analyse" from
+    "analysed and clean".
+    """
+    # No language → either non-code or unknown extension; the existing
+    # caller handles those via downstream detectors (which mostly return
+    # empty lists). We don't claim "syntax error" without a known
+    # grammar to check against.
+    if not language or language == "unknown":
+        return None
+    if not is_file_parse_broken(resolved, language):
+        return None
+    summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
+    response: dict[str, Any] = {
+        "success": True,
+        "file_path": file_path,
+        "language": language,
+        "verdict": "ERROR",
+        "signal": "syntax_error",
+        "total_patterns": 0,
+        "count": 0,
+        "results": [],
+        "by_category": {},
+        "critical_count": 0,
+        "warning_count": 0,
+        "summary": (
+            "File fails to parse — tree-sitter reported syntax errors. "
+            "Fix syntax before running pattern detection."
+        ),
+        "smart_workflow_hint": (
+            "Fix syntax errors first; pattern detection is meaningless on a broken AST."
+        ),
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": ("file fails to parse — fix syntax before further analysis"),
+            "verdict": "ERROR",
+            "risk": "high",
         },
     }
     return apply_toon_format_to_response(response, output_format)

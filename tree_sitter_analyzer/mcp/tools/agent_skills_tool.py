@@ -79,6 +79,11 @@ class AgentSkillsTool(BaseMCPTool):
         # structured fields (~1.8 KB per call) and confuses agents that
         # expect a clean JSON envelope.
         result.pop("toon_content", None)
+        # M2 (round-26 dogfood): ``result`` already contains the full
+        # ``skills: list[dict]`` from ``build_agent_skills_inventory`` —
+        # the JSON path is correct. The TOON path (``_build_toon_response``)
+        # used to drop ``skills`` so MCP consumers saw only ``skill_count``.
+        # Keep the JSON path as-is; the TOON path is fixed below.
         return result
 
     def _validate_skills_root(self, skills_root: str | None) -> None:
@@ -97,7 +102,18 @@ class AgentSkillsTool(BaseMCPTool):
 
 
 def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
-    """Return a compact MCP response when callers request TOON output."""
+    """Return a compact MCP response when callers request TOON output.
+
+    M2 (round-26 dogfood): the previous shape dropped the ``skills``
+    list and only emitted ``skill_count``. CLI callers got the full
+    inventory; MCP consumers couldn't see what skills exist. The list
+    is small (13 entries on this project, ~25-30 fields each), and
+    ``toon_content`` already encodes a compact text rendering for
+    token-sensitive consumers — so we surface the structured list
+    alongside the metadata. Agents that want the lean version still
+    read ``toon_content``; agents that need to branch on a specific
+    skill's metadata can walk ``skills`` directly.
+    """
     return {
         "success": result["success"],
         "format": "toon",
@@ -105,6 +121,7 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
         "skills_root": result["skills_root"],
         "skills_root_exists": result["skills_root_exists"],
         "skill_count": result["skill_count"],
+        "skills": result["skills"],
         "agent_summary": result["agent_summary"],
         "gaps": result["gaps"],
         "validation": result["validation"],

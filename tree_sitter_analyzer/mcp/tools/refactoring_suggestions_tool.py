@@ -178,6 +178,27 @@ class RefactoringSuggestionsTool(BaseMCPTool):
             project_root=self.project_root,
         )
 
+        # M14 (round-26): echo the detected language. ``refactor`` and
+        # ``file_health`` previously returned ``language: None`` on a
+        # ``.ts`` file even though both apply TypeScript-specific
+        # analysis — agents that cross-checked ``analyze_scale`` saw a
+        # contradiction. Detect once here (best-effort: detector
+        # failures must not block the suggestion stream).
+        from ...language_detector import detect_language_from_file
+
+        try:
+            detected_language = detect_language_from_file(
+                resolved, project_root=self.project_root
+            )
+        except Exception:  # nosec B110 — language detection is best-effort
+            detected_language = "unknown"
+        if (
+            detected_language
+            and detected_language != "unknown"
+            and "language" not in result
+        ):
+            result["language"] = detected_language
+
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)

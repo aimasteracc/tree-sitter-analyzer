@@ -29,7 +29,7 @@ from ...core.analysis_engine import (
 from ...language_detector import detect_language_from_file
 from ...utils import setup_logger
 from ..utils import get_performance_monitor
-from ..utils.format_helper import format_as_toon
+from ..utils.format_helper import apply_toon_format_to_response
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -557,19 +557,23 @@ class GetCodeOutlineTool(BaseMCPTool):
                 "next_step": (
                     "extract_code_section for the method you need (use line ranges from outline)"
                 ),
+                "verdict": "INFO",
             }
 
-            # Backwards-compat: legacy MCP callers still expect the
-            # ``{"content": [{"type": "text", "text": ...}]}`` envelope
-            # (it's the wire format the SDK accepts). For ``output_format
-            # == "json"`` we return the structured dict directly so
-            # programmatic callers get real fields. For ``toon`` we keep
-            # the legacy wrapping because the payload is a single text
-            # blob.
-            if output_format == "toon":
-                formatted_text = format_as_toon(result)
-                return {"content": [{"type": "text", "text": formatted_text}]}
-            return result
+            # M1 (round-26 dogfood): the previous build wrapped the TOON path
+            # in the MCP wire-format envelope (``{"content": [{"type":"text",
+            # "text":...}]}``) directly inside ``execute()``. That belongs in
+            # the server adapter (``tool_registration.handle_call_tool``
+            # wraps every tool's return in ``TextContent`` exactly once).
+            # Tools must return the flat envelope so direct callers (tests,
+            # hive-mind workers, anything that bypasses server.py) can read
+            # the same fields the JSON-RPC layer sees. The canonical TOON
+            # path (used by every other tool) is
+            # ``apply_toon_format_to_response`` — it keeps metadata
+            # (success/file_path/summary_line/agent_summary/...) at the top
+            # level and attaches a ``toon_content`` blob alongside the
+            # structured fields.
+            return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
             self.logger.error(f"Error in get_code_outline: {e}")

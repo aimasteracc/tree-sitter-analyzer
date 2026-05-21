@@ -133,6 +133,15 @@ def _build_base_health_result(
         "signal": _build_signal(health.dimensions),
         "dimensions": health.dimensions,
         "code_smells": smells,
+        # M8 (round-26): ``smells`` is exposed as a deprecated alias of
+        # ``code_smells`` so callers that branch on either name see the
+        # same list value. Before this, agents that probed
+        # ``result.get('smells')`` got ``None`` while
+        # ``result.get('code_smells')`` returned ``[]`` — same datum,
+        # different types, and a ``for s in result['smells']`` would
+        # raise ``TypeError``. The alias points at the same list object
+        # so any mutation by either name is visible to the other.
+        "smells": smells,
         "smell_count": len(smells),
         "recommendation": _build_recommendation(
             adjusted_grade, health.dimensions, smells

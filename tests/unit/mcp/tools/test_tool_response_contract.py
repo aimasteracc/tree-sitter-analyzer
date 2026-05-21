@@ -5172,12 +5172,20 @@ class TestK5TraceImpactVerdictRename:
         )
 
     def test_no_match_safe_verdict(self, call_site_project: Path) -> None:
-        """A symbol with no callers must report impact_verdict=NONE
-        AND a safety verdict of SAFE — they describe different axes."""
+        """M11 (round-26): a symbol that doesn't exist anywhere must
+        report ``impact_verdict=NONE`` (magnitude — no callers) AND
+        ``verdict=NOT_FOUND`` (safety — agent should verify the
+        spelling).
+
+        Before M11 this returned ``verdict=SAFE`` which an agent could
+        misread as "0 callers, safe to delete" on what is really a
+        typo or rename mistake. NOT_FOUND forces the agent to verify
+        the symbol name before acting.
+        """
         result = self._run_trace(call_site_project, "XYZ_NotExistent_Symbol")
         assert result.get("impact_verdict") == "NONE"
-        assert result.get("verdict") == "SAFE"
-        assert result.get("agent_summary", {}).get("verdict") == "SAFE"
+        assert result.get("verdict") == "NOT_FOUND"
+        assert result.get("agent_summary", {}).get("verdict") == "NOT_FOUND"
 
 
 # ============================================================================
@@ -5335,3 +5343,1782 @@ class TestK12FilePathNormalization:
             f"got r1={r1.get('summary_line')!r} "
             f"r2={r2.get('summary_line')!r}"
         )
+
+
+# ============================================================================
+# M6 — detect_routes mode=summary vs mode=all return uniform schema
+# ============================================================================
+
+
+class TestM6DetectRoutesSchemaUniformity:
+    """M6 (round-26 dogfood): ``detect_routes`` returned incompatible
+    schemas across modes — ``mode=summary`` exposed ``total_routes``
+    but not ``routes``; ``mode=all`` exposed ``route_count`` but not
+    ``total_routes``/``by_framework``/``by_method``. Agent code that
+    branched on either key broke when the caller switched modes.
+
+    Contract:
+      - Both modes expose ``total_routes`` (canonical) and the
+        deprecated ``route_count`` alias.
+      - Both modes expose ``routes`` (empty list in summary mode, full
+        list in mode=all).
+      - Both modes expose ``by_framework``, ``by_method``,
+        ``file_count`` — empty dict / zero when no routes exist.
+    """
+
+    @pytest.fixture
+    def flask_project(self, tmp_path: Path) -> Path:
+        """Tiny Flask project with two routes."""
+        (tmp_path / "app.py").write_text(
+            "from flask import Flask\n"
+            "app = Flask(__name__)\n"
+            "@app.route('/users')\n"
+            "def users():\n    return 'hi'\n"
+            "@app.route('/items', methods=['POST'])\n"
+            "def items():\n    return 'hi'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    _REQUIRED_KEYS = (
+        "total_routes",
+        "route_count",
+        "routes",
+        "by_framework",
+        "by_method",
+        "file_count",
+    )
+
+    def _both_modes(self, project: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            RouteDetectorTool,
+        )
+
+        tool = RouteDetectorTool(str(project))
+        summary = _run(tool.execute({"mode": "summary", "output_format": "json"}))
+        full = _run(tool.execute({"mode": "all", "output_format": "json"}))
+        return summary, full
+
+    def test_both_modes_expose_total_routes(self, flask_project: Path) -> None:
+        summary, full = self._both_modes(flask_project)
+        assert isinstance(summary.get("total_routes"), int), (
+            f"M6: summary must expose canonical ``total_routes`` — "
+            f"got {summary.get('total_routes')!r}"
+        )
+        assert isinstance(full.get("total_routes"), int), (
+            f"M6: mode=all must expose canonical ``total_routes`` — "
+            f"got {full.get('total_routes')!r}"
+        )
+        # Same data — both modes scanned the same project.
+        assert summary["total_routes"] == full["total_routes"], (
+            f"M6: total_routes must agree across modes — "
+            f"summary={summary['total_routes']!r} all={full['total_routes']!r}"
+        )
+
+    def test_both_modes_expose_route_count_alias(self, flask_project: Path) -> None:
+        """Deprecated ``route_count`` alias still works for back-compat."""
+        summary, full = self._both_modes(flask_project)
+        assert summary.get("route_count") == summary.get("total_routes"), (
+            f"M6: summary ``route_count`` alias must equal ``total_routes`` — "
+            f"got route_count={summary.get('route_count')!r} "
+            f"total_routes={summary.get('total_routes')!r}"
+        )
+        assert full.get("route_count") == full.get("total_routes"), (
+            f"M6: mode=all ``route_count`` alias must equal ``total_routes`` — "
+            f"got route_count={full.get('route_count')!r} "
+            f"total_routes={full.get('total_routes')!r}"
+        )
+
+    def test_both_modes_expose_routes_list(self, flask_project: Path) -> None:
+        summary, full = self._both_modes(flask_project)
+        assert isinstance(summary.get("routes"), list), (
+            f"M6: summary must expose ``routes`` as a list (possibly empty) "
+            f"— got {type(summary.get('routes')).__name__}"
+        )
+        assert isinstance(full.get("routes"), list), (
+            f"M6: mode=all must expose ``routes`` as a list — "
+            f"got {type(full.get('routes')).__name__}"
+        )
+        # mode=all populates the list; summary leaves it empty.
+        assert summary["routes"] == [], (
+            f"M6: summary ``routes`` must be empty — got {summary['routes']!r}"
+        )
+        # full ``routes`` mirrors ``total_routes`` count.
+        assert len(full["routes"]) == full["total_routes"], (
+            f"M6: mode=all routes count must equal total_routes — "
+            f"got len(routes)={len(full['routes'])} "
+            f"total_routes={full['total_routes']}"
+        )
+
+    def test_both_modes_expose_by_framework_by_method(
+        self, flask_project: Path
+    ) -> None:
+        summary, full = self._both_modes(flask_project)
+        for mode_name, payload in (("summary", summary), ("all", full)):
+            for key in ("by_framework", "by_method"):
+                value = payload.get(key)
+                assert isinstance(value, dict), (
+                    f"M6: mode={mode_name} must expose ``{key}`` as a dict "
+                    f"— got {type(value).__name__}"
+                )
+
+    def test_uniform_required_key_set(self, flask_project: Path) -> None:
+        """The two modes carry the same required key set even when their
+        values diverge (full routes list vs empty)."""
+        summary, full = self._both_modes(flask_project)
+        for key in self._REQUIRED_KEYS:
+            assert key in summary, (
+                f"M6: summary must include canonical key ``{key}`` — "
+                f"got keys={sorted(summary.keys())}"
+            )
+            assert key in full, (
+                f"M6: mode=all must include canonical key ``{key}`` — "
+                f"got keys={sorted(full.keys())}"
+            )
+
+
+# ============================================================================
+# M7 — call_graph mode=all_functions exposes ``all_functions`` key
+# ============================================================================
+
+
+class TestM7CallGraphAllFunctionsKey:
+    """M7 (round-26 dogfood): ``mode=all_functions`` returned
+    ``functions: [...]`` while every other mode used a key name matching
+    the mode (``callers``/``callees``/``chain``). Agent code reading
+    ``r['all_functions']`` (matching the mode name) got an empty list
+    even though the call graph had thousands of indexed functions.
+
+    Contract:
+      - ``mode=all_functions`` response has ``all_functions`` as a
+        non-empty list (one entry per indexed function).
+      - ``functions`` alias still works for back-compat with the
+        pre-M7 shape.
+      - Both keys point at the same list (one is an alias of the
+        other).
+    """
+
+    @pytest.fixture
+    def project_with_functions(self, tmp_path: Path) -> Path:
+        (tmp_path / "mod.py").write_text(
+            "def alpha():\n    return beta()\n"
+            "def beta():\n    return gamma()\n"
+            "def gamma():\n    return 1\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_all_functions_key_present_and_populated(
+        self, project_with_functions: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
+            CodeGraphCallTool,
+        )
+
+        tool = CodeGraphCallTool(str(project_with_functions))
+        result = _run(tool.execute({"mode": "all_functions", "output_format": "json"}))
+        all_funcs = result.get("all_functions")
+        assert isinstance(all_funcs, list), (
+            f"M7: mode=all_functions must expose ``all_functions`` as a "
+            f"list — got {type(all_funcs).__name__}"
+        )
+        assert all_funcs, (
+            f"M7: ``all_functions`` must be non-empty when functions "
+            f"exist — got {all_funcs!r}"
+        )
+
+    def test_functions_alias_still_works(self, project_with_functions: Path) -> None:
+        """Deprecated ``functions`` alias still works for back-compat."""
+        from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
+            CodeGraphCallTool,
+        )
+
+        tool = CodeGraphCallTool(str(project_with_functions))
+        result = _run(tool.execute({"mode": "all_functions", "output_format": "json"}))
+        assert result.get("functions") == result.get("all_functions"), (
+            f"M7: ``functions`` alias must equal ``all_functions`` — "
+            f"got functions len={len(result.get('functions') or [])} "
+            f"all_functions len={len(result.get('all_functions') or [])}"
+        )
+
+    def test_count_matches_list_length(self, project_with_functions: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
+            CodeGraphCallTool,
+        )
+
+        tool = CodeGraphCallTool(str(project_with_functions))
+        result = _run(tool.execute({"mode": "all_functions", "output_format": "json"}))
+        assert result.get("count") == len(result.get("all_functions") or []), (
+            f"M7: ``count`` must match len(all_functions) — "
+            f"count={result.get('count')} "
+            f"all_functions len={len(result.get('all_functions') or [])}"
+        )
+
+
+# ============================================================================
+# M8 — file_health smells alias (list, never None)
+# ============================================================================
+
+
+class TestM8FileHealthSmellsType:
+    """M8 (round-26 dogfood): ``file_health`` response had
+    ``smells: None / code_smells: []`` — same datum exposed twice with
+    different types. ``for s in d['smells']:`` raised ``TypeError``.
+
+    Contract:
+      - Either ``smells`` is absent from the response, OR it's a list
+        (never None).
+      - When present, ``smells`` mirrors ``code_smells`` (canonical
+        name).
+    """
+
+    @pytest.fixture
+    def healthy_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "ok.py").write_text(
+            "def small() -> int:\n    return 1\n", encoding="utf-8"
+        )
+        return tmp_path
+
+    def test_smells_is_list_or_absent_on_healthy_file(
+        self, healthy_project: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(healthy_project))
+        result = _run(tool.execute({"file_path": "ok.py", "output_format": "json"}))
+        if "smells" in result:
+            assert isinstance(result["smells"], list), (
+                f"M8: when ``smells`` is present it must be a list — "
+                f"got {type(result['smells']).__name__}={result['smells']!r}"
+            )
+            assert result["smells"] is not None, (
+                "M8: ``smells`` must never be None — use empty list instead"
+            )
+
+    def test_smells_mirrors_code_smells_when_present(
+        self, healthy_project: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(healthy_project))
+        result = _run(tool.execute({"file_path": "ok.py", "output_format": "json"}))
+        if "smells" in result and "code_smells" in result:
+            assert result["smells"] == result["code_smells"], (
+                f"M8: ``smells`` and ``code_smells`` must agree — "
+                f"smells={result['smells']!r} "
+                f"code_smells={result['code_smells']!r}"
+            )
+
+    def test_smells_is_list_on_non_code_file(self, tmp_path: Path) -> None:
+        """Cross-check: the non-code (markdown) envelope must also
+        respect the contract — no None smells."""
+        (tmp_path / "README.md").write_text("# Hi\n", encoding="utf-8")
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "README.md", "output_format": "json"}))
+        if "smells" in result:
+            assert isinstance(result["smells"], list), (
+                f"M8: non-code envelope must use list ``smells`` — "
+                f"got {result['smells']!r}"
+            )
+
+    def test_smells_is_list_on_empty_file(self, tmp_path: Path) -> None:
+        (tmp_path / "empty.py").write_text("", encoding="utf-8")
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "empty.py", "output_format": "json"}))
+        if "smells" in result:
+            assert isinstance(result["smells"], list), (
+                f"M8: empty-file envelope must use list ``smells`` — "
+                f"got {result['smells']!r}"
+            )
+
+
+# ============================================================================
+# M14 — language echoed across single-file tools
+# ============================================================================
+
+
+class TestM14LanguageEcho:
+    """M14 (round-26 dogfood): ``refactor`` and ``file_health`` returned
+    ``language: None`` on ``.ts`` files even though both apply
+    TypeScript-specific analysis internally. ``analyze_scale``
+    correctly echoed ``language: typescript``. Agents that cross-
+    checked tools saw a contradiction.
+
+    Contract:
+      - Every single-file tool echoes ``language: <detected>`` on a
+        TypeScript file.
+      - The string is lowercase and non-empty.
+    """
+
+    @pytest.fixture
+    def ts_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.ts").write_text(
+            "export function add(a: number, b: number): number { return a + b; }\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_refactor_echoes_language(self, ts_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.refactoring_suggestions_tool import (
+            RefactoringSuggestionsTool,
+        )
+
+        tool = RefactoringSuggestionsTool(str(ts_project))
+        result = _run(tool.execute({"file_path": "sample.ts", "output_format": "json"}))
+        lang = result.get("language")
+        assert isinstance(lang, str) and lang, (
+            f"M14: refactor must echo ``language`` for a .ts file — got {lang!r}"
+        )
+        assert lang == lang.lower(), (
+            f"M14: ``language`` must be lowercase — got {lang!r}"
+        )
+        assert lang == "typescript", (
+            f"M14: refactor must detect ``typescript`` on a .ts file — got {lang!r}"
+        )
+
+    def test_file_health_echoes_language(self, ts_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        tool = FileHealthTool(str(ts_project))
+        result = _run(tool.execute({"file_path": "sample.ts", "output_format": "json"}))
+        lang = result.get("language")
+        assert isinstance(lang, str) and lang, (
+            f"M14: file_health must echo ``language`` for a .ts file — got {lang!r}"
+        )
+        assert lang == lang.lower(), (
+            f"M14: ``language`` must be lowercase — got {lang!r}"
+        )
+        assert lang == "typescript", (
+            f"M14: file_health must detect ``typescript`` on a .ts file — got {lang!r}"
+        )
+
+    def test_code_patterns_echoes_language(self, ts_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        tool = CodePatternsTool(str(ts_project))
+        result = _run(tool.execute({"file_path": "sample.ts", "output_format": "json"}))
+        lang = result.get("language")
+        assert isinstance(lang, str) and lang, (
+            f"M14: code_patterns must echo ``language`` for a .ts file — got {lang!r}"
+        )
+        assert lang == lang.lower(), (
+            f"M14: ``language`` must be lowercase — got {lang!r}"
+        )
+
+    def test_safe_to_edit_echoes_language(self, ts_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+
+        tool = SafeToEditTool(str(ts_project))
+        result = _run(tool.execute({"file_path": "sample.ts", "output_format": "json"}))
+        lang = result.get("language")
+        assert isinstance(lang, str) and lang, (
+            f"M14: safe_to_edit must echo ``language`` for a .ts file — got {lang!r}"
+        )
+        assert lang == lang.lower(), (
+            f"M14: ``language`` must be lowercase — got {lang!r}"
+        )
+
+
+# ============================================================================
+# Round 26 polish: M12 + M13 + M15 + envelope contract snapshot
+# ============================================================================
+
+
+class TestM12EmptySymbolLineage:
+    """M12 (round-26 dogfood): ``--symbol-lineage ""`` used to fall
+    through to the file-analysis path and crash with the argparse usage
+    block + plain-text ``ERROR: File path not specified``. No JSON
+    envelope, no parseable ``error_type`` — every other MCP CLI flag
+    emits a canonical ``{success: False, error_type: "validation", ...}``
+    envelope, so this one was an outlier.
+
+    Fix: the spec for ``symbol_lineage`` is now a *value-bearing* flag
+    (``value_arg_name`` set in :class:`McpCommandSpec`). When the value
+    is non-``None`` — including ``""`` — the dispatcher selects the
+    command and the validator emits the canonical envelope with
+    ``RC=1`` (so shell ``set -e`` pipelines catch it per the H1 contract).
+    """
+
+    def test_dispatcher_selects_symbol_lineage_on_empty_value(self) -> None:
+        from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
+            find_selected_mcp_command,
+        )
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            MCP_COMMAND_SPECS,
+        )
+
+        class _Args:
+            symbol_lineage = ""
+
+        spec = find_selected_mcp_command(_Args(), MCP_COMMAND_SPECS)
+        assert spec is not None, (
+            'M12: ``--symbol-lineage ""`` must register as a selected '
+            "command, not fall through to file-analysis path"
+        )
+        assert spec.flag_name == "symbol_lineage"
+
+    def test_validator_emits_envelope_for_empty_symbol(self) -> None:
+        from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
+            validate_mcp_command_args,
+        )
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            MCP_COMMAND_SPECS,
+        )
+
+        symbol_spec = next(
+            s for s in MCP_COMMAND_SPECS if s.flag_name == "symbol_lineage"
+        )
+
+        class _Args:
+            symbol_lineage = ""
+
+        captured: list[str] = []
+        ok = validate_mcp_command_args(_Args(), symbol_spec, captured.append)
+        assert ok is False, "validator must reject empty symbol"
+        assert captured, "validator must call the error sink"
+        assert "empty" in captured[0].lower() or "non-empty" in captured[0].lower()
+
+    def test_validator_emits_envelope_for_whitespace_symbol(self) -> None:
+        """Whitespace-only values (``"   "``) must be rejected too —
+        otherwise an agent that accidentally builds a blank symbol still
+        hits the file-analysis crash path."""
+        from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
+            validate_mcp_command_args,
+        )
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            MCP_COMMAND_SPECS,
+        )
+
+        symbol_spec = next(
+            s for s in MCP_COMMAND_SPECS if s.flag_name == "symbol_lineage"
+        )
+
+        class _Args:
+            symbol_lineage = "   "
+
+        captured: list[str] = []
+        ok = validate_mcp_command_args(_Args(), symbol_spec, captured.append)
+        assert ok is False
+        assert captured
+
+    def test_validator_passes_non_empty_symbol(self) -> None:
+        """The regression must not impact the happy path."""
+        from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
+            validate_mcp_command_args,
+        )
+        from tree_sitter_analyzer.cli.commands.mcp_commands import (
+            MCP_COMMAND_SPECS,
+        )
+
+        symbol_spec = next(
+            s for s in MCP_COMMAND_SPECS if s.flag_name == "symbol_lineage"
+        )
+
+        class _Args:
+            symbol_lineage = "greet"
+
+        captured: list[str] = []
+        ok = validate_mcp_command_args(_Args(), symbol_spec, captured.append)
+        assert ok is True
+        assert not captured
+
+    def test_cli_subprocess_returns_envelope_and_rc1(self, tmp_path: Path) -> None:
+        """End-to-end: invoking the CLI with ``--symbol-lineage ""``
+        must produce a single-line JSON envelope on stdout with
+        ``success=False``, ``error_type="validation"``, and ``RC=1``.
+        """
+        import json as _json
+        import subprocess
+        import sys
+
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "--symbol-lineage",
+                "",
+                "--format",
+                "json",
+                "--project-root",
+                str(tmp_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert proc.returncode == 1, (
+            f"M12: empty --symbol-lineage must exit RC=1, got {proc.returncode}. "
+            f"stderr={proc.stderr!r} stdout={proc.stdout[:500]!r}"
+        )
+        # Parse first JSON line on stdout, tolerant of leading warning lines.
+        envelope = None
+        for line in proc.stdout.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("{"):
+                try:
+                    envelope = _json.loads(stripped)
+                    break
+                except _json.JSONDecodeError:
+                    continue
+        assert envelope is not None, (
+            f"M12: expected a JSON envelope on stdout. Got: {proc.stdout!r}"
+        )
+        assert envelope.get("success") is False
+        assert envelope.get("error_type") == "validation"
+        assert "agent_summary" in envelope
+        assert envelope["agent_summary"].get("verdict") == "ERROR"
+
+
+class TestM13CacheDirAllowlist:
+    """M13 (round-26 dogfood): a previous session left an orphan
+    source file (``.tree-sitter-cache/fresh_dog.py``) inside what is
+    meant to be a tool-owned metadata directory. The directory
+    accepts only ``project-index.json``, ``file_hashes.json``,
+    ``critical_nodes.json``, ``summary.toon``, ``*.db`` files, and
+    entries under ``index/`` or ``metrics/`` subdirectories.
+
+    The allowlist lives in
+    :mod:`tree_sitter_analyzer.mcp.utils.cache_paths` and is wired
+    into :class:`ProjectIndexManager` writers.
+    """
+
+    def test_allowed_files_pass(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import (
+            is_allowed_cache_path,
+        )
+
+        cache = tmp_path / ".tree-sitter-cache"
+        for name in (
+            "project-index.json",
+            "file_hashes.json",
+            "critical_nodes.json",
+            "summary.toon",
+        ):
+            assert is_allowed_cache_path(cache / name, tmp_path), (
+                f"M13: ``{name}`` must be allowed at the cache root"
+            )
+
+    def test_subdir_extensions_pass(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import (
+            is_allowed_cache_path,
+        )
+
+        cache = tmp_path / ".tree-sitter-cache"
+        assert is_allowed_cache_path(cache / "index" / "shard1.json", tmp_path)
+        assert is_allowed_cache_path(cache / "index" / "shard1.db", tmp_path)
+        assert is_allowed_cache_path(cache / "metrics" / "m.json", tmp_path)
+        assert is_allowed_cache_path(cache / "metrics" / "m.toon", tmp_path)
+
+    def test_top_level_db_allowed(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import (
+            is_allowed_cache_path,
+        )
+
+        cache = tmp_path / ".tree-sitter-cache"
+        # SQLite caches at the cache root must remain writeable.
+        assert is_allowed_cache_path(cache / "critical.db", tmp_path)
+
+    def test_orphan_source_file_rejected(self, tmp_path: Path) -> None:
+        """The specific bug — ``.tree-sitter-cache/fresh_dog.py`` —
+        must be refused by the allowlist."""
+        from tree_sitter_analyzer.mcp.utils.cache_paths import (
+            CachePathError,
+            assert_cache_path,
+            is_allowed_cache_path,
+        )
+
+        cache = tmp_path / ".tree-sitter-cache"
+        offender = cache / "fresh_dog.py"
+        assert is_allowed_cache_path(offender, tmp_path) is False
+        with pytest.raises(CachePathError):
+            assert_cache_path(offender, tmp_path)
+
+    def test_arbitrary_extension_rejected(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import (
+            is_allowed_cache_path,
+        )
+
+        cache = tmp_path / ".tree-sitter-cache"
+        for offender in (
+            cache / "stray.txt",
+            cache / "stray.log",
+            cache / "evil.sh",
+            cache / "subdir" / "foo.py",  # subdir not in allowlist
+        ):
+            assert is_allowed_cache_path(offender, tmp_path) is False, (
+                f"M13: ``{offender}`` must NOT be writable in the cache"
+            )
+
+    def test_paths_outside_cache_are_unrestricted(self, tmp_path: Path) -> None:
+        """The allowlist is policy *for the cache dir*. Files elsewhere
+        (under ``tree_sitter_analyzer/``, ``tests/``, etc.) must NOT
+        be flagged by this helper."""
+        from tree_sitter_analyzer.mcp.utils.cache_paths import (
+            is_allowed_cache_path,
+        )
+
+        assert is_allowed_cache_path(tmp_path / "src" / "foo.py", tmp_path)
+        assert is_allowed_cache_path(tmp_path / "tests" / "test_x.py", tmp_path)
+        assert is_allowed_cache_path(tmp_path / "README.md", tmp_path)
+
+    def test_project_index_save_uses_allowlist(self, tmp_path: Path) -> None:
+        """Wiring check: ``ProjectIndexManager.save`` must call into
+        the allowlist for the happy-path file too — exercise the
+        canonical write to confirm no regression."""
+        import time
+
+        from tree_sitter_analyzer.mcp.utils.project_index import (
+            ProjectIndex,
+            ProjectIndexManager,
+        )
+
+        manager = ProjectIndexManager(str(tmp_path))
+        now = time.time()
+        idx = ProjectIndex(
+            project_root=str(tmp_path),
+            created_at=now,
+            updated_at=now,
+            file_count=0,
+            language_distribution={},
+            top_level_structure=[],
+            key_files=[],
+            entry_points=[],
+            custom_notes="",
+            schema_version=ProjectIndexManager.SCHEMA_VERSION,
+            readme_excerpt="",
+            module_descriptions={},
+            critical_nodes=[],
+            module_dependency_order=[],
+        )
+        manager.save(idx)  # must not raise
+        assert (tmp_path / ".tree-sitter-cache" / "project-index.json").exists()
+
+
+class TestM15AstCacheSyncConsidered:
+    """M15 (round-26 dogfood): J8 renamed ``action`` → ``considered``
+    on per-file rows inside ``changes.new[i]`` but the *top-level*
+    sync response only exposed ``scanned`` — agents reading
+    ``d["considered"]`` saw ``None``. The fix surfaces
+    ``considered`` at the response root as an alias for ``scanned``
+    so the J8 vocabulary is consistent everywhere.
+    """
+
+    @pytest.fixture
+    def sync_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "a.py").write_text("def f(): return 1\n", encoding="utf-8")
+        (tmp_path / "b.py").write_text("def g(): return 2\n", encoding="utf-8")
+        return tmp_path
+
+    def test_sync_response_exposes_considered_and_scanned(
+        self, sync_project: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(sync_project))
+        result = _run(tool.execute({"mode": "sync"}))
+        assert result.get("success") is True
+        assert "scanned" in result, (
+            f"M15: ``scanned`` must remain (back-compat). Keys: {sorted(result.keys())}"
+        )
+        assert "considered" in result, (
+            f"M15: ``considered`` must be exposed at top level (J8 "
+            f"vocabulary parity). Keys: {sorted(result.keys())}"
+        )
+        assert result["considered"] == result["scanned"], (
+            f"M15: ``considered`` and ``scanned`` must agree as aliases. "
+            f"Got considered={result['considered']!r} "
+            f"scanned={result['scanned']!r}"
+        )
+
+    def test_sync_considered_matches_scanned_files(self, sync_project: Path) -> None:
+        """The ``considered`` count must reflect the number of files
+        the sync engine considered, matching the fixture size."""
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(sync_project))
+        result = _run(tool.execute({"mode": "sync"}))
+        # At least the two source files in the fixture.
+        assert result["considered"] >= 2
+
+
+class TestEnvelopeContractSnapshot:
+    """Cross-tool envelope contract — every MCP tool's ``execute()``
+    output must carry these keys when ``success=True``.
+
+    Round-26 dogfood observation: the recurring root cause behind a
+    long list of one-off findings (J5/J7/J11/K2/K5/K12/etc.) is
+    "envelope drift" — ``verdict`` / ``summary_line`` / ``language`` /
+    list keys landing in different places per tool. This snapshot
+    asserts the minimum invariants in *one* place so the next drift
+    fails loudly instead of trickling into agent prompts.
+
+    Coverage: 13 representative tools across all major categories
+    (single-file analysis, project-wide analysis, search, graph,
+    cache, route detection, lineage, change-impact).
+
+    Known drift (xfail until follow-up round):
+
+    - **SafeToEditTool** — no ``summary_line`` at top level; only in
+      ``agent_summary``. (As of round-26 the tool emits ``verdict``
+      and ``recommendation`` at top level but skips the canonical
+      ``summary_line`` mirror.)
+    - **RouteDetectorTool / ProjectHealthTool / ProjectOverviewTool** —
+      ``agent_summary`` is populated but missing the ``verdict`` key.
+      Those tools surface their "headline" via ``risk`` /
+      ``next_step`` instead. Future round should normalise.
+
+    The two-test split below ensures:
+
+    - ``test_canonical_envelope_passing_tools`` is a hard gate (must
+      pass every CI run; covers 8 tools that already conform).
+    - ``test_canonical_envelope_full_snapshot`` is the full
+      cross-tool snapshot — currently ``xfail(strict=False)`` because
+      of the known drift listed above. When that drift is fixed it
+      will flip to passing automatically and ``strict=True`` can be
+      set so further regressions fail loudly.
+    """
+
+    REQUIRED_KEYS = frozenset({"success", "summary_line", "agent_summary"})
+    REQUIRED_AGENT_SUMMARY_KEYS = frozenset({"summary_line", "verdict"})
+
+    # Tools currently failing the envelope snapshot — listed here so
+    # the passing-subset test still catches any *new* drift among the
+    # canonical tools. Add an entry only after confirming the drift is
+    # known and tracked.
+    KNOWN_DRIFT: frozenset[str] = frozenset(
+        {
+            "SafeToEditTool",  # missing top-level summary_line
+            "RouteDetectorTool",  # missing agent_summary.verdict
+            "ProjectHealthTool",  # missing agent_summary.verdict
+            "ProjectOverviewTool",  # missing agent_summary.verdict
+        }
+    )
+
+    @pytest.fixture
+    def envelope_project(self, tmp_path: Path) -> Path:
+        """A project with one Python file every tool can analyse."""
+        (tmp_path / "sample.py").write_text(
+            "def greet(name: str) -> str:\n"
+            "    return f'hello {name}'\n"
+            "\n"
+            "class Greeter:\n"
+            "    def hello(self) -> str:\n"
+            "        return greet('world')\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.fixture
+    def tool_cases(self, envelope_project: Path):  # type: ignore[no-untyped-def]
+        """Each entry: (label, instantiated tool, execute args)."""
+        sample = "sample.py"
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
+            AnalyzeScaleTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+        from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
+            CodeGraphCallTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
+            ChangeImpactTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+        from tree_sitter_analyzer.mcp.tools.modification_guard_tool import (
+            ModificationGuardTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.project_health_tool import (
+            ProjectHealthTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            RouteDetectorTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+        from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
+            SmartContextTool,
+        )
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            TraceImpactTool,
+        )
+
+        root = str(envelope_project)
+        return [
+            ("AnalyzeScaleTool", AnalyzeScaleTool(root), {"file_path": sample}),
+            ("FileHealthTool", FileHealthTool(root), {"file_path": sample}),
+            ("CodePatternsTool", CodePatternsTool(root), {"file_path": sample}),
+            ("SafeToEditTool", SafeToEditTool(root), {"file_path": sample}),
+            ("SmartContextTool", SmartContextTool(root), {"file_path": sample}),
+            ("ChangeImpactTool", ChangeImpactTool(root), {"mode": "diff"}),
+            (
+                "ModificationGuardTool",
+                ModificationGuardTool(root),
+                # The schema accepts ``symbol`` + ``modification_type``;
+                # ``file_path`` is optional and improves accuracy.
+                {
+                    "symbol": "greet",
+                    "modification_type": "refactor",
+                    "file_path": sample,
+                },
+            ),
+            ("AstCacheTool", ASTCacheTool(root), {"mode": "stats"}),
+            ("CallGraphTool", CodeGraphCallTool(root), {"mode": "summary"}),
+            ("RouteDetectorTool", RouteDetectorTool(root), {"mode": "summary"}),
+            ("TraceImpactTool", TraceImpactTool(root), {"symbol": "greet"}),
+            ("ProjectHealthTool", ProjectHealthTool(root), {}),
+            ("ProjectOverviewTool", ProjectOverviewTool(root), {}),
+        ]
+
+    def _collect_drift(self, tool_cases) -> list[str]:  # type: ignore[no-untyped-def]
+        drift: list[str] = []
+        for name, tool, args in tool_cases:
+            try:
+                result = _run(tool.execute(args))
+            except Exception as exc:  # noqa: BLE001
+                drift.append(f"{name}: execute() raised {type(exc).__name__}: {exc!r}")
+                continue
+
+            if not isinstance(result, dict):
+                drift.append(
+                    f"{name}: execute() must return a dict, got {type(result).__name__}"
+                )
+                continue
+
+            missing = self.REQUIRED_KEYS - set(result.keys())
+            if missing:
+                drift.append(
+                    f"{name}: top-level missing keys {sorted(missing)} — "
+                    f"got {sorted(result.keys())[:15]}"
+                )
+                continue
+
+            agent = result.get("agent_summary")
+            if not isinstance(agent, dict):
+                drift.append(
+                    f"{name}: agent_summary must be a dict, got {type(agent).__name__}"
+                )
+                continue
+
+            agent_missing = self.REQUIRED_AGENT_SUMMARY_KEYS - set(agent.keys())
+            if agent_missing:
+                drift.append(
+                    f"{name}: agent_summary missing {sorted(agent_missing)} — "
+                    f"got {sorted(agent.keys())}"
+                )
+                continue
+
+            # Verdict consistency: when both top-level and agent_summary
+            # carry ``verdict``, they must agree.
+            top_verdict = result.get("verdict")
+            agent_verdict = agent.get("verdict")
+            if top_verdict and agent_verdict and top_verdict != agent_verdict:
+                drift.append(
+                    f"{name}: top.verdict={top_verdict!r} != "
+                    f"agent.verdict={agent_verdict!r}"
+                )
+        return drift
+
+    def test_canonical_envelope_passing_tools(self, tool_cases) -> None:  # type: ignore[no-untyped-def]
+        """Hard gate: tools NOT in :attr:`KNOWN_DRIFT` must emit the
+        canonical envelope today. Any *new* drift among them is caught
+        immediately. Update :attr:`KNOWN_DRIFT` only after filing a
+        follow-up ticket.
+        """
+        filtered = [(n, t, a) for (n, t, a) in tool_cases if n not in self.KNOWN_DRIFT]
+        drift = self._collect_drift(filtered)
+        assert not drift, (
+            "Envelope contract drift detected among canonical-envelope tools "
+            "(these were passing as of round-26 and must keep passing):\n  - "
+            + "\n  - ".join(drift)
+        )
+
+    @pytest.mark.xfail(
+        strict=False,
+        reason=(
+            "Known envelope drift in SafeToEditTool / RouteDetectorTool / "
+            "ProjectHealthTool / ProjectOverviewTool — see "
+            "TestEnvelopeContractSnapshot docstring. Future round will "
+            "normalise these; this xfail flips to PASS automatically when "
+            "they do, at which point ``strict=True`` can be set."
+        ),
+    )
+    def test_canonical_envelope_full_snapshot(self, tool_cases) -> None:  # type: ignore[no-untyped-def]
+        """Full cross-tool snapshot — expected to fail until the known
+        drift in :attr:`KNOWN_DRIFT` is fixed in a follow-up round.
+        Uses ``xfail(strict=False)`` so a future fix doesn't break CI;
+        once every tool conforms, flip to ``strict=True``."""
+        drift = self._collect_drift(tool_cases)
+        assert not drift, (
+            "Envelope contract drift detected across MCP tools:\n  - "
+            + "\n  - ".join(drift)
+        )
+
+
+# ============================================================================
+# M3 — syntax-validity gate across code_patterns / file_health / safe_to_edit
+# ============================================================================
+
+
+class TestM3SyntaxErrorDetection:
+    """M3 (round-26 dogfood): three detection tools — code_patterns,
+    file_health, safe_to_edit — used to grade a syntactically broken
+    Python file (``def broken(:``) as ``SAFE`` / ``A`` / ``safe``.
+    tree-sitter is permissive, so the underlying tree is still built
+    (just sprinkled with ``ERROR`` nodes), and every downstream
+    detector ran against the garbled tree and produced a clean
+    bill-of-health envelope. An agent reading that would happily
+    "proceed with planned change" on a broken file.
+
+    Fix: all three tools share the same syntax-validity gate
+    (``utils.parse_validity.is_file_parse_broken``) and emit the same
+    short-circuit envelope:
+
+    * ``signal == "syntax_error"``
+    * ``verdict == "ERROR"`` (top-level AND in ``agent_summary``)
+    * ``agent_summary.next_step`` mentions parse / syntax
+
+    Cross-tool consistency is the whole point — an agent that branches
+    on either field should get the same answer from every tool.
+    """
+
+    @pytest.fixture
+    def broken_python_project(self, tmp_path: Path) -> Path:
+        """Project with a single .py file that fails to parse."""
+        (tmp_path / "broken.py").write_text("def broken(:", encoding="utf-8")
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        "tool_name",
+        ["code_patterns", "file_health", "safe_to_edit"],
+    )
+    def test_syntax_error_short_circuit_envelope(
+        self, broken_python_project: Path, tool_name: str
+    ) -> None:
+        """Each of the three syntax-gated tools emits the same envelope
+        when handed a broken file."""
+        if tool_name == "code_patterns":
+            from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+                CodePatternsTool,
+            )
+
+            tool: Any = CodePatternsTool(str(broken_python_project))
+            args: dict[str, Any] = {
+                "file_path": "broken.py",
+                "output_format": "json",
+            }
+        elif tool_name == "file_health":
+            from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+            tool = FileHealthTool(str(broken_python_project))
+            args = {"file_path": "broken.py", "output_format": "json"}
+        else:
+            from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import (
+                SafeToEditTool,
+            )
+
+            tool = SafeToEditTool(str(broken_python_project))
+            args = {"file_path": "broken.py", "output_format": "json"}
+
+        result = _run(tool.execute(args))
+
+        # Same signal across all three tools.
+        assert result.get("signal") == "syntax_error", (
+            f"M3: {tool_name} must emit signal='syntax_error' on a "
+            f"broken file — got signal={result.get('signal')!r}"
+        )
+        # Top-level verdict must be ERROR (not SAFE).
+        assert result.get("verdict") == "ERROR", (
+            f"M3: {tool_name} must emit top-level verdict='ERROR' on a "
+            f"broken file — got verdict={result.get('verdict')!r}"
+        )
+        # agent_summary.verdict must also be ERROR (cross-tool readers
+        # often hit agent_summary first).
+        agent_verdict = result.get("agent_summary", {}).get("verdict")
+        assert agent_verdict == "ERROR", (
+            f"M3: {tool_name} agent_summary.verdict must be 'ERROR' "
+            f"on a broken file — got {agent_verdict!r}"
+        )
+        # next_step must mention parse/syntax so the agent knows what
+        # is actually wrong.
+        next_step = result.get("agent_summary", {}).get("next_step", "")
+        assert "parse" in next_step.lower() or "syntax" in next_step.lower(), (
+            f"M3: {tool_name} agent_summary.next_step must mention "
+            f"parse/syntax — got {next_step!r}"
+        )
+
+    def test_code_patterns_verdict_not_safe(self, broken_python_project: Path) -> None:
+        """code_patterns must not return verdict=SAFE on a broken file."""
+        from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
+            CodePatternsTool,
+        )
+
+        result = _run(
+            CodePatternsTool(str(broken_python_project)).execute(
+                {"file_path": "broken.py", "output_format": "json"}
+            )
+        )
+        assert result.get("verdict") != "SAFE", (
+            "M3: code_patterns must NOT return SAFE on a broken file"
+        )
+
+    def test_file_health_grade_not_letter(self, broken_python_project: Path) -> None:
+        """file_health must not assign a letter grade on a broken file."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        result = _run(
+            FileHealthTool(str(broken_python_project)).execute(
+                {"file_path": "broken.py", "output_format": "json"}
+            )
+        )
+        grade = result.get("grade")
+        assert grade not in ("A", "B", "C", "D", "F"), (
+            f"M3: file_health must NOT assign a letter grade on a "
+            f"broken file — got grade={grade!r}"
+        )
+
+    def test_safe_to_edit_risk_not_safe(self, broken_python_project: Path) -> None:
+        """safe_to_edit must not return risk=safe on a broken file."""
+        from tree_sitter_analyzer.mcp.tools.safe_to_edit_tool import SafeToEditTool
+
+        result = _run(
+            SafeToEditTool(str(broken_python_project)).execute(
+                {"file_path": "broken.py", "output_format": "json"}
+            )
+        )
+        risk_level = result.get("risk_level")
+        assert risk_level != "safe", (
+            f"M3: safe_to_edit must NOT return risk_level='safe' on a "
+            f"broken file — got risk_level={risk_level!r}"
+        )
+        agent_risk = result.get("agent_summary", {}).get("risk")
+        assert agent_risk != "low", (
+            f"M3: safe_to_edit agent_summary.risk must be high on a "
+            f"broken file — got {agent_risk!r}"
+        )
+
+    def test_clean_python_still_parses(self, tmp_path: Path) -> None:
+        """Confirm the gate is gated: a clean Python file must reach
+        the normal scoring path (no signal=syntax_error)."""
+        (tmp_path / "ok.py").write_text(
+            "def greet(name: str) -> str:\n    return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        result = _run(
+            FileHealthTool(str(tmp_path)).execute(
+                {"file_path": "ok.py", "output_format": "json"}
+            )
+        )
+        # Should NOT short-circuit on a clean file.
+        assert result.get("signal") != "syntax_error", (
+            "M3: a clean Python file must NOT trigger the syntax-error gate"
+        )
+
+
+# ============================================================================
+# M4 — --detect-routes path validation
+# ============================================================================
+
+
+class TestM4DetectRoutesValidatesPath:
+    """M4 (round-26 dogfood): ``--detect-routes /tmp/does_not_exist.py``
+    used to silently fall through to a project-root scan and return
+    ``total_routes=0`` — an agent reads that as "the file you asked
+    about has no routes" when the file was never scanned. Same for
+    passing a directory.
+
+    The fix validates the positional path before invoking the tool. A
+    non-existent path or a directory now returns ``success=False,
+    error_type='validation'`` — matching the envelope shape every
+    other MCP-equivalent CLI tool already uses for validation failures.
+    """
+
+    def test_nonexistent_path_returns_validation_error(self, tmp_path: Path) -> None:
+        """A non-existent path must produce a structured validation
+        envelope, not ``success=True total_routes=0``."""
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            RouteDetectorTool,
+        )
+
+        tool = RouteDetectorTool(str(tmp_path))
+        bogus = str(tmp_path / "does_not_exist_xyz_999.py")
+        result = _run(
+            tool.execute(
+                {
+                    "mode": "file",
+                    "file_path": bogus,
+                    "output_format": "json",
+                }
+            )
+        )
+        assert result.get("success") is False, (
+            f"M4: non-existent path must return success=False — got "
+            f"success={result.get('success')!r}"
+        )
+        assert result.get("error_type") == "validation", (
+            f"M4: error_type must be 'validation' — got "
+            f"error_type={result.get('error_type')!r}"
+        )
+        error = (result.get("error") or "").lower()
+        assert "not found" in error, (
+            f"M4: error message must mention 'not found' — got "
+            f"error={result.get('error')!r}"
+        )
+
+    def test_directory_path_returns_hint(self, tmp_path: Path) -> None:
+        """A directory must surface a hint pointing at mode=all."""
+        (tmp_path / "subdir").mkdir()
+        from tree_sitter_analyzer.mcp.tools.route_detector_tool import (
+            RouteDetectorTool,
+        )
+
+        tool = RouteDetectorTool(str(tmp_path))
+        result = _run(
+            tool.execute(
+                {
+                    "mode": "file",
+                    "file_path": str(tmp_path / "subdir"),
+                    "output_format": "json",
+                }
+            )
+        )
+        assert result.get("success") is False, (
+            "M4: directory path must return success=False"
+        )
+        assert result.get("error_type") == "validation", (
+            "M4: error_type must be 'validation' for a directory"
+        )
+        error = (result.get("error") or "").lower()
+        assert "directory" in error, (
+            f"M4: directory error must mention 'directory' — got "
+            f"error={result.get('error')!r}"
+        )
+
+    def test_cli_nonexistent_positional_path(self, tmp_path: Path) -> None:
+        """End-to-end: ``--detect-routes <bogus>`` via the CLI must
+        produce the same validation envelope."""
+        import subprocess
+        import sys as _sys
+
+        proc = subprocess.run(
+            [
+                _sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "--project-root",
+                str(tmp_path),
+                "--detect-routes",
+                "/tmp/m4_does_not_exist_xyz.py",
+                "--format",
+                "json",
+            ],
+            cwd=str(tmp_path),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        # Tool emits a structured envelope and returns RC=1.
+        assert proc.returncode == 1, (
+            f"M4 CLI: bogus path must exit 1 — got rc={proc.returncode}, "
+            f"stderr={proc.stderr[:300]!r}"
+        )
+        import json as _json
+
+        try:
+            envelope = _json.loads(proc.stdout)
+        except ValueError as exc:
+            raise AssertionError(
+                f"M4 CLI: stdout was not valid JSON: {exc}; "
+                f"stdout={proc.stdout[:300]!r}"
+            ) from exc
+        assert envelope.get("success") is False, (
+            "M4 CLI: bogus path envelope must have success=False"
+        )
+        assert envelope.get("error_type") == "validation", (
+            f"M4 CLI: error_type must be 'validation' — got "
+            f"error_type={envelope.get('error_type')!r}"
+        )
+
+
+# ============================================================================
+# M11 — trace_impact NOT_FOUND for non-existent symbols
+# ============================================================================
+
+
+class TestM11TraceImpactNotFound:
+    """M11 (round-26 dogfood): trace_impact used to report
+    ``verdict=SAFE impact_verdict=NONE`` for a symbol that doesn't
+    exist anywhere in the project (typo, wrong casing). An agent
+    reading that would conclude "0 callers, safe to delete" when in
+    reality the symbol the user typed never existed.
+
+    Fix: when ripgrep returns no matches at all, the symbol has zero
+    definitions AND zero references. Surface that as
+    ``verdict=NOT_FOUND`` (NOT ``SAFE``) and ``found=false`` so the
+    agent must verify the spelling before acting. The
+    ``impact_verdict`` stays ``NONE`` because the magnitude is correct
+    — there are zero callers either way. The two axes (existence vs
+    magnitude) get their own field.
+    """
+
+    @pytest.fixture
+    def real_symbol_project(self, tmp_path: Path) -> Path:
+        """Project with one defined function — used to verify that the
+        ``NOT_FOUND`` path doesn't fire for legitimate symbols."""
+        (tmp_path / "lib.py").write_text(
+            "def real_function():\n    return 1\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_nonexistent_symbol_verdict_not_found(
+        self, real_symbol_project: Path
+    ) -> None:
+        """A symbol that doesn't exist anywhere must report
+        ``verdict=NOT_FOUND`` instead of ``SAFE``."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            TraceImpactTool,
+        )
+
+        tool = TraceImpactTool(str(real_symbol_project))
+        result = _run(tool.execute({"symbol": "TotallyFakeSymbol999"}))
+
+        assert result.get("verdict") == "NOT_FOUND", (
+            f"M11: nonexistent symbol must have verdict='NOT_FOUND' — "
+            f"got verdict={result.get('verdict')!r}"
+        )
+        assert result.get("found") is False, (
+            f"M11: nonexistent symbol must have found=False — got "
+            f"found={result.get('found')!r}"
+        )
+        # ``impact_verdict`` stays NONE — that's correct (zero callers
+        # is the magnitude, not the existence).
+        assert result.get("impact_verdict") == "NONE", (
+            f"M11: nonexistent symbol must have impact_verdict='NONE' "
+            f"— got impact_verdict={result.get('impact_verdict')!r}"
+        )
+
+    def test_nonexistent_symbol_summary_says_not_found(
+        self, real_symbol_project: Path
+    ) -> None:
+        """The summary_line must include ``not_found`` so a grep over
+        envelope text picks it up."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            TraceImpactTool,
+        )
+
+        result = _run(
+            TraceImpactTool(str(real_symbol_project)).execute(
+                {"symbol": "TotallyFakeSymbol999"}
+            )
+        )
+        summary_line = result.get("summary_line", "")
+        assert "not_found" in summary_line, (
+            f"M11: summary_line must contain 'not_found' — got "
+            f"summary_line={summary_line!r}"
+        )
+
+    def test_nonexistent_symbol_next_step_verifies_name(
+        self, real_symbol_project: Path
+    ) -> None:
+        """``agent_summary.next_step`` must direct the agent to verify
+        the symbol name (matches the symbol_lineage convention)."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            TraceImpactTool,
+        )
+
+        result = _run(
+            TraceImpactTool(str(real_symbol_project)).execute(
+                {"symbol": "TotallyFakeSymbol999"}
+            )
+        )
+        next_step = (result.get("agent_summary", {}).get("next_step") or "").lower()
+        assert "verify" in next_step, (
+            f"M11: agent_summary.next_step must mention 'verify' — got {next_step!r}"
+        )
+
+    def test_real_symbol_still_works(self, real_symbol_project: Path) -> None:
+        """A real symbol must NOT trigger NOT_FOUND — confirms the gate
+        only fires for genuinely missing symbols."""
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import (
+            TraceImpactTool,
+        )
+
+        result = _run(
+            TraceImpactTool(str(real_symbol_project)).execute(
+                {"symbol": "real_function"}
+            )
+        )
+        assert result.get("verdict") != "NOT_FOUND", (
+            "M11: a real symbol must NOT trigger NOT_FOUND verdict"
+        )
+        # ``found`` may or may not be set on the success path — but if
+        # it is, it must be truthy.
+        if "found" in result:
+            assert result.get("found") is True, (
+                "M11: a real symbol must have found=True if the field is present"
+            )
+
+
+# ============================================================================
+# M1 — GetCodeOutlineTool.execute returns the flat envelope
+# ============================================================================
+
+
+class TestM1GetCodeOutlineEnvelope:
+    """M1 (round-26 dogfood): ``GetCodeOutlineTool.execute()`` used to wrap
+    its TOON output in the MCP wire-format envelope
+    (``{"content": [{"type":"text","text":...}]}``) directly inside the
+    tool. That envelope belongs in the server adapter — wrapping it in
+    ``execute()`` meant direct callers (tests, hive-mind workers,
+    anything that bypasses ``server.py``) received unparseable output
+    whose only key was ``content``.
+
+    Contract:
+      - ``execute()`` returns the flat canonical envelope with
+        ``success`` + ``summary_line`` + ``agent_summary`` + count
+        aliases (``method_count``, ``class_count``).
+      - The fix applies to both ``output_format=json`` and the default
+        ``output_format=toon`` — TOON output now follows the canonical
+        pattern (``apply_toon_format_to_response``: structured metadata
+        at the top, ``toon_content`` blob alongside).
+    """
+
+    def test_json_output_returns_flat_envelope(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
+
+        tool = GetCodeOutlineTool(str(tiny_project))
+        result = _run(tool.execute({"file_path": "sample.py", "output_format": "json"}))
+        assert isinstance(result, dict)
+        assert result.get("success") is True, (
+            "M1: execute() must return a flat envelope with success=True"
+        )
+        for key in ("summary_line", "agent_summary", "method_count", "class_count"):
+            assert key in result, (
+                f"M1: execute() must expose ``{key}`` on the flat envelope — "
+                f"got keys={sorted(result.keys())}"
+            )
+        assert isinstance(result["summary_line"], str) and result["summary_line"], (
+            "M1: ``summary_line`` must be a non-empty string"
+        )
+        assert isinstance(result["agent_summary"], dict), (
+            "M1: ``agent_summary`` must be a dict"
+        )
+
+    def test_toon_output_returns_flat_envelope(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.get_code_outline_tool import (
+            GetCodeOutlineTool,
+        )
+
+        tool = GetCodeOutlineTool(str(tiny_project))
+        # Default output_format is "toon" — the bug specifically lived on
+        # this path. The response must still be a flat envelope; the
+        # canonical TOON shape carries structured metadata at the top
+        # level + a ``toon_content`` blob.
+        result = _run(tool.execute({"file_path": "sample.py"}))
+        assert isinstance(result, dict)
+        assert result.get("success") is True, (
+            "M1: TOON path must return a flat envelope with success=True"
+        )
+        # The legacy ``{"content": [...]}`` envelope had ``content`` as
+        # its single key — that shape is gone.
+        assert sorted(result.keys()) != ["content"], (
+            "M1: TOON path must not wrap the response in MCP wire-format"
+        )
+        for key in ("summary_line", "agent_summary", "method_count", "class_count"):
+            assert key in result, (
+                f"M1: TOON path must expose ``{key}`` on the flat envelope — "
+                f"got keys={sorted(result.keys())}"
+            )
+
+
+# ============================================================================
+# M2 — list_agent_skills returns the skills list (not just the count)
+# ============================================================================
+
+
+class TestM2AgentSkillsListExposed:
+    """M2 (round-26 dogfood): the CLI rendering pipeline injected the
+    full skills list at the CLI layer, but the MCP tool's TOON response
+    shape dropped ``skills`` and only kept ``skill_count``. MCP
+    consumers couldn't see *what* skills exist — only how many.
+
+    Contract:
+      - ``execute()`` must include ``skills: list[dict]`` whose length
+        equals ``skill_count``.
+      - Each skill dict must carry at least ``name`` + ``description`` +
+        ``skill_path`` (the read order the CLI surface provides).
+    """
+
+    def test_json_includes_skills_list(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        # The fixture project has no ``.agents/skills`` directory, so
+        # we expect an empty inventory — the contract still holds.
+        tool = AgentSkillsTool(str(tiny_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        assert "skills" in result, (
+            f"M2: JSON path must expose ``skills`` — got keys={sorted(result.keys())}"
+        )
+        assert isinstance(result["skills"], list), "M2: ``skills`` must be a list"
+        assert len(result["skills"]) == result.get("skill_count", 0), (
+            "M2: len(skills) must equal skill_count"
+        )
+
+    def test_toon_includes_skills_list(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        tool = AgentSkillsTool(str(tiny_project))
+        result = _run(tool.execute({}))  # default toon
+        assert "skills" in result, (
+            f"M2: TOON path must expose ``skills`` — got keys={sorted(result.keys())}"
+        )
+        assert isinstance(result["skills"], list), "M2: ``skills`` must be a list"
+        assert len(result["skills"]) == result.get("skill_count", 0), (
+            "M2: len(skills) must equal skill_count"
+        )
+
+    def test_skills_carry_minimum_fields(self, tmp_path: Path) -> None:
+        """Concrete check with a real skill directory."""
+        skills_dir = tmp_path / ".agents" / "skills" / "demo"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text(
+            "---\nname: demo\ndescription: use when demoing\n---\n# Demo\n\n"
+            "- [ ] acceptance criterion\n",
+            encoding="utf-8",
+        )
+
+        from tree_sitter_analyzer.mcp.tools.agent_skills_tool import AgentSkillsTool
+
+        tool = AgentSkillsTool(str(tmp_path))
+        result = _run(tool.execute({"output_format": "json"}))
+        assert result.get("skill_count", 0) >= 1
+        assert result["skills"], "M2: skills list must be populated"
+        first = result["skills"][0]
+        for key in ("name", "description", "skill_path"):
+            assert key in first, (
+                f"M2: skill dict must expose ``{key}`` — got "
+                f"keys={sorted(first.keys())}"
+            )
+
+
+# ============================================================================
+# M5 — change_impact summary_line must be non-empty on success
+# ============================================================================
+
+
+class TestM5ChangeImpactSummaryLineNonNull:
+    """M5 (round-26 dogfood): ``analyze_change_impact`` returned
+    ``summary_line=None`` at both top-level and inside ``agent_summary``
+    even on the success path with ``changed_count > 0``. F6's post-hook
+    was supposed to mirror agent_summary.summary_line -> top — but
+    change_impact never populated either surface, so the post-hook had
+    nothing to copy.
+
+    Contract: a successful run produces a non-empty ``summary_line`` at
+    both surfaces. The headline carries the canonical
+    ``change_impact changed=N risk=R pytest_required=...`` shape.
+    """
+
+    def test_success_response_has_non_empty_summary_line(
+        self, tiny_project: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+        tool = ChangeImpactTool(str(tiny_project))
+        # The fixture has no git changes, so we get the no-changes
+        # shortcut — that path also lost ``summary_line=None`` pre-M5
+        # and is the only one we can exercise hermetically.
+        result = _run(tool.execute({"output_format": "json"}))
+        top = result.get("summary_line")
+        agent = result.get("agent_summary", {}).get("summary_line")
+        assert isinstance(top, str) and top, (
+            f"M5: top-level ``summary_line`` must be non-empty — got {top!r}"
+        )
+        assert isinstance(agent, str) and agent, (
+            f"M5: agent_summary.summary_line must be non-empty — got {agent!r}"
+        )
+        assert "change_impact" in top, (
+            f"M5: summary_line must carry the ``change_impact`` token — got {top!r}"
+        )
+        assert "changed=" in top, (
+            f"M5: summary_line must carry the ``changed=N`` token — got {top!r}"
+        )
+
+    def test_verdict_mirrored_to_top_level(self, tiny_project: Path) -> None:
+        """M5 + M10: change_impact emits ``verdict`` inside ``agent_summary``
+        — the central post-hook (or ``mirror_summary_line``) propagates it
+        to the top level so chained agents see the same answer on either
+        surface."""
+        from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+        tool = ChangeImpactTool(str(tiny_project))
+        result = _run(tool.execute({"output_format": "json"}))
+        top = result.get("verdict")
+        agent = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(top, str) and top, (
+            f"M5/M10: top-level ``verdict`` must mirror agent value — "
+            f"got top={top!r} agent={agent!r}"
+        )
+        assert top == agent, (
+            f"M5/M10: top and agent verdict must agree — "
+            f"got top={top!r} agent={agent!r}"
+        )
+
+
+# ============================================================================
+# M9 — analyze_scale.agent_summary exposes ``verdict``
+# ============================================================================
+
+
+class TestM9AnalyzeScaleVerdictField:
+    """M9 (round-26 dogfood): every other tool exposes
+    ``agent_summary.verdict`` (code_patterns, safe_to_edit,
+    trace_impact, route_detector, build_project_index, ast_cache,
+    call_graph) — even if just ``"n/a"``. analyze_scale missed K12's
+    normalization sweep.
+
+    Contract: ``agent_summary.verdict`` is a non-empty string. The
+    canonical value for a measurement tool is ``"INFO"``.
+    """
+
+    def test_single_file_has_verdict_key(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+
+        tool = AnalyzeScaleTool(str(tiny_project))
+        result = _run(tool.execute({"file_path": "sample.py"}))
+        agent = result.get("agent_summary", {})
+        assert "verdict" in agent, (
+            f"M9: agent_summary must expose ``verdict`` — got keys="
+            f"{sorted(agent.keys())}"
+        )
+        verdict = agent["verdict"]
+        assert isinstance(verdict, str) and verdict, (
+            f"M9: agent_summary.verdict must be a non-empty string — got {verdict!r}"
+        )
+
+    def test_batch_metrics_has_verdict_key(self, tiny_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+
+        tool = AnalyzeScaleTool(str(tiny_project))
+        result = _run(
+            tool.execute(
+                {
+                    "file_paths": ["sample.py"],
+                    "metrics_only": True,
+                    "output_format": "json",
+                }
+            )
+        )
+        agent = result.get("agent_summary", {})
+        verdict = agent.get("verdict")
+        assert isinstance(verdict, str) and verdict, (
+            f"M9: batch path agent_summary.verdict must be a non-empty "
+            f"string — got {verdict!r}"
+        )
+
+    def test_json_file_path_has_verdict_key(self, tmp_path: Path) -> None:
+        """Non-source files (JSON config) take the early-return path; it
+        must still expose ``verdict`` to keep cross-tool parity."""
+        json_file = tmp_path / "config.json"
+        json_file.write_text('{"a": 1}\n', encoding="utf-8")
+
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import AnalyzeScaleTool
+
+        tool = AnalyzeScaleTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": "config.json"}))
+        verdict = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(verdict, str) and verdict, (
+            f"M9: JSON-fast-path agent_summary.verdict must be a "
+            f"non-empty string — got {verdict!r}"
+        )
+
+
+# ============================================================================
+# M10 — verdict mirror between top-level and agent_summary
+# ============================================================================
+
+
+class TestM10VerdictSplit:
+    """M10 (round-26 dogfood): K12's normalization goal said every tool
+    should expose ``verdict`` at both surfaces (top-level + inside
+    ``agent_summary``). Three tools split:
+
+      * safe_to_edit  — verdict at top, missing in agent_summary
+      * code_patterns — verdict in agent_summary, missing at top
+      * smart_context — verdict missing everywhere despite computing
+                        risk
+
+    Fix: the central post-hook ``ensure_canonical_success_envelope``
+    mirrors verdict in both directions whenever exactly one location is
+    populated. ``mirror_summary_line`` does the same so direct callers
+    (tests, hive-mind workers, anything that bypasses the dispatcher)
+    see the same envelope. Per-tool changes:
+      * smart_context computes a verdict from its risk vocabulary.
+      * safe_to_edit calls ``mirror_summary_line`` before returning.
+      * code_patterns calls ``mirror_summary_line`` before returning.
+
+    Contract: for every tool listed below, both
+    ``response.verdict`` and ``response.agent_summary.verdict`` are
+    non-empty strings AND they agree.
+    """
+
+    @pytest.fixture
+    def fixture_project(self, tmp_path: Path) -> Path:
+        # Use a file with a defined verdict (≥ 1 line of code, parses cleanly).
+        src = tmp_path / "sample.py"
+        src.write_text(
+            "def add(a: int, b: int) -> int:\n    return a + b\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    @pytest.mark.parametrize(
+        "tool_name,tool_factory_path",
+        [
+            (
+                "safe_to_edit",
+                "tree_sitter_analyzer.mcp.tools.safe_to_edit_tool.SafeToEditTool",
+            ),
+            (
+                "code_patterns",
+                "tree_sitter_analyzer.mcp.tools.code_patterns_tool.CodePatternsTool",
+            ),
+            (
+                "smart_context",
+                "tree_sitter_analyzer.mcp.tools.smart_context_tool.SmartContextTool",
+            ),
+        ],
+    )
+    def test_verdict_present_at_both_surfaces_and_agrees(
+        self,
+        fixture_project: Path,
+        tool_name: str,
+        tool_factory_path: str,
+    ) -> None:
+        import importlib
+
+        module_path, cls_name = tool_factory_path.rsplit(".", 1)
+        module = importlib.import_module(module_path)
+        tool_cls = getattr(module, cls_name)
+        tool = tool_cls(str(fixture_project))
+        result = _run(tool.execute({"file_path": "sample.py", "output_format": "json"}))
+        top = result.get("verdict")
+        agent = result.get("agent_summary", {}).get("verdict")
+        assert isinstance(top, str) and top, (
+            f"M10: {tool_name} top-level ``verdict`` must be a non-empty "
+            f"string — got {top!r}"
+        )
+        assert isinstance(agent, str) and agent, (
+            f"M10: {tool_name} agent_summary.verdict must be a non-empty "
+            f"string — got {agent!r}"
+        )
+        assert top == agent, (
+            f"M10: {tool_name} top and agent verdict must agree — "
+            f"got top={top!r} agent={agent!r}"
+        )
+
+
+# ============================================================================
+# M10 — central post-hook unit test (direct verdict mirror behaviour)
+# ============================================================================
+
+
+class TestM10CentralVerdictMirrorHook:
+    """Unit test for the bidirectional verdict mirror inside
+    ``ensure_canonical_success_envelope``. The behaviour table:
+
+        top         agent       -> outcome
+        ---         -----       --------
+        ""/None     "X"         top = "X"
+        "X"         ""/None     agent = "X"
+        "X"         "n/a"       agent = "X"  (treat ``n/a`` as missing)
+        ""/None     ""/None     both end up "n/a" (final default)
+        "X"         "Y"         leave both (intentional divergence)
+    """
+
+    def _envelope(self, **overrides: Any) -> dict[str, Any]:
+        # Minimum dict the post-hook accepts.
+        base: dict[str, Any] = {"success": True, "summary_line": "x: ok"}
+        base.update(overrides)
+        return base
+
+    def test_top_missing_agent_set_propagates_to_top(self) -> None:
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        result = ensure_canonical_success_envelope(
+            "x",
+            self._envelope(agent_summary={"summary_line": "x: ok", "verdict": "SAFE"}),
+        )
+        assert result["verdict"] == "SAFE"
+        assert result["agent_summary"]["verdict"] == "SAFE"
+
+    def test_top_set_agent_missing_propagates_to_agent(self) -> None:
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        result = ensure_canonical_success_envelope(
+            "x",
+            self._envelope(verdict="UNSAFE", agent_summary={"summary_line": "x: ok"}),
+        )
+        assert result["verdict"] == "UNSAFE"
+        assert result["agent_summary"]["verdict"] == "UNSAFE"
+
+    def test_top_set_agent_na_placeholder_propagates_to_agent(self) -> None:
+        """``n/a`` is treated as missing so a real value on either side
+        still mirrors over the placeholder."""
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        result = ensure_canonical_success_envelope(
+            "x",
+            self._envelope(
+                verdict="SAFE",
+                agent_summary={"summary_line": "x: ok", "verdict": "n/a"},
+            ),
+        )
+        assert result["agent_summary"]["verdict"] == "SAFE"
+        assert result["verdict"] == "SAFE"
+
+    def test_both_missing_falls_back_to_n_a(self) -> None:
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        result = ensure_canonical_success_envelope("x", self._envelope())
+        # The final default still fires.
+        assert result["agent_summary"]["verdict"] == "n/a"
+
+    def test_intentional_divergence_preserved(self) -> None:
+        """If both sides set distinct values the mirror keeps both."""
+        from tree_sitter_analyzer.mcp.server_utils.error_recovery import (
+            ensure_canonical_success_envelope,
+        )
+
+        result = ensure_canonical_success_envelope(
+            "x",
+            self._envelope(
+                verdict="SAFE",
+                agent_summary={"summary_line": "x: ok", "verdict": "REVIEW"},
+            ),
+        )
+        assert result["verdict"] == "SAFE"
+        assert result["agent_summary"]["verdict"] == "REVIEW"

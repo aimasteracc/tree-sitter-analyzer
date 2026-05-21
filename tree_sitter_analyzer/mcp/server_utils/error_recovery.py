@@ -289,6 +289,55 @@ def _normalize_echoed_file_path(response: dict[str, Any]) -> None:
                 response[key] = normalized
 
 
+def _ensure_language_echo(
+    response: dict[str, Any], arguments: dict[str, Any] | None
+) -> None:
+    """Ensure single-file responses echo ``language: <detected>`` (M14).
+
+    Round-26 dogfood found ``refactor`` and ``file_health`` returning
+    ``language: None`` on ``.ts`` files even though both apply TypeScript-
+    specific analysis internally. ``analyze_scale`` echoes the detected
+    language correctly — agents that cross-checked the two saw a
+    contradiction. We detect-and-echo here so every tool that runs on a
+    single file converges on the same lowercase language string without
+    each tool having to add its own per-call snippet.
+
+    Skip rules:
+    - response already carries a non-empty ``language`` (tool emitted it).
+    - response has no ``file_path`` echo (we have nothing to detect from).
+    - detection returns ``unknown`` — leave the key unset so callers can
+      branch on ``language is None`` without ambiguity.
+    """
+    # Tool already echoed a usable language — don't overwrite.
+    existing = response.get("language")
+    if isinstance(existing, str) and existing and existing != "unknown":
+        return
+
+    file_path_value = response.get("file_path")
+    if not isinstance(file_path_value, str) or not file_path_value:
+        # Fall back to the request argument when the tool didn't echo
+        # ``file_path`` (rare, but keeps the hook from breaking edge cases).
+        if isinstance(arguments, dict):
+            arg_value = arguments.get("file_path")
+            if isinstance(arg_value, str) and arg_value:
+                file_path_value = arg_value
+        if not isinstance(file_path_value, str) or not file_path_value:
+            return
+
+    try:
+        from ...language_detector import detect_language_from_file
+
+        detected = detect_language_from_file(file_path_value)
+    except Exception:  # nosec B110 — language detection is best-effort
+        return
+
+    if not detected or detected == "unknown":
+        # Don't write a misleading value — leave the key absent.
+        return
+
+    response["language"] = detected
+
+
 def ensure_canonical_success_envelope(
     tool_name: str,
     response: dict[str, Any],
@@ -325,6 +374,12 @@ def ensure_canonical_success_envelope(
     # confused downstream dedup/caching/display layers.
     _normalize_echoed_file_path(response)
 
+    # M14: every single-file tool should echo ``language: <detected>``
+    # so refactor / file_health / code_patterns / safe_to_edit converge
+    # on the same lowercase string as analyze_scale. Done centrally so
+    # each tool doesn't have to opt in individually.
+    _ensure_language_echo(response, arguments)
+
     agent_summary = response.get("agent_summary")
     summary_line_value = response.get("summary_line")
 
@@ -358,15 +413,71 @@ def ensure_canonical_success_envelope(
         summary_line_value = synthesized
 
     # Step 3: ensure agent_summary is at least a dict with the
-    # mirrored summary_line and a generic next_step.
+    # mirrored summary_line and a generic next_step. We intentionally
+    # do NOT default ``verdict`` here yet — the mirror step below
+    # needs to see whether the tool populated only one of the two
+    # surfaces. The default is applied AFTER the mirror so missing-on-
+    # both-sides becomes ``"n/a"`` instead of accidentally clobbering
+    # a real value the mirror would otherwise have propagated.
     if not isinstance(agent_summary, dict):
         agent_summary = {}
     agent_summary.setdefault("summary_line", summary_line_value)
     agent_summary.setdefault("next_step", "")
-    agent_summary.setdefault("verdict", "n/a")
     response["agent_summary"] = agent_summary
 
+    # Step 4 (M10, round-26 dogfood): mirror ``verdict`` between
+    # top-level and ``agent_summary`` whenever exactly one location is
+    # populated. Pre-M10 several tools split this surface:
+    #   * safe_to_edit emitted ``verdict`` at the top, never inside
+    #     ``agent_summary`` — chained agents reading from agent_summary
+    #     saw ``None``.
+    #   * code_patterns emitted ``verdict`` inside ``agent_summary``
+    #     only.
+    #   * smart_context omitted both surfaces.
+    # The canonical post-hook approach (vs per-tool fixes) closes the
+    # door on the regression class entirely — any future tool that
+    # populates one location will see the value mirrored to the other
+    # automatically. Idempotent: when both surfaces are already set we
+    # don't touch them even if they disagree (lets a tool intentionally
+    # diverge if it ever needs to).
+    _mirror_verdict(response, agent_summary)
+
+    # Final default: if neither surface set ``verdict`` (and mirror
+    # found nothing to copy), populate the agent-side with ``"n/a"`` so
+    # the envelope shape stays stable.
+    agent_summary.setdefault("verdict", "n/a")
+
     return response
+
+
+def _mirror_verdict(response: dict[str, Any], agent_summary: dict[str, Any]) -> None:
+    """Mirror ``verdict`` between top-level and ``agent_summary`` (M10).
+
+    Behaviour table::
+
+        top         agent       → outcome
+        ---         -----       --------
+        ""/None     "X"         top = "X"
+        "X"         ""/None     agent = "X"
+        "X"         "n/a"       agent = "X"  (treat ``n/a`` as missing)
+        "n/a"       "X"         top = "X"    (treat ``n/a`` as missing)
+        ""/None     ""/None     leave (caller defaults to ``n/a`` later)
+        "X"         "Y"         leave both (intentional divergence)
+    """
+    top_value = response.get("verdict")
+    agent_value = agent_summary.get("verdict")
+    # ``n/a`` is the post-hook's stable placeholder — treat it as "not
+    # really set" so a tool that emits a real verdict at one surface
+    # still mirrors over the placeholder at the other surface.
+    top_is_real = isinstance(top_value, str) and top_value and top_value != "n/a"
+    agent_is_real = (
+        isinstance(agent_value, str) and agent_value and agent_value != "n/a"
+    )
+    if top_is_real and not agent_is_real:
+        agent_summary["verdict"] = top_value
+        return
+    if agent_is_real and not top_is_real:
+        response["verdict"] = agent_value
 
 
 def ensure_canonical_error_envelope(

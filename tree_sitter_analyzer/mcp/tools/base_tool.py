@@ -36,7 +36,14 @@ def mirror_summary_line(result: dict[str, Any]) -> dict[str, Any]:
     bypass that path — so each tool layered helper mirrors at the response
     builder too.
 
-    Idempotent: tools that already set ``summary_line`` keep their value.
+    M10 (round-26): also mirror ``verdict`` in both directions whenever
+    exactly one surface is populated. The central dispatcher does this
+    too, but direct callers (tests, hive-mind workers, anything that
+    bypasses server.py) still need the symmetric envelope so they can
+    branch on ``verdict`` at either surface.
+
+    Idempotent: tools that already set ``summary_line`` / ``verdict``
+    keep their value.
     """
     agent_summary = result.get("agent_summary")
     if not isinstance(agent_summary, dict):
@@ -44,6 +51,21 @@ def mirror_summary_line(result: dict[str, Any]) -> dict[str, Any]:
     sl = agent_summary.get("summary_line")
     if isinstance(sl, str) and sl and "summary_line" not in result:
         result["summary_line"] = sl
+
+    # M10: bidirectional verdict mirror — see ``_mirror_verdict`` in
+    # ``error_recovery.py`` for the canonical behaviour table. Kept in
+    # sync here so direct callers see the same shape as MCP-routed
+    # callers.
+    top_value = result.get("verdict")
+    agent_value = agent_summary.get("verdict")
+    top_is_real = isinstance(top_value, str) and top_value and top_value != "n/a"
+    agent_is_real = (
+        isinstance(agent_value, str) and agent_value and agent_value != "n/a"
+    )
+    if top_is_real and not agent_is_real:
+        agent_summary["verdict"] = top_value
+    elif agent_is_real and not top_is_real:
+        result["verdict"] = agent_value
     return result
 
 

@@ -18,7 +18,7 @@ from ...pr_url import (
     parse_pr_url,
 )
 from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
 from .utils.change_impact_analysis import (
     ChangeImpactRequest,
     _build_change_impact_result,
@@ -171,6 +171,10 @@ class ChangeImpactTool(BaseMCPTool):
             if agent_summary_only:
                 result = build_agent_summary_only_response(result)
             result["output_format"] = output_format
+            # M5/M10: mirror summary_line + verdict between top-level and
+            # agent_summary so direct callers (tests, hive-mind workers)
+            # see the same envelope shape as MCP-routed callers.
+            result = mirror_summary_line(result)
             return apply_toon_format_to_response(result, output_format)
 
         diff_stat = _get_diff_stat(mode, self.project_root, scope_paths)
@@ -195,6 +199,10 @@ class ChangeImpactTool(BaseMCPTool):
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format
+        # M5/M10: mirror summary_line + verdict between top-level and
+        # agent_summary so direct callers see the same envelope shape as
+        # MCP-routed callers.
+        result = mirror_summary_line(result)
         return apply_toon_format_to_response(result, output_format)
 
     def _execute_pr_analysis(
@@ -258,6 +266,9 @@ class ChangeImpactTool(BaseMCPTool):
             if agent_summary_only:
                 result = build_agent_summary_only_response(result)
             result["output_format"] = output_format
+            # M5/M10: mirror summary_line + verdict between top-level and
+            # agent_summary so direct callers see the same envelope shape.
+            result = mirror_summary_line(result)
             return apply_toon_format_to_response(result, output_format)
 
         diff_stat = fetch_pr_diff_stat(parsed)
@@ -285,4 +296,7 @@ class ChangeImpactTool(BaseMCPTool):
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format
+        # M5/M10: mirror summary_line + verdict between top-level and
+        # agent_summary so direct callers see the same envelope shape.
+        result = mirror_summary_line(result)
         return apply_toon_format_to_response(result, output_format)

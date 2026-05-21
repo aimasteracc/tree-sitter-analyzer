@@ -355,6 +355,12 @@ class ProjectIndexManager:
 
     def save(self, index: ProjectIndex) -> None:
         """Persist index to disk, creating the cache directory if needed."""
+        # M13: every ``.tree-sitter-cache/`` write goes through the
+        # allowlist so an orphan source file (``fresh_dog.py`` and
+        # friends) can never land here again.
+        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
+
+        assert_cache_path(self._cache_path, self.project_root)
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with self._cache_path.open("w", encoding="utf-8") as fh:
@@ -1088,7 +1094,10 @@ class ProjectIndexManager:
             return {}
 
     def _save_file_hashes(self, hashes: dict[str, list[float]]) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
+
         hashes_path = Path(self.project_root) / self.HASHES_FILE
+        assert_cache_path(hashes_path, self.project_root)
         hashes_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with hashes_path.open("w", encoding="utf-8") as fh:
@@ -1097,7 +1106,10 @@ class ProjectIndexManager:
             logger.warning("Could not save file hashes: %s", err)
 
     def _save_toon(self, toon: str) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
+
         toon_path = Path(self.project_root) / self.TOON_FILE
+        assert_cache_path(toon_path, self.project_root)
         toon_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             toon_path.write_text(toon, encoding="utf-8")
@@ -1105,7 +1117,10 @@ class ProjectIndexManager:
             logger.warning("Could not save summary.toon: %s", err)
 
     def _save_critical_nodes(self, nodes: list[dict[str, Any]]) -> None:
+        from tree_sitter_analyzer.mcp.utils.cache_paths import assert_cache_path
+
         path = Path(self.project_root) / self.CRITICAL_FILE
+        assert_cache_path(path, self.project_root)
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             with path.open("w", encoding="utf-8") as fh:

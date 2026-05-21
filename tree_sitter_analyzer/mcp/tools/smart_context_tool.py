@@ -268,6 +268,11 @@ def _build_agent_summary(context: AgentSummaryInput) -> dict[str, Any]:
         "risk": context.risk,
         "grade": context.grade,
         "score": context.score,
+        # M10 (round-26): emit ``verdict`` using the same SAFE/CAUTION/
+        # UNSAFE vocabulary as safe_to_edit so chained tools can branch on
+        # a single key. The computed ``risk`` is canonical ("safe" /
+        # "caution" / "dangerous"); map it to the verdict spelling.
+        "verdict": _risk_to_verdict(context.risk),
         "next_step": _agent_next_step(
             file_path=context.file_path,
             grade=context.grade,
@@ -291,6 +296,23 @@ def _build_agent_summary(context: AgentSummaryInput) -> dict[str, Any]:
         "exports_count": context.export_count,
         "downstream_count": context.downstream_count,
     }
+
+
+def _risk_to_verdict(risk: str) -> str:
+    """Map smart_context's ``risk`` label to the safe_to_edit verdict vocab.
+
+    M10 (round-26): keep the spelling consistent across tools so chained
+    agents can compare ``verdict`` directly without per-tool
+    translation. ``dangerous`` → ``UNSAFE``, ``caution`` → ``CAUTION``,
+    everything else → ``SAFE`` (matches ``_risk_to_verdict`` in
+    ``safe_to_edit_helpers``).
+    """
+    risk_lower = (risk or "").lower()
+    if risk_lower in ("dangerous", "high", "unsafe"):
+        return "UNSAFE"
+    if risk_lower in ("caution", "medium"):
+        return "CAUTION"
+    return "SAFE"
 
 
 # _focused_test_command: implementation

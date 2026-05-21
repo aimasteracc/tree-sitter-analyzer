@@ -14,7 +14,8 @@ from typing import Any
 from ...health_scorer import HealthScorer
 from ...project_graph import DependencyGraph
 from ...utils import setup_logger
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, mirror_summary_line
+from .utils.parse_validity import is_file_parse_broken
 from .utils.safe_to_edit_helpers import (
     SafeToEditContext,
     is_init_file,
@@ -118,6 +119,21 @@ class SafeToEditTool(BaseMCPTool):
         if not Path(resolved).exists():
             raise ValueError(f"File not found: {file_path}")
 
+        from ..utils.format_helper import apply_toon_format_to_response
+
+        # M3 (round-26 dogfood): if tree-sitter reports any ERROR node we
+        # cannot trust the dependency graph or the health scorer — both
+        # walk the AST. Without this gate ``safe_to_edit`` graded
+        # ``def broken(:`` as ``risk=safe`` and an agent could happily
+        # proceed with "planned changes" against a broken file. The
+        # short-circuit envelope keeps the same shape as the success
+        # path (file_path / agent_summary / output_format) but pins
+        # ``risk=high`` + ``verdict=ERROR`` + ``signal=syntax_error``.
+        syntax_response = _syntax_error_response(resolved, file_path, edit_type)
+        if syntax_response is not None:
+            syntax_response["output_format"] = output_format
+            return apply_toon_format_to_response(syntax_response, output_format)
+
         result = _build_safe_to_edit_result(
             SafeToEditContext(
                 file_path=file_path,
@@ -132,9 +148,95 @@ class SafeToEditTool(BaseMCPTool):
         # parity without re-reading their own call site.
         result["output_format"] = output_format
 
-        from ..utils.format_helper import apply_toon_format_to_response
+        # M14 (round-26): also echo ``language`` on the success path.
+        # The syntax-error short-circuit above already echoes it; the
+        # success path used to only echo on the dispatcher-routed
+        # path, leaving CLI / direct callers with ``language=None``.
+        if "language" not in result:
+            from ...language_detector import detect_language_from_file
+
+            try:
+                detected = detect_language_from_file(
+                    resolved, project_root=self.project_root
+                )
+            except Exception:  # nosec B110 — language detection best-effort
+                detected = "unknown"
+            if detected and detected != "unknown":
+                result["language"] = detected
+
+        # M10 (round-26): mirror top-level ``verdict`` into
+        # ``agent_summary.verdict`` so chained agents see the same answer
+        # at both surfaces. safe_to_edit historically only set top-level
+        # ``verdict`` (SAFE / CAUTION / UNSAFE); ``mirror_summary_line``
+        # now propagates it into ``agent_summary``.
+        result = mirror_summary_line(result)
 
         return apply_toon_format_to_response(result, output_format)
+
+
+def _syntax_error_response(
+    resolved: str,
+    file_path: str,
+    edit_type: str,
+) -> dict[str, Any] | None:
+    """M3 (round-26): short-circuit when tree-sitter detected syntax errors.
+
+    Returns ``None`` when the file parses cleanly (caller continues with
+    the normal dependency + health + test-discovery walk). Otherwise
+    returns a risk envelope that matches the success-path shape (so
+    downstream consumers don't have to special-case the keys) but pins
+    ``risk=high`` and ``risk_level=dangerous`` so any agent reading
+    either field sees the same answer.
+
+    Why ``risk_level=dangerous`` not ``safe``: broken syntax means we
+    cannot enumerate dependents or score health — every downstream
+    walker is going to choke on the partial AST. ``dangerous`` is the
+    safest default: an agent must investigate the syntax error before
+    editing anything.
+    """
+    # Detect language locally — safe_to_edit doesn't otherwise know it.
+    from ...language_detector import detect_language_from_file
+
+    language = detect_language_from_file(resolved)
+    if not language or language == "unknown":
+        return None
+    if not is_file_parse_broken(resolved, language):
+        return None
+    summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
+    return {
+        "success": True,
+        "file_path": file_path,
+        "edit_type": edit_type,
+        "language": language,
+        # ``risk_level`` is the canonical safe_to_edit field (cross-tool
+        # contract). Use ``dangerous`` because broken syntax blocks the
+        # entire downstream walk.
+        "risk_level": "dangerous",
+        "risk": "dangerous",
+        "verdict": "ERROR",
+        "signal": "syntax_error",
+        # Empty downstream / test lists — we couldn't compute them on a
+        # broken tree. ``has_tests=False`` keeps the schema valid.
+        "downstream_dependents": [],
+        "dependencies": [],
+        "test_files": [],
+        "has_tests": False,
+        "pre_edit_checklist": [
+            "Fix syntax errors so the file parses cleanly.",
+            "Re-run safe_to_edit after the file parses.",
+        ],
+        "recommendation": (
+            "File fails to parse — tree-sitter reported syntax errors. "
+            "Fix syntax before editing further."
+        ),
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": ("file fails to parse — fix syntax before further analysis"),
+            "verdict": "ERROR",
+            "risk": "high",
+        },
+    }
 
 
 def _compute_risk(*args: Any, **kwargs: Any) -> tuple[str, list[dict[str, str]]]:

@@ -559,6 +559,10 @@ def create_json_file_analysis(
         "agent_summary": {
             "summary_line": summary_line,
             "next_step": "read_partial to inspect file content directly",
+            # M9: analyze_scale is a measurement tool — emit ``INFO`` so
+            # chained agents see a consistent ``verdict`` key across every
+            # tool in the suite, even for the data-file fast path.
+            "verdict": "INFO",
         },
     }
 
@@ -609,9 +613,18 @@ def build_analysis_result(
         next_step = "analyze_code_structure format=compact then extract_code_section for hotspots"
     else:
         next_step = "analyze_code_structure for full structure table"
+    # M9 (round-26 dogfood): analyze_scale missed K12's verdict
+    # normalization sweep — every other tool (code_patterns, safe_to_edit,
+    # trace_impact, route_detector, build_project_index, ast_cache,
+    # call_graph) exposes ``agent_summary.verdict`` so chained agents can
+    # branch on a single key. analyze_scale is a pure measurement tool
+    # (no safe/unsafe judgement), so the canonical placeholder is
+    # ``"INFO"`` — the response describes the file rather than ruling on
+    # it.
     agent_summary: dict[str, Any] = {
         "summary_line": summary_line,
         "next_step": next_step,
+        "verdict": "INFO",
     }
     # Build result with metrics, element summary, and structural overview
     return {

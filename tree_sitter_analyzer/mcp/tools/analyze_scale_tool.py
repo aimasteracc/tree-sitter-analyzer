@@ -432,6 +432,10 @@ class AnalyzeScaleTool(BaseMCPTool):
                 "next_step": (
                     "analyze_code_structure on the highest-line files for deeper inspection"
                 ),
+                # M9: analyze_scale is a measurement tool — emit ``INFO``
+                # so every dispatch mode (single + batch) exposes the
+                # same ``verdict`` key.
+                "verdict": "INFO",
             },
         }
         return apply_toon_format_to_response(response, output_format)

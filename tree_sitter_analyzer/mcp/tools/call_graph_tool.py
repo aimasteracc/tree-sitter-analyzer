@@ -327,10 +327,17 @@ class CodeGraphCallTool(BaseMCPTool):
             result = {"success": True, "mode": "summary", **graph.summary()}
         elif mode == "all_functions":
             funcs = graph.all_functions()
+            # M7: mode is named ``all_functions`` but the payload key was
+            # ``functions`` — agents that branched on ``r['all_functions']``
+            # saw an empty list. Emit ``all_functions`` as the canonical
+            # key matching the mode name, with ``functions`` kept as a
+            # deprecated alias pointing at the same list for back-compat
+            # with any caller pinned to the pre-M7 shape.
             result = {
                 "success": True,
                 "mode": "all_functions",
                 "count": len(funcs),
+                "all_functions": funcs,
                 "functions": funcs,
             }
         elif mode == "callers":

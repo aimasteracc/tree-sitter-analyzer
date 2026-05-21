@@ -1,6 +1,5 @@
 """Unit tests for change-impact git helpers and verification planning."""
 
-
 from tree_sitter_analyzer.mcp.tools.utils import (
     change_impact_analysis as change_impact_tool,
 )
@@ -338,6 +337,8 @@ def test_no_changes_result_keeps_agent_scope_signal():
         ["tree_sitter_analyzer/mcp/tools"],
     )
 
+    # M5 (round-26): the no-changes shortcut also populates ``summary_line``
+    # at both surfaces so chained tools see a stable headline.
     assert result["agent_summary"] == {
         "risk": "none",
         "scope": "scoped",
@@ -347,6 +348,7 @@ def test_no_changes_result_keeps_agent_scope_signal():
         "next_step": "No changes detected; no verification needed.",
         "verification_command": "",
         "stop_condition": "Working tree remains unchanged for the selected mode and scope.",
+        "summary_line": "change_impact changed=0 risk=none pytest_required=False",
     }
 
 

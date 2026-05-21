@@ -51,6 +51,9 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
     # Pol3 (round-21): ``preview_limit`` + ``preview_truncated`` surface
     # whenever ``changed_preview`` is present so chained agents can tell
     # they have the full list.
+    # M5 (round-26): change_impact now populates ``summary_line`` on the
+    # agent_summary surface too, so the post-hook can mirror it to the
+    # top level. Pre-M5 both surfaces returned ``summary_line=None``.
     assert result["agent_summary"] == {
         "risk": "unknown",
         "scope": "workspace",
@@ -65,6 +68,7 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
         "preview_limit": 5,
         "preview_truncated": False,
         "verdict": "REVIEW",
+        "summary_line": "change_impact changed=1 risk=unknown pytest_required=False",
     }
 
 

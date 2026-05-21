@@ -93,18 +93,59 @@ def _build_dependency_tool_args(args: Any, output_format: str) -> dict[str, Any]
 
 
 def _build_detect_routes_tool_args(args: Any, output_format: str) -> dict[str, Any]:
-    """Build tool args for --detect-routes, omitting empty optional keys."""
+    """Build tool args for --detect-routes, omitting empty optional keys.
+
+    M4 (round-26 dogfood): when the user passes a positional path to
+    ``--detect-routes`` (e.g. ``tree-sitter-analyzer --detect-routes
+    /tmp/file.py``), the path used to be silently dropped. The tool would
+    scan the project root and report ``total_routes=0`` regardless of the
+    nonsense path — agents read this as "the file you asked about has no
+    routes" when in reality the file was never scanned.
+
+    Now we treat a positional path as an implicit ``--detect-routes-file``
+    *only when* the path exists and is a file. A non-existent path raises
+    ``ValueError`` so the dispatcher's error envelope fires (matching
+    ``--file-health`` / ``--code-patterns`` / ``--safe-to-edit``). A
+    directory raises ``ValueError`` with a hint pointing at
+    ``--detect-routes-mode all`` or ``--roots`` for project-wide scans.
+    """
+    import os as _os
+
+    mode = getattr(args, "detect_routes_mode", "summary") or "summary"
+    framework = getattr(args, "detect_routes_framework", "all") or "all"
     tool_args: dict[str, Any] = {
-        "mode": getattr(args, "detect_routes_mode", "summary") or "summary",
-        "framework": getattr(args, "detect_routes_framework", "all") or "all",
+        "mode": mode,
+        "framework": framework,
         "output_format": output_format,
     }
     url_pattern = getattr(args, "detect_routes_url", None)
     if url_pattern:
         tool_args["url_pattern"] = url_pattern
     file_path = getattr(args, "detect_routes_file", None)
-    if file_path:
-        tool_args["file_path"] = file_path
+    positional_path = getattr(args, "file_path", None)
+
+    # If the user passed an explicit ``--detect-routes-file`` we honour
+    # that as before. Otherwise, treat the positional ``file_path`` as
+    # an implicit file argument — but validate it instead of silently
+    # falling through to a project-root scan.
+    candidate = file_path if file_path else positional_path
+    if candidate:
+        if not _os.path.exists(candidate):
+            raise ValueError(f"file not found: {candidate}")
+        if _os.path.isdir(candidate):
+            raise ValueError(
+                f"path is a directory: {candidate} — use "
+                "--detect-routes-mode all for a project-wide scan, "
+                "or pass an individual file"
+            )
+        if not _os.path.isfile(candidate):
+            raise ValueError(f"not a regular file: {candidate}")
+        tool_args["file_path"] = candidate
+        # Auto-promote to ``mode=file`` when the user supplied a file
+        # path but left ``--detect-routes-mode`` at the default. Keeps
+        # the experience consistent with ``--file-health <path>``.
+        if mode == "summary":
+            tool_args["mode"] = "file"
     return tool_args
 
 
@@ -266,6 +307,14 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         flag_name="symbol_lineage",
         tool_attr="SymbolLineageTool",
         label="Symbol lineage and impact preview",
+        # M12: ``--symbol-lineage SYMBOL`` is a value-bearing flag —
+        # treat ``--symbol-lineage ""`` as selected (not "no command")
+        # so the dispatcher emits a canonical validation envelope
+        # instead of falling through to the file-analysis crash path.
+        value_arg_name="symbol_lineage",
+        required_value_error=(
+            "--symbol-lineage requires a non-empty symbol name (got empty string)"
+        ),
         build_tool_args=lambda args, output_format: {
             "symbol": getattr(args, "symbol_lineage", "") or "",
             "max_depth": getattr(args, "max_depth", 3),
@@ -422,14 +471,23 @@ def _run_tool(
     args: Any,
     spec: McpCommandSpec,
     tool_cls: Callable[..., Any],
-    tool_args: Mapping[str, Any],
+    tool_args: Mapping[str, Any] | None,
     output_json_fn: Callable[[dict[str, Any]], None],
     output_error_fn: Callable[[str], None],
     output_format_fn: Callable[[], str],
 ) -> int:
-    """Helper: instantiate tool, run execute(), print output."""
+    """Helper: instantiate tool, run execute(), print output.
+
+    ``tool_args=None`` defers argument construction to inside the
+    ``try``/``except`` below so that a ``ValueError`` raised by the
+    spec's ``build_tool_args`` callback (e.g. M4 path-validation in
+    ``_build_detect_routes_tool_args``) is converted into a structured
+    error envelope rather than bubbling out as an uncaught traceback.
+    """
     output_format = output_format_fn()
     try:
+        if tool_args is None:
+            tool_args = build_mcp_tool_args(args, spec, output_format)
         project_root = getattr(args, "project_root", None) or os.getcwd()
         tool = tool_cls(project_root=project_root)
         result: dict[str, Any] = asyncio.run(tool.execute(dict(tool_args)))
@@ -555,11 +613,15 @@ def handle_mcp_commands(
     if not validate_mcp_command_args(args, spec, validate_sink):
         return 1
 
+    # M4 (round-26): pass ``tool_args=None`` so any ``ValueError`` raised
+    # inside ``spec.build_tool_args`` (e.g. detect_routes path validation)
+    # is caught by the ``_run_tool`` error envelope rather than escaping
+    # as an uncaught traceback.
     return _run_tool(
         args,
         spec,
         _get_tool_class(spec.tool_attr),
-        build_mcp_tool_args(args, spec, output_format),
+        None,
         output_json_fn,
         output_error_fn,
         output_format_fn,

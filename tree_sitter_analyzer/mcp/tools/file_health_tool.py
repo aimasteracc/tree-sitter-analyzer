@@ -22,6 +22,7 @@ from .utils.file_health_response import (
     build_file_health_result,
 )
 from .utils.file_health_smells import detect_code_smells
+from .utils.parse_validity import is_file_parse_broken
 
 logger = setup_logger(__name__)
 
@@ -168,6 +169,18 @@ class FileHealthTool(BaseMCPTool):
                 _binary_file_response(file_path, resolved), output_format
             )
 
+        # M3 (round-26 dogfood): tree-sitter is permissive — it builds a
+        # partial tree for ``def broken(:`` and the scorer happily grades
+        # the empty dimensions as ``A`` / 100. An agent reading that
+        # envelope would conclude the file is healthy. Short-circuit when
+        # the parser reports ANY ``ERROR`` node so the agent sees the
+        # same ``signal=syntax_error verdict=ERROR`` it gets from
+        # code_patterns and safe_to_edit. Non-code / binary branches
+        # have already returned by this point.
+        syntax_response = _syntax_error_response(resolved, file_path, language)
+        if syntax_response is not None:
+            return apply_toon_format_to_response(syntax_response, output_format)
+
         scorer = self._get_scorer()
         health = scorer.score_file(resolved)
 
@@ -180,6 +193,15 @@ class FileHealthTool(BaseMCPTool):
             resolved,
             analysis,
         )
+
+        # M14 (round-26): echo the detected language so cross-tool
+        # consumers see the same lowercase string ``analyze_scale``
+        # already emits. Direct ``tool.execute()`` callers (CLI bridge,
+        # tests) bypass the dispatcher post-hook, so we set it here
+        # too. The central ``ensure_canonical_success_envelope`` hook is
+        # idempotent and only fills the key when missing.
+        if language and "language" not in result:
+            result["language"] = language
 
         return apply_toon_format_to_response(result, output_format)
 
@@ -227,6 +249,8 @@ def _empty_file_response(resolved: str, file_path: str) -> dict[str, Any] | None
         "signal": "empty_file",
         "recommendation": "File is empty; nothing to analyze.",
         "code_smells": [],
+        # M8: alias of ``code_smells`` — see _build_base_health_result.
+        "smells": [],
         "smell_count": 0,
         "dimensions": {},
         "agent_summary": {
@@ -267,6 +291,8 @@ def _non_code_file_response(resolved: str, file_path: str) -> dict[str, Any] | N
         "signal": "non_code_file",
         "recommendation": ("Markdown/config files are not code-quality scored."),
         "code_smells": [],
+        # M8: alias of ``code_smells`` — see _build_base_health_result.
+        "smells": [],
         "smell_count": 0,
         "dimensions": {},
         "summary_line": summary_line,
@@ -326,5 +352,60 @@ def _binary_file_response(file_path: str, resolved: str) -> dict[str, Any]:
             "summary_line": f"{file_path} appears to be binary/non-source",
             "next_step": "skip",
             "verdict": "ERROR",
+        },
+    }
+
+
+def _syntax_error_response(
+    resolved: str,
+    file_path: str,
+    language: str | None,
+) -> dict[str, Any] | None:
+    """M3 (round-26): short-circuit when tree-sitter detected syntax errors.
+
+    Returns ``None`` when the file parses cleanly. Otherwise returns a
+    grade-style envelope keyed to ``signal=syntax_error verdict=ERROR``
+    so cross-tool consumers (code_patterns, safe_to_edit) see the same
+    signal. The envelope mirrors the empty / non-code branches in
+    structure: ``grade=N/A``, no dimensions, no smells. The big
+    difference is the verdict: ``ERROR`` instead of ``N/A`` because the
+    file *should* parse but doesn't.
+    """
+    if not language or language == "unknown":
+        return None
+    if not is_file_parse_broken(resolved, language):
+        return None
+    summary_line = f"{file_path} signal=syntax_error verdict=ERROR"
+    return {
+        "success": True,
+        "file_path": file_path,
+        "language": language,
+        # M3: keep the grade slot but mark it ``N/A`` — the dimension
+        # scores below are meaningless on a broken tree, so we refuse
+        # to assign a letter grade. The verdict is the load-bearing
+        # field for cross-tool comparison.
+        "grade": "N/A",
+        "verdict": "ERROR",
+        "signal": "syntax_error",
+        "recommendation": (
+            "File fails to parse — tree-sitter reported syntax errors. "
+            "Fix syntax before further analysis."
+        ),
+        "code_smells": [],
+        "smell_count": 0,
+        "dimensions": {},
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": ("file fails to parse — fix syntax before further analysis"),
+            "verdict": "ERROR",
+            "risk": "high",
+        },
+        "agent_next_action": {
+            "priority": "high",
+            "reason": "syntax error blocks analysis",
+            "mcp_command": "",
+            "cli_command": "",
+            "post_edit_commands": [],
         },
     }
