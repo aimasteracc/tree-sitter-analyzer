@@ -141,8 +141,34 @@ class UniversalAnalyzeTool(BaseMCPTool):
         return {
             "name": "analyze_code_universal",
             "description": (
-                "SMART Workflow 'Analyze' step: Universal code analysis with automatic "
-                "language detection. Supports basic, detailed, structure, and metrics modes."
+                "One-call file analyzer with automatic language detection "
+                "across every supported language (Python, Java, JS/TS, Go, "
+                "Rust, C/C++, ...). Pick the depth via ``analysis_type``: "
+                "``basic`` (counts + summary), ``detailed`` (adds element "
+                "lists), ``structure`` (full classes/methods/fields/imports "
+                "with line ranges, complexity, modifiers, annotations), or "
+                "``metrics`` (numeric LOC / complexity only). Returns the "
+                "canonical ``{success, summary_line, agent_summary, ...}`` "
+                "envelope so an agent can branch on the same shape it sees "
+                "from every other tool.\n\n"
+                "WHEN TO USE:\n"
+                "- First touch on an unfamiliar file — get language, size, "
+                "and structure in one call\n"
+                "- SMART workflow ``Analyze`` step before edits or "
+                "refactors\n"
+                "- Producing a token-efficient summary of a file for "
+                "downstream agents\n"
+                "- Comparing metrics (LOC, complexity, element counts) "
+                "between files\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- You only need raw text by line range — use "
+                "``extract_code_section``\n"
+                "- You want a Markdown table outline — call "
+                "``analyze_code_structure`` directly\n"
+                "- You need to search by symbol name — use ``query_code``\n"
+                "- You want project-wide stats — use ``project_overview`` "
+                "or ``analyze_scale``"
             ),
             "inputSchema": _TOOL_SCHEMA,
         }

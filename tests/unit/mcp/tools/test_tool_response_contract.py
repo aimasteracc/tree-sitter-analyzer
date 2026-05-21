@@ -10026,23 +10026,19 @@ class TestT3CLIMCPParityMatrix:
 # DO NOT add new entries here for new tools — instead, write a better
 # description.
 _DESCRIPTION_QUALITY_EXEMPT_BELOW_200: frozenset[str] = frozenset(
-    {
-        # agent_skills migrated out in r37m — skill-preloading detail added.
-        # analyze_code_structure migrated out in r37l — table-format detail.
-        # analyze_scale migrated out in r37j — WHEN TO USE guidance added.
-        # change_impact migrated out in r37k — post-edit blast-radius detail.
-        # file_health migrated out in r37j — WHEN TO USE / WHEN NOT TO USE.
-        # find_and_grep migrated out in r37l — two-stage filter/search detail.
-        # list_files migrated out in r37i — now has WHEN TO USE guidance.
-        # project_overview migrated out in r37l — first-call orientation.
-        # query migrated out in r37m — AST symbol search detail.
-        "read_partial",
-        # refactoring_suggestions migrated out in r37k.
-        # safe_to_edit migrated out in r37j — full pre-edit guidance.
-        # search_content migrated out in r37m — token-saving modes detail.
-        # smart_context migrated out in r37k — one-shot orientation detail.
-        "universal_analyze",
-    }
+    # r37n — RATCHET COMPLETE. Every MCP tool now has a >=200-char
+    # description with explicit WHEN TO USE / WHEN NOT TO USE guidance.
+    # Migration timeline:
+    #   r37i: list_files                          (15 → 14)
+    #   r37j: analyze_scale, file_health, safe_to_edit       (14 → 11)
+    #   r37k: change_impact, refactoring_suggestions,
+    #         smart_context                       (11 →  8)
+    #   r37l: project_overview, analyze_code_structure,
+    #         find_and_grep                       ( 8 →  5)
+    #   r37m: agent_skills, search_content, query ( 5 →  2)
+    #   r37n: read_partial, universal_analyze     ( 2 →  0)
+    # Adding a new entry here is a code-review red flag — write a proper
+    # description instead.
 )
 
 
@@ -10137,12 +10133,12 @@ class TestT7DescriptionQualityFloor:
         )
 
     def test_exemption_count_does_not_grow_silently(self):
-        """The exemption set must not exceed today's baseline (15).
+        """The exemption set is now empty — every tool meets the floor.
 
-        If you want to raise this number you must explicitly amend the test
-        with a comment justifying the regression. This catches the case
-        where a new tool is added with a too-short description AND quietly
-        added to the exemption set.
+        Raising this number is forbidden: if a new tool ships without
+        WHEN TO USE / WHEN NOT TO USE guidance the gate FAILS and that
+        author has to write a real description. Document any deliberate
+        regression here with a comment explaining why.
         """
         # Baseline established 2026-05-21 in round-37i.
         # Migration progress:
@@ -10151,7 +10147,8 @@ class TestT7DescriptionQualityFloor:
         #   11 →  8 (r37k: change_impact + refactoring_suggestions + smart_context)
         #    8 →  5 (r37l: project_overview + analyze_code_structure + find_and_grep)
         #    5 →  2 (r37m: agent_skills + search_content + query)
-        BASELINE_EXEMPT_COUNT = 2
+        #    2 →  0 (r37n: read_partial + universal_analyze) — RATCHET COMPLETE.
+        BASELINE_EXEMPT_COUNT = 0
         assert len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200) <= BASELINE_EXEMPT_COUNT, (
             f"T7: exemption set grew to {len(_DESCRIPTION_QUALITY_EXEMPT_BELOW_200)} "
             f"(baseline: {BASELINE_EXEMPT_COUNT}). New tools must meet the "

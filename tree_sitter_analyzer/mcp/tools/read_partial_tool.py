@@ -589,8 +589,32 @@ class ReadPartialTool(BaseMCPTool):
         return {
             "name": "extract_code_section",
             "description": (
-                "Read code by exact line ranges. Batch: multiple ranges/files in one call. "
-                "Prefer over built-in Read for: extracting specific functions/classes."
+                "Extract code by exact line (and optional column) ranges. "
+                "Supports a ``requests`` array so you can pull many "
+                "non-contiguous slices — even from different files — in "
+                "ONE call rather than one Read per slice. Returns the raw "
+                "text plus line metadata; pair with ``analyze_code_structure`` "
+                "or ``query_code`` first to discover the line numbers you "
+                "want, then read just those ranges instead of the whole "
+                "file.\n\n"
+                "WHEN TO USE:\n"
+                "- Reading a specific function/class body by known line "
+                "range (e.g. lines 120-180)\n"
+                "- Batch-extracting several functions across one or many "
+                "files in a single MCP round-trip\n"
+                "- Loading targeted context for an agent without paying "
+                "the token cost of an entire file\n"
+                "- Following up an outline / query result (jump straight "
+                "to the lines that matter)\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- Reading an entire small file end-to-end — the built-in "
+                "Read tool is simpler\n"
+                "- Searching for a pattern when you don't know the line "
+                "numbers — use ``search_content`` / ``find_and_grep``\n"
+                "- Getting a structural overview (classes, methods, "
+                "imports) — use ``get_code_outline`` /"
+                " ``analyze_code_structure``"
             ),
             "inputSchema": self.get_tool_schema(),
         }
