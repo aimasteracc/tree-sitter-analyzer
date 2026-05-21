@@ -488,8 +488,22 @@ class AnalyzeScaleTool(BaseMCPTool):
         return {
             "name": "check_code_scale",
             "description": (
-                "Analyze (use FIRST): file size, element counts, complexity. "
-                "Batch supported. Use before analyze_code_structure."
+                "Cheap structural metrics for a file: line count, "
+                "method/class/field/import counts, and a complexity estimate. "
+                "Always call this FIRST when sizing an unknown file — it "
+                "tells you whether the file is small enough for full analysis, "
+                "or so large you need partial_read instead. Supports batch "
+                "mode (metrics_only=true) for whole-directory scans.\n\n"
+                "WHEN TO USE:\n"
+                "- Sizing an unknown file before deeper analysis\n"
+                "- Comparing two files / detecting outliers in a project scan\n"
+                "- Picking files that warrant code_patterns / file_health\n"
+                "- Batch counting elements across many files at once\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To READ the file's content — use partial_read\n"
+                "- To get the file's symbol outline — use get_code_outline\n"
+                "- To judge code quality / smells — use file_health"
             ),
             "inputSchema": self.get_tool_schema(),
         }

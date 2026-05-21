@@ -99,9 +99,24 @@ class FileHealthTool(BaseMCPTool):
         return {
             "name": "check_file_health",
             "description": (
-                "File health A-F grade with code smells + security scan. "
-                "NOT reading code — gives risk assessment. "
-                "Returns: 7 dimension scores, smells, fix suggestions."
+                "Score a single file's health on an A-F grade across 7 "
+                "dimensions (complexity, structure, naming, comments, error "
+                "handling, security, modularity), surface code smells "
+                "(long methods, god classes, deep nesting, mutable defaults, "
+                "bare excepts, etc.), and run security pattern scans "
+                "(SQL injection, eval usage, etc.). Returns a structured "
+                "report — does NOT print the file's source code.\n\n"
+                "WHEN TO USE:\n"
+                "- Triaging a file before editing it (paired with safe_to_edit)\n"
+                "- Spot-checking quality during code review\n"
+                "- Ranking files in a refactoring queue by worst-grade-first\n"
+                "- Catching low-confidence security patterns before commit\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- To read the file's content — use partial_read\n"
+                "- To find every smell across many files — use code_patterns\n"
+                "- To assess edit safety re: dependencies — use safe_to_edit\n"
+                "- For project-wide quality grading — use project_health"
             ),
             "inputSchema": self.get_tool_schema(),
         }

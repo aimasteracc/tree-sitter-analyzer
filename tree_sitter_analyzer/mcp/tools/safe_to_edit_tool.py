@@ -84,9 +84,25 @@ class SafeToEditTool(BaseMCPTool):
         return {
             "name": "safe_to_edit",
             "description": (
-                "MUST call before editing files. Returns risk_level (safe/caution/dangerous), "
-                "downstream deps, test files, pre-edit checklist. "
-                "No built-in tool provides this."
+                "Pre-edit safety check for a single file: how many other "
+                "modules depend on it, which test files cover it, and a "
+                "concrete checklist of pre-edit verifications. Returns a "
+                "risk_level (SAFE/CAUTION/UNSAFE) plus actionable next "
+                "steps. MUST be called before editing any production-facing "
+                "file — the built-in Edit tool gives you no visibility into "
+                "downstream impact.\n\n"
+                "WHEN TO USE:\n"
+                "- Before ANY edit to a public-facing module / utility\n"
+                "- Before renaming or deleting a function (paired with "
+                "modification_guard)\n"
+                "- To know which tests must pass after the edit\n"
+                "- To check coupling before reorganising a directory\n"
+                "\n"
+                "WHEN NOT TO USE:\n"
+                "- For a private/internal helper with no external callers "
+                "(check via trace_impact first)\n"
+                "- To assess CODE QUALITY of the file — use file_health\n"
+                "- For symbol-level rename impact — use modification_guard"
             ),
             "inputSchema": self.get_tool_schema(),
         }
