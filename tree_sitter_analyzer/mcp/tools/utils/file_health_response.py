@@ -44,13 +44,17 @@ def build_file_health_result(
     # otherwise downstream cross-tool consumers see ``type: None`` and
     # think the smell category is missing.
     smells = _project_smell_type(smells)
+    # K9: compute the adjusted grade once so every consumer (agent
+    # action, optional extraction plan, base envelope) sees the same
+    # post-penalty value.
+    adjusted_total, adjusted_grade = _apply_smell_penalty(health, smells)
     action = _build_agent_next_action(
-        file_path, health.grade, health.dimensions, smells
+        file_path, adjusted_grade, health.dimensions, smells
     )
     result = _build_base_health_result(file_path, health, smells, action)
     result.update(
         _build_optional_extraction_fields(
-            file_path, health.grade, smells, resolved, analysis
+            file_path, adjusted_grade, smells, resolved, analysis
         )
     )
     # Finding 6: mirror agent_summary.summary_line to the top-level envelope
@@ -96,6 +100,12 @@ def _build_base_health_result(
     action: dict[str, Any],
 ) -> dict[str, Any]:
     """Build the common file-health response fields."""
+    # K9: certain smells signal a problem the dimension scorer can't
+    # see — a 3.5 KB single-line file has ``line_count==1`` and scores
+    # full marks on size/complexity/structure even though it's clearly
+    # unreviewable. Apply a smell-driven score adjustment here so the
+    # grade reflects what the smells already flagged.
+    adjusted_total, adjusted_grade = _apply_smell_penalty(health, smells)
     # ``verdict`` mirrors ``grade`` mapped to the safe_to_edit /
     # modification_guard vocabulary (A/B → SAFE, C → CAUTION, D/F →
     # UNSAFE). Same value, cross-tool canonical key — agents that
@@ -107,29 +117,103 @@ def _build_base_health_result(
         "D": "UNSAFE",
         "F": "UNSAFE",
     }
-    verdict = verdict_map.get(health.grade, "CAUTION")
+    verdict = verdict_map.get(adjusted_grade, "CAUTION")
     return {
         "success": True,
         "file_path": file_path,
-        "grade": health.grade,
+        "grade": adjusted_grade,
         "verdict": verdict,
         # ``total_score`` is the canonical name; ``health_score`` and
         # ``overall_score`` are documented aliases so callers that follow
         # the more common naming conventions still find the value
         # without needing to know our exact field name.
-        "total_score": health.total,
-        "health_score": health.total,
-        "overall_score": health.total,
+        "total_score": adjusted_total,
+        "health_score": adjusted_total,
+        "overall_score": adjusted_total,
         "signal": _build_signal(health.dimensions),
         "dimensions": health.dimensions,
         "code_smells": smells,
         "smell_count": len(smells),
         "recommendation": _build_recommendation(
-            health.grade, health.dimensions, smells
+            adjusted_grade, health.dimensions, smells
         ),
-        "agent_summary": _build_agent_summary(file_path, health, smells, action),
+        "agent_summary": _build_agent_summary(
+            file_path, health, smells, action, adjusted_total, adjusted_grade
+        ),
         "agent_next_action": action,
     }
+
+
+# K9: penalty table keyed on smell name. Numbers are picked so that:
+#   - ``single_line_file`` (criticality unambiguous: 3.5 KB on one line)
+#     guarantees grade ≤ B, typically dropping the score below 80.
+#   - ``long_line`` (per occurrence) docks 3 points, with a ``critical``
+#     severity adding a second 5-point penalty.
+#   - Other already-handled smells (oversized_file, deep_nesting,
+#     god_class, long_method) stay at 0 — the dimension scorer already
+#     reflects them; double-docking would distort historical grades.
+# Total penalty is bounded so a healthy file with one borderline smell
+# still grades A/B.
+_SMELL_SCORE_PENALTY: dict[str, int] = {
+    "single_line_file": 35,
+    "long_line": 3,
+}
+_SMELL_SEVERITY_PENALTY: dict[str, int] = {
+    # Additional dock when the smell carries critical severity AND
+    # belongs to one of the K9-introduced types. Other criticals already
+    # show up via dimension scoring.
+    "single_line_file": 10,
+    "long_line": 5,
+}
+_MAX_SMELL_PENALTY = 60  # never drop further than F-grade floor for these
+_GRADE_THRESHOLDS = (
+    (90, "A"),
+    (80, "B"),
+    (70, "C"),
+    (50, "D"),
+)
+
+
+def _apply_smell_penalty(
+    health: Any, smells: list[dict[str, Any]]
+) -> tuple[float, str]:
+    """Return (adjusted_total, adjusted_grade) after K9 smell penalties.
+
+    The original ``health.total`` comes from weighted dimension scores
+    that have no visibility into K9 smells (``long_line`` /
+    ``single_line_file``). We compute an additive penalty here so the
+    grade matches what the smells already say is wrong with the file.
+
+    Penalty is clipped at ``_MAX_SMELL_PENALTY`` and the final score is
+    floored at 0 to keep downstream math safe.
+    """
+    if not smells:
+        return float(health.total), health.grade
+    penalty = 0
+    for smell in smells:
+        name = smell.get("smell") or smell.get("type")
+        if not name:
+            continue
+        base = _SMELL_SCORE_PENALTY.get(name, 0)
+        if base == 0:
+            continue
+        penalty += base
+        if smell.get("severity") == "critical":
+            penalty += _SMELL_SEVERITY_PENALTY.get(name, 0)
+    if penalty == 0:
+        return float(health.total), health.grade
+    penalty = min(penalty, _MAX_SMELL_PENALTY)
+    adjusted = max(0.0, float(health.total) - penalty)
+    adjusted = round(adjusted, 1)
+    return adjusted, _grade_from_score(adjusted)
+
+
+def _grade_from_score(score: float) -> str:
+    """Mirror ``HealthScore.grade`` so adjusted scores get a fresh letter."""
+    for threshold, letter in _GRADE_THRESHOLDS:
+        if score >= threshold:
+            return letter
+    return "F"
 
 
 def _build_optional_extraction_fields(
@@ -316,22 +400,31 @@ def _build_agent_summary(
     health: Any,
     smells: list[dict[str, Any]],
     action: dict[str, Any],
+    adjusted_total: float | None = None,
+    adjusted_grade: str | None = None,
 ) -> dict[str, Any]:
-    """Build the compact first-read health decision summary for agents."""
+    """Build the compact first-read health decision summary for agents.
+
+    ``adjusted_total`` / ``adjusted_grade`` are the K9-adjusted numbers
+    when smell-driven penalties apply. They default to ``health.total``
+    / ``health.grade`` so existing call sites keep their behaviour.
+    """
     weakest_dimension, weakest_score = _weakest_dimension_score(health.dimensions)
+    score = adjusted_total if adjusted_total is not None else health.total
+    grade = adjusted_grade if adjusted_grade is not None else health.grade
     # Finding 6: include a one-line summary so the central post-hook
     # can mirror it to the top-level ``summary_line``. Agents that
     # branch on ``summary_line`` (round-11 envelope) now see a useful
     # value instead of None.
     summary_line = (
-        f"{file_path} grade={health.grade} score={health.total} "
+        f"{file_path} grade={grade} score={score} "
         f"smells={len(smells)} weakest={weakest_dimension}"
     )
     summary = {
         "summary_line": summary_line,
         "risk": action["priority"],
-        "grade": health.grade,
-        "score": health.total,
+        "grade": grade,
+        "score": score,
         "weakest_dimension": weakest_dimension,
         "weakest_score": weakest_score,
         "next_step": _health_next_step(action, smells),

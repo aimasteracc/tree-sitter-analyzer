@@ -8,7 +8,10 @@ Handles partial file reading functionality, extracting specified line ranges.
 from typing import TYPE_CHECKING, Any
 
 from ...file_handler import read_file_partial
-from ...mcp.tools.read_partial_helpers import build_agent_summary
+from ...mcp.tools.read_partial_helpers import (
+    build_agent_summary,
+    count_file_lines,
+)
 from ...output_manager import output_data, output_json, output_section
 from .base_command import BaseCommand
 
@@ -111,14 +114,34 @@ class PartialReadCommand(BaseCommand):
         end_line = getattr(self.args, "end_line", None)
         start_column = getattr(self.args, "start_column", None)
         end_column = getattr(self.args, "end_column", None)
-        lines_extracted = (
-            end_line - self.args.start_line + 1
-            if end_line
-            else len(content.splitlines())
+        # K8: count lines from the ACTUAL content. The old formula
+        # ``end_line - start_line + 1`` lied when the range was past
+        # EOF — an agent saw ``lines_extracted=N`` while ``content``
+        # was empty.
+        lines_extracted = len(content.splitlines()) if content else 0
+
+        # Detect out-of-range / partial-overlap so we can surface
+        # actionable flags instead of pretending the read succeeded.
+        file_lines = count_file_lines(self.args.file_path)
+        out_of_range = bool(
+            content == ""
+            and file_lines is not None
+            and self.args.start_line > file_lines
+        )
+        partial_range = bool(
+            file_lines is not None
+            and end_line is not None
+            and self.args.start_line <= file_lines
+            and end_line > file_lines
+        )
+        clamped_to: list[int] | None = (
+            [self.args.start_line, file_lines]
+            if partial_range and file_lines is not None
+            else None
         )
 
         # Build result data
-        result_data = {
+        result_data: dict[str, Any] = {
             "file_path": self.args.file_path,
             "range": {
                 "start_line": self.args.start_line,
@@ -128,17 +151,35 @@ class PartialReadCommand(BaseCommand):
             },
             "content": content,
             "content_length": len(content),
-            "agent_summary": build_agent_summary(
-                file_path=self.args.file_path,
-                start_line=self.args.start_line,
-                end_line=end_line,
-                start_column=start_column,
-                end_column=end_column,
-                content_length=len(content),
-                lines_extracted=lines_extracted,
-                content_format="text",
-            ),
+            "lines_extracted": lines_extracted,
         }
+        if file_lines is not None:
+            result_data["file_lines"] = file_lines
+        if out_of_range:
+            result_data["out_of_range"] = True
+        if partial_range:
+            result_data["partial_range"] = True
+            if clamped_to is not None:
+                result_data["clamped_to"] = clamped_to
+        result_data["agent_summary"] = build_agent_summary(
+            file_path=self.args.file_path,
+            start_line=self.args.start_line,
+            end_line=end_line,
+            start_column=start_column,
+            end_column=end_column,
+            content_length=len(content),
+            lines_extracted=lines_extracted,
+            content_format="text",
+            file_lines=file_lines,
+            out_of_range=out_of_range,
+            partial_range=partial_range,
+            clamped_to=clamped_to,
+        )
+        # Mirror ``summary_line`` at top level for callers that scan
+        # for the canonical envelope key.
+        summary_line = result_data["agent_summary"].get("summary_line")
+        if summary_line:
+            result_data["summary_line"] = summary_line
 
         # Build range info for header
         range_info = f"Line {self.args.start_line}"

@@ -63,37 +63,143 @@ if TYPE_CHECKING:
 # Python — Flask / FastAPI / Django
 # ---------------------------------------------------------------------------
 
+# Finding K1: Flask 2.0+ added ``@app.get('/x')`` / ``@app.post('/x')``
+# shortcut decorators that look syntactically identical to FastAPI's. We
+# disambiguate by parsing the file's imports + constructor calls:
+#
+#   - ``from flask import …`` / ``import flask`` => prefer flask
+#   - ``from fastapi import …`` / ``import fastapi`` => prefer fastapi
+#   - both present (rare): use the constructor (``Flask(__name__)`` vs
+#     ``FastAPI(...)``) to pick the winner
+#   - neither present: fall back to ``unknown`` instead of guessing
+#
+# The ``@app.route(...)`` decorator is Flask-only — FastAPI never adopted
+# that form — so ``scan_flask_decorators`` stays unconditional.
+_PY_FLASK_IMPORT_RE = re.compile(
+    r"""(?xm)
+    ^\s*
+    (?:
+        from\s+flask(?:[.\s]|$)              # from flask import ...
+      | import\s+flask(?:[.\s,]|$)            # import flask [as ...]
+    )
+    """
+)
+_PY_FASTAPI_IMPORT_RE = re.compile(
+    r"""(?xm)
+    ^\s*
+    (?:
+        from\s+fastapi(?:[.\s]|$)             # from fastapi import ...
+      | import\s+fastapi(?:[.\s,]|$)           # import fastapi [as ...]
+    )
+    """
+)
+_PY_FLASK_CONSTRUCTOR_RE = re.compile(r"\bFlask\s*\(")
+_PY_FASTAPI_CONSTRUCTOR_RE = re.compile(r"\bFastAPI\s*\(")
+
+
+def _python_app_framework(source: str) -> str:
+    """Return ``"flask"`` / ``"fastapi"`` / ``"unknown"`` for a Python source.
+
+    The classification looks at the file's own imports + constructor calls
+    to decide which framework the ``@app.<verb>()`` decorators belong to.
+    Returning ``"unknown"`` is preferable to guessing — downstream consumers
+    can filter for ``framework != "unknown"`` to drop misleading hits.
+    """
+    has_flask_import = bool(_PY_FLASK_IMPORT_RE.search(source))
+    has_fastapi_import = bool(_PY_FASTAPI_IMPORT_RE.search(source))
+
+    if has_flask_import and not has_fastapi_import:
+        return "flask"
+    if has_fastapi_import and not has_flask_import:
+        return "fastapi"
+    if has_flask_import and has_fastapi_import:
+        # Both imported (unusual) — tie-break on constructor calls.
+        flask_ctor = bool(_PY_FLASK_CONSTRUCTOR_RE.search(source))
+        fastapi_ctor = bool(_PY_FASTAPI_CONSTRUCTOR_RE.search(source))
+        if flask_ctor and not fastapi_ctor:
+            return "flask"
+        if fastapi_ctor and not flask_ctor:
+            return "fastapi"
+        # Genuinely ambiguous — prefer the framework whose constructor we
+        # *did* see, else fall back to flask (the older, more conservative
+        # choice for the dual-import edge case).
+        if flask_ctor:
+            return "flask"
+        if fastapi_ctor:
+            return "fastapi"
+        return "flask"
+    # Neither imported — caller will skip the route.
+    return "unknown"
+
+
+def _python_source_text(root: Any) -> str:
+    """Decode the root node's source. Returns an empty string on failure."""
+    try:
+        return root.text.decode()
+    except (AttributeError, UnicodeDecodeError):
+        return ""
+
 
 def scan_flask_decorators(
     root: Any, file_path: str, _source: str, route_info_cls: type
 ) -> list[Any]:
     routes: list[Any] = []
+    source = _source if _source else _python_source_text(root)
+    app_framework = _python_app_framework(source)
     for node in walk(root):
         if node.type != "decorator":
             continue
         text = node.text.decode()
+        # ``@app.route('/x', methods=[...])`` — Flask-only form. We accept
+        # this regardless of imports because no other framework uses it.
         m = re.match(
             r"@\s*[\w.]+\s*\.\s*route\s*\(\s*[\"']([^\"']+)[\"']\s*(?:,\s*methods\s*=\s*\[([^\]]*)\])?",
             text,
         )
-        if not m:
-            continue
-        url_pattern = m.group(1)
-        methods_str = m.group(2)
-        methods = parse_methods_list(methods_str) if methods_str else ["GET"]
-        handler = function_name_after_decorator(node)
-        for method in methods:
-            routes.append(
-                route_info_cls(
-                    http_method=method.upper(),
-                    url_pattern=url_pattern,
-                    handler_name=handler,
-                    file_path=file_path,
-                    line_number=node.start_point[0] + 1,
-                    framework="flask",
-                    language="python",
+        if m:
+            url_pattern = m.group(1)
+            methods_str = m.group(2)
+            methods = parse_methods_list(methods_str) if methods_str else ["GET"]
+            handler = function_name_after_decorator(node)
+            for method in methods:
+                routes.append(
+                    route_info_cls(
+                        http_method=method.upper(),
+                        url_pattern=url_pattern,
+                        handler_name=handler,
+                        file_path=file_path,
+                        line_number=node.start_point[0] + 1,
+                        framework="flask",
+                        language="python",
+                    )
                 )
+            continue
+        # K1: ``@app.get('/x')`` / ``@app.post('/x')`` are the Flask 2.0+
+        # shortcut decorators (also FastAPI). Only emit a flask route here
+        # when the file's import signature points to flask.
+        if app_framework != "flask":
+            continue
+        m_short = re.match(
+            r"@\s*[\w.]+\s*\.\s*(get|post|put|delete|patch|head|options)\s*\(\s*[\"']([^\"']+)[\"']",
+            text,
+            re.IGNORECASE,
+        )
+        if not m_short:
+            continue
+        method_str = m_short.group(1).lower()
+        url_pattern = m_short.group(2)
+        handler = function_name_after_decorator(node)
+        routes.append(
+            route_info_cls(
+                http_method=method_str.upper(),
+                url_pattern=url_pattern,
+                handler_name=handler,
+                file_path=file_path,
+                line_number=node.start_point[0] + 1,
+                framework="flask",
+                language="python",
             )
+        )
     return routes
 
 
@@ -102,6 +208,14 @@ def scan_fastapi_decorators(
 ) -> list[Any]:
     routes: list[Any] = []
     http_methods = {"get", "post", "put", "delete", "patch", "head", "options"}
+    source = _source if _source else _python_source_text(root)
+    app_framework = _python_app_framework(source)
+    # K1: ``@app.get('/x')`` is identical between Flask 2.x and FastAPI.
+    # Only emit FastAPI routes when the file's import signature points to
+    # fastapi — otherwise the decorator belongs to flask (or is unknown,
+    # in which case we'd rather skip than mislabel).
+    if app_framework != "fastapi":
+        return routes
     for node in walk(root):
         if node.type != "decorator":
             continue

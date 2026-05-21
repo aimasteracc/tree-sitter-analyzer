@@ -241,6 +241,42 @@ class BaseMCPTool(ABC):
         """
         del project_root  # unused at base level — subclass hook
 
+    @staticmethod
+    def _normalize_file_path(raw: str) -> str:
+        """Strip leading ``./`` and normalize separators for consistent echo.
+
+        K12 fix (round-24 dogfood): tools were echoing the raw ``file_path``
+        argument back to the caller. Same logical path with and without a
+        ``./`` prefix produced byte-different ``file_path`` strings, which
+        confused downstream dedup/caching/display layers (e.g. the
+        ``content_hash`` was identical but ``file_path`` was not).
+
+        Normalization rules — minimal and reversible:
+        - Convert backslash separators to forward slash (Windows compat).
+        - Collapse one or more leading ``./`` segments.
+        - Preserve ``../`` semantics (those carry real path info).
+        - Leave absolute paths and bare filenames untouched after the
+          backslash conversion above.
+
+        Examples:
+            >>> BaseMCPTool._normalize_file_path("tree_sitter_analyzer/x.py")
+            'tree_sitter_analyzer/x.py'
+            >>> BaseMCPTool._normalize_file_path("./tree_sitter_analyzer/x.py")
+            'tree_sitter_analyzer/x.py'
+            >>> BaseMCPTool._normalize_file_path("././tree_sitter_analyzer/x.py")
+            'tree_sitter_analyzer/x.py'
+            >>> BaseMCPTool._normalize_file_path("../sibling.py")
+            '../sibling.py'
+            >>> BaseMCPTool._normalize_file_path("a\\\\b.py")
+            'a/b.py'
+        """
+        if not isinstance(raw, str) or not raw:
+            return raw
+        normalized = raw.replace("\\", "/")
+        while normalized.startswith("./"):
+            normalized = normalized[2:]
+        return normalized
+
     def resolve_and_validate_file_path(self, file_path: str) -> str:
         """
         Resolve a file path and validate it with caching to avoid redundant checks.

@@ -165,7 +165,10 @@ class AnalyzeScaleTool(BaseMCPTool):
         if "file_path" not in arguments:
             raise ValueError("file_path is required")
 
-        file_path = arguments["file_path"]
+        # K12: normalize the echoed file_path so ``./X`` and ``X`` produce
+        # byte-identical responses — confuses downstream dedup/caching/
+        # display otherwise.
+        file_path = self._normalize_file_path(arguments["file_path"])
         language = arguments.get("language")
         include_details = arguments.get("include_details", False)
         include_guidance = arguments.get("include_guidance", True)

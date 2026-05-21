@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ...utils import setup_logger
+from ._graph_cache_fingerprint import _EXCLUDE_DIRS as _PROJECT_EXCLUDE_DIRS
 from .base_tool import BaseMCPTool
 
 logger = setup_logger(__name__)
@@ -41,30 +42,17 @@ _SUPPORTED_EXTS = {
     ".md": "markdown",
 }
 
-_EXCLUDE_DIRS = {
-    "node_modules",
-    ".git",
-    ".hg",
-    ".svn",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "dist",
-    "build",
-    "egg-info",
-    ".eggs",
-    ".idea",
-    ".vscode",
-    "htmlcov",
-    ".cache",
-    ".claude",
-    ".deepseek",
-    ".autonomous-runtime",
-}
+_EXCLUDE_DIRS = frozenset(
+    _PROJECT_EXCLUDE_DIRS  # canonical: .ast-cache, .tree-sitter-cache, etc.
+    | {
+        # K10: overview also drops a couple of project-specific paths that
+        # are not source but used to be enumerated. Keep them here so the
+        # overview never returns ``.deepseek/...`` or ``.autonomous-runtime/...``
+        # as part of the file count.
+        "egg-info",
+        ".deepseek",
+    }
+)
 
 # Path segments that should be excluded from language-distribution counts.
 # These dirs contain valid source files (fixtures, golden masters,

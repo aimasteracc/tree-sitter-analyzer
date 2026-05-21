@@ -18,7 +18,7 @@ from ..utils.format_helper import apply_toon_format_to_response, format_for_file
 from .base_tool import BaseMCPTool
 from .batch_executor import execute_batch
 from .read_partial_helpers import TOOL_SCHEMA as _TOOL_SCHEMA
-from .read_partial_helpers import build_agent_summary_for_result
+from .read_partial_helpers import build_agent_summary_for_result, count_file_lines
 
 logger = setup_logger(__name__)
 
@@ -153,7 +153,10 @@ class ReadPartialTool(BaseMCPTool):
             resolved_path, start_line, end_line, start_column, end_column
         )
 
-        # Handle read failure
+        # Handle read failure — file_handler returned None (genuine IO
+        # error or validation rejection). This is distinct from an
+        # empty range, which is treated below as a structured
+        # ``out_of_range`` response so the caller can recover.
         if content is None:
             return {
                 "success": False,
@@ -161,19 +164,34 @@ class ReadPartialTool(BaseMCPTool):
                 "file_path": file_path,
             }
 
-        # Handle empty content (invalid range)
-        if not content or content.strip() == "":
-            return {
-                "success": False,
-                "error": f"Invalid line range or empty content: start_line={start_line}, end_line={end_line}",
-                "file_path": file_path,
-            }
+        # K8: compute lines_extracted from the ACTUAL content. The old
+        # ``end_line - start_line + 1`` formula lied when the requested
+        # range was past EOF (content empty but lines_extracted=N).
+        lines_extracted = len(content.splitlines()) if content else 0
 
-        logger.info(f"Successfully read {len(content)} characters from {file_path}")
+        # K8: surface out-of-range / partial-overlap as structured
+        # response flags rather than a generic error. Agents can read
+        # ``out_of_range``/``partial_range`` and recover with a valid
+        # range instead of giving up on a false "failure".
+        file_lines = count_file_lines(resolved_path)
+        out_of_range = bool(
+            content == "" and file_lines is not None and start_line > file_lines
+        )
+        partial_range = bool(
+            file_lines is not None
+            and end_line is not None
+            and start_line <= file_lines
+            and end_line > file_lines
+        )
+        clamped_to: list[int] | None = (
+            [start_line, file_lines]
+            if partial_range and file_lines is not None
+            else None
+        )
 
-        # Compute lines extracted from range or actual content
-        lines_extracted = (
-            end_line - start_line + 1 if end_line else len(content.split("\n"))
+        logger.info(
+            f"Read {len(content)} characters from {file_path} "
+            f"(out_of_range={out_of_range}, partial_range={partial_range})"
         )
 
         result = self._build_result(
@@ -187,6 +205,10 @@ class ReadPartialTool(BaseMCPTool):
             content_format,
             suppress_output,
             output_file,
+            file_lines=file_lines,
+            out_of_range=out_of_range,
+            partial_range=partial_range,
+            clamped_to=clamped_to,
         )
 
         self._apply_file_output(
@@ -272,6 +294,11 @@ class ReadPartialTool(BaseMCPTool):
         content_format: str,
         suppress_output: bool,
         output_file: str | None,
+        *,
+        file_lines: int | None = None,
+        out_of_range: bool = False,
+        partial_range: bool = False,
+        clamped_to: list[int] | None = None,
     ) -> dict[str, Any]:
         """Build the result dict with range metadata and optional formatted content."""
         result: dict[str, Any] = {
@@ -291,11 +318,24 @@ class ReadPartialTool(BaseMCPTool):
             # just want the text read this field directly.
             "content": content,
         }
+        if file_lines is not None:
+            result["file_lines"] = file_lines
+        if out_of_range:
+            result["out_of_range"] = True
+        if partial_range:
+            result["partial_range"] = True
+            if clamped_to is not None:
+                result["clamped_to"] = clamped_to
         result["agent_summary"] = build_agent_summary_for_result(
             result, content_format, output_file, suppress_output
         )
+        # Mirror ``summary_line`` at the top level so callers that scan
+        # for the canonical envelope key see the actionable hint.
+        summary_line = result["agent_summary"].get("summary_line")
+        if summary_line:
+            result["summary_line"] = summary_line
 
-        if end_line and end_line > start_line:
+        if end_line and end_line > start_line and not (out_of_range or partial_range):
             result["next_steps"] = [
                 "query_code to find related elements in this file",
                 "search_content to find callers or usages of this code",

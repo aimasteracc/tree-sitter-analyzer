@@ -257,6 +257,37 @@ _CANONICAL_KEYS: tuple[str, ...] = (
     "summary_line",
 )
 
+# K12: keys that carry an echoed file_path that should be normalized so
+# ``./X`` and ``X`` produce byte-identical responses. ``file_path`` is the
+# canonical name; ``source_file`` is the trace_impact alias; ``path`` is
+# kept narrow on purpose (lots of unrelated dicts use "path" for non-file
+# values, so we only touch the keys we know reach the response root).
+_FILE_PATH_ECHO_KEYS: tuple[str, ...] = ("file_path", "source_file")
+
+
+def _normalize_path_string(raw: str) -> str:
+    """Strip leading ``./`` and convert separators for K12 echo parity.
+
+    Mirrors :meth:`BaseMCPTool._normalize_file_path` so the central
+    dispatch post-hook normalizes the same way as direct callers.
+    """
+    if not isinstance(raw, str) or not raw:
+        return raw
+    normalized = raw.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized
+
+
+def _normalize_echoed_file_path(response: dict[str, Any]) -> None:
+    """Normalize echoed ``file_path`` / ``source_file`` in place (K12)."""
+    for key in _FILE_PATH_ECHO_KEYS:
+        value = response.get(key)
+        if isinstance(value, str) and value:
+            normalized = _normalize_path_string(value)
+            if normalized != value:
+                response[key] = normalized
+
 
 def ensure_canonical_success_envelope(
     tool_name: str,
@@ -287,6 +318,12 @@ def ensure_canonical_success_envelope(
     # Errors handled by the error envelope path.
     if response.get("success") is False:
         return response
+
+    # K12: normalize echoed file_path so ``./X`` and ``X`` produce
+    # byte-identical responses. Pre-K12 the raw argument was echoed
+    # unchanged — same content_hash, different file_path string, which
+    # confused downstream dedup/caching/display layers.
+    _normalize_echoed_file_path(response)
 
     agent_summary = response.get("agent_summary")
     summary_line_value = response.get("summary_line")

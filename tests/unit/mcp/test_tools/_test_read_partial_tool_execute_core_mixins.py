@@ -220,7 +220,12 @@ class ReadPartialToolExecuteMixin:
 
     @pytest.mark.asyncio
     async def test_execute_empty_content(self):
-        """Test execution returns error for empty content."""
+        """Empty file with a non-trivial range used to fail with a
+        generic ``success: False`` envelope. K8 (round-24) reshapes
+        this to a structured ``out_of_range`` response so the agent
+        can recover with a valid range instead of treating it as a
+        hard error.
+        """
         tool = ReadPartialTool()
 
         # Use temporary file to avoid permission issues
@@ -229,15 +234,29 @@ class ReadPartialToolExecuteMixin:
             f.flush()
             test_file = Path(f.name)
 
-        args = {"file_path": "test_data.py", "start_line": 1, "end_line": 10}
+        # Force JSON output so ``content``/``lines_extracted`` stay
+        # at the top of the envelope (TOON would fold them into the
+        # ``toon_content`` blob).
+        args = {
+            "file_path": "test_data.py",
+            "start_line": 1,
+            "end_line": 10,
+            "output_format": "json",
+        }
 
         try:
             with patch.object(
                 tool, "resolve_and_validate_file_path", return_value=str(test_file)
             ):
                 result = await tool.execute(args)
-            assert result["success"] is False
-            assert "Invalid line range or empty content" in result["error"]
+            # K8: empty file with a past-EOF range now returns a
+            # structured success envelope with out_of_range=True.
+            assert result["success"] is True
+            assert result["content"] == ""
+            assert result["content_length"] == 0
+            assert result["lines_extracted"] == 0
+            assert result.get("out_of_range") is True
+            assert result["agent_summary"]["verdict"] == "N/A"
         finally:
             # Clean up
             if test_file.exists():

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared helpers for read_partial_tool — extracted schema and utility functions."""
 
+from pathlib import Path
 from typing import Any
 
 # JSON Schema: input validation for extract_code_section tool
@@ -132,6 +133,50 @@ def build_validation_error(field: str, message: str) -> dict[str, Any]:
     }
 
 
+def count_file_lines(file_path: str) -> int | None:
+    """Count total newline-delimited lines in ``file_path``.
+
+    Returns the line count (>= 0), or ``None`` if the file cannot be
+    read (missing, unreadable, binary decode failure). Streams the file
+    so it stays cheap even for large inputs.
+    """
+    path = Path(file_path)
+    if not path.is_file():
+        return None
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            return sum(1 for _ in handle)
+    except OSError:
+        return None
+
+
+def _resolve_range_state(
+    start_line: int,
+    end_line: int | None,
+    file_lines: int | None,
+) -> tuple[bool, bool, list[int] | None]:
+    """Classify the requested range against the file's true line count.
+
+    Returns ``(out_of_range, partial_range, clamped_to)``:
+    - ``out_of_range`` — start_line is past EOF, nothing readable.
+    - ``partial_range`` — start_line is in bounds but end_line is past
+      EOF (caller asked for more than the file holds).
+    - ``clamped_to`` — ``[start, eof_line]`` when partial overlap, else
+      ``None``.
+    """
+    if file_lines is None or file_lines <= 0:
+        # Unknown or empty file — only flag fully out-of-range when we
+        # can be certain (file_lines == 0 with start_line >= 1).
+        if file_lines == 0 and start_line >= 1:
+            return True, False, None
+        return False, False, None
+    if start_line > file_lines:
+        return True, False, None
+    if end_line is not None and end_line > file_lines:
+        return False, True, [start_line, file_lines]
+    return False, False, None
+
+
 def build_agent_summary(
     *,
     file_path: str,
@@ -144,11 +189,25 @@ def build_agent_summary(
     content_format: str,
     output_file: str | None = None,
     suppress_output: bool = False,
+    file_lines: int | None = None,
+    out_of_range: bool = False,
+    partial_range: bool = False,
+    clamped_to: list[int] | None = None,
 ) -> dict[str, Any]:
-    """Summarize a partial read for immediate agent decision-making."""
-    risk = _summary_risk(lines_extracted, content_length)
-    return {
+    """Summarize a partial read for immediate agent decision-making.
+
+    When ``out_of_range`` is True (the request lies entirely past EOF)
+    or ``partial_range`` is True (the request extends past EOF), the
+    summary surfaces the situation as an INPUT issue instead of a
+    content judgment so an agent does not treat ``risk: low`` as a
+    healthy read.
+    """
+    is_range_anomaly = out_of_range or partial_range
+    risk = _summary_risk(lines_extracted, content_length, out_of_range=out_of_range)
+    verdict = _summary_verdict(out_of_range, partial_range)
+    summary: dict[str, Any] = {
         "risk": risk,
+        "verdict": verdict,
         "file_path": file_path,
         "range": {
             "start_line": start_line,
@@ -161,10 +220,41 @@ def build_agent_summary(
         "content_format": content_format,
         "output_saved": bool(output_file),
         "suppress_output": suppress_output,
-        "next_step": _summary_next_step(risk, content_format, start_column, end_column),
-        "suggested_tool": _summary_suggested_tool(risk, lines_extracted),
-        "stop_condition": _summary_stop_condition(risk),
+        "next_step": _summary_next_step(
+            risk,
+            content_format,
+            start_column,
+            end_column,
+            out_of_range=out_of_range,
+            partial_range=partial_range,
+            start_line=start_line,
+            end_line=end_line,
+            file_lines=file_lines,
+        ),
+        "suggested_tool": _summary_suggested_tool(
+            risk, lines_extracted, out_of_range=out_of_range
+        ),
+        "stop_condition": _summary_stop_condition(
+            risk, out_of_range=out_of_range, partial_range=partial_range
+        ),
+        "summary_line": _summary_line(
+            start_line=start_line,
+            end_line=end_line,
+            lines_extracted=lines_extracted,
+            content_length=content_length,
+            file_lines=file_lines,
+            out_of_range=out_of_range,
+            partial_range=partial_range,
+        ),
     }
+    if is_range_anomaly:
+        summary["out_of_range"] = out_of_range
+        summary["partial_range"] = partial_range
+        if clamped_to is not None:
+            summary["clamped_to"] = clamped_to
+    if file_lines is not None:
+        summary["file_lines"] = file_lines
+    return summary
 
 
 def build_agent_summary_for_result(
@@ -186,6 +276,10 @@ def build_agent_summary_for_result(
         content_format=content_format,
         output_file=output_file,
         suppress_output=suppress_output,
+        file_lines=result.get("file_lines"),
+        out_of_range=bool(result.get("out_of_range", False)),
+        partial_range=bool(result.get("partial_range", False)),
+        clamped_to=result.get("clamped_to"),
     )
 
 
@@ -211,7 +305,17 @@ def build_batch_agent_summary(
     }
 
 
-def _summary_risk(lines_extracted: int, content_length: int) -> str:
+def _summary_risk(
+    lines_extracted: int,
+    content_length: int,
+    *,
+    out_of_range: bool = False,
+) -> str:
+    # Out-of-range is an INPUT problem, not a content judgment. Keep
+    # ``risk=low`` so it never reads as a "great result" but flag the
+    # situation explicitly through ``verdict``/``out_of_range``.
+    if out_of_range:
+        return "low"
     if lines_extracted >= 200 or content_length >= 20_000:
         return "high"
     if lines_extracted >= 50 or content_length >= 5_000:
@@ -219,12 +323,50 @@ def _summary_risk(lines_extracted: int, content_length: int) -> str:
     return "low"
 
 
+def _summary_verdict(out_of_range: bool, partial_range: bool) -> str:
+    if out_of_range:
+        return "N/A"
+    if partial_range:
+        return "WARN"
+    return "OK"
+
+
 def _summary_next_step(
     risk: str,
     content_format: str,
     start_column: int | None,
     end_column: int | None,
+    *,
+    out_of_range: bool = False,
+    partial_range: bool = False,
+    start_line: int | None = None,
+    end_line: int | None = None,
+    file_lines: int | None = None,
 ) -> str:
+    if out_of_range:
+        file_part = (
+            f"file has {file_lines} lines"
+            if file_lines is not None
+            else "file is shorter"
+        )
+        suggested_end = (
+            min(file_lines, 100) if file_lines is not None and file_lines >= 1 else 100
+        )
+        return (
+            f"Range {start_line}-{end_line if end_line is not None else start_line} "
+            f"is past EOF ({file_part}). Try start_line=1 end_line={suggested_end}."
+        )
+    if partial_range:
+        file_part = (
+            f"file ends at line {file_lines}"
+            if file_lines is not None
+            else "file ends earlier"
+        )
+        return (
+            f"Requested range extends past EOF ({file_part}); "
+            f"narrow end_line to {file_lines if file_lines is not None else 'the file length'} "
+            f"or omit it to read to EOF."
+        )
     if risk == "high":
         return "Narrow the range or use query_code for symbol-level context."
     if start_column is not None or end_column is not None:
@@ -236,7 +378,12 @@ def _summary_next_step(
     )
 
 
-def _summary_suggested_tool(risk: str, lines_extracted: int) -> str:
+def _summary_suggested_tool(
+    risk: str, lines_extracted: int, *, out_of_range: bool = False
+) -> str:
+    if out_of_range:
+        # Reading the start of the file is the natural recovery action.
+        return "extract_code_section"
     if risk == "high":
         return "extract_code_section"
     if lines_extracted <= 25:
@@ -244,10 +391,42 @@ def _summary_suggested_tool(risk: str, lines_extracted: int) -> str:
     return "search_content"
 
 
-def _summary_stop_condition(risk: str) -> str:
+def _summary_stop_condition(
+    risk: str, *, out_of_range: bool = False, partial_range: bool = False
+) -> str:
+    if out_of_range or partial_range:
+        return "The requested range falls inside the file's actual line range."
     if risk == "high":
         return "A narrower extraction is below 200 lines and contains the target block."
     return "The extracted range contains the complete symbol or block needed."
+
+
+def _summary_line(
+    *,
+    start_line: int,
+    end_line: int | None,
+    lines_extracted: int,
+    content_length: int,
+    file_lines: int | None,
+    out_of_range: bool,
+    partial_range: bool,
+) -> str:
+    """One-line human-readable summary for the agent."""
+    range_str = (
+        f"{start_line}-{end_line}" if end_line is not None else f"{start_line}-EOF"
+    )
+    file_part = f"file_lines={file_lines}" if file_lines is not None else "file_lines=?"
+    if out_of_range:
+        return f"partial_read empty range={range_str} {file_part} out_of_range=true"
+    if partial_range:
+        return (
+            f"partial_read partial range={range_str} lines_extracted={lines_extracted} "
+            f"{file_part} partial_range=true"
+        )
+    return (
+        f"partial_read range={range_str} lines_extracted={lines_extracted} "
+        f"chars={content_length}"
+    )
 
 
 def _batch_summary_risk(count_sections: int, truncated: bool, error_count: int) -> str:

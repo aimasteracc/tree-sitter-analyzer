@@ -4200,3 +4200,1138 @@ class TestJ3PackageInitImports:
             f"``pkg/a.py`` only — not a duplicate edge to "
             f"``pkg/__init__.py``. Got {deps!r}"
         )
+
+
+# ============================================================================
+# K3 — symbol_lineage definitions for classes (round-24)
+# ============================================================================
+
+
+class TestK3SymbolLineageClassDefinitions:
+    """K3 (round-24): ``symbol_lineage`` returned ``definition_count=0`` for
+    class symbols. ``execute_find_references`` caps its file scan at the
+    first 500 ``rglob`` results, and the def-bearing file can fall past
+    the cap on medium repos — references are found in earlier importers
+    but the actual ``class Foo:`` line is never seen.
+
+    Contract:
+      - ``symbol_lineage`` for a class returns ``definition_count >= 1``.
+      - The promoted entry has ``role='definition'``.
+      - Works for Python classes, dataclasses, and Java classes.
+    """
+
+    def test_python_class_definition_count_positive(self, tmp_path: Path) -> None:
+        """Repro: ``class BaseMCPTool(ABC):`` must surface as a definition."""
+        from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
+            SymbolLineageTool,
+        )
+
+        (tmp_path / "base_tool.py").write_text(
+            "from abc import ABC\n\n\nclass BaseMCPTool(ABC):\n"
+            "    def execute(self) -> None:\n        pass\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "user.py").write_text(
+            "from base_tool import BaseMCPTool\n\n"
+            "class FooTool(BaseMCPTool):\n    pass\n",
+            encoding="utf-8",
+        )
+
+        tool = SymbolLineageTool(str(tmp_path))
+        result = _run(tool.execute({"symbol": "BaseMCPTool", "output_format": "json"}))
+        assert result["definition_count"] >= 1, (
+            f"K3: class definitions must be counted — got "
+            f"definition_count={result['definition_count']} "
+            f"defs={result.get('definitions')!r}"
+        )
+        defs = result.get("definitions", [])
+        assert any(d.get("role") == "definition" for d in defs), (
+            f"K3: at least one definition must have role='definition' — got {defs!r}"
+        )
+
+    def test_python_dataclass_definition_count_positive(self, tmp_path: Path) -> None:
+        """Decorated ``@dataclass`` classes must also count as definitions."""
+        from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
+            SymbolLineageTool,
+        )
+
+        (tmp_path / "model.py").write_text(
+            "from dataclasses import dataclass\n\n"
+            "@dataclass\n"
+            "class UserRecord:\n"
+            "    user_id: int\n"
+            "    name: str\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "consumer.py").write_text(
+            "from model import UserRecord\n\n"
+            "def make_user() -> UserRecord:\n"
+            "    return UserRecord(user_id=1, name='ada')\n",
+            encoding="utf-8",
+        )
+
+        tool = SymbolLineageTool(str(tmp_path))
+        result = _run(tool.execute({"symbol": "UserRecord", "output_format": "json"}))
+        assert result["definition_count"] >= 1, (
+            f"K3: dataclass def must be counted — got {result.get('definitions')!r}"
+        )
+
+    def test_java_class_definition_count_positive(self, tmp_path: Path) -> None:
+        """K3 contract holds across languages: a Java class definition
+        must be classified as a definition, not a reference."""
+        from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
+            SymbolLineageTool,
+        )
+
+        (tmp_path / "Handler.java").write_text(
+            "package com.example;\n\n"
+            "public class Handler {\n"
+            "    public static void serve() {}\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "Main.java").write_text(
+            "package com.example;\n\n"
+            "public class Main {\n"
+            "    public static void main(String[] args) {\n"
+            "        Handler.serve();\n"
+            "    }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        tool = SymbolLineageTool(str(tmp_path))
+        result = _run(tool.execute({"symbol": "Handler", "output_format": "json"}))
+        assert result["definition_count"] >= 1, (
+            f"K3: Java class definitions must be counted — got "
+            f"definition_count={result['definition_count']} "
+            f"defs={result.get('definitions')!r}"
+        )
+
+
+# ============================================================================
+# K9 — file_health long_line + single_line_file smells (round-24)
+# ============================================================================
+
+
+class TestK9FileHealthLongLineSmells:
+    """K9 (round-24): a 3.5 KB single-line Python file scored grade A
+    because no smell detector covered minified / single-statement
+    emissions — the line-count-based dimensions all saw 1 LoC and
+    returned full marks.
+
+    Contract:
+      - A file with one >200-char line surfaces a ``long_line`` smell.
+      - A file with no newlines but >=200 bytes surfaces a
+        ``single_line_file`` smell AND drops below grade A.
+      - A normal 50-char-per-line file produces no long-line smell.
+      - Empty files still bypass smell checks (M7/H9 preserved).
+    """
+
+    def test_long_line_smell_fires_on_300_char_line(self, tmp_path: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        src = tmp_path / "long.py"
+        src.write_text(f"x = '{'a' * 300}'\n", encoding="utf-8")
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": str(src), "output_format": "json"}))
+        smells = result.get("code_smells", [])
+        smell_names = [s.get("smell") for s in smells]
+        assert "long_line" in smell_names, (
+            f"K9: long_line smell must fire on a 300-char line — got "
+            f"smells={smell_names!r}"
+        )
+
+    def test_long_line_and_single_line_smells_on_minified_blob(
+        self, tmp_path: Path
+    ) -> None:
+        """K9 reproducer: 3.5 KB on a single line — single_line_file +
+        long_line must both fire, and the grade must drop below A."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        src = tmp_path / "blob.py"
+        # ~3.5 KB without a single newline.
+        src.write_text("x = 1; " * 500, encoding="utf-8")
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": str(src), "output_format": "json"}))
+        smells = result.get("code_smells", [])
+        smell_names = [s.get("smell") for s in smells]
+        assert "long_line" in smell_names, (
+            f"K9: long_line must fire on a 3500-char line — got {smell_names!r}"
+        )
+        assert "single_line_file" in smell_names, (
+            f"K9: single_line_file must fire on a 0-newline ≥200-byte file — "
+            f"got {smell_names!r}"
+        )
+        assert result.get("grade") != "A", (
+            f"K9: grade must drop below A on a single-line bundle — "
+            f"grade={result.get('grade')!r} score={result.get('overall_score')!r}"
+        )
+
+    def test_no_long_line_smell_on_short_lines(self, tmp_path: Path) -> None:
+        """K9: a file whose lines are all under the threshold must not
+        emit a long_line smell. Prevents the threshold from regressing
+        below the 100-200 char band where most code lives."""
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        src = tmp_path / "short.py"
+        src.write_text("\n".join("x = 1" for _ in range(20)) + "\n", encoding="utf-8")
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": str(src), "output_format": "json"}))
+        smells = result.get("code_smells", [])
+        smell_names = [s.get("smell") for s in smells]
+        assert "long_line" not in smell_names, (
+            f"K9: short-line file must not emit long_line — got {smell_names!r}"
+        )
+        assert "single_line_file" not in smell_names, (
+            f"K9: multi-line file must not emit single_line_file — got {smell_names!r}"
+        )
+
+    def test_empty_file_keeps_m7_h9_envelope(self, tmp_path: Path) -> None:
+        """K9 must not regress the M7/H9 empty-file behaviour: empty /
+        whitespace-only files return ``grade=N/A`` with no smells.
+        """
+        from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool
+
+        empty = tmp_path / "empty.py"
+        empty.write_text("", encoding="utf-8")
+
+        tool = FileHealthTool(str(tmp_path))
+        result = _run(tool.execute({"file_path": str(empty), "output_format": "json"}))
+        assert result.get("grade") == "N/A", (
+            f"K9 regression: empty file must keep M7's N/A grade — "
+            f"got grade={result.get('grade')!r}"
+        )
+        assert result.get("code_smells") == [], (
+            f"K9 regression: empty file must keep zero smells — "
+            f"got code_smells={result.get('code_smells')!r}"
+        )
+
+
+class TestK8PartialReadOutOfRange:
+    """K8 (round-24): ``extract_code_section`` / ``--partial-read``
+    used to compute ``lines_extracted`` from ``end_line - start_line + 1``
+    regardless of how many lines were actually read.
+
+    For a request entirely past EOF the response carried
+    ``content=""``, ``content_length=0``, but ``lines_extracted=2``
+    plus ``risk: low`` and no flag — an agent reading the summary
+    would believe two lines came back and the read succeeded.
+
+    Fixes:
+
+    1. ``lines_extracted`` is derived from the content
+       (``len(content.splitlines())``), so it can never overstate
+       what was actually returned.
+    2. Out-of-range requests carry ``out_of_range: True`` and
+       ``verdict: "N/A"`` so the situation reads as an INPUT
+       problem, not a healthy ``risk: low`` result.
+    3. Partial overlap (start in range, end past EOF) carries
+       ``partial_range: True`` and ``clamped_to=[start, eof_line]``.
+    4. ``summary_line`` and ``agent_summary.next_step`` direct the
+       agent at a valid recovery range.
+    """
+
+    @pytest.fixture
+    def fifty_line_file(self, tmp_path: Path) -> Path:
+        """A 50-line python file at a stable known path."""
+        path = tmp_path / "fifty.py"
+        path.write_text("".join(f"line_{i}\n" for i in range(1, 51)), encoding="utf-8")
+        return path
+
+    def _run_tool(self, project: Path, **kwargs: Any) -> dict[str, Any]:
+        from tree_sitter_analyzer.mcp.tools.read_partial_tool import (
+            ReadPartialTool,
+        )
+
+        tool = ReadPartialTool(str(project))
+        payload = {"output_format": "json"}
+        payload.update(kwargs)
+        return _run(tool.execute(payload))
+
+    def test_range_past_eof_reports_out_of_range(self, fifty_line_file: Path) -> None:
+        """Start_line entirely past EOF: lines_extracted=0,
+        out_of_range=True, verdict=N/A — and the summary tells the
+        agent to retry with a valid range."""
+        result = self._run_tool(
+            fifty_line_file.parent,
+            file_path="fifty.py",
+            start_line=99999,
+            end_line=100000,
+        )
+        assert result["success"] is True, (
+            f"K8: out-of-range must NOT come back as success=False. "
+            f"Got {result.get('error')!r}"
+        )
+        assert result["content"] == "", (
+            f"K8: content for past-EOF range must be empty. "
+            f"Got {result.get('content')!r}"
+        )
+        assert result["content_length"] == 0
+        assert result["lines_extracted"] == 0, (
+            f"K8: past-EOF range must report lines_extracted=0 "
+            f"(actual content), NOT end_line-start_line+1. "
+            f"Got {result.get('lines_extracted')!r}"
+        )
+        assert result.get("out_of_range") is True, (
+            f"K8: response must carry out_of_range=True. Got keys "
+            f"{sorted(result.keys())!r}"
+        )
+        # No partial_range — start is also past EOF, so it's not a
+        # partial overlap, it's a full miss.
+        assert result.get("partial_range") is not True
+        # file_lines is surfaced so the agent can pick a valid range.
+        assert result.get("file_lines") == 50
+
+        summary = result["agent_summary"]
+        assert summary["lines_extracted"] == 0
+        assert summary["out_of_range"] is True
+        assert summary["verdict"] == "N/A", (
+            f"K8: out-of-range verdict must be 'N/A' so the agent "
+            f"does not treat ``risk: low`` as a healthy result. "
+            f"Got {summary.get('verdict')!r}"
+        )
+        # Risk stays low (it's a low-impact INPUT problem, not a
+        # large content read), but verdict makes the situation clear.
+        assert summary["risk"] == "low"
+        # next_step must mention a recovery range.
+        assert "Try start_line=1" in summary["next_step"], (
+            f"K8: next_step must suggest a valid recovery range. "
+            f"Got {summary['next_step']!r}"
+        )
+        # The summary_line tells the truth at a glance.
+        assert "out_of_range=true" in summary["summary_line"]
+        assert "file_lines=50" in summary["summary_line"]
+
+    def test_partial_overlap_reports_partial_range_and_clamped(
+        self, fifty_line_file: Path
+    ) -> None:
+        """Range starts in bounds but extends past EOF: returns the
+        in-bounds content plus structured flags so the agent can
+        re-issue a clean request."""
+        result = self._run_tool(
+            fifty_line_file.parent,
+            file_path="fifty.py",
+            start_line=10,
+            end_line=100,
+        )
+        assert result["success"] is True
+        # Real lines extracted — lines 10..50 inclusive = 41 lines.
+        assert result["lines_extracted"] == 41, (
+            f"K8: partial-overlap lines_extracted must match the "
+            f"actual content (41 lines from start=10 to eof=50), "
+            f"NOT end_line-start_line+1 (91). "
+            f"Got {result.get('lines_extracted')!r}"
+        )
+        assert result.get("partial_range") is True, (
+            f"K8: response must carry partial_range=True. Got keys "
+            f"{sorted(result.keys())!r}"
+        )
+        assert result.get("clamped_to") == [10, 50], (
+            f"K8: clamped_to must be [start, eof_line] = [10, 50]. "
+            f"Got {result.get('clamped_to')!r}"
+        )
+        assert result.get("out_of_range") is not True
+        assert result.get("file_lines") == 50
+
+        summary = result["agent_summary"]
+        assert summary["verdict"] == "WARN", (
+            f"K8: partial-overlap verdict must be 'WARN'. "
+            f"Got {summary.get('verdict')!r}"
+        )
+        assert summary["partial_range"] is True
+        assert "partial_range=true" in summary["summary_line"]
+        # next_step nudges toward the clamped end.
+        assert "50" in summary["next_step"], (
+            f"K8: next_step must mention the EOF line so the agent "
+            f"can issue a clean range. Got {summary['next_step']!r}"
+        )
+
+    def test_valid_range_has_no_anomaly_flags(self, fifty_line_file: Path) -> None:
+        """In-bounds range: no out_of_range / partial_range / clamped_to
+        in the envelope; verdict=OK; lines_extracted matches content."""
+        result = self._run_tool(
+            fifty_line_file.parent,
+            file_path="fifty.py",
+            start_line=5,
+            end_line=15,
+        )
+        assert result["success"] is True
+        assert result["lines_extracted"] == 11, (
+            f"K8: in-bounds range must extract exactly 11 lines (5..15). "
+            f"Got {result.get('lines_extracted')!r}"
+        )
+        # Anomaly flags must NOT be present (or must be falsy) so
+        # downstream parsers can rely on their absence.
+        assert result.get("out_of_range") is not True
+        assert result.get("partial_range") is not True
+        assert "clamped_to" not in result
+
+        summary = result["agent_summary"]
+        assert summary["verdict"] == "OK", (
+            f"K8: in-bounds range verdict must be 'OK'. Got {summary.get('verdict')!r}"
+        )
+        # And the agent_summary's own flags reflect the same truth.
+        assert summary.get("out_of_range") is not True
+        assert summary.get("partial_range") is not True
+        assert summary["lines_extracted"] == 11
+
+    def test_lines_extracted_never_exceeds_content_lines(
+        self, fifty_line_file: Path
+    ) -> None:
+        """Regression guard against the old formula: across out-of-range,
+        partial-overlap and in-bounds calls, ``lines_extracted`` must
+        never exceed what the content actually contains."""
+        for start, end in [(99999, 100000), (10, 100), (5, 15), (1, 50)]:
+            result = self._run_tool(
+                fifty_line_file.parent,
+                file_path="fifty.py",
+                start_line=start,
+                end_line=end,
+            )
+            content_lines = (
+                len(result["content"].splitlines()) if result.get("content") else 0
+            )
+            assert result["lines_extracted"] == content_lines, (
+                f"K8: lines_extracted ({result['lines_extracted']}) must "
+                f"equal len(content.splitlines()) ({content_lines}) for "
+                f"range start={start} end={end}. The old "
+                f"``end_line - start_line + 1`` formula lied here."
+            )
+
+
+# ---------------------------------------------------------------------------
+# K6 / K10 / K7 — round-24 dogfood findings
+# ---------------------------------------------------------------------------
+
+
+class TestK6ChangeImpactExcludesCaches:
+    """K6 (round-24): ``analyze_change_impact`` enumerated its own cache
+    artefacts (``.ast-cache/index.db``, ``.tree-sitter-cache/*``) as
+    "changed files", inflating ``changed_count``, ``affected_count`` and
+    pushing risk to ``high`` even when only source files were modified.
+
+    The fix filters tool-owned cache directories at the git-output
+    boundary using the canonical ``_EXCLUDE_DIRS`` frozenset from
+    ``_graph_cache_fingerprint`` (same list the dependency-graph walker
+    honours).
+    """
+
+    @pytest.fixture
+    def git_project(self, tmp_path: Path) -> Path:
+        import subprocess  # nosec
+
+        # Initialise an empty git repo so change-impact has something to
+        # compare against. We commit one file so HEAD exists and any
+        # subsequent untracked files surface as "diff" candidates.
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)  # nosec
+        subprocess.run(  # nosec
+            ["git", "config", "user.email", "test@example.com"],
+            cwd=tmp_path,
+            check=True,
+        )
+        subprocess.run(  # nosec
+            ["git", "config", "user.name", "test"], cwd=tmp_path, check=True
+        )
+        src = tmp_path / "module.py"
+        src.write_text("def hello():\n    return 1\n", encoding="utf-8")
+        subprocess.run(["git", "add", "module.py"], cwd=tmp_path, check=True)  # nosec
+        subprocess.run(  # nosec
+            ["git", "commit", "-q", "-m", "init"],
+            cwd=tmp_path,
+            check=True,
+        )
+
+        # Now drop tool-owned cache artefacts AND modify a tracked
+        # source file. Only the source file should surface as changed.
+        (tmp_path / ".ast-cache").mkdir()
+        (tmp_path / ".ast-cache" / "index.db").write_bytes(b"\x00" * 16)
+        (tmp_path / ".tree-sitter-cache").mkdir()
+        (tmp_path / ".tree-sitter-cache" / "summary.toon").write_text("x")
+        (tmp_path / ".tree-sitter-cache" / "project-index.json").write_text("{}")
+        src.write_text("def hello():\n    return 2\n", encoding="utf-8")
+        return tmp_path
+
+    def test_changed_files_excludes_ast_cache_paths(self, git_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+        tool = ChangeImpactTool(str(git_project))
+        result = _run(tool.execute({"mode": "diff", "output_format": "json"}))
+        changed = result.get("changed_files", [])
+        cache_hits = [
+            f
+            for f in changed
+            if ".ast-cache/" in f.replace("\\", "/")
+            or ".tree-sitter-cache/" in f.replace("\\", "/")
+            or f.startswith(".ast-cache")
+            or f.startswith(".tree-sitter-cache")
+        ]
+        assert not cache_hits, (
+            "K6: change_impact ``changed_files`` must NOT include paths "
+            "from tool-owned cache directories (``.ast-cache/``, "
+            f"``.tree-sitter-cache/``). Found: {cache_hits!r}"
+        )
+        # The legitimate source change still shows up.
+        assert any("module.py" in f for f in changed), (
+            f"K6: real source changes must still surface. Got changed_files={changed!r}"
+        )
+
+    def test_changed_count_matches_filtered_files(self, git_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.change_impact_tool import ChangeImpactTool
+
+        tool = ChangeImpactTool(str(git_project))
+        result = _run(tool.execute({"mode": "diff", "output_format": "json"}))
+        assert result.get("changed_count") == len(result.get("changed_files", [])), (
+            "K6: ``changed_count`` must match the post-filter list length. "
+            f"Got changed_count={result.get('changed_count')!r} "
+            f"changed_files={result.get('changed_files')!r}"
+        )
+
+
+class TestK10OverviewExcludesCaches:
+    """K10 (round-24): ``--overview`` enumerated ``.ast-cache/`` and
+    ``.tree-sitter-cache/`` even though the same tool writes to them
+    during the very same call. This produced two bad outcomes:
+
+    1. The summary listed those directories under ``top_directories``
+       and bumped ``total_files`` / ``total_lines`` by the cache size.
+    2. Two back-to-back ``--overview`` runs produced different
+       ``total_lines`` numbers because the second run picked up the
+       cache files the first run had just written.
+
+    The fix adds ``.ast-cache`` / ``.tree-sitter-cache`` (via the
+    canonical ``_EXCLUDE_DIRS`` set from ``_graph_cache_fingerprint``)
+    to the overview walker's exclude list.
+    """
+
+    @pytest.fixture
+    def project_with_caches(self, tmp_path: Path) -> Path:
+        # Real source — the overview's ``total_lines`` reflects this.
+        (tmp_path / "src.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+        # Tool-owned caches that previously leaked into the count.
+        (tmp_path / ".ast-cache").mkdir()
+        (tmp_path / ".ast-cache" / "index.db").write_bytes(b"\x00" * 32)
+        (tmp_path / ".tree-sitter-cache").mkdir()
+        (tmp_path / ".tree-sitter-cache" / "summary.toon").write_text(
+            "project: x\nwhat: y\n" * 50
+        )
+        (tmp_path / ".tree-sitter-cache" / "project-index.json").write_text(
+            "{}\n" * 100
+        )
+        return tmp_path
+
+    def test_top_directories_excludes_caches(self, project_with_caches: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(project_with_caches))
+        result = _run(tool.execute({"output_format": "json"}))
+        top = result.get("top_directories", {})
+        assert ".ast-cache" not in top, (
+            f"K10: top_directories must not include ``.ast-cache``. Got {top!r}"
+        )
+        assert ".tree-sitter-cache" not in top, (
+            f"K10: top_directories must not include ``.tree-sitter-cache``. Got {top!r}"
+        )
+
+    def test_largest_source_files_excludes_caches(
+        self, project_with_caches: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(project_with_caches))
+        result = _run(tool.execute({"output_format": "json"}))
+        largest = result.get("largest_source_files", [])
+        cache_hits = [
+            entry
+            for entry in largest
+            if ".ast-cache" in entry.get("path", "")
+            or ".tree-sitter-cache" in entry.get("path", "")
+        ]
+        assert not cache_hits, (
+            f"K10: largest_source_files must not include cache artefacts. "
+            f"Got {cache_hits!r}"
+        )
+
+
+class TestK10OverviewDeterministic:
+    """K10 (round-24): two back-to-back ``--overview`` calls returned
+    different ``total_files`` / ``total_lines`` because the first call
+    wrote new cache files that the second call then enumerated. With
+    the cache directories excluded the counts are byte-stable across
+    repeated invocations (assuming the underlying source tree hasn't
+    changed).
+    """
+
+    @pytest.fixture
+    def stable_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "a.py").write_text("x = 1\n" * 10, encoding="utf-8")
+        (tmp_path / "b.py").write_text("y = 2\n" * 20, encoding="utf-8")
+        # Pre-create the cache directories with stale contents to ensure
+        # the exclusion path is the load-bearing fix (i.e. the test
+        # would still fail if we relied on "cache wasn't there yet").
+        (tmp_path / ".ast-cache").mkdir()
+        (tmp_path / ".ast-cache" / "index.db").write_bytes(b"\x00" * 16)
+        (tmp_path / ".tree-sitter-cache").mkdir()
+        (tmp_path / ".tree-sitter-cache" / "summary.toon").write_text("a\n" * 5)
+        return tmp_path
+
+    def test_total_files_and_total_lines_stable(self, stable_project: Path) -> None:
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
+
+        tool = ProjectOverviewTool(str(stable_project))
+        first = _run(tool.execute({"output_format": "json"}))
+        # Touch the cache to simulate side effects from a sibling tool.
+        # Without the K10 fix this would change ``total_lines`` on
+        # the next call.
+        (stable_project / ".tree-sitter-cache" / "side_effect.json").write_text(
+            "x\n" * 100
+        )
+        second = _run(tool.execute({"output_format": "json"}))
+
+        first_summary = first.get("summary", {})
+        second_summary = second.get("summary", {})
+        assert first_summary.get("total_files") == second_summary.get("total_files"), (
+            f"K10: total_files must be stable across runs. "
+            f"first={first_summary!r} second={second_summary!r}"
+        )
+        assert first_summary.get("total_lines") == second_summary.get("total_lines"), (
+            f"K10: total_lines must be stable across runs. "
+            f"first={first_summary!r} second={second_summary!r}"
+        )
+
+
+class TestK7AstCacheSearchImportNames:
+    """K7 (round-24): ``ast_cache mode=search`` returned import rows
+    whose ``name`` field carried the entire ``from X import (A, B, C)``
+    block — 280+ chars including newlines, parens and trailing
+    comments. A user searching for ``execute`` couldn't tell which
+    symbol matched.
+
+    The indexer now emits one row per *bound* identifier; legacy DBs
+    are normalised at read time via ``_split_legacy_import_row`` so
+    no re-index is required.
+    """
+
+    @pytest.fixture
+    def multi_import_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "module.py").write_text(
+            "from ._helpers import (\n"
+            "    execute_legacy_api,\n"
+            "    execute_modern_api,\n"
+            "    execute_newest_api,\n"
+            "    execute_old_api,\n"
+            ")\n"
+            "from .other import Solo as renamed\n"
+            "import os\n"
+            "\n"
+            "def callable_function():\n"
+            "    return execute_legacy_api()\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def test_import_row_names_are_single_identifiers(
+        self, multi_import_project: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(multi_import_project))
+        _run(tool.execute({"mode": "index"}))
+        result = _run(tool.execute({"mode": "search", "query": "execute"}))
+        import_hits = [
+            h for h in result.get("results", []) if h.get("kind") == "import"
+        ]
+        assert import_hits, (
+            "K7: search for ``execute`` must surface at least one import row "
+            "matching the bound identifiers."
+        )
+        for hit in import_hits:
+            name = hit.get("name", "")
+            assert isinstance(name, str), (
+                f"K7: import row ``name`` must be a string. Got {type(name).__name__}"
+            )
+            assert len(name) <= 100, (
+                f"K7: import row ``name`` must be a single bound identifier "
+                f"(length <= 100); got length {len(name)}: {name!r}"
+            )
+            assert "\n" not in name, (
+                f"K7: import row ``name`` must not contain newlines. Got {name!r}"
+            )
+            assert "(" not in name and ")" not in name, (
+                f"K7: import row ``name`` must not contain parentheses. Got {name!r}"
+            )
+
+    def test_aliased_import_uses_bound_identifier(
+        self, multi_import_project: Path
+    ) -> None:
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool
+
+        tool = ASTCacheTool(str(multi_import_project))
+        _run(tool.execute({"mode": "index"}))
+        result = _run(tool.execute({"mode": "search", "query": "renamed"}))
+        names = {
+            h.get("name")
+            for h in result.get("results", [])
+            if h.get("kind") == "import"
+        }
+        assert "renamed" in names, (
+            f"K7: aliased import ``Solo as renamed`` must produce an import "
+            f"row whose ``name`` is the bound identifier ``renamed``. "
+            f"Got import names: {names!r}"
+        )
+
+    def test_legacy_row_split_at_read_time(self) -> None:
+        """Legacy DBs that still hold multi-symbol rows are normalised
+        at read time so the search caller never sees a 280-char name.
+        """
+        from tree_sitter_analyzer.mcp.tools.ast_cache_tool import (
+            _apply_legacy_import_split,
+        )
+
+        legacy_block = (
+            "from ._tree_sitter_compat_helpers import (\n"
+            "    execute_legacy_api,\n"
+            "    execute_modern_api,\n"
+            "    execute_newest_api,\n"
+            "    execute_old_api,\n"
+            ")"
+        )
+        legacy_row = {
+            "kind": "import",
+            "name": legacy_block,
+            "file": "x.py",
+            "language": "python",
+            "line": 1,
+            "end_line": 6,
+        }
+        split = _apply_legacy_import_split([legacy_row])
+        assert len(split) >= 4, (
+            f"K7: legacy multi-symbol import row must split into one row "
+            f"per bound identifier. Got {len(split)} rows: {split!r}"
+        )
+        for row in split:
+            assert len(row.get("name", "")) <= 100, (
+                f"K7: post-split row names must each be <= 100 chars. Got {row!r}"
+            )
+        bound_names = {row.get("name") for row in split}
+        for expected in (
+            "execute_legacy_api",
+            "execute_modern_api",
+            "execute_newest_api",
+            "execute_old_api",
+        ):
+            assert expected in bound_names, (
+                f"K7: legacy split must surface the bound name ``{expected}``. "
+                f"Got {bound_names!r}"
+            )
+
+
+# ============================================================================
+# K2 — TOON vs JSON imports schema parity
+# ============================================================================
+
+
+class _K2ImportElement:
+    """Tiny adapter that exposes a dict-shaped import as the attributes
+    the converters read via ``getattr``. The real analyzer ships object
+    elements at the CLI layer; the API surface returns dicts, so the
+    K2 tests adapt back to object shape rather than re-running the
+    whole tree-sitter analysis pipeline.
+    """
+
+    __slots__ = ("_data",)
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        self._data = data
+
+    def __getattr__(self, name: str) -> Any:
+        if name in self._data:
+            return self._data[name]
+        raise AttributeError(name)
+
+    @property
+    def name(self) -> Any:
+        return self._data.get("name", "unknown")
+
+    @property
+    def import_statement(self) -> Any:
+        return self._data.get("import_statement") or self._data.get("raw_text", "")
+
+    @property
+    def module_name(self) -> Any:
+        return self._data.get("module_name", "")
+
+    @property
+    def raw_text(self) -> Any:
+        return self._data.get("raw_text", "") or self._data.get("import_statement", "")
+
+    @property
+    def is_static(self) -> Any:
+        return bool(self._data.get("is_static", False))
+
+    @property
+    def is_wildcard(self) -> Any:
+        return bool(self._data.get("is_wildcard", False))
+
+    @property
+    def start_line(self) -> Any:
+        return int(self._data.get("start_line", 0))
+
+    @property
+    def end_line(self) -> Any:
+        return int(self._data.get("end_line", 0))
+
+    @property
+    def imported_names(self) -> Any:
+        return list(self._data.get("imported_names", []) or [])
+
+
+class TestK2ImportsSchemaParity:
+    """K2 (round-24 dogfood): the CLI's ``--format json`` and
+    ``--format toon`` paths used to emit ``imports[*]`` rows with
+    completely disjoint key sets. JSON shipped
+    ``{module_name, name, raw_text, statement}`` while TOON shipped
+    ``{name, is_static, is_wildcard, statement, line_range}``. Per the
+    F7 convention TOON should only drop ``results`` — never rename
+    fields. An agent switching ``--format`` saw a different schema.
+
+    Fix: pick a canonical key set and use it in both. The intersection
+    is ``{name, statement}``; we additionally expose ``module_name``
+    (JSON-only originally), ``is_static`` / ``is_wildcard`` (TOON-only),
+    ``line_range`` (TOON-only), ``imported_names`` (from the earlier J6
+    fix), and keep ``raw_text`` as a backward-compat alias of
+    ``statement`` for the language formatters that still read it.
+    """
+
+    @pytest.fixture
+    def python_imports_project(self, tmp_path: Path) -> Path:
+        src = tmp_path / "module.py"
+        src.write_text(
+            "from .alpha import A, B, C\n"
+            "from .beta import Solo as renamed\n"
+            "import os\n"
+            "from .gamma import *\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _convert_imports_json(self, project: Path) -> list[dict[str, Any]]:
+        """Build the import projection that ``--format json`` ships."""
+        from argparse import Namespace
+
+        from tree_sitter_analyzer.api import analyze_file
+        from tree_sitter_analyzer.cli.commands.table_command import TableCommand
+
+        analysis_result = analyze_file(str(project / "module.py"), language="python")
+        elements = analysis_result.get("elements", [])
+        cmd = TableCommand(Namespace())
+        return [
+            cmd._convert_import_element(_K2ImportElement(e))
+            for e in elements
+            if e.get("type") == "import"
+        ]
+
+    def _convert_imports_toon(self, project: Path) -> list[dict[str, Any]]:
+        """Build the import projection that ``--format toon`` ships."""
+        from tree_sitter_analyzer.api import analyze_file
+        from tree_sitter_analyzer.cli.commands.table_command_helpers import (
+            _toon_import,
+        )
+
+        analysis_result = analyze_file(str(project / "module.py"), language="python")
+        elements = analysis_result.get("elements", [])
+        return [
+            _toon_import(_K2ImportElement(e))
+            for e in elements
+            if e.get("type") == "import"
+        ]
+
+    def test_json_and_toon_share_same_keys(self, python_imports_project: Path) -> None:
+        """The two import projections must produce identical key sets."""
+        json_rows = self._convert_imports_json(python_imports_project)
+        toon_rows = self._convert_imports_toon(python_imports_project)
+        assert json_rows, "fixture must produce at least one import"
+        assert toon_rows, "fixture must produce at least one import"
+        json_keys = {tuple(sorted(r.keys())) for r in json_rows}
+        toon_keys = {tuple(sorted(r.keys())) for r in toon_rows}
+        assert json_keys == toon_keys, (
+            f"K2: JSON and TOON imports must share the same key set. "
+            f"JSON unique={json_keys - toon_keys!r} "
+            f"TOON unique={toon_keys - json_keys!r}"
+        )
+
+    def test_canonical_key_set(self, python_imports_project: Path) -> None:
+        """The canonical key set must contain every field documented in
+        the K2 design: name, module_name, statement, is_static,
+        is_wildcard, line_range, imported_names. ``raw_text`` is kept
+        as a backward-compat alias."""
+        json_rows = self._convert_imports_json(python_imports_project)
+        canonical = {
+            "name",
+            "module_name",
+            "statement",
+            "is_static",
+            "is_wildcard",
+            "line_range",
+            "imported_names",
+        }
+        actual = set(json_rows[0].keys())
+        missing = canonical - actual
+        assert not missing, (
+            f"K2: canonical import keys missing from JSON projection — "
+            f"missing={missing!r} actual={sorted(actual)!r}"
+        )
+
+    def test_line_range_is_pair(self, python_imports_project: Path) -> None:
+        """``line_range`` must be a two-element [start, end] sequence
+        in both JSON and TOON outputs — agents expect a uniform shape."""
+        for label, rows in (
+            ("json", self._convert_imports_json(python_imports_project)),
+            ("toon", self._convert_imports_toon(python_imports_project)),
+        ):
+            for r in rows:
+                lr = r.get("line_range")
+                assert (
+                    isinstance(lr, (list, tuple))
+                    and len(lr) == 2
+                    and all(isinstance(x, int) for x in lr)
+                ), (
+                    f"K2 ({label}): line_range must be [int,int] — got "
+                    f"{lr!r} for import {r.get('name')!r}"
+                )
+
+
+# ============================================================================
+# K5 — trace_impact verdict vocabulary disambiguation
+# ============================================================================
+
+
+class TestK5TraceImpactVerdictRename:
+    """K5 (round-24 dogfood): ``trace_impact`` shipped a top-level
+    ``verdict`` field that used magnitude vocab (HIGH/MEDIUM/LOW/NONE)
+    while ``agent_summary.verdict`` used safety vocab (UNSAFE/CAUTION/
+    SAFE). Same key name, contradictory meaning — an agent could read
+    either and get the wrong picture.
+
+    Fix:
+    - Top-level ``impact_verdict`` carries the magnitude vocab.
+    - Top-level ``verdict`` is now an alias that mirrors
+      ``agent_summary.verdict`` (safety vocab) — consistent with every
+      other safety-aware tool (safe_to_edit, modification_guard).
+    """
+
+    @pytest.fixture
+    def call_site_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "lib.py").write_text(
+            "def target():\n    return 1\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "caller.py").write_text(
+            "from lib import target\n\ndef run():\n    return target()\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _run_trace(self, project: Path, symbol: str) -> dict[str, Any]:
+        from tree_sitter_analyzer.mcp.tools.trace_impact_tool import TraceImpactTool
+
+        return _run(TraceImpactTool(str(project)).execute({"symbol": symbol}))
+
+    def test_impact_verdict_uses_magnitude_vocab(self, call_site_project: Path) -> None:
+        """The new top-level ``impact_verdict`` must use the magnitude
+        vocabulary (HIGH / MEDIUM / LOW / NONE)."""
+        result = self._run_trace(call_site_project, "target")
+        impact_verdict = result.get("impact_verdict")
+        assert impact_verdict in {"HIGH", "MEDIUM", "LOW", "NONE"}, (
+            f"K5: impact_verdict must be magnitude vocab — got {impact_verdict!r}"
+        )
+
+    def test_top_level_verdict_mirrors_safety_vocab(
+        self, call_site_project: Path
+    ) -> None:
+        """Top-level ``verdict`` must match ``agent_summary.verdict``
+        (safety vocab — SAFE/CAUTION/UNSAFE) for cross-tool parity."""
+        result = self._run_trace(call_site_project, "target")
+        top_verdict = result.get("verdict")
+        agent_verdict = result.get("agent_summary", {}).get("verdict")
+        assert top_verdict == agent_verdict, (
+            f"K5: top-level verdict must mirror agent_summary.verdict "
+            f"(safety vocab) — got top={top_verdict!r} agent={agent_verdict!r}"
+        )
+        assert top_verdict in {"SAFE", "CAUTION", "UNSAFE"}, (
+            f"K5: top-level verdict must use safety vocabulary — got {top_verdict!r}"
+        )
+
+    def test_no_match_safe_verdict(self, call_site_project: Path) -> None:
+        """A symbol with no callers must report impact_verdict=NONE
+        AND a safety verdict of SAFE — they describe different axes."""
+        result = self._run_trace(call_site_project, "XYZ_NotExistent_Symbol")
+        assert result.get("impact_verdict") == "NONE"
+        assert result.get("verdict") == "SAFE"
+        assert result.get("agent_summary", {}).get("verdict") == "SAFE"
+
+
+# ============================================================================
+# K11 — --table silent override under --format json (transparency)
+# ============================================================================
+
+
+class TestK11TableOverrideTransparency:
+    """K11 (round-24 dogfood): when both ``--table=X`` and
+    ``--format=json|toon`` were passed, the user's ``--table`` value
+    was silently overridden and produced byte-identical output for
+    every requested table view. No warning, no envelope hint.
+
+    Fix (Option B per the brief): warn on stderr AND surface
+    ``effective_table`` on the JSON/TOON envelope so programmatic
+    callers can detect the override.
+    """
+
+    @pytest.fixture
+    def tiny_python_project(self, tmp_path: Path) -> Path:
+        (tmp_path / "sample.py").write_text(
+            "import os\n\n"
+            "class Greeter:\n"
+            "    def hello(self, name: str) -> str:\n"
+            "        return f'hello {name}'\n",
+            encoding="utf-8",
+        )
+        return tmp_path
+
+    def _run_cli(self, project: Path, table: str, fmt: str) -> tuple[str, str, int]:
+        """Invoke the CLI in-process and capture stdout/stderr."""
+        import subprocess
+        import sys as _sys
+
+        proc = subprocess.run(
+            [
+                _sys.executable,
+                "-m",
+                "tree_sitter_analyzer",
+                "sample.py",
+                f"--table={table}",
+                "--format",
+                fmt,
+            ],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        return proc.stdout, proc.stderr, proc.returncode
+
+    def test_json_envelope_carries_effective_table(
+        self, tiny_python_project: Path
+    ) -> None:
+        """JSON output must include ``effective_table`` so programmatic
+        callers know which view was actually produced."""
+        import json as _json
+
+        stdout, _stderr, _rc = self._run_cli(tiny_python_project, "compact", "json")
+        envelope = _json.loads(stdout)
+        assert envelope.get("effective_table") == "json", (
+            f"K11: JSON envelope must carry effective_table=json — got "
+            f"{envelope.get('effective_table')!r}"
+        )
+        assert envelope.get("requested_table") == "compact", (
+            f"K11: JSON envelope must echo requested_table — got "
+            f"{envelope.get('requested_table')!r}"
+        )
+
+    def test_table_overridden_warning_fires_on_stderr(
+        self, tiny_python_project: Path
+    ) -> None:
+        """When ``--table`` is silently overridden, a Warning must
+        appear on stderr so interactive callers see it."""
+        _stdout, stderr, _rc = self._run_cli(tiny_python_project, "compact", "json")
+        assert "Warning" in stderr and "--table=compact" in stderr, (
+            f"K11: stderr must contain the table-override warning — got "
+            f"stderr={stderr!r}"
+        )
+
+    def test_toon_envelope_carries_effective_table(
+        self, tiny_python_project: Path
+    ) -> None:
+        """Symmetric to JSON: TOON output must also carry
+        ``effective_table`` so the schema parity is intact."""
+        stdout, _stderr, _rc = self._run_cli(tiny_python_project, "full", "toon")
+        assert "effective_table: toon" in stdout, (
+            f"K11: TOON envelope must include ``effective_table: toon`` — "
+            f"got stdout={stdout!r}"
+        )
+
+
+# ============================================================================
+# K12 — file_path echo normalization
+# ============================================================================
+
+
+class TestK12FilePathNormalization:
+    """K12 (round-24 dogfood): ``./X`` and ``X`` resolve to the same
+    file but the echoed ``file_path`` in the response retained the raw
+    input string. Same ``content_hash``, different ``file_path``
+    confused downstream dedup / caching / display layers.
+
+    Fix: ``BaseMCPTool._normalize_file_path`` strips leading ``./`` and
+    normalizes backslash separators, and the central dispatcher
+    post-hook (``ensure_canonical_success_envelope``) applies the same
+    rule on the response envelope so direct-call sites benefit too.
+    """
+
+    def test_normalize_strips_leading_dot_slash(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
+
+        assert (
+            BaseMCPTool._normalize_file_path("tree_sitter_analyzer/foo.py")
+            == "tree_sitter_analyzer/foo.py"
+        )
+        assert (
+            BaseMCPTool._normalize_file_path("./tree_sitter_analyzer/foo.py")
+            == "tree_sitter_analyzer/foo.py"
+        )
+        assert (
+            BaseMCPTool._normalize_file_path("././tree_sitter_analyzer/foo.py")
+            == "tree_sitter_analyzer/foo.py"
+        )
+
+    def test_normalize_preserves_parent_segments(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
+
+        # ``..`` carries real path info and must not be stripped.
+        assert BaseMCPTool._normalize_file_path("../sibling.py") == "../sibling.py"
+
+    def test_normalize_converts_backslashes(self) -> None:
+        from tree_sitter_analyzer.mcp.tools.base_tool import BaseMCPTool
+
+        assert BaseMCPTool._normalize_file_path("a\\b\\c.py") == "a/b/c.py"
+
+    def test_analyze_scale_dot_prefix_round_trip(self, tiny_project: Path) -> None:
+        """End-to-end: same logical path with and without ``./`` must
+        produce identical ``file_path`` echo (and therefore identical
+        ``summary_line``)."""
+        from tree_sitter_analyzer.mcp.tools.analyze_scale_tool import (
+            AnalyzeScaleTool,
+        )
+
+        tool = AnalyzeScaleTool(str(tiny_project))
+        r1 = _run(tool.execute({"file_path": "sample.py"}))
+        r2 = _run(tool.execute({"file_path": "./sample.py"}))
+        assert r1.get("file_path") == r2.get("file_path"), (
+            f"K12: same logical path must produce identical file_path "
+            f"echo — got r1={r1.get('file_path')!r} "
+            f"r2={r2.get('file_path')!r}"
+        )
+        assert r1.get("summary_line") == r2.get("summary_line"), (
+            f"K12: same logical path must produce identical summary_line — "
+            f"got r1={r1.get('summary_line')!r} "
+            f"r2={r2.get('summary_line')!r}"
+        )

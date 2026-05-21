@@ -251,14 +251,45 @@ def _walk_for_symbols(
             }
         )
     elif node_type in _IMPORT_LIKE:
-        symbols.append(
-            {
-                "kind": "import",
-                "text": _node_text(node, source),
-                "line": node.start_point[0] + 1,
-                "language": language,
-            }
-        )
+        # K7: ``from X import (A, B, C)`` previously stored the entire
+        # parenthesised block — newlines, alias keyword, trailing
+        # comments and all — as a single ``text`` field. The FTS5
+        # writer then derived ``name = sym.get("name", sym.get("text"))``,
+        # so an FTS search for ``execute`` returned import rows with
+        # 280-char ``name`` values. Emit one row per *bound* identifier
+        # so each row's ``name`` is a single locally bound symbol.
+        line_no = node.start_point[0] + 1
+        end_line_no = node.end_point[0] + 1
+        bound_names = _extract_import_bound_names(node, source)
+        if bound_names:
+            for bound in bound_names:
+                symbols.append(
+                    {
+                        "kind": "import",
+                        "name": bound,
+                        "text": bound,
+                        "line": line_no,
+                        "end_line": end_line_no,
+                        "language": language,
+                    }
+                )
+        else:
+            # Defensive fallback for syntactically unusual import nodes
+            # (wildcard imports, syntax errors, languages we don't
+            # specifically handle below). Cap ``name`` at 100 chars so
+            # the FTS row stays scannable.
+            raw_text = _node_text(node, source).replace("\n", " ").strip()
+            short_name = raw_text[:100]
+            symbols.append(
+                {
+                    "kind": "import",
+                    "name": short_name,
+                    "text": short_name,
+                    "line": line_no,
+                    "end_line": end_line_no,
+                    "language": language,
+                }
+            )
     elif node_type in _VAR_DECL_LIKE and name_node is not None:
         name = _node_text(name_node, source)
         if not name.startswith("_") or depth < 3:
@@ -272,6 +303,234 @@ def _walk_for_symbols(
             )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1)
+
+
+def _extract_import_bound_names(node: Any, source: str) -> list[str]:
+    """Return the locally bound identifiers introduced by an import-like node.
+
+    K7: walks tree-sitter import nodes for the common language shapes and
+    returns one bound identifier per imported symbol — the name the import
+    actually introduces into the local namespace. ``import X as Y`` yields
+    ``Y``; ``from m import A, B as b`` yields ``A`` and ``b``; ``import * as ns``
+    yields ``ns``. Wildcard ``*`` imports return ``["*"]`` so the row is
+    still searchable. Returns ``[]`` when the node shape isn't one we
+    recognise (callers should fall back to a truncated raw-text row).
+
+    The helper is intentionally heuristic — it covers the languages we
+    index (Python, JS/TS, Java, Go, Rust, C/C++) by walking direct
+    children rather than running per-language tree-sitter queries. It
+    never raises; on unfamiliar shapes it returns ``[]``.
+    """
+    names: list[str] = []
+    try:
+        node_type = node.type
+        if node_type == "import_from_statement":
+            _collect_python_from_import(node, source, names)
+        elif node_type == "import_statement":
+            # Python ``import a, b``; JS/TS ``import x, { y } from 'foo'``;
+            # the children disambiguate.
+            _collect_import_statement(node, source, names)
+        elif node_type == "import_declaration":
+            # Java / JS — single-symbol shape predominantly, but JS uses
+            # ``import_clause`` children that we walk recursively.
+            _collect_import_declaration(node, source, names)
+        elif node_type == "use_declaration":
+            # Rust ``use mod::{A, B};``
+            _collect_rust_use(node, source, names)
+        elif node_type == "package_declaration":
+            # Go ``package x`` — emit the package name itself.
+            for child in node.children:
+                if child.type in ("identifier", "package_identifier"):
+                    text = _node_text(child, source)
+                    if text:
+                        names.append(text)
+                        break
+        elif node_type == "require_statement":
+            # Some JS / Lua dialects expose ``require_statement`` directly.
+            for child in node.children:
+                if child.type in ("string", "string_fragment", "identifier"):
+                    text = _node_text(child, source).strip("'\"")
+                    if text:
+                        names.append(text)
+                        break
+        elif node_type == "include_directive":
+            # C/C++ — header name is the user-facing handle.
+            for child in node.children:
+                if child.type in (
+                    "string_literal",
+                    "system_lib_string",
+                ):
+                    text = _node_text(child, source).strip('<>"')
+                    if text:
+                        names.append(text)
+                        break
+        elif node_type == "extern_crate_item":
+            for child in node.children:
+                if child.type == "identifier":
+                    text = _node_text(child, source)
+                    if text and text != "extern":
+                        names.append(text)
+    except Exception:  # noqa: BLE001 — never crash the indexer on a weird node
+        return []
+
+    # De-duplicate while preserving order; drop empties and obvious noise.
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in names:
+        cleaned = raw.strip().strip("(){};,")
+        if not cleaned or cleaned in {"import", "from", "as", "use", "pub"}:
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        result.append(cleaned)
+    return result
+
+
+def _bound_name_from_aliased(node: Any, source: str) -> str:
+    """Return the bound name from an ``aliased_import`` node.
+
+    For ``A as a`` returns ``a``; falls back to ``A`` when no alias is
+    present (defensive — tree-sitter normally emits the alias).
+    """
+    seen_as = False
+    for child in node.children:
+        if child.type == "as":
+            seen_as = True
+            continue
+        if seen_as and child.type == "identifier":
+            text = _node_text(child, source)
+            if text:
+                return text
+    for child in node.children:
+        if child.type in ("dotted_name", "identifier"):
+            return _node_text(child, source)
+    return ""
+
+
+def _collect_python_from_import(node: Any, source: str, names: list[str]) -> None:
+    saw_import = False
+    for child in node.children:
+        if child.type == "import":
+            saw_import = True
+            continue
+        if not saw_import:
+            continue
+        if child.type == "aliased_import":
+            bound = _bound_name_from_aliased(child, source)
+            if bound:
+                names.append(bound)
+        elif child.type in ("dotted_name", "identifier"):
+            text = _node_text(child, source)
+            if text:
+                names.append(text)
+        elif child.type == "import_list":
+            for sub in child.children:
+                if sub.type == "aliased_import":
+                    bound = _bound_name_from_aliased(sub, source)
+                    if bound:
+                        names.append(bound)
+                elif sub.type in ("dotted_name", "identifier"):
+                    text = _node_text(sub, source)
+                    if text:
+                        names.append(text)
+        elif child.type == "wildcard_import":
+            names.append("*")
+
+
+def _collect_import_statement(node: Any, source: str, names: list[str]) -> None:
+    # Python: import a, b.c, d as e — children include dotted_name +
+    # aliased_import.
+    # JS/TS: import defaultExp, { a, b as bb } from 'foo' — children
+    # include identifier (default), import_clause -> named_imports ->
+    # import_specifier.
+    for child in node.children:
+        if child.type == "aliased_import":
+            bound = _bound_name_from_aliased(child, source)
+            if bound:
+                names.append(bound)
+        elif child.type in ("dotted_name", "identifier"):
+            text = _node_text(child, source)
+            if text:
+                names.append(text)
+        elif child.type == "import_clause":
+            _collect_js_import_clause(child, source, names)
+
+
+def _collect_js_import_clause(node: Any, source: str, names: list[str]) -> None:
+    for child in node.children:
+        if child.type == "identifier":
+            text = _node_text(child, source)
+            if text:
+                names.append(text)
+        elif child.type == "named_imports":
+            for sub in child.children:
+                if sub.type == "import_specifier":
+                    # ``a`` or ``a as b`` — bound is final identifier
+                    last = ""
+                    for grand in sub.children:
+                        if grand.type == "identifier":
+                            text = _node_text(grand, source)
+                            if text:
+                                last = text
+                    if last:
+                        names.append(last)
+        elif child.type == "namespace_import":
+            # ``* as ns`` — bound is the identifier
+            for sub in child.children:
+                if sub.type == "identifier":
+                    text = _node_text(sub, source)
+                    if text:
+                        names.append(text)
+
+
+def _collect_import_declaration(node: Any, source: str, names: list[str]) -> None:
+    # Java: import a.b.C; — last segment of the dotted scoped_identifier
+    # is the bound name. We emit the full path so users can search either
+    # the leaf or the qualified path.
+    for child in node.children:
+        if child.type in ("scoped_identifier", "identifier"):
+            text = _node_text(child, source)
+            if text:
+                # Use the leaf as the searchable name to match
+                # function/class kinds (which use bare identifiers).
+                leaf = text.rsplit(".", 1)[-1]
+                names.append(leaf)
+        elif child.type == "import_clause":
+            _collect_js_import_clause(child, source, names)
+
+
+def _collect_rust_use(node: Any, source: str, names: list[str]) -> None:
+    # Rust use trees can be deeply nested: ``use a::b::{C, D as d};``.
+    # Walk descendants and harvest each terminal identifier.
+    stack: list[Any] = [node]
+    while stack:
+        cur = stack.pop()
+        for child in cur.children:
+            if child.type == "scoped_use_list":
+                stack.append(child)
+            elif child.type == "use_list":
+                stack.append(child)
+            elif child.type == "use_as_clause":
+                # ``C as d`` — bound is the alias.
+                bound = ""
+                seen_as = False
+                for grand in child.children:
+                    if grand.type == "as":
+                        seen_as = True
+                        continue
+                    if seen_as and grand.type == "identifier":
+                        bound = _node_text(grand, source)
+                if bound:
+                    names.append(bound)
+            elif child.type == "scoped_identifier":
+                text = _node_text(child, source)
+                if text:
+                    names.append(text.rsplit("::", 1)[-1])
+            elif child.type == "identifier":
+                text = _node_text(child, source)
+                if text and text not in {"use", "pub", "self", "crate"}:
+                    names.append(text)
 
 
 _FUNCTION_LIKE = frozenset(

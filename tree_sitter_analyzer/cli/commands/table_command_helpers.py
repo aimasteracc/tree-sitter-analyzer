@@ -243,13 +243,33 @@ def _toon_field(element: Any) -> dict[str, Any]:
 
 
 def _toon_import(element: Any) -> dict[str, Any]:
-    """Convert an import element to TOON shape."""
+    """Convert an import element to TOON shape.
+
+    K2 canonical shape — matches ``TableCommand._convert_import_element``
+    key-for-key so an agent switching ``--format json`` ↔ ``--format toon``
+    sees the same schema.
+    """
+    raw_text_attr = getattr(element, "raw_text", "")
+    import_statement_attr = getattr(element, "import_statement", "")
+    if isinstance(raw_text_attr, str) and raw_text_attr:
+        statement = raw_text_attr
+    elif isinstance(import_statement_attr, str) and import_statement_attr:
+        statement = import_statement_attr
+    else:
+        statement = f"import {getattr(element, 'name', 'unknown')}"
     return {
         "name": getattr(element, "name", "unknown"),
-        "is_static": getattr(element, "is_static", False),
-        "is_wildcard": getattr(element, "is_wildcard", False),
-        "statement": getattr(element, "import_statement", ""),
-        "line_range": _line_range_tuple(element),
+        "module_name": getattr(element, "module_name", "") or "",
+        "statement": statement,
+        "is_static": bool(getattr(element, "is_static", False)),
+        "is_wildcard": bool(getattr(element, "is_wildcard", False)),
+        "line_range": [
+            int(getattr(element, "start_line", 0)),
+            int(getattr(element, "end_line", 0)),
+        ],
+        "imported_names": list(getattr(element, "imported_names", []) or []),
+        # Backward-compat alias retained for parity with JSON output.
+        "raw_text": statement,
     }
 
 

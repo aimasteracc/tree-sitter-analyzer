@@ -18,6 +18,20 @@ from .file_health_locations import (
 TECH_DEBT_MARKERS = ("TODO", "FIXME", "HACK", "XXX")
 COMMENT_DELIMITERS = ("#", "//", "/*", "*", "<!--", "--")
 
+# K9: long-line / single-line-file thresholds. 200 chars per line is the
+# de-facto industry ceiling for code review readability (PEP-8 = 79/99,
+# Black = 88, Google style = 80, Java/JS modern = 120, hard upper for
+# "still readable in a side-by-side diff" = ~200). Picking 200 keeps
+# normal 80-120 char code clean while still flagging minified / bundled
+# / single-statement-per-file emissions where humans can no longer
+# scan the file. SINGLE_LINE_FILE_THRESHOLD = 200 bytes prevents
+# false-positives on trivial files (1-line modules, ``__init__.py`` with
+# only an import) while still catching the 3.5KB bundled-on-one-line
+# case reported in K9.
+LONG_LINE_THRESHOLD = 200
+SINGLE_LINE_FILE_THRESHOLD = 200
+LONG_LINE_REPORT_LIMIT = 5
+
 
 def detect_code_smells(
     file_path: str,
@@ -41,8 +55,85 @@ def detect_code_smells(
     _check_element_smells(smells, lines, line_count, analysis)
     _check_technical_debt(smells, lines)
     _check_security_smells(smells, source, language, file_path)
+    # K9: catch files that the tree-sitter element pass never sees as
+    # problematic — a 3.5KB minified/bundled blob on one physical line
+    # used to score grade A because no smell detector covered it. Run
+    # AFTER the dimension/element checks so the long-line smells don't
+    # crowd out the more actionable signals when both fire.
+    _check_long_lines(smells, lines)
+    _check_single_line_file(smells, source)
 
     return smells
+
+
+def _check_long_lines(smells: list[dict[str, Any]], lines: list[str]) -> None:
+    """Flag individual lines that exceed ``LONG_LINE_THRESHOLD``.
+
+    Caps reported lines at ``LONG_LINE_REPORT_LIMIT`` to avoid drowning
+    the smell list when an entire file is minified — the headline
+    ``single_line_file`` smell already covers the worst case. We report
+    by descending length so the most egregious offenders surface first.
+    """
+    if not lines:
+        return
+    candidates: list[tuple[int, int]] = []
+    for line_no, line in enumerate(lines, start=1):
+        length = len(line)
+        if length > LONG_LINE_THRESHOLD:
+            candidates.append((line_no, length))
+    if not candidates:
+        return
+    # Report the longest lines first, up to the cap. Tie-break by line
+    # number so output is deterministic.
+    candidates.sort(key=lambda pair: (-pair[1], pair[0]))
+    for line_no, length in candidates[:LONG_LINE_REPORT_LIMIT]:
+        smells.append(
+            {
+                "smell": "long_line",
+                "detail": (
+                    f"Line {line_no} is {length} chars "
+                    f"(recommended <= {LONG_LINE_THRESHOLD})"
+                ),
+                "severity": "critical" if length > 500 else "warning",
+                "line": line_no,
+                "fix": (
+                    "Break the line at logical boundaries — extract sub-"
+                    "expressions, use line continuations, or split the "
+                    "statement across multiple lines"
+                ),
+            }
+        )
+
+
+def _check_single_line_file(smells: list[dict[str, Any]], source: str) -> None:
+    """Flag files that have no newlines but substantial content.
+
+    Bundled JS, minified output, and one-liner Python scripts that grew
+    too big all share this shape — the file is ``substantial`` bytes
+    long but tree-sitter element extraction reports 1 line of code.
+    Without this check those files score grade A because the long_method
+    / oversized_file / deep_nesting checks all rely on line counts.
+    """
+    if not source or "\n" in source:
+        return
+    if len(source) < SINGLE_LINE_FILE_THRESHOLD:
+        return
+    smells.append(
+        {
+            "smell": "single_line_file",
+            "detail": (
+                f"File has no newlines but {len(source)} chars — "
+                "likely minified / bundled / accidentally inlined"
+            ),
+            "severity": "critical",
+            "line": 1,
+            "fix": (
+                "Re-format the file with line breaks at logical "
+                "statements; if the source is generated, regenerate "
+                "from the original."
+            ),
+        }
+    )
 
 
 def _check_oversized_file(smells: list[dict[str, Any]], line_count: int) -> None:

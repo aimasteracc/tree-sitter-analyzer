@@ -41,6 +41,12 @@ class TableCommand(BaseCommand):
                 return 1
 
             table_type = getattr(self.args, "table", "full")
+            # K11: capture the user's original ``--table`` intent (pre-
+            # override) so we can warn when ``--format`` silently wins
+            # and stamp ``effective_table`` on the JSON envelope for
+            # programmatic callers.
+            user_table_request = table_type
+            table_was_user_specified = "--table" in " ".join(sys.argv[1:])
 
             # DOG-3 fix: --output-format used to be silently ignored when
             # --table was also set. The global format flag now wins for the
@@ -63,17 +69,49 @@ class TableCommand(BaseCommand):
             elif output_format == "json" and table_type != "json":
                 table_type = "json"
 
+            # K11 (round-24 dogfood): warn on stderr when ``--table`` is
+            # silently overridden by ``--format`` so the user knows the
+            # explicit ``--table=compact`` did not take effect. Pre-K11,
+            # ``--table=full|compact|csv`` all produced byte-identical JSON
+            # output. Symmetric to DOG-3's TOON warning.
+            table_was_overridden = (
+                table_was_user_specified
+                and output_format in ("json", "toon")
+                and user_table_request != table_type
+            )
+            if table_was_overridden:
+                print(
+                    f"Warning: --table={user_table_request} is ignored when "
+                    f"--format={output_format} (effective_table={table_type})",
+                    file=sys.stderr,
+                )
+
             if table_type == "json":
                 formatted_data = self._convert_to_structure_format(
                     analysis_result, language
                 )
+                # K11: surface the effective table view to programmatic
+                # callers. ``effective_table`` carries the actual view
+                # produced (always ``json`` when --format=json wins);
+                # ``requested_table`` echoes the user's original
+                # ``--table`` intent so they can detect the override.
+                if isinstance(formatted_data, dict):
+                    formatted_data["effective_table"] = table_type
+                    if table_was_user_specified:
+                        formatted_data["requested_table"] = user_table_request
                 import json
 
                 formatted_output = json.dumps(
                     formatted_data, indent=2, ensure_ascii=False
                 )
             elif table_type == "toon":
-                formatted_output = self._format_as_toon(analysis_result)
+                formatted_output = self._format_as_toon(
+                    analysis_result,
+                    effective_table=table_type,
+                    requested_table=(
+                        user_table_request if table_was_user_specified else None
+                    ),
+                )
             else:
                 # Get appropriate formatter using unified FormatterRegistry
                 from ...formatters.formatter_registry import FormatterRegistry
@@ -104,8 +142,19 @@ class TableCommand(BaseCommand):
             return 1
 
     # Format data for output: _format_as_toon
-    def _format_as_toon(self, analysis_result: Any) -> str:
-        """Format analysis result as TOON."""
+    def _format_as_toon(
+        self,
+        analysis_result: Any,
+        effective_table: str | None = None,
+        requested_table: str | None = None,
+    ) -> str:
+        """Format analysis result as TOON.
+
+        K11: when ``--table`` is silently overridden by ``--format=toon``
+        the structure carries ``effective_table`` / ``requested_table``
+        so programmatic callers can detect the override symmetrically
+        to the JSON path.
+        """
         from ...formatters.toon_formatter import ToonFormatter
 
         use_tabs = getattr(self.args, "toon_use_tabs", False)
@@ -113,6 +162,10 @@ class TableCommand(BaseCommand):
 
         # Convert to structure format for TOON
         structure_data = self._convert_to_toon_format(analysis_result)
+        if effective_table is not None and isinstance(structure_data, dict):
+            structure_data["effective_table"] = effective_table
+            if requested_table is not None:
+                structure_data["requested_table"] = requested_table
         return formatter.format(structure_data)
 
     # Format data for output: _convert_to_toon_format
@@ -287,20 +340,41 @@ class TableCommand(BaseCommand):
 
     # Convert between formats: _convert_import_element
     def _convert_import_element(self, element: Any) -> dict[str, Any]:
-        """Convert import element to table format."""
-        # Try to get the full import statement from raw_text
+        """Convert import element to table format.
+
+        Produces the K2 canonical import shape so JSON output matches the
+        TOON ``_toon_import`` projection key-for-key. ``raw_text`` is kept
+        as a backward-compat alias for downstream language formatters
+        (python/php/csharp/ruby/go) that still read it directly.
+        """
+        # Try to get the full import statement from raw_text first; fall back
+        # to the structured ``import_statement`` attribute (string only — skip
+        # non-string sentinels so MagicMock-based tests still hit the
+        # synthetic fallback), then to a synthetic ``import <name>``. This
+        # is the only field that varies by source.
         raw_text = getattr(element, "raw_text", "")
-        if raw_text:
+        import_statement_attr = getattr(element, "import_statement", "")
+        if raw_text and isinstance(raw_text, str):
             statement = raw_text
+        elif isinstance(import_statement_attr, str) and import_statement_attr:
+            statement = import_statement_attr
         else:
-            # Fallback to constructing from name
             statement = f"import {getattr(element, 'name', str(element))}"
 
         return {
-            "statement": statement,
-            "raw_text": statement,  # PythonTableFormatter expects raw_text
             "name": getattr(element, "name", str(element)),
             "module_name": getattr(element, "module_name", ""),
+            "statement": statement,
+            "is_static": bool(getattr(element, "is_static", False)),
+            "is_wildcard": bool(getattr(element, "is_wildcard", False)),
+            "line_range": [
+                int(getattr(element, "start_line", 0)),
+                int(getattr(element, "end_line", 0)),
+            ],
+            "imported_names": list(getattr(element, "imported_names", []) or []),
+            # Backward-compat alias retained for downstream formatters
+            # (python/php/csharp/ruby/go) that still read ``raw_text``.
+            "raw_text": statement,
         }
 
     # Convert between formats: _convert_sql_element

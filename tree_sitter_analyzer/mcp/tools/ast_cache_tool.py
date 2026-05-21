@@ -9,6 +9,7 @@ search (search symbols), stats (cache statistics), invalidate (remove entry).
 CodeGraph parity: equivalent to CodeGraph's pre-indexed code intelligence.
 """
 
+import re
 from typing import Any
 
 from ...ast_cache import ASTCache
@@ -17,6 +18,96 @@ from ...utils import setup_logger
 from .base_tool import BaseMCPTool, mirror_summary_line
 
 logger = setup_logger(__name__)
+
+# K7: read-time defensive split for legacy ``kind=import`` rows where the
+# ``name`` field still carries the entire ``from X import (A, B, C)``
+# block. Fresh indices already emit one row per bound identifier (see
+# ``ast_cache._walk_for_symbols``); this guard only kicks in when the
+# user has an older DB and avoids forcing a full re-index for a quirk
+# that would otherwise confuse FTS callers.
+_IMPORT_NAME_LIMIT = 100
+_BOUND_NAME_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_IMPORT_KEYWORDS = frozenset(
+    {
+        "from",
+        "import",
+        "as",
+        "use",
+        "include",
+        "package",
+        "require",
+        "pub",
+        "self",
+        "crate",
+        "noqa",
+        "F401",
+    }
+)
+
+
+def _split_legacy_import_row(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return one row per bound identifier when ``row['name']`` holds a
+    multi-line / multi-symbol import block; otherwise return ``[row]``.
+
+    K7: defensive shim for legacy ``.ast-cache`` databases that were
+    written before the indexer learned to split imports. ``name`` length
+    is the trigger — clean rows already cap at a single identifier.
+    """
+    if row.get("kind") != "import":
+        return [row]
+    name = row.get("name", "")
+    if not isinstance(name, str) or len(name) <= _IMPORT_NAME_LIMIT:
+        return [row]
+
+    # Extract bound identifiers from the raw block. We honour the
+    # ``X as Y`` alias rule by preferring the identifier after ``as``.
+    bound: list[str] = []
+    seen: set[str] = set()
+    tokens = _BOUND_NAME_PATTERN.findall(name)
+    skip_next = False  # set when we just consumed an ``as`` keyword
+    for idx, tok in enumerate(tokens):
+        if tok in _IMPORT_KEYWORDS:
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        # ``A as B`` — emit B, swallow A's slot via lookahead.
+        if idx + 1 < len(tokens) and tokens[idx + 1] == "as":
+            alias = tokens[idx + 2] if idx + 2 < len(tokens) else ""
+            if alias and alias not in seen:
+                seen.add(alias)
+                bound.append(alias)
+            skip_next = True  # skip the ``as`` token next iteration
+            continue
+        if tok in seen:
+            continue
+        seen.add(tok)
+        bound.append(tok)
+
+    if not bound:
+        # Couldn't identify any bound names — truncate to keep the row
+        # scannable and return it as a single entry.
+        compact = name.replace("\n", " ")[:_IMPORT_NAME_LIMIT]
+        new_row = dict(row)
+        new_row["name"] = compact
+        return [new_row]
+
+    split_rows: list[dict[str, Any]] = []
+    for n in bound:
+        new_row = dict(row)
+        new_row["name"] = n
+        split_rows.append(new_row)
+    return split_rows
+
+
+def _apply_legacy_import_split(
+    results: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Apply ``_split_legacy_import_row`` across an FTS result list."""
+    cleaned: list[dict[str, Any]] = []
+    for row in results:
+        cleaned.extend(_split_legacy_import_row(row))
+    return cleaned
 
 
 def _build_ast_cache_envelope(
@@ -226,7 +317,10 @@ class ASTCacheTool(BaseMCPTool):
             query = arguments.get("query", "")
             language = arguments.get("language")
             limit = arguments.get("limit", 100)
-            results = cache.fts_search(query, language=language, limit=limit)
+            raw_results = cache.fts_search(query, language=language, limit=limit)
+            # K7: defensively split any legacy multi-symbol import rows so
+            # the caller never sees a 280-char ``name`` field.
+            results = _apply_legacy_import_split(raw_results)
             fts5_available = cache._fts5_available
             summary_line = (
                 f"ast_cache {mode} query={query!r} "

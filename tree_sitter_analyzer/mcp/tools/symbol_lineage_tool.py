@@ -10,6 +10,7 @@ Tells AI agents: "If you change X, here's everything affected."
 """
 
 import copy
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -205,6 +206,44 @@ class SymbolLineageTool(BaseMCPTool):
         definitions, references = _reclassify_definition_like(
             definitions, references, str(self.project_root), symbol
         )
+
+        # K3 fix: ``execute_find_references`` caps the project scan at the
+        # first 500 source files (rglob order, no priority). On medium
+        # repos that drops the definition file for symbols whose owning
+        # file sorts past the 500th — e.g. ``BaseMCPTool`` in
+        # ``tree_sitter_analyzer/mcp/tools/base_tool.py`` is at rglob index
+        # 539 here. References to the symbol *are* found (they're in
+        # earlier files like importers / callers), but the def site itself
+        # never enters the scan, so ``definitions`` stays empty and
+        # downstream risk classification reports "Symbol not found".
+        #
+        # When defs are empty, run a focused text-grep fallback that scans
+        # ALL project source files (no 500 cap) for definition-keyword
+        # lines mentioning the symbol. Cheap because we only read files
+        # that match a fast first-pass substring check.
+        if not definitions:
+            fallback_defs = _find_definitions_via_grep(str(self.project_root), symbol)
+            if fallback_defs:
+                seen_def_keys = {
+                    (d.get("file", ""), d.get("start_line", 0)) for d in definitions
+                }
+                # Also dedupe against the references list — promoting a
+                # ref-as-def removes it from references.
+                ref_keys_to_drop: set[tuple[str, int]] = set()
+                for fd in fallback_defs:
+                    key = (fd["file"], fd["start_line"])
+                    if key in seen_def_keys:
+                        continue
+                    seen_def_keys.add(key)
+                    ref_keys_to_drop.add(key)
+                    definitions.append(fd)
+                if ref_keys_to_drop:
+                    references = [
+                        r
+                        for r in references
+                        if (r.get("file", ""), r.get("start_line", 0))
+                        not in ref_keys_to_drop
+                    ]
 
         def_files = {d["file"] for d in definitions}
         ref_files = {r["file"] for r in references}
@@ -611,3 +650,162 @@ def _is_test_file(rel_path: str) -> bool:
         or parts[-1].endswith("test.java")
         or parts[-1].endswith("test.go")
     )
+
+
+# K3 fallback: project-wide text scan for definition sites. Used when
+# ``execute_find_references`` returns 0 definitions because its 500-file
+# cap dropped the def-bearing file. We scan ALL project source files
+# (no cap) but only read files whose path contains a fast first-pass
+# substring check (the symbol name) — keeps the scan cheap.
+_K3_FALLBACK_EXTS: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".pyi",
+        ".java",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".go",
+        ".rs",
+        ".kt",
+        ".cs",
+        ".rb",
+        ".php",
+        ".c",
+        ".cpp",
+        ".h",
+        ".hpp",
+    }
+)
+_K3_FALLBACK_EXCLUDE: frozenset[str] = frozenset(
+    {
+        "node_modules",
+        ".git",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "htmlcov",
+        ".cache",
+        ".eggs",
+        ".claude",
+        ".ast-cache",
+        ".tree-sitter-cache",
+    }
+)
+
+
+def _find_definitions_via_grep(
+    project_root: str,
+    symbol: str,
+) -> list[dict[str, Any]]:
+    """Project-wide text scan for definition sites of ``symbol``.
+
+    Reads every source file (no 500-file cap), keeps only the ones that
+    contain the bare name, then inspects each line for a definition
+    keyword (``def``, ``class``, ``func``, ``fn``, …) immediately
+    followed by the symbol. Returns hits in the same shape as
+    ``execute_find_references`` definitions.
+
+    Two layers of filtering:
+
+    1. Substring pre-check on the whole file content — skip files that
+       never mention the bare name.
+    2. Per-line check: line must start with a definition keyword AND
+       contain the symbol as a whole word.
+
+    Robust to large repos because we never invoke tree-sitter — pure
+    text grep on already-filtered files.
+    """
+    if not symbol:
+        return []
+    bare_name = symbol.split(".")[-1]
+    if not bare_name:
+        return []
+
+    root = Path(project_root).resolve()
+    if not root.is_dir():
+        return []
+
+    # Whole-word boundary so ``BaseMCPTool`` doesn't match ``MyBaseMCPTool2``.
+    word_re = re.compile(r"\b" + re.escape(bare_name) + r"\b")
+    # Definition-keyword + symbol on the same line. We accept the symbol
+    # being followed by an open paren, colon, whitespace, less-than
+    # (generics), or end-of-line. The keyword must be at the start of the
+    # stripped line (Python ``def``/``class``, Go ``func``, Rust ``fn``,
+    # Java/C# method/class declarations after access modifiers).
+    keyword_alternation = (
+        r"(?:def|async\s+def|class|function|function\*|async\s+function|"
+        r"func|fn|struct|interface|trait|enum|type|impl|namespace|module)"
+    )
+    line_re = re.compile(
+        r"^\s*"
+        # Optional access modifiers / annotations before the keyword.
+        r"(?:(?:public|private|protected|static|abstract|final|virtual|"
+        r"override|sealed|unsafe|async|export|default)\s+)*"
+        + keyword_alternation
+        + r"\s+"
+        + re.escape(bare_name)
+        + r"(?:\b|[\s\(:<])"
+    )
+
+    hits: list[dict[str, Any]] = []
+    seen_keys: set[tuple[str, int]] = set()
+    # Manual walk so we can prune excluded directories before stat-ing.
+    import os as _os
+
+    stack: list[str] = [str(root)]
+    while stack:
+        current = stack.pop()
+        try:
+            it = _os.scandir(current)
+        except OSError:
+            continue
+        with it:
+            for entry in it:
+                name = entry.name
+                if name in _K3_FALLBACK_EXCLUDE:
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(entry.path)
+                    continue
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                dot = name.rfind(".")
+                if dot == -1:
+                    continue
+                if name[dot:].lower() not in _K3_FALLBACK_EXTS:
+                    continue
+                try:
+                    text = Path(entry.path).read_text(
+                        encoding="utf-8", errors="replace"
+                    )
+                except OSError:
+                    continue
+                if not word_re.search(text):
+                    continue
+                rel = str(Path(entry.path).relative_to(root))
+                for i, line in enumerate(text.splitlines(), start=1):
+                    if not line_re.match(line):
+                        continue
+                    key = (rel, i)
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    hits.append(
+                        {
+                            "name": bare_name,
+                            "type": "definition",
+                            "file": rel,
+                            "start_line": i,
+                            "end_line": i,
+                            "role": "definition",
+                        }
+                    )
+    return hits

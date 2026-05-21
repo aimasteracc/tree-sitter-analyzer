@@ -585,7 +585,14 @@ class TraceImpactTool(BaseMCPTool):
                 "count": 0,
                 "results": [],
                 "impact_level": impact["level"],
-                "verdict": impact["level"].upper(),
+                # K5 fix: ``impact_verdict`` is the magnitude vocab
+                # (HIGH/MEDIUM/LOW/NONE) — kept separate from the safety
+                # vocab used by safe_to_edit / modification_guard
+                # (SAFE/CAUTION/UNSAFE). The deprecated ``verdict`` alias
+                # now mirrors ``agent_summary.verdict`` (safety) so
+                # cross-tool readers get the standardized vocabulary.
+                "impact_verdict": impact["level"].upper(),
+                "verdict": "SAFE",
                 "impact_badge": impact["badge"],
                 "impact_guidance": impact["guidance"],
                 "message": f"No usages of '{symbol}' found in the project.",
@@ -665,8 +672,11 @@ class TraceImpactTool(BaseMCPTool):
 
         # 构建响应
         # ``count`` mirrors ``call_count`` (cross-tool canonical name).
-        # ``verdict`` mirrors ``impact_level`` uppercased — same value,
-        # same vocabulary as safe_to_edit / modification_guard.
+        # K5 fix: ``impact_verdict`` uses magnitude vocabulary
+        # (HIGH/MEDIUM/LOW/NONE). The deprecated ``verdict`` alias now
+        # mirrors ``agent_summary.verdict`` so cross-tool readers get the
+        # standardized SAFE/CAUTION/UNSAFE vocabulary used by every other
+        # safety-aware tool (safe_to_edit, modification_guard, ...).
         summary_line = f"{symbol} callers={total_count} impact={impact['level']}"
         # Pick the next step based on impact level — high impact means
         # mandatory review of every call site, low impact is a quick scan.
@@ -698,7 +708,15 @@ class TraceImpactTool(BaseMCPTool):
             "usage_count": len(usages),
             "raw_match_count": true_total,
             "impact_level": impact["level"],
-            "verdict": impact["level"].upper(),
+            # K5 fix: ``impact_verdict`` (magnitude vocab — HIGH/MEDIUM/
+            # LOW/NONE) is the canonical top-level magnitude field. The
+            # deprecated ``verdict`` alias now mirrors
+            # ``agent_summary.verdict`` (safety vocab — SAFE/CAUTION/
+            # UNSAFE) so anyone reading ``result["verdict"]`` directly
+            # sees the standardized safety vocabulary used by every
+            # other tool in the suite.
+            "impact_verdict": impact["level"].upper(),
+            "verdict": verdict,
             "impact_badge": impact["badge"],
             "impact_guidance": impact["guidance"],
             "usages": usages,
