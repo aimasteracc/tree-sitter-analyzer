@@ -117,21 +117,14 @@ def _build_detect_routes_tool_args(args: Any, output_format: str) -> dict[str, A
     """Build tool args for --detect-routes, omitting empty optional keys.
 
     M4 (round-26 dogfood): when the user passes a positional path to
-    ``--detect-routes`` (e.g. ``tree-sitter-analyzer --detect-routes
-    /tmp/file.py``), the path used to be silently dropped. The tool would
-    scan the project root and report ``total_routes=0`` regardless of the
-    nonsense path — agents read this as "the file you asked about has no
-    routes" when in reality the file was never scanned.
+    ``--detect-routes``, the path used to be silently dropped. Now we
+    treat a positional path as an implicit ``--detect-routes-file`` only
+    when the path exists and is a regular file; otherwise we raise
+    ``ValueError`` so the dispatcher's error envelope fires.
 
-    Now we treat a positional path as an implicit ``--detect-routes-file``
-    *only when* the path exists and is a file. A non-existent path raises
-    ``ValueError`` so the dispatcher's error envelope fires (matching
-    ``--file-health`` / ``--code-patterns`` / ``--safe-to-edit``). A
-    directory raises ``ValueError`` with a hint pointing at
-    ``--detect-routes-mode all`` or ``--roots`` for project-wide scans.
+    r37ar (dogfood): split the 55-line monolith into a thin builder
+    plus the dedicated ``_validate_detect_routes_path`` helper.
     """
-    import os as _os
-
     mode = getattr(args, "detect_routes_mode", "summary") or "summary"
     framework = getattr(args, "detect_routes_framework", "all") or "all"
     tool_args: dict[str, Any] = {
@@ -142,25 +135,12 @@ def _build_detect_routes_tool_args(args: Any, output_format: str) -> dict[str, A
     url_pattern = getattr(args, "detect_routes_url", None)
     if url_pattern:
         tool_args["url_pattern"] = url_pattern
-    file_path = getattr(args, "detect_routes_file", None)
-    positional_path = getattr(args, "file_path", None)
 
-    # If the user passed an explicit ``--detect-routes-file`` we honour
-    # that as before. Otherwise, treat the positional ``file_path`` as
-    # an implicit file argument — but validate it instead of silently
-    # falling through to a project-root scan.
-    candidate = file_path if file_path else positional_path
+    candidate = getattr(args, "detect_routes_file", None) or getattr(
+        args, "file_path", None
+    )
     if candidate:
-        if not _os.path.exists(candidate):
-            raise ValueError(f"file not found: {candidate}")
-        if _os.path.isdir(candidate):
-            raise ValueError(
-                f"path is a directory: {candidate} — use "
-                "--detect-routes-mode all for a project-wide scan, "
-                "or pass an individual file"
-            )
-        if not _os.path.isfile(candidate):
-            raise ValueError(f"not a regular file: {candidate}")
+        _validate_detect_routes_path(candidate)
         tool_args["file_path"] = candidate
         # Auto-promote to ``mode=file`` when the user supplied a file
         # path but left ``--detect-routes-mode`` at the default. Keeps
@@ -168,6 +148,28 @@ def _build_detect_routes_tool_args(args: Any, output_format: str) -> dict[str, A
         if mode == "summary":
             tool_args["mode"] = "file"
     return tool_args
+
+
+def _validate_detect_routes_path(candidate: str) -> None:
+    """Raise ``ValueError`` when ``candidate`` isn't a usable regular file.
+
+    Extracted in r37ar (dogfood) from ``_build_detect_routes_tool_args``
+    so each function does one thing — the builder shapes the tool args,
+    this helper validates the path. M4-era error messages preserved
+    verbatim so existing tests keep passing.
+    """
+    import os as _os
+
+    if not _os.path.exists(candidate):
+        raise ValueError(f"file not found: {candidate}")
+    if _os.path.isdir(candidate):
+        raise ValueError(
+            f"path is a directory: {candidate} — use "
+            "--detect-routes-mode all for a project-wide scan, "
+            "or pass an individual file"
+        )
+    if not _os.path.isfile(candidate):
+        raise ValueError(f"not a regular file: {candidate}")
 
 
 def _build_parser_readiness_tool_args(args: Any, output_format: str) -> dict[str, Any]:
@@ -554,34 +556,55 @@ def _build_error_envelope(
     ``agent_summary``) so a programmatic consumer can use the same
     parser for success and failure cases.
 
-    ``echo_fields`` (N6, round-28 dogfood): per-command identifier fields
-    to mirror onto the response root so the failure envelope carries the
-    same context as the success envelope. For ``--dependencies`` this is
-    ``{"mode": "<requested>"}`` so the caller sees their requested mode
-    even when validation failed *before* any tool-level mode handling.
-    Canonical envelope keys (``success``, ``error``, ``error_type``,
-    ``summary_line``, ``agent_summary``) are never overwritten.
+    ``echo_fields`` (N6): per-command identifier fields mirrored onto
+    the response root. Canonical envelope keys are never overwritten.
+    O6: ``summary_line`` embeds ``str(exc)`` instead of the exception
+    class name. r37ah: top-level ``verdict`` mirrors ``agent_summary``.
 
-    O6 (round-30 dogfood): ``summary_line`` now embeds the actual error
-    reason (``str(exc)``) instead of the Python exception class name.
-    The ``error`` field already carried the actionable text; agents
-    that only read the headline now see the same signal.
+    r37ar (dogfood): extracted ``_make_canonical_error_body`` so this
+    function stays under the long_method threshold and the canonical
+    envelope shape is reusable from other error paths.
     """
     err_type = _classify_error_type(exc)
-    exc_name = type(exc).__name__
-    message = str(exc) or exc_name
+    message = str(exc) or type(exc).__name__
     reason = _summary_line_reason(exc)
-    envelope: dict[str, Any] = {
+    envelope = _make_canonical_error_body(
+        flag_name=flag_name,
+        label=label,
+        err_type=err_type,
+        message=message,
+        reason=reason,
+    )
+    if echo_fields:
+        for key, value in echo_fields.items():
+            if value is None or value == "":
+                continue
+            # Don't let echoes stomp on canonical envelope keys.
+            envelope.setdefault(key, value)
+    return envelope
+
+
+def _make_canonical_error_body(
+    *,
+    flag_name: str,
+    label: str,
+    err_type: str,
+    message: str,
+    reason: str,
+) -> dict[str, Any]:
+    """Build the canonical error-envelope body (success=False shape).
+
+    r37ar: extracted from ``_build_error_envelope`` so the canonical
+    error shape lives in one named function — same single-source-of-truth
+    pattern as r37am's ``wants_json_output`` and r37aq's ``output_toon``.
+    """
+    return {
         "success": False,
         "error_type": err_type,
         "error": message,
         "summary_line": f"{flag_name}: error — {reason}",
-        # r37ah (dogfood): top-level verdict mirror so CLI envelope gate
-        # accepts MCP-bridged error responses (r37u contract). Without
-        # this, ``--batch-search`` / ``--detect-routes`` / others that
-        # route through this builder emitted verdict=None on the
-        # validation-error path even though agent_summary.verdict='ERROR'
-        # was set.
+        # r37ah: top-level verdict mirror keeps the CLI envelope gate
+        # green for MCP-bridged error responses.
         "verdict": "ERROR",
         "agent_summary": {
             "verdict": "ERROR",
@@ -590,13 +613,6 @@ def _build_error_envelope(
             "label": label,
         },
     }
-    if echo_fields:
-        for key, value in echo_fields.items():
-            if value is None or value == "":
-                continue
-            # Don't let echoes stomp on canonical envelope keys.
-            envelope.setdefault(key, value)
-    return envelope
 
 
 def _collect_echo_fields(spec: McpCommandSpec, args: Any) -> dict[str, Any]:
@@ -646,17 +662,26 @@ def _emit_error_envelope(
     back to JSON on encoder failure) when ``output_format == 'toon'``,
     and the original plain-text message in every other case.
     """
+    # r37ar (dogfood): route TOON path through the canonical ``output_toon``
+    # helper (same channel as the success-path envelopes). JSON path stays
+    # compact-single-line because ``test_tool_response_contract.py`` parses
+    # stdout one line at a time looking for an envelope-start ``{`` — pretty
+    # output_json would break those agent-facing parsers. We swallow the
+    # AP003 hit on the two compact-json prints below with explicit noqa.
+    from tree_sitter_analyzer.output_manager import output_toon
+
     envelope = _build_error_envelope(flag_name, label, exc, echo_fields)
     if output_format == "json":
-        print(json.dumps(envelope, ensure_ascii=False))
+        # noqa: T201 — agents parse line-by-line; pretty JSON would break them.
+        print(json.dumps(envelope, ensure_ascii=False))  # noqa: T201
         return 1
     if output_format == "toon":
         try:
             from tree_sitter_analyzer.formatters.toon_formatter import ToonFormatter
 
-            print(ToonFormatter().format(envelope))
+            output_toon(ToonFormatter().format(envelope))
         except Exception:  # noqa: BLE001 — degrade to JSON if TOON unavailable
-            print(json.dumps(envelope, ensure_ascii=False))
+            print(json.dumps(envelope, ensure_ascii=False))  # noqa: T201
         return 1
     output_error_fn(f"{label} failed: {exc}")
     return 1
