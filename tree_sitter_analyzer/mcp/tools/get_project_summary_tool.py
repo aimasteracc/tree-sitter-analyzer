@@ -113,6 +113,33 @@ def _format_toon(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
     return "\n".join(lines)
 
 
+def _toon_envelope(
+    resolved_fmt: str,
+    text: str,
+    summary_line: str,
+    next_step: str,
+) -> dict[str, Any]:
+    """Construct the canonical TOON-path envelope.
+
+    r37ba: extracted from ``execute``'s two TOON return statements so the
+    20-line dict literal stops appearing twice. F12 / H10 / r37x contracts
+    preserved.
+    """
+    return {
+        "success": True,
+        "format": resolved_fmt,
+        "output_format": resolved_fmt,
+        "summary": text,
+        "summary_line": summary_line,
+        "verdict": "INFO",  # r37x: top-level verdict mirror
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": next_step,
+            "verdict": "INFO",  # T4 (round-37f): canonical envelope contract
+        },
+    }
+
+
 def _make_quick_start(index: ProjectIndex) -> str:
     """Generate a one-line orientation sentence (≤100 chars)."""
     # Dominant language
@@ -247,9 +274,9 @@ class GetProjectSummaryTool(BaseMCPTool):
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Load (or build) the project index and return a summary.
 
-        TOON path: reads pre-rendered summary.toon directly — no recomputation.
-        If summary.toon is missing, builds the index on demand and saves it.
-        JSON path: reads full index object.
+        r37ba (dogfood): tool flagged this at 141 lines / nesting depth 7.
+        Split into TOON-path + JSON-path helpers; each is now ~30 lines.
+        Behaviour preserved (incl. F12 / H10 / r37x envelope contracts).
         """
         force_refresh: bool = bool(arguments.get("force_refresh", False))
         include_notes: bool = bool(arguments.get("include_notes", True))
@@ -263,99 +290,93 @@ class GetProjectSummaryTool(BaseMCPTool):
         manager = ProjectIndexManager(project_root)
 
         if output_format in ("toon", "compact"):
-            # H10: ``format`` is the legacy key, ``output_format`` is the
-            # canonical one — F12 requires both to carry the resolved
-            # value so JSON and TOON callers see the same envelope shape.
-            # The TOON path keeps ``"toon"`` as the resolved value even
-            # if the caller passed the legacy ``"compact"`` alias.
-            resolved_fmt = "toon"
-            toon_path = Path(project_root) / manager.TOON_FILE
-            if not force_refresh and toon_path.exists():
-                # Fast path: return pre-rendered TOON directly
-                try:
-                    text = toon_path.read_text(encoding="utf-8")
-                    if include_notes:
-                        # Append notes from index if not already in TOON
-                        idx_for_notes = manager.load()
-                        if (
-                            idx_for_notes
-                            and idx_for_notes.custom_notes
-                            and idx_for_notes.custom_notes not in text
-                        ):
-                            text += f"\nnotes:    {idx_for_notes.custom_notes}"
-                    # Best-effort agent_summary — needs the structured index
-                    # for the headline, so load lazily if not already loaded.
-                    idx_for_summary = manager.load()
-                    summary_line, next_step = _build_project_summary_line(
-                        idx_for_summary, project_root
-                    )
-                    return {
-                        "success": True,
-                        "format": resolved_fmt,
-                        "output_format": resolved_fmt,
-                        "summary": text,
-                        "summary_line": summary_line,
-                        # r37x: top-level verdict mirror.
-                        "verdict": "INFO",
-                        "agent_summary": {
-                            "summary_line": summary_line,
-                            "next_step": next_step,
-                            # T4 (round-37f): canonical envelope contract
-                            "verdict": "INFO",
-                        },
-                    }
-                except OSError:
-                    pass  # fall through to rebuild
+            return self._execute_toon(
+                manager, project_root, force_refresh, include_notes
+            )
+        return self._execute_json(manager, project_root, force_refresh, include_notes)
 
-            # Build index (incremental if possible) and render TOON
-            index: ProjectIndex = manager.build(force_refresh=force_refresh)
-            if include_notes and index.custom_notes:
-                toon_path = Path(project_root) / manager.TOON_FILE
-                if toon_path.exists():
-                    text = toon_path.read_text(encoding="utf-8")
-                else:
-                    text = manager.render_toon(index)
-            else:
-                toon_path = Path(project_root) / manager.TOON_FILE
-                text = (
-                    toon_path.read_text(encoding="utf-8")
-                    if toon_path.exists()
-                    else manager.render_toon(index)
+    def _execute_toon(
+        self,
+        manager: ProjectIndexManager,
+        project_root: str,
+        force_refresh: bool,
+        include_notes: bool,
+    ) -> dict[str, Any]:
+        """TOON path — return the pre-rendered summary.toon when possible.
+
+        H10/F12: keeps ``"toon"`` as the resolved value even when the
+        caller passed the legacy ``"compact"`` alias.
+        """
+        resolved_fmt = "toon"
+        toon_path = Path(project_root) / manager.TOON_FILE
+
+        if not force_refresh and toon_path.exists():
+            try:
+                text = toon_path.read_text(encoding="utf-8")
+                text = self._append_custom_notes_if_needed(text, manager, include_notes)
+                summary_line, next_step = _build_project_summary_line(
+                    manager.load(), project_root
                 )
-            summary_line, next_step = _build_project_summary_line(index, project_root)
-            return {
-                "success": True,
-                "format": resolved_fmt,
-                "output_format": resolved_fmt,
-                "summary": text,
-                "summary_line": summary_line,
-                # r37x: top-level verdict mirror.
-                "verdict": "INFO",
-                "agent_summary": {
-                    "summary_line": summary_line,
-                    "next_step": next_step,
-                    # T4 (round-37f): canonical envelope contract
-                    "verdict": "INFO",
-                },
-            }
+                return _toon_envelope(resolved_fmt, text, summary_line, next_step)
+            except OSError:
+                pass  # fall through to rebuild
 
-        # JSON format: load full index
-        index_or_none: ProjectIndex | None = None
+        index: ProjectIndex = manager.build(force_refresh=force_refresh)
+        text = self._read_or_render_toon(manager, project_root, index, include_notes)
+        summary_line, next_step = _build_project_summary_line(index, project_root)
+        return _toon_envelope(resolved_fmt, text, summary_line, next_step)
+
+    @staticmethod
+    def _append_custom_notes_if_needed(
+        text: str,
+        manager: ProjectIndexManager,
+        include_notes: bool,
+    ) -> str:
+        """Append ``custom_notes`` to the TOON text when the index has them."""
+        if not include_notes:
+            return text
+        idx_for_notes = manager.load()
+        if not idx_for_notes:
+            return text
+        notes = idx_for_notes.custom_notes
+        if notes and notes not in text:
+            return text + f"\nnotes:    {notes}"
+        return text
+
+    @staticmethod
+    def _read_or_render_toon(
+        manager: ProjectIndexManager,
+        project_root: str,
+        index: ProjectIndex,
+        include_notes: bool,  # noqa: ARG004 — kept for future tightening, unused symmetry with TOON path above
+    ) -> str:
+        """Return TOON text — read pre-rendered file when present, else render now."""
+        toon_path = Path(project_root) / manager.TOON_FILE
+        if toon_path.exists():
+            return toon_path.read_text(encoding="utf-8")
+        return manager.render_toon(index)
+
+    def _execute_json(
+        self,
+        manager: ProjectIndexManager,
+        project_root: str,
+        force_refresh: bool,
+        include_notes: bool,
+    ) -> dict[str, Any]:
+        """JSON path — load (or build) the full index, attach the canonical envelope."""
+        idx: ProjectIndex | None = None
         if not force_refresh:
-            index_or_none = manager.load()
+            idx = manager.load()
+        if idx is None or force_refresh:
+            idx = manager.build(force_refresh=force_refresh)
 
-        if index_or_none is None or force_refresh:
-            index_or_none = manager.build(force_refresh=force_refresh)
-
-        idx = index_or_none
         age_hours = round((time.time() - idx.updated_at) / 3600, 2)
         is_fresh = age_hours < 1.0
         quick_start = _make_quick_start(idx)
         summary_line, next_step = _build_project_summary_line(idx, project_root)
-        # H10: echo the resolved output_format on the JSON path too —
-        # previously ``format`` was ``None`` here while the TOON path set
-        # it to ``"toon"``, leaving JSON callers blind to the envelope
-        # shape. F12 expects both keys to carry the resolved value.
+
+        # H10: echo the resolved output_format on the JSON path so JSON
+        # and TOON callers see the same envelope shape.
         result: dict[str, Any] = {
             "success": True,
             "format": "json",
@@ -373,13 +394,11 @@ class GetProjectSummaryTool(BaseMCPTool):
             "readme_excerpt": idx.readme_excerpt,
             "module_descriptions": idx.module_descriptions,
             "summary_line": summary_line,
-            # r37x: top-level verdict mirror.
-            "verdict": "INFO",
+            "verdict": "INFO",  # r37x: top-level verdict mirror
             "agent_summary": {
                 "summary_line": summary_line,
                 "next_step": next_step,
-                # T4 (round-37f): canonical envelope contract
-                "verdict": "INFO",
+                "verdict": "INFO",  # T4 (round-37f): canonical envelope contract
             },
         }
         if include_notes:
