@@ -33,6 +33,31 @@ if TYPE_CHECKING:
     from ...models import AnalysisResult
 
 
+def _build_advanced_summary_line(
+    file_path: str,
+    language: str,
+    line_count: int,
+    counts: dict[str, int],
+    element_count: int,
+    *,
+    mode: str,
+) -> str:
+    """Compose the canonical headline for CLI ``--advanced`` responses.
+
+    r37y (dogfood): CLI ``--advanced`` JSON output was missing the
+    ``summary_line`` envelope key entirely. Every other tool exposes a
+    one-line headline an agent can paste into a report without parsing
+    the nested response. This helper mirrors the format used by MCP
+    ``analyze_scale`` so agents see consistent wording across surfaces.
+    """
+    return (
+        f"{file_path} ({language}) lines={line_count} "
+        f"classes={counts['class_count']} methods={counts['method_count']} "
+        f"fields={counts['field_count']} imports={counts['import_count']} "
+        f"elements={element_count} mode={mode}"
+    )
+
+
 def _per_element_counts(elements: Sequence[object]) -> dict[str, int]:
     """Compute per-kind element aggregations for parity with MCP analyze_scale.
 
@@ -100,7 +125,29 @@ class AdvancedCommand(BaseCommand):
         # per-kind counts here closes the cross-tool gap without changing
         # the legacy ``element_count`` aggregate that older consumers read.
         counts = _per_element_counts(analysis_result.elements)
+        # r37y (dogfood): canonical envelope. CLI ``--advanced --statistics``
+        # was emitting only the raw metric dict — agents reading
+        # ``result["summary_line"]`` or ``result["verdict"]`` got ``None``
+        # while every other CLI / MCP surface populated them.
+        summary_line = _build_advanced_summary_line(
+            analysis_result.file_path,
+            analysis_result.language,
+            analysis_result.line_count,
+            counts,
+            len(analysis_result.elements),
+            mode="stats",
+        )
+        agent_summary = {
+            "summary_line": summary_line,
+            "next_step": (
+                "Drop --statistics to see element/complexity breakdown, "
+                "or run `query_code` for a specific symbol."
+            ),
+            "verdict": "INFO",
+        }
         stats = {
+            "success": True,
+            "file_path": analysis_result.file_path,
             "line_count": analysis_result.line_count,
             "element_count": len(analysis_result.elements),
             "method_count": counts["method_count"],
@@ -109,6 +156,9 @@ class AdvancedCommand(BaseCommand):
             "import_count": counts["import_count"],
             "node_count": analysis_result.node_count,
             "language": analysis_result.language,
+            "summary_line": summary_line,
+            "verdict": "INFO",
+            "agent_summary": agent_summary,
         }
         if self.args.output_format not in ("json", "toon"):
             output_section("Statistics")
@@ -158,6 +208,27 @@ class AdvancedCommand(BaseCommand):
         # S1 (round-37 dogfood): add per-kind aggregations for parity with
         # MCP ``analyze_scale`` (see _output_statistics for the same fix).
         counts = _per_element_counts(analysis_result.elements)
+        # r37y (dogfood): canonical envelope — same fix as
+        # ``_output_statistics`` above. The full-analysis path used to
+        # emit zero envelope keys (``summary_line``/``agent_summary``/
+        # ``verdict`` all None), making it impossible for agents to
+        # branch on the response shape without special-casing.
+        summary_line = _build_advanced_summary_line(
+            analysis_result.file_path,
+            analysis_result.language,
+            analysis_result.line_count,
+            counts,
+            len(analysis_result.elements),
+            mode="full",
+        )
+        agent_summary = {
+            "summary_line": summary_line,
+            "next_step": (
+                "Use --statistics for counts only, or `analyze_code_structure` "
+                "(MCP) for grouped element tables."
+            ),
+            "verdict": "INFO",
+        }
         result_dict: dict[str, object] = {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
@@ -176,6 +247,9 @@ class AdvancedCommand(BaseCommand):
             },
             "success": analysis_result.success,
             "analysis_time": analysis_result.analysis_time,
+            "summary_line": summary_line,
+            "verdict": "INFO",
+            "agent_summary": agent_summary,
         }
         if self.args.output_format == "json":
             output_json(result_dict)
