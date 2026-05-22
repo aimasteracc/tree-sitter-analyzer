@@ -494,32 +494,75 @@ class ProjectIndexManager:
             roots: directory to scan (Path), list of root dirs, or None for
                    project_root.
             force_refresh: if True, always rebuild even if cache is fresh.
-        """
-        # Normalise roots
-        if isinstance(roots, Path):
-            scan_roots: list[str] = [str(roots)]
-        elif roots is None:
-            scan_roots = [self.project_root]
-        else:
-            scan_roots = list(roots)
 
-        # --- Incremental check ---
+        r37cv (dogfood): 113 lines → ~25 lines of phase dispatch.
+        Sub-helpers: ``_normalize_scan_roots``, ``_try_load_fresh_cache``,
+        ``_compute_language_distribution``, ``_collect_root_key_files``,
+        ``_collect_critical_nodes``, ``_assemble_project_index``,
+        ``_persist_project_index``.
+        """
+        scan_roots = self._normalize_scan_roots(roots)
         if not force_refresh:
-            existing = self.load()
-            if existing is not None:
-                current_hashes = self._compute_file_hashes(scan_roots)
-                saved_hashes = self._load_file_hashes()
-                if current_hashes == saved_hashes:
-                    return existing  # nothing changed
+            cached = self._try_load_fresh_cache(scan_roots)
+            if cached is not None:
+                return cached
 
         now = time.time()
-        all_files: list[str] = self._list_files(scan_roots)
+        all_files = self._list_files(scan_roots)
+        lang_dist = self._compute_language_distribution(all_files)
 
-        # Derive language distribution from extensions.
-        # Exclude fixture/golden/internal-doc paths so the language mix
-        # reflects the project's *real* source mix. Without this filter,
-        # a Python project ships ``markdown=2945`` because internal audit
-        # notes + golden masters drown out the actual ``python=1347``.
+        root_path = Path(self.project_root)
+        key_files = self._collect_root_key_files(root_path)
+        entry_points = self._find_entry_points(root_path)
+        top_level = self._build_top_level_structure(root_path, all_files)
+
+        readme_excerpt = self._extract_readme_excerpt(root_path)
+        top_dirs = [item["name"] for item in top_level]
+        module_descriptions = self._extract_module_descriptions(root_path, top_dirs)
+        critical_nodes = self._collect_critical_nodes(all_files)
+
+        index = self._assemble_project_index(
+            now=now,
+            all_files=all_files,
+            lang_dist=lang_dist,
+            top_level=top_level,
+            key_files=key_files,
+            entry_points=entry_points,
+            readme_excerpt=readme_excerpt,
+            module_descriptions=module_descriptions,
+            critical_nodes=critical_nodes,
+        )
+        self._persist_project_index(index, scan_roots, critical_nodes)
+        return index
+
+    def _normalize_scan_roots(self, roots: Path | list[str] | None) -> list[str]:
+        """Return ``roots`` as a list[str], defaulting to ``[project_root]``."""
+        if isinstance(roots, Path):
+            return [str(roots)]
+        if roots is None:
+            return [self.project_root]
+        return list(roots)
+
+    def _try_load_fresh_cache(self, scan_roots: list[str]) -> ProjectIndex | None:
+        """Return the cached index if file hashes are unchanged, else None."""
+        existing = self.load()
+        if existing is None:
+            return None
+        current_hashes = self._compute_file_hashes(scan_roots)
+        saved_hashes = self._load_file_hashes()
+        if current_hashes != saved_hashes:
+            return None
+        return existing
+
+    @staticmethod
+    def _compute_language_distribution(all_files: list[str]) -> dict[str, int]:
+        """Derive ``{language: count}`` from file extensions.
+
+        Excludes fixture/golden/internal-doc paths so the language mix
+        reflects the project's *real* source mix. Without this filter,
+        a Python project ships ``markdown=2945`` because internal audit
+        notes + golden masters drown out the actual ``python=1347``.
+        """
         lang_dist: dict[str, int] = {}
         for filepath in all_files:
             if _is_language_count_excluded(filepath):
@@ -530,44 +573,61 @@ class ProjectIndexManager:
                 lang_dist[lang] = lang_dist.get(lang, 0) + 1
             else:
                 lang_dist["other"] = lang_dist.get("other", 0) + 1
+        return lang_dist
 
-        root_path = Path(self.project_root)
+    @staticmethod
+    def _collect_root_key_files(root_path: Path) -> list[str]:
+        """Return key files (LICENSE/README/etc.) living at project root.
 
-        # Identify key files (must live at project root, case-insensitive match)
+        Uses a case-insensitive match against ``_KEY_FILE_NAMES`` so
+        ``Readme.md`` and ``LICENSE.txt`` are both detected.
+        """
         root_entries = {
             e.name.lower(): e.name for e in root_path.iterdir() if e.is_file()
         }
-        key_files: list[str] = [
+        return [
             root_entries[name]
             for name in sorted(root_entries)
             if name in _KEY_FILE_NAMES
         ]
 
-        # Identify entry points (search only a few levels deep for performance)
-        entry_points: list[str] = self._find_entry_points(root_path)
+    def _collect_critical_nodes(self, all_files: list[str]) -> list[dict[str, Any]]:
+        """Run PageRank over the call graph; skip test paths.
 
-        # Build top-level directory structure (depth 1 dirs only, count files)
-        top_level = self._build_top_level_structure(root_path, all_files)
-
-        # Extract semantic information
-        readme_excerpt = self._extract_readme_excerpt(root_path)
-        top_dirs = [item["name"] for item in top_level]
-        module_descriptions = self._extract_module_descriptions(root_path, top_dirs)
-
-        # PageRank over call graph (best-effort; skipped if networkx missing)
-        # Skip test files — test base classes (ESTestCase, etc.) pollute rankings
-        _test_path_markers = {"/test/", "/tests/", "/testFixtures/", "/testing/"}
+        Test base classes (``ESTestCase`` etc.) inflate inbound refs without
+        signalling architecture, so files under ``/test/`` / ``/tests/`` /
+        ``/testFixtures/`` / ``/testing/`` are excluded from edge extraction.
+        """
+        test_path_markers = {"/test/", "/tests/", "/testFixtures/", "/testing/"}
         edges: list[tuple[str, str]] = []
         for fp in all_files:
-            if any(marker in fp for marker in _test_path_markers):
+            if any(marker in fp for marker in test_path_markers):
                 continue
             edges.extend(self._extract_edges_from_file(Path(fp)))
-        critical_nodes = self._compute_pagerank(edges, top_n=10)
+        return self._compute_pagerank(edges, top_n=10)
 
+    def _assemble_project_index(
+        self,
+        *,
+        now: float,
+        all_files: list[str],
+        lang_dist: dict[str, int],
+        top_level: list[dict[str, Any]],
+        key_files: list[str],
+        entry_points: list[str],
+        readme_excerpt: str,
+        module_descriptions: dict[str, str],
+        critical_nodes: list[dict[str, Any]],
+    ) -> ProjectIndex:
+        """Construct a ``ProjectIndex`` dataclass, preserving ``created_at``.
+
+        If a prior index is on disk we keep its ``created_at`` and
+        ``custom_notes``; otherwise we stamp both with the current run's
+        timestamp / empty notes.
+        """
         existing_idx = self.load()
         created_at = existing_idx.created_at if existing_idx else now
-
-        index = ProjectIndex(
+        return ProjectIndex(
             project_root=self.project_root,
             created_at=created_at,
             updated_at=now,
@@ -583,15 +643,19 @@ class ProjectIndexManager:
             critical_nodes=critical_nodes,
         )
 
-        # Persist index + derived artifacts
+    def _persist_project_index(
+        self,
+        index: ProjectIndex,
+        scan_roots: list[str],
+        critical_nodes: list[dict[str, Any]],
+    ) -> None:
+        """Persist index + derived artifacts (hashes, TOON snapshot, nodes)."""
         self.save(index)
         hashes = self._compute_file_hashes(scan_roots)
         self._save_file_hashes(hashes)
         toon = self.render_toon(index)
         self._save_toon(toon)
         self._save_critical_nodes(critical_nodes)
-
-        return index
 
     # ------------------------------------------------------------------
     # Private helpers
