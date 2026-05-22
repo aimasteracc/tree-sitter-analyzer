@@ -202,6 +202,20 @@ def _record_field_usage(node: Any, ns: NodeStats, lang_obj: Any) -> None:
         )
 
 
+def _safe_field_name_for_id(lang_obj: Any, field_id: int) -> str | None:
+    """Return ``lang_obj.field_name_for_id(i)`` or None on lookup error.
+
+    r37dq (dogfood): newer tree-sitter releases drop fields for some
+    grammar IDs; this swallow-and-skip helper lets the caller iterate
+    by index without nesting a try/except inside the loop body.
+    """
+    try:
+        name = lang_obj.field_name_for_id(field_id)
+        return name if name else None
+    except Exception:  # nosec B110 — non-fatal, skip silently.
+        return None
+
+
 def _score_wrapper_node(
     node_type: str,
     stats: NodeStats,
@@ -301,22 +315,18 @@ class AutoDiscoveryEngine:
         Returns:
             字段名称列表，字母排序；语言不可用时返回空列表
         """
+        # r37dq (dogfood): flattened nesting 6 → 3 via _collect_field_name helper.
         try:
             from ..language_loader import loader
 
             lang_obj = loader.load_language(language)
             if lang_obj is None:
                 return []
-
             names: list[str] = []
             for i in range(lang_obj.field_count):
-                try:
-                    name = lang_obj.field_name_for_id(i)
-                    if name:
-                        names.append(name)
-                except Exception:  # nosec B110 — field IDs may be missing
-                    # in newer tree-sitter releases; non-fatal, skip silently.
-                    pass
+                name = _safe_field_name_for_id(lang_obj, i)
+                if name:
+                    names.append(name)
             return sorted(set(names))
         except Exception as e:
             log_error(f"Failed to get field names for '{language}': {e}")
@@ -336,21 +346,21 @@ class AutoDiscoveryEngine:
         Returns:
             按置信度降序排列的 WrapperCandidate 列表
         """
+        # r37dq (dogfood): flattened nesting 6 → 4 via early-continue.
         stats_map = _collect_node_stats(language, corpus_code)
         candidates: list[WrapperCandidate] = []
-
         for node_type, stats in stats_map.items():
             score, reasons = _score_wrapper_node(node_type, stats)
-            if score >= self.wrapper_threshold:
-                candidates.append(
-                    WrapperCandidate(
-                        node_type=node_type,
-                        score=score,
-                        reasons=reasons,
-                        stats=stats,
-                    )
+            if score < self.wrapper_threshold:
+                continue
+            candidates.append(
+                WrapperCandidate(
+                    node_type=node_type,
+                    score=score,
+                    reasons=reasons,
+                    stats=stats,
                 )
-
+            )
         return sorted(candidates, key=lambda c: c.score, reverse=True)
 
     def enumerate_syntax_paths(
