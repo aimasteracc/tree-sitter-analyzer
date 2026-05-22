@@ -28,6 +28,53 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _css_error_result(file_path: str, exc: Exception) -> AnalysisResult:
+    """Build the canonical failure ``AnalysisResult`` for CSS parse errors."""
+    return AnalysisResult(
+        file_path=file_path,
+        language="css",
+        line_count=0,
+        elements=[],
+        node_count=0,
+        query_results={},
+        source_code="",
+        success=False,
+        error_message=str(exc),
+    )
+
+
+def _analyze_css_fallback(file_path: str, content: str) -> AnalysisResult:
+    """Best-effort fallback when ``tree-sitter-css`` is not installed.
+
+    Emits a single synthetic ``css`` StyleElement spanning the whole
+    document so downstream tooling sees *something*. Truncates raw text
+    to 200 chars for the FTS row.
+    """
+    lines = content.splitlines()
+    line_count = len(lines)
+    css_element = StyleElement(
+        name="css",
+        start_line=1,
+        end_line=line_count,
+        raw_text=content[:200] + "..." if len(content) > 200 else content,
+        language="css",
+        selector="*",
+        properties={},
+        element_class="other",
+    )
+    return AnalysisResult(
+        file_path=file_path,
+        language="css",
+        line_count=line_count,
+        elements=[css_element],
+        node_count=1,
+        query_results={},
+        source_code=content,
+        success=True,
+        error_message=None,
+    )
+
+
 class CssElementExtractor(ElementExtractor):
     """CSS-specific element extractor using tree-sitter-css"""
 
@@ -273,89 +320,54 @@ class CssPlugin(LanguagePlugin):
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
-        """Analyze CSS file using tree-sitter-css parser"""
+        """Analyze CSS file using tree-sitter-css parser.
+
+        r37es (dogfood): 89 → ~15 lines. Tree-sitter parse path moved to
+        ``_analyze_with_tree_sitter``; ImportError fallback moved to
+        ``_analyze_css_fallback``; top-level exception envelope moved to
+        ``_css_error_result``.
+        """
         from ..encoding_utils import read_file_safe
 
         try:
-            # Read file content
-            content, encoding = read_file_safe(file_path)
-
-            # Use tree-sitter-css for parsing
-            try:
-                import tree_sitter
-                import tree_sitter_css as ts_css
-
-                # Get CSS language
-                CSS_LANGUAGE = tree_sitter.Language(ts_css.language())
-
-                # Create parser
-                parser = tree_sitter.Parser()
-                parser.language = CSS_LANGUAGE
-
-                # Parse the CSS content
-                tree = parser.parse(content.encode("utf-8"))
-
-                # Extract elements using the extractor
-                extractor = self.create_extractor()
-                elements = extractor.extract_css_rules(tree, content)
-
-                log_info(f"Extracted {len(elements)} CSS rules from {file_path}")
-
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="css",
-                    line_count=len(content.splitlines()),
-                    elements=elements,
-                    node_count=len(elements),
-                    query_results={},
-                    source_code=content,
-                    success=True,
-                    error_message=None,
-                )
-
-            except ImportError:
-                log_error(
-                    "tree-sitter-css not available, falling back to basic parsing"
-                )
-                # Fallback to basic parsing
-                lines = content.splitlines()
-                line_count = len(lines)
-
-                # Create basic StyleElement for the CSS document
-                css_element = StyleElement(
-                    name="css",
-                    start_line=1,
-                    end_line=line_count,
-                    raw_text=content[:200] + "..." if len(content) > 200 else content,
-                    language="css",
-                    selector="*",
-                    properties={},
-                    element_class="other",
-                )
-                elements = [css_element]
-
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="css",
-                    line_count=line_count,
-                    elements=elements,
-                    node_count=len(elements),
-                    query_results={},
-                    source_code=content,
-                    success=True,
-                    error_message=None,
-                )
-
+            content, _encoding = read_file_safe(file_path)
         except Exception as e:
             log_error(f"Failed to analyze CSS file {file_path}: {e}")
-            return AnalysisResult(
-                file_path=file_path,
-                language="css",
-                line_count=0,
-                elements=[],
-                node_count=0,
-                query_results={},
-                source_code="",
-                success=False,
-                error_message=str(e),
-            )
+            return _css_error_result(file_path, e)
+
+        try:
+            return self._analyze_with_tree_sitter(file_path, content)
+        except ImportError:
+            log_error("tree-sitter-css not available, falling back to basic parsing")
+            return _analyze_css_fallback(file_path, content)
+        except Exception as e:
+            log_error(f"Failed to analyze CSS file {file_path}: {e}")
+            return _css_error_result(file_path, e)
+
+    def _analyze_with_tree_sitter(
+        self, file_path: str, content: str
+    ) -> "AnalysisResult":
+        """Parse via ``tree-sitter-css``; may raise ``ImportError`` if missing."""
+        import tree_sitter
+        import tree_sitter_css as ts_css
+
+        CSS_LANGUAGE = tree_sitter.Language(ts_css.language())
+        parser = tree_sitter.Parser()
+        parser.language = CSS_LANGUAGE
+        tree = parser.parse(content.encode("utf-8"))
+
+        extractor = self.create_extractor()
+        elements = extractor.extract_css_rules(tree, content)
+        log_info(f"Extracted {len(elements)} CSS rules from {file_path}")
+
+        return AnalysisResult(
+            file_path=file_path,
+            language="css",
+            line_count=len(content.splitlines()),
+            elements=elements,
+            node_count=len(elements),
+            query_results={},
+            source_code=content,
+            success=True,
+            error_message=None,
+        )
