@@ -495,6 +495,94 @@ def _build_trace_impact_result(
     return result
 
 
+# r37f5 (dogfood): static MCP definition lifted out of ``TraceImpactTool``
+# so introspection calls don't reconstruct the same 80-line dict every time.
+_TRACE_IMPACT_DESCRIPTION: str = (
+    "Find every caller and usage site of a symbol across the entire project. "
+    "\n\n"
+    "REQUIRED before modifying any public function, class, or variable. "
+    "Without this, you are editing blindly — you do not know what breaks. "
+    "This tool answers: 'if I change X, what else changes?' "
+    "\n\n"
+    "WHEN TO USE:\n"
+    "- ALWAYS call this before renaming, removing, or changing the signature of any "
+    "public method, class, or exported variable\n"
+    "- Before refactoring code used across multiple files\n"
+    "- To understand the blast radius of a deprecation\n"
+    "- To verify that a symbol is truly unused before deletion\n"
+    "\n"
+    "WHEN NOT TO USE:\n"
+    "- Private/internal methods (single-underscore prefix) within the same file — "
+    "the impact is local and visible in context\n"
+    "- Pure comment or docstring edits — no callers are affected\n"
+    "- Adding a brand-new symbol that has no existing usages\n"
+    "\n"
+    "IMPORTANT: Provide file_path when available — this filters results to the same "
+    "language, eliminating cross-language false positives. "
+    "Set word_match=true (the default) to avoid substring noise."
+)
+
+
+_TRACE_IMPACT_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "symbol": {
+            "type": "string",
+            "description": (
+                "Symbol name to trace (method, class, function, or variable name). "
+                "Example: 'processPayment', 'UserService', 'calculateTotal'"
+            ),
+        },
+        "file_path": {
+            "type": "string",
+            "description": (
+                "Optional: Source file where the symbol is defined. "
+                "If provided, filters results to the same language. "
+                "Example: 'src/services/PaymentService.java'"
+            ),
+        },
+        "project_root": {
+            "type": "string",
+            "description": (
+                "Optional: Project root directory to search. "
+                "Defaults to the tool's configured project root. "
+                "Can provide multiple roots as comma-separated paths."
+            ),
+        },
+        "case_sensitive": {
+            "type": "boolean",
+            "description": (
+                "Whether to perform case-sensitive search. "
+                "Default: false (smart case - case-sensitive if symbol has uppercase)"
+            ),
+        },
+        "word_match": {
+            "type": "boolean",
+            "description": (
+                "Whether to match whole words only (not substrings). "
+                "Default: true (recommended to avoid false positives)"
+            ),
+        },
+        "max_results": {
+            "type": "integer",
+            "description": "Maximum number of results to return. Default: 1000",
+        },
+        "exclude_patterns": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": (
+                "Optional: Glob patterns to exclude from search. "
+                "Example: ['**/test/**', '**/node_modules/**', '**/*.min.js']"
+            ),
+        },
+    },
+    "required": ["symbol"],
+    # F5: refuse unknown keys; central enforcement is in
+    # BaseMCPTool.__init_subclass__.
+    "additionalProperties": False,
+}
+
+
 class TraceImpactTool(BaseMCPTool):
     """
     MCP tool for tracing the impact of code changes by finding all usage sites of a symbol.
@@ -514,96 +602,18 @@ class TraceImpactTool(BaseMCPTool):
         self.language_detector = LanguageDetector()
 
     def get_tool_definition(self) -> dict[str, Any]:
-        """
-        Get the MCP tool definition for trace_impact.
+        """Get the MCP tool definition for trace_impact.
 
-        Returns:
-            Tool definition with name, description, and input schema
+        r37f5 (dogfood): 92→5 lines. The 30-line description and 50-line
+        inputSchema are now module-level constants
+        (``_TRACE_IMPACT_DESCRIPTION`` / ``_TRACE_IMPACT_INPUT_SCHEMA``)
+        — they're static and were reconstructed on every introspection
+        call by MCP clients.
         """
         return {
             "name": "trace_impact",
-            "description": (
-                "Find every caller and usage site of a symbol across the entire project. "
-                "\n\n"
-                "REQUIRED before modifying any public function, class, or variable. "
-                "Without this, you are editing blindly — you do not know what breaks. "
-                "This tool answers: 'if I change X, what else changes?' "
-                "\n\n"
-                "WHEN TO USE:\n"
-                "- ALWAYS call this before renaming, removing, or changing the signature of any "
-                "public method, class, or exported variable\n"
-                "- Before refactoring code used across multiple files\n"
-                "- To understand the blast radius of a deprecation\n"
-                "- To verify that a symbol is truly unused before deletion\n"
-                "\n"
-                "WHEN NOT TO USE:\n"
-                "- Private/internal methods (single-underscore prefix) within the same file — "
-                "the impact is local and visible in context\n"
-                "- Pure comment or docstring edits — no callers are affected\n"
-                "- Adding a brand-new symbol that has no existing usages\n"
-                "\n"
-                "IMPORTANT: Provide file_path when available — this filters results to the same "
-                "language, eliminating cross-language false positives. "
-                "Set word_match=true (the default) to avoid substring noise."
-            ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "symbol": {
-                        "type": "string",
-                        "description": (
-                            "Symbol name to trace (method, class, function, or variable name). "
-                            "Example: 'processPayment', 'UserService', 'calculateTotal'"
-                        ),
-                    },
-                    "file_path": {
-                        "type": "string",
-                        "description": (
-                            "Optional: Source file where the symbol is defined. "
-                            "If provided, filters results to the same language. "
-                            "Example: 'src/services/PaymentService.java'"
-                        ),
-                    },
-                    "project_root": {
-                        "type": "string",
-                        "description": (
-                            "Optional: Project root directory to search. "
-                            "Defaults to the tool's configured project root. "
-                            "Can provide multiple roots as comma-separated paths."
-                        ),
-                    },
-                    "case_sensitive": {
-                        "type": "boolean",
-                        "description": (
-                            "Whether to perform case-sensitive search. "
-                            "Default: false (smart case - case-sensitive if symbol has uppercase)"
-                        ),
-                    },
-                    "word_match": {
-                        "type": "boolean",
-                        "description": (
-                            "Whether to match whole words only (not substrings). "
-                            "Default: true (recommended to avoid false positives)"
-                        ),
-                    },
-                    "max_results": {
-                        "type": "integer",
-                        "description": "Maximum number of results to return. Default: 1000",
-                    },
-                    "exclude_patterns": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "Optional: Glob patterns to exclude from search. "
-                            "Example: ['**/test/**', '**/node_modules/**', '**/*.min.js']"
-                        ),
-                    },
-                },
-                "required": ["symbol"],
-                # F5: refuse unknown keys; central enforcement is in
-                # BaseMCPTool.__init_subclass__.
-                "additionalProperties": False,
-            },
+            "description": _TRACE_IMPACT_DESCRIPTION,
+            "inputSchema": _TRACE_IMPACT_INPUT_SCHEMA,
         }
 
     def validate_arguments(self, arguments: dict[str, Any]) -> bool:
