@@ -59,50 +59,20 @@ class StructureCommand(BaseCommand):
             self._output_text_format(structure_dict)
 
     def _convert_to_legacy_format(self, analysis_result: "AnalysisResult") -> dict:
-        """Convert AnalysisResult to legacy structure format expected by tests."""
-        import time
+        """Convert AnalysisResult to legacy structure format expected by tests.
 
-        # Extract elements by type
-        classes = [
-            e
-            for e in analysis_result.elements
-            if is_element_of_type(e, ELEMENT_TYPE_CLASS)
-        ]
-        methods = [
-            e
-            for e in analysis_result.elements
-            if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
-        ]
-        fields = [
-            e
-            for e in analysis_result.elements
-            if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
-        ]
-        imports = [
-            e
-            for e in analysis_result.elements
-            if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
-        ]
-        packages = [
-            e
-            for e in analysis_result.elements
-            if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)
-        ]
-
+        r37d6 (dogfood): 131 lines → ~20 lines of phase dispatch. Phase
+        helpers (``_partition_structure_elements``, ``_legacy_package_block``,
+        ``_legacy_statistics_block``, ``_attach_structure_envelope``) own
+        the per-section work. Output dict keys + tuple shapes are preserved.
+        """
+        classes, methods, fields, imports, packages = (
+            self._partition_structure_elements(analysis_result)
+        )
         legacy_dict: dict[str, Any] = {
             "file_path": analysis_result.file_path,
             "language": analysis_result.language,
-            "package": (
-                {
-                    "name": packages[0].name,
-                    "line_range": (
-                        packages[0].start_line,
-                        packages[0].end_line,
-                    ),
-                }
-                if packages
-                else None
-            ),
+            "package": self._legacy_package_block(packages),
             "classes": [
                 {
                     "name": getattr(c, "name", "unknown"),
@@ -150,27 +120,115 @@ class StructureCommand(BaseCommand):
                 for i in imports
             ],
             "annotations": [],
-            "statistics": {
-                "class_count": len(classes),
-                "method_count": len(methods),
-                "field_count": len(fields),
-                "import_count": len(imports),
-                "total_lines": analysis_result.line_count,
-                "annotation_count": 0,
-            },
-            "analysis_metadata": {
-                "analysis_time": getattr(analysis_result, "analysis_time", 0.0),
-                "language": analysis_result.language,
-                "file_path": analysis_result.file_path,
-                "analyzer_version": "2.0.0",
-                "timestamp": time.time(),
-            },
+            "statistics": self._legacy_statistics_block(
+                analysis_result, classes, methods, fields, imports
+            ),
+            "analysis_metadata": self._legacy_metadata_block(analysis_result),
         }
-        # r37aa (dogfood): canonical envelope. Third CLI surface (after
-        # ``--advanced`` r37y and ``--summary`` r37z) that was emitting
-        # ``summary_line=None`` / ``verdict=None`` / ``agent_summary=None``
-        # — agents reading the response shape couldn't tell the call
-        # succeeded vs. silently failed.
+        self._attach_structure_envelope(
+            legacy_dict,
+            analysis_result,
+            classes=classes,
+            methods=methods,
+            fields=fields,
+            imports=imports,
+        )
+        return legacy_dict
+
+    @staticmethod
+    def _partition_structure_elements(
+        analysis_result: "AnalysisResult",
+    ) -> tuple[list[Any], list[Any], list[Any], list[Any], list[Any]]:
+        """Bucket elements into (classes, methods, fields, imports, packages)."""
+        classes = [
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+        ]
+        methods = [
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+        ]
+        fields = [
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+        ]
+        imports = [
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
+        ]
+        packages = [
+            e
+            for e in analysis_result.elements
+            if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)
+        ]
+        return classes, methods, fields, imports, packages
+
+    @staticmethod
+    def _legacy_package_block(packages: list[Any]) -> dict[str, Any] | None:
+        """Return the package dict (name + line_range tuple) or ``None``."""
+        if not packages:
+            return None
+        return {
+            "name": packages[0].name,
+            "line_range": (
+                packages[0].start_line,
+                packages[0].end_line,
+            ),
+        }
+
+    @staticmethod
+    def _legacy_statistics_block(
+        analysis_result: "AnalysisResult",
+        classes: list[Any],
+        methods: list[Any],
+        fields: list[Any],
+        imports: list[Any],
+    ) -> dict[str, Any]:
+        """Return the legacy ``statistics`` dict."""
+        return {
+            "class_count": len(classes),
+            "method_count": len(methods),
+            "field_count": len(fields),
+            "import_count": len(imports),
+            "total_lines": analysis_result.line_count,
+            "annotation_count": 0,
+        }
+
+    @staticmethod
+    def _legacy_metadata_block(
+        analysis_result: "AnalysisResult",
+    ) -> dict[str, Any]:
+        """Return the legacy ``analysis_metadata`` dict (incl. timestamp)."""
+        import time
+
+        return {
+            "analysis_time": getattr(analysis_result, "analysis_time", 0.0),
+            "language": analysis_result.language,
+            "file_path": analysis_result.file_path,
+            "analyzer_version": "2.0.0",
+            "timestamp": time.time(),
+        }
+
+    @staticmethod
+    def _attach_structure_envelope(
+        legacy_dict: dict[str, Any],
+        analysis_result: "AnalysisResult",
+        *,
+        classes: list[Any],
+        methods: list[Any],
+        fields: list[Any],
+        imports: list[Any],
+    ) -> None:
+        """Attach the r37aa canonical envelope (success / summary_line /
+        verdict / agent_summary). Third CLI surface (after ``--advanced``
+        r37y and ``--summary`` r37z) that was emitting ``=None`` for the
+        envelope fields — agents reading the response shape couldn't tell
+        the call succeeded vs. silently failed.
+        """
         summary_line = (
             f"{analysis_result.file_path} ({analysis_result.language}) structure: "
             f"classes={len(classes)} methods={len(methods)} "
@@ -188,7 +246,6 @@ class StructureCommand(BaseCommand):
             ),
             "verdict": "INFO",
         }
-        return legacy_dict
 
     def _output_text_format(self, structure_dict: dict) -> None:
         """Output structure analysis in human-readable text format."""
