@@ -250,19 +250,34 @@ class RubyElementExtractor(ElementExtractor):
                 func_elems = self._extract_attr_methods(node, parent_class)
                 functions.extend(func_elems)
 
-            # Track parent class for methods
+            # r37dr (dogfood): track parent via _find_ruby_class_name helper.
             new_parent = parent_class
             if node.type in ("class", "module"):
-                for child in node.children:
-                    if child.type in ("constant", "scope_resolution"):
-                        new_parent = self._get_node_text_optimized(child)
-                        break
+                resolved_name = self._find_ruby_class_name(node)
+                if resolved_name is not None:
+                    new_parent = resolved_name
 
             # Add children to stack
             for child in reversed(node.children):
                 stack.append((child, new_parent))
 
         return functions
+
+    def _find_ruby_class_name(
+        self, class_or_module_node: "tree_sitter.Node"
+    ) -> str | None:
+        """Return the first ``constant``/``scope_resolution`` child's text.
+
+        Ruby's ``class Foo`` / ``module Bar`` nodes carry the name as the
+        first ``constant`` (bare class name) or ``scope_resolution``
+        (``A::B``) child. We stop at the first match. Returns ``None``
+        when no naming child is present so the caller keeps the previous
+        parent context.
+        """
+        for child in class_or_module_node.children:
+            if child.type in ("constant", "scope_resolution"):
+                return self._get_node_text_optimized(child)
+        return None
 
     def _extract_method_element(
         self, node: "tree_sitter.Node", parent_class: str
@@ -286,20 +301,10 @@ class RubyElementExtractor(ElementExtractor):
             name = self._get_node_text_optimized(name_node)
             visibility = self._determine_visibility(node)
 
-            # Extract parameters
-            parameters: list[str] = []
-            params_node = node.child_by_field_name("parameters")
-            if params_node:
-                for param in params_node.children:
-                    if param.type in (
-                        "identifier",
-                        "optional_parameter",
-                        "splat_parameter",
-                        "hash_splat_parameter",
-                        "block_parameter",
-                    ):
-                        param_text = self._get_node_text_optimized(param)
-                        parameters.append(param_text)
+            # r37dr (dogfood): parameter extraction in _extract_ruby_parameters.
+            parameters = self._extract_ruby_parameters(
+                node.child_by_field_name("parameters")
+            )
 
             return Function(
                 name=f"{parent_class}#{name}" if parent_class else name,
@@ -317,6 +322,33 @@ class RubyElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting method element: {e}")
             return None
+
+    _RUBY_PARAMETER_NODE_TYPES: tuple[str, ...] = (
+        "identifier",
+        "optional_parameter",
+        "splat_parameter",
+        "hash_splat_parameter",
+        "block_parameter",
+    )
+
+    def _extract_ruby_parameters(
+        self, params_node: "tree_sitter.Node | None"
+    ) -> list[str]:
+        """Return a list of parameter texts from a Ruby ``parameters`` node.
+
+        Empty list when ``params_node`` is None (the method has no
+        explicit parameter list). Filters to the 5 known Ruby parameter
+        forms — anything else is skipped so we don't pick up commas or
+        block markers.
+        """
+        if params_node is None:
+            return []
+        parameters: list[str] = []
+        for param in params_node.children:
+            if param.type not in self._RUBY_PARAMETER_NODE_TYPES:
+                continue
+            parameters.append(self._get_node_text_optimized(param))
+        return parameters
 
     def _extract_singleton_method_element(
         self, node: "tree_sitter.Node", parent_class: str
@@ -340,20 +372,10 @@ class RubyElementExtractor(ElementExtractor):
             name = self._get_node_text_optimized(name_node)
             visibility = self._determine_visibility(node)
 
-            # Extract parameters
-            parameters: list[str] = []
-            params_node = node.child_by_field_name("parameters")
-            if params_node:
-                for param in params_node.children:
-                    if param.type in (
-                        "identifier",
-                        "optional_parameter",
-                        "splat_parameter",
-                        "hash_splat_parameter",
-                        "block_parameter",
-                    ):
-                        param_text = self._get_node_text_optimized(param)
-                        parameters.append(param_text)
+            # r37dr (dogfood): reuse _extract_ruby_parameters helper.
+            parameters = self._extract_ruby_parameters(
+                node.child_by_field_name("parameters")
+            )
 
             return Function(
                 name=f"{parent_class}.{name}" if parent_class else name,
@@ -409,13 +431,12 @@ class RubyElementExtractor(ElementExtractor):
                 if var_elem:
                     variables.append(var_elem)
 
-            # Track parent class
+            # r37dr (dogfood): reuse _find_ruby_class_name helper.
             new_parent = parent_class
             if node.type in ("class", "module"):
-                for child in node.children:
-                    if child.type in ("constant", "scope_resolution"):
-                        new_parent = self._get_node_text_optimized(child)
-                        break
+                resolved_name = self._find_ruby_class_name(node)
+                if resolved_name is not None:
+                    new_parent = resolved_name
 
             # Add children to stack
             for child in reversed(node.children):
