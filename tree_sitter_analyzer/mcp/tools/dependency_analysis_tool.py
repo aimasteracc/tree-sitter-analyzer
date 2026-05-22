@@ -383,6 +383,94 @@ def _blast_recommendation(analysis: dict[str, Any]) -> str:
     return "No downstream impact detected."
 
 
+def _summary_mode_envelope(
+    result: dict[str, Any], graph: DependencyGraph
+) -> tuple[str, str, str]:
+    """Build ``(summary_line, next_step, verdict)`` for mode=summary.
+
+    H3: uses ``_deterministic_find_cycles`` so ``summary.cycle_count``
+    stays byte-stable across runs (the underlying
+    ``DependencyGraph.find_cycles`` is DFS-order-sensitive and varies
+    with PYTHONHASHSEED). Mutates ``result['cycle_count']`` in place.
+    """
+    cycle_count = len(_deterministic_find_cycles(graph))
+    result["cycle_count"] = cycle_count
+    node_count = result.get("node_count", 0)
+    edge_count = result.get("edge_count", 0)
+    summary_line = (
+        f"summary: {node_count} nodes / {edge_count} edges / {cycle_count} cycles"
+    )
+    if cycle_count:
+        return (
+            summary_line,
+            "analyze_dependencies mode=cycles to enumerate circular dependencies",
+            "WARN",
+        )
+    return (
+        summary_line,
+        "analyze_dependencies mode=blast_radius file_path=<file> to assess change impact",
+        "INFO",
+    )
+
+
+def _cycles_mode_envelope(result: dict[str, Any]) -> tuple[str, str, str]:
+    """Build ``(summary_line, next_step, verdict)`` for mode=cycles."""
+    cycle_count = int(result.get("cycle_count", 0))
+    summary_line = f"cycles: {cycle_count} circular dependencies"
+    if cycle_count:
+        return (
+            summary_line,
+            "break each cycle by extracting shared types or inverting an import",
+            "WARN",
+        )
+    return summary_line, "no cycles — proceed with planned refactor", "INFO"
+
+
+def _file_deps_mode_envelope(result: dict[str, Any]) -> tuple[str, str, str]:
+    """Build ``(summary_line, next_step, verdict)`` for mode=file_deps."""
+    file = result.get("file", "?")
+    dep_count = int(result.get("dependency_count", 0))
+    ent_count = int(result.get("dependent_count", 0))
+    summary_line = f"file_deps {file}: depends_on={dep_count} depended_by={ent_count}"
+    return (
+        summary_line,
+        "analyze_dependencies mode=blast_radius for full ripple-effect view",
+        "INFO",
+    )
+
+
+def _blast_radius_next_step(forward: int) -> tuple[str, str]:
+    """Map ``forward`` count → ``(next_step, verdict)`` ladder for blast_radius."""
+    if forward > 50:
+        return (
+            "trace_impact on key symbols and run downstream tests before editing",
+            "REVIEW",
+        )
+    if forward > 20:
+        return (
+            "trace_impact on key symbols and run downstream tests before editing",
+            "INFO",
+        )
+    if forward > 5:
+        return (
+            "verify downstream behavior in the listed forward_impact files",
+            "INFO",
+        )
+    if forward > 0:
+        return "run basic tests on the few downstream files", "INFO"
+    return "isolated file — safe to edit", "INFO"
+
+
+def _blast_radius_mode_envelope(result: dict[str, Any]) -> tuple[str, str, str]:
+    """Build ``(summary_line, next_step, verdict)`` for mode=blast_radius."""
+    file = result.get("file", "?")
+    forward = int(result.get("forward_impact_count", 0))
+    reverse = int(result.get("reverse_dependency_count", 0))
+    summary_line = f"blast_radius {file}: forward={forward} reverse={reverse}"
+    next_step, verdict = _blast_radius_next_step(forward)
+    return summary_line, next_step, verdict
+
+
 def _attach_agent_summary(
     result: dict[str, Any], mode: str, graph: DependencyGraph
 ) -> None:
@@ -403,69 +491,26 @@ def _attach_agent_summary(
       (large blast radius warrants explicit caller acknowledgment).
     The vocabulary is the same set used by other envelope-contract
     tools (see ``_N_VERDICT_VOCABULARY`` in the contract tests).
+
+    r37en (dogfood): 93→~15 lines. Per-mode envelope builders
+    (``_summary_mode_envelope`` / ``_cycles_mode_envelope`` /
+    ``_file_deps_mode_envelope`` / ``_blast_radius_mode_envelope``)
+    own each mode's headline + next-step + verdict logic; this function
+    routes by mode and writes the canonical envelope fields.
     """
-    verdict = "INFO"
     if mode == "summary":
-        # H3: use the deterministic cycle enumerator so ``summary.cycle_count``
-        # stays byte-stable across runs (the underlying
-        # ``DependencyGraph.find_cycles`` is DFS-order-sensitive and varies
-        # with PYTHONHASHSEED).
-        cycle_count = len(_deterministic_find_cycles(graph))
-        node_count = result.get("node_count", 0)
-        edge_count = result.get("edge_count", 0)
-        summary_line = (
-            f"summary: {node_count} nodes / {edge_count} edges / {cycle_count} cycles"
-        )
-        if cycle_count:
-            next_step = (
-                "analyze_dependencies mode=cycles to enumerate circular dependencies"
-            )
-            verdict = "WARN"
-        else:
-            next_step = "analyze_dependencies mode=blast_radius file_path=<file> to assess change impact"
-        result["cycle_count"] = cycle_count
+        summary_line, next_step, verdict = _summary_mode_envelope(result, graph)
     elif mode == "cycles":
-        cycle_count = int(result.get("cycle_count", 0))
-        summary_line = f"cycles: {cycle_count} circular dependencies"
-        if cycle_count:
-            next_step = (
-                "break each cycle by extracting shared types or inverting an import"
-            )
-            verdict = "WARN"
-        else:
-            next_step = "no cycles — proceed with planned refactor"
+        summary_line, next_step, verdict = _cycles_mode_envelope(result)
     elif mode == "file_deps":
-        file = result.get("file", "?")
-        dep_count = int(result.get("dependency_count", 0))
-        ent_count = int(result.get("dependent_count", 0))
-        summary_line = (
-            f"file_deps {file}: depends_on={dep_count} depended_by={ent_count}"
-        )
-        next_step = "analyze_dependencies mode=blast_radius for full ripple-effect view"
+        summary_line, next_step, verdict = _file_deps_mode_envelope(result)
     elif mode == "blast_radius":
-        file = result.get("file", "?")
-        forward = int(result.get("forward_impact_count", 0))
-        reverse = int(result.get("reverse_dependency_count", 0))
-        summary_line = f"blast_radius {file}: forward={forward} reverse={reverse}"
-        if forward > 50:
-            next_step = (
-                "trace_impact on key symbols and run downstream tests before editing"
-            )
-            verdict = "REVIEW"
-        elif forward > 20:
-            next_step = (
-                "trace_impact on key symbols and run downstream tests before editing"
-            )
-        elif forward > 5:
-            next_step = "verify downstream behavior in the listed forward_impact files"
-        elif forward > 0:
-            next_step = "run basic tests on the few downstream files"
-        else:
-            next_step = "isolated file — safe to edit"
+        summary_line, next_step, verdict = _blast_radius_mode_envelope(result)
     else:
         # Defensive — should not happen because execute validates mode.
         summary_line = f"dependency_analysis mode={mode}"
         next_step = "review the result fields"
+        verdict = "INFO"
 
     result["summary_line"] = summary_line
     result["agent_summary"] = {
