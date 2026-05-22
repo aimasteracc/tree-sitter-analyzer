@@ -7,12 +7,19 @@ from typing import Any
 
 
 def add_output_options(parser: argparse.ArgumentParser) -> None:
-    """Register shared output flags."""
+    """Register shared output flags.
+
+    F2: ``--format`` is accepted as an alias for ``--output-format`` so that
+    callers can use the same flag name across the main CLI and subcommands.
+    Both flags target the same ``output_format`` destination.
+    """
     parser.add_argument(
         "--output-format",
+        "--format",
+        dest="output_format",
         choices=["json", "text", "toon"],
         default="json",
-        help="Output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction)",
+        help="Output format: 'json' (default), 'text', or 'toon' (50-70%% token reduction). Alias: --format",
     )
     parser.add_argument(
         "--quiet",
