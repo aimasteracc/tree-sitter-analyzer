@@ -925,6 +925,32 @@ def _extract_swift_imports(
             return
 
 
+def _ruby_call_function_name(node: Any, source: str) -> str | None:
+    """Return the function-name text from a Ruby ``call`` node, or ``None``."""
+    if not hasattr(node, "child_by_field_name"):
+        return None
+    func = node.child_by_field_name("function")
+    if not func:
+        return None
+    return _node_text(func, source)
+
+
+def _ruby_call_string_arg(node: Any, source: str) -> str | None:
+    """Return the first ``string``/``string_content`` arg text (quotes stripped)."""
+    if not hasattr(node, "child_by_field_name"):
+        return None
+    args_node = node.child_by_field_name("arguments")
+    if not args_node or not hasattr(args_node, "children"):
+        return None
+    for child in args_node.children:
+        ct = getattr(child, "type", None)
+        if ct in ("string", "string_content"):
+            raw = _node_text(child, source).strip("'\"")
+            if raw:
+                return raw
+    return None
+
+
 def _extract_ruby_imports(
     node: Any, source: str, imports: list[dict[str, Any]]
 ) -> None:
@@ -933,52 +959,34 @@ def _extract_ruby_imports(
     Handles:
         require 'json'
         require_relative 'my_lib'
+
+    r37ek (dogfood): 54→15 lines. ``_ruby_call_function_name`` and
+    ``_ruby_call_string_arg`` extract the two field lookups so the body
+    becomes linear: type-gate → func-name → arg → stdlib-skip → emit.
     """
-    node_type = getattr(node, "type", None)
-    if node_type != "call":
+    if getattr(node, "type", None) != "call":
         return
 
-    func = (
-        node.child_by_field_name("function")
-        if hasattr(node, "child_by_field_name")
-        else None
-    )
-    if not func:
-        return
-
-    func_name = _node_text(func, source)
-    is_relative = func_name == "require_relative"
+    func_name = _ruby_call_function_name(node, source)
     if func_name not in ("require", "require_relative"):
         return
 
-    args_node = (
-        node.child_by_field_name("arguments")
-        if hasattr(node, "child_by_field_name")
-        else None
-    )
-    if not args_node or not hasattr(args_node, "children"):
+    raw = _ruby_call_string_arg(node, source)
+    if raw is None:
+        return
+    if func_name == "require" and raw in _RUBY_STDLIB:
         return
 
-    for child in args_node.children:
-        ct = getattr(child, "type", None)
-        if ct in ("string", "string_content"):
-            raw = _node_text(child, source).strip("'\"")
-            if func_name == "require" and raw in _RUBY_STDLIB:
-                return
-            if raw:
-                resolved = raw
-                if not resolved.endswith(".rb"):
-                    resolved = raw + ".rb"
-                imports.append(
-                    {
-                        "module_name": raw,
-                        "resolved_path": resolved,
-                        "names": [],
-                        "is_relative": is_relative,
-                        "language": "ruby",
-                    }
-                )
-                return
+    resolved = raw if raw.endswith(".rb") else raw + ".rb"
+    imports.append(
+        {
+            "module_name": raw,
+            "resolved_path": resolved,
+            "names": [],
+            "is_relative": func_name == "require_relative",
+            "language": "ruby",
+        }
+    )
 
 
 def _extract_php_imports(node: Any, source: str, imports: list[dict[str, Any]]) -> None:
