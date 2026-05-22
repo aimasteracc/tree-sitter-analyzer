@@ -128,6 +128,22 @@ def _attach_structure_detail(base: dict[str, Any], result: Any) -> None:
         structure["package"] = package
 
 
+def _summarize_annotation(a: Any) -> dict[str, Any]:
+    """Return the summary dict for one annotation element.
+
+    Prefers the element's own ``to_summary_item()`` when defined (gives
+    each language plugin a hook to expose richer metadata), otherwise
+    falls back to ``{"name": <annotation_name>}``.
+
+    r37e2 (dogfood): lifted from ``_extract_structure_info`` to flatten
+    the inline ternary-in-list-comp from depth 6 to a flat helper call.
+    """
+    if hasattr(a, "to_summary_item"):
+        result: dict[str, Any] = a.to_summary_item()
+        return result
+    return {"name": getattr(a, "name", "unknown")}
+
+
 class UniversalAnalyzeTool(BaseMCPTool):
     """Universal MCP Tool for code analysis across multiple languages."""
 
@@ -264,27 +280,49 @@ class UniversalAnalyzeTool(BaseMCPTool):
             f"Analyzing {resolved} (language: {language}, type: {analysis_type})"
         )
 
+        # r37e2 (dogfood): flatten nesting 6 → 3 via _run_universal_analysis.
         try:
-            monitor = get_performance_monitor()
-            with monitor.measure_operation("universal_analyze"):
-                if language == "java":
-                    result = await self._analyze_advanced(
-                        resolved, language, analysis_type, arguments
-                    )
-                else:
-                    result = await self._analyze_universal(
-                        resolved, language, analysis_type, arguments
-                    )
-
-                if arguments.get("include_queries", False):
-                    result["available_queries"] = await self._get_available_queries(
-                        language
-                    )
-
-                return apply_toon_format_to_response(result, output_format)
+            return await self._run_universal_analysis(
+                resolved, language, analysis_type, arguments, output_format
+            )
         except Exception as e:
             logger.error(f"Error analyzing {resolved}: {e}")
             raise
+
+    async def _run_universal_analysis(
+        self,
+        resolved: str,
+        language: str,
+        analysis_type: str,
+        arguments: dict[str, Any],
+        output_format: str,
+    ) -> dict[str, Any]:
+        """Execute the analysis inside the perf monitor span.
+
+        Picks the Java-specific advanced path or the generic universal
+        path based on ``language``. Honours ``include_queries=True`` by
+        attaching ``available_queries``. TOON default is preserved —
+        ``output_format`` defaults to ``toon`` upstream and is passed
+        through unchanged.
+
+        r37e2 (dogfood): lifted from ``execute`` to flatten nesting
+        from depth 6 to 3 (try → with → if branch → kwargs).
+        """
+        monitor = get_performance_monitor()
+        with monitor.measure_operation("universal_analyze"):
+            if language == "java":
+                result = await self._analyze_advanced(
+                    resolved, language, analysis_type, arguments
+                )
+            else:
+                result = await self._analyze_universal(
+                    resolved, language, analysis_type, arguments
+                )
+            if arguments.get("include_queries", False):
+                result["available_queries"] = await self._get_available_queries(
+                    language
+                )
+            return apply_toon_format_to_response(result, output_format)
 
     async def _analyze_advanced(
         self,
@@ -433,7 +471,14 @@ class UniversalAnalyzeTool(BaseMCPTool):
         return data
 
     def _extract_structure_info(self, result: Any) -> dict[str, Any]:
-        """Extract structure information from analysis result."""
+        """Extract structure information from analysis result.
+
+        r37e2 (dogfood): flatten nesting 6 → 3 by extracting the
+        annotation-summary list comp into ``_summarize_annotation``.
+        """
+        annotations = [
+            _summarize_annotation(a) for a in getattr(result, "annotations", [])
+        ]
         return {
             "structure": {
                 "package": result.package.name if result.package else None,
@@ -441,14 +486,7 @@ class UniversalAnalyzeTool(BaseMCPTool):
                 "methods": elements_to_summary(result.elements, ELEMENT_TYPE_FUNCTION),
                 "fields": elements_to_summary(result.elements, ELEMENT_TYPE_VARIABLE),
                 "imports": elements_to_summary(result.elements, ELEMENT_TYPE_IMPORT),
-                "annotations": [
-                    (
-                        a.to_summary_item()
-                        if hasattr(a, "to_summary_item")
-                        else {"name": getattr(a, "name", "unknown")}
-                    )
-                    for a in getattr(result, "annotations", [])
-                ],
+                "annotations": annotations,
             }
         }
 
