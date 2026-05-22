@@ -5373,8 +5373,8 @@ class TestM6DetectRoutesSchemaUniformity:
     Contract:
       - Both modes expose ``total_routes`` (canonical) and the
         deprecated ``route_count`` alias.
-      - Both modes expose ``routes`` (empty list in summary mode, full
-        list in mode=all).
+      - Both modes expose ``routes`` with ``len(routes) == total_routes``
+        (r37f7-F4 envelope consistency — see ``test_both_modes_expose_routes_list``).
       - Both modes expose ``by_framework``, ``by_method``,
         ``file_count`` — empty dict / zero when no routes exist.
     """
@@ -5443,22 +5443,32 @@ class TestM6DetectRoutesSchemaUniformity:
         )
 
     def test_both_modes_expose_routes_list(self, flask_project: Path) -> None:
+        """r37f7-F4: ``mode=summary`` now mirrors ``mode=all`` for the
+        ``routes`` field. The previous contract returned ``routes: []`` next
+        to ``total_routes: N`` in summary mode, which was self-contradicting
+        when ``N>0``. Today every mode satisfies
+        ``len(routes) == total_routes``, so envelope consumers can rely on a
+        single invariant regardless of mode.
+        """
         summary, full = self._both_modes(flask_project)
         assert isinstance(summary.get("routes"), list), (
-            f"M6: summary must expose ``routes`` as a list (possibly empty) "
+            f"summary must expose ``routes`` as a list "
             f"— got {type(summary.get('routes')).__name__}"
         )
         assert isinstance(full.get("routes"), list), (
-            f"M6: mode=all must expose ``routes`` as a list — "
+            f"mode=all must expose ``routes`` as a list — "
             f"got {type(full.get('routes')).__name__}"
         )
-        # mode=all populates the list; summary leaves it empty.
-        assert summary["routes"] == [], (
-            f"M6: summary ``routes`` must be empty — got {summary['routes']!r}"
+        # r37f7-F4: both modes must satisfy len(routes) == total_routes so the
+        # envelope is internally consistent. The previous "summary leaves it
+        # empty" contract was the source of the bug.
+        assert len(summary["routes"]) == summary["total_routes"], (
+            f"summary routes count must equal total_routes — "
+            f"got len(routes)={len(summary['routes'])} "
+            f"total_routes={summary['total_routes']}"
         )
-        # full ``routes`` mirrors ``total_routes`` count.
         assert len(full["routes"]) == full["total_routes"], (
-            f"M6: mode=all routes count must equal total_routes — "
+            f"mode=all routes count must equal total_routes — "
             f"got len(routes)={len(full['routes'])} "
             f"total_routes={full['total_routes']}"
         )

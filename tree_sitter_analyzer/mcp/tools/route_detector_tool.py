@@ -137,17 +137,35 @@ class RouteDetectorTool(BaseMCPTool):
 
     @staticmethod
     def _build_summary_response(detector: Any) -> dict[str, Any]:
-        """M6: ``mode=summary`` exposes the canonical key set (incl. empty ``routes``)."""
-        summary_data = detector.summary()
+        """``mode=summary`` exposes counts derived from the same ``detect_all()``
+        result that populates ``routes``.
+
+        r37f7-F4 (envelope consistency): the previous shape returned
+        ``routes: []`` next to ``total_routes: N``, which was self-contradicting
+        when ``N>0`` — a caller serialising the envelope would see
+        ``"routes":[]`` and a ``summary_line`` claiming "N routes across M
+        frameworks" in the same document. We now derive every aggregate from
+        the same in-memory ``routes`` list so ``len(routes) == total_routes``
+        and ``len(by_framework) == 0 ⇔ total_routes == 0`` hold for every
+        caller. ``routes`` is included in summary mode for envelope
+        self-consistency — the token cost is identical to ``mode=all`` and the
+        list was already computed by ``detect_all()`` regardless.
+        """
+        routes = detector.detect_all()
+        by_framework: dict[str, int] = {}
+        by_method: dict[str, int] = {}
+        for r in routes:
+            by_framework[r.framework] = by_framework.get(r.framework, 0) + 1
+            by_method[r.http_method] = by_method.get(r.http_method, 0) + 1
         return {
             "success": True,
             "mode": "summary",
-            "total_routes": summary_data["total_routes"],
-            "route_count": summary_data["total_routes"],  # deprecated alias
-            "routes": [],
-            "by_framework": summary_data["by_framework"],
-            "by_method": summary_data["by_method"],
-            "file_count": summary_data["file_count"],
+            "total_routes": len(routes),
+            "route_count": len(routes),  # deprecated alias
+            "routes": [r.to_dict() for r in routes],
+            "by_framework": by_framework,
+            "by_method": by_method,
+            "file_count": len({r.file_path for r in routes}),
         }
 
     @staticmethod

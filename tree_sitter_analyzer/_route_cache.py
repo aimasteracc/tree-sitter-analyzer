@@ -19,6 +19,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+# r37f7-F4: scanner_version invalidates the cache when scanner logic
+# changes even though file content is identical. Bump this constant any
+# time a scan_* function changes shape (new filter, tighter receiver
+# whitelist, etc.) — otherwise the SHA-256 content hash will keep
+# returning the pre-change result on warm passes.
+#
+# Version history:
+#   1 — initial cache (content-hash keyed only)
+#   2 — invalidate stale entries produced before the express-receiver
+#       whitelist (and any future scanner tightening). False positives
+#       like ``apiClient.post('/save', ...)`` slipped through the v1
+#       scanner and never aged out because the file content was stable.
+_SCANNER_VERSION = 2
+
 _ROUTE_CACHE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS route_cache (
     file_path TEXT PRIMARY KEY,
@@ -29,6 +43,11 @@ CREATE TABLE IF NOT EXISTS route_cache (
 );
 CREATE INDEX IF NOT EXISTS idx_route_cache_hash
     ON route_cache(content_hash);
+
+CREATE TABLE IF NOT EXISTS route_cache_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -48,6 +67,44 @@ class RouteCache:
         with self._conn() as conn:
             conn.executescript(_ROUTE_CACHE_SCHEMA)
             conn.commit()
+        # r37f7-F4: drop rows produced by an older scanner version. A bumped
+        # ``_SCANNER_VERSION`` constant invalidates the entire content-hash
+        # keyed cache because the stored ``routes_json`` no longer reflects
+        # what today's scanners would produce for the same file content.
+        self._enforce_scanner_version(_SCANNER_VERSION)
+
+    def _enforce_scanner_version(self, expected: int) -> None:
+        """Clear the cache when its stored scanner version disagrees with ``expected``.
+
+        Implemented as a single-statement check inside a transaction so the
+        invalidation is atomic — partial-clear states are impossible.
+        """
+        conn = self._conn()
+        row = conn.execute(
+            "SELECT value FROM route_cache_meta WHERE key = 'scanner_version'"
+        ).fetchone()
+        stored: int | None
+        if row is None:
+            stored = None
+        else:
+            try:
+                stored = int(row["value"])
+            except (TypeError, ValueError):
+                stored = None
+        if stored == expected:
+            return
+        # Stale (or never-written) — wipe the cache and stamp the new version.
+        conn.execute("BEGIN")
+        try:
+            conn.execute("DELETE FROM route_cache")
+            conn.execute(
+                "INSERT OR REPLACE INTO route_cache_meta(key, value) VALUES (?, ?)",
+                ("scanner_version", str(expected)),
+            )
+            conn.execute("COMMIT")
+        except Exception:
+            conn.execute("ROLLBACK")
+            raise
 
     def _conn(self) -> sqlite3.Connection:
         conn = getattr(self._local, "conn", None)

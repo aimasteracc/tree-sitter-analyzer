@@ -1097,3 +1097,164 @@ app.delete('/d', namedHandler);
                 f"F4: handler_name {handler!r} for {url!r} looks like a URL — "
                 "extractor fell back to the wrong arg."
             )
+
+
+# ---------------------------------------------------------------------------
+# r37f7-F4: envelope self-consistency + cache version invalidation
+# ---------------------------------------------------------------------------
+
+
+class TestRouteEnvelopeConsistency:
+    """r37f7-F4: ``mode=summary`` used to return ``total_routes=N`` next to
+    ``routes: []`` for N>0 — a self-contradicting envelope. The fix
+    populates ``routes`` from the same ``detect_all()`` result that powers
+    the aggregate counts so ``len(routes) == total_routes`` and
+    ``len(by_framework) == 0 ⇔ total_routes == 0`` always hold.
+    """
+
+    @staticmethod
+    def _run(tool: RouteDetectorTool, args: dict) -> dict:
+        return asyncio.run(tool.execute(args))
+
+    def test_summary_envelope_is_internally_consistent_on_empty_project(
+        self, tmp_path: Path
+    ):
+        """A project with no web-framework code must produce a fully
+        consistent envelope: empty routes list, zero total, empty
+        ``by_framework`` dict, and a summary_line that names zeros.
+        """
+        (tmp_path / "lib.py").write_text(
+            "def add(a, b):\n    return a + b\n",
+            encoding="utf-8",
+        )
+        tool = RouteDetectorTool(str(tmp_path))
+        result = self._run(tool, {"mode": "summary", "output_format": "json"})
+        assert result["routes"] == []
+        assert result["total_routes"] == 0
+        assert result["by_framework"] == {}
+        assert result["by_method"] == {}
+        # F4 contract: routes/total_routes invariant.
+        assert len(result["routes"]) == result["total_routes"]
+        # F4 contract: total==0 ⇔ no frameworks.
+        assert (result["total_routes"] == 0) == (len(result["by_framework"]) == 0)
+        assert result["summary_line"] == "0 routes across 0 frameworks"
+
+    def test_summary_envelope_routes_match_total_on_populated_project(
+        self, flask_project: Path
+    ):
+        """When ``total_routes > 0`` the ``routes`` list must contain the
+        actual route entries — not an empty placeholder that lies about the
+        count.
+        """
+        tool = RouteDetectorTool(str(flask_project))
+        result = self._run(tool, {"mode": "summary", "output_format": "json"})
+        assert result["total_routes"] > 0
+        # The critical F4 invariant: list length matches the count claim.
+        assert len(result["routes"]) == result["total_routes"]
+        # Aggregates derived from the same list so their cardinality matches.
+        frameworks = set(result["by_framework"].keys())
+        frameworks_from_routes = {r["framework"] for r in result["routes"]}
+        assert frameworks == frameworks_from_routes
+
+    def test_tree_sitter_analyzer_project_reports_zero_routes(self):
+        """Regression guard for the original F4 reproducer: running the
+        tool against this repo (which has no Flask/Django/FastAPI/Express/
+        Spring code) must return ``total_routes==0`` and an empty
+        ``routes`` list.
+
+        Before the fix, a stale ``.ast-cache/routes.db`` produced by an
+        earlier (looser) version of ``scan_express_routes`` kept returning
+        ``apiClient.post('/save')`` as an Express route — the cache was
+        keyed by content hash only, so a scanner-logic change couldn't
+        invalidate it. The fix adds a ``scanner_version`` meta row that
+        wipes pre-tightening rows on init.
+        """
+        import os as _os
+
+        # Walk up to the repo root (containing pyproject.toml).
+        here = Path(__file__).resolve()
+        repo_root = next(
+            (p for p in here.parents if (p / "pyproject.toml").exists()),
+            None,
+        )
+        if repo_root is None or not (repo_root / "tree_sitter_analyzer").is_dir():
+            pytest.skip("tree-sitter-analyzer repo root not found from this test file")
+        if _os.environ.get("TSA_SKIP_REPO_DOGFOOD"):
+            pytest.skip("TSA_SKIP_REPO_DOGFOOD set")
+        tool = RouteDetectorTool(str(repo_root))
+        result = self._run(tool, {"mode": "summary", "output_format": "json"})
+        assert result["total_routes"] == 0, (
+            f"tree-sitter-analyzer has no web frameworks; "
+            f"got total_routes={result['total_routes']!r}, "
+            f"routes={result['routes']!r}"
+        )
+        assert result["routes"] == []
+        assert result["by_framework"] == {}
+
+
+class TestRouteCacheVersionInvalidation:
+    """r37f7-F4: bumping ``_SCANNER_VERSION`` must wipe stale rows so a
+    scanner-logic change (e.g. tightening the express receiver whitelist)
+    propagates to warm-cache callers.
+
+    Prior to F4, the cache was keyed by ``(file_path, content_hash)``
+    only. A file that yielded a false-positive route under v1 of the
+    scanner would keep returning that false positive on every warm pass
+    because the file content was unchanged.
+    """
+
+    def test_version_mismatch_clears_cache(self, tmp_path: Path):
+        from tree_sitter_analyzer import _route_cache as cache_module
+
+        db_path = tmp_path / "routes.db"
+        # Seed the cache with one row at the current scanner version.
+        cache = cache_module.RouteCache(db_path)
+        cache.put(
+            "/fake/path.py",
+            "deadbeef",
+            123456789,
+            [
+                {
+                    "http_method": "GET",
+                    "url_pattern": "/legacy",
+                    "handler_name": "h",
+                    "file_path": "/fake/path.py",
+                    "line_number": 1,
+                    "framework": "express",
+                    "language": "javascript",
+                }
+            ],
+        )
+        # Sanity: the row is present.
+        assert cache.get("/fake/path.py", "deadbeef") is not None
+
+        # Simulate a scanner-logic bump by re-opening the cache under a
+        # newer SCANNER_VERSION. The old row must be evicted.
+        new_version = cache_module._SCANNER_VERSION + 1
+        monkey_version_attr = "_SCANNER_VERSION"
+        original = getattr(cache_module, monkey_version_attr)
+        try:
+            setattr(cache_module, monkey_version_attr, new_version)
+            cache2 = cache_module.RouteCache(db_path)
+        finally:
+            setattr(cache_module, monkey_version_attr, original)
+        assert cache2.get("/fake/path.py", "deadbeef") is None, (
+            "Cache row produced by an older scanner version must be evicted "
+            "when SCANNER_VERSION increases — otherwise scanner tightenings "
+            "never reach warm-cache callers."
+        )
+
+    def test_version_match_preserves_cache(self, tmp_path: Path):
+        from tree_sitter_analyzer import _route_cache as cache_module
+
+        db_path = tmp_path / "routes.db"
+        cache = cache_module.RouteCache(db_path)
+        cache.put(
+            "/fake/keep.py",
+            "cafef00d",
+            42,
+            [],
+        )
+        # Reopen at the *same* version — row must survive.
+        cache2 = cache_module.RouteCache(db_path)
+        assert cache2.get("/fake/keep.py", "cafef00d") == []
