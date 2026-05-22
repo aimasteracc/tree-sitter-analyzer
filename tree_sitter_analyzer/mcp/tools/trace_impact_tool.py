@@ -429,29 +429,24 @@ def _verdict_and_next_step_for_impact(level: str, total_count: int) -> tuple[str
     return "SAFE", "no callers — safe to refactor"
 
 
-def _build_trace_impact_result(
+def _trace_impact_base_envelope(
     *,
     symbol: str,
-    language: str | None,
-    file_path: str | None,
-    usages: list[dict[str, Any]],
+    impact: dict[str, Any],
     source_total: int,
     true_total: int,
-    truncated: bool,
-    max_results: int,
+    usages: list[dict[str, Any]],
+    summary_line: str,
+    verdict: str,
+    next_step: str,
 ) -> dict[str, Any]:
-    """Compose the canonical trace_impact success envelope.
+    """Build the always-present canonical fields of the trace_impact envelope.
 
-    r37bw: extracted from ``execute``. K5 verdict alias, H4 source-only
-    counts, optional ``warning`` / ``language`` / ``source_file`` /
-    ``truncated`` / ``non_source_match_count`` fields all preserved.
+    Caller layers conditional fields (``warning`` / ``language`` /
+    ``source_file`` / ``truncated`` / ``non_source_match_count``) on top
+    via ``_trace_impact_apply_conditional_fields``.
     """
-    impact = _get_impact_level(source_total)
-    summary_line = f"{symbol} callers={source_total} impact={impact['level']}"
-    verdict, next_step = _verdict_and_next_step_for_impact(
-        impact["level"], source_total
-    )
-    result: dict[str, Any] = {
+    return {
         "success": True,
         "symbol": symbol,
         "call_count": source_total,
@@ -473,7 +468,29 @@ def _build_trace_impact_result(
             "verdict": verdict,
         },
     }
-    if impact["level"] == "high":
+
+
+def _trace_impact_apply_conditional_fields(
+    result: dict[str, Any],
+    *,
+    impact_level: str,
+    source_total: int,
+    true_total: int,
+    language: str | None,
+    file_path: str | None,
+    truncated: bool,
+    max_results: int,
+) -> None:
+    """Mutate ``result`` with optional fields based on signal flags.
+
+    Adds in-place:
+    - ``warning`` when impact_level == "high" (advises batch_search)
+    - ``language`` + ``filtered_by_language`` when a language was inferred
+    - ``source_file`` when ``file_path`` was provided
+    - ``truncated`` + ``message`` when results overflowed ``max_results``
+    - ``non_source_match_count`` when raw matches exceeded source matches
+    """
+    if impact_level == "high":
         result["warning"] = (
             f"🚨 HIGH IMPACT: This symbol has {source_total} callers. "
             f"Modifying its signature requires updating all call sites. "
@@ -492,6 +509,54 @@ def _build_trace_impact_result(
         )
     if true_total > source_total:
         result["non_source_match_count"] = true_total - source_total
+
+
+def _build_trace_impact_result(
+    *,
+    symbol: str,
+    language: str | None,
+    file_path: str | None,
+    usages: list[dict[str, Any]],
+    source_total: int,
+    true_total: int,
+    truncated: bool,
+    max_results: int,
+) -> dict[str, Any]:
+    """Compose the canonical trace_impact success envelope.
+
+    r37bw: extracted from ``execute``. K5 verdict alias, H4 source-only
+    counts, optional ``warning`` / ``language`` / ``source_file`` /
+    ``truncated`` / ``non_source_match_count`` fields all preserved.
+
+    r37f6 (dogfood): 64 → ~15 lines. Base envelope moved to
+    ``_trace_impact_base_envelope``; conditional fields applied via
+    ``_trace_impact_apply_conditional_fields``.
+    """
+    impact = _get_impact_level(source_total)
+    summary_line = f"{symbol} callers={source_total} impact={impact['level']}"
+    verdict, next_step = _verdict_and_next_step_for_impact(
+        impact["level"], source_total
+    )
+    result = _trace_impact_base_envelope(
+        symbol=symbol,
+        impact=impact,
+        source_total=source_total,
+        true_total=true_total,
+        usages=usages,
+        summary_line=summary_line,
+        verdict=verdict,
+        next_step=next_step,
+    )
+    _trace_impact_apply_conditional_fields(
+        result,
+        impact_level=impact["level"],
+        source_total=source_total,
+        true_total=true_total,
+        language=language,
+        file_path=file_path,
+        truncated=truncated,
+        max_results=max_results,
+    )
     return result
 
 
