@@ -110,6 +110,7 @@ def _create_tool_registry(
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.check_tools_tool import CheckToolsTool
     from .tools.code_patterns_tool import CodePatternsTool
+    from .tools.decision_journal_tool import DecisionJournalTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
@@ -182,6 +183,12 @@ def _create_tool_registry(
         # (compare two git refs), working_tree (compare disk vs ref),
         # strings (compare two source strings).
         ("ast_diff", ASTDiffTool(project_root)),
+        # r37fG (unique moat): persistent journal of architectural
+        # decisions. The only registered tool that persists *reasoning*
+        # across sessions — agents tomorrow read what agents today
+        # decided so settled choices don't get re-litigated.
+        # Storage: <project_root>/.ast-cache/decision_journal.db.
+        ("decision_journal", DecisionJournalTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 

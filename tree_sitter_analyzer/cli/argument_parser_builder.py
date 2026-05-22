@@ -394,6 +394,7 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     _add_modification_guard_options(parser)
     _add_batch_search_options(parser)
     _add_ast_diff_options(parser)
+    _add_decision_journal_options(parser)
 
 
 def _add_parser_readiness_options(parser: argparse.ArgumentParser) -> None:
@@ -739,6 +740,84 @@ def _add_ast_diff_options(parser: argparse.ArgumentParser) -> None:
             "Language identifier for --ast-diff (required for mode=strings; "
             "e.g. 'python', 'javascript', 'go')."
         ),
+    )
+
+
+def _add_decision_journal_options(parser: argparse.ArgumentParser) -> None:
+    """``--decision-journal`` family (r37fG CLI-MCP parity).
+
+    Persistent journal of architectural decisions. CLI mirrors the four
+    MCP modes (record / get / search / supersede) so agents reading
+    ``--help`` get the same affordances they get over MCP.
+    """
+    _VERDICTS = [
+        "SAFE",
+        "CAUTION",
+        "REVIEW",
+        "UNSAFE",
+        "INFO",
+        "WARN",
+        "ERROR",
+        "NOT_FOUND",
+    ]
+    parser.add_argument(
+        "--decision-journal",
+        action="store_true",
+        help=(
+            "Persistent journal of architectural decisions. Use to record "
+            "rationale + alternatives for non-trivial choices, or search "
+            "for prior decisions before re-litigating. Default mode: search."
+        ),
+    )
+    parser.add_argument(
+        "--decision-journal-mode",
+        choices=["record", "get", "search", "supersede"],
+        default="search",
+        help="Decision-journal mode (default: search).",
+    )
+    parser.add_argument(
+        "--decision-journal-id", metavar="ID", help="Decision id (for get/supersede)."
+    )
+    parser.add_argument(
+        "--decision-journal-new-id",
+        metavar="ID",
+        help="Replacement decision id (for supersede).",
+    )
+    parser.add_argument(
+        "--decision-journal-title", metavar="TEXT", help="Decision title (for record)."
+    )
+    parser.add_argument(
+        "--decision-journal-rationale",
+        metavar="TEXT",
+        help="Decision rationale (for record).",
+    )
+    parser.add_argument(
+        "--decision-journal-verdict",
+        choices=_VERDICTS,
+        help="Decision verdict (required for record; canonical vocabulary).",
+    )
+    parser.add_argument(
+        "--decision-journal-tags",
+        nargs="+",
+        metavar="TAG",
+        help="Decision tags (for record).",
+    )
+    parser.add_argument(
+        "--decision-journal-query",
+        metavar="TEXT",
+        help="Substring query (for search).",
+    )
+    parser.add_argument(
+        "--decision-journal-verdict-filter",
+        choices=_VERDICTS,
+        help="Filter search results by verdict.",
+    )
+    parser.add_argument(
+        "--decision-journal-limit",
+        type=int,
+        default=20,
+        metavar="N",
+        help="Max results for search (default: 20, max: 100).",
     )
 
 

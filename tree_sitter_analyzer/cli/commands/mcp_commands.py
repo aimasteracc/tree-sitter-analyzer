@@ -38,6 +38,9 @@ from tree_sitter_analyzer.mcp.tools.check_tools_tool import (
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
     CodePatternsTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.decision_journal_tool import (
+    DecisionJournalTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
 )
@@ -272,6 +275,41 @@ def _build_modification_guard_tool_args(
     )
     if file_path:
         tool_args["file_path"] = file_path
+    return tool_args
+
+
+def _build_decision_journal_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """Build tool args for --decision-journal (r37fG CLI-MCP parity).
+
+    Mirrors DecisionJournalTool's four-mode schema. Only forwards the
+    fields the chosen mode actually needs so the contract test matrix
+    can drive the tool with the minimum viable argument shape.
+    """
+    mode = getattr(args, "decision_journal_mode", "search") or "search"
+    tool_args: dict[str, Any] = {"mode": mode, "output_format": output_format}
+    if mode == "record":
+        if (title := getattr(args, "decision_journal_title", None)) is not None:
+            tool_args["title"] = title
+        if (rationale := getattr(args, "decision_journal_rationale", None)) is not None:
+            tool_args["rationale"] = rationale
+        if (verdict := getattr(args, "decision_journal_verdict", None)) is not None:
+            tool_args["verdict"] = verdict
+        if (tags := getattr(args, "decision_journal_tags", None)) is not None:
+            tool_args["tags"] = tags
+    elif mode == "get":
+        if (rec_id := getattr(args, "decision_journal_id", None)) is not None:
+            tool_args["id"] = rec_id
+    elif mode == "search":
+        if (query := getattr(args, "decision_journal_query", None)) is not None:
+            tool_args["query"] = query
+        if (vf := getattr(args, "decision_journal_verdict_filter", None)) is not None:
+            tool_args["verdict_filter"] = vf
+        tool_args["limit"] = int(getattr(args, "decision_journal_limit", 20) or 20)
+    elif mode == "supersede":
+        if (rec_id := getattr(args, "decision_journal_id", None)) is not None:
+            tool_args["id"] = rec_id
+        if (new_id := getattr(args, "decision_journal_new_id", None)) is not None:
+            tool_args["new_id"] = new_id
     return tool_args
 
 
@@ -537,6 +575,12 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         label="AST-level structured diff (functions/classes/imports)",
         build_tool_args=_build_ast_diff_tool_args,
     ),
+    McpCommandSpec(
+        flag_name="decision_journal",
+        tool_attr="DecisionJournalTool",
+        label="Persistent journal of architectural decisions",
+        build_tool_args=_build_decision_journal_tool_args,
+    ),
 )
 
 
@@ -796,6 +840,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodeGraphCallTool",
         "ASTCacheTool",
         "ASTDiffTool",
+        "DecisionJournalTool",
         "RouteDetectorTool",
         "TraceImpactTool",
         "CheckToolsTool",

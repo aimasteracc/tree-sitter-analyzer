@@ -230,6 +230,14 @@ class TestExecuteAcrossAllTools:
                 "language": "python",
                 "output_format": "json",
             },
+            # r37fG: persistent decision journal. Search with a no-match
+            # query exercises the canonical envelope without needing
+            # pre-existing rows in the contract fixture.
+            "decision_journal": {
+                "mode": "search",
+                "query": "contract-test-no-match",
+                "output_format": "json",
+            },
         }
         skipped: list[str] = []
         for name, tool in registered_tools:
@@ -10038,6 +10046,7 @@ _KNOWN_CLI_ENTRY_FOR_TOOL: dict[str, tuple[str, str]] = {
     "change_impact": ("flag", "--change-impact"),
     "check_tools": ("flag", "--check-tools"),
     "code_patterns": ("flag", "--code-patterns"),
+    "decision_journal": ("flag", "--decision-journal"),  # r37fG
     "dependency_analysis": ("alias_of", "--dependencies"),
     "file_health": ("flag", "--file-health"),
     "find_and_grep": ("entry", "find-and-grep"),
