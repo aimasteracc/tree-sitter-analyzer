@@ -21,21 +21,18 @@ _NON_CODE_LANGUAGES: frozenset[str] = frozenset(
 )
 
 
-def _format_toon(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
-    """Render project summary as TOON-style structured text."""
-    lines: list[str] = []
+# Column width for directory name (including trailing slash) in TOON rendering.
+_DIR_COL: int = 26
 
-    resolved = Path(index.project_root).resolve()
-    project_name = resolved.name or resolved.parent.name
 
-    # --- Header block ---
-    lines.append(f"project: {project_name}")
+def _top_code_languages(index: ProjectIndex) -> list[str]:
+    """Return up to top-3 real programming languages by file count.
 
-    if index.readme_excerpt:
-        lines.append(f"purpose: {index.readme_excerpt}")
-
-    # Top-3 real programming languages — require ≥10 files to filter out
-    # fixture-only languages (e.g. 6 Java test samples in a Python project)
+    Filters out non-code languages (markdown, json, yaml, …) and noise
+    languages contributing fewer than 10 files **and** less than 2% of
+    the total file mix — keeps fixture-only languages (e.g. 6 Java test
+    samples in a Python project) out of the headline.
+    """
     total_files = max(index.file_count, 1)
     code_langs = [
         (k, v)
@@ -43,28 +40,53 @@ def _format_toon(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
         if k not in _NON_CODE_LANGUAGES and (v >= 10 or v / total_files >= 0.02)
     ]
     code_langs.sort(key=lambda kv: -kv[1])
-    top_langs = [k for k, _ in code_langs[:3]]
+    return [k for k, _ in code_langs[:3]]
+
+
+def _emit_header_block(index: ProjectIndex, lines: list[str]) -> None:
+    """Append the ``project`` / ``purpose`` / ``language`` / ``entry`` / ``config`` block."""
+    resolved = Path(index.project_root).resolve()
+    project_name = resolved.name or resolved.parent.name
+    lines.append(f"project: {project_name}")
+
+    if index.readme_excerpt:
+        lines.append(f"purpose: {index.readme_excerpt}")
+
+    top_langs = _top_code_languages(index)
     if top_langs:
         lines.append(f"language: {'  '.join(top_langs)}")
 
-    # Entry points
     if index.entry_points:
         lines.append(f"entry:    {'  '.join(index.entry_points)}")
     else:
         lines.append("entry:    n/a")
 
-    # Key config files
     if index.key_files:
         lines.append(f"config:   {'  '.join(index.key_files)}")
 
-    lines.append("")  # blank separator before structure
 
-    # --- Structure block ---
+def _append_subdir_lines(
+    name: str, subdirs: list[dict[str, Any]], descs: dict[str, str], lines: list[str]
+) -> None:
+    """Append described depth-2 subdirectories of ``name`` (up to 5)."""
+    shown_sub = 0
+    for sub in subdirs:
+        if shown_sub >= 5:
+            break
+        sname = sub["name"]
+        sub_desc = descs.get(f"{name}/{sname}", "")
+        if not sub_desc:
+            continue  # skip undescribed subdirs — noise without signal
+        sub_label = sname + "/"
+        padding = max(1, _DIR_COL - 2 - len(sub_label))
+        lines.append(f"    {sub_label}{' ' * padding}{sub_desc}")
+        shown_sub += 1
+
+
+def _emit_structure_block(index: ProjectIndex, lines: list[str]) -> None:
+    """Append the ``structure:`` block — up to 10 top-level dirs with descriptions."""
     lines.append("structure:")
-
-    has_descriptions = bool(index.module_descriptions)
-    # Column width for directory name (including trailing slash)
-    DIR_COL = 26
+    descs = index.module_descriptions if index.module_descriptions else {}
 
     shown_top = 0
     for item in index.top_level_structure:
@@ -72,44 +94,37 @@ def _format_toon(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
             break
         name = item["name"]
         dir_label = name + "/"
-        desc = index.module_descriptions.get(name, "") if has_descriptions else ""
+        desc = descs.get(name, "")
         subdirs = item.get("subdirectories", [])
-        sub_descs = [
-            index.module_descriptions.get(f"{name}/{s['name']}", "")
-            for s in subdirs
-            if has_descriptions
-        ]
+        sub_descs = [descs.get(f"{name}/{s['name']}", "") for s in subdirs]
 
-        # Skip directories with no description and no described subdirectories
-        # (they add visual noise without informational value)
+        # Skip dirs with no description and no described subdirectories
+        # (they add visual noise without informational value).
         if not desc and not any(sub_descs):
             continue
 
         if desc:
-            padding = max(1, DIR_COL - len(dir_label))
+            padding = max(1, _DIR_COL - len(dir_label))
             lines.append(f"  {dir_label}{' ' * padding}{desc}")
         else:
             lines.append(f"  {dir_label}")
-
         shown_top += 1
 
-        # Sub-directories (depth-2): only show those with a description
-        shown_sub = 0
-        for sub in item.get("subdirectories", []):
-            if shown_sub >= 5:
-                break
-            sname = sub["name"]
-            rel_key = f"{name}/{sname}"
-            sub_desc = (
-                index.module_descriptions.get(rel_key, "") if has_descriptions else ""
-            )
-            if not sub_desc:
-                continue  # skip undescribed subdirs — noise without signal
-            sub_label = sname + "/"
-            padding = max(1, DIR_COL - 2 - len(sub_label))
-            lines.append(f"    {sub_label}{' ' * padding}{sub_desc}")
-            shown_sub += 1
+        _append_subdir_lines(name, subdirs, descs, lines)
 
+
+def _format_toon(index: ProjectIndex, age_hours: float, is_fresh: bool) -> str:
+    """Render project summary as TOON-style structured text.
+
+    r37eo (dogfood): 90 → ~10 lines of orchestration. Header / structure /
+    sub-dir helpers (``_emit_header_block`` / ``_emit_structure_block`` /
+    ``_append_subdir_lines``) own each block; ``_top_code_languages`` does
+    the noise filtering once.
+    """
+    lines: list[str] = []
+    _emit_header_block(index, lines)
+    lines.append("")  # blank separator before structure
+    _emit_structure_block(index, lines)
     return "\n".join(lines)
 
 
