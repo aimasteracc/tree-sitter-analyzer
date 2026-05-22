@@ -67,7 +67,9 @@ class Function(CodeElement):
     """Generic function/method representation"""
 
     parameters: list[str] = field(default_factory=list)
-    parameter_defaults: dict[str, str] = field(default_factory=dict)  # param name -> default value
+    parameter_defaults: dict[str, str] = field(
+        default_factory=dict
+    )  # param name -> default value
     return_type: str | None = None
     modifiers: list[str] = field(default_factory=list)
     is_async: bool = False
@@ -434,6 +436,132 @@ class JavaPackage:
         }
 
 
+def _safe_get_attr(obj: Any, attr: str, default: Any = "") -> Any:
+    """Read ``attr`` from an object or dict, falling back to ``default``.
+
+    r37bo: extracted from ``to_mcp_format`` closure so the per-element
+    helpers below can share one definition.
+    """
+    if hasattr(obj, attr):
+        return getattr(obj, attr)
+    if isinstance(obj, dict):
+        return obj.get(attr, default)
+    return default
+
+
+def _mcp_package_info(package: Any) -> dict[str, Any] | None:
+    """Normalise the package field for MCP output."""
+    if not package:
+        return None
+    if hasattr(package, "name"):
+        return {"name": package.name}
+    if isinstance(package, dict):
+        return package
+    return {"name": str(package)}
+
+
+def _mcp_line_range(obj: Any) -> dict[str, int]:
+    """Canonical ``{start, end}`` from any element-like object."""
+    return {
+        "start": _safe_get_attr(obj, "start_line", 0),
+        "end": _safe_get_attr(obj, "end_line", 0),
+    }
+
+
+def _mcp_import_entries(elements: Sequence[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": _safe_get_attr(imp, "name"),
+            "is_static": _safe_get_attr(imp, "is_static", False),
+            "is_wildcard": _safe_get_attr(imp, "is_wildcard", False),
+            "line_range": _mcp_line_range(imp),
+        }
+        for imp in elements
+        if is_element_of_type(imp, ELEMENT_TYPE_IMPORT)
+    ]
+
+
+def _mcp_class_entries(elements: Sequence[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": _safe_get_attr(cls, "name"),
+            "type": _safe_get_attr(cls, "class_type"),
+            "package": _safe_get_attr(cls, "package_name"),
+            "line_range": _mcp_line_range(cls),
+        }
+        for cls in elements
+        if is_element_of_type(cls, ELEMENT_TYPE_CLASS)
+    ]
+
+
+def _mcp_method_entries(elements: Sequence[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": _safe_get_attr(method, "name"),
+            "return_type": _safe_get_attr(method, "return_type"),
+            "parameters": _safe_get_attr(method, "parameters", []),
+            "line_range": _mcp_line_range(method),
+        }
+        for method in elements
+        if is_element_of_type(method, ELEMENT_TYPE_FUNCTION)
+    ]
+
+
+def _mcp_field_entries(elements: Sequence[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": _safe_get_attr(field, "name"),
+            "type": _safe_get_attr(field, "field_type"),
+            "line_range": _mcp_line_range(field),
+        }
+        for field in elements
+        if is_element_of_type(field, ELEMENT_TYPE_VARIABLE)
+    ]
+
+
+def _mcp_annotation_entries(elements: Sequence[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": _safe_get_attr(ann, "name"),
+            "line_range": _mcp_line_range(ann),
+        }
+        for ann in elements
+        if is_element_of_type(ann, ELEMENT_TYPE_ANNOTATION)
+    ]
+
+
+def _mcp_metadata_block(
+    elements: Sequence[Any],
+    *,
+    line_count: int,
+    analysis_time: float,
+    success: bool,
+    error_message: str | None,
+) -> dict[str, Any]:
+    """Element-type counts + analysis flags — paired with ``to_mcp_format``."""
+    return {
+        "line_count": line_count,
+        "class_count": sum(
+            1 for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)
+        ),
+        "method_count": sum(
+            1 for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+        ),
+        "field_count": sum(
+            1 for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
+        ),
+        "import_count": sum(
+            1 for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
+        ),
+        "annotation_count": sum(
+            1 for e in elements if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
+        ),
+        "analysis_time": analysis_time,
+        "success": success,
+        "error_message": error_message,
+    }
+
+
 @dataclass(frozen=False)
 class AnalysisResult:
     """Comprehensive analysis result container"""
@@ -622,156 +750,32 @@ class AnalysisResult:
             "analysis_time": self.analysis_time,
         }
 
-    # Format data for output: to_mcp_format
     def to_mcp_format(self) -> dict[str, Any]:
+        """Produce output in MCP-compatible format.
+
+        r37bo (dogfood): tool flagged this at 150 lines. The body was a
+        single dict literal with 6 list-comprehensions + a metadata block.
+        Refactor extracts each element-type entry-list to a helper plus
+        the metadata count block, dropping the method to ~20 lines.
         """
-        Produce output in MCP-compatible format
-
-        Returns:
-            MCP-style result dictionary
-        """
-        # packageの安全な処理
-        package_info = None
-        if self.package:
-            if hasattr(self.package, "name"):
-                package_info = {"name": self.package.name}
-            elif isinstance(self.package, dict):
-                package_info = self.package
-            else:
-                package_info = {"name": str(self.package)}
-
-        # 安全なアイテム処理ヘルパー関数
-        def safe_get_attr(obj: Any, attr: str, default: Any = "") -> Any:
-            if hasattr(obj, attr):
-                return getattr(obj, attr)
-            elif isinstance(obj, dict):
-                return obj.get(attr, default)
-            else:
-                return default
-
+        elements = self.elements or []
         return {
             "file_path": self.file_path,
             "structure": {
-                "package": package_info,
-                "imports": [
-                    {
-                        "name": safe_get_attr(imp, "name"),
-                        "is_static": safe_get_attr(imp, "is_static", False),
-                        "is_wildcard": safe_get_attr(imp, "is_wildcard", False),
-                        "line_range": {
-                            "start": safe_get_attr(imp, "start_line", 0),
-                            "end": safe_get_attr(imp, "end_line", 0),
-                        },
-                    }
-                    for imp in [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
-                    ]
-                ],
-                "classes": [
-                    {
-                        "name": safe_get_attr(cls, "name"),
-                        "type": safe_get_attr(cls, "class_type"),
-                        "package": safe_get_attr(cls, "package_name"),
-                        "line_range": {
-                            "start": safe_get_attr(cls, "start_line", 0),
-                            "end": safe_get_attr(cls, "end_line", 0),
-                        },
-                    }
-                    for cls in [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
-                    ]
-                ],
-                "methods": [
-                    {
-                        "name": safe_get_attr(method, "name"),
-                        "return_type": safe_get_attr(method, "return_type"),
-                        "parameters": safe_get_attr(method, "parameters", []),
-                        "line_range": {
-                            "start": safe_get_attr(method, "start_line", 0),
-                            "end": safe_get_attr(method, "end_line", 0),
-                        },
-                    }
-                    for method in [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
-                    ]
-                ],
-                "fields": [
-                    {
-                        "name": safe_get_attr(field, "name"),
-                        "type": safe_get_attr(field, "field_type"),
-                        "line_range": {
-                            "start": safe_get_attr(field, "start_line", 0),
-                            "end": safe_get_attr(field, "end_line", 0),
-                        },
-                    }
-                    for field in [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
-                    ]
-                ],
-                "annotations": [
-                    {
-                        "name": safe_get_attr(ann, "name"),
-                        "line_range": {
-                            "start": safe_get_attr(ann, "start_line", 0),
-                            "end": safe_get_attr(ann, "end_line", 0),
-                        },
-                    }
-                    for ann in [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
-                    ]
-                ],
+                "package": _mcp_package_info(self.package),
+                "imports": _mcp_import_entries(elements),
+                "classes": _mcp_class_entries(elements),
+                "methods": _mcp_method_entries(elements),
+                "fields": _mcp_field_entries(elements),
+                "annotations": _mcp_annotation_entries(elements),
             },
-            "metadata": {
-                "line_count": self.line_count,
-                "class_count": len(
-                    [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
-                    ]
-                ),
-                "method_count": len(
-                    [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
-                    ]
-                ),
-                "field_count": len(
-                    [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
-                    ]
-                ),
-                "import_count": len(
-                    [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
-                    ]
-                ),
-                "annotation_count": len(
-                    [
-                        e
-                        for e in (self.elements or [])
-                        if is_element_of_type(e, ELEMENT_TYPE_ANNOTATION)
-                    ]
-                ),
-                "analysis_time": self.analysis_time,
-                "success": self.success,
-                "error_message": self.error_message,
-            },
+            "metadata": _mcp_metadata_block(
+                elements,
+                line_count=self.line_count,
+                analysis_time=self.analysis_time,
+                success=self.success,
+                error_message=self.error_message,
+            ),
         }
 
     def get_statistics(self) -> dict[str, Any]:
