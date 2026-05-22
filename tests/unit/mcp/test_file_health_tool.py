@@ -104,6 +104,7 @@ def test_file_health_result_marks_healthy_files_as_no_action() -> None:
         "post_edit_commands": [],
     }
     assert result["agent_summary"] == {
+        "verdict": "INFO",
         "risk": "none",
         "grade": "A",
         "score": 96.0,
@@ -156,6 +157,7 @@ def test_file_health_result_includes_direct_agent_commands_for_smells() -> None:
         "uv run python -m tree_sitter_analyzer --change-impact --format json",
     ]
     assert result["agent_summary"] == {
+        "verdict": "REVIEW",
         "risk": "medium",
         "grade": "C",
         "score": 72.0,
