@@ -159,8 +159,7 @@ class GetCodeOutlineTool(BaseMCPTool):
         include_fields: bool,
         include_imports: bool,
     ) -> dict[str, Any]:
-        """
-        从分析结果构建层次化大纲。
+        """从分析结果构建层次化大纲。
 
         大纲结构：
             package (str | None)
@@ -176,9 +175,16 @@ class GetCodeOutlineTool(BaseMCPTool):
             top_level_functions: list of
                 name, return_type, parameters, line_start, line_end
             statistics: class_count, method_count, field_count, import_count
+
+        r37d2 (dogfood): 312 lines → ~25 lines of phase dispatch.
+        Language-specific enrichment lifted to module helpers
+        (``_enrich_markup_outline`` / ``_enrich_sql_outline`` /
+        ``_enrich_markdown_outline`` / ``_enrich_yaml_outline`` /
+        ``_enrich_json_outline``). Helpers ``_method_entry`` /
+        ``_field_entry`` / ``_in_class_ranges`` are now module-level
+        utilities. Output dict keys are preserved byte-for-byte.
         """
         elements = analysis_result.elements or []
-
         packages = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_PACKAGE)]
         imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
         classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
@@ -189,91 +195,18 @@ class GetCodeOutlineTool(BaseMCPTool):
             e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
         ]
 
-        # 构建 class 行号区间集合，用于区分类方法与顶层函数
-        class_ranges: list[tuple[int, int]] = [
+        class_outlines = _build_class_outlines(
+            classes, all_methods, all_fields, include_fields
+        )
+        class_ranges = [
             (getattr(cls, "start_line", 0), getattr(cls, "end_line", 0))
             for cls in classes
         ]
-
-        def _in_class(method: Any) -> bool:
-            """判断方法是否在某个类内部（按行号）。"""
-            m_start = getattr(method, "start_line", 0)
-            for cls_start, cls_end in class_ranges:
-                if cls_start <= m_start <= cls_end:
-                    return True
-            return False
-
-        def _method_entry(m: Any) -> dict[str, Any]:
-            """将方法元素转换为大纲条目。"""
-            params = getattr(m, "parameters", [])
-            if params and isinstance(params[0], str):
-                param_list = params
-            else:
-                param_list = [
-                    f"{getattr(p, 'type', 'Object')} {getattr(p, 'name', 'param')}"
-                    for p in params
-                ]
-            return {
-                "name": getattr(m, "name", "unknown"),
-                "return_type": getattr(m, "return_type", "void"),
-                "parameters": param_list,
-                "visibility": getattr(m, "visibility", "public"),
-                "is_constructor": getattr(m, "is_constructor", False),
-                "is_static": getattr(m, "is_static", False),
-                "line_start": getattr(m, "start_line", 0),
-                "line_end": getattr(m, "end_line", 0),
-            }
-
-        def _field_entry(f: Any) -> dict[str, Any]:
-            """将字段元素转换为大纲条目。"""
-            return {
-                "name": getattr(f, "name", "unknown"),
-                "type": getattr(f, "field_type", "Object"),
-                "visibility": getattr(f, "visibility", "private"),
-                "is_static": getattr(f, "is_static", False),
-                "line_start": getattr(f, "start_line", 0),
-                "line_end": getattr(f, "end_line", 0),
-            }
-
-        # 构建类大纲
-        class_outlines = []
-        for cls in classes:
-            cls_start = getattr(cls, "start_line", 0)
-            cls_end = getattr(cls, "end_line", 0)
-
-            # 属于这个类的方法
-            cls_methods = [
-                _method_entry(m)
-                for m in all_methods
-                if cls_start <= getattr(m, "start_line", 0) <= cls_end
-            ]
-            cls_methods.sort(key=lambda x: x["line_start"])
-
-            class_entry: dict[str, Any] = {
-                "name": getattr(cls, "name", "unknown"),
-                "type": getattr(cls, "class_type", "class"),
-                "line_start": cls_start,
-                "line_end": cls_end,
-                "extends": getattr(cls, "extends_class", None),
-                "implements": getattr(cls, "implements_interfaces", []),
-                "methods": cls_methods,
-            }
-
-            if include_fields:
-                cls_fields = [
-                    _field_entry(f)
-                    for f in all_fields
-                    if cls_start <= getattr(f, "start_line", 0) <= cls_end
-                ]
-                cls_fields.sort(key=lambda x: x["line_start"])
-                class_entry["fields"] = cls_fields
-
-            class_outlines.append(class_entry)
-
-        class_outlines.sort(key=lambda x: x["line_start"])
-
-        # 顶层函数（不属于任何类）
-        top_level_fns = [_method_entry(m) for m in all_methods if not _in_class(m)]
+        top_level_fns = [
+            _method_entry(m)
+            for m in all_methods
+            if not _in_class_ranges(m, class_ranges)
+        ]
         top_level_fns.sort(key=lambda x: x["line_start"])
 
         outline: dict[str, Any] = {
@@ -290,180 +223,18 @@ class GetCodeOutlineTool(BaseMCPTool):
                 "import_count": len(imports),
             },
         }
-
         if include_imports:
             outline["imports"] = [
                 getattr(imp, "import_statement", getattr(imp, "name", ""))
                 for imp in imports
             ]
-
-        # For markup languages (HTML/CSS), enrich outline with tag/rule elements
-        # when no class/method structure is present.
-        markup_elements = [
-            e for e in elements if getattr(e, "element_type", "") == "html_element"
-        ]
-        css_elements = [
-            e for e in elements if getattr(e, "element_type", "") == "css_rule"
-        ]
-        if markup_elements and not classes:
-            outline["html_elements"] = [
-                {
-                    "tag": getattr(e, "tag_name", getattr(e, "name", "?")),
-                    "class": getattr(e, "element_class", ""),
-                    "line_start": getattr(e, "start_line", 0),
-                    "line_end": getattr(e, "end_line", 0),
-                    "attributes": list(getattr(e, "attributes", {}).keys()),
-                }
-                for e in markup_elements
-            ]
-            outline["statistics"]["html_element_count"] = len(markup_elements)
-        if css_elements and not classes:
-            outline["css_rules"] = [
-                {
-                    "selector": getattr(e, "selector", getattr(e, "name", "?")),
-                    "class": getattr(e, "element_class", ""),
-                    "line_start": getattr(e, "start_line", 0),
-                    "line_end": getattr(e, "end_line", 0),
-                }
-                for e in css_elements
-            ]
-            outline["statistics"]["css_rule_count"] = len(css_elements)
-
-        # SQL: tables / views / procedures / triggers / indexes
-        # (sql_function has element_type="function" so it already appears in
-        # top_level_functions above)
-        _SQL_TYPES = {"table", "view", "procedure", "trigger", "index"}
-        sql_elements = [
-            e for e in elements if getattr(e, "element_type", "") in _SQL_TYPES
-        ]
-        if sql_elements and not classes:
-            by_type: dict[str, list[dict[str, Any]]] = {}
-            for e in sql_elements:
-                etype = getattr(e, "element_type", "unknown")
-                by_type.setdefault(etype, []).append(
-                    {
-                        "name": getattr(e, "name", "?"),
-                        "line_start": getattr(e, "start_line", 0),
-                        "line_end": getattr(e, "end_line", 0),
-                    }
-                )
-            outline["sql_objects"] = by_type
-            outline["statistics"]["sql_object_count"] = len(sql_elements)
-
-        # Markdown: headings and code blocks make the most useful outline.
-        # Guard with language="markdown" to avoid collision with SQL's element_type="table".
-        _MD_HEADING_TYPES = {"heading"}
-        _MD_BLOCK_TYPES = {"code_block", "table", "list", "task_list"}
-        md_headings = [
-            e
-            for e in elements
-            if getattr(e, "element_type", "") in _MD_HEADING_TYPES
-            and getattr(e, "language", "") == "markdown"
-        ]
-        md_blocks = [
-            e
-            for e in elements
-            if getattr(e, "element_type", "") in _MD_BLOCK_TYPES
-            and getattr(e, "language", "") == "markdown"
-        ]
-        if (md_headings or md_blocks) and not classes:
-            if md_headings:
-                outline["headings"] = [
-                    {
-                        "text": getattr(e, "name", "?"),
-                        "level": getattr(e, "level", 0),
-                        "line_start": getattr(e, "start_line", 0),
-                        "line_end": getattr(e, "end_line", 0),
-                    }
-                    for e in md_headings
-                ]
-                outline["statistics"]["heading_count"] = len(md_headings)
-            if md_blocks:
-                outline["blocks"] = [
-                    {
-                        "type": getattr(e, "element_type", "?"),
-                        "name": getattr(e, "name", "?"),
-                        "line_start": getattr(e, "start_line", 0),
-                        "line_end": getattr(e, "end_line", 0),
-                    }
-                    for e in md_blocks
-                ]
-                outline["statistics"]["block_count"] = len(md_blocks)
-
-        # YAML: documents and top-level mappings
-        # Guard with language="yaml" to avoid collision with JSON's element_type="document".
-        yaml_docs = [
-            e
-            for e in elements
-            if getattr(e, "element_type", "") == "document"
-            and getattr(e, "language", "") == "yaml"
-        ]
-        yaml_mappings = [
-            e
-            for e in elements
-            if getattr(e, "element_type", "") == "mapping"
-            and getattr(e, "nesting_level", 1) == 0
-        ]
-        if (yaml_docs or yaml_mappings) and not classes:
-            if yaml_docs:
-                outline["yaml_documents"] = [
-                    {
-                        "index": getattr(e, "document_index", i),
-                        "line_start": getattr(e, "start_line", 0),
-                        "line_end": getattr(e, "end_line", 0),
-                    }
-                    for i, e in enumerate(yaml_docs)
-                ]
-                outline["statistics"]["yaml_document_count"] = len(yaml_docs)
-            if yaml_mappings:
-                outline["yaml_top_keys"] = [
-                    {
-                        "key": getattr(e, "key", getattr(e, "name", "?")),
-                        "value_type": getattr(e, "value_type", "?"),
-                        "line_start": getattr(e, "start_line", 0),
-                        "line_end": getattr(e, "end_line", 0),
-                    }
-                    for e in yaml_mappings
-                ]
-                outline["statistics"]["yaml_top_key_count"] = len(yaml_mappings)
-
-        # JSON: document root + top-level properties (nesting_level == 1)
-        json_doc = next(
-            (
-                e
-                for e in elements
-                if getattr(e, "element_type", "") == "document"
-                and getattr(e, "language", "") == "json"
-            ),
-            None,
-        )
-        json_props = [
-            e
-            for e in elements
-            if getattr(e, "element_type", "") in ("property", "pair")
-            and getattr(e, "nesting_level", 0) == 1
-        ]
-        if (json_doc is not None or json_props) and not classes:
-            if json_doc is not None:
-                outline["json_root"] = {
-                    "type": getattr(json_doc, "value_type", "unknown"),
-                    "child_count": getattr(json_doc, "child_count", None),
-                    "line_start": getattr(json_doc, "start_line", 0),
-                    "line_end": getattr(json_doc, "end_line", 0),
-                }
-            if json_props:
-                outline["json_top_keys"] = [
-                    {
-                        "key": getattr(e, "key", getattr(e, "name", "?")),
-                        "value_type": getattr(e, "value_type", "?"),
-                        "child_count": getattr(e, "child_count", None),
-                        "line_start": getattr(e, "start_line", 0),
-                        "line_end": getattr(e, "end_line", 0),
-                    }
-                    for e in json_props
-                ]
-                outline["statistics"]["json_top_key_count"] = len(json_props)
-
+        # Language-specific enrichment (only when no class structure is
+        # present — these tools are mutually exclusive with classes).
+        _enrich_markup_outline(outline, elements, classes)
+        _enrich_sql_outline(outline, elements, classes)
+        _enrich_markdown_outline(outline, elements, classes)
+        _enrich_yaml_outline(outline, elements, classes)
+        _enrich_json_outline(outline, elements, classes)
         return outline
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -664,6 +435,304 @@ class GetCodeOutlineTool(BaseMCPTool):
             ),
             "inputSchema": self.get_tool_schema(),
         }
+
+
+# ---------------------------------------------------------------------------
+# Outline helpers (r37d2) — lifted from ``_build_outline`` so the latter
+# stays at ~25 lines of phase dispatch. Each helper preserves byte-for-byte
+# the dict layout the original code produced.
+# ---------------------------------------------------------------------------
+
+
+def _method_entry(m: Any) -> dict[str, Any]:
+    """Convert a method element to an outline entry."""
+    params = getattr(m, "parameters", [])
+    if params and isinstance(params[0], str):
+        param_list = params
+    else:
+        param_list = [
+            f"{getattr(p, 'type', 'Object')} {getattr(p, 'name', 'param')}"
+            for p in params
+        ]
+    return {
+        "name": getattr(m, "name", "unknown"),
+        "return_type": getattr(m, "return_type", "void"),
+        "parameters": param_list,
+        "visibility": getattr(m, "visibility", "public"),
+        "is_constructor": getattr(m, "is_constructor", False),
+        "is_static": getattr(m, "is_static", False),
+        "line_start": getattr(m, "start_line", 0),
+        "line_end": getattr(m, "end_line", 0),
+    }
+
+
+def _field_entry(f: Any) -> dict[str, Any]:
+    """Convert a field element to an outline entry."""
+    return {
+        "name": getattr(f, "name", "unknown"),
+        "type": getattr(f, "field_type", "Object"),
+        "visibility": getattr(f, "visibility", "private"),
+        "is_static": getattr(f, "is_static", False),
+        "line_start": getattr(f, "start_line", 0),
+        "line_end": getattr(f, "end_line", 0),
+    }
+
+
+def _in_class_ranges(method: Any, class_ranges: list[tuple[int, int]]) -> bool:
+    """Return True iff ``method.start_line`` falls inside any class range."""
+    m_start = getattr(method, "start_line", 0)
+    for cls_start, cls_end in class_ranges:
+        if cls_start <= m_start <= cls_end:
+            return True
+    return False
+
+
+def _build_class_outlines(
+    classes: list[Any],
+    all_methods: list[Any],
+    all_fields: list[Any],
+    include_fields: bool,
+) -> list[dict[str, Any]]:
+    """Build the ``classes`` outline section, sorted by ``line_start``."""
+    class_outlines: list[dict[str, Any]] = []
+    for cls in classes:
+        cls_start = getattr(cls, "start_line", 0)
+        cls_end = getattr(cls, "end_line", 0)
+        # Methods that belong to this class (by line-range containment).
+        cls_methods = [
+            _method_entry(m)
+            for m in all_methods
+            if cls_start <= getattr(m, "start_line", 0) <= cls_end
+        ]
+        cls_methods.sort(key=lambda x: x["line_start"])
+        class_entry: dict[str, Any] = {
+            "name": getattr(cls, "name", "unknown"),
+            "type": getattr(cls, "class_type", "class"),
+            "line_start": cls_start,
+            "line_end": cls_end,
+            "extends": getattr(cls, "extends_class", None),
+            "implements": getattr(cls, "implements_interfaces", []),
+            "methods": cls_methods,
+        }
+        if include_fields:
+            cls_fields = [
+                _field_entry(f)
+                for f in all_fields
+                if cls_start <= getattr(f, "start_line", 0) <= cls_end
+            ]
+            cls_fields.sort(key=lambda x: x["line_start"])
+            class_entry["fields"] = cls_fields
+        class_outlines.append(class_entry)
+    class_outlines.sort(key=lambda x: x["line_start"])
+    return class_outlines
+
+
+def _enrich_markup_outline(
+    outline: dict[str, Any], elements: list[Any], classes: list[Any]
+) -> None:
+    """Attach HTML / CSS element summaries when no class structure is present."""
+    if classes:
+        return
+    markup_elements = [
+        e for e in elements if getattr(e, "element_type", "") == "html_element"
+    ]
+    if markup_elements:
+        outline["html_elements"] = [
+            {
+                "tag": getattr(e, "tag_name", getattr(e, "name", "?")),
+                "class": getattr(e, "element_class", ""),
+                "line_start": getattr(e, "start_line", 0),
+                "line_end": getattr(e, "end_line", 0),
+                "attributes": list(getattr(e, "attributes", {}).keys()),
+            }
+            for e in markup_elements
+        ]
+        outline["statistics"]["html_element_count"] = len(markup_elements)
+    css_elements = [e for e in elements if getattr(e, "element_type", "") == "css_rule"]
+    if css_elements:
+        outline["css_rules"] = [
+            {
+                "selector": getattr(e, "selector", getattr(e, "name", "?")),
+                "class": getattr(e, "element_class", ""),
+                "line_start": getattr(e, "start_line", 0),
+                "line_end": getattr(e, "end_line", 0),
+            }
+            for e in css_elements
+        ]
+        outline["statistics"]["css_rule_count"] = len(css_elements)
+
+
+_SQL_OBJECT_TYPES: frozenset[str] = frozenset(
+    {"table", "view", "procedure", "trigger", "index"}
+)
+
+
+def _enrich_sql_outline(
+    outline: dict[str, Any], elements: list[Any], classes: list[Any]
+) -> None:
+    """Attach SQL object summaries (tables / views / procedures / ...).
+
+    ``sql_function`` has element_type="function" so it already lands in
+    ``top_level_functions`` — we only emit ``sql_objects`` for the non-
+    function DDL elements that wouldn't otherwise surface.
+    """
+    if classes:
+        return
+    sql_elements = [
+        e for e in elements if getattr(e, "element_type", "") in _SQL_OBJECT_TYPES
+    ]
+    if not sql_elements:
+        return
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for e in sql_elements:
+        etype = getattr(e, "element_type", "unknown")
+        by_type.setdefault(etype, []).append(
+            {
+                "name": getattr(e, "name", "?"),
+                "line_start": getattr(e, "start_line", 0),
+                "line_end": getattr(e, "end_line", 0),
+            }
+        )
+    outline["sql_objects"] = by_type
+    outline["statistics"]["sql_object_count"] = len(sql_elements)
+
+
+_MD_HEADING_TYPES: frozenset[str] = frozenset({"heading"})
+_MD_BLOCK_TYPES: frozenset[str] = frozenset(
+    {"code_block", "table", "list", "task_list"}
+)
+
+
+def _enrich_markdown_outline(
+    outline: dict[str, Any], elements: list[Any], classes: list[Any]
+) -> None:
+    """Attach Markdown headings + block summaries (guarded by language)."""
+    if classes:
+        return
+    md_headings = [
+        e
+        for e in elements
+        if getattr(e, "element_type", "") in _MD_HEADING_TYPES
+        and getattr(e, "language", "") == "markdown"
+    ]
+    md_blocks = [
+        e
+        for e in elements
+        if getattr(e, "element_type", "") in _MD_BLOCK_TYPES
+        and getattr(e, "language", "") == "markdown"
+    ]
+    if md_headings:
+        outline["headings"] = [
+            {
+                "text": getattr(e, "name", "?"),
+                "level": getattr(e, "level", 0),
+                "line_start": getattr(e, "start_line", 0),
+                "line_end": getattr(e, "end_line", 0),
+            }
+            for e in md_headings
+        ]
+        outline["statistics"]["heading_count"] = len(md_headings)
+    if md_blocks:
+        outline["blocks"] = [
+            {
+                "type": getattr(e, "element_type", "?"),
+                "name": getattr(e, "name", "?"),
+                "line_start": getattr(e, "start_line", 0),
+                "line_end": getattr(e, "end_line", 0),
+            }
+            for e in md_blocks
+        ]
+        outline["statistics"]["block_count"] = len(md_blocks)
+
+
+def _enrich_yaml_outline(
+    outline: dict[str, Any], elements: list[Any], classes: list[Any]
+) -> None:
+    """Attach YAML document + top-level mapping summaries (guarded by language)."""
+    if classes:
+        return
+    yaml_docs = [
+        e
+        for e in elements
+        if getattr(e, "element_type", "") == "document"
+        and getattr(e, "language", "") == "yaml"
+    ]
+    yaml_mappings = [
+        e
+        for e in elements
+        if getattr(e, "element_type", "") == "mapping"
+        and getattr(e, "nesting_level", 1) == 0
+    ]
+    if yaml_docs:
+        outline["yaml_documents"] = [
+            {
+                "index": getattr(e, "document_index", i),
+                "line_start": getattr(e, "start_line", 0),
+                "line_end": getattr(e, "end_line", 0),
+            }
+            for i, e in enumerate(yaml_docs)
+        ]
+        outline["statistics"]["yaml_document_count"] = len(yaml_docs)
+    if yaml_mappings:
+        outline["yaml_top_keys"] = [
+            {
+                "key": getattr(e, "key", getattr(e, "name", "?")),
+                "value_type": getattr(e, "value_type", "?"),
+                "line_start": getattr(e, "start_line", 0),
+                "line_end": getattr(e, "end_line", 0),
+            }
+            for e in yaml_mappings
+        ]
+        outline["statistics"]["yaml_top_key_count"] = len(yaml_mappings)
+
+
+def _enrich_json_outline(
+    outline: dict[str, Any], elements: list[Any], classes: list[Any]
+) -> None:
+    """Attach JSON document root + top-level property summaries.
+
+    Top-level here means ``nesting_level == 1`` because the document root
+    itself is at level 0 — properties at level 1 are the file's outermost
+    object keys.
+    """
+    if classes:
+        return
+    json_doc = next(
+        (
+            e
+            for e in elements
+            if getattr(e, "element_type", "") == "document"
+            and getattr(e, "language", "") == "json"
+        ),
+        None,
+    )
+    json_props = [
+        e
+        for e in elements
+        if getattr(e, "element_type", "") in ("property", "pair")
+        and getattr(e, "nesting_level", 0) == 1
+    ]
+    if json_doc is None and not json_props:
+        return
+    if json_doc is not None:
+        outline["json_root"] = {
+            "type": getattr(json_doc, "value_type", "unknown"),
+            "child_count": getattr(json_doc, "child_count", None),
+            "line_start": getattr(json_doc, "start_line", 0),
+            "line_end": getattr(json_doc, "end_line", 0),
+        }
+    if json_props:
+        outline["json_top_keys"] = [
+            {
+                "key": getattr(e, "key", getattr(e, "name", "?")),
+                "value_type": getattr(e, "value_type", "?"),
+                "child_count": getattr(e, "child_count", None),
+                "line_start": getattr(e, "start_line", 0),
+                "line_end": getattr(e, "end_line", 0),
+            }
+            for e in json_props
+        ]
+        outline["statistics"]["json_top_key_count"] = len(json_props)
 
 
 # 模块级实例，供直接访问使用
