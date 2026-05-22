@@ -57,65 +57,58 @@ def _result_is_empty_for_mode(result: dict[str, Any], mode: str) -> bool:
     return False
 
 
-def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
-    """Populate the canonical agent_summary + summary_line for call_graph.
+def _call_graph_summary_line(result: dict[str, Any], mode: str, func: str) -> str:
+    """Build the per-mode ``summary_line`` for call_graph responses.
 
-    Finding 6: round-16b dogfood saw ``agent_summary={}`` and
-    ``summary_line=None`` on every call_graph response. Build a compact
-    summary keyed off the response mode so the dispatch post-hook can
-    mirror ``agent_summary.summary_line`` to the top level.
+    G2: ``CallGraph.summary()`` returns ``call_edge_count`` / ``function_count``
+    (see call_graph.py); the legacy ``edges`` / ``edge_count`` keys never
+    land here, so the fallback chain reads the canonical field name last so
+    the visible number matches ``call_edge_count``.
 
-    Finding F8 (round-17): when ``callers``/``callees``/``chain`` resolve
-    to zero hits for a symbol that doesn't exist, agents previously saw
-    ``verdict='n/a'`` plus a generic "drill in" next_step — nothing
-    actionable. We now overlay a ``NOT_FOUND`` verdict with a concrete
-    next_step pointing at ``symbol_lineage`` so the caller has somewhere
-    to go.
+    r37ew (dogfood): lifted from ``_attach_call_graph_envelope`` so the
+    parent function reads as: build line → ensure agent_summary → mirror.
     """
-    mode = result.get("mode", "summary")
-    func = result.get("function") or ""
-    is_not_found = mode in _SYMBOL_RESOLVING_MODES and _result_is_empty_for_mode(
-        result, mode
-    )
-
-    if is_not_found:
-        # F8: prefer a single canonical not-found line that tells agents
-        # the symbol is missing, regardless of which mode they tried.
-        summary_line = f"call_graph: symbol '{func}' not found"
-    elif mode == "summary":
-        # G2: CallGraph.summary() returns ``call_edge_count`` / ``function_count``
-        # (see call_graph.py); the legacy ``edges`` / ``edge_count`` keys never
-        # land here, so the old fallback chain always fell through to 0 and the
-        # top-level summary_line reported edges=0 even when the response data
-        # held the real count. Extend the chain to read the canonical field
-        # name last so the visible number matches ``call_edge_count``.
+    if mode == "summary":
         edges = result.get(
             "edges", result.get("edge_count", result.get("call_edge_count", 0))
         )
         nodes = result.get("nodes", result.get("function_count", 0))
-        summary_line = f"call_graph summary nodes={nodes} edges={edges}"
-    elif mode == "all_functions":
-        summary_line = f"call_graph all_functions count={result.get('count', 0)}"
-    elif mode == "callers":
-        summary_line = (
+        return f"call_graph summary nodes={nodes} edges={edges}"
+    if mode == "all_functions":
+        return f"call_graph all_functions count={result.get('count', 0)}"
+    if mode == "callers":
+        return (
             f"call_graph callers function={func} "
             f"caller_count={result.get('caller_count', 0)}"
         )
-    elif mode == "callees":
-        summary_line = (
+    if mode == "callees":
+        return (
             f"call_graph callees function={func} "
             f"callee_count={result.get('callee_count', 0)}"
         )
-    elif mode == "chain":
-        summary_line = (
+    if mode == "chain":
+        return (
             f"call_graph chain function={func} "
             f"depth={result.get('depth', 0)} "
             f"edge_count={result.get('edge_count', 0)}"
         )
-    else:  # pragma: no cover - defensive
-        summary_line = f"call_graph mode={mode}"
+    # Defensive — should not happen because execute validates mode.
+    return f"call_graph mode={mode}"  # pragma: no cover
 
-    result.setdefault("summary_line", summary_line)
+
+def _apply_call_graph_agent_summary(
+    result: dict[str, Any],
+    summary_line: str,
+    mode: str,
+    is_not_found: bool,
+) -> None:
+    """Populate ``result['agent_summary']`` with next_step + verdict + summary_line.
+
+    Preserves existing agent_summary fields via ``setdefault`` — callers
+    that pre-populated specific keys keep them. F8 overlays a NOT_FOUND
+    verdict when symbol resolution returned zero hits; the default verdict
+    is ``n/a`` for informational responses.
+    """
     agent_summary = result.get("agent_summary")
     if not isinstance(agent_summary, dict) or not agent_summary:
         agent_summary = {}
@@ -141,6 +134,42 @@ def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
     # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
     if isinstance(agent_summary.get("verdict"), str):
         result.setdefault("verdict", agent_summary["verdict"])
+
+
+def _attach_call_graph_envelope(result: dict[str, Any]) -> None:
+    """Populate the canonical agent_summary + summary_line for call_graph.
+
+    Finding 6: round-16b dogfood saw ``agent_summary={}`` and
+    ``summary_line=None`` on every call_graph response. Build a compact
+    summary keyed off the response mode so the dispatch post-hook can
+    mirror ``agent_summary.summary_line`` to the top level.
+
+    Finding F8 (round-17): when ``callers``/``callees``/``chain`` resolve
+    to zero hits for a symbol that doesn't exist, agents previously saw
+    ``verdict='n/a'`` plus a generic "drill in" next_step — nothing
+    actionable. We now overlay a ``NOT_FOUND`` verdict with a concrete
+    next_step pointing at ``symbol_lineage`` so the caller has somewhere
+    to go.
+
+    r37ew (dogfood): 88→~15 lines. ``_call_graph_summary_line`` builds
+    the per-mode headline; ``_apply_call_graph_agent_summary`` populates
+    ``agent_summary`` and mirrors ``verdict``; this function is the thin
+    orchestrator.
+    """
+    mode = result.get("mode", "summary")
+    func = result.get("function") or ""
+    is_not_found = mode in _SYMBOL_RESOLVING_MODES and _result_is_empty_for_mode(
+        result, mode
+    )
+
+    if is_not_found:
+        # F8: prefer a single canonical not-found line regardless of mode.
+        summary_line = f"call_graph: symbol '{func}' not found"
+    else:
+        summary_line = _call_graph_summary_line(result, mode, func)
+
+    result.setdefault("summary_line", summary_line)
+    _apply_call_graph_agent_summary(result, summary_line, mode, is_not_found)
     # F8: mirror agent_summary.summary_line to the top level so direct
     # ``await tool.execute(args)`` callers see a non-None summary_line
     # without going through the MCP dispatch post-hook.
