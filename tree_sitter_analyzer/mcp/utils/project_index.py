@@ -62,6 +62,111 @@ def _is_language_count_excluded(filepath: str) -> bool:
     return any(seg in normalized for seg in _LANGUAGE_COUNT_EXCLUDED_SEGMENTS)
 
 
+def _clean_readme_line(line: str) -> str:
+    """Strip markdown formatting and HTML tags from a README line.
+
+    r37ct: lifted from a nested closure to flatten ``_extract_readme_excerpt``.
+    """
+    s = re.sub(r"<[^>]+>", "", line)
+    s = re.sub(r"\*\*|(?<!\*)\*(?!\*)|`", "", s)
+    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
+    return s.strip()
+
+
+def _is_readme_noise_line(line: str) -> bool:
+    """Return True for README lines that are not useful descriptions.
+
+    Noise categories: empty, heading, badge/shield, image, language-navigation
+    tables (``|``-heavy), and code fence markers.
+    """
+    s = line.strip()
+    if not s:
+        return True
+    if s.startswith("#"):
+        return True
+    # Badge / shield lines
+    if "shields.io" in s or s.startswith("[!["):
+        return True
+    # Image lines
+    if s.startswith("!["):
+        return True
+    # Language-navigation lines (many pipe characters)
+    if s.count("|") >= 2:
+        return True
+    # Code fence lines
+    if s.startswith("```") or s.startswith("~~~"):
+        return True
+    return False
+
+
+def _excerpt_from_blockquotes(text: str) -> str:
+    """First non-noise blockquote line in ``text``, cleaned and truncated.
+
+    Returns empty string when no blockquote yields a useful line.
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith(">"):
+            continue
+        inner = stripped.lstrip(">").strip()
+        if not inner or _is_readme_noise_line(inner):
+            continue
+        cleaned = _clean_readme_line(inner)
+        if cleaned:
+            return cleaned[:200]
+    return ""
+
+
+def _excerpt_from_paragraphs(text: str) -> str:
+    """First non-noise non-blockquote line in ``text``, cleaned and truncated.
+
+    Used as the fallback when ``_excerpt_from_blockquotes`` finds nothing.
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith(">"):
+            continue
+        if _is_readme_noise_line(stripped):
+            continue
+        cleaned = _clean_readme_line(stripped)
+        if cleaned:
+            return cleaned[:200]
+    return ""
+
+
+def _read_directory_readme_title(readme_path: Path) -> str:
+    """Return the first meaningful line from a directory's README.md.
+
+    Used by ``_describe_dir`` as the second-tier source for directory
+    descriptions (after ``__init__.py`` docstring). Returns the heading
+    text when the file starts with ``#`` headings, otherwise the first
+    non-badge non-empty line. Empty string when the file is missing /
+    unreadable / contains only noise.
+
+    r37ct (dogfood): lifted out of ``_describe_dir`` to flatten nesting 7 → 2.
+    """
+    if not readme_path.is_file():
+        return ""
+    try:
+        text = readme_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            # Extract title from heading, strip HTML
+            title = re.sub(r"<[^>]+>", "", stripped.lstrip("#")).strip()
+            if title:
+                return title[:80]
+            continue
+        if stripped.startswith("[![") or "shields.io" in stripped:
+            continue
+        return re.sub(r"<[^>]+>", "", stripped).strip()[:80]
+    return ""
+
+
 # Names that look like classes to the AST-based edge extractor but are
 # actually Python typing / stdlib helpers — they should never surface
 # as "critical architectural nodes". TYPE_CHECKING is the worst case:
@@ -607,6 +712,7 @@ class ProjectIndexManager:
 
         abs_root = root_path.resolve()
 
+        # r37ct: flattened nesting 7 → 3 via early-continue gates.
         for filepath in all_files:
             fp = Path(filepath)
             abs_fp = fp.resolve() if not fp.is_absolute() else fp
@@ -616,21 +722,20 @@ class ProjectIndexManager:
                 continue  # skip files outside the project root
 
             parts = rel_path.parts
-            if len(parts) >= 2:
-                top_dir = parts[0]
-                if top_dir in self._ARTIFACT_DIRS or top_dir.startswith("."):
-                    continue
-                dir_counts[top_dir] = dir_counts.get(top_dir, 0) + 1
-                # Collect depth-2 breakdown
-                if len(parts) >= 3:
-                    sub_dir = parts[1]
-                    if sub_dir not in self._ARTIFACT_DIRS and not sub_dir.startswith(
-                        "."
-                    ):
-                        sub_counts.setdefault(top_dir, {})
-                        sub_counts[top_dir][sub_dir] = (
-                            sub_counts[top_dir].get(sub_dir, 0) + 1
-                        )
+            if len(parts) < 2:
+                continue
+            top_dir = parts[0]
+            if top_dir in self._ARTIFACT_DIRS or top_dir.startswith("."):
+                continue
+            dir_counts[top_dir] = dir_counts.get(top_dir, 0) + 1
+            # Collect depth-2 breakdown
+            if len(parts) < 3:
+                continue
+            sub_dir = parts[1]
+            if sub_dir in self._ARTIFACT_DIRS or sub_dir.startswith("."):
+                continue
+            sub_counts.setdefault(top_dir, {})
+            sub_counts[top_dir][sub_dir] = sub_counts[top_dir].get(sub_dir, 0) + 1
 
         # Sort by file count descending; only include dirs that actually have files
         structure: list[dict[str, Any]] = []
@@ -657,63 +762,25 @@ class ProjectIndexManager:
 
         Prefers blockquote lines (``> ...``), then falls back to the first
         non-heading non-badge paragraph.
+
+        r37ct (dogfood): flattened nesting 8 → 3 by extracting per-pass
+        helpers ``_excerpt_from_blockquotes`` / ``_excerpt_from_paragraphs``
+        and lifting ``_clean`` / ``_is_noise`` to module-level functions.
         """
         for candidate in ("README.md", "README.rst", "README.txt", "README"):
             readme = root_path / candidate
-            if readme.is_file():
-                try:
-                    text = readme.read_text(encoding="utf-8", errors="replace")
-                except OSError:
-                    continue
-
-                def _clean(line: str) -> str:
-                    """Strip markdown formatting and HTML tags from a line."""
-                    s = re.sub(r"<[^>]+>", "", line)
-                    s = re.sub(r"\*\*|(?<!\*)\*(?!\*)|`", "", s)
-                    s = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", s)
-                    return s.strip()
-
-                def _is_noise(line: str) -> bool:
-                    """Return True for lines that are not useful descriptions."""
-                    s = line.strip()
-                    if not s:
-                        return True
-                    if s.startswith("#"):
-                        return True
-                    # Badge / shield lines
-                    if "shields.io" in s or s.startswith("[!["):
-                        return True
-                    # Image lines
-                    if s.startswith("!["):
-                        return True
-                    # Language-navigation lines (many pipe characters)
-                    if s.count("|") >= 2:
-                        return True
-                    # Code fence lines
-                    if s.startswith("```") or s.startswith("~~~"):
-                        return True
-                    return False
-
-                # First pass: prefer blockquote lines
-                for line in text.splitlines():
-                    stripped = line.strip()
-                    if stripped.startswith(">"):
-                        inner = stripped.lstrip(">").strip()
-                        if inner and not _is_noise(inner):
-                            cleaned = _clean(inner)
-                            if cleaned:
-                                return cleaned[:200]
-
-                # Second pass: first non-noise non-blockquote paragraph line
-                for line in text.splitlines():
-                    stripped = line.strip()
-                    if stripped.startswith(">"):
-                        continue
-                    if _is_noise(stripped):
-                        continue
-                    cleaned = _clean(stripped)
-                    if cleaned:
-                        return cleaned[:200]
+            if not readme.is_file():
+                continue
+            try:
+                text = readme.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            excerpt = _excerpt_from_blockquotes(text)
+            if excerpt:
+                return excerpt
+            excerpt = _excerpt_from_paragraphs(text)
+            if excerpt:
+                return excerpt
         return ""
 
     @staticmethod
@@ -758,26 +825,10 @@ class ProjectIndexManager:
             return doc[:80]
 
         # 2. README.md first non-heading non-empty line
-        readme = dir_path / "README.md"
-        if readme.is_file():
-            try:
-                for line in readme.read_text(
-                    encoding="utf-8", errors="replace"
-                ).splitlines():
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    if stripped.startswith("#"):
-                        # Extract title from heading, strip HTML
-                        title = re.sub(r"<[^>]+>", "", stripped.lstrip("#")).strip()
-                        if title:
-                            return title[:80]
-                        continue
-                    if stripped.startswith("[![") or "shields.io" in stripped:
-                        continue
-                    return re.sub(r"<[^>]+>", "", stripped).strip()[:80]
-            except OSError:
-                pass
+        # r37ct: extracted to helper to flatten nesting 7 → 2.
+        readme_excerpt = _read_directory_readme_title(dir_path / "README.md")
+        if readme_excerpt:
+            return readme_excerpt
 
         # 3. Convention table
         return _DIR_CONVENTIONS.get(dir_name.lower(), "")
