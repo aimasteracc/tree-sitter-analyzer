@@ -130,24 +130,56 @@ def compute_graph_fingerprint(
     stack: list[str] = [project_root]
     while stack:
         path = stack.pop()
-        try:
-            with os.scandir(path) as entries:
-                for entry in entries:
-                    try:
-                        if entry.is_dir(follow_symlinks=False):
-                            if entry.name not in _EXCLUDE_DIRS:
-                                stack.append(entry.path)
-                        elif entry.name.endswith(exts):
-                            stat = entry.stat()
-                            file_count += 1
-                            if stat.st_mtime_ns > max_mtime_ns:
-                                max_mtime_ns = stat.st_mtime_ns
-                    except OSError:  # nosec B112 — file disappeared / unreadable mid-walk
-                        # Skip files we can't stat — they don't break the
-                        # fingerprint, they just don't contribute to it.
-                        continue
-        except OSError:  # nosec B112 — directory disappeared mid-walk
-            # Directory disappeared or unreadable — skip silently.
-            continue
+        file_count, max_mtime_ns = _walk_one_directory(
+            path, exts, stack, file_count, max_mtime_ns
+        )
 
     return GraphFingerprint(file_count=file_count, max_mtime_ns=max_mtime_ns)
+
+
+def _walk_one_directory(
+    path: str,
+    exts: tuple[str, ...],
+    stack: list[str],
+    file_count: int,
+    max_mtime_ns: int,
+) -> tuple[int, int]:
+    """Iterate one ``scandir`` entry list; recurse into subdirs via the stack.
+
+    r37bq (dogfood): extracted from ``compute_graph_fingerprint`` to drop
+    nesting from 8 to 4. The OSError branches stay silent (the
+    fingerprint is best-effort).
+    """
+    try:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                file_count, max_mtime_ns = _process_entry(
+                    entry, exts, stack, file_count, max_mtime_ns
+                )
+    except OSError:  # nosec B112 — directory disappeared mid-walk
+        pass
+    return file_count, max_mtime_ns
+
+
+def _process_entry(
+    entry: os.DirEntry[str],
+    exts: tuple[str, ...],
+    stack: list[str],
+    file_count: int,
+    max_mtime_ns: int,
+) -> tuple[int, int]:
+    """Sort a single entry into recurse-stack or fingerprint accumulator."""
+    try:
+        if entry.is_dir(follow_symlinks=False):
+            if entry.name not in _EXCLUDE_DIRS:
+                stack.append(entry.path)
+            return file_count, max_mtime_ns
+        if entry.name.endswith(exts):
+            stat = entry.stat()
+            file_count += 1
+            if stat.st_mtime_ns > max_mtime_ns:
+                max_mtime_ns = stat.st_mtime_ns
+    except OSError:  # nosec B112 — file disappeared / unreadable mid-walk
+        # Skip files we can't stat; they don't break the fingerprint.
+        pass
+    return file_count, max_mtime_ns
