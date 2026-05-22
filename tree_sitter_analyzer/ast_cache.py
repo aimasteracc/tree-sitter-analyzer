@@ -458,30 +458,57 @@ def _collect_import_statement(node: Any, source: str, names: list[str]) -> None:
 
 
 def _collect_js_import_clause(node: Any, source: str, names: list[str]) -> None:
+    # r37cw (dogfood): flattened nesting 8 → 3 by extracting the
+    # ``named_imports`` / ``namespace_import`` branches into helpers.
     for child in node.children:
         if child.type == "identifier":
             text = _node_text(child, source)
             if text:
                 names.append(text)
         elif child.type == "named_imports":
-            for sub in child.children:
-                if sub.type == "import_specifier":
-                    # ``a`` or ``a as b`` — bound is final identifier
-                    last = ""
-                    for grand in sub.children:
-                        if grand.type == "identifier":
-                            text = _node_text(grand, source)
-                            if text:
-                                last = text
-                    if last:
-                        names.append(last)
+            _collect_named_imports(child, source, names)
         elif child.type == "namespace_import":
-            # ``* as ns`` — bound is the identifier
-            for sub in child.children:
-                if sub.type == "identifier":
-                    text = _node_text(sub, source)
-                    if text:
-                        names.append(text)
+            _collect_namespace_import(child, source, names)
+
+
+def _collect_named_imports(node: Any, source: str, names: list[str]) -> None:
+    """Harvest bound names from a JS ``named_imports`` node.
+
+    Pattern: ``{ a, b as c }`` — for each ``import_specifier``, the bound
+    name is the final identifier (after any ``as`` rename).
+    """
+    for sub in node.children:
+        if sub.type != "import_specifier":
+            continue
+        bound = _last_identifier_text(sub, source)
+        if bound:
+            names.append(bound)
+
+
+def _collect_namespace_import(node: Any, source: str, names: list[str]) -> None:
+    """Harvest bound names from a JS ``namespace_import`` (``* as ns``)."""
+    for sub in node.children:
+        if sub.type != "identifier":
+            continue
+        text = _node_text(sub, source)
+        if text:
+            names.append(text)
+
+
+def _last_identifier_text(node: Any, source: str) -> str:
+    """Return the text of the last ``identifier`` child of ``node``.
+
+    Empty string if no identifier is present. Used by JS import-specifier
+    extraction where ``a as b`` exposes ``b`` as the bound name.
+    """
+    last = ""
+    for grand in node.children:
+        if grand.type != "identifier":
+            continue
+        text = _node_text(grand, source)
+        if text:
+            last = text
+    return last
 
 
 def _collect_import_declaration(node: Any, source: str, names: list[str]) -> None:
