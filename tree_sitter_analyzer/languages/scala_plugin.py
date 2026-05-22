@@ -405,22 +405,10 @@ class ScalaElementExtractor(ElementExtractor):
     ) -> Variable | None:
         """Common extraction logic for val/var"""
         try:
-            # Extract name from pattern (usually identifier)
-            name = "unknown"
-
-            # val/var definition structure: modifiers? (val|var) pattern_list : type? = expression?
-            for child in node.children:
-                if child.type == "identifier":
-                    name = self._get_node_text(child)
-                    break
-                elif child.type == "pattern_list":
-                    # Extract first pattern
-                    for grandchild in child.children:
-                        if grandchild.type == "identifier":
-                            name = self._get_node_text(grandchild)
-                            break
-                    if name != "unknown":
-                        break
+            # Extract name (handles plain ``identifier`` and ``pattern_list``
+            # forms). r37ca: extracted to drop ``_extract_variable`` nesting
+            # from 7 to ≤3.
+            name = self._extract_scala_variable_name(node)
 
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
@@ -465,6 +453,22 @@ class ScalaElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting Scala variable: {e}")
             return None
+
+    def _extract_scala_variable_name(self, node: "tree_sitter.Node") -> str:
+        """Scala val/var binds a name either as a direct ``identifier`` child
+        or as the first identifier inside a ``pattern_list``.
+
+        r37ca (dogfood): extracted from ``_extract_variable`` to flatten its
+        7-deep nesting (for-elif-for-if-break).
+        """
+        for child in node.children:
+            if child.type == "identifier":
+                return str(self._get_node_text(child))
+            if child.type == "pattern_list":
+                for grandchild in child.children:
+                    if grandchild.type == "identifier":
+                        return str(self._get_node_text(grandchild))
+        return "unknown"
 
     def _extract_import(self, node: "tree_sitter.Node") -> Import | None:
         """Extract import declaration"""

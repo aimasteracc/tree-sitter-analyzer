@@ -174,15 +174,9 @@ class RubyElementExtractor(ElementExtractor):
             name = self._get_node_text_optimized(name_node)
             is_module = node.type == "module"
 
-            # Extract superclass for classes
-            base_classes: list[str] = []
-            for child in node.children:
-                if child.type == "superclass":
-                    superclass_node = child.children[0] if child.children else None
-                    if superclass_node:
-                        base_classes.append(
-                            self._get_node_text_optimized(superclass_node)
-                        )
+            # r37cb (dogfood): extracted superclass discovery to flatten
+            # _extract_class_element from depth 7 to ≤3.
+            superclass = self._find_ruby_superclass(node)
 
             return Class(
                 name=name,
@@ -191,7 +185,7 @@ class RubyElementExtractor(ElementExtractor):
                 visibility="public",
                 is_abstract=False,
                 full_qualified_name=name,
-                superclass=base_classes[0] if base_classes else None,
+                superclass=superclass,
                 interfaces=[],
                 modifiers=[],
                 annotations=[],
@@ -200,6 +194,24 @@ class RubyElementExtractor(ElementExtractor):
         except Exception as e:
             log_error(f"Error extracting class element: {e}")
             return None
+
+    def _find_ruby_superclass(self, class_node: "tree_sitter.Node") -> str | None:
+        """Find the superclass token under a Ruby ``class`` node.
+
+        r37cb (dogfood): extracted from ``_extract_class_element`` to drop
+        nesting from 7 to ≤3. Returns the first identifier under a
+        ``superclass`` child, or ``None`` when the class doesn't declare
+        one (``class Foo`` rather than ``class Foo < Bar``).
+        """
+        for child in class_node.children:
+            if child.type != "superclass":
+                continue
+            if not child.children:
+                continue
+            superclass_node = child.children[0]
+            text = self._get_node_text_optimized(superclass_node)
+            return str(text) if text else None
+        return None
 
     def extract_functions(
         self, tree: "tree_sitter.Tree", source_code: str
