@@ -8,6 +8,25 @@ from typing import Any
 from .base_formatter import BaseTableFormatter
 
 
+def _count_items_in_line_range(
+    items: list[dict[str, Any]], line_range: dict[str, Any]
+) -> int:
+    """Count items whose ``line_range.start`` falls inside ``line_range``.
+
+    r37dj (dogfood): extracted to flatten the field-count list-comprehension
+    in ``_format_full_table``. Mirror of kotlin_formatter's helper —
+    both formatters have the same in-class element-count pattern.
+    """
+    cls_start = line_range.get("start", 0)
+    cls_end = line_range.get("end", 0)
+    count = 0
+    for item in items:
+        item_start = item.get("line_range", {}).get("start", 0)
+        if cls_start <= item_start <= cls_end:
+            count += 1
+    return count
+
+
 class RustTableFormatter(BaseTableFormatter):
     """Table formatter specialized for Rust"""
 
@@ -39,28 +58,19 @@ class RustTableFormatter(BaseTableFormatter):
             lines.append("| Name | Type | Visibility | Lines | Fields | Traits |")
             lines.append("|------|------|------------|-------|--------|--------|")
 
+            # r37dj (dogfood): flattened nesting 6 → 3 via
+            # _count_items_in_line_range helper.
             for struct in structs:
                 name = str(struct.get("name", "Unknown"))
                 struct_type = str(struct.get("type", "struct"))  # struct, enum, trait
                 visibility = str(struct.get("visibility", "private"))
                 line_range = struct.get("line_range", {})
                 lines_str = f"{line_range.get('start', 0)}-{line_range.get('end', 0)}"
-
-                # Count fields
-                fields_count = len(
-                    [
-                        f
-                        for f in data.get("fields", [])
-                        if line_range.get("start", 0)
-                        <= f.get("line_range", {}).get("start", 0)
-                        <= line_range.get("end", 0)
-                    ]
+                fields_count = _count_items_in_line_range(
+                    data.get("fields", []), line_range
                 )
-
-                # Traits (from interfaces field)
                 traits = struct.get("implements_interfaces", [])
                 traits_str = ", ".join(traits) if traits else "-"
-
                 lines.append(
                     f"| {name} | {struct_type} | {visibility} | {lines_str} | {fields_count} | {traits_str} |"
                 )
