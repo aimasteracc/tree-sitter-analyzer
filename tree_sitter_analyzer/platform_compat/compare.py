@@ -107,21 +107,21 @@ def compare_profiles(
                 )
             )
 
-        # Compare attributes
-        # We use DeepDiff for detailed comparison if needed, or just set comparison
-        if beh_a.attributes != beh_b.attributes:
-            # Use DeepDiff to get readable diff
-            diff = DeepDiff(beh_a.attributes, beh_b.attributes, ignore_order=True)
-            if diff:
-                differences.append(
-                    BehaviorDifference(
-                        construct_id=key,
-                        diff_type="attribute_mismatch",
-                        details=f"Attributes mismatch for {key}",
-                        platform_a_value=beh_a.attributes,
-                        platform_b_value=beh_b.attributes,
-                    )
-                )
+        # r37dx (dogfood): flatten nesting 6 → 4 via early-continue.
+        if beh_a.attributes == beh_b.attributes:
+            continue
+        diff = DeepDiff(beh_a.attributes, beh_b.attributes, ignore_order=True)
+        if not diff:
+            continue
+        differences.append(
+            BehaviorDifference(
+                construct_id=key,
+                diff_type="attribute_mismatch",
+                details=f"Attributes mismatch for {key}",
+                platform_a_value=beh_a.attributes,
+                platform_b_value=beh_b.attributes,
+            )
+        )
 
     return ProfileComparison(
         platform_a=profile_a.platform_key,
