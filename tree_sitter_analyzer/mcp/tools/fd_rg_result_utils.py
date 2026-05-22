@@ -152,11 +152,93 @@ def _optimize_file_path(file_path: str, common_prefix: str = "") -> str:
     return file_path
 
 
-# summarize_search_results: implementation
+def _group_matches_by_file(
+    matches: list[dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]], str]:
+    """Group matches by file path; return ``(groups, common_prefix)``.
+
+    ``common_prefix`` is the longest shared filesystem prefix (empty when
+    only one file is present). Used downstream to shorten display paths.
+    """
+    file_groups: dict[str, list[dict[str, Any]]] = {}
+    all_file_paths: list[str] = []
+    for match in matches:
+        file_path = match.get("file", "unknown")
+        all_file_paths.append(file_path)
+        file_groups.setdefault(file_path, []).append(match)
+
+    common_prefix = ""
+    if len(all_file_paths) > 1:
+        common_prefix = os.path.commonpath(all_file_paths)
+    return file_groups, common_prefix
+
+
+def _build_sample_lines(
+    file_matches: list[dict[str, Any]], remaining_lines: int
+) -> tuple[list[str], int]:
+    """Return ``(sample_lines, lines_consumed)`` for up to 3 matches.
+
+    Truncates each line to 60 chars and collapses whitespace; falls back
+    to a "Found N matches" placeholder when no non-empty line text is
+    present. ``lines_consumed`` debits the caller's overall line budget.
+    """
+    sample_lines: list[str] = []
+    lines_to_include = min(3, remaining_lines, len(file_matches))
+    consumed = 0
+    for match in file_matches[:lines_to_include]:
+        line_num = match.get("line", match.get("line_number", "?"))
+        line_text = match.get("text", match.get("line", "")).strip()
+        if not line_text:
+            continue
+        truncated = " ".join(line_text.split())[:60]
+        if len(line_text) > 60:
+            truncated += "..."
+        sample_lines.append(f"L{line_num}: {truncated}")
+        consumed += 1
+    if not sample_lines and file_matches:
+        sample_lines.append(f"Found {len(file_matches)} matches")
+    return sample_lines, consumed
+
+
+def _collect_top_files(
+    file_groups: dict[str, list[dict[str, Any]]],
+    common_prefix: str,
+    max_files: int,
+    max_total_lines: int,
+) -> list[dict[str, Any]]:
+    """Build the ``top_files`` rows ordered by descending match count.
+
+    Stops once ``max_files`` files are emitted **or** the cumulative line
+    budget (``max_total_lines``) is exhausted, whichever comes first.
+    """
+    sorted_files = sorted(file_groups.items(), key=lambda x: len(x[1]), reverse=True)
+    top_files: list[dict[str, Any]] = []
+    remaining_lines = max_total_lines
+    for file_path, file_matches in sorted_files[:max_files]:
+        sample_lines, consumed = _build_sample_lines(file_matches, remaining_lines)
+        remaining_lines -= consumed
+        top_files.append(
+            {
+                "file": _optimize_file_path(file_path, common_prefix),
+                "match_count": len(file_matches),
+                "sample_lines": sample_lines,
+            }
+        )
+        if remaining_lines <= 0:
+            break
+    return top_files
+
+
 def summarize_search_results(
     matches: list[dict[str, Any]], max_files: int = 10, max_total_lines: int = 50
 ) -> dict[str, Any]:
-    """Summarize search results to reduce context size while preserving key information."""
+    """Summarize search results to reduce context size while preserving key information.
+
+    r37ez (dogfood): 87 → ~15 lines of orchestration. ``_group_matches_by_file``
+    splits the by-file index + common-prefix calc; ``_collect_top_files``
+    builds the per-file rows (delegating sample-line truncation to
+    ``_build_sample_lines``); this body composes the final envelope.
+    """
     if not matches:
         return {
             "total_matches": 0,
@@ -165,73 +247,20 @@ def summarize_search_results(
             "top_files": [],
         }
 
-    file_groups: dict[str, list[dict[str, Any]]] = {}
-    all_file_paths = []
-    # Loop iteration
-    for match in matches:
-        file_path = match.get("file", "unknown")
-        all_file_paths.append(file_path)
-        # Conditional check
-        if file_path not in file_groups:
-            file_groups[file_path] = []
-        file_groups[file_path].append(match)
-
-    common_prefix = ""
-    # Conditional check
-    if len(all_file_paths) > 1:
-        common_prefix = os.path.commonpath(all_file_paths) if all_file_paths else ""
-
-    sorted_files = sorted(file_groups.items(), key=lambda x: len(x[1]), reverse=True)
+    file_groups, common_prefix = _group_matches_by_file(matches)
+    top_files = _collect_top_files(
+        file_groups, common_prefix, max_files, max_total_lines
+    )
 
     total_matches = len(matches)
     total_files = len(file_groups)
-
-    top_files = []
-    remaining_lines = max_total_lines
-
-    # Loop iteration
-    for file_path, file_matches in sorted_files[:max_files]:
-        match_count = len(file_matches)
-
-        sample_lines = []
-        lines_to_include = min(3, remaining_lines, len(file_matches))
-
-        # Loop iteration
-        for _i, match in enumerate(file_matches[:lines_to_include]):
-            line_num = match.get("line", match.get("line_number", "?"))
-            line_text = match.get("text", match.get("line", "")).strip()
-            # Conditional check
-            if line_text:
-                truncated_line = " ".join(line_text.split())[:60]
-                # Conditional check
-                if len(line_text) > 60:
-                    truncated_line += "..."
-                sample_lines.append(f"L{line_num}: {truncated_line}")
-                remaining_lines -= 1
-
-        # Conditional check
-        if not sample_lines and file_matches:
-            sample_lines.append(f"Found {len(file_matches)} matches")
-
-        optimized_path = _optimize_file_path(file_path, common_prefix)
-
-        top_files.append(
-            {
-                "file": optimized_path,
-                "match_count": match_count,
-                "sample_lines": sample_lines,
-            }
-        )
-
-        # Conditional check
-        if remaining_lines <= 0:
-            break
-
-    # Conditional check
     if total_files <= max_files:
         summary = f"Found {total_matches} matches in {total_files} files"
     else:
-        summary = f"Found {total_matches} matches in {total_files} files (showing top {len(top_files)})"
+        summary = (
+            f"Found {total_matches} matches in {total_files} files "
+            f"(showing top {len(top_files)})"
+        )
 
     return {
         "total_matches": total_matches,
