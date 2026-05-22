@@ -22,6 +22,87 @@ from ...utils import log_error
 from ...utils.tree_sitter_compat import TreeSitterQueryCompat
 from .extractor import MarkdownElementExtractor
 
+# Canonical query-key → node-types mapping for Markdown.
+#
+# r37et (dogfood): lifted from ``MarkdownPlugin.get_element_categories`` so the
+# 89-line literal isn't re-created on every call and so an audit of the
+# supported query keys reads as plain data. The method now returns a defensive
+# copy of this dict (callers that mutate must not poison the next call).
+#
+# Categories are grouped by "shape" alignment with the cross-language
+# vocabulary used by AnalysisResult — ``function`` = headings, ``class`` =
+# code blocks, ``variable`` = links/images, ``import`` = link reference
+# definitions. The plural / singular / domain aliases (``headers`` /
+# ``heading``, ``code_blocks`` / ``code_block``, etc.) keep CLI/MCP callers
+# from having to remember the canonical spelling.
+_MARKDOWN_ELEMENT_CATEGORIES: dict[str, list[str]] = {
+    # Header categories (function-like)
+    "function": ["atx_heading", "setext_heading"],
+    "headers": ["atx_heading", "setext_heading"],
+    "heading": ["atx_heading", "setext_heading"],
+    # Code block categories (class-like)
+    "class": ["fenced_code_block", "indented_code_block"],
+    "code_blocks": ["fenced_code_block", "indented_code_block"],
+    "code_block": ["fenced_code_block", "indented_code_block"],
+    # Link and image categories (variable-like)
+    "variable": ["inline", "link", "autolink", "reference_link", "image"],
+    "links": ["inline", "link", "autolink", "reference_link"],
+    "link": ["inline", "link", "autolink", "reference_link"],
+    "images": ["inline", "image"],
+    "image": ["inline", "image"],
+    # Reference categories (import-like)
+    "import": ["link_reference_definition"],
+    "references": ["link_reference_definition"],
+    "reference": ["link_reference_definition"],
+    # List categories
+    "lists": ["list", "list_item"],
+    "list": ["list", "list_item"],
+    "task_lists": ["list", "list_item"],
+    # Table categories
+    "tables": ["pipe_table", "table"],
+    "table": ["pipe_table", "table"],
+    # Content structure categories
+    "blockquotes": ["block_quote"],
+    "blockquote": ["block_quote"],
+    "horizontal_rules": ["thematic_break"],
+    "horizontal_rule": ["thematic_break"],
+    # HTML categories
+    "html_blocks": ["html_block", "inline"],
+    "html_block": ["html_block", "inline"],
+    "html": ["html_block", "inline"],
+    # Text formatting categories
+    "emphasis": ["inline"],
+    "formatting": ["inline"],
+    "text_formatting": ["inline"],
+    "inline_code": ["inline"],
+    "strikethrough": ["inline"],
+    # Footnote categories
+    "footnotes": ["inline", "paragraph"],
+    "footnote": ["inline", "paragraph"],
+    # Comprehensive categories
+    "all_elements": [
+        "atx_heading",
+        "setext_heading",
+        "fenced_code_block",
+        "indented_code_block",
+        "inline",
+        "link",
+        "autolink",
+        "reference_link",
+        "image",
+        "link_reference_definition",
+        "list",
+        "list_item",
+        "pipe_table",
+        "table",
+        "block_quote",
+        "thematic_break",
+        "html_block",
+        "paragraph",
+    ],
+    "text_content": ["atx_heading", "setext_heading", "inline", "paragraph"],
+}
+
 
 class MarkdownPlugin(LanguagePlugin):
     """Markdown language plugin for the tree-sitter analyzer"""
@@ -390,94 +471,13 @@ class MarkdownPlugin(LanguagePlugin):
         return queries.get(query_key) if queries else None
 
     def get_element_categories(self) -> dict[str, list[str]]:
-        """Get Markdown element categories mapping query_key to node_types"""
-        return {
-            # Header categories (function-like)
-            "function": ["atx_heading", "setext_heading"],
-            "headers": ["atx_heading", "setext_heading"],
-            "heading": ["atx_heading", "setext_heading"],
-            # Code block categories (class-like)
-            "class": ["fenced_code_block", "indented_code_block"],
-            "code_blocks": ["fenced_code_block", "indented_code_block"],
-            "code_block": ["fenced_code_block", "indented_code_block"],
-            # Link and image categories (variable-like)
-            "variable": [
-                "inline",  # Contains links and images
-                "link",
-                "autolink",
-                "reference_link",
-                "image",
-            ],
-            "links": [
-                "inline",  # Contains inline links
-                "link",
-                "autolink",
-                "reference_link",
-            ],
-            "link": ["inline", "link", "autolink", "reference_link"],
-            "images": [
-                "inline",  # Contains inline images
-                "image",
-            ],
-            "image": ["inline", "image"],
-            # Reference categories (import-like)
-            "import": ["link_reference_definition"],
-            "references": ["link_reference_definition"],
-            "reference": ["link_reference_definition"],
-            # List categories
-            "lists": ["list", "list_item"],
-            "list": ["list", "list_item"],
-            "task_lists": ["list", "list_item"],
-            # Table categories
-            "tables": ["pipe_table", "table"],
-            "table": ["pipe_table", "table"],
-            # Content structure categories
-            "blockquotes": ["block_quote"],
-            "blockquote": ["block_quote"],
-            "horizontal_rules": ["thematic_break"],
-            "horizontal_rule": ["thematic_break"],
-            # HTML categories
-            "html_blocks": [
-                "html_block",
-                "inline",  # Contains inline HTML
-            ],
-            "html_block": ["html_block", "inline"],
-            "html": ["html_block", "inline"],
-            # Text formatting categories
-            "emphasis": ["inline"],  # Contains emphasis elements
-            "formatting": ["inline"],
-            "text_formatting": ["inline"],
-            "inline_code": ["inline"],
-            "strikethrough": ["inline"],
-            # Footnote categories
-            "footnotes": [
-                "inline",  # Contains footnote references
-                "paragraph",  # Contains footnote definitions
-            ],
-            "footnote": ["inline", "paragraph"],
-            # Comprehensive categories
-            "all_elements": [
-                "atx_heading",
-                "setext_heading",
-                "fenced_code_block",
-                "indented_code_block",
-                "inline",
-                "link",
-                "autolink",
-                "reference_link",
-                "image",
-                "link_reference_definition",
-                "list",
-                "list_item",
-                "pipe_table",
-                "table",
-                "block_quote",
-                "thematic_break",
-                "html_block",
-                "paragraph",
-            ],
-            "text_content": ["atx_heading", "setext_heading", "inline", "paragraph"],
-        }
+        """Get Markdown element categories mapping query_key to node_types.
+
+        r37et (dogfood): the 89-line literal moved to module-level
+        ``_MARKDOWN_ELEMENT_CATEGORIES``. Each call now returns a defensive
+        copy so callers that mutate the result don't poison the next call.
+        """
+        return {k: list(v) for k, v in _MARKDOWN_ELEMENT_CATEGORIES.items()}
 
 
 def _count_markdown_nodes(node: "tree_sitter.Node") -> int:
