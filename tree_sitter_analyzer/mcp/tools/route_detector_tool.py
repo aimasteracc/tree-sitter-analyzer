@@ -103,7 +103,17 @@ class RouteDetectorTool(BaseMCPTool):
         detector = self._get_detector()
 
         if mode == "summary":
-            result = {"success": True, "mode": "summary", **detector.summary()}
+            summary = detector.summary()
+            # pain #4 (tsa-landing dogfood): summary mode had no verdict.
+            # Map to NOT_FOUND when the project has zero routes (so agents
+            # know not to call follow-up route-related tools), else INFO.
+            verdict = "INFO" if summary.get("total_routes", 0) > 0 else "NOT_FOUND"
+            result = {
+                "success": True,
+                "mode": "summary",
+                "verdict": verdict,
+                **summary,
+            }
         elif mode == "all":
             routes = detector.detect_all()
             if framework_filter != "all":
@@ -111,6 +121,7 @@ class RouteDetectorTool(BaseMCPTool):
             result = {
                 "success": True,
                 "mode": "all",
+                "verdict": "INFO" if routes else "NOT_FOUND",
                 "route_count": len(routes),
                 "routes": [r.to_dict() for r in routes],
             }
@@ -122,6 +133,7 @@ class RouteDetectorTool(BaseMCPTool):
             result = {
                 "success": True,
                 "mode": "lookup",
+                "verdict": "INFO" if matches else "NOT_FOUND",
                 "url_pattern": url,
                 "match_count": len(matches),
                 "routes": [r.to_dict() for r in matches],
@@ -134,6 +146,7 @@ class RouteDetectorTool(BaseMCPTool):
             result = {
                 "success": True,
                 "mode": "prefix",
+                "verdict": "INFO" if matches else "NOT_FOUND",
                 "prefix": prefix,
                 "match_count": len(matches),
                 "routes": [r.to_dict() for r in matches],
@@ -146,6 +159,7 @@ class RouteDetectorTool(BaseMCPTool):
             result = {
                 "success": True,
                 "mode": "file",
+                "verdict": "INFO" if routes else "NOT_FOUND",
                 "file_path": file_path,
                 "route_count": len(routes),
                 "routes": [r.to_dict() for r in routes],
