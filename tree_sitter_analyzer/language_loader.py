@@ -201,20 +201,12 @@ class LanguageLoader:
                 )
                 return None
 
-            # Set language using the preferred method
-            if hasattr(parser, "set_language"):
-                parser.set_language(tree_sitter_language)
-            elif hasattr(parser, "language"):
-                parser.language = tree_sitter_language
-            else:
-                # Try constructor approach as last resort
-                try:
-                    parser = tree_sitter.Parser(tree_sitter_language)
-                except Exception as e:
-                    log_warning(
-                        f"Failed to create parser with language constructor for {language}: {e}"
-                    )
-                    return None
+            # Set language using the preferred method.
+            # r37dg (dogfood): extracted the constructor-fallback branch
+            # to ``_bind_parser_language`` so the main path stays flat.
+            parser = self._bind_parser_language(parser, tree_sitter_language, language)
+            if parser is None:
+                return None
 
             # Cache and return
             self._parser_cache[language] = parser
@@ -226,6 +218,37 @@ class LanguageLoader:
     def create_parser(self, language: str) -> Optional["Parser"]:
         """Create a parser for the specified language (alias for create_parser_safely)"""
         return self.create_parser_safely(language)
+
+    @staticmethod
+    def _bind_parser_language(
+        parser: Any, tree_sitter_language: Any, language: str
+    ) -> Any | None:
+        """Set the language on ``parser`` using whichever API the build exposes.
+
+        Tree-sitter's Python bindings have shifted across releases:
+        - older builds expose ``Parser.set_language(Language)``
+        - mid-era builds expose a writable ``parser.language`` attribute
+        - newer builds construct via ``Parser(Language)`` directly
+        We probe in that order and fall back to the constructor form
+        only if neither attribute is present. Returns ``None`` when the
+        constructor fallback itself raises.
+
+        r37dg (dogfood): hoisted out of ``create_parser_safely`` to flatten
+        nesting 6 → 3 by removing the try/except inside the else branch.
+        """
+        if hasattr(parser, "set_language"):
+            parser.set_language(tree_sitter_language)
+            return parser
+        if hasattr(parser, "language"):
+            parser.language = tree_sitter_language
+            return parser
+        try:
+            return tree_sitter.Parser(tree_sitter_language)
+        except Exception as e:
+            log_warning(
+                f"Failed to create parser with language constructor for {language}: {e}"
+            )
+            return None
 
     def get_supported_languages(self) -> list:
         """
