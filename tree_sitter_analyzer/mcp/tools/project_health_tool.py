@@ -376,6 +376,101 @@ def _is_non_actionable_sample_path(file_path: str) -> bool:
     return normalized.rsplit("/", 1)[-1] in _AGENT_BACKLOG_EXCLUDED_FILENAMES
 
 
+def _project_summary_line(
+    *,
+    risk: str,
+    total_files: int,
+    grade_distribution: dict[str, int],
+    agent_backlog_count: int,
+    weakest_dim: str,
+    estimated_seconds: float,
+    actual_seconds: float | None,
+) -> str:
+    """Build the ``project_health risk=... files=... A=N B=N ...`` headline line.
+
+    F9 contract: budget segment carries both the size-based estimate and
+    the measured wall-clock (when available) so agents can plan against
+    the actual scan time.
+    """
+    grade_breakdown = " ".join(
+        f"{grade}={grade_distribution.get(grade, 0)}"
+        for grade in ("A", "B", "C", "D", "F")
+    )
+    budget_segment = f"estimated_seconds={estimated_seconds}"
+    if actual_seconds is not None:
+        budget_segment += f" actual_seconds={actual_seconds}"
+    return (
+        f"project_health risk={risk} files={total_files} {grade_breakdown} "
+        f"backlog={agent_backlog_count} weakest={weakest_dim or 'unknown'} "
+        f"{budget_segment}"
+    )
+
+
+def _project_summary_base(
+    *,
+    summary_line: str,
+    verdict: str,
+    risk: str,
+    total_files: int,
+    grade_distribution: dict[str, int],
+    weakest_dim: str,
+    agent_backlog_count: int,
+    estimated_seconds: float,
+    actual_seconds: float | None,
+    max_files: int,
+) -> dict[str, Any]:
+    """Build the always-present fields of the project_health agent_summary.
+
+    Q5 (round-33 dogfood): ``file_count`` aliases ``total_files`` for
+    cross-tool consumers; full ``grade_distribution`` inlined so callers
+    don't have to string-parse ``summary_line``.
+    N3 (round-27): ``verdict`` mirrored to the safety-tool vocabulary so
+    agents branching on ``verdict`` get the same answer as
+    modification_guard / safe_to_edit.
+    """
+    return {
+        "summary_line": summary_line,
+        "verdict": verdict,
+        "risk": risk,
+        "total_files": total_files,
+        "file_count": total_files,
+        "grade_distribution": dict(grade_distribution),
+        "weakest_dimension": weakest_dim,
+        "d_count": grade_distribution.get("D", 0),
+        "f_count": grade_distribution.get("F", 0),
+        "backlog_count": agent_backlog_count,
+        "budget_seconds": {
+            "estimated": estimated_seconds,
+            "actual": actual_seconds,
+        },
+        "verification_command": "uv run pytest -q",
+        "project_health_command": (
+            "uv run python -m tree_sitter_analyzer "
+            f"--project-health --max-files {max_files} --format json"
+        ),
+    }
+
+
+def _attach_queue_head_fields(
+    summary: dict[str, Any], queue_head: dict[str, Any], root: str
+) -> dict[str, Any]:
+    """Add queue-head pointers + next-step CLI hints to ``summary``."""
+    summary["queue_head"] = _project_queue_head(queue_head)
+    summary["next_step"] = (
+        "Run safe-to-edit for the project queue head: "
+        f"{queue_head['safety_cli_command']}"
+    )
+    summary["queue_head_command"] = queue_head["recommended_cli_command"]
+    summary["safety_command"] = queue_head["safety_cli_command"]
+    summary["stop_condition"] = (
+        "Queue head improves or leaves the project-health backlog; "
+        "run uv run pytest -q at the queue boundary."
+    )
+    if root:
+        summary["project_root"] = root
+    return summary
+
+
 def _build_project_agent_summary(
     *,
     root: str,
@@ -392,81 +487,45 @@ def _build_project_agent_summary(
     scan wall-clock when the caller measured it. Agents that previously
     timed out on the documented 30s–3min budget now have a real number to
     plan against.
+
+    r37ep (dogfood): 91 → ~20 lines of orchestration. ``_project_summary_line``
+    builds the headline; ``_project_summary_base`` builds the always-present
+    fields; ``_attach_queue_head_fields`` adds the queue-head-specific block.
     """
-    queue_head = agent_backlog[0] if agent_backlog else None
     risk = _project_risk(grade_distribution)
     verdict = _project_risk_to_verdict(risk)
     estimated_seconds = _estimate_seconds(total_files)
-    # Finding 6: include summary_line so the dispatch post-hook can
-    # mirror it to the top-level envelope (round-16b dogfood saw None).
-    # F9: append timing so the post-hook can emit a real budget hint —
-    # agents previously trusted the description's 30s–3min ceiling and
-    # aborted on 4k-file repos that actually took 5 minutes.
-    grade_breakdown = " ".join(
-        f"{grade}={grade_distribution.get(grade, 0)}"
-        for grade in ("A", "B", "C", "D", "F")
+    queue_head = agent_backlog[0] if agent_backlog else None
+
+    summary_line = _project_summary_line(
+        risk=risk,
+        total_files=total_files,
+        grade_distribution=grade_distribution,
+        agent_backlog_count=len(agent_backlog),
+        weakest_dim=weakest_dim,
+        estimated_seconds=estimated_seconds,
+        actual_seconds=actual_seconds,
     )
-    budget_segment = f"estimated_seconds={estimated_seconds}"
-    if actual_seconds is not None:
-        budget_segment += f" actual_seconds={actual_seconds}"
-    summary_line = (
-        f"project_health risk={risk} files={total_files} {grade_breakdown} "
-        f"backlog={len(agent_backlog)} weakest={weakest_dim or 'unknown'} "
-        f"{budget_segment}"
+    summary = _project_summary_base(
+        summary_line=summary_line,
+        verdict=verdict,
+        risk=risk,
+        total_files=total_files,
+        grade_distribution=grade_distribution,
+        weakest_dim=weakest_dim,
+        agent_backlog_count=len(agent_backlog),
+        estimated_seconds=estimated_seconds,
+        actual_seconds=actual_seconds,
+        max_files=max_files,
     )
-    summary: dict[str, Any] = {
-        "summary_line": summary_line,
-        # N3 (round-27): emit ``verdict`` so the cross-tool envelope
-        # contract (``TestEnvelopeContractSnapshot``) is satisfied.
-        # ``risk`` already drives the headline message; ``verdict``
-        # mirrors it to the safety-tool vocabulary so agents that
-        # branch on ``verdict`` see the same answer here as they get
-        # from modification_guard / safe_to_edit.
-        "verdict": verdict,
-        "risk": risk,
-        "total_files": total_files,
-        # Q5 (round-33 dogfood): ``agent_summary`` is the canonical
-        # self-contained envelope for consumers that don't want to
-        # parse ``summary_line``. Expose ``file_count`` as the
-        # cross-tool alias for ``total_files`` and inline the full
-        # grade distribution so callers don't have to fall back to
-        # string-parsing the headline.
-        "file_count": total_files,
-        "grade_distribution": dict(grade_distribution),
-        "weakest_dimension": weakest_dim,
-        "d_count": grade_distribution.get("D", 0),
-        "f_count": grade_distribution.get("F", 0),
-        "backlog_count": len(agent_backlog),
-        "budget_seconds": {
-            "estimated": estimated_seconds,
-            "actual": actual_seconds,
-        },
-        "verification_command": "uv run pytest -q",
-        "project_health_command": (
-            "uv run python -m tree_sitter_analyzer "
-            f"--project-health --max-files {max_files} --format json"
-        ),
-    }
+
     if not queue_head:
         return summary | {
             "next_step": "No project-health queue item needs action.",
             "stop_condition": "Project health remains grade C or better with no D/F backlog.",
         }
 
-    summary["queue_head"] = _project_queue_head(queue_head)
-    summary["next_step"] = (
-        "Run safe-to-edit for the project queue head: "
-        f"{queue_head['safety_cli_command']}"
-    )
-    summary["queue_head_command"] = queue_head["recommended_cli_command"]
-    summary["safety_command"] = queue_head["safety_cli_command"]
-    summary["stop_condition"] = (
-        "Queue head improves or leaves the project-health backlog; "
-        "run uv run pytest -q at the queue boundary."
-    )
-    if root:
-        summary["project_root"] = root
-    return summary
+    return _attach_queue_head_fields(summary, queue_head, root)
 
 
 def _project_queue_head(queue_head: dict[str, Any]) -> dict[str, Any]:
