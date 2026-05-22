@@ -137,23 +137,35 @@ class ScalaElementExtractor(ElementExtractor):
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
+        # r37dt (dogfood): mirror of kotlin r37ds — flatten nesting 6 → 3
+        # via _find_package_clause_node helper.
         packages: list[Package] = []
         self._extract_package(tree.root_node)
-        if self.current_package:
-            # Find package_clause node for line information
-            for child in tree.root_node.children:
-                if child.type == "package_clause":
-                    pkg = Package(
-                        name=self.current_package,
-                        start_line=child.start_point[0] + 1,
-                        end_line=child.end_point[0] + 1,
-                        raw_text=self._get_node_text(child),
-                        language="scala",
-                    )
-                    packages.append(pkg)
-                    break
-
+        if not self.current_package:
+            return packages
+        package_node = self._find_package_clause_node(tree.root_node)
+        if package_node is None:
+            return packages
+        packages.append(
+            Package(
+                name=self.current_package,
+                start_line=package_node.start_point[0] + 1,
+                end_line=package_node.end_point[0] + 1,
+                raw_text=self._get_node_text(package_node),
+                language="scala",
+            )
+        )
         return packages
+
+    @staticmethod
+    def _find_package_clause_node(
+        root_node: "tree_sitter.Node",
+    ) -> "tree_sitter.Node | None":
+        """Return the first ``package_clause`` child or ``None``."""
+        for child in root_node.children:
+            if child.type == "package_clause":
+                return child
+        return None
 
     def extract_comments(
         self, tree: "tree_sitter.Tree", source_code: str

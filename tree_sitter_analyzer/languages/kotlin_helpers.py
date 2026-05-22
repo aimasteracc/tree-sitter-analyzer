@@ -44,22 +44,42 @@ def determine_visibility(modifiers_text: str) -> str:
 def extract_kotlin_parameters(
     node: Any, get_node_text: Callable[..., str]
 ) -> list[str]:
-    """Extract Kotlin function parameters."""
+    """Extract Kotlin function parameters.
+
+    r37dt (dogfood): flatten nesting 6 → 3 via ``_kotlin_parameter_pair``.
+    """
     parameters: list[str] = []
     params_node = node.child_by_field_name("parameters")
-    if params_node:
-        for child in params_node.children:
-            if child.type == "parameter":
-                param_name = ""
-                param_type = ""
-                for grandchild in child.children:
-                    if grandchild.type == "simple_identifier":
-                        param_name = get_node_text(grandchild)
-                    elif "type" in grandchild.type or grandchild.type == "user_type":
-                        param_type = get_node_text(grandchild)
-                if param_name:
-                    parameters.append(f"{param_name}: {param_type or 'Any'}")
+    if params_node is None:
+        return parameters
+    for child in params_node.children:
+        if child.type != "parameter":
+            continue
+        param_name, param_type = _kotlin_parameter_pair(child, get_node_text)
+        if param_name:
+            parameters.append(f"{param_name}: {param_type or 'Any'}")
     return parameters
+
+
+def _kotlin_parameter_pair(
+    parameter_node: Any, get_node_text: Callable[..., str]
+) -> tuple[str, str]:
+    """Return ``(name, type)`` from a Kotlin ``parameter`` AST node.
+
+    Iterates the parameter node's children looking for a
+    ``simple_identifier`` (name) and a type-like node (``user_type`` or
+    any node whose ``type`` string contains ``"type"``). Empty strings
+    default when either part is missing; caller fills ``"Any"`` for
+    blank types.
+    """
+    param_name = ""
+    param_type = ""
+    for grandchild in parameter_node.children:
+        if grandchild.type == "simple_identifier":
+            param_name = get_node_text(grandchild)
+        elif "type" in grandchild.type or grandchild.type == "user_type":
+            param_type = get_node_text(grandchild)
+    return param_name, param_type
 
 
 def extract_kotlin_function(
