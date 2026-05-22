@@ -110,6 +110,7 @@ def _create_tool_registry(
     from .tools.callers_tool import CodeGraphCallersTool
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.code_patterns_tool import CodePatternsTool
+    from .tools.codegraph_overview_tool import CodeGraphOverviewTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
@@ -147,6 +148,7 @@ def _create_tool_registry(
         ("codegraph_call_graph", CodeGraphCallTool(project_root)),
         ("codegraph_callers", CodeGraphCallersTool(project_root)),
         ("codegraph_callees", CodeGraphCalleesTool(project_root)),
+        ("codegraph_overview", CodeGraphOverviewTool(project_root)),
         ("codegraph_symbol_search", CodeGraphSymbolSearchTool(project_root)),
         ("analyze_change_impact", ChangeImpactTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),

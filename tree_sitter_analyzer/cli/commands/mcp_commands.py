@@ -28,6 +28,9 @@ from tree_sitter_analyzer.mcp.tools.change_impact_tool import (
 from tree_sitter_analyzer.mcp.tools.code_patterns_tool import (
     CodePatternsTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.codegraph_overview_tool import (
+    CodeGraphOverviewTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
 )
@@ -286,6 +289,20 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="codegraph_overview",
+        tool_attr="CodeGraphOverviewTool",
+        label="Project-wide call graph intelligence (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "max_entry_points": getattr(
+                args, "codegraph_overview_max_entry_points", 30
+            ),
+            "max_hubs": getattr(args, "codegraph_overview_max_hubs", 20),
+            "max_dead": getattr(args, "codegraph_overview_max_dead", 20),
+            "max_coupled_files": getattr(args, "codegraph_overview_max_coupled", 15),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -335,6 +352,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "SymbolLineageTool",
         "CodePatternsTool",
         "CodeGraphCallTool",
+        "CodeGraphOverviewTool",
         "ASTCacheTool",
         "ASTDiffTool",
         "RouteDetectorTool",

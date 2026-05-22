@@ -572,6 +572,35 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Max outline depth for --ast-path outline mode (default: 3)",
     )
     parser.add_argument(
+        "--codegraph-overview",
+        action="store_true",
+        help="Project-wide call graph intelligence: entry points, dead code, hubs, coupling (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--codegraph-overview-max-entry-points",
+        type=int,
+        default=30,
+        help="Max entry points in --codegraph-overview output (default: 30)",
+    )
+    parser.add_argument(
+        "--codegraph-overview-max-hubs",
+        type=int,
+        default=20,
+        help="Max hub functions in --codegraph-overview output (default: 20)",
+    )
+    parser.add_argument(
+        "--codegraph-overview-max-dead",
+        type=int,
+        default=20,
+        help="Max dead code candidates in --codegraph-overview output (default: 20)",
+    )
+    parser.add_argument(
+        "--codegraph-overview-max-coupled",
+        type=int,
+        default=15,
+        help="Max coupled files in --codegraph-overview output (default: 15)",
+    )
+    parser.add_argument(
         "--symbol-search",
         help="FTS5-powered instant symbol search (CodeGraph parity). "
         "Use exact name, * wildcards, or ~ fuzzy prefix",
