@@ -93,8 +93,13 @@ class DependencyAnalysisTool(BaseMCPTool):
             resolved = self._resolve_file(file_path, graph)
             br = BlastRadius(graph)
             analysis = br.analyze(resolved)
+            # Wide blast radius (>20 downstream files) means agent should
+            # treat the file as REVIEW-only; >5 escalates from INFO.
+            fwd = analysis["forward_count"]
+            verdict = "CAUTION" if fwd > 20 else "REVIEW" if fwd > 5 else "INFO"
             result = {
                 "success": True,
+                "verdict": verdict,
                 "file": resolved,
                 "mode": "blast_radius",
                 "forward_impact_count": analysis["forward_count"],
@@ -159,9 +164,12 @@ def _summary(graph: DependencyGraph) -> dict[str, Any]:
     fan_in = {n: len(graph.dependencies_of(n)) for n in graph._nodes}
     high_fan = sorted(fan_in.items(), key=lambda x: -x[1])[:10]
 
+    # pain #7 (dogfood): summary had no verdict. NOT_FOUND for empty graphs
+    # (project has no detectable deps) so agents skip downstream dep tools.
     return {
         "success": True,
         "mode": "summary",
+        "verdict": "INFO" if node_count > 0 else "NOT_FOUND",
         "node_count": node_count,
         "edge_count": edge_count,
         "top_hub_files": [{"file": f, "dependents": c} for f, c in hubs if c > 0],
@@ -175,9 +183,12 @@ def _summary(graph: DependencyGraph) -> dict[str, Any]:
 
 def _cycles(graph: DependencyGraph) -> dict[str, Any]:
     cycles = graph.find_cycles()
+    # Cycles existing is a real risk signal: escalate to REVIEW so agents
+    # don't merrily refactor through a circular import.
     return {
         "success": True,
         "mode": "cycles",
+        "verdict": "REVIEW" if cycles else "INFO",
         "cycle_count": len(cycles),
         "cycles": cycles[:20],
         "recommendation": (
@@ -195,6 +206,7 @@ def _file_deps(graph: DependencyGraph, rel_path: str) -> dict[str, Any]:
     return {
         "success": True,
         "mode": "file_deps",
+        "verdict": "INFO" if deps or dependents else "NOT_FOUND",
         "file": rel_path,
         "depends_on": deps,
         "depended_by": dependents,
