@@ -19,26 +19,32 @@ logger = setup_logger(__name__)
 # Tree-sitter element extraction for structure view
 # Converts unified analysis engine results into LLM-consumable dicts
 def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
-    """Extract structural overview with position information for LLM guidance."""
-    # Initialize overview containers for each element type
+    """Extract structural overview with position information for LLM guidance.
+
+    r37bd (dogfood): tool flagged this at 112 lines. Split into 4
+    per-element-type extractors that each return a list of dicts.
+    Behaviour preserved (complexity_score >= 8 hotspot threshold,
+    same shape for each element category).
+    """
+    elements = analysis_result.elements
     overview: dict[str, Any] = {
-        "classes": [],
-        "methods": [],
-        "fields": [],
-        "imports": [],
+        "classes": _extract_class_infos(elements),
+        "methods": [],  # filled below alongside complexity_hotspots
+        "fields": _extract_field_infos(elements),
+        "imports": _extract_import_infos(elements),
         "complexity_hotspots": [],
     }
+    overview["methods"], overview["complexity_hotspots"] = _extract_method_infos(
+        elements
+    )
+    return overview
 
-    # Extract class information with position from unified analysis engine
-    classes = [
-        e
-        for e in analysis_result.elements
-        if is_element_of_type(e, ELEMENT_TYPE_CLASS)
-        # Build main analysis result dict
-    ]
-    for cls in classes:
-        # Build class info dict with position and inheritance details
-        class_info = {
+
+def _extract_class_infos(elements: list[Any]) -> list[dict[str, Any]]:
+    """Class element → dict with position + inheritance + annotations."""
+    classes = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_CLASS)]
+    return [
+        {
             "name": cls.name,
             "type": cls.class_type,
             "start_line": cls.start_line,
@@ -49,35 +55,34 @@ def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
             "implements": cls.implements_interfaces,
             "annotations": [ann.name for ann in cls.annotations],
         }
-        overview["classes"].append(class_info)
-
-    # Filter methods and extract signature details with complexity scores
-    # Extract method information with position and complexity from unified analysis engine
-    methods = [
-        e
-        for e in analysis_result.elements
-        if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)
+        for cls in classes
     ]
-    for method in methods:
-        # Build method info dict with signature and complexity
-        method_info = {
-            "name": method.name,
-            "start_line": method.start_line,
-            "end_line": method.end_line,
-            "line_span": method.end_line - method.start_line + 1,
-            "visibility": method.visibility,
-            "return_type": method.return_type,
-            "parameter_count": len(method.parameters),
-            "complexity": method.complexity_score,
-            "is_constructor": method.is_constructor,
-            "is_static": method.is_static,
-            "annotations": [ann.name for ann in method.annotations],
-        }
-        overview["methods"].append(method_info)
 
-        # Track complexity hotspots (top methods worth reviewing)
-        if method.complexity_score >= 8:
-            overview["complexity_hotspots"].append(
+
+def _extract_method_infos(
+    elements: list[Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Method element → (method_infos, complexity_hotspots) with threshold ≥8."""
+    method_infos: list[dict[str, Any]] = []
+    hotspots: list[dict[str, Any]] = []
+    for method in (e for e in elements if is_element_of_type(e, ELEMENT_TYPE_FUNCTION)):
+        method_infos.append(
+            {
+                "name": method.name,
+                "start_line": method.start_line,
+                "end_line": method.end_line,
+                "line_span": method.end_line - method.start_line + 1,
+                "visibility": method.visibility,
+                "return_type": method.return_type,
+                "parameter_count": len(method.parameters),
+                "complexity": method.complexity_score,
+                "is_constructor": method.is_constructor,
+                "is_static": method.is_static,
+                "annotations": [ann.name for ann in method.annotations],
+            }
+        )
+        if method.complexity_score >= _COMPLEXITY_HOTSPOT_THRESHOLD:
+            hotspots.append(
                 {
                     "type": "method",
                     "name": method.name,
@@ -86,19 +91,14 @@ def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
                     "end_line": method.end_line,
                 }
             )
+    return method_infos, hotspots
 
-    # Extract field information with position
-    # Filter fields by variable type and extract type/modifier metadata
-    # Build detailed per-element breakdown
-    # Extract field information from unified analysis engine
-    fields = [
-        e
-        for e in analysis_result.elements
-        if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)
-    ]
-    for field in fields:
-        # Build field info dict with type and modifiers
-        field_info = {
+
+def _extract_field_infos(elements: list[Any]) -> list[dict[str, Any]]:
+    """Field element → dict with type + modifiers + position."""
+    fields = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_VARIABLE)]
+    return [
+        {
             "name": field.name,
             "type": field.field_type,
             "start_line": field.start_line,
@@ -108,28 +108,28 @@ def extract_structural_overview(analysis_result: Any) -> dict[str, Any]:
             "is_final": field.is_final,
             "annotations": [ann.name for ann in field.annotations],
         }
-        overview["fields"].append(field_info)
-
-    # Extract import information
-    # Filter imports and extract statement details with static/wildcard flags
-    # Extract import information from unified analysis engine
-    imports = [
-        e
-        for e in analysis_result.elements
-        if is_element_of_type(e, ELEMENT_TYPE_IMPORT)
+        for field in fields
     ]
-    for imp in imports:
-        # Build import info dict with statement details
-        import_info = {
+
+
+def _extract_import_infos(elements: list[Any]) -> list[dict[str, Any]]:
+    """Import element → dict with statement + static/wildcard flags."""
+    imports = [e for e in elements if is_element_of_type(e, ELEMENT_TYPE_IMPORT)]
+    return [
+        {
             "name": imp.imported_name,
             "statement": imp.import_statement,
             "line": imp.line_number,
             "is_static": imp.is_static,
             "is_wildcard": imp.is_wildcard,
         }
-        overview["imports"].append(import_info)
+        for imp in imports
+    ]
 
-    return overview
+
+# r37bd: complexity threshold for hotspot reporting — extracted from the
+# inline ``>= 8`` literal so tests can pin it as a single source of truth.
+_COMPLEXITY_HOTSPOT_THRESHOLD = 8
 
 
 # Universal extraction for non-Java/Python languages using tree-sitter
@@ -214,11 +214,112 @@ def extract_structural_overview_universal(
 
 
 # AI-oriented suggestions based on file analysis
+# r37bd: per-language tree-sitter query priorities — extracted from the
+# 65-line inline dict that drove a chunk of the long_method smell. New
+# languages add a single dict entry; the guidance generator stays small.
+_LANG_QUERIES: dict[str, list[str]] = {
+    "java": ["methods", "classes", "imports", "spring_service", "jpa_entity"],
+    "python": ["functions", "classes", "imports", "decorator", "async_patterns"],
+    "javascript": ["functions", "classes", "imports", "export", "react_component"],
+    "typescript": ["functions", "interfaces", "type_aliases", "enums", "decorators"],
+    "go": ["function", "struct", "interface", "goroutine", "channel_send"],
+    "rust": ["fn", "struct", "enum", "trait", "impl"],
+    "c": ["function", "struct", "enum", "include", "typedef"],
+    "cpp": ["class", "function", "namespace", "template", "include"],
+    "kotlin": [
+        "function",
+        "class",
+        "data_class",
+        "object",
+        "annotation",
+        "companion_object",
+        "sealed_class",
+        "suspend_function",
+        "extension_function",
+        "when_expression",
+    ],
+    "csharp": ["class", "method", "property", "interface", "attribute"],
+    "ruby": [
+        "methods",
+        "classes",
+        "imports",
+        "attr",
+        "mixin",
+        "inheritance",
+        "block",
+        "rescue",
+        "yield",
+    ],
+    "php": [
+        "methods",
+        "classes",
+        "imports",
+        "namespace",
+        "interface",
+        "trait",
+        "enum",
+        "closure",
+        "inheritance",
+    ],
+    "sql": ["functions", "table", "view", "trigger"],
+    "html": ["element", "attribute", "form"],
+    "css": ["selector", "property", "at_rule"],
+    "yaml": ["key", "document", "anchor"],
+    "markdown": ["headers", "code_blocks", "tables"],
+}
+
+_PRIORITY_QUERIES = frozenset(
+    {
+        "classes",
+        "methods",
+        "functions",
+        "imports",
+        "variables",
+        "interface",
+        "trait",
+        "namespace",
+        "decorator",
+    }
+)
+
+_REQUIRED_OVERVIEW_FIELDS = (
+    "complexity_hotspots",
+    "classes",
+    "methods",
+    "fields",
+    "imports",
+)
+
+
 def generate_llm_guidance(
     file_metrics: dict[str, Any], structural_overview: dict[str, Any]
 ) -> dict[str, Any]:
-    """Generate guidance for LLM on how to efficiently analyze this file."""
-    guidance: dict[str, Any] = {
+    """Generate guidance for LLM on how to efficiently analyze this file.
+
+    r37bd (dogfood): tool flagged this at 226 lines. Split into 6 phases
+    + 3 module-level data tables. Behaviour preserved (size thresholds
+    100/500/1500, complexity_hotspot recommendation, dependency/health
+    workflow tail).
+    """
+    total_lines = file_metrics["total_lines"]
+    language = file_metrics.get("language", "")
+
+    _ensure_required_overview_fields(structural_overview)
+
+    guidance = _empty_guidance()
+    _classify_size(guidance, total_lines)
+    _recommend_tools(guidance, total_lines, structural_overview)
+    _assess_complexity(guidance, structural_overview)
+    _identify_key_areas(guidance, structural_overview)
+    guidance["suggested_queries"] = _LANG_QUERIES.get(language, [])
+    guidance["workflow_steps"] = _build_workflow_steps(guidance, structural_overview)
+    _attach_available_queries(guidance, language)
+    return guidance
+
+
+def _empty_guidance() -> dict[str, Any]:
+    """The skeleton guidance dict — 7 named fields, all empty/zero."""
+    return {
         "analysis_strategy": "",
         "recommended_tools": [],
         "key_areas": [],
@@ -228,10 +329,16 @@ def generate_llm_guidance(
         "workflow_steps": [],
     }
 
-    total_lines = file_metrics["total_lines"]
-    language = file_metrics.get("language", "")
 
-    # Determine size category
+def _ensure_required_overview_fields(structural_overview: dict[str, Any]) -> None:
+    """Fill in missing keys so downstream lookups never KeyError."""
+    for field in _REQUIRED_OVERVIEW_FIELDS:
+        if field not in structural_overview:
+            structural_overview[field] = []
+
+
+def _classify_size(guidance: dict[str, Any], total_lines: int) -> None:
+    """Pick a size_category + matching analysis_strategy from total_lines."""
     if total_lines < 100:
         guidance["size_category"] = "small"
         guidance["analysis_strategy"] = (
@@ -250,196 +357,121 @@ def generate_llm_guidance(
     else:
         guidance["size_category"] = "very_large"
         guidance["analysis_strategy"] = (
-            "This is a very large file. Strongly recommend using structural analysis first, then targeted deep-dives."
+            "This is a very large file. Strongly recommend using structural "
+            "analysis first, then targeted deep-dives."
         )
 
-    # Recommend tools based on file size and complexity
+
+def _recommend_tools(
+    guidance: dict[str, Any],
+    total_lines: int,
+    structural_overview: dict[str, Any],
+) -> None:
+    """Append tool recommendations based on size + presence of hotspots."""
     if total_lines > 200:
-        # Large files benefit from targeted extraction
         guidance["recommended_tools"].append("extract_code_section")
         guidance["recommended_tools"].append("query_code")
-
-    # Ensure all required fields exist in structural_overview
-    required_fields = [
-        "complexity_hotspots",
-        "classes",
-        "methods",
-        "fields",
-        "imports",
-    ]
-    for field in required_fields:
-        if field not in structural_overview:
-            structural_overview[field] = []
-
-    # Check for complexity hotspots and recommend structural analysis
     if len(structural_overview["complexity_hotspots"]) > 0:
         guidance["recommended_tools"].append("analyze_code_structure")
-        guidance["complexity_assessment"] = (
-            f"Found {len(structural_overview['complexity_hotspots'])} complexity hotspots"
-        )
+
+
+def _assess_complexity(
+    guidance: dict[str, Any], structural_overview: dict[str, Any]
+) -> None:
+    """Set complexity_assessment based on hotspot count."""
+    hotspots = structural_overview["complexity_hotspots"]
+    if len(hotspots) > 0:
+        guidance["complexity_assessment"] = f"Found {len(hotspots)} complexity hotspots"
     else:
         guidance["complexity_assessment"] = (
             "No significant complexity hotspots detected"
         )
 
-    # Identify key areas for analysis
+
+def _identify_key_areas(
+    guidance: dict[str, Any], structural_overview: dict[str, Any]
+) -> None:
+    """Note structural characteristics worth surfacing to the agent."""
     if len(structural_overview["classes"]) > 1:
         guidance["key_areas"].append(
             "Multiple classes - consider analyzing class relationships"
         )
-    # Compute cyclomatic complexity for a function
-
     if len(structural_overview["methods"]) > 20:
         guidance["key_areas"].append(
             "Many methods - focus on public interfaces and high-complexity methods"
         )
-
     if len(structural_overview["imports"]) > 10:
         guidance["key_areas"].append("Many imports - consider dependency analysis")
 
-    # Map each language to its most useful tree-sitter query keys
-    lang_queries = {
-        "java": ["methods", "classes", "imports", "spring_service", "jpa_entity"],
-        "python": [
-            "functions",
-            "classes",
-            "imports",
-            "decorator",
-            "async_patterns",
-        ],
-        "javascript": [
-            "functions",
-            "classes",
-            "imports",
-            "export",
-            "react_component",
-        ],
-        "typescript": [
-            "functions",
-            "interfaces",
-            "type_aliases",
-            "enums",
-            "decorators",
-        ],
-        "go": ["function", "struct", "interface", "goroutine", "channel_send"],
-        "rust": ["fn", "struct", "enum", "trait", "impl"],
-        "c": ["function", "struct", "enum", "include", "typedef"],
-        "cpp": ["class", "function", "namespace", "template", "include"],
-        "kotlin": [
-            "function",
-            "class",
-            # Extract element details with line ranges
-            "data_class",
-            "object",
-            "annotation",
-            "companion_object",
-            "sealed_class",
-            "suspend_function",
-            "extension_function",
-            "when_expression",
-        ],
-        "csharp": ["class", "method", "property", "interface", "attribute"],
-        "ruby": [
-            "methods",
-            "classes",
-            "imports",
-            "attr",
-            "mixin",
-            "inheritance",
-            "block",
-            "rescue",
-            "yield",
-        ],
-        "php": [
-            "methods",
-            "classes",
-            "imports",
-            "namespace",
-            "interface",
-            "trait",
-            "enum",
-            "closure",
-            "inheritance",
-        ],
-        "sql": ["functions", "table", "view", "trigger"],
-        "html": ["element", "attribute", "form"],
-        "css": ["selector", "property", "at_rule"],
-        "yaml": ["key", "document", "anchor"],
-        "markdown": ["headers", "code_blocks", "tables"],
-    }
-    if language in lang_queries:
-        guidance["suggested_queries"] = lang_queries[language]
-    # Count elements by type from analysis to build summary
 
-    # Generate SMART workflow steps based on file size
+def _build_workflow_steps(
+    guidance: dict[str, Any], structural_overview: dict[str, Any]
+) -> list[str]:
+    """Compose the ordered workflow_steps list — size-dependent middle, fixed tail."""
     steps = ["check_code_scale (done)"]
-    # Large files: targeted analysis strategy
     if guidance["size_category"] in ("large", "very_large"):
-        steps.append("analyze_code_structure with format=compact for overview")
-        steps.append("query_code with specific query keys to find target elements")
-        # Suggest extracting the top complexity hotspot
-        hotspots = structural_overview.get("complexity_hotspots", [])
-        if hotspots:
-            top = hotspots[0]
-            name = top.get("name", "hotspot")
-            start = top.get("start_line", "")
-            end = top.get("end_line", "")
-            steps.append(
-                f"extract_code_section for '{name}' (L{start}-{end}) - complexity hotspot"
-            )
-        else:
-            steps.append("extract_code_section for targeted line ranges")
+        steps.extend(_large_file_steps(structural_overview))
     else:
-        # Small/medium files: full analysis strategy
-        steps.append("analyze_code_structure for full structure table")
-        steps.append("query_code for specific elements if needed")
-        # Flag high-complexity methods for review
-        notable = structural_overview.get("methods", [])
-        long_methods = [m for m in notable if m.get("complexity", 0) >= 8]
-        if long_methods:
-            top = long_methods[0]
-            start = top.get("start_line", "")
-            end = top.get("end_line", "")
-            steps.append(
-                f"extract_code_section for '{top.get('name', 'method')}' "
-                f"(L{start}-{end}) - high complexity"
-            )
-    guidance["workflow_steps"] = steps
+        steps.extend(_small_or_medium_steps(structural_overview))
 
-    # Add dependency/health suggestions for deeper analysis
-    # Files with many imports may have wide blast radius
     if len(structural_overview.get("imports", [])) > 5:
         steps.append("analyze_dependencies mode=blast_radius to assess change impact")
     steps.append("check_file_health to see if this file needs refactoring")
+    return steps
 
-    # Include available tree-sitter queries for this language (capped at 15 to save tokens)
+
+def _large_file_steps(structural_overview: dict[str, Any]) -> list[str]:
+    """Targeted-analysis steps for files ≥500 lines."""
+    steps = [
+        "analyze_code_structure with format=compact for overview",
+        "query_code with specific query keys to find target elements",
+    ]
+    hotspots = structural_overview.get("complexity_hotspots", [])
+    if hotspots:
+        top = hotspots[0]
+        name = top.get("name", "hotspot")
+        start = top.get("start_line", "")
+        end = top.get("end_line", "")
+        steps.append(
+            f"extract_code_section for '{name}' (L{start}-{end}) - complexity hotspot"
+        )
+    else:
+        steps.append("extract_code_section for targeted line ranges")
+    return steps
+
+
+def _small_or_medium_steps(structural_overview: dict[str, Any]) -> list[str]:
+    """Full-analysis steps for files <500 lines."""
+    steps = [
+        "analyze_code_structure for full structure table",
+        "query_code for specific elements if needed",
+    ]
+    notable = structural_overview.get("methods", [])
+    long_methods = [
+        m for m in notable if m.get("complexity", 0) >= _COMPLEXITY_HOTSPOT_THRESHOLD
+    ]
+    if long_methods:
+        top = long_methods[0]
+        start = top.get("start_line", "")
+        end = top.get("end_line", "")
+        steps.append(
+            f"extract_code_section for '{top.get('name', 'method')}' "
+            f"(L{start}-{end}) - high complexity"
+        )
+    return steps
+
+
+def _attach_available_queries(guidance: dict[str, Any], language: str) -> None:
+    """Look up tree-sitter queries for ``language`` and cap to 15 entries."""
     from ...query_loader import get_query_loader
 
-    # Query loader provides language-specific tree-sitter queries
     loader = get_query_loader()
     all_queries = loader.list_queries_for_language(language)
-    if all_queries:
-        priority = [
-            q
-            for q in all_queries
-            if q
-            in (
-                "classes",
-                "methods",
-                "functions",
-                "imports",
-                "variables",
-                "interface",
-                "trait",
-                "namespace",
-                "decorator",
-            )
-        ]
-        rest = sorted(q for q in all_queries if q not in priority)[: 15 - len(priority)]
-        # Prioritize common queries, fill remaining slots with language-specific ones
-        guidance["available_queries"] = sorted(priority) + rest
-
-    return guidance
+    if not all_queries:
+        return
+    priority = [q for q in all_queries if q in _PRIORITY_QUERIES]
+    rest = sorted(q for q in all_queries if q not in priority)[: 15 - len(priority)]
+    guidance["available_queries"] = sorted(priority) + rest
 
 
 # validate_scale_arguments: implementation
