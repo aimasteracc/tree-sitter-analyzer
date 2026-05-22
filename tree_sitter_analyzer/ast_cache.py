@@ -137,44 +137,59 @@ _EXT_TO_LANG: dict[str, str] = {
 }
 
 
-def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
-    """Worker function used by ``ASTCache.index_project`` when running with
-    a process pool. Must be module-level so it is picklable across spawn.
+def _worker_io_error_envelope(
+    rel_path: str, abs_path: str, exc: OSError
+) -> dict[str, Any]:
+    """Build the ``status=io_error`` envelope returned by the worker."""
+    return {
+        "status": "io_error",
+        "rel_path": rel_path,
+        "abs_path": abs_path,
+        "reason": str(exc),
+    }
 
-    Returns a dict with:
-      * ``status`` in {"ok", "parse_failed", "io_error"}
-      * ``abs_path``, ``rel_path``, ``language``
-      * pre-serialised ``symbols_json`` / ``imports_json`` / ``structure_json``
-      * ``content_hash`` / ``mtime_ns`` / ``file_size``
-      * ``symbol_rows``: list of (name, kind, line, end_line) for FTS5 insert
-    Tree-sitter ``Tree`` objects are NEVER returned — they are C objects
-    that cannot be pickled. The worker discards them after extraction.
+
+def _worker_parse_failed_envelope(
+    rel_path: str, abs_path: str, error_message: str | None
+) -> dict[str, Any]:
+    """Build the ``status=parse_failed`` envelope returned by the worker."""
+    return {
+        "status": "parse_failed",
+        "rel_path": rel_path,
+        "abs_path": abs_path,
+        "reason": error_message or "parse failed",
+    }
+
+
+def _worker_symbol_rows(symbols: dict[str, Any]) -> list[tuple[str, str, int, int]]:
+    """Project ``symbols['symbols']`` to (name, kind, line, end_line) tuples for FTS5."""
+    return [
+        (
+            sym.get("name", sym.get("text", "")),
+            sym.get("kind", "unknown"),
+            sym.get("line", 0),
+            sym.get("end_line", 0),
+        )
+        for sym in symbols.get("symbols", [])
+    ]
+
+
+def _worker_ok_envelope(
+    *,
+    rel_path: str,
+    abs_path: str,
+    language: str,
+    source_code: str,
+    stat: os.stat_result,
+    symbols: dict[str, Any],
+    imports: Any,
+    structure: Any,
+) -> dict[str, Any]:
+    """Build the ``status=ok`` envelope with pre-serialised JSON blobs.
+
+    Keeps the heavy ``json.dumps`` / row-projection logic out of the worker
+    body so the dispatch reads as 7 lines (stat → parse → extract → build).
     """
-    abs_path, project_root, language = args
-    rel_path = os.path.relpath(abs_path, project_root)
-    try:
-        stat = os.stat(abs_path)
-        with open(abs_path, encoding="utf-8", errors="replace") as f:
-            source_code = f.read()
-    except OSError as exc:
-        return {
-            "status": "io_error",
-            "rel_path": rel_path,
-            "abs_path": abs_path,
-            "reason": str(exc),
-        }
-    parser = Parser()
-    result = parser.parse_file(abs_path, language)
-    if not result.success:
-        return {
-            "status": "parse_failed",
-            "rel_path": rel_path,
-            "abs_path": abs_path,
-            "reason": result.error_message or "parse failed",
-        }
-    symbols = _extract_symbols(result.tree, source_code, language)
-    imports = _extract_imports(symbols)
-    structure = _extract_structure(symbols)
     return {
         "status": "ok",
         "rel_path": rel_path,
@@ -187,16 +202,55 @@ def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
         "symbols_json": json.dumps(symbols, ensure_ascii=False),
         "imports_json": json.dumps(imports, ensure_ascii=False),
         "structure_json": json.dumps(structure, ensure_ascii=False),
-        "symbol_rows": [
-            (
-                sym.get("name", sym.get("text", "")),
-                sym.get("kind", "unknown"),
-                sym.get("line", 0),
-                sym.get("end_line", 0),
-            )
-            for sym in symbols.get("symbols", [])
-        ],
+        "symbol_rows": _worker_symbol_rows(symbols),
     }
+
+
+def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
+    """Worker function used by ``ASTCache.index_project`` when running with
+    a process pool. Must be module-level so it is picklable across spawn.
+
+    Returns a dict with:
+      * ``status`` in {"ok", "parse_failed", "io_error"}
+      * ``abs_path``, ``rel_path``, ``language``
+      * pre-serialised ``symbols_json`` / ``imports_json`` / ``structure_json``
+      * ``content_hash`` / ``mtime_ns`` / ``file_size``
+      * ``symbol_rows``: list of (name, kind, line, end_line) for FTS5 insert
+    Tree-sitter ``Tree`` objects are NEVER returned — they are C objects
+    that cannot be pickled. The worker discards them after extraction.
+
+    r37ec (dogfood): 60 lines → ~15 of dispatch. Envelope-building moved to
+    ``_worker_io_error_envelope`` / ``_worker_parse_failed_envelope`` /
+    ``_worker_ok_envelope`` / ``_worker_symbol_rows`` so the happy path is
+    visible at a glance.
+    """
+    abs_path, project_root, language = args
+    rel_path = os.path.relpath(abs_path, project_root)
+    try:
+        stat = os.stat(abs_path)
+        with open(abs_path, encoding="utf-8", errors="replace") as f:
+            source_code = f.read()
+    except OSError as exc:
+        return _worker_io_error_envelope(rel_path, abs_path, exc)
+
+    parser = Parser()
+    result = parser.parse_file(abs_path, language)
+    if not result.success:
+        return _worker_parse_failed_envelope(rel_path, abs_path, result.error_message)
+
+    symbols = _extract_symbols(result.tree, source_code, language)
+    imports = _extract_imports(symbols)
+    structure = _extract_structure(symbols)
+    return _worker_ok_envelope(
+        rel_path=rel_path,
+        abs_path=abs_path,
+        language=language,
+        source_code=source_code,
+        stat=stat,
+        symbols=symbols,
+        imports=imports,
+        structure=structure,
+    )
 
 
 def _content_hash(source: str | bytes) -> str:
