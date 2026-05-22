@@ -189,14 +189,34 @@ def build_success_response(
 ) -> dict[str, Any]:
     """Build the final successful refactoring response."""
     finalized = finalize_suggestions(suggestions, max_suggestions, include_skeleton)
+    verdict = _refactoring_verdict(finalized)
+    agent_summary = make_agent_summary(file_path, finalized)
+    agent_summary["verdict"] = verdict
     return {
         "success": True,
+        "verdict": verdict,
         "file": file_path,
         "total_suggestions": len(finalized),
         "summary": make_summary(finalized),
-        "agent_summary": make_agent_summary(file_path, finalized),
+        "agent_summary": agent_summary,
         "suggestions": finalized,
     }
+
+
+def _refactoring_verdict(suggestions: list[dict[str, Any]]) -> str:
+    """Map suggestion list to canonical verdict vocabulary.
+
+    Anti-bias: when in doubt, err toward higher severity.
+
+    - 0 suggestions → INFO
+    - any "critical" severity → CAUTION
+    - otherwise (suggestions but no critical) → REVIEW
+    """
+    if not suggestions:
+        return "INFO"
+    if any(s.get("severity") == "critical" for s in suggestions):
+        return "CAUTION"
+    return "REVIEW"
 
 
 def finalize_suggestions(
