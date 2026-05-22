@@ -103,6 +103,7 @@ def _create_tool_registry(
     from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
     from .tools.analyze_scale_tool import AnalyzeScaleTool
     from .tools.ast_cache_tool import ASTCacheTool
+    from .tools.ast_diff_tool import ASTDiffTool
     from .tools.batch_search_tool import BatchSearchTool
     from .tools.build_project_index_tool import BuildProjectIndexTool
     from .tools.call_graph_tool import CodeGraphCallTool
@@ -174,6 +175,13 @@ def _create_tool_registry(
         ("symbol_lineage", SymbolLineageTool(project_root)),
         ("code_patterns", CodePatternsTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
+        # r37fJ (orphan finalization): AST-level structured diff. The
+        # only tool in the registry that compares two versions of a
+        # file at tree level — added → removed → modified functions,
+        # classes, imports, variables. Three modes: file_revisions
+        # (compare two git refs), working_tree (compare disk vs ref),
+        # strings (compare two source strings).
+        ("ast_diff", ASTDiffTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 

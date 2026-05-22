@@ -19,6 +19,7 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
 # module level — see ``tests/unit/cli/test_mcp_commands.py``.
 # noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.batch_search_tool import (
     BatchSearchTool,  # noqa: F401
 )
@@ -274,6 +275,35 @@ def _build_modification_guard_tool_args(
     return tool_args
 
 
+def _build_ast_diff_tool_args(args: Any, output_format: str) -> dict[str, Any]:
+    """Build tool args for --ast-diff (r37fJ CLI-MCP parity).
+
+    Mirrors :class:`ASTDiffTool`'s schema across three modes. We forward
+    only the fields ASTDiffTool actually accepts so the contract test
+    matrix can drive the tool with realistic argument shapes.
+    """
+    mode = getattr(args, "ast_diff_mode", "file_revisions") or "file_revisions"
+    tool_args: dict[str, Any] = {"mode": mode, "output_format": output_format}
+    file_path = getattr(args, "ast_diff_file", None) or getattr(args, "file_path", None)
+    if file_path:
+        tool_args["file_path"] = file_path
+    if mode in ("file_revisions", "working_tree"):
+        tool_args["old_ref"] = getattr(args, "ast_diff_old_ref", "HEAD~1") or "HEAD~1"
+        if mode == "file_revisions":
+            tool_args["new_ref"] = getattr(args, "ast_diff_new_ref", "HEAD") or "HEAD"
+    if mode == "strings":
+        old_source = getattr(args, "ast_diff_old_source", None)
+        new_source = getattr(args, "ast_diff_new_source", None)
+        language = getattr(args, "ast_diff_language", None)
+        if old_source is not None:
+            tool_args["old_source"] = old_source
+        if new_source is not None:
+            tool_args["new_source"] = new_source
+        if language:
+            tool_args["language"] = language
+    return tool_args
+
+
 def _build_check_tools_tool_args(args: Any, output_format: str) -> dict[str, Any]:
     """Build tool args for --check-tools.
 
@@ -500,6 +530,12 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         tool_attr="BatchSearchTool",
         label="Run 2-10 ripgrep searches in parallel",
         build_tool_args=_build_batch_search_tool_args,
+    ),
+    McpCommandSpec(
+        flag_name="ast_diff",
+        tool_attr="ASTDiffTool",
+        label="AST-level structured diff (functions/classes/imports)",
+        build_tool_args=_build_ast_diff_tool_args,
     ),
 )
 
@@ -759,6 +795,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodePatternsTool",
         "CodeGraphCallTool",
         "ASTCacheTool",
+        "ASTDiffTool",
         "RouteDetectorTool",
         "TraceImpactTool",
         "CheckToolsTool",

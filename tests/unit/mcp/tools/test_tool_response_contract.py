@@ -221,6 +221,15 @@ class TestExecuteAcrossAllTools:
             },
             "build_project_index": {"roots": [str(tiny_project)]},
             "check_tools": {},
+            # r37fJ: AST-level structured diff. Use strings mode so we don't
+            # need a real git history in the test fixture.
+            "ast_diff": {
+                "mode": "strings",
+                "old_source": "def f():\n    pass\n",
+                "new_source": "def f():\n    return 1\n",
+                "language": "python",
+                "output_format": "json",
+            },
         }
         skipped: list[str] = []
         for name, tool in registered_tools:
@@ -10022,6 +10031,7 @@ _KNOWN_CLI_ENTRY_FOR_TOOL: dict[str, tuple[str, str]] = {
     "analyze_code_structure": ("alias_of", "--table"),
     "analyze_scale": ("alias_of", "--advanced"),
     "ast_cache": ("flag", "--ast-cache"),
+    "ast_diff": ("flag", "--ast-diff"),  # r37fJ
     "batch_search": ("flag", "--batch-search"),  # T2 (round-37d)
     "build_project_index": ("flag", "--build-project-index"),
     "call_graph": ("flag", "--call-graph"),

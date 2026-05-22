@@ -393,6 +393,7 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
     _add_environment_probe_options(parser)
     _add_modification_guard_options(parser)
     _add_batch_search_options(parser)
+    _add_ast_diff_options(parser)
 
 
 def _add_parser_readiness_options(parser: argparse.ArgumentParser) -> None:
@@ -666,6 +667,77 @@ def _add_modification_guard_options(parser: argparse.ArgumentParser) -> None:
         help=(
             "Optional source file where the symbol is defined for "
             "--modification-guard (improves accuracy)"
+        ),
+    )
+
+
+def _add_ast_diff_options(parser: argparse.ArgumentParser) -> None:
+    """``--ast-diff`` family (r37fJ CLI-MCP parity for ASTDiffTool).
+
+    CLAUDE.md hard requirement — every MCP tool must have a CLI equivalent.
+    ASTDiffTool compares two versions of a file at the tree level. Three
+    modes: file_revisions (two git refs), working_tree (disk vs ref),
+    strings (two source strings). Each mode needs its own value-bearing
+    args, so we expose them as ``--ast-diff-*`` siblings.
+    """
+    parser.add_argument(
+        "--ast-diff",
+        action="store_true",
+        help=(
+            "AST-level structured diff between two versions of a file. "
+            "Returns added/removed/modified functions, classes, imports. "
+            "Defaults to mode=file_revisions comparing HEAD~1..HEAD; pair "
+            "with --ast-diff-file PATH, or --ast-diff-mode strings + "
+            "--ast-diff-old-source/--ast-diff-new-source/--ast-diff-language."
+        ),
+    )
+    parser.add_argument(
+        "--ast-diff-mode",
+        choices=["file_revisions", "working_tree", "strings"],
+        default="file_revisions",
+        help=(
+            "Diff mode for --ast-diff (default: file_revisions). "
+            "file_revisions: compare two git refs. "
+            "working_tree: compare disk vs a git ref. "
+            "strings: compare two source strings directly."
+        ),
+    )
+    parser.add_argument(
+        "--ast-diff-file",
+        metavar="PATH",
+        help=(
+            "File path to diff for --ast-diff "
+            "(required for mode=file_revisions and mode=working_tree)."
+        ),
+    )
+    parser.add_argument(
+        "--ast-diff-old-ref",
+        metavar="REF",
+        default="HEAD~1",
+        help="Old git ref for --ast-diff (default: HEAD~1).",
+    )
+    parser.add_argument(
+        "--ast-diff-new-ref",
+        metavar="REF",
+        default="HEAD",
+        help="New git ref for --ast-diff (default: HEAD).",
+    )
+    parser.add_argument(
+        "--ast-diff-old-source",
+        metavar="STR",
+        help="Old source string for --ast-diff (required for mode=strings).",
+    )
+    parser.add_argument(
+        "--ast-diff-new-source",
+        metavar="STR",
+        help="New source string for --ast-diff (required for mode=strings).",
+    )
+    parser.add_argument(
+        "--ast-diff-language",
+        metavar="LANG",
+        help=(
+            "Language identifier for --ast-diff (required for mode=strings; "
+            "e.g. 'python', 'javascript', 'go')."
         ),
     )
 
