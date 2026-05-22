@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ....project_graph import BlastRadius, DependencyGraph
+from .call_graph_impact import compute_call_graph_impact
 from .change_impact_response import (
     LARGE_DIRTY_DIFF_THRESHOLD,
     AgentSummaryContext,
@@ -296,6 +297,16 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
     )
     visible_tests = all_tests[:TESTS_TO_RUN_DISPLAY_LIMIT]
 
+    call_graph_data: dict[str, Any] | None = None
+    if request.project_root and request.changed_files:
+        cg_result = compute_call_graph_impact(
+            request.project_root, request.changed_files
+        )
+        if cg_result is not None:
+            call_graph_data = cg_result.to_dict()
+            if call_graph_data.get("high_risk_functions") and risk == "low":
+                risk = "medium"
+
     agent_summary = build_agent_summary(
         AgentSummaryContext(
             risk=risk,
@@ -308,7 +319,7 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
         )
     )
 
-    return build_change_impact_response(
+    result = build_change_impact_response(
         ChangeImpactResponseContext(
             request=request,
             risk=risk,
@@ -322,6 +333,11 @@ def _build_change_impact_result(request: ChangeImpactRequest) -> dict[str, Any]:
             agent_summary=agent_summary,
         )
     )
+
+    if call_graph_data is not None:
+        result["call_graph_impact"] = call_graph_data
+
+    return result
 
 
 _build_no_changes_result = build_no_changes_result
