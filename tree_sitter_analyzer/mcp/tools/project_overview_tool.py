@@ -64,6 +64,10 @@ _EXCLUDE_DIRS = {
     ".claude",
     ".deepseek",
     ".autonomous-runtime",
+    # Tool-internal caches: noise when counting "project files".
+    ".ast-cache",
+    ".tree-sitter-cache",
+    ".claude-flow",
 }
 
 TOOL_SCHEMA: dict[str, Any] = {
@@ -139,10 +143,21 @@ class ProjectOverviewTool(BaseMCPTool):
 
 
 def _scan_project(root: Path, max_depth: int) -> dict[str, Any]:
-    """Walk the project tree and collect file/directory stats."""
+    """Walk the project tree and collect file/directory stats.
+
+    The per-file ``line_count`` lookups are routed through the persistent
+    :class:`FileMetaCache` so warm runs skip the open/read for unchanged
+    files (pain #2 from tsa-landing dogfood).
+    """
+    from ..._file_meta_cache import FileMetaCache
+
     scan = _new_scan()
-    for path in root.rglob("*"):
-        _add_path_to_scan(scan, root, path, max_depth)
+    cache = FileMetaCache(str(root))
+    try:
+        for path in root.rglob("*"):
+            _add_path_to_scan(scan, root, path, max_depth, cache)
+    finally:
+        cache.close()
     scan["source_files"].sort(key=lambda item: item["lines"], reverse=True)
     return scan
 
@@ -158,7 +173,11 @@ def _new_scan() -> dict[str, Any]:
 
 
 def _add_path_to_scan(
-    scan: dict[str, Any], root: Path, path: Path, max_depth: int
+    scan: dict[str, Any],
+    root: Path,
+    path: Path,
+    max_depth: int,
+    cache: Any = None,
 ) -> None:
     """Add a path to project scan accumulators when it is in scope."""
     if any(part in _EXCLUDE_DIRS for part in path.parts):
@@ -173,19 +192,44 @@ def _add_path_to_scan(
         _increment(scan["dir_tree"], path.name)
         return
     if path.is_file():
-        _add_file_to_scan(scan, root, path)
+        _add_file_to_scan(scan, root, path, cache)
 
 
-def _add_file_to_scan(scan: dict[str, Any], root: Path, path: Path) -> None:
-    """Add one source or non-source file to scan accumulators."""
+def _add_file_to_scan(
+    scan: dict[str, Any], root: Path, path: Path, cache: Any = None
+) -> None:
+    """Add one source or non-source file to scan accumulators.
+
+    ``cache`` is optional so this helper can be called directly from
+    tests/utilities without instantiating a SQLite cache. When None,
+    the line count is read fresh every time (the pre-cache behavior).
+    """
     ext = path.suffix.lower()
     _increment(scan["ext_dist"], ext)
     lang = _SUPPORTED_EXTS.get(ext)
     if not lang:
         return
     try:
-        size = path.stat().st_size
-        lines = _count_lines(path)
+        st = path.stat()
+        size = st.st_size
+        # The cache stat()s internally to verify the fingerprint, but we
+        # already have the stat here — pass mtime/size to skip the duplicate.
+        cached = (
+            cache.get_line_count(str(path), mtime_ns=st.st_mtime_ns, size_bytes=size)
+            if cache is not None
+            else None
+        )
+        if cached is not None:
+            lines = cached
+        else:
+            lines = _count_lines(path)
+            if cache is not None:
+                cache.store_line_count(
+                    str(path),
+                    mtime_ns=st.st_mtime_ns,
+                    size_bytes=size,
+                    line_count=lines,
+                )
         scan["source_files"].append(
             {
                 "path": str(path.relative_to(root)),
