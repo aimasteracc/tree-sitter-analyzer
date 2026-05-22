@@ -90,6 +90,7 @@ def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
     """Return a compact MCP response when callers request TOON output."""
     return {
         "success": result["success"],
+        "verdict": result.get("verdict", "INFO"),
         "format": "toon",
         "advisor": result["advisor"],
         "project_root": result["project_root"],

@@ -33,7 +33,10 @@ def build_parser_readiness_advice(
     )
     records = build_language_records(root, report_languages, inputs)
     recommendations = _build_recommendations(records)
-    agent_summary = _build_agent_summary(records, recommendations, requested_language)
+    verdict = _parser_readiness_verdict(records, requested_language)
+    agent_summary = _build_agent_summary(
+        records, recommendations, requested_language, verdict
+    )
     return _build_result(
         root,
         inputs,
@@ -41,6 +44,7 @@ def build_parser_readiness_advice(
         records,
         recommendations,
         agent_summary,
+        verdict,
     )
 
 
@@ -51,9 +55,11 @@ def _build_result(
     records: list[dict[str, Any]],
     recommendations: list[dict[str, Any]],
     agent_summary: dict[str, Any],
+    verdict: str,
 ) -> dict[str, Any]:
     """Assemble the final parser-readiness response."""
     result = _base_result(root, requested_language)
+    result["verdict"] = verdict
     result.update(_metadata_summary(inputs, records))
     result.update(
         {
@@ -66,6 +72,32 @@ def _build_result(
     )
     result["toon_content"] = _build_toon_content(result)
     return result
+
+
+def _parser_readiness_verdict(
+    records: list[dict[str, Any]],
+    requested_language: str | None,
+) -> str:
+    """Map readiness state to canonical verdict vocabulary.
+
+    Anti-bias: when in doubt, err toward higher severity.
+
+    - All requested languages supported (or no candidates) → INFO
+    - Has a parser dependency declared but plugin/loader missing → REVIEW
+    - Missing parser package entirely → CAUTION
+    """
+    # Focus on the requested language when provided; otherwise look across all.
+    relevant = records
+    if requested_language:
+        relevant = [
+            r for r in records if r["language"] == requested_language
+        ] or records
+    statuses = {r["status"] for r in relevant}
+    if "missing_parser_package" in statuses:
+        return "CAUTION"
+    if statuses & {"needs_hardening", "candidate"}:
+        return "REVIEW"
+    return "INFO"
 
 
 def _base_result(root: Path, requested_language: str | None) -> dict[str, Any]:
@@ -134,9 +166,11 @@ def _build_agent_summary(
     records: list[dict[str, Any]],
     recommendations: list[dict[str, Any]],
     requested_language: str | None,
+    verdict: str = "INFO",
 ) -> dict[str, Any]:
     first = recommendations[0] if recommendations else None
     return {
+        "verdict": verdict,
         "risk": "caution" if first else "low",
         "requested_language": requested_language,
         "candidate_count": len(recommendations),
