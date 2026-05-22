@@ -569,32 +569,67 @@ def parse_request_mapping(node: Any) -> tuple[str, str | None]:
     """Extract (http_method, url_pattern) from a Spring @RequestMapping.
 
     Defaults to GET. Returns ``(method, None)`` if no URL pattern is found.
+
+    r37d3 (dogfood): flattened nesting 7 → 3 by extracting helpers for
+    the no-arguments-field fallback (``_url_from_paren_child``) and the
+    keyword-extracted method override (``_resolve_method_keyword``).
     """
     method = "GET"
     url: str | None = None
     args_node = node.child_by_field_name("arguments")
     if args_node is None:
-        for child in node.children:
-            if child.type == "(":
-                idx = list(node.children).index(child)
-                if idx + 1 < len(node.children):
-                    next_child = node.children[idx + 1]
-                    if next_child.type == "string_literal":
-                        url = unquote_java_string(next_child.text.decode())
-    if args_node:
+        url = _url_from_paren_child(node)
+    else:
         for child in args_node.children:
             text = child.text.decode()
             if child.type == "string_literal":
                 url = unquote_java_string(text)
-            elif "method" in text and "=" in text:
-                m = re.search(r"RequestMethod\.(\w+)", text)
-                if m:
-                    method = m.group(1).upper()
-                kw_node = find_keyword(args_node, "method")
-                if kw_node:
-                    val = kw_node.child_by_field_name("value")
-                    if val:
-                        vm = re.search(r"RequestMethod\.(\w+)", val.text.decode())
-                        if vm:
-                            method = vm.group(1).upper()
+                continue
+            if "method" not in text or "=" not in text:
+                continue
+            m = re.search(r"RequestMethod\.(\w+)", text)
+            if m:
+                method = m.group(1).upper()
+            kw_method = _resolve_method_keyword(args_node)
+            if kw_method is not None:
+                method = kw_method
     return method, url
+
+
+def _url_from_paren_child(node: Any) -> str | None:
+    """Find the first ``string_literal`` after a bare ``(`` in ``node.children``.
+
+    Handles Spring's annotation form ``@RequestMapping("/foo")`` where
+    tree-sitter doesn't expose an ``arguments`` field but the URL is the
+    first child after the opening paren.
+    """
+    children = list(node.children)
+    for idx, child in enumerate(children):
+        if child.type != "(":
+            continue
+        if idx + 1 >= len(children):
+            return None
+        next_child = children[idx + 1]
+        if next_child.type != "string_literal":
+            return None
+        return unquote_java_string(next_child.text.decode())
+    return None
+
+
+def _resolve_method_keyword(args_node: Any) -> str | None:
+    """Return the HTTP method named in a ``method=RequestMethod.<X>`` kw arg.
+
+    Returns ``None`` when the keyword is absent or its value isn't a
+    ``RequestMethod.<verb>`` reference. The caller uses this only to
+    override the value already parsed from the text.
+    """
+    kw_node = find_keyword(args_node, "method")
+    if kw_node is None:
+        return None
+    val = kw_node.child_by_field_name("value")
+    if val is None:
+        return None
+    vm = re.search(r"RequestMethod\.(\w+)", val.text.decode())
+    if vm is None:
+        return None
+    return vm.group(1).upper()
