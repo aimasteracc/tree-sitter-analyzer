@@ -139,9 +139,15 @@ class FileHealthTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Execute health scoring and code smell detection."""
-        self.validate_arguments(arguments)
+        """Execute health scoring and code smell detection.
 
+        r37bl (dogfood): tool flagged this at 116 lines. The function ran
+        7 guards (O3 mismatch / H7 non-code / M7 + H9 empty / M6 binary /
+        M3 syntax error / scoring / language echo). Refactor splits each
+        guard into a helper that returns ``dict|None`` and the scoring
+        pipeline lives in ``_score_and_echo_metrics``.
+        """
+        self.validate_arguments(arguments)
         file_path = arguments["file_path"]
         output_format = arguments.get("output_format", "toon")
         language = arguments.get("language")
@@ -152,10 +158,38 @@ class FileHealthTool(BaseMCPTool):
 
         from ..utils.format_helper import apply_toon_format_to_response
 
-        # O3 (round-30 dogfood): strict mismatch gate. ``file_health
-        # foo.py language=java`` would otherwise inherit ``language``
-        # downstream into the smell-detector dispatch table and grade
-        # the file against the wrong rules.
+        early = self._check_early_exit_paths(
+            resolved, file_path, language, output_format
+        )
+        if early is not None:
+            return apply_toon_format_to_response(early, output_format)
+
+        language = self._resolve_language_for_health(resolved, language)
+        analysis = extract_elements(resolved, self.project_root)
+
+        if _looks_binary(resolved, language, analysis):
+            return apply_toon_format_to_response(
+                _binary_file_response(file_path, resolved), output_format
+            )
+
+        # M3: tree-sitter is permissive — short-circuit on parse errors so
+        # the agent doesn't see ``grade=A`` on broken syntax.
+        syntax_response = _syntax_error_response(resolved, file_path, language)
+        if syntax_response is not None:
+            return apply_toon_format_to_response(syntax_response, output_format)
+
+        result = self._score_and_echo_metrics(resolved, file_path, language, analysis)
+        return apply_toon_format_to_response(result, output_format)
+
+    def _check_early_exit_paths(
+        self,
+        resolved: str,
+        file_path: str,
+        language: str | None,
+        output_format: str,
+    ) -> dict[str, Any] | None:
+        """Run O3 / H7 / M7+H9 guards. Return first matching envelope or ``None``."""
+        # O3: strict mismatch gate.
         mismatch = detect_language_mismatch(
             resolved,
             language if isinstance(language, str) else None,
@@ -168,61 +202,42 @@ class FileHealthTool(BaseMCPTool):
                 warning=mismatch,
             )
             response["output_format"] = output_format
-            return apply_toon_format_to_response(response, output_format)
+            return response
 
-        # H7 fix: non-code files (Markdown, YAML, JSON, …) must not be
-        # graded A-F. Without this guard ``HealthScorer`` falls through
-        # to a size + line-count heuristic and produces grade C
-        # "moderate technical debt" for a README.md.
+        # H7: non-code files (Markdown / YAML / JSON / …).
         non_code_response = _non_code_file_response(resolved, file_path)
         if non_code_response is not None:
-            return apply_toon_format_to_response(non_code_response, output_format)
+            return non_code_response
 
-        # Bug M7: 0-byte files have no signal. Health scoring would assign a
-        # bogus "large_file" reading from empty dimensions — return a clear
-        # n/a envelope instead. H9 extends this to whitespace-only files —
-        # ``\n\n   \n`` is operationally empty even though ``getsize > 0``.
+        # M7 + H9: 0-byte or whitespace-only files.
         empty_response = _empty_file_response(resolved, file_path)
         if empty_response is not None:
-            return apply_toon_format_to_response(empty_response, output_format)
+            return empty_response
 
-        if not language:
-            from ...language_detector import detect_language_from_file
+        return None
 
-            language = detect_language_from_file(
-                resolved, project_root=self.project_root
-            )
-            if language == "unknown":
-                language = None
+    def _resolve_language_for_health(
+        self, resolved: str, language: str | None
+    ) -> str | None:
+        """Best-effort language detection when caller didn't pass ``language``."""
+        if language:
+            return language
+        from ...language_detector import detect_language_from_file
 
-        # Bug M6: refuse binaries early. ``language is None`` or unparseable
-        # tree-sitter output combined with a NUL-byte/utf-8-decode failure
-        # is the clearest signal a file is non-source. Returning ``grade F``
-        # from the scorer and recommending refactor on a ``.pyc`` is worse
-        # than a clean error.
-        analysis = extract_elements(resolved, self.project_root)
-        if _looks_binary(resolved, language, analysis):
-            return apply_toon_format_to_response(
-                _binary_file_response(file_path, resolved), output_format
-            )
+        detected = detect_language_from_file(resolved, project_root=self.project_root)
+        return None if detected == "unknown" else detected
 
-        # M3 (round-26 dogfood): tree-sitter is permissive — it builds a
-        # partial tree for ``def broken(:`` and the scorer happily grades
-        # the empty dimensions as ``A`` / 100. An agent reading that
-        # envelope would conclude the file is healthy. Short-circuit when
-        # the parser reports ANY ``ERROR`` node so the agent sees the
-        # same ``signal=syntax_error verdict=ERROR`` it gets from
-        # code_patterns and safe_to_edit. Non-code / binary branches
-        # have already returned by this point.
-        syntax_response = _syntax_error_response(resolved, file_path, language)
-        if syntax_response is not None:
-            return apply_toon_format_to_response(syntax_response, output_format)
-
+    def _score_and_echo_metrics(
+        self,
+        resolved: str,
+        file_path: str,
+        language: str | None,
+        analysis: Any,
+    ) -> dict[str, Any]:
+        """Run HealthScorer + detect_code_smells, then attach M14/N9 echoes."""
         scorer = self._get_scorer()
         health = scorer.score_file(resolved)
-
         smells = detect_code_smells(resolved, health.dimensions, analysis, language)
-
         result = build_file_health_result(
             file_path,
             health,
@@ -230,30 +245,17 @@ class FileHealthTool(BaseMCPTool):
             resolved,
             analysis,
         )
-
-        # M14 (round-26): echo the detected language so cross-tool
-        # consumers see the same lowercase string ``analyze_scale``
-        # already emits. Direct ``tool.execute()`` callers (CLI bridge,
-        # tests) bypass the dispatcher post-hook, so we set it here
-        # too. The central ``ensure_canonical_success_envelope`` hook is
-        # idempotent and only fills the key when missing.
+        # M14: echo detected language so cross-tool consumers see the same
+        # value ``analyze_scale`` emits.
         if language and "language" not in result:
             result["language"] = language
-
-        # N9 (round-28): echo raw ``line_count`` + ``binary`` so cross-tool
-        # consumers (analyze_scale, get_code_outline) see the same
-        # vocabulary. Use ``setdefault`` so any earlier path that already
-        # populated these wins.
+        # N9: echo line_count + binary for cross-tool vocabulary parity.
         line_count, is_binary = _file_metrics(resolved)
         if line_count is not None:
             result.setdefault("line_count", line_count)
-            # ``lines`` is the alias the brief / analyze_scale uses for
-            # the same value. Same int, two key names so agents that
-            # branch on either find the right number.
-            result.setdefault("lines", line_count)
+            result.setdefault("lines", line_count)  # analyze_scale alias
         result.setdefault("binary", is_binary)
-
-        return apply_toon_format_to_response(result, output_format)
+        return result
 
 
 def _file_metrics(resolved: str) -> tuple[int | None, bool]:
