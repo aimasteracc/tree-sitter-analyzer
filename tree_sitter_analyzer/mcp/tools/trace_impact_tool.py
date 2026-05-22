@@ -273,6 +273,228 @@ def _get_impact_level(count: int) -> dict[str, str]:
         }
 
 
+def _build_trace_impact_globs(
+    language_extensions: list[str],
+    exclude_patterns: list[str],
+) -> tuple[list[str], list[str]]:
+    """Build (include_globs, exclude_globs) for ripgrep.
+
+    r37bw: extracted from ``execute``. Adds common exclude patterns
+    (node_modules, .git, vendor, __pycache__, *.min.{js,css}) and either
+    language-specific extensions or the project-wide source extension
+    set (H4 fix).
+    """
+    exclude_globs = list(exclude_patterns)
+    exclude_globs.extend(
+        [
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/vendor/**",
+            "**/__pycache__/**",
+            "**/*.min.js",
+            "**/*.min.css",
+        ]
+    )
+    include_globs: list[str] = []
+    if language_extensions:
+        for ext in language_extensions:
+            include_globs.append(f"**/*{ext}")
+    else:
+        # H4: restrict to source extensions even without language detection.
+        include_globs.extend(_SOURCE_EXT_GLOBS)
+    return include_globs, exclude_globs
+
+
+def _classify_rg_error(rc: int, stderr: bytes | None) -> dict[str, Any] | None:
+    """Map ripgrep exit code to an error envelope, or ``None`` on success/no-match.
+
+    r37bw: extracted from ``execute``. rc=127 means rg missing, rc=124
+    means timeout, anything other than 0/1 is a real failure. rc=0/1
+    return ``None`` so the caller continues to result parsing.
+    """
+    if rc == 127:
+        return {
+            "success": False,
+            "error": (
+                "ripgrep (rg) is not installed. Please install ripgrep "
+                "to use trace_impact."
+            ),
+            "usages": [],
+            "call_count": 0,
+        }
+    if rc == 124:
+        return {
+            "success": False,
+            "error": (
+                "Search timed out. Try narrowing the search scope or "
+                "excluding more directories."
+            ),
+            "usages": [],
+            "call_count": 0,
+        }
+    if rc not in (0, 1):
+        error_msg = (
+            stderr.decode("utf-8", errors="replace") if stderr else "Unknown error"
+        )
+        return {
+            "success": False,
+            "error": f"Search failed: {error_msg}",
+            "usages": [],
+            "call_count": 0,
+        }
+    return None
+
+
+def _build_not_found_response(symbol: str, language: str | None) -> dict[str, Any]:
+    """M11: ripgrep returned zero matches → NOT_FOUND envelope.
+
+    The typo-vs-real-zero-caller ambiguity is resolved as "verify
+    spelling first" to match symbol_lineage's behaviour. ``impact_verdict``
+    stays at the magnitude vocab (``NONE`` for zero callers) while
+    top-level ``verdict`` flips to ``NOT_FOUND`` so cross-tool readers
+    can branch on a single field.
+    """
+    impact = _get_impact_level(0)
+    summary_line = f"trace_impact symbol={symbol} not_found"
+    return {
+        "success": True,
+        "symbol": symbol,
+        "language": language,
+        "usages": [],
+        "call_count": 0,
+        "count": 0,
+        "results": [],
+        "impact_level": impact["level"],
+        "impact_verdict": impact["level"].upper(),
+        "verdict": "NOT_FOUND",
+        "found": False,
+        "impact_badge": impact["badge"],
+        "impact_guidance": impact["guidance"],
+        "message": (
+            f"No usages of '{symbol}' found in the project. "
+            "Verify symbol name — no definitions or references "
+            "exist anywhere in the source tree."
+        ),
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": ("verify symbol name — no definitions or references found"),
+            "verdict": "NOT_FOUND",
+            "risk": "unknown",
+        },
+    }
+
+
+def _truncate_for_display(
+    source_matches: list[Any], max_results: int
+) -> tuple[list[Any], bool]:
+    """Display-cap source matches without affecting impact-level count."""
+    if len(source_matches) > max_results:
+        return source_matches[:max_results], True
+    return source_matches, False
+
+
+def _matches_to_usages(matches: list[Any]) -> list[dict[str, Any]]:
+    """Convert rg matches to usage dicts with both ``file``/``file_path`` aliases."""
+    usages: list[dict[str, Any]] = []
+    for match in matches:
+        line_no = match["line"]
+        file_path_val = match["file"]
+        usages.append(
+            {
+                "file": file_path_val,
+                "file_path": file_path_val,
+                "line": line_no,
+                "line_number": line_no,
+                "context": match["text"],
+            }
+        )
+    return usages
+
+
+def _verdict_and_next_step_for_impact(level: str, total_count: int) -> tuple[str, str]:
+    """K5: map impact level (magnitude vocab) → (verdict, next_step) (safety vocab)."""
+    if level == "high":
+        return "UNSAFE", (
+            f"batch_search to enumerate all {total_count} call sites before "
+            "changing signature"
+        )
+    if level == "medium":
+        return "CAUTION", (
+            f"batch_search to enumerate all {total_count} call sites before "
+            "changing signature"
+        )
+    if level == "low":
+        return "CAUTION", "review the few callers, then proceed with the change"
+    return "SAFE", "no callers — safe to refactor"
+
+
+def _build_trace_impact_result(
+    *,
+    symbol: str,
+    language: str | None,
+    file_path: str | None,
+    usages: list[dict[str, Any]],
+    source_total: int,
+    true_total: int,
+    truncated: bool,
+    max_results: int,
+) -> dict[str, Any]:
+    """Compose the canonical trace_impact success envelope.
+
+    r37bw: extracted from ``execute``. K5 verdict alias, H4 source-only
+    counts, optional ``warning`` / ``language`` / ``source_file`` /
+    ``truncated`` / ``non_source_match_count`` fields all preserved.
+    """
+    impact = _get_impact_level(source_total)
+    summary_line = f"{symbol} callers={source_total} impact={impact['level']}"
+    verdict, next_step = _verdict_and_next_step_for_impact(
+        impact["level"], source_total
+    )
+    result: dict[str, Any] = {
+        "success": True,
+        "symbol": symbol,
+        "call_count": source_total,
+        "count": source_total,
+        "source_call_count": source_total,
+        "usage_count": len(usages),
+        "raw_match_count": true_total,
+        "impact_level": impact["level"],
+        "impact_verdict": impact["level"].upper(),
+        "verdict": verdict,
+        "impact_badge": impact["badge"],
+        "impact_guidance": impact["guidance"],
+        "usages": usages,
+        "results": usages,
+        "summary_line": summary_line,
+        "agent_summary": {
+            "summary_line": summary_line,
+            "next_step": next_step,
+            "verdict": verdict,
+        },
+    }
+    if impact["level"] == "high":
+        result["warning"] = (
+            f"🚨 HIGH IMPACT: This symbol has {source_total} callers. "
+            f"Modifying its signature requires updating all call sites. "
+            f"Use batch_search to locate all callers before proceeding."
+        )
+    if language:
+        result["language"] = language
+        result["filtered_by_language"] = True
+    if file_path:
+        result["source_file"] = file_path
+    if truncated:
+        result["truncated"] = True
+        result["message"] = (
+            f"Results truncated to {max_results} usages. "
+            f"Consider narrowing the search scope or increasing max_results."
+        )
+    if true_total > source_total:
+        result["non_source_match_count"] = true_total - source_total
+    return result
+
+
 class TraceImpactTool(BaseMCPTool):
     """
     MCP tool for tracing the impact of code changes by finding all usage sites of a symbol.
@@ -439,92 +661,34 @@ class TraceImpactTool(BaseMCPTool):
 
     @handle_mcp_errors("trace_impact")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Execute the trace impact tool.
+        """Execute the trace impact tool.
 
-        Args:
-            arguments: Tool arguments containing symbol and optional filters
-
-        Returns:
-            Dictionary with usage sites, call count, and metadata
+        r37bw (dogfood): tool flagged this at 350 lines. Refactor splits
+        the body into focused helpers (arg parse / language detect /
+        glob build / rg run / rc-classify / not-found / filter / build).
+        Behaviour preserved (M11 NOT_FOUND, H4 source-ext + J7 comment
+        filters, K5 verdict alias, agent_summary).
         """
-        # 验证参数
         self.validate_arguments(arguments)
 
-        # 提取参数
         symbol = arguments["symbol"].strip()
         file_path = arguments.get("file_path")
-        project_root_arg = arguments.get("project_root")
         case_sensitive = arguments.get("case_sensitive", False)
         word_match = arguments.get("word_match", True)
         max_results = arguments.get("max_results", 1000)
         exclude_patterns = arguments.get("exclude_patterns", [])
 
-        # 确定项目根目录
-        if project_root_arg:
-            # 支持逗号分隔的多个根目录
-            roots = [root.strip() for root in project_root_arg.split(",")]
-        elif self.project_root:
-            roots = [self.project_root]
-        else:
-            # 默认使用当前目录
-            from pathlib import Path
-
-            roots = [str(Path.cwd())]
-
-        # 检测语言（如果提供了 file_path）
-        language = None
-        language_extensions: list[str] = []
-        if file_path:
-            language = detect_language_from_file(
-                file_path, project_root=self.project_root
-            )
-            if language and language != "unknown":
-                # 获取该语言的所有扩展名
-                language_extensions = self._get_extensions_for_language(language)
-                logger.debug(
-                    f"Detected language '{language}' from file '{file_path}', "
-                    f"will filter by extensions: {language_extensions}"
-                )
-
-        # 构建 ripgrep 命令
-        # 使用固定字符串搜索（-F）+ 单词边界（-w）以获得更准确的结果
-        case_mode = "sensitive" if case_sensitive else "smart"
-
-        # 构建排除模式
-        exclude_globs = list(exclude_patterns)
-        # 添加常见的排除模式
-        exclude_globs.extend(
-            [
-                "**/node_modules/**",
-                "**/.git/**",
-                "**/vendor/**",
-                "**/__pycache__/**",
-                "**/*.min.js",
-                "**/*.min.css",
-            ]
+        roots = self._resolve_search_roots(arguments.get("project_root"))
+        language, language_extensions = self._detect_language_filter(file_path)
+        include_globs, exclude_globs = _build_trace_impact_globs(
+            language_extensions, exclude_patterns
         )
 
-        # 如果检测到语言，添加语言过滤
-        include_globs: list[str] = []
-        if language_extensions:
-            # 为每个扩展名创建包含模式
-            for ext in language_extensions:
-                include_globs.append(f"**/*{ext}")
-        else:
-            # H4 fix: even without an explicit language, restrict to
-            # source-code extensions so the call-count is not inflated by
-            # CHANGELOG.md / design.md / comment matches. Agents reading
-            # "2132 CALLERS" should be looking at source files, not
-            # marketing copy.
-            include_globs.extend(_SOURCE_EXT_GLOBS)
-
-        # 构建 ripgrep 命令
         cmd = build_rg_command(
             query=symbol,
-            case=case_mode,
-            fixed_strings=True,  # 使用固定字符串搜索，不使用正则
-            word=word_match,  # 单词匹配
+            case="sensitive" if case_sensitive else "smart",
+            fixed_strings=True,
+            word=word_match,
             multiline=False,
             include_globs=include_globs if include_globs else None,
             exclude_globs=exclude_globs,
@@ -541,253 +705,72 @@ class TraceImpactTool(BaseMCPTool):
             files_from=None,
             count_only_matches=False,
         )
-
-        # 执行搜索
         logger.debug(f"Executing ripgrep command: {' '.join(cmd)}")
         rc, stdout, stderr = await run_command_capture(cmd, timeout_ms=5000)
 
-        # 处理错误
-        if rc == 127:
-            # ripgrep 未安装
-            return {
-                "success": False,
-                "error": "ripgrep (rg) is not installed. Please install ripgrep to use trace_impact.",
-                "usages": [],
-                "call_count": 0,
-            }
-        elif rc == 124:
-            # 超时
-            return {
-                "success": False,
-                "error": "Search timed out. Try narrowing the search scope or excluding more directories.",
-                "usages": [],
-                "call_count": 0,
-            }
-        elif rc not in (0, 1):
-            # 其他错误
-            error_msg = (
-                stderr.decode("utf-8", errors="replace") if stderr else "Unknown error"
-            )
-            return {
-                "success": False,
-                "error": f"Search failed: {error_msg}",
-                "usages": [],
-                "call_count": 0,
-            }
+        rg_error = _classify_rg_error(rc, stderr)
+        if rg_error is not None:
+            return rg_error
 
-        # 解析结果
         if rc == 1:
-            # M11 (round-26 dogfood): ripgrep returned zero matches
-            # anywhere in the project. That covers two semantically
-            # different cases:
-            #
-            # * "real symbol with zero callers" — possible but extremely
-            #   rare: the symbol must be defined nowhere yet still be a
-            #   valid Python/JS/Java identifier the user typed.
-            # * "symbol does not exist" — typo, casing slip, copy-paste
-            #   error. Far more common in practice.
-            #
-            # Returning ``verdict=SAFE`` for both means an agent will
-            # happily delete or refactor based on a typo. The fix:
-            # rc==1 means we found zero definitions AND zero references
-            # — i.e. the symbol does not exist in the project. Surface
-            # that as ``verdict=NOT_FOUND`` and ``found=false`` so an
-            # agent must verify the spelling before acting.
-            #
-            # Matches the ``symbol_lineage`` "no definitions found"
-            # next_step verbatim so the two tools stay aligned.
-            impact = _get_impact_level(0)
-            summary_line = f"trace_impact symbol={symbol} not_found"
-            return {
-                "success": True,
-                "symbol": symbol,
-                "language": language,
-                "usages": [],
-                "call_count": 0,
-                "count": 0,
-                "results": [],
-                "impact_level": impact["level"],
-                # ``impact_verdict`` is magnitude vocab (HIGH/MEDIUM/
-                # LOW/NONE). ``NONE`` is the correct magnitude for zero
-                # callers — that part is unchanged. The top-level
-                # ``verdict`` is what flipped: ``NOT_FOUND`` instead of
-                # ``SAFE`` so cross-tool readers see the same signal
-                # ``symbol_lineage`` emits when it can't find defs.
-                "impact_verdict": impact["level"].upper(),
-                "verdict": "NOT_FOUND",
-                "found": False,
-                "impact_badge": impact["badge"],
-                "impact_guidance": impact["guidance"],
-                "message": (
-                    f"No usages of '{symbol}' found in the project. "
-                    "Verify symbol name — no definitions or references "
-                    "exist anywhere in the source tree."
-                ),
-                "summary_line": summary_line,
-                "agent_summary": {
-                    "summary_line": summary_line,
-                    "next_step": (
-                        "verify symbol name — no definitions or references found"
-                    ),
-                    "verdict": "NOT_FOUND",
-                    "risk": "unknown",
-                },
-            }
+            # M11: ripgrep zero-match → NOT_FOUND envelope (typo vs zero-caller
+            # ambiguity resolved as "verify spelling first" per symbol_lineage).
+            return _build_not_found_response(symbol, language)
 
-        # 解析 JSON 输出
         matches = parse_rg_json_lines_to_matches(stdout)
-
-        # H4 fix: even with the source-extension filter applied at the
-        # ripgrep boundary, defensively re-filter in Python — guards
-        # against the rare case where rg ignores ``-g`` (e.g. user
-        # passes ``--no-ignore``) and against future schema drift in
-        # ``_SOURCE_EXTS``. ``source_call_count`` is the honest number
-        # an agent can trust; ``true_total`` is what rg actually
-        # returned.
-        #
-        # J7 fix (round-22): on top of the extension filter, drop hits
-        # inside comments and docstrings. ``BaseMCPTool`` previously
-        # reported 99 source callers — most of them were
-        # ``"""...BaseMCPTool..."""`` docstring text or ``# ...
-        # BaseMCPTool`` comment text, not real call sites. After this
-        # filter ``source_call_count`` reflects only code lines.
-        # ``raw_match_count`` keeps the original ripgrep count for
-        # transparency.
         ext_filtered = _filter_source_matches(matches)
         source_matches = _filter_comment_docstring_matches(ext_filtered)
 
-        # Capture true total BEFORE truncating for display.
-        # impact_level and source_call_count must reflect the actual number
-        # of source-only callers, not the display-capped count. If
-        # max_results=5 and there are 695 matches, source_call_count must
-        # be 695 and impact_level must be "high", not "low".
         true_total = len(matches)
         source_total = len(source_matches)
 
-        # 限制结果数量（只影响显示，不影响 call_count）
-        # H4: display only source-extension matches; non-source hits never
-        # belonged in the callers list to begin with.
-        if source_total > max_results:
-            display_matches = source_matches[:max_results]
-            truncated = True
-        else:
-            display_matches = source_matches
-            truncated = False
+        display_matches, truncated = _truncate_for_display(source_matches, max_results)
+        usages = _matches_to_usages(display_matches)
 
-        # 转换为用户友好的格式
-        # Each usage carries every common field name an agent might reach
-        # for: ``file`` + ``file_path``, ``line`` + ``line_number``,
-        # ``context`` (the matched line text). Avoids cross-tool guessing.
-        usages = []
-        for match in display_matches:
-            line_no = match["line"]
-            file_path_val = match["file"]
-            usage = {
-                "file": file_path_val,
-                "file_path": file_path_val,
-                "line": line_no,
-                "line_number": line_no,
-                "context": match["text"],  # 匹配行的文本
-            }
-            usages.append(usage)
+        return _build_trace_impact_result(
+            symbol=symbol,
+            language=language,
+            file_path=file_path,
+            usages=usages,
+            source_total=source_total,
+            true_total=true_total,
+            truncated=truncated,
+            max_results=max_results,
+        )
 
-        # 计算影响等级（使用源文件真实总数，而非截断后的显示数）
-        # H4 fix: impact_badge / impact_level must reflect SOURCE callers
-        # only — markdown and comment matches don't justify a "🚨 HIGH
-        # IMPACT — N CALLERS" badge.
-        total_count = source_total
-        impact = _get_impact_level(total_count)
+    def _resolve_search_roots(self, project_root_arg: str | None) -> list[str]:
+        """Compute the project root list for ripgrep.
 
-        # 构建响应
-        # ``count`` mirrors ``call_count`` (cross-tool canonical name).
-        # K5 fix: ``impact_verdict`` uses magnitude vocabulary
-        # (HIGH/MEDIUM/LOW/NONE). The deprecated ``verdict`` alias now
-        # mirrors ``agent_summary.verdict`` so cross-tool readers get the
-        # standardized SAFE/CAUTION/UNSAFE vocabulary used by every other
-        # safety-aware tool (safe_to_edit, modification_guard, ...).
-        summary_line = f"{symbol} callers={total_count} impact={impact['level']}"
-        # Pick the next step based on impact level — high impact means
-        # mandatory review of every call site, low impact is a quick scan.
-        if impact["level"] in ("high", "medium"):
-            next_step = f"batch_search to enumerate all {total_count} call sites before changing signature"
-            verdict = "UNSAFE" if impact["level"] == "high" else "CAUTION"
-        elif impact["level"] == "low":
-            next_step = "review the few callers, then proceed with the change"
-            verdict = "CAUTION"
-        else:
-            next_step = "no callers — safe to refactor"
-            verdict = "SAFE"
+        Order: explicit ``project_root_arg`` (comma-split) → tool default
+        → cwd. r37bw extracted from execute.
+        """
+        if project_root_arg:
+            return [root.strip() for root in project_root_arg.split(",")]
+        if self.project_root:
+            return [self.project_root]
+        from pathlib import Path
 
-        result: dict[str, Any] = {
-            "success": True,
-            "symbol": symbol,
-            # H4 fix: ``call_count`` / ``count`` keep their meaning (the
-            # caller-facing canonical count) but now reflect source-only
-            # hits — the inflated text-match number is no longer the
-            # default. ``source_call_count`` is the same value under a
-            # more explicit name for callers that want to be sure they
-            # are reading the post-filter total. ``usage_count`` is the
-            # number of usages actually returned in the response (post
-            # display truncation) so an agent can sanity-check
-            # ``len(usages) == usage_count``.
-            "call_count": total_count,
-            "count": total_count,
-            "source_call_count": source_total,
-            "usage_count": len(usages),
-            "raw_match_count": true_total,
-            "impact_level": impact["level"],
-            # K5 fix: ``impact_verdict`` (magnitude vocab — HIGH/MEDIUM/
-            # LOW/NONE) is the canonical top-level magnitude field. The
-            # deprecated ``verdict`` alias now mirrors
-            # ``agent_summary.verdict`` (safety vocab — SAFE/CAUTION/
-            # UNSAFE) so anyone reading ``result["verdict"]`` directly
-            # sees the standardized safety vocabulary used by every
-            # other tool in the suite.
-            "impact_verdict": impact["level"].upper(),
-            "verdict": verdict,
-            "impact_badge": impact["badge"],
-            "impact_guidance": impact["guidance"],
-            "usages": usages,
-            "results": usages,
-            "summary_line": summary_line,
-            "agent_summary": {
-                "summary_line": summary_line,
-                "next_step": next_step,
-                "verdict": verdict,
-            },
-        }
+        return [str(Path.cwd())]
 
-        # 高影响时加入醒目 warning
-        if impact["level"] == "high":
-            result["warning"] = (
-                f"🚨 HIGH IMPACT: This symbol has {total_count} callers. "
-                f"Modifying its signature requires updating all call sites. "
-                f"Use batch_search to locate all callers before proceeding."
-            )
+    def _detect_language_filter(
+        self, file_path: str | None
+    ) -> tuple[str | None, list[str]]:
+        """Detect language from ``file_path`` and return (language, extensions).
 
-        # 添加可选字段
-        if language:
-            result["language"] = language
-            result["filtered_by_language"] = True
-
-        if file_path:
-            result["source_file"] = file_path
-
-        if truncated:
-            result["truncated"] = True
-            result["message"] = (
-                f"Results truncated to {max_results} usages. "
-                f"Consider narrowing the search scope or increasing max_results."
-            )
-
-        # H4 introspection: tell the agent when text matches were dropped.
-        # ``true_total`` is rg's raw output; ``source_total`` is what
-        # remains after the source-extension filter. A non-zero delta
-        # means the previous ``call_count`` would have been inflated.
-        if true_total > source_total:
-            result["non_source_match_count"] = true_total - source_total
-
-        return result
+        Returns ``(None, [])`` when ``file_path`` is missing or language
+        detection produces ``unknown``. r37bw extracted from execute.
+        """
+        if not file_path:
+            return None, []
+        language = detect_language_from_file(file_path, project_root=self.project_root)
+        if not language or language == "unknown":
+            return language, []
+        extensions = self._get_extensions_for_language(language)
+        logger.debug(
+            f"Detected language '{language}' from file '{file_path}', "
+            f"will filter by extensions: {extensions}"
+        )
+        return language, extensions
 
     def _get_extensions_for_language(self, language: str) -> list[str]:
         """
