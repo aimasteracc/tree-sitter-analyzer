@@ -316,87 +316,30 @@ class CodeGraphCallTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        self.validate_arguments(arguments)
+        """Dispatch call-graph queries by ``mode``.
 
+        r37br (dogfood): tool flagged this at 104 lines. Refactor splits
+        each mode into a ``_build_*_response`` method. M7 / H2 / H4 /
+        Finding 6 contracts preserved exactly.
+        """
+        self.validate_arguments(arguments)
         started = time.perf_counter()
         mode = arguments.get("mode", "summary")
         output_format = arguments.get("output_format", "toon")
-        # Cache hit fast-path: the first call builds the graph (2-5s on
-        # medium repos); every subsequent call within the same process
-        # reuses ``self._call_graph`` and finishes in tens of ms.
+        # Cache hit fast-path: first call builds graph (2-5s on medium
+        # repos); subsequent calls finish in ~tens of ms.
         graph = self._get_call_graph()
 
         if mode == "summary":
             result = {"success": True, "mode": "summary", **graph.summary()}
         elif mode == "all_functions":
-            funcs = graph.all_functions()
-            # M7: mode is named ``all_functions`` but the payload key was
-            # ``functions`` — agents that branched on ``r['all_functions']``
-            # saw an empty list. Emit ``all_functions`` as the canonical
-            # key matching the mode name, with ``functions`` kept as a
-            # deprecated alias pointing at the same list for back-compat
-            # with any caller pinned to the pre-M7 shape.
-            result = {
-                "success": True,
-                "mode": "all_functions",
-                "count": len(funcs),
-                "all_functions": funcs,
-                "functions": funcs,
-            }
+            result = self._build_all_functions_response(graph)
         elif mode == "callers":
-            func_name = arguments["function_name"]
-            file_path = arguments.get("file_path")
-            callers = graph.callers_of(func_name, file_path)
-            result = {
-                "success": True,
-                "mode": "callers",
-                "function": func_name,
-                "caller_count": len(callers),
-                "callers": callers,
-                # H2: ``NOT_FOUND`` verdict must reflect "symbol absent from
-                # the call graph", NOT "symbol has zero callers". Leaf
-                # functions and first-class function references are
-                # legitimately edge-less but still indexed.
-                "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
-            }
-            hint = _maybe_bare_name_hint(graph, func_name, len(callers), "callers")
-            if hint:
-                result["hint"] = hint
+            result = self._build_callers_response(graph, arguments)
         elif mode == "callees":
-            func_name = arguments["function_name"]
-            file_path = arguments.get("file_path")
-            callees = graph.callees_of(func_name, file_path)
-            result = {
-                "success": True,
-                "mode": "callees",
-                "function": func_name,
-                "callee_count": len(callees),
-                "callees": callees,
-                # H2: see callers branch — distinguish indexed-but-edgeless
-                # from genuinely-unknown.
-                "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
-            }
-            hint = _maybe_bare_name_hint(graph, func_name, len(callees), "callees")
-            if hint:
-                result["hint"] = hint
+            result = self._build_callees_response(graph, arguments)
         elif mode == "chain":
-            func_name = arguments["function_name"]
-            file_path = arguments.get("file_path")
-            depth = arguments.get("depth", 5)
-            chain = graph.call_chain(func_name, file_path, depth)
-            result = {
-                "success": True,
-                "mode": "chain",
-                "function": func_name,
-                "depth": depth,
-                "edge_count": len(chain),
-                "chain": chain,
-                # H2: see callers branch.
-                "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
-            }
-            hint = _maybe_bare_name_hint(graph, func_name, len(chain), "chain")
-            if hint:
-                result["hint"] = hint
+            result = self._build_chain_response(graph, arguments)
         else:  # pragma: no cover - validate_arguments rejects unknown modes
             raise ValueError(
                 f"Invalid mode '{mode}'; expected one of: "
@@ -405,17 +348,90 @@ class CodeGraphCallTool(BaseMCPTool):
 
         result["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
         # H4 introspection: tell callers when this response came from a
-        # rebuilt graph vs a warm reuse, so AI agents can reason about
-        # whether they're seeing post-edit state.
+        # rebuilt graph vs a warm reuse.
         if self._call_graph_built_at is not None:
             result["cache_age_s"] = round(time.time() - self._call_graph_built_at, 3)
         if self._cache_invalidated_reason is not None:
             result["cache_invalidated_reason"] = self._cache_invalidated_reason
 
-        # Finding 6: populate envelope so the dispatch post-hook (and direct
-        # ``execute()`` callers) see non-empty ``summary_line``/``agent_summary``.
+        # Finding 6: ensure direct execute() callers see non-empty envelope.
         _attach_call_graph_envelope(result)
 
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+    @staticmethod
+    def _build_all_functions_response(graph: Any) -> dict[str, Any]:
+        """M7: mode-named ``all_functions`` key + ``functions`` deprecated alias."""
+        funcs = graph.all_functions()
+        return {
+            "success": True,
+            "mode": "all_functions",
+            "count": len(funcs),
+            "all_functions": funcs,
+            "functions": funcs,
+        }
+
+    @staticmethod
+    def _build_callers_response(
+        graph: Any, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return callers of ``function_name`` with H2 ``function_indexed`` echo."""
+        func_name = arguments["function_name"]
+        file_path = arguments.get("file_path")
+        callers = graph.callers_of(func_name, file_path)
+        result: dict[str, Any] = {
+            "success": True,
+            "mode": "callers",
+            "function": func_name,
+            "caller_count": len(callers),
+            "callers": callers,
+            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+        }
+        hint = _maybe_bare_name_hint(graph, func_name, len(callers), "callers")
+        if hint:
+            result["hint"] = hint
+        return result
+
+    @staticmethod
+    def _build_callees_response(
+        graph: Any, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return callees of ``function_name`` with H2 ``function_indexed`` echo."""
+        func_name = arguments["function_name"]
+        file_path = arguments.get("file_path")
+        callees = graph.callees_of(func_name, file_path)
+        result: dict[str, Any] = {
+            "success": True,
+            "mode": "callees",
+            "function": func_name,
+            "callee_count": len(callees),
+            "callees": callees,
+            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+        }
+        hint = _maybe_bare_name_hint(graph, func_name, len(callees), "callees")
+        if hint:
+            result["hint"] = hint
+        return result
+
+    @staticmethod
+    def _build_chain_response(graph: Any, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Return the full call-chain DAG up to ``depth``."""
+        func_name = arguments["function_name"]
+        file_path = arguments.get("file_path")
+        depth = arguments.get("depth", 5)
+        chain = graph.call_chain(func_name, file_path, depth)
+        result: dict[str, Any] = {
+            "success": True,
+            "mode": "chain",
+            "function": func_name,
+            "depth": depth,
+            "edge_count": len(chain),
+            "chain": chain,
+            "function_indexed": bool(graph._resolve_targets(func_name, file_path)),
+        }
+        hint = _maybe_bare_name_hint(graph, func_name, len(chain), "chain")
+        if hint:
+            result["hint"] = hint
+        return result
