@@ -10,18 +10,49 @@ from .base import EdgeExtractor
 # java.lang auto-imported classes — filtered from extends/implements
 _JAVA_LANG_CLASSES: frozenset[str] = frozenset(
     {
-        "Object", "String", "Integer", "Long", "Double", "Float",
-        "Boolean", "Byte", "Short", "Character", "Number", "Void",
-        "RuntimeException", "Exception", "Error", "Throwable",
-        "IllegalArgumentException", "IllegalStateException",
-        "NullPointerException", "UnsupportedOperationException",
-        "IndexOutOfBoundsException", "ClassNotFoundException",
-        "ClassCastException", "ArithmeticException",
-        "Comparable", "Iterable", "AutoCloseable", "Cloneable",
-        "Serializable", "Runnable", "Thread", "Class", "ClassLoader",
-        "Override", "Deprecated", "SuppressWarnings",
-        "FunctionalInterface", "Annotation",
-        "StringBuilder", "StringBuffer", "Math", "System", "Enum",
+        "Object",
+        "String",
+        "Integer",
+        "Long",
+        "Double",
+        "Float",
+        "Boolean",
+        "Byte",
+        "Short",
+        "Character",
+        "Number",
+        "Void",
+        "RuntimeException",
+        "Exception",
+        "Error",
+        "Throwable",
+        "IllegalArgumentException",
+        "IllegalStateException",
+        "NullPointerException",
+        "UnsupportedOperationException",
+        "IndexOutOfBoundsException",
+        "ClassNotFoundException",
+        "ClassCastException",
+        "ArithmeticException",
+        "Comparable",
+        "Iterable",
+        "AutoCloseable",
+        "Cloneable",
+        "Serializable",
+        "Runnable",
+        "Thread",
+        "Class",
+        "ClassLoader",
+        "Override",
+        "Deprecated",
+        "SuppressWarnings",
+        "FunctionalInterface",
+        "Annotation",
+        "StringBuilder",
+        "StringBuffer",
+        "Math",
+        "System",
+        "Enum",
     }
 )
 
@@ -61,6 +92,36 @@ def _detect_java_root_packages(project_root: str) -> frozenset[str]:
     return result
 
 
+def _is_implements_target_keep(
+    cls: str,
+    import_map: dict[str, str],
+    root_packages: frozenset[str],
+) -> bool:
+    """Decide whether ``cls`` should appear as an ``implements`` edge target.
+
+    Returns ``False`` (drop edge) when:
+    - ``cls`` is empty or not a CamelCase identifier (regex ``^[A-Z]\\w*$``)
+    - ``cls`` is a short all-caps name (likely a 1-2 letter generic / type var)
+    - ``cls`` is a standard ``java.lang`` class (no architectural signal)
+    - ``cls`` resolves via ``import_map`` to a package OUTSIDE the project's
+      ``root_packages`` (third-party interface — skip cross-project noise)
+
+    r37e5 (dogfood): lifted from ``JavaEdgeExtractor.extract`` to flatten
+    the for-implements inner block from depth 6 to 3.
+    """
+    if not cls or not re.match(r"^[A-Z]\w*$", cls):
+        return False
+    if len(cls) <= 2 and cls.isupper():
+        return False
+    if cls in _JAVA_LANG_CLASSES:
+        return False
+    if cls in import_map:
+        pkg = import_map[cls]
+        if root_packages and not any(pkg.startswith(rp) for rp in root_packages):
+            return False
+    return True
+
+
 class JavaEdgeExtractor(EdgeExtractor):
     """Java: only extends/implements edges. Import map used for package resolution."""
 
@@ -75,9 +136,7 @@ class JavaEdgeExtractor(EdgeExtractor):
 
         # Build import map for package resolution (no edges from imports)
         import_map: dict[str, str] = {}
-        for m in re.finditer(
-            r"import\s+(?:static\s+)?([\w.]+\.(\w+))\s*;", source
-        ):
+        for m in re.finditer(r"import\s+(?:static\s+)?([\w.]+\.(\w+))\s*;", source):
             import_map[m.group(2)] = m.group(1).rsplit(".", 1)[0]
 
         # extends
@@ -95,24 +154,12 @@ class JavaEdgeExtractor(EdgeExtractor):
                     continue
             edges.append((src_name, cls))
 
-        # implements
-        for m in re.finditer(
-            r"\bimplements\s+([\w\s,<>]+?)(?:\{|$)", source
-        ):
+        # r37e5 (dogfood): flatten nesting 6 → 3 via _is_implements_target_keep.
+        for m in re.finditer(r"\bimplements\s+([\w\s,<>]+?)(?:\{|$)", source):
             for cls in re.split(r"[,\s]+", m.group(1)):
                 cls = cls.strip()
-                if not cls or not re.match(r"^[A-Z]\w*$", cls):
+                if not _is_implements_target_keep(cls, import_map, root_packages):
                     continue
-                if len(cls) <= 2 and cls.isupper():
-                    continue
-                if cls in _JAVA_LANG_CLASSES:
-                    continue
-                if cls in import_map:
-                    pkg = import_map[cls]
-                    if root_packages and not any(
-                        pkg.startswith(rp) for rp in root_packages
-                    ):
-                        continue
                 edges.append((src_name, cls))
 
         return edges
