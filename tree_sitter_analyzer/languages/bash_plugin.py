@@ -37,6 +37,74 @@ except ImportError:
     _AnalysisRequest = None  # type: ignore[misc, assignment]
 
 
+# Container node types in the Bash AST. A node of one of these types may
+# enclose target nodes deeper in the tree, so the traversal descends into
+# them even when the type itself isn't an extraction target. Listed as a
+# module-level frozenset so the iterative traversal doesn't re-create the
+# set on every call (r37f1 dogfood).
+_BASH_CONTAINER_NODE_TYPES: frozenset[str] = frozenset(
+    {
+        "program",
+        "function_definition",
+        "compound_statement",
+        "if_statement",
+        "while_statement",
+        "for_statement",
+        "c_style_for_statement",
+        "case_statement",
+        "case_item",
+        "elif_clause",
+        "do_group",
+        "subshell",
+        "command",
+        "list",
+        "redirected_statement",
+        "pipeline",
+        "declaration_command",
+        "variable_assignment",
+        "array",
+        "test_command",
+        "heredoc_redirect",
+        "heredoc_body",
+        "simple_expansion",
+        "expansion",
+        "command_substitution",
+        "string",
+        "binary_expression",
+        "unary_expression",
+        "subscript",
+    }
+)
+
+
+def _push_bash_children(
+    node_stack: list[tuple["tree_sitter.Node", int]],
+    current_node: "tree_sitter.Node",
+    depth: int,
+) -> None:
+    """Append ``current_node.children`` to ``node_stack`` in reversed order.
+
+    Uses ``reversed()`` for the natural iterative-DFS order (so the first
+    child gets popped first); falls back to forward iteration when
+    ``children`` isn't reversible (Mock objects in tests).
+
+    r37f1 (dogfood): lifted from ``_traverse_and_extract_iterative`` so
+    the parent body stays linear.
+    """
+    if not current_node.children:
+        return
+    try:
+        children_list = list(current_node.children)
+        children_iter: Iterator[tree_sitter.Node] = reversed(children_list)
+    except TypeError:
+        # Fallback for Mock objects or other non-reversible types
+        children_list = list(current_node.children)
+        children_iter = iter(children_list)
+
+    for child in children_iter:
+        node_stack.append((child, depth + 1))
+
+
 class BashElementExtractor(ElementExtractor):
     """Bash-specific element extractor for shell scripts"""
 
@@ -158,50 +226,23 @@ class BashElementExtractor(ElementExtractor):
         results: list[Any],
         element_type: str,
     ) -> None:
-        """Iterative node traversal and extraction"""
+        """Iterative node traversal and extraction.
+
+        r37f1 (dogfood): 87→~25 lines. The container-node frozenset moved
+        to module-level ``_BASH_CONTAINER_NODE_TYPES`` (was reconstructed
+        on every call); the child-stacking child-iter compat shim moved to
+        ``_push_bash_children``.
+        """
         if not root_node:
             return
 
         target_node_types = set(extractors.keys())
-        container_node_types = {
-            "program",
-            "function_definition",
-            "compound_statement",
-            "if_statement",
-            "while_statement",
-            "for_statement",
-            "c_style_for_statement",
-            "case_statement",
-            "case_item",
-            "elif_clause",
-            "do_group",
-            "subshell",
-            "command",
-            "list",
-            "redirected_statement",
-            "pipeline",
-            "declaration_command",
-            "variable_assignment",
-            "array",
-            "test_command",
-            "heredoc_redirect",
-            "heredoc_body",
-            "simple_expansion",
-            "expansion",
-            "command_substitution",
-            "string",
-            "binary_expression",
-            "unary_expression",
-            "subscript",
-        }
-
         node_stack = [(root_node, 0)]
         processed_nodes = 0
         max_depth = 50
 
         while node_stack:
             current_node, depth = node_stack.pop()
-
             if depth > max_depth:
                 log_debug(f"Maximum traversal depth ({max_depth}) exceeded")
                 continue
@@ -209,33 +250,22 @@ class BashElementExtractor(ElementExtractor):
             processed_nodes += 1
             node_type = current_node.type
 
-            # Early termination for irrelevant nodes
+            # Early termination for irrelevant nodes.
             if (
                 depth > 0
                 and node_type not in target_node_types
-                and node_type not in container_node_types
+                and node_type not in _BASH_CONTAINER_NODE_TYPES
             ):
                 continue
 
-            # Process target nodes
+            # Process target nodes.
             if node_type in target_node_types:
                 # r37cd (dogfood): extracted to flatten 7-deep nesting.
                 self._try_extract_bash_node(
                     current_node, node_type, extractors, results
                 )
 
-            # Add children to stack
-            if current_node.children:
-                try:
-                    children_list = list(current_node.children)
-                    children_iter: Iterator[tree_sitter.Node] = reversed(children_list)
-                except TypeError:
-                    # Fallback for Mock objects or other non-reversible types
-                    children_list = list(current_node.children)
-                    children_iter = iter(children_list)
-
-                for child in children_iter:
-                    node_stack.append((child, depth + 1))
+            _push_bash_children(node_stack, current_node, depth)
 
         log_debug(f"Iterative traversal processed {processed_nodes} nodes")
 
