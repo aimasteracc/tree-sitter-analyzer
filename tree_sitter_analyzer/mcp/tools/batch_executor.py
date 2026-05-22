@@ -2,6 +2,7 @@
 """Batch execution logic for ReadPartialTool — extracted from read_partial_tool.py."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -167,176 +168,237 @@ def _resolve_file(
     return resolved, None
 
 
-# execute_batch: implementation
+@dataclass
+class _BatchAccumulator:
+    """Running counters threaded through the batch loop.
+
+    r37bt (dogfood): execute_batch was 172 lines critical. The doubly-
+    nested loop (files → sections) mutated 5 counters as it went; passing
+    them as a dataclass keeps the helper signatures clean without
+    sacrificing visibility.
+    """
+
+    total_bytes: int = 0
+    total_lines: int = 0
+    ok_sections: int = 0
+    sections_seen_total: int = 0
+    error_count: int = 0
+    truncated: bool = False
+
+
 async def execute_batch(
     tool: BaseMCPTool,
     arguments: dict[str, Any],
     read_file_partial_fn: Callable[..., str | None],
 ) -> dict[str, Any]:
-    """Execute batch extraction: validate, resolve, read, and aggregate results."""
-    """Batch mode for extracting multiple ranges from multiple files."""
+    """Batch mode for extracting multiple ranges from multiple files.
+
+    r37bt (dogfood): tool flagged this at 172 lines. Refactor splits
+    input validation + per-file processing + per-section processing +
+    response assembly. Behaviour preserved (BATCH_LIMITS,
+    allow_truncate/fail_fast semantics, content_format echo).
+    """
     output_format = arguments.get("output_format", "toon")
     content_format = arguments.get("format", "text")
     allow_truncate = bool(arguments.get("allow_truncate", False))
     fail_fast = bool(arguments.get("fail_fast", False))
 
     requests = _validate_batch_top_level(arguments)
-    requests, truncated = _clamp_requests(requests, allow_truncate)
-
+    requests, initial_truncated = _clamp_requests(requests, allow_truncate)
+    acc = _BatchAccumulator(truncated=initial_truncated)
     results: list[dict[str, Any]] = []
-    total_bytes = 0
-    total_lines = 0
-    ok_sections = 0
-    sections_seen_total = 0
-    error_count = 0
 
-    # Loop iteration
     for file_req in requests:
-        file_path, sections, err_result, req_truncated = _validate_file_request(
-            file_req, fail_fast, allow_truncate
+        file_result = _process_file_request(
+            file_req=file_req,
+            tool=tool,
+            acc=acc,
+            fail_fast=fail_fast,
+            allow_truncate=allow_truncate,
+            content_format=content_format,
+            read_file_partial_fn=read_file_partial_fn,
         )
-        # Conditional check
-        if req_truncated:
-            truncated = True
-        # Conditional check
-        if err_result:
-            results.append(err_result)
-            error_count += 1
-            continue
+        if file_result is not None:
+            results.append(file_result)
 
-        resolved, err_result = _resolve_file(tool, file_path, fail_fast)
-        # Conditional check
-        if err_result:
-            results.append(err_result)
-            error_count += 1
-            continue
+    return _build_batch_response(results, acc, output_format, fail_fast=fail_fast)
 
-        file_result: dict[str, Any] = {
-            "file_path": file_path,
-            "resolved_path": resolved,
-            "sections": [],
-            "errors": [],
-        }
 
-        # Loop iteration
-        for sec in sections:
-            # Conditional check
-            if not isinstance(sec, dict):
-                error_count += 1
-                file_result["errors"].append({"error": "Invalid section entry"})
-                # Conditional check
-                if fail_fast:
-                    break
-                continue
+def _process_file_request(
+    *,
+    file_req: Any,
+    tool: BaseMCPTool,
+    acc: _BatchAccumulator,
+    fail_fast: bool,
+    allow_truncate: bool,
+    content_format: str,
+    read_file_partial_fn: Callable[..., str | None],
+) -> dict[str, Any] | None:
+    """Validate one file request, resolve its path, then process every section."""
+    file_path, sections, err_result, req_truncated = _validate_file_request(
+        file_req, fail_fast, allow_truncate
+    )
+    if req_truncated:
+        acc.truncated = True
+    if err_result:
+        acc.error_count += 1
+        return err_result
 
-            label = sec.get("label")
-            start_line = sec.get("start_line")
-            end_line = sec.get("end_line")
-            # Conditional check
-            if not isinstance(start_line, int) or start_line < 1:
-                error_count += 1
-                file_result["errors"].append(
-                    {"label": label, "error": "start_line must be an integer >= 1"}
-                )
-                # Conditional check
-                if fail_fast:
-                    break
-                continue
-            if end_line is not None and (
-                not isinstance(end_line, int) or end_line < start_line
-            ):
-                error_count += 1
-                file_result["errors"].append(
-                    {
-                        "label": label,
-                        "error": "end_line must be an integer >= start_line",
-                    }
-                )
-                # Conditional check
-                if fail_fast:
-                    break
-                continue
+    resolved, err_result = _resolve_file(tool, file_path, fail_fast)
+    if err_result:
+        acc.error_count += 1
+        return err_result
 
-            sections_seen_total += 1
-            # Conditional check
-            if sections_seen_total > BATCH_LIMITS["max_sections_total"]:
-                # Conditional check
-                if not allow_truncate:
-                    raise ValueError(
-                        f"Too many sections in requests: > max_sections_total={BATCH_LIMITS['max_sections_total']}"
-                    )
-                truncated = True
-                break
+    file_result: dict[str, Any] = {
+        "file_path": file_path,
+        "resolved_path": resolved,
+        "sections": [],
+        "errors": [],
+    }
+    for sec in sections:
+        should_break = _process_one_section(
+            section=sec,
+            resolved=resolved,
+            file_result=file_result,
+            acc=acc,
+            fail_fast=fail_fast,
+            allow_truncate=allow_truncate,
+            content_format=content_format,
+            read_file_partial_fn=read_file_partial_fn,
+        )
+        if should_break:
+            break
+    return file_result
 
-            content = read_file_partial_fn(resolved, start_line, end_line)
-            # Conditional check
-            if not content or content.strip() == "":
-                error_count += 1
-                file_result["errors"].append(
-                    {
-                        "label": label,
-                        "error": f"Invalid line range or empty content: start_line={start_line}, end_line={end_line}",
-                    }
-                )
-                # Conditional check
-                if fail_fast:
-                    break
-                continue
 
-            content_bytes = len(content.encode("utf-8"))
-            content_lines = len(content.split("\n")) if content else 0
-            # Conditional check
-            if end_line is not None:
-                content_lines = max(0, end_line - start_line + 1)
+def _process_one_section(
+    *,
+    section: Any,
+    resolved: str | None,
+    file_result: dict[str, Any],
+    acc: _BatchAccumulator,
+    fail_fast: bool,
+    allow_truncate: bool,
+    content_format: str,
+    read_file_partial_fn: Callable[..., str | None],
+) -> bool:
+    """Process one section. Return True when the caller should ``break``."""
+    if not isinstance(section, dict):
+        acc.error_count += 1
+        file_result["errors"].append({"error": "Invalid section entry"})
+        return fail_fast
 
-            would_bytes = total_bytes + content_bytes
-            would_lines = total_lines + content_lines
-            if (
-                would_bytes > BATCH_LIMITS["max_total_bytes"]
-                or would_lines > BATCH_LIMITS["max_total_lines"]
-            ):
-                # Conditional check
-                if not allow_truncate:
-                    raise ValueError(
-                        "Batch extract exceeds limits: "
-                        f"max_total_bytes={BATCH_LIMITS['max_total_bytes']}, max_total_lines={BATCH_LIMITS['max_total_lines']}"
-                    )
-                truncated = True
-                break
+    label = section.get("label")
+    start_line = section.get("start_line")
+    end_line = section.get("end_line")
 
-            total_bytes = would_bytes
-            total_lines = would_lines
-            ok_sections += 1
+    range_err = _validate_section_range(label, start_line, end_line)
+    if range_err is not None:
+        acc.error_count += 1
+        file_result["errors"].append(range_err)
+        return fail_fast
 
-            section_result: dict[str, Any] = {
+    acc.sections_seen_total += 1
+    if acc.sections_seen_total > BATCH_LIMITS["max_sections_total"]:
+        if not allow_truncate:
+            raise ValueError(
+                f"Too many sections in requests: "
+                f"> max_sections_total={BATCH_LIMITS['max_sections_total']}"
+            )
+        acc.truncated = True
+        return True
+
+    content = read_file_partial_fn(resolved, start_line, end_line)
+    if not content or content.strip() == "":
+        acc.error_count += 1
+        file_result["errors"].append(
+            {
                 "label": label,
-                "range": {"start_line": start_line, "end_line": end_line},
-                "content_length": len(content),
+                "error": (
+                    f"Invalid line range or empty content: "
+                    f"start_line={start_line}, end_line={end_line}"
+                ),
             }
-            # Conditional check
-            if content_format == "raw":
-                section_result["content"] = content
-            else:
-                section_result["content"] = content
+        )
+        return fail_fast
 
-            file_result["sections"].append(section_result)
+    content_bytes = len(content.encode("utf-8"))
+    content_lines = (
+        max(0, end_line - start_line + 1)
+        if end_line is not None
+        else (len(content.split("\n")) if content else 0)
+    )
+    would_bytes = acc.total_bytes + content_bytes
+    would_lines = acc.total_lines + content_lines
+    if (
+        would_bytes > BATCH_LIMITS["max_total_bytes"]
+        or would_lines > BATCH_LIMITS["max_total_lines"]
+    ):
+        if not allow_truncate:
+            raise ValueError(
+                "Batch extract exceeds limits: "
+                f"max_total_bytes={BATCH_LIMITS['max_total_bytes']}, "
+                f"max_total_lines={BATCH_LIMITS['max_total_lines']}"
+            )
+        acc.truncated = True
+        return True
 
-        results.append(file_result)
+    acc.total_bytes = would_bytes
+    acc.total_lines = would_lines
+    acc.ok_sections += 1
 
+    section_result: dict[str, Any] = {
+        "label": label,
+        "range": {"start_line": start_line, "end_line": end_line},
+        "content_length": len(content),
+        "content": content,
+    }
+    # ``content_format`` is reserved for future raw-vs-rendered variants;
+    # both modes currently emit the verbatim content.
+    _ = content_format
+    file_result["sections"].append(section_result)
+    return False
+
+
+def _validate_section_range(
+    label: Any, start_line: Any, end_line: Any
+) -> dict[str, Any] | None:
+    """Return an error dict on bad start/end_line, else ``None``."""
+    if not isinstance(start_line, int) or start_line < 1:
+        return {"label": label, "error": "start_line must be an integer >= 1"}
+    if end_line is not None and (
+        not isinstance(end_line, int) or end_line < start_line
+    ):
+        return {"label": label, "error": "end_line must be an integer >= start_line"}
+    return None
+
+
+def _build_batch_response(
+    results: list[dict[str, Any]],
+    acc: _BatchAccumulator,
+    output_format: str,
+    *,
+    fail_fast: bool,
+) -> dict[str, Any]:
+    """Compose the canonical batch envelope + apply TOON formatting.
+
+    Success preserved exactly: ``ok_sections > 0 AND (no errors OR fail_fast
+    disabled)``. fail_fast=True with any error sinks ``success`` to False
+    so callers that opted into strict mode get the legacy strict envelope.
+    """
     response: dict[str, Any] = {
-        "success": ok_sections > 0 and (error_count == 0 or not fail_fast),
+        "success": acc.ok_sections > 0 and (acc.error_count == 0 or not fail_fast),
         "count_files": len(results),
-        "count_sections": ok_sections,
-        "truncated": truncated,
+        "count_sections": acc.ok_sections,
+        "truncated": acc.truncated,
         "limits": dict(BATCH_LIMITS),
-        "errors_summary": {"errors": error_count},
+        "errors_summary": {"errors": acc.error_count},
         "agent_summary": build_batch_agent_summary(
             count_files=len(results),
-            count_sections=ok_sections,
-            truncated=truncated,
-            error_count=error_count,
+            count_sections=acc.ok_sections,
+            truncated=acc.truncated,
+            error_count=acc.error_count,
         ),
         "results": results,
     }
-
     return apply_toon_format_to_response(response, output_format)
