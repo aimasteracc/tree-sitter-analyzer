@@ -262,9 +262,14 @@ class CheckToolsTool(BaseMCPTool):
         # H5: build a canonical envelope so the response carries
         # ``success``, ``summary_line`` (one-line headline), and
         # ``agent_summary`` (matched headline + next_step + verdict).
-        # The verdict reflects environment health rather than analysis,
-        # so the values are "READY" / "MISSING".
-        verdict = "READY" if not missing else "MISSING"
+        # r37fH: originally "READY" / "MISSING" but those are NOT in
+        # ``_LEGAL_VERDICTS`` (F1 r37f7 vocabulary contract: SAFE /
+        # CAUTION / REVIEW / UNSAFE / INFO / WARN / ERROR / NOT_FOUND).
+        # Agents branching on `verdict in {"INFO","ERROR"}` were silently
+        # missing this tool's signal. Map READY→INFO (success path),
+        # MISSING→ERROR (prerequisites missing); next_step keeps install
+        # commands so the failure path stays actionable.
+        verdict = "INFO" if not missing else "ERROR"
         summary_line = (
             f"check_tools status={status} "
             f"fd={'ok' if fd_available else fd_result.get('failure_mode') or 'missing'} "

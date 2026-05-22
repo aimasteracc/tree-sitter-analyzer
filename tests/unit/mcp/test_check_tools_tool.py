@@ -315,7 +315,7 @@ class TestCheckToolsFailureModes:
         # the enum back into a command.
         next_step = result["agent_summary"]["next_step"]
         assert "not_installed" in next_step
-        assert result["agent_summary"]["verdict"] == "MISSING"
+        assert result["agent_summary"]["verdict"] == "ERROR"
 
     @pytest.mark.asyncio
     async def test_failure_mode_timeout(self, tool: CheckToolsTool) -> None:
@@ -349,7 +349,7 @@ class TestCheckToolsFailureModes:
             assert "timed out" in fix
             assert "$PATH" in fix or "which" in fix
 
-        assert result["agent_summary"]["verdict"] == "MISSING"
+        assert result["agent_summary"]["verdict"] == "ERROR"
         assert "timeout" in result["agent_summary"]["next_step"]
 
     @pytest.mark.asyncio
@@ -374,7 +374,7 @@ class TestCheckToolsFailureModes:
             # Permission-denied fixes should propose chmod, not reinstallation.
             assert "chmod" in fix or "permission" in fix.lower()
 
-        assert result["agent_summary"]["verdict"] == "MISSING"
+        assert result["agent_summary"]["verdict"] == "ERROR"
         assert "permission_denied" in result["agent_summary"]["next_step"]
 
     @pytest.mark.asyncio
@@ -422,5 +422,5 @@ class TestCheckToolsFailureModes:
 
         # Top-level status reflects the partial failure.
         assert result["status"] == "missing_tools"
-        assert result["agent_summary"]["verdict"] == "MISSING"
+        assert result["agent_summary"]["verdict"] == "ERROR"
         assert "wrong_version" in result["agent_summary"]["next_step"]

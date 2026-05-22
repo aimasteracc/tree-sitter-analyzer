@@ -1390,8 +1390,8 @@ class TestH5CheckToolsEnvelope:
         assert result.get("status") in {"all_tools_available", "missing_tools"}
         # verdict must be one of the documented enum values.
         verdict = result["agent_summary"].get("verdict")
-        assert verdict in {"READY", "MISSING"}, (
-            f"check_tools: verdict must be READY or MISSING, got {verdict!r}"
+        assert verdict in {"INFO", "ERROR"}, (
+            f"check_tools: verdict must be INFO or ERROR (canonical r37fH), got {verdict!r}"
         )
 
 
