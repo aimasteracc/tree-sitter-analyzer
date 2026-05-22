@@ -562,6 +562,79 @@ def _mcp_metadata_block(
     }
 
 
+def _group_elements_by_type(
+    elements: Any,
+) -> dict[str, list[Any]]:
+    """Single-pass partition of ``elements`` by their ``element_type``.
+
+    Returns a dict keyed by the canonical type constants (class /
+    function / variable / import / package / annotation). Unknown
+    element types are silently dropped (not added to any bucket).
+
+    r37e7 (dogfood): lifted from ``AnalysisResult.to_dict`` to flatten
+    the long_method warning.
+    """
+    from .constants import (
+        ELEMENT_TYPE_ANNOTATION,
+        ELEMENT_TYPE_CLASS,
+        ELEMENT_TYPE_FUNCTION,
+        ELEMENT_TYPE_IMPORT,
+        ELEMENT_TYPE_VARIABLE,
+        get_element_type,
+    )
+
+    grouped: dict[str, list[Any]] = {
+        ELEMENT_TYPE_CLASS: [],
+        ELEMENT_TYPE_FUNCTION: [],
+        ELEMENT_TYPE_VARIABLE: [],
+        ELEMENT_TYPE_IMPORT: [],
+        ELEMENT_TYPE_PACKAGE: [],
+        ELEMENT_TYPE_ANNOTATION: [],
+    }
+    for e in elements:
+        etype = get_element_type(e)
+        if etype in grouped:
+            grouped[etype].append(e)
+    return grouped
+
+
+def _to_dict_import_row(imp: Any) -> dict[str, Any]:
+    """Build the legacy import dict row used by ``AnalysisResult.to_dict``."""
+    return {
+        "name": imp.name,
+        "is_static": getattr(imp, "is_static", False),
+        "is_wildcard": getattr(imp, "is_wildcard", False),
+    }
+
+
+def _to_dict_class_row(cls: Any) -> dict[str, Any]:
+    """Build the legacy class dict row (name + type + package)."""
+    return {
+        "name": cls.name,
+        "type": getattr(cls, "class_type", "class"),
+        "package": getattr(cls, "package_name", None),
+    }
+
+
+def _to_dict_method_row(method: Any) -> dict[str, Any]:
+    """Build the legacy method dict row (name + return_type + parameters)."""
+    return {
+        "name": method.name,
+        "return_type": getattr(method, "return_type", None),
+        "parameters": getattr(method, "parameters", []),
+    }
+
+
+def _to_dict_field_row(field: Any) -> dict[str, Any]:
+    """Build the legacy field dict row (name + type)."""
+    return {"name": field.name, "type": getattr(field, "field_type", None)}
+
+
+def _to_dict_annotation_row(ann: Any) -> dict[str, Any]:
+    """Build the legacy annotation dict row (name only; falls back to str)."""
+    return {"name": getattr(ann, "name", str(ann))}
+
+
 @dataclass(frozen=False)
 class AnalysisResult:
     """Comprehensive analysis result container"""
@@ -607,79 +680,23 @@ class AnalysisResult:
         pass
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert analysis result to dictionary for serialization using unified elements"""
-        # Use unified elements list for consistent data structure
-        elements = self.elements or []
+        """Convert analysis result to dictionary for serialization.
 
-        # Single pass grouping for better performance
-        from .constants import (
-            ELEMENT_TYPE_ANNOTATION,
-            ELEMENT_TYPE_CLASS,
-            ELEMENT_TYPE_FUNCTION,
-            ELEMENT_TYPE_IMPORT,
-            ELEMENT_TYPE_VARIABLE,
-            get_element_type,
-        )
-
-        grouped: dict[str, list[CodeElement]] = {
-            ELEMENT_TYPE_CLASS: [],
-            ELEMENT_TYPE_FUNCTION: [],
-            ELEMENT_TYPE_VARIABLE: [],
-            ELEMENT_TYPE_IMPORT: [],
-            ELEMENT_TYPE_PACKAGE: [],
-            ELEMENT_TYPE_ANNOTATION: [],
-        }
-
-        # Iterate over e
-        for e in elements:
-            etype = get_element_type(e)
-            if etype in grouped:
-                grouped[etype].append(e)
-
-        classes = grouped[ELEMENT_TYPE_CLASS]
-        methods = grouped[ELEMENT_TYPE_FUNCTION]
-        fields = grouped[ELEMENT_TYPE_VARIABLE]
-        imports = grouped[ELEMENT_TYPE_IMPORT]
-        packages = grouped[ELEMENT_TYPE_PACKAGE]
-
+        r37e7 (dogfood): 78 lines → ~20 lines of phase dispatch via
+        ``_group_elements_by_type`` + per-type row builders.
+        """
+        grouped = _group_elements_by_type(self.elements or [])
+        annotation_source = grouped["annotation"] or getattr(self, "annotations", [])
+        packages = grouped["package"]
         return {
             "file_path": self.file_path,
             "line_count": self.line_count,
             "package": {"name": packages[0].name} if packages else None,
-            "imports": [
-                {
-                    "name": imp.name,
-                    "is_static": getattr(imp, "is_static", False),
-                    "is_wildcard": getattr(imp, "is_wildcard", False),
-                }
-                for imp in imports
-            ],
-            "classes": [
-                {
-                    "name": cls.name,
-                    "type": getattr(cls, "class_type", "class"),
-                    "package": getattr(cls, "package_name", None),
-                }
-                for cls in classes
-            ],
-            "methods": [
-                {
-                    "name": method.name,
-                    "return_type": getattr(method, "return_type", None),
-                    "parameters": getattr(method, "parameters", []),
-                }
-                for method in methods
-            ],
-            "fields": [
-                {"name": field.name, "type": getattr(field, "field_type", None)}
-                for field in fields
-            ],
-            "annotations": [
-                {"name": getattr(ann, "name", str(ann))}
-                for ann in (
-                    grouped[ELEMENT_TYPE_ANNOTATION] or getattr(self, "annotations", [])
-                )
-            ],
+            "imports": [_to_dict_import_row(imp) for imp in grouped["import"]],
+            "classes": [_to_dict_class_row(cls) for cls in grouped["class"]],
+            "methods": [_to_dict_method_row(m) for m in grouped["function"]],
+            "fields": [_to_dict_field_row(f) for f in grouped["variable"]],
+            "annotations": [_to_dict_annotation_row(a) for a in annotation_source],
             "analysis_time": self.analysis_time,
             "success": self.success,
             "error_message": self.error_message,
