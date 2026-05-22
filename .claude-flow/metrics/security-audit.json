@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-05-22T18:42:08.164Z",
+  "timestamp": "2026-05-22T19:11:25.190Z",
   "mode": "headless",
   "workerType": "audit",
   "model": "haiku",
-  "durationMs": 273005,
-  "executionId": "audit_1779475055159_1fgq2f",
+  "durationMs": 195766,
+  "executionId": "audit_1779476889424_pd3v9c",
   "success": false,
   "findings": {
     "parseError": true,
-    "rawOutput": "API Error: Request rejected (429) · [1308][Usage limit reached for 5 hour. Your limit will reset at 2026-05-23 03:51:11][20260523024207bb2f57e073b34820]\n"
+    "rawOutput": "API Error: Request rejected (429) · [1308][Usage limit reached for 5 hour. Your limit will reset at 2026-05-23 03:51:11][20260523031124c03a5d741b6a4ba9]\n"
   },
-  "rawOutputPreview": "API Error: Request rejected (429) · [1308][Usage limit reached for 5 hour. Your limit will reset at 2026-05-23 03:51:11][20260523024207bb2f57e073b34820]\n",
+  "rawOutputPreview": "API Error: Request rejected (429) · [1308][Usage limit reached for 5 hour. Your limit will reset at 2026-05-23 03:51:11][20260523031124c03a5d741b6a4ba9]\n",
   "rawOutputLength": 153
 }

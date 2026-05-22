@@ -122,13 +122,22 @@ class SymbolLineageTool(BaseMCPTool):
         )
 
         test_files = sorted(
-            f
-            for f in (all_downstream_files | all_symbol_files)
-            if _is_test_file(f)
+            f for f in (all_downstream_files | all_symbol_files) if _is_test_file(f)
+        )
+
+        # Map symbol-lineage risk to the canonical verdict vocabulary
+        # (tsa-landing/agent-loop contract). NOT_FOUND when the symbol
+        # isn't anywhere — agents must not interpret an empty result as
+        # "safe to delete".
+        verdict = _lineage_verdict(
+            risk_level=risk["level"],
+            def_count=len(definitions),
+            ref_count=len(references),
         )
 
         response: dict[str, Any] = {
             "success": True,
+            "verdict": verdict,
             "symbol": symbol,
             "definitions": definitions[:20],
             "definition_count": len(definitions),
@@ -151,6 +160,29 @@ class SymbolLineageTool(BaseMCPTool):
         }
 
         return apply_toon_format_to_response(response, output_format)
+
+
+def _lineage_verdict(risk_level: str, def_count: int, ref_count: int) -> str:
+    """Map symbol-lineage facts to the canonical verdict vocabulary.
+
+    pain #3: the CLI surface of ``--symbol-lineage`` was emitting
+    ``verdict: null`` despite having all the inputs to compute one.
+    Agents that branch on verdict (the tsa-landing decision surface and
+    safe-to-edit gates) were silently treating "no verdict" as "INFO".
+
+    Rules:
+    - 0 defs + 0 refs => NOT_FOUND (symbol not anywhere in the project)
+    - high risk     => CAUTION (wide blast radius; needs careful review)
+    - medium risk   => REVIEW  (run the listed tests, but proceed)
+    - else          => INFO    (low/none risk; safe edit)
+    """
+    if def_count == 0 and ref_count == 0:
+        return "NOT_FOUND"
+    if risk_level == "high":
+        return "CAUTION"
+    if risk_level == "medium":
+        return "REVIEW"
+    return "INFO"
 
 
 def _assess_risk(
