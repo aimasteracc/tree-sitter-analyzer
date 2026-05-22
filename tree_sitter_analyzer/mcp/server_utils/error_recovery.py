@@ -346,108 +346,91 @@ def ensure_canonical_success_envelope(
 ) -> dict[str, Any]:
     """Augment a tool's success-path response with the canonical envelope keys.
 
-    Finding 6: round-16b dogfood showed that 7 tools were returning responses
-    with ``summary_line=None`` (FileHealthTool, RefactoringSuggestionsTool,
-    SmartContextTool, AnalyzeCodeStructureTool, ProjectOverviewTool,
-    CodeGraphCallTool, ProjectHealthTool). Some emit ``agent_summary`` but
-    never mirror its ``summary_line`` to the top level; others omit
-    ``agent_summary`` entirely.
-
-    Run this at the MCP-server dispatch boundary, after a tool's
-    ``execute`` returns and before the result is JSON-serialised. It is
-    purely additive — if the tool already populated ``summary_line`` or
-    ``agent_summary`` we keep its value.
-
-    Skips:
-    - error responses (``success is False``) — those flow through
-      :func:`ensure_canonical_error_envelope` instead.
-    - TOON-formatted blobs (``format == 'toon'``) — those are already
-      shipped as ``toon_content`` plus the metadata copy.
+    r37bu (dogfood): tool flagged this at 110 lines. Refactor extracts
+    each of the 4 envelope steps into a focused helper. Behaviour
+    preserved (Finding 6 / K12 / M14 / M10 contracts all intact).
     """
-    # Errors handled by the error envelope path.
     if response.get("success") is False:
+        # Errors flow through ensure_canonical_error_envelope instead.
         return response
 
     # K12: normalize echoed file_path so ``./X`` and ``X`` produce
-    # byte-identical responses. Pre-K12 the raw argument was echoed
-    # unchanged — same content_hash, different file_path string, which
-    # confused downstream dedup/caching/display layers.
+    # byte-identical responses (downstream dedup/caching/display).
     _normalize_echoed_file_path(response)
 
-    # M14: every single-file tool should echo ``language: <detected>``
-    # so refactor / file_health / code_patterns / safe_to_edit converge
-    # on the same lowercase string as analyze_scale. Done centrally so
-    # each tool doesn't have to opt in individually.
+    # M14: every single-file tool echoes ``language: <detected>``.
     _ensure_language_echo(response, arguments)
 
+    summary_line_value = _populate_summary_line(response, tool_name, arguments)
+    agent_summary = _populate_agent_summary_block(response, summary_line_value)
+
+    # M10: mirror verdict between top-level and agent_summary.
+    _mirror_verdict(response, agent_summary)
+
+    # Final default: if neither side set ``verdict`` (and mirror found
+    # nothing to copy), populate the agent-side with ``"n/a"`` so the
+    # envelope shape stays stable.
+    agent_summary.setdefault("verdict", "n/a")
+    return response
+
+
+def _populate_summary_line(
+    response: dict[str, Any],
+    tool_name: str,
+    arguments: dict[str, Any] | None,
+) -> str:
+    """Mirror agent_summary.summary_line → top-level, or synthesize when both missing.
+
+    r37bu: extracted from ``ensure_canonical_success_envelope``. Returns
+    the final ``summary_line`` value (always a non-empty string).
+    """
     agent_summary = response.get("agent_summary")
-    summary_line_value = response.get("summary_line")
+    current = response.get("summary_line")
 
     # Step 1: mirror agent_summary.summary_line → top-level if missing.
-    if not isinstance(summary_line_value, str) or not summary_line_value:
-        if isinstance(agent_summary, dict):
-            candidate = agent_summary.get("summary_line")
-            if isinstance(candidate, str) and candidate:
-                response["summary_line"] = candidate
-                summary_line_value = candidate
+    if (not isinstance(current, str) or not current) and isinstance(
+        agent_summary, dict
+    ):
+        candidate = agent_summary.get("summary_line")
+        if isinstance(candidate, str) and candidate:
+            response["summary_line"] = candidate
+            return candidate
 
-    # Step 2: synthesize a minimal summary_line + agent_summary when the
-    # tool didn't produce either. Use tool name + the most informative
-    # identifier from the response or arguments.
-    if not isinstance(summary_line_value, str) or not summary_line_value:
-        identifier_key: str | None = None
-        identifier_value: str | None = None
-        for key in _IDENTIFIER_FIELDS:
-            val = response.get(key)
-            if isinstance(val, str) and val:
-                identifier_key, identifier_value = key, val
-                break
-        if identifier_value is None:
-            identifier_key, identifier_value = _pick_identifier(arguments)
-        synthesized = (
-            f"{tool_name}: {identifier_value}"
-            if identifier_value
-            else f"{tool_name}: ok"
-        )
-        response["summary_line"] = synthesized
-        summary_line_value = synthesized
+    if isinstance(current, str) and current:
+        return current
 
-    # Step 3: ensure agent_summary is at least a dict with the
-    # mirrored summary_line and a generic next_step. We intentionally
-    # do NOT default ``verdict`` here yet — the mirror step below
-    # needs to see whether the tool populated only one of the two
-    # surfaces. The default is applied AFTER the mirror so missing-on-
-    # both-sides becomes ``"n/a"`` instead of accidentally clobbering
-    # a real value the mirror would otherwise have propagated.
+    # Step 2: synthesize from tool_name + the most informative identifier.
+    identifier_value: str | None = None
+    for key in _IDENTIFIER_FIELDS:
+        val = response.get(key)
+        if isinstance(val, str) and val:
+            identifier_value = val
+            break
+    if identifier_value is None:
+        _identifier_key, identifier_value = _pick_identifier(arguments)
+    synthesized = (
+        f"{tool_name}: {identifier_value}" if identifier_value else f"{tool_name}: ok"
+    )
+    response["summary_line"] = synthesized
+    return synthesized
+
+
+def _populate_agent_summary_block(
+    response: dict[str, Any], summary_line_value: str
+) -> dict[str, Any]:
+    """Ensure ``agent_summary`` is a dict with mirrored summary_line + next_step.
+
+    r37bu: extracted from ``ensure_canonical_success_envelope``. Does NOT
+    default ``verdict`` — that runs after the M10 mirror so a single-side
+    population gets copied correctly before the n/a fallback.
+    """
+    agent_summary = response.get("agent_summary")
     if not isinstance(agent_summary, dict):
         agent_summary = {}
     agent_summary.setdefault("summary_line", summary_line_value)
     agent_summary.setdefault("next_step", "")
     response["agent_summary"] = agent_summary
-
-    # Step 4 (M10, round-26 dogfood): mirror ``verdict`` between
-    # top-level and ``agent_summary`` whenever exactly one location is
-    # populated. Pre-M10 several tools split this surface:
-    #   * safe_to_edit emitted ``verdict`` at the top, never inside
-    #     ``agent_summary`` — chained agents reading from agent_summary
-    #     saw ``None``.
-    #   * code_patterns emitted ``verdict`` inside ``agent_summary``
-    #     only.
-    #   * smart_context omitted both surfaces.
-    # The canonical post-hook approach (vs per-tool fixes) closes the
-    # door on the regression class entirely — any future tool that
-    # populates one location will see the value mirrored to the other
-    # automatically. Idempotent: when both surfaces are already set we
-    # don't touch them even if they disagree (lets a tool intentionally
-    # diverge if it ever needs to).
-    _mirror_verdict(response, agent_summary)
-
-    # Final default: if neither surface set ``verdict`` (and mirror
-    # found nothing to copy), populate the agent-side with ``"n/a"`` so
-    # the envelope shape stays stable.
-    agent_summary.setdefault("verdict", "n/a")
-
-    return response
+    return agent_summary
 
 
 def _mirror_verdict(response: dict[str, Any], agent_summary: dict[str, Any]) -> None:
