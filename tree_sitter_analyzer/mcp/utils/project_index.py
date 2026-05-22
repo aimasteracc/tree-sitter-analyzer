@@ -1002,71 +1002,107 @@ class ProjectIndexManager:
         Returns [] gracefully if the edge list is empty.
 
         Each returned dict has: name, pagerank (float), inbound_refs (int).
+
+        r37ee (dogfood): 78 lines → ~20 of dispatch. ``_pagerank_build_graph``
+        builds the adjacency lists; ``_pagerank_iterate`` runs the power
+        iteration to convergence; ``_pagerank_top_n_rows`` filters and
+        formats the top-``top_n`` result rows.
         """
         if not edges:
             return []
 
         try:
-            # Build adjacency: out-edges per node
-            out_edges: dict[str, set[str]] = {}
-            inbound: dict[str, int] = {}
-            nodes: set[str] = set()
-
-            for src, dst in edges:
-                nodes.add(src)
-                nodes.add(dst)
-                out_edges.setdefault(src, set()).add(dst)
-                inbound[dst] = inbound.get(dst, 0) + 1
-
-            if not nodes:
+            out_edges, inbound, node_list = self._pagerank_build_graph(edges)
+            if not node_list:
                 return []
-
-            n = len(nodes)
-            node_list = sorted(nodes)
-            scores: dict[str, float] = dict.fromkeys(node_list, 1.0 / n)
-            dangling = {nd for nd in node_list if nd not in out_edges}
-
-            # r37e3 (dogfood): inner power-iteration step抽到
-            # _pagerank_step so the outer loop stays at ≤3 nesting.
-            for _ in range(max_iter):
-                new_scores = self._pagerank_step(
-                    scores, node_list, out_edges, dangling, alpha, n
-                )
-                err = sum(abs(new_scores[nd] - scores[nd]) for nd in node_list)
-                scores = new_scores
-                if err < 1.0e-6 * n:
-                    break
-
-            # Filter Python stdlib / typing helpers that look like classes
-            # in the edge extraction but are not real architectural nodes.
-            # ``TYPE_CHECKING`` is the worst offender — it surfaces as a
-            # high-degree node because every type-annotated module imports
-            # it, but renaming it is meaningless. ``Any``, ``Optional``,
-            # ``ClassVar`` etc. land in the same bucket.
-            filtered = [
-                (name, score)
-                for name, score in sorted(scores.items(), key=lambda kv: -kv[1])
-                if name not in _PAGERANK_STDLIB_BLOCKLIST
-            ]
-            top = filtered[:top_n]
-            return [
-                {
-                    # ``rank`` is the 1-based ordinal (matches the
-                    # ``architecture_rank`` field used by
-                    # modification_guard's summary line). ``symbol`` is
-                    # an alias for ``name`` so callers using either
-                    # vocabulary find the node.
-                    "rank": idx,
-                    "name": name,
-                    "symbol": name,
-                    "pagerank": round(score, 4),
-                    "inbound_refs": inbound.get(name, 0),
-                }
-                for idx, (name, score) in enumerate(top, 1)
-            ]
+            scores = self._pagerank_iterate(out_edges, node_list, alpha, max_iter)
+            return self._pagerank_top_n_rows(scores, inbound, top_n)
         except Exception as exc:  # noqa: BLE001
             logger.debug("PageRank computation failed: %s", exc)
             return []
+
+    @staticmethod
+    def _pagerank_build_graph(
+        edges: list[tuple[str, str]],
+    ) -> tuple[dict[str, set[str]], dict[str, int], list[str]]:
+        """Build the adjacency lists used by ``_compute_pagerank``.
+
+        Returns ``(out_edges, inbound, sorted_nodes)`` where ``out_edges`` maps
+        a source node to its set of destinations, ``inbound`` maps a
+        destination node to its in-degree, and ``sorted_nodes`` is the
+        deterministic order used as the iteration basis.
+        """
+        out_edges: dict[str, set[str]] = {}
+        inbound: dict[str, int] = {}
+        nodes: set[str] = set()
+        for src, dst in edges:
+            nodes.add(src)
+            nodes.add(dst)
+            out_edges.setdefault(src, set()).add(dst)
+            inbound[dst] = inbound.get(dst, 0) + 1
+        return out_edges, inbound, sorted(nodes)
+
+    def _pagerank_iterate(
+        self,
+        out_edges: dict[str, set[str]],
+        node_list: list[str],
+        alpha: float,
+        max_iter: int,
+    ) -> dict[str, float]:
+        """Run power iteration until convergence (or ``max_iter``).
+
+        r37e3 (dogfood): inner power-iteration step已抽到 ``_pagerank_step``
+        so the outer loop stays at ≤3 nesting; this method now only owns
+        the convergence-detection bookkeeping.
+        """
+        n = len(node_list)
+        scores: dict[str, float] = dict.fromkeys(node_list, 1.0 / n)
+        dangling = {nd for nd in node_list if nd not in out_edges}
+        for _ in range(max_iter):
+            new_scores = self._pagerank_step(
+                scores, node_list, out_edges, dangling, alpha, n
+            )
+            err = sum(abs(new_scores[nd] - scores[nd]) for nd in node_list)
+            scores = new_scores
+            if err < 1.0e-6 * n:
+                break
+        return scores
+
+    @staticmethod
+    def _pagerank_top_n_rows(
+        scores: dict[str, float],
+        inbound: dict[str, int],
+        top_n: int,
+    ) -> list[dict[str, Any]]:
+        """Filter stdlib blocklist + take ``top_n`` highest-score rows.
+
+        Filter Python stdlib / typing helpers that look like classes
+        in the edge extraction but are not real architectural nodes.
+        ``TYPE_CHECKING`` is the worst offender — it surfaces as a
+        high-degree node because every type-annotated module imports
+        it, but renaming it is meaningless. ``Any``, ``Optional``,
+        ``ClassVar`` etc. land in the same bucket.
+
+        The returned rows include ``rank`` (1-based, matches the
+        ``architecture_rank`` field on the modification_guard summary
+        line) and ``symbol`` (alias for ``name``).
+        """
+        filtered = [
+            (name, score)
+            for name, score in sorted(scores.items(), key=lambda kv: -kv[1])
+            if name not in _PAGERANK_STDLIB_BLOCKLIST
+        ]
+        top = filtered[:top_n]
+        return [
+            {
+                "rank": idx,
+                "name": name,
+                "symbol": name,
+                "pagerank": round(score, 4),
+                "inbound_refs": inbound.get(name, 0),
+            }
+            for idx, (name, score) in enumerate(top, 1)
+        ]
 
     # ------------------------------------------------------------------
     # TOON rendering
