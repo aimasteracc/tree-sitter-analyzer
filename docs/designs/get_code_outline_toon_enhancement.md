@@ -232,8 +232,7 @@ def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
 
 需要更新：
 1. `README.md` - 在 get_code_outline 示例中展示 TOON 格式
-2. `docs/get_code_outline_test_report.md` - 添加 TOON 格式示例
-3. 工具的 docstring - 说明 output_format 参数
+2. 工具的 docstring - 说明 output_format 参数
 
 ## 实现检查清单
 
