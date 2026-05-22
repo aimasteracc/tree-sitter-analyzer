@@ -333,6 +333,7 @@ def _build_project_agent_summary(
     queue_head = agent_backlog[0] if agent_backlog else None
     risk = _project_risk(grade_distribution)
     summary: dict[str, Any] = {
+        "verdict": _project_health_verdict(grade_distribution),
         "risk": risk,
         "total_files": total_files,
         "weakest_dimension": weakest_dim,
