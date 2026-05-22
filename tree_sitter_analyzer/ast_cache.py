@@ -205,6 +205,16 @@ def _content_hash(source: str | bytes) -> str:
     return hashlib.sha256(source).hexdigest()
 
 
+def _index_skipped(rel_path: str, reason: str) -> dict[str, Any]:
+    """Build the standard ``status=skipped`` envelope used by ``ASTCache.index_file``.
+
+    r37ea (dogfood): one-liner kept module-level so the early-return path in
+    ``index_file`` stays single-line and there is one place to add fields if
+    the skipped envelope ever grows (e.g. ``language`` hint, telemetry tag).
+    """
+    return {"file": rel_path, "status": "skipped", "reason": reason}
+
+
 def _first_text_child(
     node: Any,
     source: str,
@@ -809,25 +819,25 @@ class ASTCache:
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
         """Parse one file and persist its symbols / imports / structure.
 
-        r37cx (dogfood): 110 lines → ~30 of phase dispatch.
-        Sub-helpers: ``_resolve_language_for_path``, ``_check_existing_index``,
-        ``_persist_indexed_file``, ``_reindex_fts_rows``.
+        r37cx → r37ea (dogfood): 78 → ~25 lines of phase dispatch.
+        Phase helpers (``_resolve_language_for_path`` / ``_check_existing_index``
+        / ``_persist_indexed_file`` / ``_reindex_fts_rows``) own per-phase logic;
+        ``_stat_for_index``, ``_read_source_for_index`` and
+        ``_apply_content_unchanged_row`` (r37ea) collapse repeated OSError /
+        same-hash bookkeeping. ``_parse_file_for_index`` (r37ea) handles the
+        tree-sitter parse + ParseResult error envelope.
         """
         abs_path = os.path.abspath(file_path)
         rel_path = os.path.relpath(abs_path, self.project_root)
 
         language = self._resolve_language_for_path(abs_path, language)
         if language is None:
-            return {
-                "file": rel_path,
-                "status": "skipped",
-                "reason": "unsupported language",
-            }
+            return _index_skipped(rel_path, "unsupported language")
 
-        try:
-            stat = os.stat(abs_path)
-        except OSError as e:
-            return {"file": rel_path, "status": "error", "reason": str(e)}
+        stat_or_error = self._stat_for_index(abs_path, rel_path)
+        if isinstance(stat_or_error, dict):
+            return stat_or_error
+        stat = stat_or_error
 
         conn = self._get_conn()
         row = conn.execute(
@@ -839,30 +849,23 @@ class ASTCache:
         if cache_response is not None:
             return cache_response
 
-        try:
-            with open(abs_path, encoding="utf-8", errors="replace") as f:
-                source_code = f.read()
-        except OSError as e:
-            return {"file": rel_path, "status": "error", "reason": str(e)}
-
+        source_or_error = self._read_source_for_index(abs_path, rel_path)
+        if isinstance(source_or_error, dict):
+            return source_or_error
+        source_code = source_or_error
         content_hash = _content_hash(source_code)
-        if row is not None and row["content_hash"] == content_hash:
-            conn.execute(
-                "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
-                (int(stat.st_mtime_ns), stat.st_size, rel_path),
-            )
-            conn.commit()
-            return {"file": rel_path, "status": "cached", "reason": "content unchanged"}
 
-        result: ParseResult = self._parser.parse_file(abs_path, language)
-        if not result.success:
-            return {
-                "file": rel_path,
-                "status": "error",
-                "reason": result.error_message or "parse failed",
-            }
+        same_hash = self._apply_content_unchanged_row(
+            conn, row, content_hash, stat, rel_path
+        )
+        if same_hash is not None:
+            return same_hash
 
-        symbols = _extract_symbols(result.tree, source_code, language)
+        parse_or_error = self._parse_file_for_index(abs_path, language, rel_path)
+        if isinstance(parse_or_error, dict):
+            return parse_or_error
+
+        symbols = _extract_symbols(parse_or_error.tree, source_code, language)
         imports = _extract_imports(symbols)
         structure = _extract_structure(symbols)
         self._persist_indexed_file(
@@ -884,6 +887,60 @@ class ASTCache:
             "symbols": len(symbols.get("symbols", [])),
             "content_hash": content_hash[:16],
         }
+
+    @staticmethod
+    def _stat_for_index(
+        abs_path: str, rel_path: str
+    ) -> os.stat_result | dict[str, Any]:
+        """``os.stat`` ``abs_path``, returning a typed error dict on failure."""
+        try:
+            return os.stat(abs_path)
+        except OSError as e:
+            return {"file": rel_path, "status": "error", "reason": str(e)}
+
+    @staticmethod
+    def _read_source_for_index(abs_path: str, rel_path: str) -> str | dict[str, Any]:
+        """Read source text, returning a typed error dict on OSError."""
+        try:
+            with open(abs_path, encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except OSError as e:
+            return {"file": rel_path, "status": "error", "reason": str(e)}
+
+    @staticmethod
+    def _apply_content_unchanged_row(
+        conn: Any,
+        row: Any,
+        content_hash: str,
+        stat: os.stat_result,
+        rel_path: str,
+    ) -> dict[str, Any] | None:
+        """If hash matches an existing row, refresh stat fields and return cached.
+
+        Returns ``None`` when the row is missing or has a different hash, so
+        the caller proceeds to re-parse.
+        """
+        if row is None or row["content_hash"] != content_hash:
+            return None
+        conn.execute(
+            "UPDATE ast_index SET mtime_ns = ?, file_size = ? WHERE file_path = ?",
+            (int(stat.st_mtime_ns), stat.st_size, rel_path),
+        )
+        conn.commit()
+        return {"file": rel_path, "status": "cached", "reason": "content unchanged"}
+
+    def _parse_file_for_index(
+        self, abs_path: str, language: str, rel_path: str
+    ) -> ParseResult | dict[str, Any]:
+        """Run the tree-sitter parse, returning a typed error dict on failure."""
+        result: ParseResult = self._parser.parse_file(abs_path, language)
+        if not result.success:
+            return {
+                "file": rel_path,
+                "status": "error",
+                "reason": result.error_message or "parse failed",
+            }
+        return result
 
     @staticmethod
     def _resolve_language_for_path(abs_path: str, language: str | None) -> str | None:
