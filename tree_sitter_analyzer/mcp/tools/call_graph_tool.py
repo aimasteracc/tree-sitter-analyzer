@@ -13,7 +13,7 @@ from typing import Any
 from ...call_graph import CallGraph
 from ...utils import setup_logger
 from ._graph_cache_fingerprint import GraphFingerprint, compute_graph_fingerprint
-from .base_tool import BaseMCPTool, mirror_summary_line
+from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)
 
@@ -129,7 +129,18 @@ def _apply_call_graph_agent_summary(
                 else "Drill into a specific function with mode='callers' or 'callees'."
             ),
         )
-        agent_summary.setdefault("verdict", "n/a")
+        # F1 (round-37f7): canonicalize "n/a" → "INFO" so call_graph
+        # joins the shared :data:`_LEGAL_VERDICTS` vocabulary. The
+        # summary surface is informational (graph navigation, not a
+        # safety judgement), so ``INFO`` is the right canonical bucket.
+        agent_summary.setdefault("verdict", _canonicalize_verdict("n/a"))
+    # F1: defensive normalisation — guard against future regressions
+    # where another helper sets a non-canonical verdict before we
+    # reach this point. The ``setdefault`` above only kicks in on a
+    # missing key; this pass replaces any non-canonical existing one.
+    existing_verdict = agent_summary.get("verdict")
+    if isinstance(existing_verdict, str):
+        agent_summary["verdict"] = _canonicalize_verdict(existing_verdict)
     result["agent_summary"] = agent_summary
     # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
     if isinstance(agent_summary.get("verdict"), str):

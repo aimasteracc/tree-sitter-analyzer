@@ -16,7 +16,7 @@ from typing import Any
 from ...ast_cache import ASTCache
 from ...incremental_sync import IncrementalSync
 from ...utils import setup_logger
-from .base_tool import BaseMCPTool, mirror_summary_line
+from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 
 logger = setup_logger(__name__)
 
@@ -146,17 +146,23 @@ def _build_ast_cache_envelope(
     no-op for direct ``await tool.execute(args)`` callers too), and
     leaves the raw payload keys exactly where they were.
     """
+    # F1 (round-37f7): ast_cache modes are informational (stats /
+    # lookup / search). They have no analysis result to gate on, so
+    # the canonical verdict is ``INFO`` from the shared vocabulary —
+    # not the legacy ``"n/a"`` sentinel which lives outside
+    # :data:`_LEGAL_VERDICTS`.
+    canonical_verdict = _canonicalize_verdict("n/a")  # → "INFO"
     response: dict[str, Any] = {
         "success": True,
         "mode": mode,
         **payload,
         "summary_line": summary_line,
         # r37x (envelope ratchet): top-level verdict mirror (r37u contract).
-        "verdict": "n/a",
+        "verdict": canonical_verdict,
         "agent_summary": {
             "summary_line": summary_line,
             "next_step": next_step,
-            "verdict": "n/a",
+            "verdict": canonical_verdict,
         },
     }
     return mirror_summary_line(response)

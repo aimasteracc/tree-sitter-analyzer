@@ -1688,7 +1688,12 @@ class TestH8ChangeImpactInvalidScope:
         )
 
     def test_invalid_scope_escalates_verdict_to_warn(self, tiny_project: Path) -> None:
-        """Verdict must escalate from the CLEAN default to WARN."""
+        """Verdict must escalate from the SAFE default to WARN.
+
+        F1 (round-37f7): the no-changes default is now ``SAFE`` (was
+        ``CLEAN``) — both convey "no pending work" but ``SAFE`` lives
+        in the shared cross-tool legal vocabulary.
+        """
         bogus = str(tiny_project / "ghost.py")
         result = self._run_change_impact(tiny_project, [bogus])
         agent = result["agent_summary"]
@@ -1698,14 +1703,19 @@ class TestH8ChangeImpactInvalidScope:
         )
 
     def test_valid_scope_path_keeps_clean_verdict(self, tiny_project: Path) -> None:
-        """Sanity check: a real path leaves the verdict at the CLEAN
-        default. Otherwise we'd be permanently warning on every call."""
+        """Sanity check: a real path leaves the verdict at the SAFE
+        default. Otherwise we'd be permanently warning on every call.
+
+        F1 (round-37f7): the no-changes default verdict moved from
+        ``CLEAN`` to ``SAFE`` (canonical vocabulary). Semantics are
+        unchanged — both mean "no pending work to verify".
+        """
         real = str(tiny_project / "lib.py")
         result = self._run_change_impact(tiny_project, [real])
         agent = result["agent_summary"]
         verdict = agent.get("verdict")
-        assert verdict == "CLEAN", (
-            f"H8: valid scope path must keep verdict at CLEAN — got {verdict!r}"
+        assert verdict == "SAFE", (
+            f"H8/F1: valid scope path must keep verdict at SAFE — got {verdict!r}"
         )
         # And scope_paths_invalid must be empty (always present, list shape).
         assert result.get("scope_paths_invalid") == [], (
@@ -1735,11 +1745,15 @@ class TestH8ChangeImpactInvalidScope:
 
     def test_no_scope_paths_keeps_clean_default(self, tiny_project: Path) -> None:
         """Without any scope_paths, the response stays clean — no
-        spurious WARN. ``scope_paths_invalid`` is still present (empty)."""
+        spurious WARN. ``scope_paths_invalid`` is still present (empty).
+
+        F1 (round-37f7): the no-changes default verdict moved from
+        ``CLEAN`` to ``SAFE`` (canonical cross-tool vocabulary).
+        """
         result = self._run_change_impact(tiny_project, [])
         agent = result["agent_summary"]
-        assert agent.get("verdict") == "CLEAN", (
-            f"H8: no scope_paths must keep verdict at CLEAN — "
+        assert agent.get("verdict") == "SAFE", (
+            f"H8/F1: no scope_paths must keep verdict at SAFE — "
             f"got {agent.get('verdict')!r}"
         )
         assert result.get("scope_paths_invalid") == [], (
@@ -2909,9 +2923,15 @@ class TestJ11ChangeImpactVerdictVocab:
     vocabulary (``CLEAN`` means "ship it"). Agents chaining the two
     shipped work that still needed verification.
 
-    Fix: ``CLEAN`` only fires when ``changed_count == 0`` AND no
-    invalid scope paths. Otherwise emit ``REVIEW`` (pending
-    verification) or ``WARN`` (soft-failure from H8).
+    Fix: ``SAFE`` (was ``CLEAN`` pre-F1) only fires when
+    ``changed_count == 0`` AND no invalid scope paths. Otherwise
+    emit ``REVIEW`` (pending verification) or ``WARN`` (soft-failure
+    from H8).
+
+    F1 (round-37f7): the legacy ``CLEAN`` label was outside the
+    cross-tool legal verdict vocabulary. The constant's *value* was
+    rebound to ``"SAFE"`` so the chained envelope speaks one
+    dialect end-to-end.
     """
 
     def _ctx(
@@ -2930,11 +2950,17 @@ class TestJ11ChangeImpactVerdictVocab:
         return apply_scope_validation(result, [])
 
     def test_changed_count_zero_emits_clean(self) -> None:
-        """No changes → CLEAN. The legacy steady state."""
+        """No changes → SAFE (post-F1 canonical form of the legacy CLEAN).
+
+        F1 (round-37f7): ``CHANGE_IMPACT_VERDICT_CLEAN`` was rebound
+        from ``"CLEAN"`` to ``"SAFE"`` so the value joins the shared
+        cross-tool legal vocabulary. The contract — "no pending work,
+        no escalation" — is unchanged.
+        """
         result = self._ctx([])
         verdict = result["agent_summary"]["verdict"]
-        assert verdict == "CLEAN", (
-            f"J11: changed_count=0 must emit CLEAN — got {verdict!r}"
+        assert verdict == "SAFE", (
+            f"J11/F1: changed_count=0 must emit SAFE — got {verdict!r}"
         )
 
     def test_changed_count_positive_emits_review(self) -> None:
@@ -2945,16 +2971,26 @@ class TestJ11ChangeImpactVerdictVocab:
         assert verdict == "REVIEW", (
             f"J11: changed_count>0 must emit REVIEW — got {verdict!r}"
         )
-        # CLEAN must NOT appear when there are changes. Belt-and-braces
-        # — the brief specifically says ``verdict != CLEAN``.
+        # The "ship it" verdict must NOT appear when there are changes.
+        # Belt-and-braces — pre-F1 the bug-class label was ``CLEAN``;
+        # post-F1 the rebound canonical label is ``SAFE``. Reject both
+        # so a future regression that re-introduces either is caught.
         assert verdict != "CLEAN"
+        assert verdict != "SAFE"
 
     def test_constants_named_so_callsites_align(self) -> None:
         """All three verdict values live as named constants so future
-        refactors don't drift between the source and the documentation."""
+        refactors don't drift between the source and the documentation.
+
+        F1 (round-37f7): ``CHANGE_IMPACT_VERDICT_CLEAN`` was rebound
+        from ``"CLEAN"`` to ``"SAFE"`` so the value lives inside the
+        shared cross-tool legal vocabulary. The constant *name* keeps
+        the legacy ``_CLEAN`` suffix because outside callers import
+        it symbolically — only the literal moved.
+        """
         from tree_sitter_analyzer.mcp.tools.utils import change_impact_response as cir
 
-        assert cir.CHANGE_IMPACT_VERDICT_CLEAN == "CLEAN"
+        assert cir.CHANGE_IMPACT_VERDICT_CLEAN == "SAFE"
         assert cir.CHANGE_IMPACT_VERDICT_REVIEW == "REVIEW"
         assert cir.CHANGE_IMPACT_VERDICT_WARN == "WARN"
 
@@ -10392,3 +10428,153 @@ class TestU34FieldDrift:
                 f"U4: '{alias}' must equal 'score' for back-compat — "
                 f"got {result.get(alias)!r} vs {score!r}"
             )
+
+
+# ============================================================================
+# F1 — canonical verdict vocabulary helper (round-37f7)
+# ============================================================================
+
+
+class TestF1VerdictVocabularyCanonical:
+    """F1 (round-37f7): the ``_canonicalize_verdict`` helper in
+    :mod:`tree_sitter_analyzer.mcp.tools.base_tool` is the single
+    chokepoint every MCP tool routes its verdict through. The helper
+    maps historical drift values (``"n/a"`` / ``"CLEAN"`` /
+    ``"warning"`` / ...) to the canonical cross-tool vocabulary
+    defined in :data:`base_tool._LEGAL_VERDICTS`.
+
+    Why it's a hard contract:
+
+    * Downstream agents (Claude Code, Cursor, Cline, queue-ledger
+      CLI) branch on the verdict string. A single tool emitting an
+      unknown token forces every consumer to special-case it or
+      silently misroute.
+    * Each known historical drift here corresponds to a real shipped
+      bug — ``"n/a"`` from agent_workflow / call_graph / ast_cache,
+      ``"CLEAN"`` from change_impact's no-changes path. Pinning the
+      mapping in a regression test makes the drift impossible to
+      reintroduce.
+    * The legal vocabulary in :data:`base_tool._LEGAL_VERDICTS` MUST
+      stay in lock-step with :data:`_N_VERDICT_VOCABULARY` at the
+      top of this file — both are tested below to guard against
+      silent drift between the source and the test fixture.
+    """
+
+    def test_n_a_maps_to_info(self) -> None:
+        """``"n/a"`` → ``"INFO"`` — the dominant drift value across
+        the four tools listed in the F1 brief (agent_workflow,
+        call_graph, ast_cache, plus the legacy CLI helper).
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _canonicalize_verdict
+
+        assert _canonicalize_verdict("n/a") == "INFO"
+
+    def test_clean_maps_to_safe(self) -> None:
+        """``"CLEAN"`` → ``"SAFE"`` — the change_impact no-changes
+        path used to emit ``"CLEAN"`` (outside the legal vocabulary).
+        The canonical replacement is ``"SAFE"``.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _canonicalize_verdict
+
+        assert _canonicalize_verdict("CLEAN") == "SAFE"
+
+    def test_safe_is_idempotent(self) -> None:
+        """``"SAFE"`` → ``"SAFE"`` — values already in the legal
+        vocabulary round-trip unchanged. Idempotence matters because
+        the canonicalizer is applied defensively at multiple layers
+        (CLI builder, MCP tool boundary, dispatcher mirror) —
+        repeated application must never corrupt the value.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _canonicalize_verdict
+
+        assert _canonicalize_verdict("SAFE") == "SAFE"
+
+    def test_every_legal_verdict_round_trips(self) -> None:
+        """Every value in :data:`base_tool._LEGAL_VERDICTS` is its
+        own fixed point. This is the strongest possible idempotence
+        claim: if a tool emits a canonical verdict, the helper must
+        leave it alone — case-preserved.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import (
+            _LEGAL_VERDICTS,
+            _canonicalize_verdict,
+        )
+
+        for verdict in _LEGAL_VERDICTS:
+            assert _canonicalize_verdict(verdict) == verdict, (
+                f"F1: legal verdict {verdict!r} must round-trip unchanged"
+            )
+
+    def test_none_and_empty_map_to_info(self) -> None:
+        """``None`` / ``""`` / ``"   "`` → ``"INFO"``. A missing
+        verdict is informational, not an error. We don't escalate to
+        ``"ERROR"`` because the absence might just mean the helper
+        was called before the tool finished computing the value.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _canonicalize_verdict
+
+        assert _canonicalize_verdict(None) == "INFO"
+        assert _canonicalize_verdict("") == "INFO"
+        assert _canonicalize_verdict("   ") == "INFO"
+
+    def test_success_and_na_aliases_map_to_info(self) -> None:
+        """``"success"`` / ``"na"`` (no slash) → ``"INFO"``. Both
+        are historical aliases we saw in the audit; folding them to
+        the canonical informational bucket keeps cross-tool branching
+        sane.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _canonicalize_verdict
+
+        assert _canonicalize_verdict("success") == "INFO"
+        assert _canonicalize_verdict("na") == "INFO"
+
+    def test_clean_alias_lowercase_and_ok_map_to_safe(self) -> None:
+        """``"clean"`` / ``"ok"`` (lowercase aliases) → ``"SAFE"``.
+        Tools that string-built their verdict from lowercased
+        fragments landed on these forms; the helper normalises both
+        to the canonical ``"SAFE"`` so chained consumers see one
+        shape.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _canonicalize_verdict
+
+        assert _canonicalize_verdict("clean") == "SAFE"
+        assert _canonicalize_verdict("ok") == "SAFE"
+
+    def test_warning_maps_to_warn(self) -> None:
+        """``"warning"`` → ``"WARN"`` — historical long-form spelling
+        normalises to the canonical short form, which is already in
+        the legal vocabulary.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _canonicalize_verdict
+
+        assert _canonicalize_verdict("warning") == "WARN"
+
+    def test_unknown_falls_back_to_info_without_raising(self) -> None:
+        """Garbage input → ``"INFO"`` (defensive fallback). The
+        helper must never raise — silent rejection would break tools
+        mid-flight; silent acceptance would re-introduce the bug
+        class. ``INFO`` is the neutral bucket that preserves chained
+        agent decision loops.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _canonicalize_verdict
+
+        assert _canonicalize_verdict("totally-bogus") == "INFO"
+        # Also: non-string types defensively become INFO without
+        # raising.
+        assert _canonicalize_verdict(123) == "INFO"  # type: ignore[arg-type]
+
+    def test_legal_vocabulary_matches_test_fixture(self) -> None:
+        """The source-of-truth set in :mod:`base_tool` must equal
+        the test fixture :data:`_N_VERDICT_VOCABULARY` declared at
+        the top of this file. Drift between the two would mean the
+        production code accepts values the test pretends are illegal
+        (or vice versa) — a silent split that defeats the whole F1
+        unification.
+        """
+        from tree_sitter_analyzer.mcp.tools.base_tool import _LEGAL_VERDICTS
+
+        assert _LEGAL_VERDICTS == _N_VERDICT_VOCABULARY, (
+            f"F1: base_tool._LEGAL_VERDICTS must match the test "
+            f"fixture. base_tool has {sorted(_LEGAL_VERDICTS)}; "
+            f"test fixture has {sorted(_N_VERDICT_VOCABULARY)}"
+        )

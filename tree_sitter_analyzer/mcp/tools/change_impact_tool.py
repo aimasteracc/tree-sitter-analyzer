@@ -18,7 +18,7 @@ from ...pr_url import (
     parse_pr_url,
 )
 from ..utils.format_helper import apply_toon_format_to_response
-from .base_tool import BaseMCPTool, mirror_summary_line
+from .base_tool import BaseMCPTool, _canonicalize_verdict, mirror_summary_line
 from .utils.change_impact_analysis import (
     ChangeImpactRequest,
     _build_change_impact_result,
@@ -33,6 +33,38 @@ from .utils.change_impact_response import (
     build_agent_summary_only_response,
     build_no_changes_result,
 )
+
+
+def _canonicalize_change_impact_verdict(result: dict[str, Any]) -> None:
+    """Fold both verdict surfaces back to the shared legal vocabulary.
+
+    F1 (round-37f7): the change-impact response builder previously
+    stamped ``verdict="CLEAN"`` for the no-changes path — a token
+    outside :data:`base_tool._LEGAL_VERDICTS`.
+    ``CHANGE_IMPACT_VERDICT_CLEAN`` now stores the canonical
+    ``"SAFE"``, but we also apply :func:`_canonicalize_verdict` at the
+    tool boundary as a belt-and-braces measure: any future helper
+    that re-introduces ``"CLEAN"`` (or any other drift value) gets
+    normalised here before it leaves the tool.
+
+    Mutates in place — the tool's flow uses the same dict reference
+    across the queue-ledger / scope-validation / mirror pipeline, so
+    returning a new dict here would silently drop subsequent
+    updates.
+    """
+    agent_summary = result.get("agent_summary")
+    if isinstance(agent_summary, dict):
+        nested = agent_summary.get("verdict")
+        if isinstance(nested, str) or nested is None:
+            agent_summary["verdict"] = _canonicalize_verdict(nested)
+    top = result.get("verdict")
+    if isinstance(top, str):
+        # Only stamp the top-level when there's already something
+        # there (so we don't manufacture a verdict the response
+        # builder didn't set). The no-changes path leaves the
+        # top-level blank; the ``mirror_summary_line`` helper will
+        # copy from ``agent_summary``.
+        result["verdict"] = _canonicalize_verdict(top)
 
 
 def _resolve_scope_path(project_root: str | None, raw: str) -> Path:
@@ -149,7 +181,7 @@ class ChangeImpactTool(BaseMCPTool):
                 "Post-edit blast-radius scan: combines ``git diff`` (staged "
                 "+ unstaged) with the project dependency graph to compute "
                 "which files are affected, which test files must re-run, "
-                "and a risk verdict (CLEAN / REVIEW / WARN). Optionally "
+                "and a risk verdict (SAFE / REVIEW / WARN). Optionally "
                 "accepts ``scope_paths`` to restrict the analysis to a "
                 "subset of the diff. MUST be called after every non-trivial "
                 "edit before declaring work done — the built-in tools have "
@@ -218,6 +250,14 @@ class ChangeImpactTool(BaseMCPTool):
             if agent_summary_only:
                 result = build_agent_summary_only_response(result)
             result["output_format"] = output_format
+            # F1 (round-37f7): defensive verdict canonicalization in
+            # the no-changes path. ``apply_scope_validation`` already
+            # stamps ``CHANGE_IMPACT_VERDICT_CLEAN`` (now ``"SAFE"``)
+            # but a legacy import path or future helper could
+            # re-introduce the old ``"CLEAN"`` literal — fold any
+            # drift back to the canonical vocabulary so the no-changes
+            # envelope can never ship a non-canonical verdict.
+            _canonicalize_change_impact_verdict(result)
             # M5/M10: mirror summary_line + verdict between top-level and
             # agent_summary so direct callers (tests, hive-mind workers)
             # see the same envelope shape as MCP-routed callers.
@@ -246,6 +286,11 @@ class ChangeImpactTool(BaseMCPTool):
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format
+        # F1 (round-37f7): same defensive canonicalization as the
+        # no-changes path — guarantees the cross-tool envelope sees
+        # only canonical verdict tokens regardless of which builder
+        # helper populated them.
+        _canonicalize_change_impact_verdict(result)
         # M5/M10: mirror summary_line + verdict between top-level and
         # agent_summary so direct callers see the same envelope shape as
         # MCP-routed callers.
@@ -354,5 +399,11 @@ class ChangeImpactTool(BaseMCPTool):
         if agent_summary_only:
             result = build_agent_summary_only_response(result)
         result["output_format"] = output_format
+        # F1 (round-37f7): defensive canonicalization for the PR-mode
+        # path. Mirrors the same protection applied in the diff-mode
+        # branches above — keeps the cross-tool envelope free of
+        # non-canonical verdict tokens regardless of which mode the
+        # caller used.
+        _canonicalize_change_impact_verdict(result)
         result = mirror_summary_line(result)
         return apply_toon_format_to_response(result, output_format)

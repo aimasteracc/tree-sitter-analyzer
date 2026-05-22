@@ -26,7 +26,9 @@ CHANGE_IMPACT_PREVIEW_LIMIT = 5
 # ``CLEAN`` meant "the scope filter applied" not "no work to verify".
 #
 # Post J11 the verdict is content-aware:
-#   * ``CLEAN``   — analysis succeeded AND ``changed_count == 0``.
+#   * ``SAFE``    — analysis succeeded AND ``changed_count == 0`` (no
+#                   pending work to verify, equivalent to the legacy
+#                   ``CLEAN`` semantics).
 #   * ``REVIEW``  — analysis succeeded but ``changed_count > 0``; the
 #                   caller still has verification work to do before the
 #                   queue is closed.
@@ -36,7 +38,16 @@ CHANGE_IMPACT_PREVIEW_LIMIT = 5
 #
 # We deliberately don't escalate to ``UNSAFE`` here because the tool
 # answers a different question (impact) than the safety tools.
-CHANGE_IMPACT_VERDICT_CLEAN = "CLEAN"
+#
+# F1 (round-37f7): ``CHANGE_IMPACT_VERDICT_CLEAN`` was previously
+# ``"CLEAN"`` — a value outside the shared cross-tool legal vocabulary
+# (:data:`tree_sitter_analyzer.mcp.tools.base_tool._LEGAL_VERDICTS`).
+# It now maps to ``"SAFE"`` so chained agents that branch on a single
+# string (Claude Code, Cursor, the queue-ledger CLI) don't have to
+# special-case change_impact. The constant *name* keeps the legacy
+# ``_CLEAN`` suffix for backward compatibility with call sites that
+# import it by name; the *value* is what changed.
+CHANGE_IMPACT_VERDICT_CLEAN = "SAFE"
 CHANGE_IMPACT_VERDICT_REVIEW = "REVIEW"
 CHANGE_IMPACT_VERDICT_WARN = "WARN"
 
@@ -342,9 +353,11 @@ def apply_scope_validation(
       - ``scope_paths_invalid`` always lands in the response (even empty),
         so consumers can branch on a single key without first checking
         existence. The default value keeps round-trip JSON stable.
-      - ``agent_summary["verdict"]`` is content-aware:
+      - ``agent_summary["verdict"]`` is content-aware (F1: legacy
+        ``CLEAN`` was rebound to ``SAFE`` so the value lives inside
+        the cross-tool legal vocabulary):
           * ``WARN``   — any invalid scope path was supplied.
-          * ``CLEAN``  — analysis ran cleanly AND ``changed_count == 0``.
+          * ``SAFE``   — analysis ran cleanly AND ``changed_count == 0``.
           * ``REVIEW`` — analysis ran cleanly but ``changed_count > 0``;
                          the queue still has verification work pending.
         Pre-J11 the response emitted ``CLEAN`` even with 14 changed files,

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ...services import build_agent_workflow_pack  # ARCH-A1: was ...cli.agent_workflow
-from .base_tool import BaseMCPTool
+from .base_tool import BaseMCPTool, _canonicalize_verdict
 
 TOOL_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -73,6 +73,15 @@ class AgentWorkflowTool(BaseMCPTool):
             project_root=str(self.project_root),
             target_path=target_path,
         )
+        # F1 (round-37f7): canonicalize verdict across BOTH surfaces.
+        # The CLI builder stamps ``"n/a"`` because workflow planning has
+        # no analysis result to gate on. ``"n/a"`` is outside the shared
+        # legal vocabulary; we map it to ``"INFO"`` here so MCP callers
+        # see the canonical token. We patch at the tool boundary (not
+        # inside ``cli/agent_workflow.py``) to keep the CLI's free-form
+        # planning output stable while only the MCP envelope is
+        # normalised.
+        _canonicalize_workflow_verdict(result)
         if arguments.get("output_format", "toon") == "toon":
             return _build_toon_response(result)
         # Strip ``toon_content`` from the JSON path — wastes ~2 KB per
@@ -90,6 +99,27 @@ class AgentWorkflowTool(BaseMCPTool):
         is_valid, error = self.security_validator.validate_file_path(str(resolved))
         if not is_valid:
             raise ValueError(f"Invalid target_path: {error}")
+
+
+def _canonicalize_workflow_verdict(result: dict[str, Any]) -> None:
+    """Rewrite both verdict surfaces in-place to the canonical vocabulary.
+
+    F1 (round-37f7): the CLI workflow builder stamps ``verdict="n/a"``
+    because workflow planning has no safety judgement to make.
+    ``"n/a"`` is outside :data:`base_tool._LEGAL_VERDICTS` so we
+    normalise it to ``"INFO"`` at the MCP boundary. We mutate in
+    place because the builder dict already has the right shape —
+    replacing the dict would risk dropping fields the TOON renderer
+    pulls back out below.
+    """
+    agent_summary = result.get("agent_summary")
+    if isinstance(agent_summary, dict):
+        existing = agent_summary.get("verdict")
+        if isinstance(existing, str) or existing is None:
+            agent_summary["verdict"] = _canonicalize_verdict(existing)
+    top_value = result.get("verdict")
+    if isinstance(top_value, str) or top_value is None:
+        result["verdict"] = _canonicalize_verdict(top_value)
 
 
 def _build_toon_response(result: dict[str, Any]) -> dict[str, Any]:
