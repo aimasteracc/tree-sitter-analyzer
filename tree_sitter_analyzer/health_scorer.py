@@ -405,29 +405,74 @@ class HealthScorer:
         ".claude",
     }
 
-    def score_project(self, project_root: str) -> list[HealthScore]:
+    def score_project(
+        self,
+        project_root: str,
+        *,
+        use_cache: bool = True,
+    ) -> list[HealthScore]:
         """
         Score all source files in a project directory.
 
         Args:
             project_root: Root directory of the project
+            use_cache: When True (default), use the persistent
+                :class:`HealthScoreCache` so unchanged files reuse their
+                previous score. The first warm-up still scores every file;
+                subsequent runs are near-instant for unchanged files.
 
         Returns:
             List of HealthScore objects, sorted by total descending
         """
+        # Import locally to avoid a circular import at module load time —
+        # _health_score_cache pulls in nothing heavy but keeps the import
+        # graph one-directional.
+        from ._health_score_cache import HealthScoreCache
+
         root = Path(project_root)
+        cache = HealthScoreCache(str(root)) if use_cache else None
         results: list[HealthScore] = []
-        for ext in self.source_extensions:
-            for f in root.rglob(f"*{ext}"):
-                if any(part in self._EXCLUDE_DIRS for part in f.parts):
-                    continue
-                try:
-                    results.append(self.score_file(str(f)))
-                except Exception:  # nosec B112
-                    continue
+        try:
+            for ext in self.source_extensions:
+                for f in root.rglob(f"*{ext}"):
+                    if any(part in self._EXCLUDE_DIRS for part in f.parts):
+                        continue
+                    score = self._score_file_with_cache(str(f), cache)
+                    if score is not None:
+                        results.append(score)
+        finally:
+            if cache is not None:
+                cache.close()
 
         results.sort(key=lambda r: r.total, reverse=True)
         return results
+
+    def _score_file_with_cache(
+        self,
+        file_path: str,
+        cache: Any,
+    ) -> HealthScore | None:
+        """Look up a cached score, fall back to fresh scoring on miss/error.
+
+        Returns None when scoring raises; the outer loop just skips the
+        file (mirrors the original ``except Exception: continue`` flow).
+        """
+        if cache is not None:
+            cached = cache.lookup(file_path)
+            if cached is not None:
+                return HealthScore(
+                    file_path=cached["file_path"],
+                    total=cached["total"],
+                    dimensions=cached.get("dimensions", {}),
+                )
+
+        try:
+            score = self.score_file(file_path)
+        except Exception:  # nosec B112
+            return None
+        if cache is not None:
+            cache.store(score)
+        return score
 
     # ---- Dimension scoring helpers ----
 
