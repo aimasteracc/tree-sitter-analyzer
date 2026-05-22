@@ -550,6 +550,28 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="Language override for --ast-diff (auto-detected from file extension if omitted)",
     )
     parser.add_argument(
+        "--ast-path",
+        action="store_true",
+        help="AST path/scope navigation — what is at line X? (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--ast-path-mode",
+        choices=["path", "scope", "outline", "siblings"],
+        default="scope",
+        help="AST path query mode (default: scope)",
+    )
+    parser.add_argument(
+        "--ast-path-line",
+        type=int,
+        help="Target line number for --ast-path path/scope/siblings modes",
+    )
+    parser.add_argument(
+        "--ast-path-depth",
+        type=int,
+        default=3,
+        help="Max outline depth for --ast-path outline mode (default: 3)",
+    )
+    parser.add_argument(
         "--symbol-search",
         help="FTS5-powered instant symbol search (CodeGraph parity). "
         "Use exact name, * wildcards, or ~ fuzzy prefix",

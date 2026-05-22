@@ -339,6 +339,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "ASTDiffTool",
         "RouteDetectorTool",
         "CodeGraphSymbolSearchTool",
+        "CodeGraphASTPathTool",
     }
 )
 

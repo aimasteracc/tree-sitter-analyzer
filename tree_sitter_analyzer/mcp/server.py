@@ -103,6 +103,8 @@ def _create_tool_registry(
     from .tools.analyze_code_structure_tool import AnalyzeCodeStructureTool
     from .tools.analyze_scale_tool import AnalyzeScaleTool
     from .tools.ast_cache_tool import ASTCacheTool
+    from .tools.ast_diff_tool import ASTDiffTool
+    from .tools.ast_path_tool import CodeGraphASTPathTool
     from .tools.call_graph_tool import CodeGraphCallTool
     from .tools.callees_tool import CodeGraphCalleesTool
     from .tools.callers_tool import CodeGraphCallersTool
@@ -141,6 +143,7 @@ def _create_tool_registry(
         ("check_file_health", FileHealthTool(project_root)),
         ("analyze_dependencies", DependencyAnalysisTool(project_root)),
         ("ast_cache", ASTCacheTool(project_root)),
+        ("ast_diff", ASTDiffTool(project_root)),
         ("codegraph_call_graph", CodeGraphCallTool(project_root)),
         ("codegraph_callers", CodeGraphCallersTool(project_root)),
         ("codegraph_callees", CodeGraphCalleesTool(project_root)),
@@ -151,6 +154,7 @@ def _create_tool_registry(
         ("smart_context", SmartContextTool(project_root)),
         ("symbol_lineage", SymbolLineageTool(project_root)),
         ("code_patterns", CodePatternsTool(project_root)),
+        ("codegraph_ast_path", CodeGraphASTPathTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
