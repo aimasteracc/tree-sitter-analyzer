@@ -203,6 +203,7 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "codegraph_pr_review": ("main", "--pr-review"),
         "semantic_classify": ("main", "--semantic-classify"),
         "detect_routes": ("main", "--detect-routes"),
+        "codegraph_import_graph": ("main", "--import-graph"),
     }
 
     tool_names = {name for name, _tool in _create_tool_registry(str(PROJECT_ROOT))[0]}

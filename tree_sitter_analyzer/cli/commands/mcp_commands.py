@@ -53,6 +53,9 @@ from tree_sitter_analyzer.mcp.tools.dependency_analysis_tool import (
     DependencyAnalysisTool,  # noqa: F401
 )
 from tree_sitter_analyzer.mcp.tools.file_health_tool import FileHealthTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.import_graph_tool import (
+    CodeGraphImportGraphTool,  # noqa: F401
+)
 from tree_sitter_analyzer.mcp.tools.parser_readiness_tool import (
     ParserReadinessTool,  # noqa: F401
 )
@@ -430,6 +433,18 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="import_graph",
+        tool_attr="CodeGraphImportGraphTool",
+        label="File-level import dependency graph (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "import_graph_mode", "summary") or "summary",
+            "file_path": getattr(args, "import_graph_file", None)
+            or getattr(args, "file_path", None),
+            "max_depth": getattr(args, "import_graph_max_depth", 10),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -492,6 +507,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "SemanticClassifyTool",
         "CodeGraphPRReviewTool",
         "CodeGraphNavigateTool",
+        "CodeGraphImportGraphTool",
     }
 )
 

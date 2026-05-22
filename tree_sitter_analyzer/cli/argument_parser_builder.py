@@ -705,6 +705,27 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         help="File path to disambiguate overloaded functions for --callees",
     )
     parser.add_argument(
+        "--import-graph",
+        action="store_true",
+        help="File-level import dependency graph (CodeGraph parity)",
+    )
+    parser.add_argument(
+        "--import-graph-mode",
+        choices=["summary", "deps", "dependents", "blast_radius", "cycles", "coupling"],
+        default="summary",
+        help="Mode for --import-graph (default: summary)",
+    )
+    parser.add_argument(
+        "--import-graph-file",
+        help="File path for --import-graph deps/dependents/blast_radius modes",
+    )
+    parser.add_argument(
+        "--import-graph-max-depth",
+        type=int,
+        default=10,
+        help="Max depth for --import-graph blast_radius (default: 10)",
+    )
+    parser.add_argument(
         "--symbol-search",
         help="FTS5-powered instant symbol search (CodeGraph parity). "
         "Use exact name, * wildcards, or ~ fuzzy prefix",

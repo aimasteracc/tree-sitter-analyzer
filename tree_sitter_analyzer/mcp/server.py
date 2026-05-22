@@ -117,6 +117,7 @@ def _create_tool_registry(
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
     from .tools.file_health_tool import FileHealthTool
     from .tools.find_and_grep_tool import FindAndGrepTool
+    from .tools.import_graph_tool import CodeGraphImportGraphTool
     from .tools.list_files_tool import ListFilesTool
     from .tools.parser_readiness_tool import ParserReadinessTool
     from .tools.project_health_tool import ProjectHealthTool
@@ -168,6 +169,7 @@ def _create_tool_registry(
         ("codegraph_impact", CodeGraphImpactTool(project_root)),
         ("semantic_classify", SemanticClassifyTool(project_root)),
         ("detect_routes", RouteDetectorTool(project_root)),
+        ("codegraph_import_graph", CodeGraphImportGraphTool(project_root)),
     ]
     return tool_instances, dict(tool_instances)
 
