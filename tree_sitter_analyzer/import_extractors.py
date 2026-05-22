@@ -319,6 +319,92 @@ def extract_python_import_simple(
         )
 
 
+def _parse_python_from_children(node: Any, source: str) -> tuple[str, str, list[str]]:
+    """Walk an ``import_from_statement``'s children; return ``(module, dots, names)``.
+
+    Recognised child types:
+    - ``relative_import`` — yields ``dots`` (from ``import_prefix``) and possibly
+      ``module`` (from inner ``dotted_name``).
+    - ``dotted_name`` — first occurrence (when no module/dots are set yet) is the
+      module; subsequent ones are imported symbols.
+    - ``aliased_import`` — appends bound names via ``_extract_import_names``.
+
+    r37ei (dogfood): extracted from ``extract_python_import_from`` to keep the
+    parent body a linear parse → branch dispatch.
+    """
+    module_name = ""
+    dots_prefix = ""
+    imported_names: list[str] = []
+    for child in node.children:
+        ct = getattr(child, "type", None)
+        if ct == "relative_import":
+            for sub in child.children:
+                st = getattr(sub, "type", None)
+                if st == "import_prefix":
+                    dots_prefix = _node_text(sub, source)
+                elif st == "dotted_name":
+                    module_name = _node_text(sub, source)
+        elif ct == "dotted_name":
+            if not module_name and not dots_prefix:
+                module_name = _node_text(child, source)
+            else:
+                imported_names.append(_node_text(child, source))
+        elif ct == "aliased_import":
+            imported_names.extend(_extract_import_names(child, source))
+    return module_name, dots_prefix, imported_names
+
+
+def _emit_relative_submodule_imports(
+    dots_prefix: str,
+    imported_names: list[str],
+    imports: list[dict[str, Any]],
+) -> None:
+    """Emit one entry per imported name for ``from . import a, b`` shape.
+
+    Each imported name becomes a candidate submodule of the current package
+    (``<pkg>/<name>.py`` or ``<pkg>/<name>/__init__.py`` — the resolver tries
+    both). Matches Python's ``from . import sub`` semantics.
+    """
+    for name in imported_names:
+        full_module = dots_prefix + name
+        imports.append(
+            {
+                "module_name": full_module,
+                "resolved_path": full_module.replace(".", "/") + ".py",
+                "names": [name],
+                "is_relative": True,
+                "language": "python",
+            }
+        )
+
+
+def _emit_python_from_import(
+    dots_prefix: str,
+    module_name: str,
+    imported_names: list[str],
+    imports: list[dict[str, Any]],
+) -> None:
+    """Emit a single entry for ``from <prefix>module import a, b`` shape.
+
+    Skips stdlib top-level modules when ``dots_prefix`` is empty so the import
+    graph stays focused on project-local edges.
+    """
+    full_module = dots_prefix + module_name
+    if not dots_prefix and module_name.split(".")[0] in _STDLIB_TOP_LEVEL:
+        return
+    imports.append(
+        {
+            "module_name": full_module,
+            "resolved_path": full_module.replace(".", "/") + ".py"
+            if full_module
+            else "",
+            "names": imported_names,
+            "is_relative": bool(dots_prefix),
+            "language": "python",
+        }
+    )
+
+
 # Extract elements from AST: extract_python_import_from
 def extract_python_import_from(
     node: Any, source: str, imports: list[dict[str, Any]]
@@ -338,67 +424,22 @@ def extract_python_import_from(
        imports the ``sub`` submodule (or, if there is no such
        submodule, the attribute ``sub`` from the current package's
        ``__init__.py``).
+
+    r37ei (dogfood): 79 → ~12 lines. Children parsing moved to
+    ``_parse_python_from_children``; relative + dotted emit paths moved
+    to ``_emit_relative_submodule_imports`` and ``_emit_python_from_import``.
     """
-    module_name = ""
-    dots_prefix = ""
-    imported_names: list[str] = []
+    module_name, dots_prefix, imported_names = _parse_python_from_children(node, source)
 
-    for child in node.children:
-        ct = getattr(child, "type", None)
-
-        if ct == "relative_import":
-            for sub in child.children:
-                st = getattr(sub, "type", None)
-                if st == "import_prefix":
-                    dots_prefix = _node_text(sub, source)
-                elif st == "dotted_name":
-                    module_name = _node_text(sub, source)
-
-        elif ct == "dotted_name":
-            if not module_name and not dots_prefix:
-                module_name = _node_text(child, source)
-            else:
-                imported_names.append(_node_text(child, source))
-
-        elif ct == "aliased_import":
-            imported_names.extend(_extract_import_names(child, source))
-
-    # Case 2: ``from . import x, y`` — relative_import had no
-    # dotted_name, so ``module_name`` is empty but ``dots_prefix`` is
-    # set. Emit one entry per imported name treating each as a
-    # candidate submodule of the current package.
     if dots_prefix and not module_name:
-        for name in imported_names:
-            full_module = dots_prefix + name
-            imports.append(
-                {
-                    "module_name": full_module,
-                    "resolved_path": full_module.replace(".", "/") + ".py",
-                    "names": [name],
-                    "is_relative": True,
-                    "language": "python",
-                }
-            )
+        # Case 2: from . import x, y
+        _emit_relative_submodule_imports(dots_prefix, imported_names, imports)
         return
 
     if not module_name:
         return
 
-    full_module = dots_prefix + module_name
-    if not dots_prefix and module_name.split(".")[0] in _STDLIB_TOP_LEVEL:
-        return
-
-    imports.append(
-        {
-            "module_name": full_module,
-            "resolved_path": full_module.replace(".", "/") + ".py"
-            if full_module
-            else "",
-            "names": imported_names,
-            "is_relative": bool(dots_prefix),
-            "language": "python",
-        }
-    )
+    _emit_python_from_import(dots_prefix, module_name, imported_names, imports)
 
 
 # Extract elements from AST: _extract_python_imports
