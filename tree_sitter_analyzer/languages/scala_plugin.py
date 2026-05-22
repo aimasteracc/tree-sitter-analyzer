@@ -18,6 +18,74 @@ from ..models import Class, Expression, Function, Import, Package, Variable
 from ..plugins.base import ElementExtractor, LanguagePlugin
 from ..utils import log_debug, log_error
 
+_SCALA_ELEMENT_KEYS: tuple[str, ...] = (
+    "functions",
+    "classes",
+    "variables",
+    "imports",
+    "packages",
+    "comments",
+    "annotations",
+)
+
+
+def _scala_empty_result(file_path: str, file_content: str) -> "AnalysisResult":
+    """Build an empty ``AnalysisResult`` when the tree-sitter language is missing."""
+    from ..models import AnalysisResult
+
+    return AnalysisResult(
+        file_path=file_path,
+        language="scala",
+        # P1: splitlines() matches wc -l (split("\n") over-counts by 1
+        # when file ends with trailing \n)
+        line_count=len(file_content.splitlines()),
+        elements=[],
+        source_code=file_content,
+    )
+
+
+def _scala_error_result(file_path: str, exc: Exception) -> "AnalysisResult":
+    """Build the failure-path ``AnalysisResult`` used by the ``except`` arm."""
+    from ..models import AnalysisResult
+
+    return AnalysisResult(
+        file_path=file_path,
+        language="scala",
+        line_count=0,
+        elements=[],
+        source_code="",
+        error_message=str(exc),
+        success=False,
+    )
+
+
+def _make_scala_parser(language: Any) -> Any:
+    """Construct a ``tree_sitter.Parser`` bound to ``language`` across API shapes.
+
+    Tree-sitter 0.20 used ``parser.set_language(lang)``; 0.21 added the
+    ``parser.language`` property setter; 0.23 made the constructor accept
+    the language directly. Probe each in order; fall back to the
+    constructor form if neither attribute exists.
+    """
+    import tree_sitter
+
+    parser = tree_sitter.Parser()
+    if hasattr(parser, "set_language"):
+        parser.set_language(language)
+        return parser
+    if hasattr(parser, "language"):
+        parser.language = language
+        return parser
+    return tree_sitter.Parser(language)
+
+
+def _flatten_scala_elements(elements_dict: dict[str, list[Any]]) -> list[Any]:
+    """Concatenate per-kind element lists in the canonical Scala order."""
+    flat: list[Any] = []
+    for key in _SCALA_ELEMENT_KEYS:
+        flat.extend(elements_dict.get(key, []))
+    return flat
+
 
 def _parse_scaladoc_text(comment_text: str) -> str | None:
     """Convert raw ``/** ... */`` scaladoc to the cleaned multi-line string.
@@ -729,88 +797,60 @@ class ScalaPlugin(LanguagePlugin):
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
-        """Analyze Scala code and return structured results."""
+        """Analyze Scala code and return structured results.
 
-        from ..models import AnalysisResult
+        r37ed (dogfood): 85 lines → ~15 of orchestration. Per-phase helpers
+        (``_scala_empty_result`` / ``_make_scala_parser`` / ``_flatten_scala_elements``
+        / ``_scala_analysis_result`` / ``_scala_error_result``) own the
+        individual steps; this body is just dispatch.
+        """
 
         try:
             from ..encoding_utils import read_file_safe
 
-            file_content, detected_encoding = read_file_safe(file_path)
+            file_content, _detected_encoding = read_file_safe(file_path)
 
-            # Get tree-sitter language and parse
             language = self.get_tree_sitter_language()
             if language is None:
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="scala",
-                    # P1: splitlines() matches wc -l (split("\n") over-counts by 1
-                    # when file ends with trailing \n)
-                    line_count=len(file_content.splitlines()),
-                    elements=[],
-                    source_code=file_content,
-                )
+                return _scala_empty_result(file_path, file_content)
 
-            import tree_sitter
-
-            parser = tree_sitter.Parser()
-
-            # Set language
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                parser = tree_sitter.Parser(language)
-
+            parser = _make_scala_parser(language)
             tree = parser.parse(file_content.encode("utf-8"))
-
-            # Extract elements
             elements_dict = self.extract_elements(tree, file_content)
-
-            all_elements = []
-            all_elements.extend(elements_dict.get("functions", []))
-            all_elements.extend(elements_dict.get("classes", []))
-            all_elements.extend(elements_dict.get("variables", []))
-            all_elements.extend(elements_dict.get("imports", []))
-            all_elements.extend(elements_dict.get("packages", []))
-            all_elements.extend(elements_dict.get("comments", []))
-            all_elements.extend(elements_dict.get("annotations", []))
-
-            node_count = (
-                self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
+            return self._scala_analysis_result(
+                file_path, file_content, tree, elements_dict
             )
-
-            # Get package
-            package = (
-                elements_dict.get("packages", [])[0]
-                if elements_dict.get("packages")
-                else None
-            )
-
-            return AnalysisResult(
-                file_path=file_path,
-                language="scala",
-                # P1: splitlines() matches wc -l (split("\n") over-counts by 1
-                # when file ends with trailing \n)
-                line_count=len(file_content.splitlines()),
-                elements=all_elements,
-                node_count=node_count,
-                source_code=file_content,
-                package=package,
-            )
-
         except Exception as e:
             log_error(f"Error analyzing Scala file {file_path}: {e}")
-            return AnalysisResult(
-                file_path=file_path,
-                language="scala",
-                line_count=0,
-                elements=[],
-                source_code="",
-                error_message=str(e),
-                success=False,
-            )
+            return _scala_error_result(file_path, e)
+
+    def _scala_analysis_result(
+        self,
+        file_path: str,
+        file_content: str,
+        tree: Any,
+        elements_dict: dict[str, list[Any]],
+    ) -> "AnalysisResult":
+        """Build the success-path ``AnalysisResult`` from parsed tree + elements."""
+        from ..models import AnalysisResult
+
+        all_elements = _flatten_scala_elements(elements_dict)
+        node_count = (
+            self._count_tree_nodes(tree.root_node) if tree and tree.root_node else 0
+        )
+        packages = elements_dict.get("packages", [])
+        package = packages[0] if packages else None
+        return AnalysisResult(
+            file_path=file_path,
+            language="scala",
+            # P1: splitlines() matches wc -l (split("\n") over-counts by 1
+            # when file ends with trailing \n)
+            line_count=len(file_content.splitlines()),
+            elements=all_elements,
+            node_count=node_count,
+            source_code=file_content,
+            package=package,
+        )
 
     def _count_tree_nodes(self, node: Any) -> int:
         """Recursively count nodes."""
