@@ -96,135 +96,133 @@ class RouteDetectorTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        self.validate_arguments(arguments)
+        """Dispatch route detection by ``mode``.
 
+        r37bj (dogfood): tool flagged this at 130 lines. Refactor splits
+        each mode into a focused builder method. M4 file-mode validation
+        + M6 canonical envelope keys preserved exactly.
+        """
+        self.validate_arguments(arguments)
         mode = arguments.get("mode", "summary")
         output_format = arguments.get("output_format", "toon")
         framework_filter = arguments.get("framework", "all")
         detector = self._get_detector()
 
         if mode == "summary":
-            summary_data = detector.summary()
-            # M6: every mode now exposes the same key set so an agent that
-            # branches on ``total_routes`` / ``routes`` doesn't break when
-            # the caller switches modes. ``mode=summary`` historically
-            # omitted ``routes`` — we add an empty list so the shape
-            # matches the other modes.
-            result = {
-                "success": True,
-                "mode": "summary",
-                "total_routes": summary_data["total_routes"],
-                # ``route_count`` is the deprecated alias kept for back-compat
-                # with any caller pinned to the pre-M6 shape; new code
-                # should branch on ``total_routes``.
-                "route_count": summary_data["total_routes"],
-                "routes": [],
-                "by_framework": summary_data["by_framework"],
-                "by_method": summary_data["by_method"],
-                "file_count": summary_data["file_count"],
-            }
+            result = self._build_summary_response(detector)
         elif mode == "all":
-            routes = detector.detect_all()
-            if framework_filter != "all":
-                routes = [r for r in routes if r.framework == framework_filter]
-            # M6: also emit ``total_routes`` (canonical) so the schema is
-            # uniform across modes. Compute ``by_framework`` / ``by_method``
-            # / ``file_count`` here so an agent that ran ``mode=all``
-            # doesn't have to fall back to a second call to
-            # ``mode=summary`` for the same statistics. Same key set as
-            # summary mode, different value content per mode.
-            by_framework: dict[str, int] = {}
-            by_method: dict[str, int] = {}
-            for r in routes:
-                by_framework[r.framework] = by_framework.get(r.framework, 0) + 1
-                by_method[r.http_method] = by_method.get(r.http_method, 0) + 1
-            file_count = len({r.file_path for r in routes})
-            result = {
-                "success": True,
-                "mode": "all",
-                "total_routes": len(routes),
-                # Deprecated alias — see note on summary mode above.
-                "route_count": len(routes),
-                "routes": [r.to_dict() for r in routes],
-                "by_framework": by_framework,
-                "by_method": by_method,
-                "file_count": file_count,
-            }
+            result = self._build_all_response(detector, framework_filter)
         elif mode == "lookup":
-            url = arguments["url_pattern"]
-            matches = detector.lookup_handler(url)
-            if framework_filter != "all":
-                matches = [r for r in matches if r.framework == framework_filter]
-            result = {
-                "success": True,
-                "mode": "lookup",
-                "url_pattern": url,
-                "match_count": len(matches),
-                "routes": [r.to_dict() for r in matches],
-            }
+            result = self._build_lookup_response(
+                detector, arguments["url_pattern"], framework_filter
+            )
         elif mode == "prefix":
-            prefix = arguments["url_pattern"]
-            matches = detector.lookup_url_prefix(prefix)
-            if framework_filter != "all":
-                matches = [r for r in matches if r.framework == framework_filter]
-            result = {
-                "success": True,
-                "mode": "prefix",
-                "prefix": prefix,
-                "match_count": len(matches),
-                "routes": [r.to_dict() for r in matches],
-            }
+            result = self._build_prefix_response(
+                detector, arguments["url_pattern"], framework_filter
+            )
         elif mode == "file":
-            # Validate the user-supplied path stays inside project_root and
-            # resolve any symlinks before we hand the path to the detector.
-            raw_file_path = arguments["file_path"]
-            file_path = self.resolve_and_validate_file_path(raw_file_path)
-            # M4 (round-26 dogfood): the previous code silently scanned
-            # an empty universe when ``file_path`` did not exist OR was
-            # a directory. Agents read ``total_routes=0`` as "no routes"
-            # rather than "I never looked at the file you asked about".
-            # Emit a structured validation error envelope instead.
-            if not os.path.exists(file_path):
-                return _validation_error_envelope(
-                    f"file not found: {raw_file_path}",
-                    mode=mode,
-                    output_format=output_format,
-                    file_path=raw_file_path,
-                )
-            if os.path.isdir(file_path):
-                return _validation_error_envelope(
-                    (
-                        f"path is a directory: {raw_file_path} — use mode='all' "
-                        "for a project-wide scan, or pass an individual file"
-                    ),
-                    mode=mode,
-                    output_format=output_format,
-                    file_path=raw_file_path,
-                )
-            if not os.path.isfile(file_path):
-                return _validation_error_envelope(
-                    f"not a regular file: {raw_file_path}",
-                    mode=mode,
-                    output_format=output_format,
-                    file_path=raw_file_path,
-                )
-            routes = detector.detect_file(file_path)
-            result = {
-                "success": True,
-                "mode": "file",
-                "file_path": file_path,
-                "route_count": len(routes),
-                "routes": [r.to_dict() for r in routes],
-            }
+            file_result = self._build_file_response(
+                detector, arguments["file_path"], output_format
+            )
+            if file_result.get("success") is False:
+                return file_result
+            result = file_result
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
-        # Top-level summary_line + agent_summary for LLM consumers.
         _attach_route_summary(result, mode)
-
         from ..utils.format_helper import apply_toon_format_to_response
 
         return apply_toon_format_to_response(result, output_format)
+
+    @staticmethod
+    def _build_summary_response(detector: Any) -> dict[str, Any]:
+        """M6: ``mode=summary`` exposes the canonical key set (incl. empty ``routes``)."""
+        summary_data = detector.summary()
+        return {
+            "success": True,
+            "mode": "summary",
+            "total_routes": summary_data["total_routes"],
+            "route_count": summary_data["total_routes"],  # deprecated alias
+            "routes": [],
+            "by_framework": summary_data["by_framework"],
+            "by_method": summary_data["by_method"],
+            "file_count": summary_data["file_count"],
+        }
+
+    @staticmethod
+    def _build_all_response(detector: Any, framework_filter: str) -> dict[str, Any]:
+        """M6: ``mode=all`` adds full ``routes`` list + recomputed aggregates."""
+        routes = detector.detect_all()
+        if framework_filter != "all":
+            routes = [r for r in routes if r.framework == framework_filter]
+        by_framework: dict[str, int] = {}
+        by_method: dict[str, int] = {}
+        for r in routes:
+            by_framework[r.framework] = by_framework.get(r.framework, 0) + 1
+            by_method[r.http_method] = by_method.get(r.http_method, 0) + 1
+        return {
+            "success": True,
+            "mode": "all",
+            "total_routes": len(routes),
+            "route_count": len(routes),  # deprecated alias
+            "routes": [r.to_dict() for r in routes],
+            "by_framework": by_framework,
+            "by_method": by_method,
+            "file_count": len({r.file_path for r in routes}),
+        }
+
+    @staticmethod
+    def _build_lookup_response(
+        detector: Any, url: str, framework_filter: str
+    ) -> dict[str, Any]:
+        """``mode=lookup`` returns exact URL pattern matches."""
+        matches = detector.lookup_handler(url)
+        if framework_filter != "all":
+            matches = [r for r in matches if r.framework == framework_filter]
+        return {
+            "success": True,
+            "mode": "lookup",
+            "url_pattern": url,
+            "match_count": len(matches),
+            "routes": [r.to_dict() for r in matches],
+        }
+
+    @staticmethod
+    def _build_prefix_response(
+        detector: Any, prefix: str, framework_filter: str
+    ) -> dict[str, Any]:
+        """``mode=prefix`` returns routes whose URL pattern starts with ``prefix``."""
+        matches = detector.lookup_url_prefix(prefix)
+        if framework_filter != "all":
+            matches = [r for r in matches if r.framework == framework_filter]
+        return {
+            "success": True,
+            "mode": "prefix",
+            "prefix": prefix,
+            "match_count": len(matches),
+            "routes": [r.to_dict() for r in matches],
+        }
+
+    def _build_file_response(
+        self,
+        detector: Any,
+        raw_file_path: str,
+        output_format: str,
+    ) -> dict[str, Any]:
+        """``mode=file`` — validates path (M4) then runs single-file detection."""
+        file_path = self.resolve_and_validate_file_path(raw_file_path)
+        error = _validate_file_mode_path(file_path, raw_file_path, output_format)
+        if error is not None:
+            return error
+        routes = detector.detect_file(file_path)
+        return {
+            "success": True,
+            "mode": "file",
+            "file_path": file_path,
+            "route_count": len(routes),
+            "routes": [r.to_dict() for r in routes],
+        }
 
 
 def _pluralize(count: int, singular: str, plural: str | None = None) -> str:
@@ -316,6 +314,43 @@ def _attach_route_summary(result: dict[str, Any], mode: str) -> None:
         "next_step": next_step,
         "verdict": "INFO",
     }
+
+
+def _validate_file_mode_path(
+    file_path: str,
+    raw_file_path: str,
+    output_format: str,
+) -> dict[str, Any] | None:
+    """M4: reject missing / dir / non-regular paths with a structured envelope.
+
+    r37bj: extracted from ``execute``'s ``mode=file`` branch so the
+    dispatch reads as a flat ``if error: return error`` guard.
+    """
+    if not os.path.exists(file_path):
+        return _validation_error_envelope(
+            f"file not found: {raw_file_path}",
+            mode="file",
+            output_format=output_format,
+            file_path=raw_file_path,
+        )
+    if os.path.isdir(file_path):
+        return _validation_error_envelope(
+            (
+                f"path is a directory: {raw_file_path} — use mode='all' "
+                "for a project-wide scan, or pass an individual file"
+            ),
+            mode="file",
+            output_format=output_format,
+            file_path=raw_file_path,
+        )
+    if not os.path.isfile(file_path):
+        return _validation_error_envelope(
+            f"not a regular file: {raw_file_path}",
+            mode="file",
+            output_format=output_format,
+            file_path=raw_file_path,
+        )
+    return None
 
 
 def _validation_error_envelope(
