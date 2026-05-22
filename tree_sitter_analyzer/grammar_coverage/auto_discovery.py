@@ -20,6 +20,7 @@ from __future__ import annotations
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from typing import Any
 
 from ..utils import log_debug, log_error, log_warning
 from .discovery_corpus import BUILTIN_CORPUS, BUILTIN_CORPUS_EXTRA, TARGET_LANGUAGES
@@ -99,84 +100,25 @@ def _collect_node_stats(
 ) -> dict[str, NodeStats]:
     """解析 corpus 代码，统计每种节点类型的结构特征.
 
-    Args:
-        language: 语言名称
-        corpus_code: 源代码字符串
-
-    Returns:
-        {node_type: NodeStats}，未出现则为空字典
+    r37bh (dogfood): originally 101 行 inline (含 traverse closure +
+    field-usage scan)。Refactor 把 traverse 提到 module-level
+    (_collect_stats_walk), 把 field-usage 提到 _record_field_usage,
+    并新增 _load_language_objects 集中校验。函数本体 ~25 行。
     """
     try:
-        import tree_sitter
-
-        from ..language_loader import loader
-
-        lang_obj = loader.load_language(language)
-        if lang_obj is None:
-            log_warning(f"Cannot load language '{language}' for structural analysis")
+        lang_obj, parser = _load_language_objects(language)
+        if lang_obj is None or parser is None:
             return {}
 
-        parser = loader.create_parser_safely(language)
-        if parser is None:
-            log_warning(f"Cannot create parser for '{language}'")
-            return {}
+        stats_map: dict[str, NodeStats] = defaultdict(lambda: NodeStats(node_type=""))
 
         tree = parser.parse(corpus_code.encode("utf-8"))
+        _collect_stats_walk(tree.root_node, None, stats_map, lang_obj)
 
-        stats_map: dict[str, NodeStats] = defaultdict(
-            lambda: NodeStats(node_type="")
-        )
-
-        def traverse(
-            node: tree_sitter.Node,
-            parent_type: str | None,
-        ) -> None:
-            if not node.is_named:
-                for child in node.children:
-                    traverse(child, parent_type)
-                return
-
-            ns = stats_map[node.type]
-            if ns.node_type == "":
-                ns.node_type = node.type
-
-            ns.samples += 1
-            named_children = [c for c in node.children if c.is_named]
-            ns.total_children += len(named_children)
-
-            if parent_type:
-                ns.parent_types[parent_type] = (
-                    ns.parent_types.get(parent_type, 0) + 1
-                )
-
-            for child in named_children:
-                ns.child_types[child.type] = (
-                    ns.child_types.get(child.type, 0) + 1
-                )
-
-            # 记录字段使用情况
-            for field_name in _WRAPPER_FIELDS:
-                try:
-                    field_id = lang_obj.field_id_for_name(field_name)
-                    if field_id is not None:
-                        field_nodes = node.children_by_field_id(field_id)
-                        if field_nodes:
-                            ns.field_usage[field_name] = (
-                                ns.field_usage.get(field_name, 0)
-                                + len(field_nodes)
-                            )
-                except Exception:
-                    pass
-
-            for child in node.children:
-                traverse(child, node.type)
-
-        traverse(tree.root_node, None)
-
-        # 解析额外的字节级 corpus（如 Python 2 遗留语法）
+        # 解析额外的字节级 corpus (如 Python 2 遗留语法)
         for extra_bytes in BUILTIN_CORPUS_EXTRA.get(language, []):
             extra_tree = parser.parse(extra_bytes)
-            traverse(extra_tree.root_node, None)
+            _collect_stats_walk(extra_tree.root_node, None, stats_map, lang_obj)
 
         # 清理 defaultdict lambda 残留的空字符串 node_type
         result: dict[str, NodeStats] = {}
@@ -188,6 +130,76 @@ def _collect_node_stats(
     except Exception as e:
         log_error(f"Failed to collect node stats for '{language}': {e}")
         return {}
+
+
+def _load_language_objects(language: str) -> tuple[Any | None, Any | None]:
+    """Return (lang_obj, parser) for ``language``, both may be ``None``."""
+    from ..language_loader import loader
+
+    lang_obj = loader.load_language(language)
+    if lang_obj is None:
+        log_warning(f"Cannot load language '{language}' for structural analysis")
+        return None, None
+    parser = loader.create_parser_safely(language)
+    if parser is None:
+        log_warning(f"Cannot create parser for '{language}'")
+        return lang_obj, None
+    return lang_obj, parser
+
+
+def _collect_stats_walk(
+    node: Any,
+    parent_type: str | None,
+    stats_map: dict[str, NodeStats],
+    lang_obj: Any,
+) -> None:
+    """Recursive walker — updates ``stats_map`` in place.
+
+    r37bh: extracted from ``_collect_node_stats`` closure so the parent
+    function reads as a linear setup-walk-cleanup pipeline.
+    """
+    if not node.is_named:
+        for child in node.children:
+            _collect_stats_walk(child, parent_type, stats_map, lang_obj)
+        return
+
+    ns = stats_map[node.type]
+    if ns.node_type == "":
+        ns.node_type = node.type
+
+    ns.samples += 1
+    named_children = [c for c in node.children if c.is_named]
+    ns.total_children += len(named_children)
+
+    if parent_type:
+        ns.parent_types[parent_type] = ns.parent_types.get(parent_type, 0) + 1
+
+    for child in named_children:
+        ns.child_types[child.type] = ns.child_types.get(child.type, 0) + 1
+
+    _record_field_usage(node, ns, lang_obj)
+
+    for child in node.children:
+        _collect_stats_walk(child, node.type, stats_map, lang_obj)
+
+
+def _record_field_usage(node: Any, ns: NodeStats, lang_obj: Any) -> None:
+    """Tally tree-sitter field usage (``_WRAPPER_FIELDS``) on a single node."""
+    for field_name in _WRAPPER_FIELDS:
+        try:
+            field_id = lang_obj.field_id_for_name(field_name)
+        except Exception:  # nosec B112 — best-effort field lookup; tree-sitter language
+            # objects may raise on missing fields per grammar; we treat any failure as
+            # "this field doesn't exist in this language" and move on.
+            continue
+        if field_id is None:
+            continue
+        field_nodes = node.children_by_field_id(field_id)
+        if not field_nodes:
+            continue
+        ns.field_usage[field_name] = ns.field_usage.get(field_name, 0) + len(
+            field_nodes
+        )
 
 
 def _score_wrapper_node(
@@ -302,7 +314,8 @@ class AutoDiscoveryEngine:
                     name = lang_obj.field_name_for_id(i)
                     if name:
                         names.append(name)
-                except Exception:
+                except Exception:  # nosec B110 — field IDs may be missing
+                    # in newer tree-sitter releases; non-fatal, skip silently.
                     pass
             return sorted(set(names))
         except Exception as e:
@@ -379,9 +392,7 @@ class AutoDiscoveryEngine:
                     path_str = " > ".join(parent_path[-1:]) + " > " + node.type
                     path_counts[path_str] += 1
 
-                new_path = (
-                    parent_path + (node.type,) if node.is_named else parent_path
-                )
+                new_path = parent_path + (node.type,) if node.is_named else parent_path
                 for child in node.children:
                     traverse(child, new_path)
 
@@ -518,9 +529,7 @@ class AutoDiscoveryEngine:
 
         for lang, report in sorted(results.items()):
             if not report.is_ok:
-                lines.append(
-                    f"| {lang} | — | — | — | — | ❌ {report.error} |"
-                )
+                lines.append(f"| {lang} | — | — | — | — | ❌ {report.error} |")
                 continue
 
             # Use coverage_rate to back-calculate discovered count in grammar
@@ -575,12 +584,12 @@ class AutoDiscoveryEngine:
 
             if report.missing_node_types:
                 lines.append(
-                    f"**Missing from corpus** "
-                    f"({len(report.missing_node_types)} types):"
+                    f"**Missing from corpus** ({len(report.missing_node_types)} types):"
                 )
                 shown = report.missing_node_types[:10]
                 lines.append(
-                    "```\n" + "\n".join(shown)
+                    "```\n"
+                    + "\n".join(shown)
                     + ("\n..." if len(report.missing_node_types) > 10 else "")
                     + "\n```"
                 )

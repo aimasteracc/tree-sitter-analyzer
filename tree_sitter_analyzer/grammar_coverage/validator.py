@@ -276,9 +276,7 @@ async def _get_covered_node_types_from_plugin(
         line_index: dict[tuple[int, int], list[tuple[str, tuple[str, ...]]]] = {}
         node_count = 0
 
-        def build_ast_map(
-            node: Any, parent_path: tuple[str, ...], depth: int
-        ) -> None:
+        def build_ast_map(node: Any, parent_path: tuple[str, ...], depth: int) -> None:
             nonlocal node_count
 
             if depth > MAX_DEPTH:
@@ -334,7 +332,9 @@ async def _get_covered_node_types_from_plugin(
                     break
 
         # 5. 返回去重后的 node_type 集合（向后兼容）
-        covered_types: set[str] = {node_type for node_type, _ in covered_syntactic_paths}
+        covered_types: set[str] = {
+            node_type for node_type, _ in covered_syntactic_paths
+        }
 
     except Exception as e:
         # 记录错误但不中断流程，返回空集
@@ -505,4 +505,5 @@ def check_coverage_threshold(
 # Synchronous wrappers for testing convenience
 def validate_plugin_coverage_sync(language: str) -> CoverageReport:
     """同步版本的 validate_plugin_coverage（用于测试）"""
-    return anyio.run(validate_plugin_coverage, language)
+    # anyio.run returns Any per its stub; cast back to the real return type.
+    return anyio.run(validate_plugin_coverage, language)  # type: ignore[no-any-return]
