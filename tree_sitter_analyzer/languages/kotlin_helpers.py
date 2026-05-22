@@ -172,6 +172,29 @@ def extract_kotlin_class_or_object(
         return None
 
 
+def _extract_kotlin_property_name(
+    node: Any,
+    get_node_text: Callable[..., str],
+) -> str:
+    """Return the property name (val/var binding) for a Kotlin property node.
+
+    r37ci (dogfood): extracted from ``extract_kotlin_property`` so the
+    three lookup forms (``name`` field / ``variable_declaration`` /
+    ``simple_identifier``) read as a flat chain.
+    """
+    name_node = node.child_by_field_name("name")
+    if name_node:
+        return str(get_node_text(name_node))
+    for child in node.children:
+        if child.type == "variable_declaration":
+            for grandchild in child.children:
+                if grandchild.type == "simple_identifier":
+                    return str(get_node_text(grandchild))
+        elif child.type == "simple_identifier":
+            return str(get_node_text(child))
+    return "unknown"
+
+
 # Extract elements from AST: extract_kotlin_property
 def extract_kotlin_property(
     node: Any,
@@ -187,21 +210,8 @@ def extract_kotlin_property(
         elif text.startswith("var "):
             is_var = True
 
-        name = "unknown"
-
-        name_node = node.child_by_field_name("name")
-        if name_node:
-            name = get_node_text(name_node)
-        else:
-            for child in node.children:
-                if child.type == "variable_declaration":
-                    for grandchild in child.children:
-                        if grandchild.type == "simple_identifier":
-                            name = get_node_text(grandchild)
-                            break
-                elif child.type == "simple_identifier":
-                    name = get_node_text(child)
-                    break
+        # r37ci (dogfood): extracted to drop nesting from 7 to ≤3.
+        name = _extract_kotlin_property_name(node, get_node_text)
 
         start_line = node.start_point[0] + 1
         end_line = node.end_point[0] + 1

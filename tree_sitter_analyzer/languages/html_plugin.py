@@ -149,27 +149,47 @@ class HtmlElementExtractor(ElementExtractor):
         source_code: str,
         parent: MarkupElement | None,
     ) -> None:
-        """Traverse tree to find HTML elements using tree-sitter-html grammar"""
-        if hasattr(node, "type") and self._is_html_element_node(node.type):
-            try:
-                element = self._create_markup_element(node, source_code, parent)
-                if element:
-                    elements.append(element)
+        """Traverse tree to find HTML elements using tree-sitter-html grammar.
 
-                    # Process children with this element as parent
-                    if hasattr(node, "children"):
-                        for child in node.children:
-                            self._traverse_for_html_elements(
-                                child, elements, source_code, element
-                            )
-                    return
-            except Exception as e:
-                log_debug(f"Failed to extract HTML element: {e}")
+        r37ch (dogfood): tool flagged this at nesting depth 8 (L163). The
+        per-html-node creation logic moved into ``_try_create_html_element``.
+        """
+        if hasattr(node, "type") and self._is_html_element_node(node.type):
+            created = self._try_create_html_element(node, elements, source_code, parent)
+            if created:
+                return
 
         # Continue traversing children if this node is not an HTML element
         if hasattr(node, "children"):
             for child in node.children:
                 self._traverse_for_html_elements(child, elements, source_code, parent)
+
+    def _try_create_html_element(
+        self,
+        node: "tree_sitter.Node",
+        elements: list[MarkupElement],
+        source_code: str,
+        parent: MarkupElement | None,
+    ) -> bool:
+        """Create a MarkupElement for ``node`` and recurse with it as parent.
+
+        r37ch (dogfood): extracted from ``_traverse_for_html_elements`` to
+        drop nesting from 8 to ≤3. Returns True when an element was
+        created (signalling the caller NOT to walk children again with
+        the parent context).
+        """
+        try:
+            element = self._create_markup_element(node, source_code, parent)
+        except Exception as e:
+            log_debug(f"Failed to extract HTML element: {e}")
+            return False
+        if not element:
+            return False
+        elements.append(element)
+        if hasattr(node, "children"):
+            for child in node.children:
+                self._traverse_for_html_elements(child, elements, source_code, element)
+        return True
 
     def _is_html_element_node(self, node_type: str) -> bool:
         """Check if a node type represents an HTML element in tree-sitter-html grammar"""

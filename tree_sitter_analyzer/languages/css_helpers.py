@@ -111,25 +111,39 @@ def extract_css_selector(node: Any, get_node_text: Callable[..., str]) -> str:
 def extract_css_properties(
     node: Any, get_node_text: Callable[..., str]
 ) -> dict[str, str]:
-    """Extract properties from CSS rule_set node."""
+    """Extract properties from CSS rule_set node.
+
+    r37cj (dogfood): tool flagged this at nesting depth 8 (L126). The
+    inner declaration scan moved into ``_collect_css_block_declarations``.
+    """
     properties: dict[str, str] = {}
     try:
-        if hasattr(node, "children"):
-            for child in node.children:
-                if hasattr(child, "type") and child.type == "block":
-                    for grandchild in child.children:
-                        if (
-                            hasattr(grandchild, "type")
-                            and grandchild.type == "declaration"
-                        ):
-                            prop_name, prop_value = parse_declaration(
-                                grandchild, get_node_text
-                            )
-                            if prop_name:
-                                properties[prop_name] = prop_value
+        if not hasattr(node, "children"):
+            return properties
+        for child in node.children:
+            if hasattr(child, "type") and child.type == "block":
+                _collect_css_block_declarations(child, get_node_text, properties)
     except Exception as e:
         log_debug(f"Failed to extract properties: {e}")
     return properties
+
+
+def _collect_css_block_declarations(
+    block_node: Any,
+    get_node_text: Callable[..., str],
+    properties: dict[str, str],
+) -> None:
+    """Append each ``declaration`` child to ``properties``.
+
+    r37cj: extracted from ``extract_css_properties`` so the inner walk
+    of a CSS block reads as a flat for-if rather than depth-8 nesting.
+    """
+    for grandchild in block_node.children:
+        if not (hasattr(grandchild, "type") and grandchild.type == "declaration"):
+            continue
+        prop_name, prop_value = parse_declaration(grandchild, get_node_text)
+        if prop_name:
+            properties[prop_name] = prop_value
 
 
 def create_style_element(
