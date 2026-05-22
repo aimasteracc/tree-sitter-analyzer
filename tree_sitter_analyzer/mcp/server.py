@@ -64,6 +64,7 @@ from .server_utils.code_scale_handler import analyze_code_scale
 from .server_utils.prompt_registration import register_prompts
 from .server_utils.resource_registration import register_resources
 from .server_utils.tool_registration import register_tools
+
 # PERF-3: tool classes are imported lazily inside _create_tool_registry().
 # At module load time we ship only the module-level Server entry points;
 # importing the 23 individual tool modules eagerly cost ~316 ms cold start
@@ -103,6 +104,8 @@ def _create_tool_registry(
     from .tools.analyze_scale_tool import AnalyzeScaleTool
     from .tools.ast_cache_tool import ASTCacheTool
     from .tools.call_graph_tool import CodeGraphCallTool
+    from .tools.callees_tool import CodeGraphCalleesTool
+    from .tools.callers_tool import CodeGraphCallersTool
     from .tools.change_impact_tool import ChangeImpactTool
     from .tools.code_patterns_tool import CodePatternsTool
     from .tools.dependency_analysis_tool import DependencyAnalysisTool
@@ -120,6 +123,7 @@ def _create_tool_registry(
     from .tools.search_content_tool import SearchContentTool
     from .tools.smart_context_tool import SmartContextTool
     from .tools.symbol_lineage_tool import SymbolLineageTool
+    from .tools.symbol_search_tool import CodeGraphSymbolSearchTool
 
     tool_instances: list[tuple[str, Any]] = [
         ("check_code_scale", AnalyzeScaleTool(project_root)),
@@ -138,6 +142,9 @@ def _create_tool_registry(
         ("analyze_dependencies", DependencyAnalysisTool(project_root)),
         ("ast_cache", ASTCacheTool(project_root)),
         ("codegraph_call_graph", CodeGraphCallTool(project_root)),
+        ("codegraph_callers", CodeGraphCallersTool(project_root)),
+        ("codegraph_callees", CodeGraphCalleesTool(project_root)),
+        ("codegraph_symbol_search", CodeGraphSymbolSearchTool(project_root)),
         ("analyze_change_impact", ChangeImpactTool(project_root)),
         ("refactoring_suggestions", RefactoringSuggestionsTool(project_root)),
         ("safe_to_edit", SafeToEditTool(project_root)),

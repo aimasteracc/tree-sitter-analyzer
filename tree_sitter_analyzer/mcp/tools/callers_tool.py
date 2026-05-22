@@ -10,7 +10,7 @@ Simpler and more discoverable than the monolithic codegraph_call_graph tool.
 
 from typing import Any
 
-from ...call_graph import CallGraph
+from ...call_graph import CachedCallGraph, CallGraph
 from ...utils import setup_logger
 from .base_tool import BaseMCPTool
 
@@ -27,11 +27,30 @@ class CodeGraphCallersTool(BaseMCPTool):
     def _on_project_root_changed(self, project_root: str | None) -> None:
         self._call_graph = None
 
+    def _try_get_cache(self) -> Any:
+        try:
+            from ...ast_cache import ASTCache
+
+            if self.project_root is None:
+                return None
+            cache = ASTCache(self.project_root)
+            stats = cache.get_stats()
+            if stats.get("total_files", 0) > 0:
+                return cache
+            cache.close()
+        except Exception:  # nosec B110
+            pass
+        return None
+
     def _get_call_graph(self) -> CallGraph:
         if self._call_graph is None:
             if not self.project_root:
                 raise ValueError("Project root not set. Call set_project_path first.")
-            self._call_graph = CallGraph(self.project_root)
+            cache = self._try_get_cache()
+            if cache is not None:
+                self._call_graph = CachedCallGraph(self.project_root, cache=cache)
+            else:
+                self._call_graph = CallGraph(self.project_root)
         return self._call_graph
 
     def get_tool_definition(self) -> dict[str, Any]:

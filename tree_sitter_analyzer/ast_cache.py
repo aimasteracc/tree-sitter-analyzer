@@ -69,10 +69,35 @@ CREATE INDEX IF NOT EXISTS idx_sym_rows_file_path
     ON ast_symbol_rows(file_path);
 """
 
+_SCHEMA_V3_CALL_EDGES = """
+CREATE TABLE IF NOT EXISTS ast_call_edges (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    caller_name TEXT NOT NULL,
+    caller_file TEXT NOT NULL,
+    caller_line INTEGER NOT NULL,
+    callee_name TEXT NOT NULL,
+    callee_full TEXT NOT NULL DEFAULT '',
+    callee_line INTEGER NOT NULL DEFAULT 0,
+    file_path   TEXT NOT NULL,
+    language    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ce_callee_name
+    ON ast_call_edges(callee_name);
+
+CREATE INDEX IF NOT EXISTS idx_ce_caller_name
+    ON ast_call_edges(caller_name);
+
+CREATE INDEX IF NOT EXISTS idx_ce_file_path
+    ON ast_call_edges(file_path);
+"""
+
 
 def _has_fts5(conn: sqlite3.Connection) -> bool:
     try:
-        conn.execute("SELECT fts5 FROM pragma_compile_options WHERE fts5 = 'ENABLE_FTS5'")
+        conn.execute(
+            "SELECT fts5 FROM pragma_compile_options WHERE fts5 = 'ENABLE_FTS5'"
+        )
         return True
     except sqlite3.OperationalError:
         try:
@@ -82,30 +107,33 @@ def _has_fts5(conn: sqlite3.Connection) -> bool:
         except sqlite3.OperationalError:
             return False
 
-_EXCLUDE_DIRS = frozenset({
-    "node_modules",
-    ".git",
-    ".hg",
-    ".svn",
-    "__pycache__",
-    ".venv",
-    "venv",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "dist",
-    "build",
-    "htmlcov",
-    ".cache",
-    ".eggs",
-    ".idea",
-    ".vscode",
-    ".claude",
-    ".swarm",
-    ".claude-flow",
-    ".opencode",
-})
+
+_EXCLUDE_DIRS = frozenset(
+    {
+        "node_modules",
+        ".git",
+        ".hg",
+        ".svn",
+        "__pycache__",
+        ".venv",
+        "venv",
+        ".tox",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "dist",
+        "build",
+        "htmlcov",
+        ".cache",
+        ".eggs",
+        ".idea",
+        ".vscode",
+        ".claude",
+        ".swarm",
+        ".claude-flow",
+        ".opencode",
+    }
+)
 
 _EXT_TO_LANG: dict[str, str] = {
     ".py": "python",
@@ -169,6 +197,7 @@ def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
     symbols = _extract_symbols(result.tree, source_code, language)
     imports = _extract_imports(symbols)
     structure = _extract_structure(symbols)
+    call_edges = _extract_call_edges(result.tree, source_code, language, symbols)
     return {
         "status": "ok",
         "rel_path": rel_path,
@@ -181,6 +210,7 @@ def _worker_index_file(args: tuple[str, str, str]) -> dict[str, Any]:
         "symbols_json": json.dumps(symbols, ensure_ascii=False),
         "imports_json": json.dumps(imports, ensure_ascii=False),
         "structure_json": json.dumps(structure, ensure_ascii=False),
+        "call_edges_json": json.dumps(call_edges, ensure_ascii=False),
         "symbol_rows": [
             (
                 sym.get("name", sym.get("text", "")),
@@ -223,101 +253,117 @@ def _walk_for_symbols(
         name = _node_text(name_node, source)
         params_node = node.child_by_field_name("parameters")
         params = _node_text(params_node, source) if params_node else ""
-        symbols.append({
-            "kind": "function",
-            "name": name,
-            "line": node.start_point[0] + 1,
-            "end_line": node.end_point[0] + 1,
-            "params": params,
-            "language": language,
-        })
+        symbols.append(
+            {
+                "kind": "function",
+                "name": name,
+                "line": node.start_point[0] + 1,
+                "end_line": node.end_point[0] + 1,
+                "params": params,
+                "language": language,
+            }
+        )
     elif node_type in _CLASS_LIKE and name_node is not None:
         name = _node_text(name_node, source)
-        symbols.append({
-            "kind": "class",
-            "name": name,
-            "line": node.start_point[0] + 1,
-            "end_line": node.end_point[0] + 1,
-            "language": language,
-        })
+        symbols.append(
+            {
+                "kind": "class",
+                "name": name,
+                "line": node.start_point[0] + 1,
+                "end_line": node.end_point[0] + 1,
+                "language": language,
+            }
+        )
     elif node_type in _IMPORT_LIKE:
-        symbols.append({
-            "kind": "import",
-            "text": _node_text(node, source),
-            "line": node.start_point[0] + 1,
-            "language": language,
-        })
+        symbols.append(
+            {
+                "kind": "import",
+                "text": _node_text(node, source),
+                "line": node.start_point[0] + 1,
+                "language": language,
+            }
+        )
     elif node_type in _VAR_DECL_LIKE and name_node is not None:
         name = _node_text(name_node, source)
         if not name.startswith("_") or depth < 3:
-            symbols.append({
-                "kind": "variable",
-                "name": name,
-                "line": node.start_point[0] + 1,
-                "language": language,
-            })
+            symbols.append(
+                {
+                    "kind": "variable",
+                    "name": name,
+                    "line": node.start_point[0] + 1,
+                    "language": language,
+                }
+            )
     for child in node.children:
         _walk_for_symbols(child, source, symbols, language, depth + 1)
 
 
-_FUNCTION_LIKE = frozenset({
-    "function_definition",
-    "function_declaration",
-    "method_definition",
-    "arrow_function",
-    "generator_function_declaration",
-    "function_item",
-    "method_declaration",
-    "constructor_declaration",
-    "lambda_expression",
-    "anonymous_function",
-    "class_method",
-    "member_function",
-    "function_declarator",
-    "declaration",
-    "init_declarator",
-})
+_FUNCTION_LIKE = frozenset(
+    {
+        "function_definition",
+        "function_declaration",
+        "method_definition",
+        "arrow_function",
+        "generator_function_declaration",
+        "function_item",
+        "method_declaration",
+        "constructor_declaration",
+        "lambda_expression",
+        "anonymous_function",
+        "class_method",
+        "member_function",
+        "function_declarator",
+        "declaration",
+        "init_declarator",
+    }
+)
 
-_CLASS_LIKE = frozenset({
-    "class_definition",
-    "class_declaration",
-    "class",
-    "interface_declaration",
-    "struct_item",
-    "enum_declaration",
-    "enum",
-    "trait_declaration",
-    "impl_item",
-    "struct_declaration",
-    "type_declaration",
-})
+_CLASS_LIKE = frozenset(
+    {
+        "class_definition",
+        "class_declaration",
+        "class",
+        "interface_declaration",
+        "struct_item",
+        "enum_declaration",
+        "enum",
+        "trait_declaration",
+        "impl_item",
+        "struct_declaration",
+        "type_declaration",
+    }
+)
 
-_IMPORT_LIKE = frozenset({
-    "import_statement",
-    "import_from_statement",
-    "import_declaration",
-    "require_statement",
-    "use_declaration",
-    "extern_crate_item",
-    "package_declaration",
-    "include_directive",
-})
+_IMPORT_LIKE = frozenset(
+    {
+        "import_statement",
+        "import_from_statement",
+        "import_declaration",
+        "require_statement",
+        "use_declaration",
+        "extern_crate_item",
+        "package_declaration",
+        "include_directive",
+    }
+)
 
-_VAR_DECL_LIKE = frozenset({
-    "variable_declarator",
-    "assignment_expression",
-    "lexical_declaration",
-    "variable_declaration",
-    "const_declaration",
-    "let_declaration",
-})
+_VAR_DECL_LIKE = frozenset(
+    {
+        "variable_declarator",
+        "assignment_expression",
+        "lexical_declaration",
+        "variable_declaration",
+        "const_declaration",
+        "let_declaration",
+    }
+)
 
 
 def _node_text(node: Any, source: str) -> str:
     if node is None:
         return ""
     try:
-        return source[node.start_byte:node.end_byte]
+        return source[node.start_byte : node.end_byte]
     except (IndexError, TypeError):
         return ""
 
@@ -330,11 +376,7 @@ def _count_nodes(node: Any) -> int:
 
 
 def _extract_imports(symbols: dict[str, Any]) -> list[str]:
-    return [
-        s["text"]
-        for s in symbols.get("symbols", [])
-        if s.get("kind") == "import"
-    ]
+    return [s["text"] for s in symbols.get("symbols", []) if s.get("kind") == "import"]
 
 
 def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
@@ -346,6 +388,52 @@ def _extract_structure(symbols: dict[str, Any]) -> dict[str, Any]:
         elif s["kind"] == "class":
             classes.append({"name": s["name"], "line": s["line"]})
     return {"functions": functions, "classes": classes}
+
+
+def _extract_call_edges(
+    tree: Any, source_code: str, language: str, symbols: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Extract call edges from the AST using call_graph module helpers.
+
+    Returns list of dicts with caller_name, caller_file (empty — filled later),
+    caller_line, callee_name, callee_full, callee_line.
+    """
+    if tree is None:
+        return []
+    from . import call_graph as _cg
+
+    definitions, calls = _cg._walk_tree(tree.root_node, source_code, language)
+
+    file_funcs: dict[str, tuple[int, int]] = {}
+    for d in definitions:
+        file_funcs[d["name"]] = (d["start_line"], d.get("end_line", d["start_line"]))
+
+    edges: list[dict[str, Any]] = []
+    for call in calls:
+        call_line = call["line"]
+        caller_name = ""
+        caller_line = 0
+        for fname, (start, end) in file_funcs.items():
+            if start <= call_line <= end:
+                caller_name = fname
+                caller_line = start
+                break
+        callee_name = call.get("name", "")
+        callee_full = call.get("full_name", callee_name)
+        callee_line = call_line
+        receiver = call.get("receiver")
+        if receiver:
+            callee_name = f"{receiver}.{callee_name}"
+        edges.append(
+            {
+                "caller_name": caller_name,
+                "caller_line": caller_line,
+                "callee_name": callee_name,
+                "callee_full": callee_full,
+                "callee_line": callee_line,
+            }
+        )
+    return edges
 
 
 class ASTCache:
@@ -389,6 +477,11 @@ class ASTCache:
                 conn.commit()
             except sqlite3.OperationalError:
                 self._fts5_available = False
+        try:
+            conn.executescript(_SCHEMA_V3_CALL_EDGES)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
     def index_file(self, file_path: str, language: str | None = None) -> dict[str, Any]:
@@ -397,7 +490,11 @@ class ASTCache:
         if language is None:
             language = _language_from_ext(abs_path)
         if language is None:
-            return {"file": rel_path, "status": "skipped", "reason": "unsupported language"}
+            return {
+                "file": rel_path,
+                "status": "skipped",
+                "reason": "unsupported language",
+            }
 
         try:
             stat = os.stat(abs_path)
@@ -411,7 +508,10 @@ class ASTCache:
             (rel_path,),
         ).fetchone()
         if row is not None:
-            if row["mtime_ns"] == int(stat.st_mtime_ns) and row["file_size"] == stat.st_size:
+            if (
+                row["mtime_ns"] == int(stat.st_mtime_ns)
+                and row["file_size"] == stat.st_size
+            ):
                 return {"file": rel_path, "status": "cached", "reason": "unchanged"}
 
         try:
@@ -432,11 +532,16 @@ class ASTCache:
 
         result: ParseResult = self._parser.parse_file(abs_path, language)
         if not result.success:
-            return {"file": rel_path, "status": "error", "reason": result.error_message or "parse failed"}
+            return {
+                "file": rel_path,
+                "status": "error",
+                "reason": result.error_message or "parse failed",
+            }
 
         symbols = _extract_symbols(result.tree, source_code, language)
         imports = _extract_imports(symbols)
         structure = _extract_structure(symbols)
+        call_edges = _extract_call_edges(result.tree, source_code, language, symbols)
         indexed_at = datetime.now(timezone.utc).isoformat()
 
         conn.execute(
@@ -483,11 +588,35 @@ class ASTCache:
                     (row_id, sym_name, sym_kind, rel_path, language),
                 )
 
+        conn.execute(
+            "DELETE FROM ast_call_edges WHERE file_path = ?",
+            (rel_path,),
+        )
+        for edge in call_edges:
+            conn.execute(
+                """INSERT INTO ast_call_edges
+                   (caller_name, caller_file, caller_line,
+                    callee_name, callee_full, callee_line,
+                    file_path, language)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    edge["caller_name"],
+                    rel_path,
+                    edge["caller_line"],
+                    edge["callee_name"],
+                    edge["callee_full"],
+                    edge["callee_line"],
+                    rel_path,
+                    language,
+                ),
+            )
+
         conn.commit()
         return {
             "file": rel_path,
             "status": "indexed",
             "symbols": len(symbols.get("symbols", [])),
+            "call_edges": len(call_edges),
             "content_hash": content_hash[:16],
         }
 
@@ -585,7 +714,10 @@ class ASTCache:
         if workers and workers >= 2 and len(candidates) >= 2:
             results = self._index_parallel(candidates, workers)
         else:
-            results = [_worker_index_file((p, self.project_root, l)) for p, l in candidates]
+            results = [
+                _worker_index_file((p, self.project_root, lang))
+                for p, lang in candidates
+            ]
 
         # Pass 3: single-writer SQLite insert wrapped in one transaction.
         # Batching avoids the per-insert fsync/commit cost that dominated
@@ -597,13 +729,21 @@ class ASTCache:
                 if r["status"] == "io_error":
                     stats["errors"] += 1
                     stats["files"].append(
-                        {"file": r["rel_path"], "status": "error", "reason": r["reason"]}
+                        {
+                            "file": r["rel_path"],
+                            "status": "error",
+                            "reason": r["reason"],
+                        }
                     )
                     continue
                 if r["status"] == "parse_failed":
                     stats["errors"] += 1
                     stats["files"].append(
-                        {"file": r["rel_path"], "status": "error", "reason": r["reason"]}
+                        {
+                            "file": r["rel_path"],
+                            "status": "error",
+                            "reason": r["reason"],
+                        }
                     )
                     continue
                 self._insert_index_row(r, indexed_at)
@@ -633,16 +773,14 @@ class ASTCache:
         from multiprocessing import get_context
 
         ctx = get_context("spawn")
-        args_iter = [(p, self.project_root, l) for p, l in candidates]
+        args_iter = [(p, self.project_root, lang) for p, lang in candidates]
         results: list[dict[str, Any]] = []
         with ctx.Pool(processes=workers) as pool:
             for r in pool.imap_unordered(_worker_index_file, args_iter, chunksize=8):
                 results.append(r)
         return results
 
-    def _insert_index_row(
-        self, r: dict[str, Any], indexed_at: str
-    ) -> None:
+    def _insert_index_row(self, r: dict[str, Any], indexed_at: str) -> None:
         """Write one worker result to SQLite (main table + optional FTS5)."""
         conn = self._get_conn()
         rel_path = r["rel_path"]
@@ -686,6 +824,30 @@ class ASTCache:
                 (row_id, sym_name, sym_kind, rel_path, r["language"]),
             )
 
+        conn.execute(
+            "DELETE FROM ast_call_edges WHERE file_path = ?",
+            (rel_path,),
+        )
+        call_edges = json.loads(r.get("call_edges_json", "[]"))
+        for edge in call_edges:
+            conn.execute(
+                """INSERT INTO ast_call_edges
+                   (caller_name, caller_file, caller_line,
+                    callee_name, callee_full, callee_line,
+                    file_path, language)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    edge["caller_name"],
+                    rel_path,
+                    edge["caller_line"],
+                    edge["callee_name"],
+                    edge["callee_full"],
+                    edge["callee_line"],
+                    rel_path,
+                    r["language"],
+                ),
+            )
+
     def lookup(self, file_path: str) -> dict[str, Any] | None:
         rel = os.path.relpath(os.path.abspath(file_path), self.project_root)
         conn = self._get_conn()
@@ -705,7 +867,9 @@ class ASTCache:
             "indexed_at": row["indexed_at"],
         }
 
-    def search_symbols(self, query: str, language: str | None = None) -> list[dict[str, Any]]:
+    def search_symbols(
+        self, query: str, language: str | None = None
+    ) -> list[dict[str, Any]]:
         if self._fts5_available:
             return self.fts_search(query, language=language)
         return self._search_symbols_linear(query, language)
@@ -747,17 +911,21 @@ class ASTCache:
 
         results: list[dict[str, Any]] = []
         for row in rows:
-            results.append({
-                "name": row["name"],
-                "kind": row["kind"],
-                "file": row["file_path"],
-                "language": row["language"],
-                "line": row["line"],
-                "end_line": row["end_line"],
-            })
+            results.append(
+                {
+                    "name": row["name"],
+                    "kind": row["kind"],
+                    "file": row["file_path"],
+                    "language": row["language"],
+                    "line": row["line"],
+                    "end_line": row["end_line"],
+                }
+            )
         return results
 
-    def _search_symbols_linear(self, query: str, language: str | None = None) -> list[dict[str, Any]]:
+    def _search_symbols_linear(
+        self, query: str, language: str | None = None
+    ) -> list[dict[str, Any]]:
         conn = self._get_conn()
         if language:
             rows = conn.execute(
@@ -776,11 +944,13 @@ class ASTCache:
             for sym in symbols.get("symbols", []):
                 name = sym.get("name", sym.get("text", ""))
                 if query_lower in name.lower():
-                    results.append({
-                        "file": row["file_path"],
-                        "language": row["language"],
-                        **sym,
-                    })
+                    results.append(
+                        {
+                            "file": row["file_path"],
+                            "language": row["language"],
+                            **sym,
+                        }
+                    )
         return results
 
     def get_stats(self) -> dict[str, Any]:
@@ -814,15 +984,48 @@ class ASTCache:
         rel = os.path.relpath(os.path.abspath(file_path), self.project_root)
         conn = self._get_conn()
         if self._fts5_available:
-            conn.execute(
-                "DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel,)
-            )
-            conn.execute(
-                "DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel,)
-            )
+            conn.execute("DELETE FROM ast_symbols_fts WHERE file_path = ?", (rel,))
+            conn.execute("DELETE FROM ast_symbol_rows WHERE file_path = ?", (rel,))
+        conn.execute("DELETE FROM ast_call_edges WHERE file_path = ?", (rel,))
         cursor = conn.execute("DELETE FROM ast_index WHERE file_path = ?", (rel,))
         conn.commit()
         return cursor.rowcount > 0
+
+    def get_call_edges(self) -> list[dict[str, Any]]:
+        """Return all stored call edges from the cache."""
+        conn = self._get_conn()
+        try:
+            rows = conn.execute(
+                "SELECT caller_name, caller_file, caller_line, "
+                "callee_name, callee_full, callee_line, file_path, language "
+                "FROM ast_call_edges"
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return []
+        return [dict(row) for row in rows]
+
+    def get_functions(self) -> list[dict[str, Any]]:
+        """Return all indexed function definitions."""
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT file_path, symbols_json, language FROM ast_index"
+        ).fetchall()
+        functions: list[dict[str, Any]] = []
+        for row in rows:
+            symbols = json.loads(row["symbols_json"])
+            for sym in symbols.get("symbols", []):
+                if sym.get("kind") == "function":
+                    functions.append(
+                        {
+                            "name": sym["name"],
+                            "file": row["file_path"],
+                            "line": sym.get("line", 0),
+                            "end_line": sym.get("end_line", 0),
+                            "language": row["language"],
+                            "params": sym.get("params", ""),
+                        }
+                    )
+        return functions
 
     def close(self) -> None:
         conn = getattr(self._local, "conn", None)
@@ -833,7 +1036,9 @@ class ASTCache:
 
 def _walk_source_files(project_root: str) -> Iterator[str]:
     for dirpath, dirnames, filenames in os.walk(project_root):
-        dirnames[:] = [d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")]
+        dirnames[:] = [
+            d for d in dirnames if d not in _EXCLUDE_DIRS and not d.startswith(".")
+        ]
         for fname in filenames:
             ext = os.path.splitext(fname)[1].lower()
             if ext in _EXT_TO_LANG:

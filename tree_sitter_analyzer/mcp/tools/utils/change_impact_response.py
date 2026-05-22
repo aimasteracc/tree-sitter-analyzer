@@ -242,7 +242,8 @@ def _agent_stop_condition(
 ) -> str:
     """Describe when the current edit queue can be considered closed."""
     if not verification["test_required"]:
-        return "git diff --check passes and no runtime files are added."
+        # docs-only: no tests required, just diff cleanliness
+        return "docs-only: git diff --check passes and no runtime files are added."
     if (
         risk == "high"
         and verification["verification_command"] != verification["default_test_command"]

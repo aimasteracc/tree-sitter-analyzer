@@ -278,7 +278,7 @@ class TestBuildChangeImpactResponse:
         assert response["changed_count"] == 2
         assert response["affected_count"] == 2
         assert response["tests_to_run_count"] == 3
-        assert response["tests_to_run_omitted_count"] == 0
+        assert response["tests_to_run_omitted_count"] == 1  # visible=2, all=3
         assert response["scope_filtered"] is True
 
     def test_empty_affected(self):

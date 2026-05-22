@@ -42,7 +42,9 @@ class TestEnvelopeSuccess:
     """Tools that need no arguments and should succeed against a tiny project."""
 
     def test_project_overview_envelope(self, tiny_project: Path) -> None:
-        from tree_sitter_analyzer.mcp.tools.project_overview_tool import ProjectOverviewTool
+        from tree_sitter_analyzer.mcp.tools.project_overview_tool import (
+            ProjectOverviewTool,
+        )
 
         tool = ProjectOverviewTool(str(tiny_project))
         result = _run(tool.execute({"output_format": "json"}))
@@ -205,6 +207,15 @@ class TestExecuteAcrossAllTools:
             "symbol_lineage": {"symbol": "greet"},
             "code_patterns": {"file_path": sample_file},
             "detect_routes": {"mode": "summary"},
+            "ast_diff": {
+                "mode": "diff_strings",
+                "old_source": "a = 1",
+                "new_source": "a = 2",
+                "language": "python",
+            },
+            "codegraph_callers": {"function_name": "greet"},
+            "codegraph_callees": {"function_name": "greet"},
+            "codegraph_symbol_search": {"query": "greet"},
         }
         skipped: list[str] = []
         for name, tool in registered_tools:

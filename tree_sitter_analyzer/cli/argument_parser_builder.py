@@ -549,3 +549,24 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         "--ast-diff-language",
         help="Language override for --ast-diff (auto-detected from file extension if omitted)",
     )
+    parser.add_argument(
+        "--symbol-search",
+        help="FTS5-powered instant symbol search (CodeGraph parity). "
+        "Use exact name, * wildcards, or ~ fuzzy prefix",
+    )
+    parser.add_argument(
+        "--symbol-search-language",
+        help="Language filter for --symbol-search",
+    )
+    parser.add_argument(
+        "--symbol-search-kind",
+        choices=["function", "class", "variable", "import", "any"],
+        default="any",
+        help="Symbol kind filter for --symbol-search (default: any)",
+    )
+    parser.add_argument(
+        "--symbol-search-limit",
+        type=int,
+        default=50,
+        help="Max results for --symbol-search (default: 50)",
+    )

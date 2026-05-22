@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Any
+from typing import Any, cast
 
 _SIMPLE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -79,9 +79,7 @@ def _extensions_to_language(arguments: dict[str, Any]) -> str | None:
     return _EXTS_TO_LANG_SUFFIX.get(exts[0])
 
 
-def _match_line_from_fts(
-    file_path: str, line: int, source_root: str
-) -> str:
+def _match_line_from_fts(file_path: str, line: int, source_root: str) -> str:
     """Best-effort extraction of the matching line text from the source file."""
     abs_path = os.path.join(source_root, file_path)
     try:
@@ -140,16 +138,18 @@ def try_fts5_fast_path(
         return None
 
     if requested_format == "total_only":
-        return len(fts_results)
+        return {
+            "success": True,
+            "total_matches": len(fts_results),
+            "data_source": "fts5",
+        }
 
     if requested_format == "count_only":
         by_file: dict[str, int] = {}
         for r in fts_results:
             fp = r["file"]
             by_file[fp] = by_file.get(fp, 0) + 1
-        file_counts = [
-            {"file": fp, "count": c} for fp, c in sorted(by_file.items())
-        ]
+        file_counts = [{"file": fp, "count": c} for fp, c in sorted(by_file.items())]
         return {
             "success": True,
             "total_matches": len(fts_results),
@@ -196,7 +196,7 @@ def try_fts5_fast_path(
         for r in fts_results:
             for item in summary_items:
                 if item["file"] == r["file"]:
-                    item["symbols"].append(
+                    cast(list[dict[str, Any]], item["symbols"]).append(
                         {
                             "name": r.get("name", ""),
                             "kind": r.get("kind", ""),

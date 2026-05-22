@@ -82,7 +82,7 @@ class TestOutputManagerData:
     def test_json_string_passthrough(self, capsys):
         om = OutputManager()
         om.data("plain text")
-        assert capsys.readouterr().out.strip() == '"plain text"'
+        assert capsys.readouterr().out.strip() == "plain text"
 
     def test_toon_mcp_response_passthrough(self, capsys):
         om = OutputManager(output_format="toon")

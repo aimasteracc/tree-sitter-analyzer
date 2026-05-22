@@ -52,7 +52,7 @@ def test_execute_exposes_verification_fields_for_agents(monkeypatch):
         "next_step": "Run git diff --check; pytest is not required for docs-only changes.",
         "verification_command": "git diff --check",
         "verification_strategy": "docs_only",
-        "stop_condition": "git diff --check passes and no runtime files are added.",
+        "stop_condition": "docs-only: git diff --check passes and no runtime files are added.",
         "changed_preview": ["README.md"],
     }
 
@@ -514,9 +514,7 @@ def test_execute_no_changes_with_agent_summary_only(monkeypatch):
 
     tool = tool_module.ChangeImpactTool(project_root="/repo")
     result = asyncio.run(
-        tool.execute(
-            {"output_format": "json", "agent_summary_only": True}
-        )
+        tool.execute({"output_format": "json", "agent_summary_only": True})
     )
 
     assert result["agent_summary_only"] is True

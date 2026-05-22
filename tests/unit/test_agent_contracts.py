@@ -190,6 +190,9 @@ def test_registered_mcp_tools_have_cli_parity() -> None:
         "symbol_lineage": ("main", "--symbol-lineage"),
         "code_patterns": ("main", "--code-patterns"),
         "codegraph_call_graph": ("main", "--call-graph"),
+        "codegraph_callers": ("main", "--call-graph"),
+        "codegraph_callees": ("main", "--call-graph"),
+        "codegraph_symbol_search": ("main", "--symbol-search"),
         "ast_cache": ("main", "--ast-cache"),
         "detect_routes": ("main", "--detect-routes"),
     }

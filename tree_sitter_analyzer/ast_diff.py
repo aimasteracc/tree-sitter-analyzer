@@ -53,75 +53,89 @@ class ASTNodeKind(str, Enum):
     OTHER = "other"
 
 
-_FUNCTION_NODES = frozenset({
-    "function_definition",
-    "function_declaration",
-    "method_definition",
-    "arrow_function",
-    "generator_function_declaration",
-    "function_item",
-    "method_declaration",
-    "constructor_declaration",
-    "class_method",
-    "member_function",
-    "function_declarator",
-})
+_FUNCTION_NODES = frozenset(
+    {
+        "function_definition",
+        "function_declaration",
+        "method_definition",
+        "arrow_function",
+        "generator_function_declaration",
+        "function_item",
+        "method_declaration",
+        "constructor_declaration",
+        "class_method",
+        "member_function",
+        "function_declarator",
+    }
+)
 
-_CLASS_NODES = frozenset({
-    "class_definition",
-    "class_declaration",
-    "class",
-    "interface_declaration",
-    "struct_item",
-    "enum_declaration",
-    "enum",
-    "trait_declaration",
-    "impl_item",
-    "struct_declaration",
-    "type_declaration",
-})
+_CLASS_NODES = frozenset(
+    {
+        "class_definition",
+        "class_declaration",
+        "class",
+        "interface_declaration",
+        "struct_item",
+        "enum_declaration",
+        "enum",
+        "trait_declaration",
+        "impl_item",
+        "struct_declaration",
+        "type_declaration",
+    }
+)
 
-_IMPORT_NODES = frozenset({
-    "import_statement",
-    "import_from_statement",
-    "import_declaration",
-    "require_statement",
-    "use_declaration",
-    "extern_crate_item",
-    "package_declaration",
-    "include_directive",
-})
+_IMPORT_NODES = frozenset(
+    {
+        "import_statement",
+        "import_from_statement",
+        "import_declaration",
+        "require_statement",
+        "use_declaration",
+        "extern_crate_item",
+        "package_declaration",
+        "include_directive",
+    }
+)
 
-_VARIABLE_NODES = frozenset({
-    "variable_declarator",
-    "assignment_expression",
-    "lexical_declaration",
-    "variable_declaration",
-    "const_declaration",
-    "let_declaration",
-})
+_VARIABLE_NODES = frozenset(
+    {
+        "variable_declarator",
+        "assignment_expression",
+        "lexical_declaration",
+        "variable_declaration",
+        "const_declaration",
+        "let_declaration",
+    }
+)
 
-_DECORATOR_NODES = frozenset({
-    "decorator",
-    "annotation",
-    "attribute_item",
-    "declaration_attribute",
-    "decorator_statement",
-})
+_DECORATOR_NODES = frozenset(
+    {
+        "decorator",
+        "annotation",
+        "attribute_item",
+        "declaration_attribute",
+        "decorator_statement",
+    }
+)
 
-_PARAM_NODES = frozenset({
-    "parameters",
-    "parameter_list",
-    "argument_list",
-})
+_PARAM_NODES = frozenset(
+    {
+        "parameters",
+        "parameter_list",
+        "argument_list",
+    }
+)
 
-_BLOCK_NODES = frozenset({
-    "block",
-    "statement_block",
-    "compound_statement",
-    "function_body",
-    "body",
-})
+_BLOCK_NODES = frozenset(
+    {
+        "block",
+        "statement_block",
+        "compound_statement",
+        "function_body",
+        "body",
+    }
+)
 
 
 @dataclass
@@ -216,10 +230,10 @@ def _classify_node(node_type: str) -> ASTNodeKind:
 def _node_name(node: Any, source: str) -> str:
     name_node = node.child_by_field_name("name")
     if name_node is not None:
-        return source[name_node.start_byte:name_node.end_byte]
+        return source[name_node.start_byte : name_node.end_byte]
     for child in node.children:
         if child.type in ("identifier", "property_identifier", "field_identifier"):
-            return source[child.start_byte:child.end_byte]
+            return source[child.start_byte : child.end_byte]
     return ""
 
 
@@ -230,7 +244,7 @@ def _text_hash(text: str) -> str:
 def _preview(text: str, max_len: int = 80) -> str:
     text = text.replace("\n", " ").strip()
     if len(text) > max_len:
-        return text[:max_len - 3] + "..."
+        return text[: max_len - 3] + "..."
     return text
 
 
@@ -241,7 +255,7 @@ def _extract_node_info(node: Any, source: str, depth: int = 0) -> ASTNodeInfo | 
     node_type = node.type
     kind = _classify_node(node_type)
 
-    text = source[node.start_byte:node.end_byte]
+    text = source[node.start_byte : node.end_byte]
     name = _node_name(node, source)
 
     children: list[ASTNodeInfo] = []
@@ -284,7 +298,7 @@ def _match_nodes(
     old_matched: set[int] = set()
     new_matched: set[int] = set()
 
-    name_map: dict[str, list[int]] = {}
+    name_map: dict[tuple[ASTNodeKind, str], list[int]] = {}
     for i, n in enumerate(new_nodes):
         key = (n.kind, n.name)
         if n.name:
@@ -305,7 +319,11 @@ def _match_nodes(
     for oi, old_n in enumerate(old_nodes):
         if oi in old_matched:
             continue
-        if old_n.kind not in (ASTNodeKind.FUNCTION, ASTNodeKind.CLASS, ASTNodeKind.METHOD):
+        if old_n.kind not in (
+            ASTNodeKind.FUNCTION,
+            ASTNodeKind.CLASS,
+            ASTNodeKind.METHOD,
+        ):
             continue
         best_ni = -1
         best_score = -1
@@ -350,47 +368,57 @@ def _diff_matched_nodes(old_n: ASTNodeInfo, new_n: ASTNodeInfo) -> list[ASTDiffH
     body_changed = _body_hash_changed(old_n, new_n)
 
     if name_changed:
-        hunks.append(ASTDiffHunk(
-            diff_kind=DiffKind.NODE_RENAMED,
-            node_kind=old_n.kind,
-            old_node=old_n,
-            new_node=new_n,
-            summary=f"Renamed {old_n.kind.value}: '{old_n.name}' -> '{new_n.name}'",
-        ))
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.NODE_RENAMED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"Renamed {old_n.kind.value}: '{old_n.name}' -> '{new_n.name}'",
+            )
+        )
     elif sig_changed and body_changed:
-        hunks.append(ASTDiffHunk(
-            diff_kind=DiffKind.SIGNATURE_CHANGED,
-            node_kind=old_n.kind,
-            old_node=old_n,
-            new_node=new_n,
-            summary=f"Signature + body changed for {old_n.kind.value} '{old_n.name}'",
-            details=_sig_diff(sig_fields, new_sig),
-        ))
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.SIGNATURE_CHANGED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"Signature + body changed for {old_n.kind.value} '{old_n.name}'",
+                details=_sig_diff(sig_fields, new_sig),
+            )
+        )
     elif sig_changed:
-        hunks.append(ASTDiffHunk(
-            diff_kind=DiffKind.SIGNATURE_CHANGED,
-            node_kind=old_n.kind,
-            old_node=old_n,
-            new_node=new_n,
-            summary=f"Signature changed for {old_n.kind.value} '{old_n.name}'",
-            details=_sig_diff(sig_fields, new_sig),
-        ))
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.SIGNATURE_CHANGED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"Signature changed for {old_n.kind.value} '{old_n.name}'",
+                details=_sig_diff(sig_fields, new_sig),
+            )
+        )
     elif body_changed:
-        hunks.append(ASTDiffHunk(
-            diff_kind=DiffKind.BODY_CHANGED,
-            node_kind=old_n.kind,
-            old_node=old_n,
-            new_node=new_n,
-            summary=f"Body changed in {old_n.kind.value} '{old_n.name}'",
-        ))
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.BODY_CHANGED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"Body changed in {old_n.kind.value} '{old_n.name}'",
+            )
+        )
     else:
-        hunks.append(ASTDiffHunk(
-            diff_kind=DiffKind.NODE_CHANGED,
-            node_kind=old_n.kind,
-            old_node=old_n,
-            new_node=new_n,
-            summary=f"{old_n.kind.value.title()} '{old_n.name}' changed",
-        ))
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.NODE_CHANGED,
+                node_kind=old_n.kind,
+                old_node=old_n,
+                new_node=new_n,
+                summary=f"{old_n.kind.value.title()} '{old_n.name}' changed",
+            )
+        )
 
     child_hunks = _diff_children(old_n, new_n)
     hunks.extend(child_hunks)
@@ -450,23 +478,27 @@ def _diff_children(old_n: ASTNodeInfo, new_n: ASTNodeInfo) -> list[ASTDiffHunk]:
 
     for oi in old_rem:
         c = old_n.children[oi]
-        hunks.append(ASTDiffHunk(
-            diff_kind=DiffKind.NODE_REMOVED,
-            node_kind=c.kind,
-            old_node=c,
-            new_node=None,
-            summary=f"Removed {c.kind.value} '{c.name or c.node_type}'",
-        ))
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.NODE_REMOVED,
+                node_kind=c.kind,
+                old_node=c,
+                new_node=None,
+                summary=f"Removed {c.kind.value} '{c.name or c.node_type}'",
+            )
+        )
 
     for ni in new_rem:
         c = new_n.children[ni]
-        hunks.append(ASTDiffHunk(
-            diff_kind=DiffKind.NODE_ADDED,
-            node_kind=c.kind,
-            old_node=None,
-            new_node=c,
-            summary=f"Added {c.kind.value} '{c.name or c.node_type}'",
-        ))
+        hunks.append(
+            ASTDiffHunk(
+                diff_kind=DiffKind.NODE_ADDED,
+                node_kind=c.kind,
+                old_node=None,
+                new_node=c,
+                summary=f"Added {c.kind.value} '{c.name or c.node_type}'",
+            )
+        )
 
     return hunks
 
@@ -518,17 +550,27 @@ class ASTDiffer:
                 old_file=old_file,
                 new_file=new_file,
                 language=language,
-                hunks=[ASTDiffHunk(
-                    diff_kind=DiffKind.NODE_CHANGED,
-                    node_kind=ASTNodeKind.OTHER,
-                    old_node=None,
-                    new_node=None,
-                    summary="Both sources failed to parse",
-                )],
+                hunks=[
+                    ASTDiffHunk(
+                        diff_kind=DiffKind.NODE_CHANGED,
+                        node_kind=ASTNodeKind.OTHER,
+                        old_node=None,
+                        new_node=None,
+                        summary="Both sources failed to parse",
+                    )
+                ],
             )
 
-        old_nodes = _extract_top_level_nodes(old_result.tree, old_source) if old_result.success else []
-        new_nodes = _extract_top_level_nodes(new_result.tree, new_source) if new_result.success else []
+        old_nodes = (
+            _extract_top_level_nodes(old_result.tree, old_source)
+            if old_result.success
+            else []
+        )
+        new_nodes = (
+            _extract_top_level_nodes(new_result.tree, new_source)
+            if new_result.success
+            else []
+        )
 
         hunks = self._diff_node_lists(old_nodes, new_nodes)
         stats = _compute_stats(hunks)
@@ -556,13 +598,15 @@ class ASTDiffer:
                 old_file=old_path,
                 new_file=new_path,
                 language="unknown",
-                hunks=[ASTDiffHunk(
-                    diff_kind=DiffKind.NODE_CHANGED,
-                    node_kind=ASTNodeKind.OTHER,
-                    old_node=None,
-                    new_node=None,
-                    summary="Unsupported language",
-                )],
+                hunks=[
+                    ASTDiffHunk(
+                        diff_kind=DiffKind.NODE_CHANGED,
+                        node_kind=ASTNodeKind.OTHER,
+                        old_node=None,
+                        new_node=None,
+                        summary="Unsupported language",
+                    )
+                ],
             )
 
         try:
@@ -578,8 +622,11 @@ class ASTDiffer:
             new_source = ""
 
         return self.diff_strings(
-            old_source, new_source, language,
-            old_file=old_path, new_file=new_path,
+            old_source,
+            new_source,
+            language,
+            old_file=old_path,
+            new_file=new_path,
         )
 
     def diff_string_pairs(
@@ -589,7 +636,9 @@ class ASTDiffer:
     ) -> list[ASTDiffResult]:
         results: list[ASTDiffResult] = []
         for old_src, new_src, label in pairs:
-            result = self.diff_strings(old_src, new_src, language, old_file=label, new_file=label)
+            result = self.diff_strings(
+                old_src, new_src, language, old_file=label, new_file=label
+            )
             results.append(result)
         return results
 
@@ -607,22 +656,26 @@ class ASTDiffer:
 
         for oi in old_rem:
             n = old_nodes[oi]
-            hunks.append(ASTDiffHunk(
-                diff_kind=DiffKind.NODE_REMOVED,
-                node_kind=n.kind,
-                old_node=n,
-                new_node=None,
-                summary=f"Removed {n.kind.value} '{n.name or n.node_type}'",
-            ))
+            hunks.append(
+                ASTDiffHunk(
+                    diff_kind=DiffKind.NODE_REMOVED,
+                    node_kind=n.kind,
+                    old_node=n,
+                    new_node=None,
+                    summary=f"Removed {n.kind.value} '{n.name or n.node_type}'",
+                )
+            )
 
         for ni in new_rem:
             n = new_nodes[ni]
-            hunks.append(ASTDiffHunk(
-                diff_kind=DiffKind.NODE_ADDED,
-                node_kind=n.kind,
-                old_node=None,
-                new_node=n,
-                summary=f"Added {n.kind.value} '{n.name or n.node_type}'",
-            ))
+            hunks.append(
+                ASTDiffHunk(
+                    diff_kind=DiffKind.NODE_ADDED,
+                    node_kind=n.kind,
+                    old_node=None,
+                    new_node=n,
+                    summary=f"Added {n.kind.value} '{n.name or n.node_type}'",
+                )
+            )
 
         return hunks

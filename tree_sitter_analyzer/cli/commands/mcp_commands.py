@@ -56,6 +56,9 @@ from tree_sitter_analyzer.mcp.tools.smart_context_tool import (
 from tree_sitter_analyzer.mcp.tools.symbol_lineage_tool import (
     SymbolLineageTool,  # noqa: F401
 )
+from tree_sitter_analyzer.mcp.tools.symbol_search_tool import (
+    CodeGraphSymbolSearchTool,  # noqa: F401
+)
 
 _DEPENDENCY_FILE_SCOPED_MODES = {"blast_radius", "file_deps"}
 _DEPENDENCY_MODE_ALIASES = {"full": "summary"}
@@ -271,6 +274,18 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
             "output_format": output_format,
         },
     ),
+    McpCommandSpec(
+        flag_name="symbol_search",
+        tool_attr="CodeGraphSymbolSearchTool",
+        label="FTS5-powered instant symbol search (CodeGraph parity)",
+        build_tool_args=lambda args, output_format: {
+            "query": getattr(args, "symbol_search_query", ""),
+            "language": getattr(args, "symbol_search_language", None),
+            "kind": getattr(args, "symbol_search_kind", "any") or "any",
+            "limit": getattr(args, "symbol_search_limit", 50),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -323,6 +338,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "ASTCacheTool",
         "ASTDiffTool",
         "RouteDetectorTool",
+        "CodeGraphSymbolSearchTool",
     }
 )
 

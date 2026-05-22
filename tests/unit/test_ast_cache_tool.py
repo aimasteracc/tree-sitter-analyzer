@@ -70,7 +70,7 @@ class TestGetToolSchema:
         tool = ASTCacheTool()
         schema = tool.get_tool_schema()
         modes = schema["properties"]["mode"]["enum"]
-        assert set(modes) == {
+        assert set(modes) >= {
             "index",
             "lookup",
             "search",

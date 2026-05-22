@@ -57,6 +57,6 @@ def open_streaming_context(
     try:
         with open(file_path, encoding=detected_encoding, errors="replace") as handle:
             yield handle
-    except OSError as exc:
+    except (OSError, LookupError) as exc:
         log_warning(f"Failed to open file for streaming {file_path}: {exc}")
         raise
