@@ -124,6 +124,69 @@ def _next_step_for_verdict(
     )
 
 
+def _aggregate_callers_by_file(usages: list[dict[str, Any]]) -> dict[str, int]:
+    """Count usages grouped by their ``file`` field."""
+    callers_by_file: dict[str, int] = {}
+    for usage in usages:
+        file_key = usage.get("file", "unknown")
+        callers_by_file[file_key] = callers_by_file.get(file_key, 0) + 1
+    return callers_by_file
+
+
+def _build_proceed_recommendation(
+    symbol: str, modification_type: str, safety_verdict: str, total_callers: int
+) -> str:
+    """Verdict-specific advice string the agent reads to decide next step."""
+    if safety_verdict == "SAFE":
+        return f"No callers found for '{symbol}'. Safe to {modification_type}."
+    if safety_verdict == "CAUTION":
+        return (
+            f"Review {total_callers} caller(s) before proceeding. "
+            f"Use batch_search(['{symbol}']) to inspect usage patterns."
+        )
+    if safety_verdict == "REVIEW":
+        return (
+            f"Check all {total_callers} call sites before modifying. "
+            f"Use batch_search(['{symbol}']) to see all usage patterns."
+        )
+    return (
+        f"Review all {total_callers} callers first. "
+        f"Use batch_search(['{symbol}']) to see all usage patterns."
+    )
+
+
+def _format_modification_summary_line(
+    symbol: str,
+    total_callers: int,
+    final_verdict: str,
+    result: dict[str, Any],
+) -> str:
+    """One-line headline with optional architecture rank + PageRank score.
+
+    J5: single-space join via ``format_summary_line`` (was ``"  ".join``
+    with a double-space literal — produced ``"foo  rank=#1 …"``).
+    """
+    rank_str = (
+        f"rank=#{result['architecture_rank']}"
+        if "architecture_rank" in result
+        else "rank=-"
+    )
+    pr_str = (
+        f"pr={result['architecture_score']:.4f}"
+        if "architecture_score" in result
+        else ""
+    )
+    parts = [
+        symbol,
+        rank_str,
+        f"callers={total_callers}",
+        f"verdict={final_verdict}",
+    ]
+    if pr_str:
+        parts.insert(2, pr_str)
+    return format_summary_line(*parts)
+
+
 def _load_critical_nodes(project_root: str | None) -> list[dict[str, Any]]:
     """Load critical_nodes.json from the project cache, if it exists."""
     if not project_root:
@@ -342,32 +405,20 @@ class ModificationGuardTool(BaseMCPTool):
 
     @handle_mcp_errors("modification_guard")
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """
-        Execute the modification guard tool.
+        """Execute the modification guard tool.
 
-        Args:
-            arguments: Tool arguments containing symbol, modification_type, and optional file_path
-
-        Returns:
-            Structured safety report with safety_verdict and required_actions
+        r37bp (dogfood): tool flagged this at 166 lines. Split into 5
+        phases (validate + trace_impact + build callers/verdict + PageRank
+        boost + summary line + agent_summary). Behaviour preserved
+        including F10 agent_summary, J5 summary-line spacing, PageRank
+        boost for top-10 architecture nodes.
         """
         self.validate_arguments(arguments)
-
         symbol = arguments["symbol"].strip()
         modification_type = arguments["modification_type"]
         file_path = arguments.get("file_path")
 
-        # Build arguments for trace_impact — pass through project_root if set
-        trace_args: dict[str, Any] = {"symbol": symbol}
-        if file_path:
-            trace_args["file_path"] = file_path
-        if self.project_root:
-            trace_args["project_root"] = self.project_root
-
-        # Delegate to trace_impact
-        trace_result = await self._trace_impact_tool.execute(trace_args)
-
-        # If trace_impact itself failed, surface the error
+        trace_result = await self._run_trace_impact(symbol, file_path)
         if not trace_result.get("success", False):
             return {
                 "success": False,
@@ -376,123 +427,39 @@ class ModificationGuardTool(BaseMCPTool):
                 "error": trace_result.get("error", "trace_impact failed"),
             }
 
-        total_callers: int = trace_result.get("call_count", 0)
+        total_callers = trace_result.get("call_count", 0)
         impact = _get_impact_level(total_callers)
         impact_level = impact["level"]
         safety_verdict = _VERDICT_MAP.get(impact_level, "REVIEW")
 
-        # Build callers_by_file breakdown
-        usages: list[dict[str, Any]] = trace_result.get("usages", [])
-        callers_by_file: dict[str, int] = {}
-        for usage in usages:
-            file_key: str = usage.get("file", "unknown")
-            callers_by_file[file_key] = callers_by_file.get(file_key, 0) + 1
-
+        callers_by_file = _aggregate_callers_by_file(trace_result.get("usages", []))
         required_actions = _build_required_actions(
             symbol=symbol,
             modification_type=modification_type,
             impact_level=impact_level,
             total_callers=total_callers,
         )
+        proceed_recommendation = _build_proceed_recommendation(
+            symbol, modification_type, safety_verdict, total_callers
+        )
 
-        proceed_recommendation: str
-        if safety_verdict == "SAFE":
-            proceed_recommendation = (
-                f"No callers found for '{symbol}'. Safe to {modification_type}."
-            )
-        elif safety_verdict == "CAUTION":
-            proceed_recommendation = (
-                f"Review {total_callers} caller(s) before proceeding. "
-                f"Use batch_search(['{symbol}']) to inspect usage patterns."
-            )
-        elif safety_verdict == "REVIEW":
-            proceed_recommendation = (
-                f"Check all {total_callers} call sites before modifying. "
-                f"Use batch_search(['{symbol}']) to see all usage patterns."
-            )
-        else:
-            proceed_recommendation = (
-                f"Review all {total_callers} callers first. "
-                f"Use batch_search(['{symbol}']) to see all usage patterns."
-            )
+        result = self._build_initial_result(
+            symbol=symbol,
+            modification_type=modification_type,
+            impact=impact,
+            impact_level=impact_level,
+            total_callers=total_callers,
+            callers_by_file=callers_by_file,
+            safety_verdict=safety_verdict,
+            required_actions=required_actions,
+            proceed_recommendation=proceed_recommendation,
+        )
 
-        result: dict[str, Any] = {
-            "success": True,
-            "symbol": symbol,
-            "modification_type": modification_type,
-            "impact_level": impact_level,
-            "impact_badge": impact["badge"],
-            "impact_guidance": impact["guidance"],
-            "total_callers": total_callers,
-            # ``count`` is the cross-tool canonical alias (every search/
-            # scan tool exposes a top-level ``count`` integer).
-            "count": total_callers,
-            "callers_by_file": callers_by_file,
-            "safety_verdict": safety_verdict,
-            # ``verdict`` is a canonical alias used across all safety tools
-            # (safe_to_edit, modification_guard). Same value, shorter key
-            # — discoverable by callers that don't know our exact name.
-            "verdict": safety_verdict,
-            "required_actions": required_actions,
-            "proceed_recommendation": proceed_recommendation,
-            # ``recommendation`` mirrors ``proceed_recommendation`` so this
-            # tool's response carries the same field name every other
-            # safety tool exposes (safe_to_edit, file_health). One key,
-            # one source of truth.
-            "recommendation": proceed_recommendation,
-        }
-
-        # --- PageRank architecture check ---
-        critical_nodes = _load_critical_nodes(self.project_root)
-        for rank, node in enumerate(critical_nodes, start=1):
-            if node.get("name") == symbol:
-                pr_score = node.get("pagerank", 0)
-                subtypes = node.get("inbound_refs", 0)
-                result["architecture_rank"] = rank
-                result["architecture_score"] = pr_score
-                result["architecture_warning"] = (
-                    f"{symbol} is #{rank} in the project's architectural "
-                    f"hierarchy (PageRank {pr_score:.4f}, "
-                    f"{subtypes} direct subtypes). "
-                    f"Modifying it affects the project's foundation."
-                )
-                # Boost verdict for top-10 architecture nodes
-                if rank <= 10:
-                    boosted = _VERDICT_BOOST.get(safety_verdict, safety_verdict)
-                    result["safety_verdict"] = boosted
-                    # Keep the ``verdict`` alias in sync with the boosted value.
-                    result["verdict"] = boosted
-                break
-
-        # Unified summary line: one line to see everything
+        self._apply_pagerank_boost(result, symbol, safety_verdict)
         final_verdict = result["safety_verdict"]
-        rank_str = (
-            f"rank=#{result['architecture_rank']}"
-            if "architecture_rank" in result
-            else "rank=-"
+        result["summary_line"] = _format_modification_summary_line(
+            symbol, total_callers, final_verdict, result
         )
-        pr_str = (
-            f"pr={result['architecture_score']:.4f}"
-            if "architecture_score" in result
-            else ""
-        )
-        parts = [
-            symbol,
-            rank_str,
-            f"callers={total_callers}",
-            f"verdict={final_verdict}",
-        ]
-        if pr_str:
-            parts.insert(2, pr_str)
-        # J5 (round-22): single-space join via helper — was ``"  ".join``
-        # (literal double space) which produced ``"foo rank=#1  pr=...."``.
-        result["summary_line"] = format_summary_line(*parts)
-
-        # F10: populate agent_summary with the canonical safety-tool
-        # shape (summary_line / verdict / risk / next_step). Prior to
-        # this fix the field was synthesised as ``{}`` downstream by
-        # ensure_canonical_success_envelope, which gave agents no useful
-        # decision signal.
         result["agent_summary"] = _build_agent_summary(
             symbol=symbol,
             modification_type=modification_type,
@@ -502,8 +469,74 @@ class ModificationGuardTool(BaseMCPTool):
             proceed_recommendation=proceed_recommendation,
             architecture_rank=result.get("architecture_rank"),
         )
-
-        # Mirror agent_summary.summary_line to the top-level envelope
-        # (idempotent — keeps the value we just set above) so direct
-        # callers that bypass the MCP dispatch hook still see it.
         return mirror_summary_line(result)
+
+    async def _run_trace_impact(
+        self, symbol: str, file_path: str | None
+    ) -> dict[str, Any]:
+        """Call trace_impact, propagating project_root + file_path when set."""
+        trace_args: dict[str, Any] = {"symbol": symbol}
+        if file_path:
+            trace_args["file_path"] = file_path
+        if self.project_root:
+            trace_args["project_root"] = self.project_root
+        result = await self._trace_impact_tool.execute(trace_args)
+        return result  # type: ignore[no-any-return]
+
+    @staticmethod
+    def _build_initial_result(
+        *,
+        symbol: str,
+        modification_type: str,
+        impact: dict[str, Any],
+        impact_level: str,
+        total_callers: int,
+        callers_by_file: dict[str, int],
+        safety_verdict: str,
+        required_actions: list[Any],
+        proceed_recommendation: str,
+    ) -> dict[str, Any]:
+        """Canonical safety report — incl. ``count`` alias + ``verdict`` alias."""
+        return {
+            "success": True,
+            "symbol": symbol,
+            "modification_type": modification_type,
+            "impact_level": impact_level,
+            "impact_badge": impact["badge"],
+            "impact_guidance": impact["guidance"],
+            "total_callers": total_callers,
+            # ``count`` is the cross-tool canonical alias.
+            "count": total_callers,
+            "callers_by_file": callers_by_file,
+            "safety_verdict": safety_verdict,
+            # ``verdict`` is the safe_to_edit/modification_guard shorter alias.
+            "verdict": safety_verdict,
+            "required_actions": required_actions,
+            "proceed_recommendation": proceed_recommendation,
+            # ``recommendation`` aligns with safe_to_edit / file_health naming.
+            "recommendation": proceed_recommendation,
+        }
+
+    def _apply_pagerank_boost(
+        self, result: dict[str, Any], symbol: str, safety_verdict: str
+    ) -> None:
+        """PageRank: stamp architecture_* fields + boost verdict for top-10 nodes."""
+        critical_nodes = _load_critical_nodes(self.project_root)
+        for rank, node in enumerate(critical_nodes, start=1):
+            if node.get("name") != symbol:
+                continue
+            pr_score = node.get("pagerank", 0)
+            subtypes = node.get("inbound_refs", 0)
+            result["architecture_rank"] = rank
+            result["architecture_score"] = pr_score
+            result["architecture_warning"] = (
+                f"{symbol} is #{rank} in the project's architectural "
+                f"hierarchy (PageRank {pr_score:.4f}, "
+                f"{subtypes} direct subtypes). "
+                f"Modifying it affects the project's foundation."
+            )
+            if rank <= 10:
+                boosted = _VERDICT_BOOST.get(safety_verdict, safety_verdict)
+                result["safety_verdict"] = boosted
+                result["verdict"] = boosted
+            return
