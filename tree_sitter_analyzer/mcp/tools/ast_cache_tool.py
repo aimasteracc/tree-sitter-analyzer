@@ -110,6 +110,26 @@ def _apply_legacy_import_split(
     return cleaned
 
 
+def _build_unknown_mode_response(mode: str) -> dict[str, Any]:
+    """Canonical INVALID_INPUT envelope for unknown ``mode=`` values."""
+    summary_line = f"ast_cache: unknown mode={mode!r}"
+    return mirror_summary_line(
+        {
+            "success": False,
+            "mode": mode,
+            "error": f"Unknown mode: {mode}",
+            "summary_line": summary_line,
+            "agent_summary": {
+                "summary_line": summary_line,
+                "next_step": (
+                    "ast_cache mode=stats — see the tool schema for valid modes"
+                ),
+                "verdict": "INVALID_INPUT",
+            },
+        }
+    )
+
+
 def _build_ast_cache_envelope(
     mode: str,
     payload: dict[str, Any],
@@ -256,201 +276,201 @@ class ASTCacheTool(BaseMCPTool):
         return True
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Dispatch ast_cache by ``mode``.
+
+        r37bv (dogfood): tool flagged this at 199 lines. Refactor splits
+        each of the 7 modes into a focused ``_handle_*`` method. M15 / J1
+        / J8 / K7 contracts preserved exactly.
+        """
         self.validate_arguments(arguments)
         mode = arguments.get("mode", "stats")
         cache = self._get_cache()
 
         if mode == "index":
-            file_path = arguments.get("file_path")
-            if file_path:
-                resolved = self.resolve_and_validate_file_path(file_path)
-                result = cache.index_file(resolved)
-                indexed_files = int(result.get("indexed", result.get("count", 1)) or 0)
-                symbols = int(result.get("symbol_count", result.get("symbols", 0)) or 0)
-                summary_line = f"ast_cache index file={file_path} symbols={symbols}"
-                next_step = (
-                    f"ast_cache mode=lookup file_path={file_path!r} "
-                    "to retrieve the cached entry"
-                )
-            else:
-                max_files = arguments.get("max_files", 5000)
-                force = arguments.get("force", False)
-                result = cache.index_project(max_files=max_files, force=force)
-                indexed_files = int(
-                    result.get("indexed", result.get("files_indexed", 0)) or 0
-                )
-                symbols = int(result.get("symbol_count", result.get("symbols", 0)) or 0)
-                summary_line = (
-                    f"ast_cache index project files={indexed_files} "
-                    f"symbols={symbols} force={bool(force)}"
-                )
-                next_step = "ast_cache mode=stats to confirm the index size"
-            return _build_ast_cache_envelope("index", result, summary_line, next_step)
+            return self._handle_index(arguments, cache)
+        if mode == "lookup":
+            return self._handle_lookup(arguments, cache)
+        if mode in ("search", "fts_search"):
+            return self._handle_search(arguments, cache, mode)
+        if mode == "stats":
+            return self._handle_stats(cache)
+        if mode == "sync":
+            return self._handle_sync(arguments)
+        if mode == "changes":
+            return self._handle_changes()
+        if mode == "invalidate":
+            return self._handle_invalidate(arguments, cache)
+        return _build_unknown_mode_response(mode)
 
-        elif mode == "lookup":
-            file_path = arguments.get("file_path", "")
+    def _handle_index(self, arguments: dict[str, Any], cache: Any) -> dict[str, Any]:
+        """``mode=index``: per-file or whole-project AST cache build."""
+        file_path = arguments.get("file_path")
+        if file_path:
             resolved = self.resolve_and_validate_file_path(file_path)
-            result = cache.lookup(resolved)
-            if result is None:
-                summary_line = f"ast_cache lookup file={file_path} status=not_found"
-                next_step = f"ast_cache mode=index file_path={file_path!r} to populate the cache"
-                return _build_ast_cache_envelope(
-                    "lookup",
-                    {"file": file_path, "status": "not_found"},
-                    summary_line,
-                    next_step,
-                )
-            symbol_count = int(
-                (result.get("symbol_count") if isinstance(result, dict) else 0) or 0
-            )
-            summary_line = f"ast_cache lookup file={file_path} symbols={symbol_count}"
+            result = cache.index_file(resolved)
+            symbols = int(result.get("symbol_count", result.get("symbols", 0)) or 0)
+            summary_line = f"ast_cache index file={file_path} symbols={symbols}"
             next_step = (
-                "analyze_code_structure on this file for an interactive table view"
+                f"ast_cache mode=lookup file_path={file_path!r} "
+                "to retrieve the cached entry"
             )
-            return _build_ast_cache_envelope("lookup", result, summary_line, next_step)
-
-        elif mode in ("search", "fts_search"):
-            # J1: ``search`` and ``fts_search`` are the same mode — both call
-            # ``fts_search`` under the hood when FTS5 is available, falling
-            # back to a LIKE scan otherwise. ``fts_search`` is kept as a
-            # deprecated alias for callers that still pass it. The
-            # ``mode`` echoed in the envelope is preserved verbatim so
-            # callers can still see which alias they invoked.
-            query = arguments.get("query", "")
-            language = arguments.get("language")
-            limit = arguments.get("limit", 100)
-            raw_results = cache.fts_search(query, language=language, limit=limit)
-            # K7: defensively split any legacy multi-symbol import rows so
-            # the caller never sees a 280-char ``name`` field.
-            results = _apply_legacy_import_split(raw_results)
-            fts5_available = cache._fts5_available
-            summary_line = (
-                f"ast_cache {mode} query={query!r} "
-                f"results={len(results)} fts5={fts5_available}"
-            )
-            next_step = (
-                "ast_cache mode=lookup file_path=<result.file> for the full entry"
-                if results
-                else "ast_cache mode=index to populate the FTS index first"
-            )
-            payload: dict[str, Any] = {
-                "query": query,
-                "results": results,
-                "count": len(results),
-                "fts5_available": fts5_available,
-            }
-            if mode == "fts_search":
-                payload["deprecated_alias"] = (
-                    "use mode='search' — 'fts_search' is a deprecated alias"
-                )
-            return _build_ast_cache_envelope(
-                mode,
-                payload,
-                summary_line,
-                next_step,
-            )
-
-        elif mode == "stats":
-            stats = cache.get_stats()
-            total_files = int(stats.get("total_files", 0) or 0)
-            total_symbols = int(stats.get("total_symbols", 0) or 0)
-            fts5_available = bool(stats.get("fts5_available", False))
-            summary_line = (
-                f"ast_cache stats files={total_files} "
-                f"symbols={total_symbols} fts5={fts5_available}"
-            )
-            if total_files == 0:
-                next_step = "ast_cache mode=index to populate the cache"
-            else:
-                next_step = "ast_cache mode=fts_search query=<symbol> to find a symbol"
-            return _build_ast_cache_envelope("stats", stats, summary_line, next_step)
-
-        elif mode == "sync":
-            sync_engine = self._get_sync()
+        else:
             max_files = arguments.get("max_files", 5000)
-            sync_result = sync_engine.sync(max_files=max_files)
-            sync_dict = sync_result.to_dict()
-            # M15 (round-26 dogfood): J8 renamed per-file ``action`` →
-            # ``considered`` inside ``changes.new[i].action``, but the
-            # top-level sync response only exposed ``scanned`` — agents
-            # reading ``d["considered"]`` saw ``None``. Surface
-            # ``considered`` at the response top level too, as an alias
-            # for ``scanned`` so the J8 vocabulary is consistent
-            # everywhere. ``scanned`` remains for back-compat.
-            sync_dict.setdefault("considered", sync_dict.get("scanned", 0))
-            added = int(sync_dict.get("added", sync_dict.get("new", 0)) or 0)
-            modified = int(sync_dict.get("modified", 0) or 0)
-            deleted = int(sync_dict.get("deleted", 0) or 0)
+            force = arguments.get("force", False)
+            result = cache.index_project(max_files=max_files, force=force)
+            indexed_files = int(
+                result.get("indexed", result.get("files_indexed", 0)) or 0
+            )
+            symbols = int(result.get("symbol_count", result.get("symbols", 0)) or 0)
             summary_line = (
-                f"ast_cache sync added={added} modified={modified} deleted={deleted}"
+                f"ast_cache index project files={indexed_files} "
+                f"symbols={symbols} force={bool(force)}"
             )
-            next_step = (
-                "ast_cache mode=stats to confirm the new cache size"
-                if (added + modified + deleted) > 0
-                else "no changes — re-run sync after next edit"
-            )
-            return _build_ast_cache_envelope("sync", sync_dict, summary_line, next_step)
+            next_step = "ast_cache mode=stats to confirm the index size"
+        return _build_ast_cache_envelope("index", result, summary_line, next_step)
 
-        elif mode == "changes":
-            sync_engine = self._get_sync()
-            changes = sync_engine.get_changes()
-            total = sum(len(v) for v in changes.values())
-            summary_line = (
-                f"ast_cache changes new={len(changes['new'])} "
-                f"modified={len(changes['modified'])} "
-                f"deleted={len(changes['deleted'])} total={total}"
-            )
+    def _handle_lookup(self, arguments: dict[str, Any], cache: Any) -> dict[str, Any]:
+        """``mode=lookup``: read a single file's cached AST entry."""
+        file_path = arguments.get("file_path", "")
+        resolved = self.resolve_and_validate_file_path(file_path)
+        result = cache.lookup(resolved)
+        if result is None:
+            summary_line = f"ast_cache lookup file={file_path} status=not_found"
             next_step = (
-                "ast_cache mode=sync to apply these changes"
-                if total > 0
-                else "no changes pending"
+                f"ast_cache mode=index file_path={file_path!r} to populate the cache"
             )
             return _build_ast_cache_envelope(
-                "changes",
-                {
-                    "new_count": len(changes["new"]),
-                    "modified_count": len(changes["modified"]),
-                    "deleted_count": len(changes["deleted"]),
-                    "total_changes": total,
-                    "changes": changes,
-                },
+                "lookup",
+                {"file": file_path, "status": "not_found"},
                 summary_line,
                 next_step,
             )
+        symbol_count = int(
+            (result.get("symbol_count") if isinstance(result, dict) else 0) or 0
+        )
+        summary_line = f"ast_cache lookup file={file_path} symbols={symbol_count}"
+        next_step = "analyze_code_structure on this file for an interactive table view"
+        return _build_ast_cache_envelope("lookup", result, summary_line, next_step)
 
-        elif mode == "invalidate":
-            file_path = arguments.get("file_path", "")
-            resolved = self.resolve_and_validate_file_path(file_path)
-            removed = cache.invalidate(resolved)
-            summary_line = (
-                f"ast_cache invalidate file={file_path} removed={bool(removed)}"
-            )
-            next_step = (
-                "ast_cache mode=index file_path=<path> to re-index"
-                if removed
-                else "no cache entry to invalidate"
-            )
-            return _build_ast_cache_envelope(
-                "invalidate",
-                {"file": file_path, "invalidated": removed},
-                summary_line,
-                next_step,
-            )
+    @staticmethod
+    def _handle_search(
+        arguments: dict[str, Any], cache: Any, mode: str
+    ) -> dict[str, Any]:
+        """``mode=search`` / ``fts_search``: J1 unified FTS lookup with K7 split.
 
-        # Unknown mode — fall through to the canonical error envelope.
-        summary_line = f"ast_cache: unknown mode={mode!r}"
-        return mirror_summary_line(
+        ``fts_search`` is a deprecated alias for ``search`` — both call
+        ``cache.fts_search`` and echo the invoked alias name verbatim.
+        """
+        query = arguments.get("query", "")
+        language = arguments.get("language")
+        limit = arguments.get("limit", 100)
+        raw_results = cache.fts_search(query, language=language, limit=limit)
+        # K7: defensively split legacy multi-symbol import rows.
+        results = _apply_legacy_import_split(raw_results)
+        fts5_available = cache._fts5_available
+        summary_line = (
+            f"ast_cache {mode} query={query!r} "
+            f"results={len(results)} fts5={fts5_available}"
+        )
+        next_step = (
+            "ast_cache mode=lookup file_path=<result.file> for the full entry"
+            if results
+            else "ast_cache mode=index to populate the FTS index first"
+        )
+        payload: dict[str, Any] = {
+            "query": query,
+            "results": results,
+            "count": len(results),
+            "fts5_available": fts5_available,
+        }
+        if mode == "fts_search":
+            payload["deprecated_alias"] = (
+                "use mode='search' — 'fts_search' is a deprecated alias"
+            )
+        return _build_ast_cache_envelope(mode, payload, summary_line, next_step)
+
+    @staticmethod
+    def _handle_stats(cache: Any) -> dict[str, Any]:
+        """``mode=stats``: aggregate row counts + FTS5 capability flag."""
+        stats = cache.get_stats()
+        total_files = int(stats.get("total_files", 0) or 0)
+        total_symbols = int(stats.get("total_symbols", 0) or 0)
+        fts5_available = bool(stats.get("fts5_available", False))
+        summary_line = (
+            f"ast_cache stats files={total_files} "
+            f"symbols={total_symbols} fts5={fts5_available}"
+        )
+        if total_files == 0:
+            next_step = "ast_cache mode=index to populate the cache"
+        else:
+            next_step = "ast_cache mode=fts_search query=<symbol> to find a symbol"
+        return _build_ast_cache_envelope("stats", stats, summary_line, next_step)
+
+    def _handle_sync(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """``mode=sync``: drift-detect + reconcile + M15 considered alias."""
+        sync_engine = self._get_sync()
+        max_files = arguments.get("max_files", 5000)
+        sync_result = sync_engine.sync(max_files=max_files)
+        sync_dict = sync_result.to_dict()
+        # M15: surface J8's ``considered`` vocabulary at the top level too.
+        sync_dict.setdefault("considered", sync_dict.get("scanned", 0))
+        added = int(sync_dict.get("added", sync_dict.get("new", 0)) or 0)
+        modified = int(sync_dict.get("modified", 0) or 0)
+        deleted = int(sync_dict.get("deleted", 0) or 0)
+        summary_line = (
+            f"ast_cache sync added={added} modified={modified} deleted={deleted}"
+        )
+        next_step = (
+            "ast_cache mode=stats to confirm the new cache size"
+            if (added + modified + deleted) > 0
+            else "no changes — re-run sync after next edit"
+        )
+        return _build_ast_cache_envelope("sync", sync_dict, summary_line, next_step)
+
+    def _handle_changes(self) -> dict[str, Any]:
+        """``mode=changes``: pending new/modified/deleted file list."""
+        sync_engine = self._get_sync()
+        changes = sync_engine.get_changes()
+        total = sum(len(v) for v in changes.values())
+        summary_line = (
+            f"ast_cache changes new={len(changes['new'])} "
+            f"modified={len(changes['modified'])} "
+            f"deleted={len(changes['deleted'])} total={total}"
+        )
+        next_step = (
+            "ast_cache mode=sync to apply these changes"
+            if total > 0
+            else "no changes pending"
+        )
+        return _build_ast_cache_envelope(
+            "changes",
             {
-                "success": False,
-                "mode": mode,
-                "error": f"Unknown mode: {mode}",
-                "summary_line": summary_line,
-                "agent_summary": {
-                    "summary_line": summary_line,
-                    "next_step": (
-                        "ast_cache mode=stats — see the tool schema for valid modes"
-                    ),
-                    "verdict": "INVALID_INPUT",
-                },
-            }
+                "new_count": len(changes["new"]),
+                "modified_count": len(changes["modified"]),
+                "deleted_count": len(changes["deleted"]),
+                "total_changes": total,
+                "changes": changes,
+            },
+            summary_line,
+            next_step,
+        )
+
+    def _handle_invalidate(
+        self, arguments: dict[str, Any], cache: Any
+    ) -> dict[str, Any]:
+        """``mode=invalidate``: drop a single file's cached AST entry."""
+        file_path = arguments.get("file_path", "")
+        resolved = self.resolve_and_validate_file_path(file_path)
+        removed = cache.invalidate(resolved)
+        summary_line = f"ast_cache invalidate file={file_path} removed={bool(removed)}"
+        next_step = (
+            "ast_cache mode=index file_path=<path> to re-index"
+            if removed
+            else "no cache entry to invalidate"
+        )
+        return _build_ast_cache_envelope(
+            "invalidate",
+            {"file": file_path, "invalidated": removed},
+            summary_line,
+            next_step,
         )
