@@ -349,6 +349,33 @@ class CElementExtractor(ElementExtractor):
         return _extract_comment_standalone(line, self.content_lines)
 
 
+def _bind_c_parser_language(language: Any) -> Any:
+    """Create a ``tree_sitter.Parser`` bound to ``language``.
+
+    Returns the parser instance on success or an error message string
+    when the constructor-fallback path itself raises. Mirror of
+    ``language_loader._bind_parser_language`` — local copy lets c_plugin
+    keep its log_error import + custom error message format.
+
+    r37ds (dogfood): lifted from ``analyze_file`` to flatten the
+    try/except inside an if/elif/else branch from depth 6 to 3.
+    """
+    import tree_sitter
+
+    parser = tree_sitter.Parser()
+    if hasattr(parser, "set_language"):
+        parser.set_language(language)
+        return parser
+    if hasattr(parser, "language"):
+        parser.language = language
+        return parser
+    try:
+        return tree_sitter.Parser(language)
+    except Exception as e:
+        log_error(f"Failed to create parser with language: {e}")
+        return str(e)
+
+
 class CPlugin(LanguagePlugin):
     """C language plugin implementation"""
 
@@ -395,28 +422,19 @@ class CPlugin(LanguagePlugin):
                     source_code=file_content,
                 )
 
-            import tree_sitter
-
-            parser = tree_sitter.Parser()
-
-            if hasattr(parser, "set_language"):
-                parser.set_language(language)
-            elif hasattr(parser, "language"):
-                parser.language = language
-            else:
-                try:
-                    parser = tree_sitter.Parser(language)
-                except Exception as e:
-                    log_error(f"Failed to create parser with language: {e}")
-                    return AnalysisResult(
-                        file_path=file_path,
-                        language="c",
-                        line_count=len(file_content.splitlines()),
-                        elements=[],
-                        source_code=file_content,
-                        error_message=f"Parser creation failed: {e}",
-                        success=False,
-                    )
+            # r37ds (dogfood): flatten parser-language binding via helper.
+            parser_or_error = _bind_c_parser_language(language)
+            if isinstance(parser_or_error, str):
+                return AnalysisResult(
+                    file_path=file_path,
+                    language="c",
+                    line_count=len(file_content.splitlines()),
+                    elements=[],
+                    source_code=file_content,
+                    error_message=f"Parser creation failed: {parser_or_error}",
+                    success=False,
+                )
+            parser = parser_or_error
 
             tree = parser.parse(file_content.encode("utf-8"))
 

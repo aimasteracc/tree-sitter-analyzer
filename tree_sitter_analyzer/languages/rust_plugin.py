@@ -246,15 +246,10 @@ class RustElementExtractor(ElementExtractor):
             start_line = node.start_point[0] + 1
             end_line = node.end_point[0] + 1
 
-            # Parameters
-            parameters = []
-            params_node = node.child_by_field_name("parameters")
-            if params_node:
-                for child in params_node.children:
-                    if child.type == "parameter":
-                        parameters.append(self._get_node_text(child))
-                    elif child.type == "self_parameter":
-                        parameters.append("self")
+            # r37ds (dogfood): extract parameters via helper.
+            parameters = self._extract_rust_parameters(
+                node.child_by_field_name("parameters")
+            )
 
             # Return type
             return_type = "()"
@@ -406,6 +401,30 @@ class RustElementExtractor(ElementExtractor):
             log_error(f"Error extracting Rust field: {e}")
             return None
 
+    def _extract_rust_parameters(
+        self, params_node: "tree_sitter.Node | None"
+    ) -> list[str]:
+        """Return parameter texts from a Rust function ``parameters`` node.
+
+        Returns empty list when ``params_node`` is ``None`` (the function
+        takes no arguments). Handles two node types: ``parameter`` (named
+        args, emitted as their raw text including the type) and
+        ``self_parameter`` (``self`` / ``&self`` / ``&mut self``, emitted
+        as the literal ``"self"`` to keep symbol search consistent).
+
+        r37ds (dogfood): lifted out of ``_extract_function`` to flatten
+        nesting 6 → 3.
+        """
+        if params_node is None:
+            return []
+        parameters: list[str] = []
+        for child in params_node.children:
+            if child.type == "parameter":
+                parameters.append(self._get_node_text(child))
+            elif child.type == "self_parameter":
+                parameters.append("self")
+        return parameters
+
     def _extract_visibility(self, node: "tree_sitter.Node") -> str:
         """Extract visibility modifier"""
         for child in node.children:
@@ -448,17 +467,23 @@ class RustElementExtractor(ElementExtractor):
         return None
 
     def _extract_derives(self, node: "tree_sitter.Node") -> list[str]:
-        """Extract derived traits from attributes"""
-        derives = []
+        """Extract derived traits from attributes.
+
+        r37ds (dogfood): flattened nesting 6 → 3 via early-continue gates.
+        """
+        derives: list[str] = []
         for child in node.children:
-            if child.type == "attribute_item":
-                text = self._get_node_text(child)
-                if "derive" in text:
-                    # Naive parsing of #[derive(Debug, Clone)]
-                    match = re.search(r"derive\((.*?)\)", text)
-                    if match:
-                        traits = match.group(1).split(",")
-                        derives.extend([t.strip() for t in traits if t.strip()])
+            if child.type != "attribute_item":
+                continue
+            text = self._get_node_text(child)
+            if "derive" not in text:
+                continue
+            # Naive parsing of #[derive(Debug, Clone)]
+            match = re.search(r"derive\((.*?)\)", text)
+            if match is None:
+                continue
+            traits = match.group(1).split(",")
+            derives.extend([t.strip() for t in traits if t.strip()])
         return derives
 
     def _get_node_text(self, node: "tree_sitter.Node") -> str:

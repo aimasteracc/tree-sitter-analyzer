@@ -142,24 +142,40 @@ class KotlinElementExtractor(ElementExtractor):
         self.content_lines = source_code.split("\n")
         self._reset_caches()
 
+        # r37ds (dogfood): flattened nesting 6 → 3 by extracting the
+        # package_header lookup into ``_find_package_header_node``.
         packages: list[Package] = []
         self._extract_package(tree.root_node)
-        if self.current_package:
-            # Find package node if needed for lines, or just create from string
-            # We'll try to find the package_header node
-            for child in tree.root_node.children:
-                if child.type == "package_header":
-                    pkg = Package(
-                        name=self.current_package,
-                        start_line=child.start_point[0] + 1,
-                        end_line=child.end_point[0] + 1,
-                        raw_text=self._get_node_text(child),
-                        language="kotlin",
-                    )
-                    packages.append(pkg)
-                    break
-
+        if not self.current_package:
+            return packages
+        package_node = self._find_package_header_node(tree.root_node)
+        if package_node is None:
+            return packages
+        packages.append(
+            Package(
+                name=self.current_package,
+                start_line=package_node.start_point[0] + 1,
+                end_line=package_node.end_point[0] + 1,
+                raw_text=self._get_node_text(package_node),
+                language="kotlin",
+            )
+        )
         return packages
+
+    @staticmethod
+    def _find_package_header_node(
+        root_node: "tree_sitter.Node",
+    ) -> "tree_sitter.Node | None":
+        """Return the first ``package_header`` child or ``None``.
+
+        Kotlin's tree-sitter grammar puts the package declaration as a
+        ``package_header`` node directly under the root. We stop at the
+        first match — there's only ever one per file.
+        """
+        for child in root_node.children:
+            if child.type == "package_header":
+                return child
+        return None
 
     def _reset_caches(self) -> None:
         """Reset performance caches"""
@@ -185,23 +201,34 @@ class KotlinElementExtractor(ElementExtractor):
             self._traverse_and_extract(child, extractors, results)
 
     def _extract_package(self, node: "tree_sitter.Node") -> None:
-        """Extract package declaration"""
-        # Find package_header at top level usually
+        """Extract package declaration.
+
+        r37ds (dogfood): flattened nesting 6 → 3 by extracting the
+        identifier scan into ``_kotlin_package_name_from_header``.
+        """
         for child in node.children:
-            if child.type == "package_header":
-                # Check children for identifier
-                # package_header -> (package) (identifier)
-                for grandchild in child.children:
-                    if (
-                        grandchild.type == "identifier"
-                        or grandchild.type == "simple_identifier"
-                    ):
-                        self.current_package = self._get_node_text(grandchild)
-                        return
-                    # Or maybe deeper if qualified name
-                    if "identifier" in grandchild.type:
-                        self.current_package = self._get_node_text(grandchild)
-                        return
+            if child.type != "package_header":
+                continue
+            pkg_name = self._kotlin_package_name_from_header(child)
+            if pkg_name is not None:
+                self.current_package = pkg_name
+                return
+
+    def _kotlin_package_name_from_header(
+        self, package_header: "tree_sitter.Node"
+    ) -> str | None:
+        """Return the package name string from a ``package_header`` node.
+
+        Kotlin grammars emit either ``identifier`` / ``simple_identifier``
+        for bare names or a qualified-name node whose ``type`` contains
+        ``identifier``. We pick the first matching child.
+        """
+        for grandchild in package_header.children:
+            if grandchild.type in ("identifier", "simple_identifier"):
+                return self._get_node_text(grandchild)
+            if "identifier" in grandchild.type:
+                return self._get_node_text(grandchild)
+        return None
 
     def _extract_function(self, node: "tree_sitter.Node") -> Function | None:
         """Extract function information"""
