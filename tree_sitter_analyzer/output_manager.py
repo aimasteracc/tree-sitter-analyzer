@@ -12,6 +12,34 @@ from typing import Any
 from .utils import log_warning
 
 
+class _JsonFormatter:
+    """JSON formatter — pretty-prints non-string data, passes strings through.
+
+    r37dc (dogfood): lifted from a closure inside ``_init_formatters``.
+    """
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, str):
+            return data
+        return json.dumps(data, indent=2, ensure_ascii=False)
+
+
+class _YamlFormatter:
+    """YAML formatter — defers the ``yaml`` import to ``format()``.
+
+    Registered only when ``import yaml`` succeeds (probed at registry
+    construction time); the deferred import inside ``format`` keeps the
+    class body importable even on Python builds without PyYAML.
+    """
+
+    def format(self, data: Any) -> str:
+        if isinstance(data, str):
+            return data
+        import yaml
+
+        return str(yaml.dump(data, default_flow_style=False, allow_unicode=True))
+
+
 class OutputManager:
     """Manages different types of output for CLI"""
 
@@ -38,45 +66,24 @@ class OutputManager:
         Returns:
             Dictionary mapping format names to formatter instances
         """
-        formatters: dict[str, Any] = {}
-
-        # JSON formatter (built-in)
-        class JsonFormatter:
-            """Simple JSON formatter implementing the Formatter protocol."""
-
-            def format(self, data: Any) -> str:
-                if isinstance(data, str):
-                    return data
-                return json.dumps(data, indent=2, ensure_ascii=False)
-
-        formatters["json"] = JsonFormatter()
-
-        # TOON formatter (if available)
+        # r37dc (dogfood): flattened nesting 6 → 3 by lifting the inner
+        # ``YamlFormatter`` class to module scope. Its body referenced
+        # ``yaml`` lazily already, so deferring the import to ``format()``
+        # keeps the original "yaml is optional" behaviour while letting
+        # the class be defined unconditionally.
+        formatters: dict[str, Any] = {"json": _JsonFormatter()}
         try:
             from .formatters.toon_formatter import ToonFormatter
 
             formatters["toon"] = ToonFormatter()
         except ImportError:
             pass
-
-        # YAML formatter (if available)
         try:
-            import yaml
+            import yaml as _yaml_probe  # noqa: F401
 
-            class YamlFormatter:
-                """YAML formatter implementing the Formatter protocol."""
-
-                def format(self, data: Any) -> str:
-                    if isinstance(data, str):
-                        return data
-                    return str(
-                        yaml.dump(data, default_flow_style=False, allow_unicode=True)
-                    )
-
-            formatters["yaml"] = YamlFormatter()
+            formatters["yaml"] = _YamlFormatter()
         except ImportError:
             pass
-
         return formatters
 
     def info(self, message: str) -> None:
