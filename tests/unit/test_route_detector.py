@@ -487,7 +487,9 @@ class TestRouteDetectorToolExecute:
         assert all("/leak" not in r.url_pattern for r in routes)
         assert all("/outside/" not in r.file_path for r in routes)
 
-    def test_set_project_path_resets_detector(self, flask_project: Path, tmp_path: Path):
+    def test_set_project_path_resets_detector(
+        self, flask_project: Path, tmp_path: Path
+    ):
         tool = RouteDetectorTool(str(flask_project))
         first = self._run(tool, {"mode": "summary", "output_format": "json"})
         assert first["total_routes"] == 3
@@ -525,9 +527,7 @@ class TestRouteCachePersistence:
             r.url_pattern for r in second
         )
 
-    def test_cache_invalidates_on_content_change(
-        self, multi_framework_project: Path
-    ):
+    def test_cache_invalidates_on_content_change(self, multi_framework_project: Path):
         d1 = RouteDetector(str(multi_framework_project))
         d1.detect_all()
 
@@ -535,8 +535,7 @@ class TestRouteCachePersistence:
         # Other files (api.py, routes.js) must stay as cache hits.
         app = multi_framework_project / "app.py"
         app.write_text(
-            app.read_text()
-            + "\n@app.route('/new')\ndef brand_new():\n    return 'x'\n"
+            app.read_text() + "\n@app.route('/new')\ndef brand_new():\n    return 'x'\n"
         )
 
         d2 = RouteDetector(str(multi_framework_project))
@@ -569,6 +568,7 @@ class TestRouteCachePersistence:
 
         assert key(cached) == key(cached_via_db) == key(no_cache)
 
+    @pytest.mark.flaky(reruns=2, reruns_delay=0)
     def test_warm_pass_is_meaningfully_faster_than_cold(self, tmp_path: Path):
         """PERF-1 regression guard: the cache must produce a >=3x speedup on
         second invocation. (Real-world numbers on the analyzer's own repo
@@ -578,6 +578,7 @@ class TestRouteCachePersistence:
 
         Skipped under heavily-loaded CI where wall-clock measurements are
         unreliable — set TSA_SKIP_PERF=1 to opt out.
+        Marked flaky(reruns=2) — timing is sensitive to xdist CPU contention.
         """
         import os as _os
 
@@ -592,8 +593,7 @@ class TestRouteCachePersistence:
                 "from flask import Flask\n"
                 f"app = Flask('m{i}')\n"
                 + "".join(
-                    f"@app.route('/r{i}_{j}')\n"
-                    f"def h_{i}_{j}():\n    return 'x'\n\n"
+                    f"@app.route('/r{i}_{j}')\ndef h_{i}_{j}():\n    return 'x'\n\n"
                     for j in range(3)
                 )
             )
@@ -639,9 +639,17 @@ class TestRouteCachePersistence:
     def test_route_cache_round_trip(self, tmp_path: Path):
         db = tmp_path / "routes.db"
         cache = RouteCache(db)
-        sample = [{"http_method": "GET", "url_pattern": "/x", "handler_name": "h",
-                   "file_path": "/p", "line_number": 1, "framework": "flask",
-                   "language": "python"}]
+        sample = [
+            {
+                "http_method": "GET",
+                "url_pattern": "/x",
+                "handler_name": "h",
+                "file_path": "/p",
+                "line_number": 1,
+                "framework": "flask",
+                "language": "python",
+            }
+        ]
         cache.put("/p", "deadbeef", 12345, sample)
         assert cache.get("/p", "deadbeef") == sample
         # Wrong hash → miss.
