@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from .core.parser import Parser, ParseResult
+from .import_extractors import walk_imports
 from .project_graph import _language_from_ext
 
 _EXCLUDE_DIRS = {
@@ -407,6 +408,8 @@ class CallGraph:
         self._built = False
         self._file_imports: dict[str, dict[str, str]] = {}
         self._file_module_map: dict[str, str] = {}
+        self._imported_names: dict[str, dict[str, str]] = {}
+        self._module_to_file: dict[str, str] = {}
 
     def build(self) -> None:
         """Scan the project and build the call graph."""
@@ -457,6 +460,10 @@ class CallGraph:
 
             definitions, calls = _walk_tree(tree.root_node, source, language)
 
+            imports: list[dict[str, Any]] = []
+            walk_imports(tree.root_node, source, language, imports)
+            self._collect_import_map(rel_path, imports, rel_to_abs)
+
             file_funcs: dict[str, FunctionRef] = {}
             for defn in definitions:
                 ref = FunctionRef(
@@ -484,10 +491,73 @@ class CallGraph:
                     self._callers[callee_ref].append(caller_ref)
                     self._call_edges.append((caller_ref, callee_ref, call["line"]))
 
+        self._build_module_to_file_map(rel_to_abs)
         self._built = True
 
     def _is_excluded(self, path: Path) -> bool:
         return any(part in _EXCLUDE_DIRS for part in path.parts)
+
+    def _collect_import_map(
+        self,
+        rel_path: str,
+        imports: list[dict[str, Any]],
+        rel_to_abs: dict[str, str],
+    ) -> None:
+        name_to_source: dict[str, str] = {}
+        for imp in imports:
+            resolved = imp.get("resolved_path", "")
+            names = imp.get("names", [])
+            is_relative = imp.get("is_relative", False)
+            target_file = self._resolve_import_path(
+                rel_path, resolved, is_relative, rel_to_abs
+            )
+            if target_file:
+                for name in names:
+                    name_to_source[name] = target_file
+        if name_to_source:
+            self._imported_names[rel_path] = name_to_source
+
+    def _resolve_import_path(
+        self,
+        source_rel: str,
+        resolved_path: str,
+        is_relative: bool,
+        rel_to_abs: dict[str, str],
+    ) -> str:
+        if not resolved_path:
+            return ""
+        if is_relative:
+            source_dir = str(Path(source_rel).parent)
+            candidate = str(Path(source_dir) / resolved_path)
+            for ext in ("", ".py", ".js", ".ts", ".jsx", ".tsx"):
+                check = candidate + ext
+                if check in rel_to_abs:
+                    return check
+                idx_path = str(Path(candidate) / "__init__.py")
+                if idx_path in rel_to_abs:
+                    return idx_path
+        else:
+            candidate = resolved_path
+            for ext in ("", ".py", ".js", ".ts", ".jsx", ".tsx"):
+                check = candidate + ext
+                if check in rel_to_abs:
+                    return check
+                idx_path = str(Path(candidate) / "__init__.py")
+                if idx_path in rel_to_abs:
+                    return idx_path
+        return ""
+
+    def _build_module_to_file_map(self, rel_to_abs: dict[str, str]) -> None:
+        for rel_path in rel_to_abs:
+            p = Path(rel_path)
+            stem = p.stem
+            if stem == "__init__":
+                module_name = str(p.parent).replace("/", ".").replace("\\", ".")
+            else:
+                module_name = (
+                    str(p.with_suffix("")).replace("/", ".").replace("\\", ".")
+                )
+            self._module_to_file[module_name] = rel_path
 
     def _find_enclosing_func(
         self,
@@ -508,14 +578,36 @@ class CallGraph:
         source_rel: str,
         rel_to_abs: dict[str, str],
     ) -> list[FunctionRef]:
-        """Resolve a call site to FunctionRef(s) in the project."""
         name = call["name"]
         results: list[FunctionRef] = []
+        seen: set[str] = set()
 
-        candidates = self._func_by_name.get(name, [])
-        if candidates:
-            same_file = [c for c in candidates if c.file_path == source_rel]
-            results.extend(same_file if same_file else candidates)
+        same_file = self._func_by_name.get(name, [])
+        local = [c for c in same_file if c.file_path == source_rel]
+        if local:
+            for c in local:
+                if c.qualified_name() not in seen:
+                    seen.add(c.qualified_name())
+                    results.append(c)
+            return results
+
+        imported_names = self._imported_names.get(source_rel, {})
+        target_file = imported_names.get(name)
+        if target_file:
+            candidates = self._func_by_name.get(name, [])
+            for c in candidates:
+                if c.file_path == target_file and c.qualified_name() not in seen:
+                    seen.add(c.qualified_name())
+                    results.append(c)
+            if results:
+                return results
+
+        if same_file:
+            for c in same_file:
+                if c.qualified_name() not in seen:
+                    seen.add(c.qualified_name())
+                    results.append(c)
+            return results
 
         return results
 
