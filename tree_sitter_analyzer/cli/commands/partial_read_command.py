@@ -110,19 +110,39 @@ class PartialReadCommand(BaseCommand):
             return 1
 
     def _output_partial_content(self, content: str) -> None:
-        """Output the partial content in the specified format."""
+        """Output the partial content in the specified format.
+
+        r37d9 (dogfood): 105 lines → ~15 lines of phase dispatch.
+        Sub-helpers (``_compute_partial_range_flags``, ``_build_partial_result``,
+        ``_emit_partial_payload``) own the range-bounds analysis, dict
+        assembly, and json/toon/text fan-out respectively. K8 + r37ag
+        contracts (lines_extracted from real content, top-level verdict
+        mirror) are preserved.
+        """
         end_line = getattr(self.args, "end_line", None)
         start_column = getattr(self.args, "start_column", None)
         end_column = getattr(self.args, "end_column", None)
-        # K8: count lines from the ACTUAL content. The old formula
-        # ``end_line - start_line + 1`` lied when the range was past
-        # EOF — an agent saw ``lines_extracted=N`` while ``content``
-        # was empty.
-        lines_extracted = len(content.splitlines()) if content else 0
+        flags = self._compute_partial_range_flags(content, end_line)
+        result_data = self._build_partial_result(
+            content=content,
+            end_line=end_line,
+            start_column=start_column,
+            end_column=end_column,
+            flags=flags,
+        )
+        self._emit_partial_payload(result_data, content)
 
-        # Detect out-of-range / partial-overlap so we can surface
-        # actionable flags instead of pretending the read succeeded.
+    def _compute_partial_range_flags(
+        self, content: str, end_line: int | None
+    ) -> dict[str, Any]:
+        """Compute out-of-range / partial-range / clamped_to flags + line count.
+
+        K8: counts lines from the ACTUAL ``content``. The old formula
+        ``end_line - start_line + 1`` lied when the range was past EOF —
+        agents saw ``lines_extracted=N`` while ``content`` was empty.
+        """
         file_lines = count_file_lines(self.args.file_path)
+        lines_extracted = len(content.splitlines()) if content else 0
         out_of_range = bool(
             content == ""
             and file_lines is not None
@@ -139,8 +159,24 @@ class PartialReadCommand(BaseCommand):
             if partial_range and file_lines is not None
             else None
         )
+        return {
+            "file_lines": file_lines,
+            "lines_extracted": lines_extracted,
+            "out_of_range": out_of_range,
+            "partial_range": partial_range,
+            "clamped_to": clamped_to,
+        }
 
-        # Build result data
+    def _build_partial_result(
+        self,
+        *,
+        content: str,
+        end_line: int | None,
+        start_column: int | None,
+        end_column: int | None,
+        flags: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build ``result_data`` with K8 flags + r37ag canonical envelope mirror."""
         result_data: dict[str, Any] = {
             "file_path": self.args.file_path,
             "range": {
@@ -151,16 +187,16 @@ class PartialReadCommand(BaseCommand):
             },
             "content": content,
             "content_length": len(content),
-            "lines_extracted": lines_extracted,
+            "lines_extracted": flags["lines_extracted"],
         }
-        if file_lines is not None:
-            result_data["file_lines"] = file_lines
-        if out_of_range:
+        if flags["file_lines"] is not None:
+            result_data["file_lines"] = flags["file_lines"]
+        if flags["out_of_range"]:
             result_data["out_of_range"] = True
-        if partial_range:
+        if flags["partial_range"]:
             result_data["partial_range"] = True
-            if clamped_to is not None:
-                result_data["clamped_to"] = clamped_to
+            if flags["clamped_to"] is not None:
+                result_data["clamped_to"] = flags["clamped_to"]
         result_data["agent_summary"] = build_agent_summary(
             file_path=self.args.file_path,
             start_line=self.args.start_line,
@@ -168,52 +204,48 @@ class PartialReadCommand(BaseCommand):
             start_column=start_column,
             end_column=end_column,
             content_length=len(content),
-            lines_extracted=lines_extracted,
+            lines_extracted=flags["lines_extracted"],
             content_format="text",
-            file_lines=file_lines,
-            out_of_range=out_of_range,
-            partial_range=partial_range,
-            clamped_to=clamped_to,
+            file_lines=flags["file_lines"],
+            out_of_range=flags["out_of_range"],
+            partial_range=flags["partial_range"],
+            clamped_to=flags["clamped_to"],
         )
         # Mirror ``summary_line`` at top level for callers that scan
         # for the canonical envelope key.
         summary_line = result_data["agent_summary"].get("summary_line")
         if summary_line:
             result_data["summary_line"] = summary_line
-        # r37ag (dogfood): mirror ``agent_summary.verdict`` to top-level
-        # (r37u envelope contract). Without this the CLI envelope gate
-        # caught ``--partial-read`` returning ``verdict: None``.
+        # r37ag: mirror ``agent_summary.verdict`` to top-level (r37u
+        # envelope contract). Without this the CLI envelope gate caught
+        # ``--partial-read`` returning ``verdict: None``.
         verdict = result_data["agent_summary"].get("verdict")
         if isinstance(verdict, str) and verdict:
             result_data["verdict"] = verdict
         result_data.setdefault("success", True)
+        return result_data
 
-        # Build range info for header
-        range_info = f"Line {self.args.start_line}"
-        if hasattr(self.args, "end_line") and self.args.end_line:
-            range_info += f"-{self.args.end_line}"
-
-        # Output format selection
+    def _emit_partial_payload(self, result_data: dict[str, Any], content: str) -> None:
+        """Emit ``result_data`` via json / toon / text per ``--output-format``."""
         output_format = getattr(self.args, "output_format", "text")
-
         if output_format == "json":
-            # Pure JSON output
             output_json(result_data)
-        elif output_format == "toon" and _toon_available:
-            # TOON output
+            return
+        if output_format == "toon" and _toon_available:
             use_tabs = getattr(self.args, "toon_use_tabs", False)
             formatter = ToonFormatter(use_tabs=use_tabs)
             print(formatter.format(result_data))
-        else:
-            # Human-readable format with header
-            output_section("Partial Read Result")
-            output_data(f"File: {self.args.file_path}")
-            output_data(f"Range: {range_info}")
-            output_data(f"Characters read: {len(content)}")
-            output_data("")  # Empty line for separation
-
-            # Output the actual content
-            print(content, end="")  # Use print to avoid extra formatting
+            return
+        # Human-readable format with header.
+        range_info = f"Line {self.args.start_line}"
+        if hasattr(self.args, "end_line") and self.args.end_line:
+            range_info += f"-{self.args.end_line}"
+        output_section("Partial Read Result")
+        output_data(f"File: {self.args.file_path}")
+        output_data(f"Range: {range_info}")
+        output_data(f"Characters read: {len(content)}")
+        output_data("")  # Empty line for separation
+        print(content, end="")  # Use print to avoid extra formatting
 
     async def execute_async(self, language: str) -> int:
         """Not used for partial read command."""

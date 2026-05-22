@@ -60,15 +60,43 @@ class QueryCommand(BaseCommand):
             return None
 
     async def execute_async(self, language: str) -> int:
-        # Get the query to execute
-        query_to_execute = None
+        """Run the requested query and emit the canonical response envelope.
 
+        r37d7 (dogfood): 107 lines → ~20 lines of phase dispatch.
+        Sub-helpers: ``_resolve_query`` (key vs. string, security checks),
+        ``_build_query_envelope`` (r37ac canonical envelope) and
+        ``_emit_query_results`` (json / toon / text fan-out).
+        """
+        query_resolution = self._resolve_query(language)
+        if isinstance(query_resolution, int):
+            return query_resolution
+        query_to_execute, query_name = query_resolution
+
+        results = await self.execute_query(language, query_to_execute, query_name)
+        if results is None:
+            return 1
+
+        envelope = self._build_query_envelope(
+            language=language,
+            query_to_execute=query_to_execute,
+            query_name=query_name,
+            results=results,
+        )
+        self._emit_query_results(envelope, results)
+        return 0
+
+    def _resolve_query(self, language: str) -> tuple[str, str] | int:
+        """Return ``(query_to_execute, query_name)`` or an exit code on error.
+
+        Honours ``--query-key`` (validated against ``get_available_queries``)
+        first, then ``--query-string`` (regex-checked via SecurityValidator).
+        Returns an integer exit code (``1``) when no query is specified or
+        validation fails — caller threads this back to the CLI return code.
+        """
         if hasattr(self.args, "query_key") and self.args.query_key:
-            # Sanitize query key input
             sanitized_query_key = self.security_validator.sanitize_input(
                 self.args.query_key, max_length=100
             )
-            # Check if query exists
             available_queries = self.query_service.get_available_queries(language)
             if sanitized_query_key not in available_queries:
                 output_error(
@@ -79,42 +107,41 @@ class QueryCommand(BaseCommand):
                 )
                 output_info("Use --list-queries to see all available query keys.")
                 return 1
-            # Store query name - QueryService will resolve the query string
-            query_to_execute = sanitized_query_key  # This is actually the query key now
-            query_name = sanitized_query_key
-        elif hasattr(self.args, "query_string") and self.args.query_string:
-            # Security check for query string (potential regex patterns)
+            return sanitized_query_key, sanitized_query_key
+        if hasattr(self.args, "query_string") and self.args.query_string:
             is_safe, error_msg = self.security_validator.regex_checker.validate_pattern(
                 self.args.query_string
             )
             if not is_safe:
                 output_error(f"Unsafe query pattern: {error_msg}")
                 return 1
-            query_to_execute = self.args.query_string
-            query_name = "custom"
+            return self.args.query_string, "custom"
+        output_error("No query specified.")
+        return 1
 
-        if not query_to_execute:
-            output_error("No query specified.")
-            return 1
+    def _build_query_envelope(
+        self,
+        *,
+        language: str,
+        query_to_execute: str,
+        query_name: str,
+        results: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """Wrap ``results`` in the r37ac canonical envelope.
 
-        # Execute specific query
-        results = await self.execute_query(language, query_to_execute, query_name)
-        if results is None:
-            return 1
-
-        # r37ac (dogfood): CLI ``--query-key`` previously emitted a bare
-        # list to stdout (``json.dumps(results)``). Agents calling
-        # ``result.get("verdict")`` got ``AttributeError`` because
-        # ``list`` has no ``.get`` — strictly worse than the
-        # ``--advanced`` / ``--summary`` / ``--structure`` drifters
-        # (which at least returned a dict). Wrap the list in the
-        # canonical envelope so JSON callers get a consistent shape.
+        Previously ``--query-key`` emitted a bare list to stdout, causing
+        agents calling ``result.get("verdict")`` to crash with
+        ``AttributeError`` because ``list`` has no ``.get``. The envelope
+        is the same shape produced by the other CLI surfaces (matches
+        on r37y/r37z/r37aa).
+        """
         match_count = len(results) if results else 0
         summary_line = (
-            f"{self.args.file_path} ({language}) query={query_name or query_to_execute[:40]}: "
+            f"{self.args.file_path} ({language}) query="
+            f"{query_name or query_to_execute[:40]}: "
             f"matches={match_count}"
         )
-        envelope = {
+        return {
             "success": True,
             "file_path": self.args.file_path,
             "language": language,
@@ -133,36 +160,32 @@ class QueryCommand(BaseCommand):
             },
         }
 
-        # Output results
-        if results:
-            if self.args.output_format == "json":
-                output_json(envelope)
-            elif self.args.output_format == "toon" and _toon_available:
-                use_tabs = getattr(self.args, "toon_use_tabs", False)
-                formatter = ToonFormatter(use_tabs=use_tabs)
-                print(formatter.format(envelope))
-            else:
-                for i, query_result in enumerate(results, 1):
-                    name = query_result.get("name")
-                    name_suffix = f": {name}" if name else ""
-                    output_data(
-                        f"\n{i}. {query_result['capture_name']}{name_suffix} ({query_result['node_type']})"
-                    )
-                    output_data(
-                        f"   Position: Line {query_result['start_line']}-{query_result['end_line']}"
-                    )
-                    output_data(f"   Content:\n{query_result['content']}")
-        else:
-            # No matches — still emit canonical envelope on JSON path so
-            # agents can branch on ``match_count == 0`` instead of
-            # parsing stderr / exit code.
-            if self.args.output_format == "json":
-                output_json(envelope)
-            elif self.args.output_format == "toon" and _toon_available:
-                use_tabs = getattr(self.args, "toon_use_tabs", False)
-                formatter = ToonFormatter(use_tabs=use_tabs)
-                print(formatter.format(envelope))
-            else:
-                output_info("\nINFO: No results found matching the query.")
-
-        return 0
+    def _emit_query_results(
+        self,
+        envelope: dict[str, Any],
+        results: list[dict[str, Any]] | None,
+    ) -> None:
+        """Output ``envelope`` via json / toon / text per ``--output-format``."""
+        if self.args.output_format == "json":
+            output_json(envelope)
+            return
+        if self.args.output_format == "toon" and _toon_available:
+            use_tabs = getattr(self.args, "toon_use_tabs", False)
+            formatter = ToonFormatter(use_tabs=use_tabs)
+            print(formatter.format(envelope))
+            return
+        if not results:
+            output_info("\nINFO: No results found matching the query.")
+            return
+        for i, query_result in enumerate(results, 1):
+            name = query_result.get("name")
+            name_suffix = f": {name}" if name else ""
+            output_data(
+                f"\n{i}. {query_result['capture_name']}{name_suffix} "
+                f"({query_result['node_type']})"
+            )
+            output_data(
+                f"   Position: Line {query_result['start_line']}-"
+                f"{query_result['end_line']}"
+            )
+            output_data(f"   Content:\n{query_result['content']}")

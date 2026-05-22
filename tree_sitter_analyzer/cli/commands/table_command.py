@@ -67,118 +67,141 @@ class TableCommand(BaseCommand):
 
     # Main entry point - dispatches to handler: execute_async
     async def execute_async(self, language: str) -> int:
-        """Execute table format generation."""
+        """Execute table format generation.
+
+        r37d8 (dogfood): 113 lines → ~20 lines of phase dispatch.
+        Sub-helpers: ``_resolve_table_type`` (--table vs --format precedence
+        + K11 override warning), ``_render_table_output`` (json/toon/text
+        fan-out). ``effective_table`` / ``requested_table`` (K11) and the
+        r37ab canonical envelope are preserved.
+        """
         try:
-            # Perform standard analysis
             analysis_result = await self.analyze_file(language)
             if not analysis_result:
                 return 1
-
-            table_type = getattr(self.args, "table", "full")
-            # K11: capture the user's original ``--table`` intent (pre-
-            # override) so we can warn when ``--format`` silently wins
-            # and stamp ``effective_table`` on the JSON envelope for
-            # programmatic callers.
-            user_table_request = table_type
-            table_was_user_specified = "--table" in " ".join(sys.argv[1:])
-
-            # DOG-3 fix: --output-format used to be silently ignored when
-            # --table was also set. The global format flag now wins for the
-            # encoding choice — but only when the user *explicitly* provided
-            # it. Argparse leaves --output-format at its default ("json") for
-            # every invocation, so checking the value alone would silently
-            # break "--table=full" without --output-format. Instead we
-            # inspect sys.argv: only honor --output-format / --format when
-            # the literal flag appears.
-            output_format = ""
-            argv_tokens = " ".join(sys.argv[1:])
-            if "--output-format" in argv_tokens or "--format" in argv_tokens:
-                output_format = (
-                    getattr(self.args, "format", None)
-                    or getattr(self.args, "output_format", None)
-                    or ""
-                ).lower()
-            if output_format == "toon" and table_type != "toon":
-                table_type = "toon"
-            elif output_format == "json" and table_type != "json":
-                table_type = "json"
-
-            # K11 (round-24 dogfood): warn on stderr when ``--table`` is
-            # silently overridden by ``--format`` so the user knows the
-            # explicit ``--table=compact`` did not take effect. Pre-K11,
-            # ``--table=full|compact|csv`` all produced byte-identical JSON
-            # output. Symmetric to DOG-3's TOON warning.
-            table_was_overridden = (
-                table_was_user_specified
-                and output_format in ("json", "toon")
-                and user_table_request != table_type
+            table_type, user_table_request, table_was_user_specified = (
+                self._resolve_table_type()
             )
-            if table_was_overridden:
-                print(
-                    f"Warning: --table={user_table_request} is ignored when "
-                    f"--format={output_format} (effective_table={table_type})",
-                    file=sys.stderr,
-                )
-
-            if table_type == "json":
-                formatted_data = self._convert_to_structure_format(
-                    analysis_result, language
-                )
-                # K11: surface the effective table view to programmatic
-                # callers. ``effective_table`` carries the actual view
-                # produced (always ``json`` when --format=json wins);
-                # ``requested_table`` echoes the user's original
-                # ``--table`` intent so they can detect the override.
-                if isinstance(formatted_data, dict):
-                    formatted_data["effective_table"] = table_type
-                    if table_was_user_specified:
-                        formatted_data["requested_table"] = user_table_request
-                    # r37ab (dogfood): 4th CLI surface (after --advanced
-                    # r37y / --summary r37z / --structure r37aa) missing
-                    # canonical envelope. Same fix shape — attach
-                    # success / summary_line / verdict / agent_summary.
-                    _attach_table_envelope(formatted_data, analysis_result)
-                import json
-
-                formatted_output = json.dumps(
-                    formatted_data, indent=2, ensure_ascii=False
-                )
-            elif table_type == "toon":
-                formatted_output = self._format_as_toon(
-                    analysis_result,
-                    effective_table=table_type,
-                    requested_table=(
-                        user_table_request if table_was_user_specified else None
-                    ),
-                )
-            else:
-                # Get appropriate formatter using unified FormatterRegistry
-                from ...formatters.formatter_registry import FormatterRegistry
-
-                formatter = FormatterRegistry.get_formatter_for_language(
-                    analysis_result.language,
-                    table_type,
-                    include_javadoc=getattr(self.args, "include_javadoc", False),
-                )
-
-                # Check if formatter has a method to handle AnalysisResult directly
-                if hasattr(formatter, "format_analysis_result"):
-                    formatted_output = formatter.format_analysis_result(
-                        analysis_result, table_type
-                    )
-                else:
-                    # Convert to structure format that the formatter expects
-                    formatted_data = self._convert_to_structure_format(
-                        analysis_result, language
-                    )
-                    formatted_output = formatter.format_structure(formatted_data)
-
+            formatted_output = self._render_table_output(
+                analysis_result,
+                language,
+                table_type,
+                user_table_request,
+                table_was_user_specified,
+            )
             self._output_table(formatted_output)
             return 0
-
         except Exception as e:
             output_error(f"An error occurred during table format analysis: {e}")
             return 1
+
+    def _resolve_table_type(self) -> tuple[str, str, bool]:
+        """Pick the effective table view, honouring ``--format`` overrides.
+
+        Returns ``(table_type, user_table_request, table_was_user_specified)``.
+        K11 / DOG-3: ``--format=json|toon`` wins over ``--table=...`` when the
+        user explicitly passed the flag (checked via ``sys.argv`` so the
+        argparse default ``json`` doesn't silently break ``--table=full``).
+        A stderr warning is emitted symmetric to DOG-3's TOON warning when
+        the override actually changed the rendered view.
+        """
+        table_type = getattr(self.args, "table", "full")
+        user_table_request = table_type
+        argv_tokens = " ".join(sys.argv[1:])
+        table_was_user_specified = "--table" in argv_tokens
+
+        output_format = ""
+        if "--output-format" in argv_tokens or "--format" in argv_tokens:
+            output_format = (
+                getattr(self.args, "format", None)
+                or getattr(self.args, "output_format", None)
+                or ""
+            ).lower()
+        if output_format == "toon" and table_type != "toon":
+            table_type = "toon"
+        elif output_format == "json" and table_type != "json":
+            table_type = "json"
+
+        if (
+            table_was_user_specified
+            and output_format in ("json", "toon")
+            and user_table_request != table_type
+        ):
+            print(
+                f"Warning: --table={user_table_request} is ignored when "
+                f"--format={output_format} (effective_table={table_type})",
+                file=sys.stderr,
+            )
+        return table_type, user_table_request, table_was_user_specified
+
+    def _render_table_output(
+        self,
+        analysis_result: Any,
+        language: str,
+        table_type: str,
+        user_table_request: str,
+        table_was_user_specified: bool,
+    ) -> str:
+        """Render the table output string per ``table_type`` (json/toon/text)."""
+        if table_type == "json":
+            return self._render_table_json(
+                analysis_result,
+                language,
+                table_type,
+                user_table_request,
+                table_was_user_specified,
+            )
+        if table_type == "toon":
+            return self._format_as_toon(
+                analysis_result,
+                effective_table=table_type,
+                requested_table=(
+                    user_table_request if table_was_user_specified else None
+                ),
+            )
+        from ...formatters.formatter_registry import FormatterRegistry
+
+        formatter = FormatterRegistry.get_formatter_for_language(
+            analysis_result.language,
+            table_type,
+            include_javadoc=getattr(self.args, "include_javadoc", False),
+        )
+        if hasattr(formatter, "format_analysis_result"):
+            rendered: str = formatter.format_analysis_result(
+                analysis_result, table_type
+            )
+            return rendered
+        formatted_data = self._convert_to_structure_format(analysis_result, language)
+        rendered_struct: str = formatter.format_structure(formatted_data)
+        return rendered_struct
+
+    def _render_table_json(
+        self,
+        analysis_result: Any,
+        language: str,
+        table_type: str,
+        user_table_request: str,
+        table_was_user_specified: bool,
+    ) -> str:
+        """Build the JSON envelope with K11 metadata + r37ab canonical envelope."""
+        import json
+
+        formatted_data = self._convert_to_structure_format(analysis_result, language)
+        # K11: surface the effective table view to programmatic callers.
+        # ``effective_table`` carries the actual view produced (always
+        # ``json`` when --format=json wins); ``requested_table`` echoes
+        # the user's original ``--table`` intent so they can detect the
+        # override.
+        if isinstance(formatted_data, dict):
+            formatted_data["effective_table"] = table_type
+            if table_was_user_specified:
+                formatted_data["requested_table"] = user_table_request
+            # r37ab (dogfood): 4th CLI surface (after --advanced r37y /
+            # --summary r37z / --structure r37aa) missing canonical
+            # envelope — attach success / summary_line / verdict /
+            # agent_summary.
+            _attach_table_envelope(formatted_data, analysis_result)
+        return json.dumps(formatted_data, indent=2, ensure_ascii=False)
 
     # Format data for output: _format_as_toon
     def _format_as_toon(
