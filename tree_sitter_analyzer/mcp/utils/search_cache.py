@@ -69,23 +69,22 @@ class SearchCache:
         Returns:
             Cached data if found and valid, None otherwise
         """
+        # r37e0 (dogfood): flatten nesting 6 → 3 via early-return ladder.
         with self._lock:
-            if cache_key in self.cache:
-                entry = self.cache[cache_key]
-                if not self._is_expired(entry["timestamp"]):
-                    # Update access time for LRU
-                    self._access_times[cache_key] = time.time()
-                    self._hits += 1
-                    logger.debug(f"Cache hit for key: {cache_key[:50]}...")
-                    return entry["data"]
-                else:
-                    # Remove expired entry
-                    del self.cache[cache_key]
-                    if cache_key in self._access_times:
-                        del self._access_times[cache_key]
-
-            self._misses += 1
-            return None
+            entry = self.cache.get(cache_key)
+            if entry is None:
+                self._misses += 1
+                return None
+            if self._is_expired(entry["timestamp"]):
+                del self.cache[cache_key]
+                self._access_times.pop(cache_key, None)
+                self._misses += 1
+                return None
+            # Cache hit — update LRU access time.
+            self._access_times[cache_key] = time.time()
+            self._hits += 1
+            logger.debug(f"Cache hit for key: {cache_key[:50]}...")
+            return entry["data"]
 
     def get_compatible_result(self, cache_key: str, requested_format: str) -> Any:
         """
@@ -209,26 +208,38 @@ class SearchCache:
             cache_key: The cache key
             data: The data to cache
         """
+        # r37e0 (dogfood): flatten LRU eviction nesting 6 → 3 via
+        # _evict_one_lru_entry helper.
         with self._lock:
             self._cleanup_expired()
-
-            # If cache is full and this is a new key, remove LRU entry
             if len(self.cache) >= self.max_size and cache_key not in self.cache:
-                # Remove least recently used entry
-                if self._access_times:
-                    lru_key = min(
-                        self._access_times.keys(),
-                        key=lambda k: self._access_times.get(k, 0),
-                    )
-                    del self.cache[lru_key]
-                    del self._access_times[lru_key]
-                    self._evictions += 1
-                    logger.debug(f"Cache full, removed LRU entry: {lru_key[:50]}...")
-
+                self._evict_one_lru_entry()
             current_time = time.time()
             self.cache[cache_key] = {"data": data, "timestamp": current_time}
             self._access_times[cache_key] = current_time
             logger.debug(f"Cached result for key: {cache_key[:50]}...")
+
+    def _evict_one_lru_entry(self) -> None:
+        """Evict the least-recently-used cache entry.
+
+        No-op when no access_times are tracked (e.g. cache was cleared
+        between the size check and the eviction call). Caller must hold
+        ``self._lock`` — this helper assumes the critical section is
+        already entered.
+
+        r37e0 (dogfood): lifted from ``set()`` so the eviction path
+        drops from depth 6 to 3 levels.
+        """
+        if not self._access_times:
+            return
+        lru_key = min(
+            self._access_times.keys(),
+            key=lambda k: self._access_times.get(k, 0),
+        )
+        del self.cache[lru_key]
+        del self._access_times[lru_key]
+        self._evictions += 1
+        logger.debug(f"Cache full, removed LRU entry: {lru_key[:50]}...")
 
     def clear(self) -> None:
         """Clear all cached results"""
@@ -246,6 +257,12 @@ class SearchCache:
             total_requests = self._hits + self._misses
             hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0
 
+            # r37e0: flatten the inline list-comp (depth 6) into a sum.
+            expired_count = sum(
+                1
+                for entry in self.cache.values()
+                if self._is_expired(entry["timestamp"])
+            )
             return {
                 "size": len(self.cache),
                 "max_size": self.max_size,
@@ -254,13 +271,7 @@ class SearchCache:
                 "misses": self._misses,
                 "hit_rate_percent": round(hit_rate, 2),
                 "evictions": self._evictions,
-                "expired_entries": len(
-                    [
-                        key
-                        for key, entry in self.cache.items()
-                        if self._is_expired(entry["timestamp"])
-                    ]
-                ),
+                "expired_entries": expired_count,
             }
 
     def create_cache_key(self, query: str, roots: list[str], **params: Any) -> str:
