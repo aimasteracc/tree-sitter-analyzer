@@ -60,6 +60,31 @@ from .c_helpers import (
 )
 
 
+def _c_extract_multiline_text(
+    content_lines: list[str],
+    start_point: tuple[int, int],
+    end_point: tuple[int, int],
+) -> str:
+    """Slice multi-line node text from ``content_lines``.
+
+    r37cf (dogfood): extracted from ``CElementExtractor._get_node_text_optimized``
+    fallback branch to flatten its 8-deep nesting. Same first/last/interior
+    line column handling as the bash plugin helper (r37ce).
+    """
+    lines: list[str] = []
+    for i in range(start_point[0], end_point[0] + 1):
+        if i >= len(content_lines):
+            continue
+        line = content_lines[i]
+        if i == start_point[0]:
+            lines.append(line[start_point[1] :])
+        elif i == end_point[0]:
+            lines.append(line[: end_point[1]])
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 class CElementExtractor(ElementExtractor):
     """C specific element extractor with advanced analysis support"""
 
@@ -216,20 +241,11 @@ class CElementExtractor(ElementExtractor):
 
                 if start_point[0] == end_point[0]:
                     line = self.content_lines[start_point[0]]
-                    result: str = line[start_point[1] : end_point[1]]
-                    return result
-                else:
-                    lines = []
-                    for i in range(start_point[0], end_point[0] + 1):
-                        if i < len(self.content_lines):
-                            line = self.content_lines[i]
-                            if i == start_point[0]:
-                                lines.append(line[start_point[1] :])
-                            elif i == end_point[0]:
-                                lines.append(line[: end_point[1]])
-                            else:
-                                lines.append(line)
-                    return "\n".join(lines)
+                    return str(line[start_point[1] : end_point[1]])
+                # r37cf (dogfood): extracted to drop nesting from 8 to ≤3.
+                return _c_extract_multiline_text(
+                    self.content_lines, start_point, end_point
+                )
             except Exception as fallback_error:
                 log_error(f"Fallback text extraction also failed: {fallback_error}")
                 return ""

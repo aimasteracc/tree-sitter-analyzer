@@ -442,31 +442,43 @@ def extract_js_imports(node: Any, source: str, imports: list[dict[str, Any]]) ->
             )
 
     elif node_type == "call_expression":
-        # require('./foo') or require('fs')
-        func = node.child_by_field_name("function")
-        if func and _node_text(func, source) == "require":
-            args_node = node.child_by_field_name("arguments")
-            if args_node and hasattr(args_node, "children"):
-                for child in args_node.children:
-                    if getattr(child, "type", None) == "string":
-                        raw = _node_text(child, source).strip("'\"")
-
-                        # Check if builtin
-                        if raw in _JS_BUILTIN:
-                            continue
-
-                        imports.append(
-                            {
-                                "module_name": raw,
-                                "resolved_path": raw,
-                                "names": [],
-                                "is_relative": raw.startswith("."),
-                                "language": "javascript",
-                            }
-                        )
+        # r37cg (dogfood): extracted to flatten the require('./foo') walk
+        # from depth 7 to 3.
+        _collect_require_call_imports(node, source, imports)
 
 
 # Extract elements from AST: _extract_import_names
+def _collect_require_call_imports(
+    node: Any, source: str, imports: list[dict[str, Any]]
+) -> None:
+    """Walk a JS ``require('mod')`` call node, appending non-builtin imports.
+
+    r37cg (dogfood): extracted from ``_extract_js_imports`` to flatten its
+    7-deep nesting (elif → if → if → for → if → if → append).
+    """
+    func = node.child_by_field_name("function")
+    if not (func and _node_text(func, source) == "require"):
+        return
+    args_node = node.child_by_field_name("arguments")
+    if not (args_node and hasattr(args_node, "children")):
+        return
+    for child in args_node.children:
+        if getattr(child, "type", None) != "string":
+            continue
+        raw = _node_text(child, source).strip("'\"")
+        if raw in _JS_BUILTIN:
+            continue
+        imports.append(
+            {
+                "module_name": raw,
+                "resolved_path": raw,
+                "names": [],
+                "is_relative": raw.startswith("."),
+                "language": "javascript",
+            }
+        )
+
+
 def _extract_import_names(names_node: Any, source: str) -> list[str]:
     """Extract individual names from an import_list or aliased_import node."""
     names = []
