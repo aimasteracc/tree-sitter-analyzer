@@ -98,19 +98,20 @@ class TestGetUntrackedFiles:
 class TestGetChangedFiles:
     @patch("tree_sitter_analyzer.mcp.tools.utils.change_impact_git._run_git")
     def test_default_mode(self, mock_git):
-        mock_git.return_value = (0, "M file.py\nA new.py\n")
+        # --name-only format: plain filenames, no status prefix
+        mock_git.return_value = (0, "file.py\nnew.py\n")
         files = _get_changed_files("diff", "/src", None)
         assert "file.py" in files
 
     @patch("tree_sitter_analyzer.mcp.tools.utils.change_impact_git._run_git")
     def test_staged_mode(self, mock_git):
-        mock_git.return_value = (0, "M staged.py\n")
+        mock_git.return_value = (0, "staged.py\n")
         files = _get_changed_files("staged", "/src", None)
         assert "staged.py" in files
 
     @patch("tree_sitter_analyzer.mcp.tools.utils.change_impact_git._run_git")
     def test_branch_mode(self, mock_git):
-        mock_git.return_value = (0, "M branch.py\n")
+        mock_git.return_value = (0, "branch.py\n")
         files = _get_changed_files("branch", "/src", None)
         assert "branch.py" in files
 
