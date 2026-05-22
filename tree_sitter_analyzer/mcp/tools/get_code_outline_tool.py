@@ -467,7 +467,15 @@ class GetCodeOutlineTool(BaseMCPTool):
         return outline
 
     async def execute(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """执行 get_code_outline 工具。"""
+        """执行 get_code_outline 工具。
+
+        r37d1 (dogfood): 136 lines → ~25 lines of phase dispatch.
+        Sub-helpers: ``_resolve_outline_request`` (path + language + mismatch
+        guard), ``_run_outline_analysis`` (analysis engine call),
+        ``_assemble_outline_response`` (canonical dict + field hoisting),
+        ``_attach_outline_summary`` (summary_line + agent_summary).
+        TOON default LOCKED — output_format default stays ``toon``.
+        """
         try:
             self.validate_arguments(arguments)
 
@@ -477,131 +485,155 @@ class GetCodeOutlineTool(BaseMCPTool):
             include_imports = arguments.get("include_imports", False)
             output_format = arguments.get("output_format", "toon")
 
-            resolved_path = self.resolve_and_validate_file_path(file_path)
+            resolved = self._resolve_outline_request(file_path, language, output_format)
+            if "early_response" in resolved:
+                return dict(resolved["early_response"])
 
-            if not Path(resolved_path).exists():
-                raise ValueError(f"File not found: {file_path}")
-
-            # O3 (round-30 dogfood): strict mismatch gate against the
-            # explicit ``language`` override before we hand it to the
-            # analysis engine.
-            mismatch = detect_language_mismatch(
-                resolved_path,
-                language if isinstance(language, str) else None,
-                project_root=self.project_root,
+            analysis_result = await self._run_outline_analysis(
+                resolved["resolved_path"], resolved["language"], file_path
             )
-            if mismatch:
-                response = language_mismatch_error_response(
-                    tool_name="get_code_outline",
-                    file_path=file_path,
-                    warning=mismatch,
-                )
-                response["output_format"] = output_format
-                return response
-
-            if not language:
-                language = detect_language_from_file(
-                    resolved_path, project_root=self.project_root
-                )
-
-            monitor = get_performance_monitor()
-            with monitor.measure_operation("get_code_outline"):
-                request = AnalysisRequest(
-                    file_path=resolved_path,
-                    language=language,
-                    include_complexity=False,
-                    include_details=True,
-                )
-                analysis_result = await self.analysis_engine.analyze(request)
-
-            if analysis_result is None:
-                raise RuntimeError(f"Failed to analyze file: {file_path}")
-
             outline = self._build_outline(
                 analysis_result,
                 include_fields=include_fields,
                 include_imports=include_imports,
             )
 
-            # Build the canonical response dict. We hoist the outline's
-            # top-level fields (classes, top_level_functions, imports,
-            # plus the count summaries from ``statistics``) onto the
-            # response so callers can read them directly without an
-            # extra ``outline`` indirection — matching the convention
-            # every other analysis tool uses.
-            result: dict[str, Any] = {
-                "success": True,
-                "file_path": file_path,
-                "language": language,
-                "outline": outline,
-            }
-            if isinstance(outline, dict):
-                # 1) Hoist outline-level fields (classes, top_level_functions,
-                #    imports, total_lines, package).
-                for key in (
-                    "classes",
-                    "top_level_functions",
-                    "imports",
-                    "total_lines",
-                    "package",
-                ):
-                    if key in outline and key not in result:
-                        result[key] = outline[key]
-                # 2) ``top_level_functions`` is also surfaced as ``methods``
-                #    (the natural name callers reach for).
-                if "top_level_functions" in outline and "methods" not in result:
-                    result["methods"] = outline["top_level_functions"]
-                # 3) Hoist the count summaries from outline.statistics.
-                stats = outline.get("statistics")
-                if isinstance(stats, dict):
-                    for key in (
-                        "class_count",
-                        "method_count",
-                        "field_count",
-                        "import_count",
-                    ):
-                        if key in stats and key not in result:
-                            result[key] = stats[key]
-
-            # Top-level summary_line + agent_summary — a one-line headline an
-            # LLM (or grep) can read without parsing the nested outline.
-            class_count = int(result.get("class_count") or 0)
-            method_count = int(result.get("method_count") or 0)
-            field_count = int(result.get("field_count") or 0)
-            summary_line = (
-                f"{file_path} outline: {class_count} classes, "
-                f"{method_count} methods, {field_count} fields"
+            result = self._assemble_outline_response(
+                file_path, resolved["language"], outline
             )
-            result["summary_line"] = summary_line
-            # r37w (envelope ratchet): top-level verdict mirror to satisfy
-            # the r37u contract (top-level must equal agent_summary.verdict).
-            result["verdict"] = "INFO"
-            result["agent_summary"] = {
-                "summary_line": summary_line,
-                "next_step": (
-                    "extract_code_section for the method you need (use line ranges from outline)"
-                ),
-                "verdict": "INFO",
-            }
-
-            # M1 (round-26 dogfood): the previous build wrapped the TOON path
-            # in the MCP wire-format envelope (``{"content": [{"type":"text",
-            # "text":...}]}``) directly inside ``execute()``. That belongs in
-            # the server adapter (``tool_registration.handle_call_tool``
-            # wraps every tool's return in ``TextContent`` exactly once).
-            # Tools must return the flat envelope so direct callers (tests,
-            # hive-mind workers, anything that bypasses server.py) can read
-            # the same fields the JSON-RPC layer sees. The canonical TOON
-            # path (used by every other tool) is
-            # ``apply_toon_format_to_response`` — it keeps metadata
-            # (success/file_path/summary_line/agent_summary/...) at the top
-            # level and attaches a ``toon_content`` blob alongside the
-            # structured fields.
+            self._attach_outline_summary(result, file_path)
             return apply_toon_format_to_response(result, output_format)
 
         except Exception as e:
             self.logger.error(f"Error in get_code_outline: {e}")
             raise
+
+    def _resolve_outline_request(
+        self, file_path: str, language: str | None, output_format: str
+    ) -> dict[str, Any]:
+        """Resolve + validate the file path, then run the language-mismatch gate.
+
+        Returns either ``{"resolved_path": ..., "language": ...}`` for the
+        happy path, or ``{"early_response": <dict>}`` when the mismatch
+        guard fires (caller returns it unchanged).
+        """
+        resolved_path = self.resolve_and_validate_file_path(file_path)
+        if not Path(resolved_path).exists():
+            raise ValueError(f"File not found: {file_path}")
+        # O3 (round-30 dogfood): strict mismatch gate against the explicit
+        # ``language`` override before we hand it to the analysis engine.
+        mismatch = detect_language_mismatch(
+            resolved_path,
+            language if isinstance(language, str) else None,
+            project_root=self.project_root,
+        )
+        if mismatch:
+            response = language_mismatch_error_response(
+                tool_name="get_code_outline",
+                file_path=file_path,
+                warning=mismatch,
+            )
+            response["output_format"] = output_format
+            return {"early_response": response}
+        if not language:
+            language = detect_language_from_file(
+                resolved_path, project_root=self.project_root
+            )
+        return {"resolved_path": resolved_path, "language": language}
+
+    async def _run_outline_analysis(
+        self, resolved_path: str, language: str, original_path: str
+    ) -> Any:
+        """Run the analysis engine inside the perf monitor span.
+
+        Raises ``RuntimeError`` with the original (unresolved) path in the
+        message when the engine returns ``None`` — preserves the legacy
+        error string format.
+        """
+        monitor = get_performance_monitor()
+        with monitor.measure_operation("get_code_outline"):
+            request = AnalysisRequest(
+                file_path=resolved_path,
+                language=language,
+                include_complexity=False,
+                include_details=True,
+            )
+            analysis_result = await self.analysis_engine.analyze(request)
+        if analysis_result is None:
+            raise RuntimeError(f"Failed to analyze file: {original_path}")
+        return analysis_result
+
+    @staticmethod
+    def _assemble_outline_response(
+        file_path: str, language: str | None, outline: Any
+    ) -> dict[str, Any]:
+        """Build the canonical response dict + hoist outline-level fields.
+
+        We hoist outline.classes / top_level_functions / imports onto the
+        response so callers don't need an extra ``outline`` indirection —
+        matching the convention every other analysis tool uses.
+        ``top_level_functions`` is also mirrored as ``methods`` (the
+        natural name callers reach for). Count summaries from
+        ``outline.statistics`` are also hoisted.
+        """
+        result: dict[str, Any] = {
+            "success": True,
+            "file_path": file_path,
+            "language": language,
+            "outline": outline,
+        }
+        if not isinstance(outline, dict):
+            return result
+        # 1) Hoist outline-level fields.
+        for key in (
+            "classes",
+            "top_level_functions",
+            "imports",
+            "total_lines",
+            "package",
+        ):
+            if key in outline and key not in result:
+                result[key] = outline[key]
+        # 2) ``top_level_functions`` also surfaces as ``methods``.
+        if "top_level_functions" in outline and "methods" not in result:
+            result["methods"] = outline["top_level_functions"]
+        # 3) Hoist the count summaries from outline.statistics.
+        stats = outline.get("statistics")
+        if isinstance(stats, dict):
+            for key in (
+                "class_count",
+                "method_count",
+                "field_count",
+                "import_count",
+            ):
+                if key in stats and key not in result:
+                    result[key] = stats[key]
+        return result
+
+    @staticmethod
+    def _attach_outline_summary(result: dict[str, Any], file_path: str) -> None:
+        """Add ``summary_line`` + ``verdict`` + ``agent_summary`` to ``result``.
+
+        r37w envelope ratchet: top-level verdict must equal
+        ``agent_summary.verdict``. Both are pinned to ``INFO`` for the
+        outline tool — outlines never raise alarms by themselves.
+        """
+        class_count = int(result.get("class_count") or 0)
+        method_count = int(result.get("method_count") or 0)
+        field_count = int(result.get("field_count") or 0)
+        summary_line = (
+            f"{file_path} outline: {class_count} classes, "
+            f"{method_count} methods, {field_count} fields"
+        )
+        result["summary_line"] = summary_line
+        result["verdict"] = "INFO"
+        result["agent_summary"] = {
+            "summary_line": summary_line,
+            "next_step": (
+                "extract_code_section for the method you need (use line ranges from outline)"
+            ),
+            "verdict": "INFO",
+        }
 
     def get_tool_definition(self) -> dict[str, Any]:
         """返回 MCP tool 定义。"""
