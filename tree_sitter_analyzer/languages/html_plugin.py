@@ -28,6 +28,55 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _html_error_result(file_path: str, exc: Exception) -> AnalysisResult:
+    """Build the canonical failure ``AnalysisResult`` for HTML parse errors."""
+    return AnalysisResult(
+        file_path=file_path,
+        language="html",
+        line_count=0,
+        elements=[],
+        node_count=0,
+        query_results={},
+        source_code="",
+        success=False,
+        error_message=str(exc),
+    )
+
+
+def _analyze_html_fallback(file_path: str, content: str) -> AnalysisResult:
+    """Best-effort fallback when ``tree-sitter-html`` is not installed.
+
+    Emits a single synthetic ``html`` MarkupElement spanning the whole
+    document so downstream tooling sees *something* instead of an empty
+    elements list. Truncates raw text to 200 chars for the FTS row.
+    """
+    lines = content.splitlines()
+    line_count = len(lines)
+    html_element = MarkupElement(
+        name="html",
+        start_line=1,
+        end_line=line_count,
+        raw_text=content[:200] + "..." if len(content) > 200 else content,
+        language="html",
+        tag_name="html",
+        attributes={},
+        parent=None,
+        children=[],
+        element_class="structure",
+    )
+    return AnalysisResult(
+        file_path=file_path,
+        language="html",
+        line_count=line_count,
+        elements=[html_element],
+        node_count=1,
+        query_results={},
+        source_code=content,
+        success=True,
+        error_message=None,
+    )
+
+
 class HtmlElementExtractor(ElementExtractor):
     """HTML-specific element extractor using tree-sitter-html"""
 
@@ -317,91 +366,54 @@ class HtmlPlugin(LanguagePlugin):
     async def analyze_file(
         self, file_path: str, request: "AnalysisRequest"
     ) -> "AnalysisResult":
-        """Analyze HTML file using tree-sitter-html parser"""
+        """Analyze HTML file using tree-sitter-html parser.
+
+        r37er (dogfood): 91 → ~15 lines. Tree-sitter parse path moved to
+        ``_analyze_with_tree_sitter``; ImportError fallback moved to
+        ``_analyze_html_fallback``; top-level exception envelope moved to
+        ``_html_error_result``.
+        """
         from ..encoding_utils import read_file_safe
 
         try:
-            # Read file content
-            content, encoding = read_file_safe(file_path)
-
-            # Use tree-sitter-html for parsing
-            try:
-                import tree_sitter
-                import tree_sitter_html as ts_html
-
-                # Get HTML language
-                HTML_LANGUAGE = tree_sitter.Language(ts_html.language())
-
-                # Create parser
-                parser = tree_sitter.Parser()
-                parser.language = HTML_LANGUAGE
-
-                # Parse the HTML content
-                tree = parser.parse(content.encode("utf-8"))
-
-                # Extract elements using the extractor
-                extractor = self.create_extractor()
-                elements = extractor.extract_html_elements(tree, content)
-
-                log_info(f"Extracted {len(elements)} HTML elements from {file_path}")
-
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="html",
-                    line_count=len(content.splitlines()),
-                    elements=elements,
-                    node_count=len(elements),
-                    query_results={},
-                    source_code=content,
-                    success=True,
-                    error_message=None,
-                )
-
-            except ImportError:
-                log_error(
-                    "tree-sitter-html not available, falling back to basic parsing"
-                )
-                # Fallback to basic parsing
-                lines = content.splitlines()
-                line_count = len(lines)
-
-                # Create basic MarkupElement for the HTML document
-                html_element = MarkupElement(
-                    name="html",
-                    start_line=1,
-                    end_line=line_count,
-                    raw_text=content[:200] + "..." if len(content) > 200 else content,
-                    language="html",
-                    tag_name="html",
-                    attributes={},
-                    parent=None,
-                    children=[],
-                    element_class="structure",
-                )
-                elements = [html_element]
-
-                return AnalysisResult(
-                    file_path=file_path,
-                    language="html",
-                    line_count=line_count,
-                    elements=elements,
-                    node_count=len(elements),
-                    query_results={},
-                    source_code=content,
-                    success=True,
-                    error_message=None,
-                )
-
+            content, _encoding = read_file_safe(file_path)
         except Exception as e:
             log_error(f"Failed to analyze HTML file {file_path}: {e}")
-            return AnalysisResult(
-                file_path=file_path,
-                language="html",
-                line_count=0,
-                elements=[],
-                node_count=0,
-                query_results={},
-                source_code="",
-                success=False,
-                error_message=str(e),
-            )
+            return _html_error_result(file_path, e)
+
+        try:
+            return self._analyze_with_tree_sitter(file_path, content)
+        except ImportError:
+            log_error("tree-sitter-html not available, falling back to basic parsing")
+            return _analyze_html_fallback(file_path, content)
+        except Exception as e:
+            log_error(f"Failed to analyze HTML file {file_path}: {e}")
+            return _html_error_result(file_path, e)
+
+    def _analyze_with_tree_sitter(
+        self, file_path: str, content: str
+    ) -> "AnalysisResult":
+        """Parse via ``tree-sitter-html``; may raise ``ImportError`` if missing."""
+        import tree_sitter
+        import tree_sitter_html as ts_html
+
+        HTML_LANGUAGE = tree_sitter.Language(ts_html.language())
+        parser = tree_sitter.Parser()
+        parser.language = HTML_LANGUAGE
+        tree = parser.parse(content.encode("utf-8"))
+
+        extractor = self.create_extractor()
+        elements = extractor.extract_html_elements(tree, content)
+        log_info(f"Extracted {len(elements)} HTML elements from {file_path}")
+
+        return AnalysisResult(
+            file_path=file_path,
+            language="html",
+            line_count=len(content.splitlines()),
+            elements=elements,
+            node_count=len(elements),
+            query_results={},
+            source_code=content,
+            success=True,
+            error_message=None,
+        )
