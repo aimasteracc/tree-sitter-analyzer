@@ -18,6 +18,7 @@ from tree_sitter_analyzer.cli.commands.mcp_command_helpers import (
 # module level — see ``tests/unit/cli/test_mcp_commands.py``.
 # noqa codes keep refactor-cleaner / autoflake / ruff from stripping them.
 from tree_sitter_analyzer.mcp.tools.ast_cache_tool import ASTCacheTool  # noqa: F401
+from tree_sitter_analyzer.mcp.tools.ast_diff_tool import ASTDiffTool  # noqa: F401
 from tree_sitter_analyzer.mcp.tools.call_graph_tool import (
     CodeGraphCallTool,  # noqa: F401
 )
@@ -253,6 +254,23 @@ MCP_COMMAND_SPECS: tuple[McpCommandSpec, ...] = (
         label="Framework route detection (CodeGraph parity)",
         build_tool_args=_build_detect_routes_tool_args,
     ),
+    McpCommandSpec(
+        flag_name="ast_diff",
+        tool_attr="ASTDiffTool",
+        label="Structural AST diff (difftastic-level)",
+        build_tool_args=lambda args, output_format: {
+            "mode": getattr(args, "ast_diff_mode", "diff_files") or "diff_files",
+            "old_file": getattr(args, "ast_diff_old_file", None),
+            "new_file": getattr(args, "ast_diff_new_file", None),
+            "old_source": getattr(args, "ast_diff_old_source", None),
+            "new_source": getattr(args, "ast_diff_new_source", None),
+            "file_path": getattr(args, "ast_diff_file", None),
+            "old_ref": getattr(args, "ast_diff_old_ref", "HEAD~1"),
+            "new_ref": getattr(args, "ast_diff_new_ref", "HEAD"),
+            "language": getattr(args, "ast_diff_language", None),
+            "output_format": output_format,
+        },
+    ),
 )
 
 
@@ -303,6 +321,7 @@ _TOOL_CLASS_NAMES: frozenset[str] = frozenset(
         "CodePatternsTool",
         "CodeGraphCallTool",
         "ASTCacheTool",
+        "ASTDiffTool",
         "RouteDetectorTool",
     }
 )

@@ -504,3 +504,48 @@ def _add_mcp_analysis_options(parser: argparse.ArgumentParser) -> None:
         default="all",
         help="Framework filter for --detect-routes (default: all)",
     )
+    parser.add_argument(
+        "--ast-diff",
+        action="store_true",
+        help="Structural AST diff — tree-level code change understanding",
+    )
+    parser.add_argument(
+        "--ast-diff-mode",
+        choices=["diff_files", "diff_strings", "diff_git"],
+        default="diff_files",
+        help="AST diff mode (default: diff_files)",
+    )
+    parser.add_argument(
+        "--ast-diff-old-file",
+        help="Path to old file version for --ast-diff diff_files mode",
+    )
+    parser.add_argument(
+        "--ast-diff-new-file",
+        help="Path to new file version for --ast-diff diff_files mode",
+    )
+    parser.add_argument(
+        "--ast-diff-old-source",
+        help="Old source code string for --ast-diff diff_strings mode",
+    )
+    parser.add_argument(
+        "--ast-diff-new-source",
+        help="New source code string for --ast-diff diff_strings mode",
+    )
+    parser.add_argument(
+        "--ast-diff-file",
+        help="File path for --ast-diff diff_git mode",
+    )
+    parser.add_argument(
+        "--ast-diff-old-ref",
+        default="HEAD~1",
+        help="Old git ref for --ast-diff diff_git mode (default: HEAD~1)",
+    )
+    parser.add_argument(
+        "--ast-diff-new-ref",
+        default="HEAD",
+        help="New git ref for --ast-diff diff_git mode (default: HEAD)",
+    )
+    parser.add_argument(
+        "--ast-diff-language",
+        help="Language override for --ast-diff (auto-detected from file extension if omitted)",
+    )
